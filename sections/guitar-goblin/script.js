@@ -26,8 +26,9 @@ const RAIDS = [
 ];
 
 // ---- Raids of the week (bonus loot) — EDIT THIS LINE to match the live rotator.
-// Placeholder until Nick confirms this week's featured raids.
-const RAIDS_OF_THE_WEEK = ["vault-of-glass", "vow-of-the-disciple"];
+// Verified via web search for the week of June 16-23, 2026 (Tue reset).
+// (The Desert Perpetual is also "always featured" — add "the-desert-perpetual" to glow it too.)
+const RAIDS_OF_THE_WEEK = ["kings-fall", "garden-of-salvation"];
 
 const STORE_KEY = "gg-raidnight-v1";
 const ME_KEY = "gg-raidnight-me";
