@@ -85,32 +85,73 @@ document.querySelectorAll('input[name="status"]').forEach((radio) => {
 });
 
 // ---------- storage ----------
-function load() {
-  try {
-    const raw = localStorage.getItem(STORE_KEY);
-    const data = raw ? JSON.parse(raw) : { responses: [] };
-    return Array.isArray(data.responses) ? data.responses : [];
-  } catch { return []; }
+// Shared store via /api/votes; localStorage is a cache + offline fallback so
+// the page still works if the store isn't connected yet.
+const API = "/api/votes";
+let RESPONSES = [];
+
+function cacheLocal() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify({ responses: RESPONSES })); } catch {}
 }
-function save(responses) {
-  localStorage.setItem(STORE_KEY, JSON.stringify({ responses }));
+function loadLocal() {
+  try {
+    const data = JSON.parse(localStorage.getItem(STORE_KEY) || "{}");
+    RESPONSES = Array.isArray(data.responses) ? data.responses : [];
+  } catch { RESPONSES = []; }
+}
+
+async function pull() {
+  try {
+    const r = await fetch(API, { cache: "no-store" });
+    if (!r.ok) throw new Error("status " + r.status);
+    const j = await r.json();
+    RESPONSES = Array.isArray(j.responses) ? j.responses : [];
+    cacheLocal();
+    return true;
+  } catch {
+    loadLocal();
+    return false;
+  }
+}
+
+async function push(entry) {
+  try {
+    const r = await fetch(API, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(entry),
+    });
+    if (!r.ok) throw new Error("status " + r.status);
+    const j = await r.json();
+    RESPONSES = Array.isArray(j.responses) ? j.responses : RESPONSES;
+    cacheLocal();
+    return true;
+  } catch {
+    const i = RESPONSES.findIndex((x) => x.name.toLowerCase() === entry.name.toLowerCase());
+    if (i >= 0) RESPONSES[i] = entry; else RESPONSES.push(entry);
+    cacheLocal();
+    return false;
+  }
 }
 
 // ---------- submit ----------
-$("#poll").addEventListener("submit", (e) => {
+const submitBtn = $("#submit");
+$("#poll").addEventListener("submit", async (e) => {
   e.preventDefault();
   const name = $("#name").value.trim();
   const status = (document.querySelector('input[name="status"]:checked') || {}).value;
   if (!name || !status) return;
   const raids = status === "out" ? [] : [...selected];
   const notes = status === "out" ? "" : $("#notes").value.trim();
-
-  const responses = load();
-  const i = responses.findIndex((r) => r.name.toLowerCase() === name.toLowerCase());
   const entry = { name, status, raids, notes };
-  if (i >= 0) responses[i] = entry; else responses.push(entry);
-  save(responses);
+
+  submitBtn.disabled = true;
+  const label = submitBtn.textContent;
+  submitBtn.textContent = "Locking in…";
+  await push(entry);
   localStorage.setItem(ME_KEY, name);
+  submitBtn.disabled = false;
+  submitBtn.textContent = label;
 
   $("#poll").hidden = true;
   renderResults();
@@ -125,7 +166,7 @@ $("#editBtn").addEventListener("click", () => {
 
 // ---------- results ----------
 function renderResults() {
-  const responses = load();
+  const responses = RESPONSES;
   const results = $("#results");
   if (!responses.length) { results.hidden = true; return; }
   results.hidden = false;
@@ -204,9 +245,10 @@ function setupAutoplay() {
 }
 
 // ---------- init ----------
-(function init() {
+(async function init() {
   const me = localStorage.getItem(ME_KEY);
   if (me) $("#name").value = me;
-  if (load().length) renderResults();
+  await pull();
+  if (RESPONSES.length) renderResults();
   setupAutoplay();
 })();
