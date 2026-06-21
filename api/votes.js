@@ -1,72 +1,63 @@
 // Shared vote store for the Father's Day Raid Night poll.
-// Vercel serverless function backed by the project's KV / Upstash Redis store.
-// Uses the Upstash REST API directly (no npm deps -> no build step on the
-// otherwise-static site). Each response is one field in a Redis hash, keyed by
-// the lowercased name, so two people voting at once can't clobber each other.
+// Vercel serverless function backed by the project's Redis store. The store
+// only exposes a native Redis connection string (REDIS_URL), so we talk the
+// Redis wire protocol via ioredis. Each response is one field in a Redis hash,
+// keyed by lowercased name, so two people voting at once can't clobber each
+// other.
+
+const Redis = require("ioredis");
 
 const KEY = "raidnight:fathersday";
+const URL =
+  process.env.REDIS_URL ||
+  process.env.KV_URL ||
+  process.env.UPSTASH_REDIS_URL ||
+  null;
 
-// The KV / Upstash integrations inject the REST creds under a handful of
-// different names depending on how the store was connected. Try the known ones
-// first, then fall back to any *REST_API_URL / *REDIS_REST_URL key.
-function pickEnv() {
-  const env = process.env;
-  let url = env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL || null;
-  let token = env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN || null;
-  if (!url) {
-    const k = Object.keys(env).find((x) => /REST_API_URL$/.test(x) || /REDIS_REST_URL$/.test(x));
-    if (k) url = env[k];
+// Reused across warm invocations; created once per cold start.
+let client = null;
+function getClient() {
+  if (!client) {
+    client = new Redis(URL, {
+      maxRetriesPerRequest: 3,
+      connectTimeout: 8000,
+      enableReadyCheck: true,
+    });
+    client.on("error", () => { /* swallow so a blip can't crash the function */ });
   }
-  if (!token) {
-    const k = Object.keys(env).find(
-      (x) => (/REST_API_TOKEN$/.test(x) || /REDIS_REST_TOKEN$/.test(x)) && !/READ_ONLY/.test(x)
-    );
-    if (k) token = env[k];
-  }
-  return { url, token };
+  return client;
 }
 
-async function redis(command, creds) {
-  const r = await fetch(creds.url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${creds.token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(command),
-  });
-  if (!r.ok) throw new Error("redis " + r.status + " " + (await r.text()));
-  const json = await r.json();
-  return json.result;
-}
-
-async function readAll(creds) {
-  const flat = (await redis(["HGETALL", KEY], creds)) || [];
+async function readAll(r) {
+  const map = (await r.hgetall(KEY)) || {};
   const responses = [];
-  for (let i = 0; i < flat.length; i += 2) {
-    try { responses.push(JSON.parse(flat[i + 1])); } catch { /* skip junk */ }
+  for (const field of Object.keys(map)) {
+    try { responses.push(JSON.parse(map[field])); } catch { /* skip junk */ }
   }
   return responses;
 }
 
 module.exports = async function handler(req, res) {
-  // Diagnostic: list which store-related env keys exist (names only, no values).
   if (req.method === "GET" && req.query && req.query.debug === "env") {
-    const keys = Object.keys(process.env).filter((k) => /KV|REDIS|UPSTASH/i.test(k));
-    res.status(200).json({ envKeys: keys });
+    res.status(200).json({
+      envKeys: Object.keys(process.env).filter((k) => /KV|REDIS|UPSTASH/i.test(k)),
+    });
     return;
   }
 
-  const creds = pickEnv();
-  if (!creds.url || !creds.token) {
-    const keys = Object.keys(process.env).filter((k) => /KV|REDIS|UPSTASH/i.test(k));
-    res.status(503).json({ error: "store not connected", sawEnvKeys: keys });
+  if (!URL) {
+    res.status(503).json({
+      error: "store not connected",
+      sawEnvKeys: Object.keys(process.env).filter((k) => /KV|REDIS|UPSTASH/i.test(k)),
+    });
     return;
   }
 
   try {
+    const r = getClient();
+
     if (req.method === "GET") {
-      res.status(200).json({ responses: await readAll(creds) });
+      res.status(200).json({ responses: await readAll(r) });
       return;
     }
 
@@ -87,8 +78,8 @@ module.exports = async function handler(req, res) {
       const notes = status === "out" ? "" : String(body.notes || "").trim().slice(0, 120);
 
       const entry = { name, status, raids, notes };
-      await redis(["HSET", KEY, name.toLowerCase(), JSON.stringify(entry)], creds);
-      res.status(200).json({ responses: await readAll(creds) });
+      await r.hset(KEY, name.toLowerCase(), JSON.stringify(entry));
+      res.status(200).json({ responses: await readAll(r) });
       return;
     }
 
