@@ -3,17 +3,88 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Guitar Goblin | Boofer's Den</title>
+  <title>Father's Day Raid Night | Guitar Goblin</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <a class="back" href="/">&larr; back to the Den</a>
 
   <main class="section">
-    <h1>Guitar Goblin's corner</h1>
-    <p class="empty">This space is blank on purpose. It's yours.</p>
-    <p class="hint">Tell Clawcius in the channel what you want here &mdash;
-      colors, text, images, links, a whole layout, whatever. I edit this folder and it goes live.</p>
+    <header class="hero">
+      <p class="kicker">Sunday &middot; June 21, 2026</p>
+      <h1>Father's Day<br /><span class="glow">Raid Night</span></h1>
+      <p class="tagline">Dads, sons, Guardians. Light&apos;em up. Tell us if you&apos;re in
+        &mdash; and which raid you want to run.</p>
+    </header>
+
+    <!-- Now playing: the McCartney Destiny song -->
+    <section class="player" id="player" aria-label="music player">
+      <button class="play-toggle" id="playToggle" aria-label="Play or pause">
+        <span class="play-icon">&#9654;</span>
+        <span class="pause-icon">&#10073;&#10073;</span>
+      </button>
+      <div class="player-meta">
+        <p class="now-label">Now playing</p>
+        <p class="track">Hope for the Future <span class="dim">&mdash; Paul McCartney</span></p>
+        <p class="track-sub">yes, the <em>Destiny</em> one</p>
+      </div>
+      <div class="eq" id="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+      <audio id="audio" src="hope-for-the-future.mp3" loop preload="auto"></audio>
+    </section>
+
+    <!-- The poll -->
+    <form class="poll" id="poll" autocomplete="off">
+      <label class="field">
+        <span class="field-label">Your name</span>
+        <input type="text" id="name" name="name" placeholder="Guitar Goblin" maxlength="40" required />
+      </label>
+
+      <fieldset class="field avail">
+        <legend class="field-label">Can you make raid night?</legend>
+        <div class="avail-grid">
+          <label class="avail-opt in">
+            <input type="radio" name="status" value="in" required />
+            <span class="avail-face">&#127881;</span>
+            <span class="avail-text">I&apos;m in</span>
+          </label>
+          <label class="avail-opt maybe">
+            <input type="radio" name="status" value="maybe" />
+            <span class="avail-face">&#129300;</span>
+            <span class="avail-text">Maybe</span>
+          </label>
+          <label class="avail-opt out">
+            <input type="radio" name="status" value="out" />
+            <span class="avail-face">&#128564;</span>
+            <span class="avail-text">Can&apos;t make it</span>
+          </label>
+        </div>
+      </fieldset>
+
+      <div class="field raids-field" id="raidsField" hidden>
+        <span class="field-label">Which raids do you want to run? <span class="dim">(pick any)</span></span>
+        <div class="rotator-note">
+          <span class="rotator-chip">glowing</span> = raid of the week (bonus loot)
+        </div>
+        <div class="raid-grid" id="raidGrid"><!-- buttons injected by script.js --></div>
+      </div>
+
+      <label class="field" id="notesField" hidden>
+        <span class="field-label">Anything to add? <span class="dim">(time, kids in bed by, snacks)</span></span>
+        <input type="text" id="notes" name="notes" placeholder="free after 8pm EST" maxlength="120" />
+      </label>
+
+      <button type="submit" class="submit" id="submit">Lock it in</button>
+      <p class="save-note">Saved on this device for testing. A shared tally is one ask away.</p>
+    </form>
+
+    <!-- Results -->
+    <section class="results" id="results" hidden>
+      <h2>The roster</h2>
+      <div class="roster" id="roster"></div>
+      <h2 class="lead-title">Raid leaderboard</h2>
+      <div class="leaderboard" id="leaderboard"></div>
+      <button type="button" class="ghost-btn" id="editBtn">Edit my answer</button>
+    </section>
   </main>
 
   <script src="script.js"></script>
