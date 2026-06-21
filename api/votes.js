@@ -6,17 +6,31 @@
 
 const KEY = "raidnight:fathersday";
 
-// The KV / Upstash-for-Redis integrations inject one of these env-var pairs.
-const REST_URL =
-  process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL;
-const REST_TOKEN =
-  process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN;
+// The KV / Upstash integrations inject the REST creds under a handful of
+// different names depending on how the store was connected. Try the known ones
+// first, then fall back to any *REST_API_URL / *REDIS_REST_URL key.
+function pickEnv() {
+  const env = process.env;
+  let url = env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL || null;
+  let token = env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN || null;
+  if (!url) {
+    const k = Object.keys(env).find((x) => /REST_API_URL$/.test(x) || /REDIS_REST_URL$/.test(x));
+    if (k) url = env[k];
+  }
+  if (!token) {
+    const k = Object.keys(env).find(
+      (x) => (/REST_API_TOKEN$/.test(x) || /REDIS_REST_TOKEN$/.test(x)) && !/READ_ONLY/.test(x)
+    );
+    if (k) token = env[k];
+  }
+  return { url, token };
+}
 
-async function redis(command) {
-  const r = await fetch(REST_URL, {
+async function redis(command, creds) {
+  const r = await fetch(creds.url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${REST_TOKEN}`,
+      Authorization: `Bearer ${creds.token}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify(command),
@@ -26,8 +40,8 @@ async function redis(command) {
   return json.result;
 }
 
-async function readAll() {
-  const flat = (await redis(["HGETALL", KEY])) || [];
+async function readAll(creds) {
+  const flat = (await redis(["HGETALL", KEY], creds)) || [];
   const responses = [];
   for (let i = 0; i < flat.length; i += 2) {
     try { responses.push(JSON.parse(flat[i + 1])); } catch { /* skip junk */ }
@@ -36,15 +50,23 @@ async function readAll() {
 }
 
 module.exports = async function handler(req, res) {
-  if (!REST_URL || !REST_TOKEN) {
-    // Store not connected yet — tell the client so it can fall back to local.
-    res.status(503).json({ error: "store not connected" });
+  // Diagnostic: list which store-related env keys exist (names only, no values).
+  if (req.method === "GET" && req.query && req.query.debug === "env") {
+    const keys = Object.keys(process.env).filter((k) => /KV|REDIS|UPSTASH/i.test(k));
+    res.status(200).json({ envKeys: keys });
+    return;
+  }
+
+  const creds = pickEnv();
+  if (!creds.url || !creds.token) {
+    const keys = Object.keys(process.env).filter((k) => /KV|REDIS|UPSTASH/i.test(k));
+    res.status(503).json({ error: "store not connected", sawEnvKeys: keys });
     return;
   }
 
   try {
     if (req.method === "GET") {
-      res.status(200).json({ responses: await readAll() });
+      res.status(200).json({ responses: await readAll(creds) });
       return;
     }
 
@@ -65,8 +87,8 @@ module.exports = async function handler(req, res) {
       const notes = status === "out" ? "" : String(body.notes || "").trim().slice(0, 120);
 
       const entry = { name, status, raids, notes };
-      await redis(["HSET", KEY, name.toLowerCase(), JSON.stringify(entry)]);
-      res.status(200).json({ responses: await readAll() });
+      await redis(["HSET", KEY, name.toLowerCase(), JSON.stringify(entry)], creds);
+      res.status(200).json({ responses: await readAll(creds) });
       return;
     }
 
