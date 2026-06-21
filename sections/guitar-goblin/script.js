@@ -180,9 +180,33 @@ function escapeHtml(s) {
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// ---------- autoplay ----------
+// Try to start the track immediately; browsers block unmuted autoplay until the
+// user interacts, so fall back to kicking it off on the first click/keypress.
+function tryPlay() {
+  return audio.play().then(() => player.classList.add("playing"));
+}
+function setupAutoplay() {
+  tryPlay().catch(() => {
+    const kick = (e) => {
+      // if they clicked the play button, let its own handler do the toggling
+      if (e && e.target.closest && e.target.closest("#playToggle")) { cleanup(); return; }
+      tryPlay().catch(() => {});
+      cleanup();
+    };
+    function cleanup() {
+      document.removeEventListener("pointerdown", kick);
+      document.removeEventListener("keydown", kick);
+    }
+    document.addEventListener("pointerdown", kick);
+    document.addEventListener("keydown", kick);
+  });
+}
+
 // ---------- init ----------
 (function init() {
   const me = localStorage.getItem(ME_KEY);
   if (me) $("#name").value = me;
   if (load().length) renderResults();
+  setupAutoplay();
 })();
