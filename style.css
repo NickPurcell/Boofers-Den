@@ -1,0 +1,80 @@
+/* Shared landing-page styles. Section folders have their own CSS — edit those freely. */
+:root {
+  --bg: #0d0b14;
+  --panel: #181426;
+  --accent: #b06cf0;
+  --accent-2: #f06c9b;
+  --text: #ece8f5;
+  --muted: #9a92b3;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: radial-gradient(circle at 50% -10%, #251a3a 0%, var(--bg) 60%);
+  color: var(--text);
+  min-height: 100vh;
+}
+
+.hero {
+  text-align: center;
+  padding: 4rem 1rem 2rem;
+}
+
+.hero h1 {
+  font-size: clamp(2.5rem, 6vw, 4.5rem);
+  margin: 0;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.tagline { font-size: 1.3rem; color: var(--text); margin: 0.5rem 0 0.25rem; }
+.sub { color: var(--muted); margin: 0; }
+
+main { max-width: 960px; margin: 0 auto; padding: 1rem; }
+
+.grid {
+  list-style: none;
+  padding: 0;
+  margin: 2rem 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.75rem 1rem;
+  background: var(--panel);
+  border: 1px solid #2c2640;
+  border-radius: 14px;
+  text-decoration: none;
+  color: var(--text);
+  font-size: 2rem;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.card span { font-size: 1rem; color: var(--muted); }
+
+.card:hover {
+  transform: translateY(-4px) scale(1.02);
+  border-color: var(--accent);
+  box-shadow: 0 8px 30px rgba(176, 108, 240, 0.25);
+}
+
+.card:hover span { color: var(--text); }
+
+footer {
+  text-align: center;
+  color: var(--muted);
+  padding: 3rem 1rem;
+  font-size: 0.9rem;
+}
