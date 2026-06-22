@@ -189,18 +189,19 @@ function renderTheropod() {
 // (CORS-enabled). Hidden gracefully if the species has no lead image.
 function fetchDinoImage(title) {
   const img = $("#thImg"), credit = $("#thCredit");
+  const hide = () => { img.hidden = true; img.removeAttribute("src"); credit.innerHTML = ""; };
+  img.onerror = hide; // a 404/blocked thumbnail hides gracefully instead of showing a broken-jpg icon
   fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`)
     .then((r) => (r.ok ? r.json() : Promise.reject()))
     .then((d) => {
-      let src = d.thumbnail && d.thumbnail.source;
-      if (!src) return;
-      src = src.replace(/\/\d+px-/, "/480px-");
+      const src = d.thumbnail && d.thumbnail.source; // use the source verbatim — the old /480px- upscale 404'd on some files
+      if (!src) return hide();
       img.src = src; img.alt = title + " — via Wikipedia"; img.hidden = false;
       const page = (d.content_urls && d.content_urls.desktop && d.content_urls.desktop.page) ||
         ("https://en.wikipedia.org/wiki/" + encodeURIComponent(title));
       credit.innerHTML = `📷 image via <a href="${page}" target="_blank" rel="noopener">Wikipedia</a>`;
     })
-    .catch(() => { /* no image available; leave hidden */ });
+    .catch(hide);
 }
 
 // ---------- hunter builds ----------
