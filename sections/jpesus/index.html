@@ -3,17 +3,45 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>jpesus | Boofer's Den</title>
+  <title>jpesus's Armory | Boofer's Den</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <a class="back" href="/">&larr; back to the Den</a>
 
   <main class="section">
-    <h1>jpesus's corner</h1>
-    <p class="empty">This space is blank on purpose. It's yours.</p>
-    <p class="hint">Tell Clawcius in the channel what you want here &mdash;
-      colors, text, images, links, a whole layout, whatever. I edit this folder and it goes live.</p>
+    <header class="hero">
+      <h1>jpesus's corner</h1>
+      <p class="sub">Destiny&nbsp;2 PvE <span class="glow">God-Roll Armory</span></p>
+      <p class="note">Most-used meta weapons, broken down by ammo &amp; energy type — with god
+        rolls and where they drop. Build a loadout below. <span class="dim">Current June 2026.</span></p>
+    </header>
+
+    <!-- interactive loadout builder -->
+    <section class="loadout" id="loadout" aria-label="your loadout">
+      <h2>🛡️ Your Titan Loadout</h2>
+      <div class="slots" id="slots"><!-- slot cards injected --></div>
+      <button type="button" class="clear-btn" id="clearLoadout">Clear loadout</button>
+    </section>
+
+    <!-- filters -->
+    <div class="filters">
+      <div class="filter-group" id="ammoFilter" aria-label="filter by ammo">
+        <span class="filter-label">Ammo</span>
+        <!-- ammo chips injected -->
+      </div>
+      <div class="filter-group" id="elementFilter" aria-label="filter by energy type">
+        <span class="filter-label">Energy</span>
+        <!-- element chips injected -->
+      </div>
+    </div>
+    <p class="count" id="count"></p>
+
+    <!-- the armory -->
+    <div class="armory" id="armory"><!-- weapon cards injected by script.js --></div>
+
+    <p class="credits">Data: live meta via web search, with rolls &amp; drop sources verified against
+      the d2 toolkit. Ask Clawcius in the channel to add weapons or tweak rolls.</p>
   </main>
 
   <script src="script.js"></script>

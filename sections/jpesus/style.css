@@ -1,31 +1,140 @@
-/* This file belongs to one person. Edits here only affect this section. */
+/* jpesus's corner — Destiny 2 PvE god-roll armory. Edits here only affect this section. */
+:root {
+  --bg: #0a0c12;
+  --bg-2: #12151f;
+  --card: #161a26;
+  --text: #e9ecf5;
+  --dim: #8b93a7;
+  --accent: #6c8cff;
+  /* energy/damage type colors */
+  --kinetic: #d9dde6;
+  --arc: #7ec8ff;
+  --solar: #ff7a3c;
+  --void: #b06cf0;
+  --stasis: #5a8dff;
+  --strand: #43d17a;
+  --gold: #ffce63;
+}
 * { box-sizing: border-box; }
 body {
   margin: 0;
   min-height: 100vh;
   font-family: "Segoe UI", system-ui, sans-serif;
-  background: #0d0b14;
-  color: #ece8f5;
+  color: var(--text);
+  background:
+    radial-gradient(900px 480px at 50% -10%, rgba(108,140,255,.18), transparent 60%),
+    var(--bg);
   display: flex;
   flex-direction: column;
 }
-.back {
-  display: inline-block;
-  padding: 1rem 1.5rem;
-  color: #b06cf0;
-  text-decoration: none;
-}
+.back { display: inline-block; padding: 1rem 1.5rem; color: var(--accent); text-decoration: none; font-weight: 600; }
 .back:hover { text-decoration: underline; }
-.section {
-  flex: 1;
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 2rem 1.5rem 4rem;
-  text-align: center;
+.section { flex: 1; width: 100%; max-width: 1000px; margin: 0 auto; padding: .5rem 1.25rem 5rem; }
+
+/* hero */
+.hero { text-align: center; margin: 1rem 0 2rem; }
+.hero h1 { font-size: clamp(2rem, 6vw, 3.2rem); margin: 0; }
+.sub { font-size: clamp(1.1rem, 3vw, 1.5rem); font-weight: 700; margin: .3rem 0 0; }
+.glow {
+  background: linear-gradient(100deg, var(--arc), var(--accent), var(--void));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
 }
-.section h1 {
-  font-size: clamp(2rem, 5vw, 3.5rem);
-  margin-top: 2rem;
+.note { color: var(--dim); max-width: 36rem; margin: .8rem auto 0; line-height: 1.55; }
+.dim { color: var(--dim); }
+
+/* loadout builder */
+.loadout {
+  background: linear-gradient(160deg, var(--card), var(--bg-2));
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 16px;
+  padding: 1.1rem 1.25rem 1.25rem;
+  margin-bottom: 1.75rem;
 }
-.empty { font-size: 1.25rem; color: #c9c2dd; }
-.hint { color: #9a92b3; line-height: 1.6; }
+.loadout h2 { margin: 0 0 .9rem; font-size: 1.2rem; }
+.slots { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem; }
+.slot {
+  border: 1.5px dashed rgba(255,255,255,.18);
+  border-radius: 12px;
+  padding: .8rem;
+  min-height: 84px;
+  display: flex; flex-direction: column; gap: .25rem;
+}
+.slot.filled { border-style: solid; }
+.slot-label { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+.slot-weapon { font-weight: 700; font-size: 1rem; line-height: 1.2; }
+.slot-meta { font-size: .8rem; color: var(--dim); }
+.slot-empty { color: var(--dim); font-style: italic; margin-top: .35rem; }
+.clear-btn {
+  margin-top: .9rem; padding: .5rem .9rem; background: transparent;
+  border: 1px solid rgba(255,255,255,.2); color: var(--dim);
+  border-radius: 10px; cursor: pointer; font-weight: 600;
+}
+.clear-btn:hover { color: var(--text); border-color: var(--accent); }
+
+/* filters */
+.filters { display: flex; flex-wrap: wrap; gap: 1.25rem; margin-bottom: .6rem; }
+.filter-group { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+.filter-label { font-size: .72rem; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); margin-right: .2rem; }
+.chip {
+  padding: .35rem .75rem; border-radius: 999px; cursor: pointer; font-size: .85rem; font-weight: 600;
+  background: rgba(255,255,255,.05); border: 1.5px solid rgba(255,255,255,.12); color: var(--text);
+  transition: all .12s ease;
+}
+.chip:hover { border-color: var(--accent); }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #0a0c12; }
+.chip[data-element][aria-pressed="true"] { color: #0a0c12; }
+.count { color: var(--dim); font-size: .85rem; margin: .2rem 0 1.1rem; }
+
+/* armory */
+.armory { display: flex; flex-direction: column; gap: 1.75rem; }
+.ammo-block h3 {
+  font-size: 1.05rem; letter-spacing: .04em; margin: 0 0 .85rem;
+  padding-bottom: .4rem; border-bottom: 1px solid rgba(255,255,255,.1);
+}
+.ammo-block .ammo-tag { font-size: .8rem; color: var(--dim); font-weight: 500; }
+.card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: .85rem; }
+
+.wcard {
+  position: relative;
+  background: var(--card);
+  border: 1px solid rgba(255,255,255,.09);
+  border-left: 4px solid var(--el, var(--accent));
+  border-radius: 12px;
+  padding: .9rem 1rem 1rem;
+  display: flex; flex-direction: column; gap: .5rem;
+}
+.wcard-top { display: flex; align-items: flex-start; gap: .5rem; }
+.wname { font-weight: 800; font-size: 1.05rem; line-height: 1.15; }
+.wtype { font-size: .8rem; color: var(--dim); }
+.badges { display: flex; gap: .35rem; margin-left: auto; flex-shrink: 0; }
+.badge {
+  font-size: .65rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase;
+  padding: .15rem .45rem; border-radius: 6px;
+}
+.badge.el { color: #0a0c12; background: var(--el); }
+.badge.exotic { color: #1c1402; background: var(--gold); }
+.badge.legendary { color: var(--text); background: rgba(255,255,255,.12); }
+
+.roll { font-size: .9rem; line-height: 1.4; }
+.roll .k { color: var(--dim); font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; display: block; margin-bottom: .15rem; }
+.roll .v { font-weight: 600; }
+.drop { font-size: .82rem; color: var(--dim); }
+.drop .pin { color: var(--el, var(--accent)); }
+.why { font-size: .82rem; color: #b9c0d0; font-style: italic; line-height: 1.4; }
+
+.equip-btn {
+  margin-top: .25rem; align-self: flex-start;
+  padding: .45rem .85rem; border-radius: 9px; cursor: pointer; font-weight: 700; font-size: .85rem;
+  border: 1.5px solid var(--el, var(--accent)); background: transparent; color: var(--el, var(--accent));
+  transition: all .12s ease;
+}
+.equip-btn:hover { background: var(--el, var(--accent)); color: #0a0c12; }
+.equip-btn.equipped { background: var(--el, var(--accent)); color: #0a0c12; }
+
+.empty-note { color: var(--dim); font-style: italic; padding: 1rem 0; }
+.credits { color: var(--dim); font-size: .78rem; text-align: center; margin-top: 2.5rem; line-height: 1.5; }
+
+@media (max-width: 560px) {
+  .slots { grid-template-columns: 1fr; }
+  .card-grid { grid-template-columns: 1fr; }
+}
