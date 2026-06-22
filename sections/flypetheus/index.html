@@ -27,11 +27,16 @@
       <div class="panel-head"><span class="dot"></span> NOW STREAMING <span class="blip">▮▮▮</span></div>
       <div class="player-body">
         <button class="play-btn" id="playBtn">► PLAY</button>
+        <button class="skip-btn" id="skipBtn" title="next track" aria-label="next track">⏭</button>
         <div class="track">
           <span class="t-name" id="trackName">loading…</span>
           <span class="t-sub">funky jazz house · daily rotation</span>
         </div>
         <div class="eq" id="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+      </div>
+      <div class="vol-row">
+        <span class="vol-ico" id="volIco" role="button" tabindex="0" title="mute / unmute">🔊</span>
+        <input class="vol" id="vol" type="range" min="0" max="1" step="0.01" value="0.5" aria-label="volume" />
       </div>
       <p class="attr" id="attr"></p>
       <audio id="audio" loop preload="auto"></audio>

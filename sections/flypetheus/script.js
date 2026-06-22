@@ -230,8 +230,9 @@ function renderBuilds() {
 // ---------- daily track ----------
 const audio = $("#audio");
 const player = $("#player");
-const track = TRACKS[dayIndex() % TRACKS.length];
+let trackIdx = dayIndex() % TRACKS.length;
 function setupTrack() {
+  const track = TRACKS[trackIdx];
   audio.src = track.file;
   $("#trackName").textContent = track.name;
   $("#attr").innerHTML = `♪ &ldquo;${esc(track.name)}&rdquo; — ` +
@@ -246,6 +247,29 @@ $("#playBtn").addEventListener("click", () => {
 });
 audio.addEventListener("play", () => { player.classList.add("playing"); $("#playBtn").textContent = "❚❚ PAUSE"; });
 audio.addEventListener("pause", () => { player.classList.remove("playing"); $("#playBtn").textContent = "► PLAY"; });
+
+// next-track skip so you can sample the whole rotation, not just today's pick
+$("#skipBtn").addEventListener("click", () => {
+  trackIdx = (trackIdx + 1) % TRACKS.length;
+  setupTrack();
+  audio.play().catch(() => {});
+});
+
+// volume control (persisted) — starts at a comfortable level so autoplay isn't a jump-scare
+const vol = $("#vol"), volIco = $("#volIco");
+const savedVol = parseFloat(localStorage.getItem("fly_vol"));
+audio.volume = isNaN(savedVol) ? 0.5 : Math.min(1, Math.max(0, savedVol));
+vol.value = audio.volume;
+function syncVolIco() { volIco.textContent = (audio.muted || audio.volume === 0) ? "🔇" : (audio.volume < 0.5 ? "🔉" : "🔊"); }
+vol.addEventListener("input", () => {
+  audio.muted = false; audio.volume = parseFloat(vol.value);
+  localStorage.setItem("fly_vol", vol.value); syncVolIco();
+});
+function toggleMute() { audio.muted = !audio.muted; syncVolIco(); }
+volIco.addEventListener("click", toggleMute);
+volIco.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleMute(); } });
+syncVolIco();
+
 function setupAutoplay() {
   audio.play().catch(() => {
     const kick = (e) => {
