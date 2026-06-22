@@ -3,17 +3,49 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>flypetheus | Boofer's Den</title>
+  <title>FLYPETHEUS // jurassic.exe</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <!-- Y2K futurism backdrop (pure CSS) -->
+  <div class="techgrid" aria-hidden="true"></div>
+  <div class="holo" aria-hidden="true"></div>
+  <div class="sparkles" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+
   <a class="back" href="/">&larr; back to the Den</a>
 
-  <main class="section">
-    <h1>flypetheus's corner</h1>
-    <p class="empty">This space is blank on purpose. It's yours.</p>
-    <p class="hint">Tell Clawcius in the channel what you want here &mdash;
-      colors, text, images, links, a whole layout, whatever. I edit this folder and it goes live.</p>
+  <main class="y2k">
+    <header class="hero">
+      <p class="sys"><span class="led"></span> SYSTEM ONLINE &nbsp;//&nbsp; jurassic.exe loaded</p>
+      <h1 class="chrome" data-text="FLYPETHEUS">FLYPETHEUS</h1>
+      <p class="tagline">where the <b>future</b> meets the <b>Mesozoic</b> ✦</p>
+      <div class="dino-band" aria-hidden="true">🦖 &nbsp; 🦕 &nbsp; 🦖 &nbsp; 🦕 &nbsp; 🦖</div>
+    </header>
+
+    <!-- daily technojazz player -->
+    <section class="player y2kpanel" id="player" aria-label="music player">
+      <div class="panel-head"><span class="dot"></span> NOW STREAMING <span class="blip">▮▮▮</span></div>
+      <div class="player-body">
+        <button class="play-btn" id="playBtn">► PLAY</button>
+        <div class="track">
+          <span class="t-name" id="trackName">loading…</span>
+          <span class="t-sub">technojazz · daily rotation</span>
+        </div>
+        <div class="eq" id="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+      </div>
+      <p class="attr" id="attr"></p>
+      <audio id="audio" loop preload="auto"></audio>
+    </section>
+
+    <!-- theropod of the day -->
+    <section class="theropod y2kpanel" id="theropodCard" aria-label="theropod of the day"></section>
+    <p class="rotate-note">⟳ new species &amp; new track every day at midnight</p>
+
+    <footer class="y2kfoot">
+      <div class="chrome-bar" aria-hidden="true"></div>
+      <p class="foot-line">© 20XX ✦ FLYPETHEUS SYSTEMS ✦ best experienced at 1024×768</p>
+      <p class="credit" id="credit"></p>
+    </footer>
   </main>
 
   <script src="script.js"></script>
