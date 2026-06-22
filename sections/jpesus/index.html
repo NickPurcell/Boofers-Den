@@ -12,10 +12,14 @@
   <main class="section">
     <header class="hero">
       <h1>jpesus's corner</h1>
-      <p class="sub">Destiny&nbsp;2 PvE <span class="glow">God-Roll Armory</span></p>
-      <p class="note">Most-used meta weapons, broken down by ammo &amp; energy type — with god
-        rolls and where they drop. Build a loadout below. <span class="dim">Current June 2026.</span></p>
+      <p class="sub">Destiny&nbsp;2 <span class="glow">God-Roll Armory</span></p>
+      <p class="note">Most-used meta weapons by ammo &amp; energy type — god rolls + drop
+        locations, for <strong>PvE and PvP</strong>. Your Solar / Void / Stasis mains are
+        ⭐ starred, and there's a Titan Pantheon DPS build below. <span class="dim">Current June 2026.</span></p>
     </header>
+
+    <!-- featured: Pantheon Titan DPS build -->
+    <section class="build" id="build" aria-label="pantheon titan dps build"><!-- injected --></section>
 
     <!-- interactive loadout builder -->
     <section class="loadout" id="loadout" aria-label="your loadout">
@@ -26,13 +30,14 @@
 
     <!-- filters -->
     <div class="filters">
+      <div class="filter-group" id="modeFilter" aria-label="PvE or PvP">
+        <span class="filter-label">Mode</span>
+      </div>
       <div class="filter-group" id="ammoFilter" aria-label="filter by ammo">
         <span class="filter-label">Ammo</span>
-        <!-- ammo chips injected -->
       </div>
       <div class="filter-group" id="elementFilter" aria-label="filter by energy type">
         <span class="filter-label">Energy</span>
-        <!-- element chips injected -->
       </div>
     </div>
     <p class="count" id="count"></p>
