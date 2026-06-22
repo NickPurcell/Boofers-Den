@@ -1,6 +1,6 @@
-// flypetheus — Y2K futurism × carnivorous theropods × Destiny 2 Hunter builds.
-// Daily rotation (date-seeded) of a theropod + an upbeat royalty-free funk track.
-// Music: Kevin MacLeod (incompetech.com), licensed CC BY 4.0.
+// flypetheus — silvery mid-2000s futurism × carnivorous theropods × Destiny 2 Hunter builds.
+// Daily rotation (date-seeded) of a theropod + a funky/groovy "jazz house" track (à la Moodena).
+// Music: various artists via ccMixter, licensed CC BY 3.0 (attribution per track + in footer).
 
 const THEROPODS = [
   { name: "Masiakasaurus", pronounce: "mah-see-AH-kah-SOR-us", era: "Late Cretaceous", mya: "72–66 mya", length: "~1.8–2.1 m / 7 ft", weight: "~20 kg", region: "Madagascar",
@@ -59,16 +59,16 @@ const THEROPODS = [
     facts: ["It's one of the oldest known tyrannosaur relatives on Earth, predating T. rex by roughly 100 million years.", "Its name simply means 'lizard' in the Khakas language of its Siberian discovery region.", "It was a crested proceratosaurid, sharing a backward-tilted nostril design with the English Proceratosaurus.", "Known mostly from skull scraps, it shows early tyrannosauroids ranged right across Jurassic Eurasia."] },
 ];
 
-// 7 jazz-fusion-leaning royalty-free tracks (smooth / electric jazz approximating
-// Japanese jazz fusion) — Kevin MacLeod (incompetech.com), CC BY 4.0
+// 7 funky / groovy "jazz house" tracks (the Moodena lane) — various artists via
+// ccMixter, all licensed CC BY 3.0. Attribution shown per track + in the footer.
 const TRACKS = [
-  { file: "music/I_Knew_a_Guy.mp3", name: "I Knew a Guy" },
-  { file: "music/Bossa_Antigua.mp3", name: "Bossa Antigua" },
-  { file: "music/Mining_by_Moonlight.mp3", name: "Mining by Moonlight" },
-  { file: "music/Spy_Glass.mp3", name: "Spy Glass" },
-  { file: "music/Off_to_Osaka.mp3", name: "Off to Osaka" },
-  { file: "music/Take_the_Lead.mp3", name: "Take the Lead" },
-  { file: "music/Hep_Cats.mp3", name: "Hep Cats" },
+  { file: "music/winter-fusion.mp3",         name: "Winter Fusion",         artist: "tobias_weber", url: "https://ccmixter.org/people/tobias_weber" },
+  { file: "music/groove-in-d-minor.mp3",     name: "Groove in D Minor",     artist: "admiralbob77", url: "https://ccmixter.org/people/admiralbob77" },
+  { file: "music/straight-to-the-light.mp3", name: "Straight To The Light", artist: "AlexBeroza",   url: "https://ccmixter.org/people/AlexBeroza" },
+  { file: "music/put-the-needle-down.mp3",   name: "Put The Needle Down",   artist: "AlexBeroza",   url: "https://ccmixter.org/people/AlexBeroza" },
+  { file: "music/summer-house.mp3",          name: "Summer House",          artist: "Robbero",      url: "https://ccmixter.org/people/Robbero" },
+  { file: "music/toronto-is-my-beat.mp3",    name: "Toronto Is My Beat",    artist: "Whitewolf225", url: "https://ccmixter.org/people/Whitewolf225" },
+  { file: "music/soul-sister.mp3",           name: "Soul Sister",           artist: "Robbero",      url: "https://ccmixter.org/people/Robbero" },
 ];
 
 // Destiny 2 Hunter builds — Monument of Triumph (9.7.0). Exotic-armor-focused,
@@ -234,9 +234,11 @@ const track = TRACKS[dayIndex() % TRACKS.length];
 function setupTrack() {
   audio.src = track.file;
   $("#trackName").textContent = track.name;
-  $("#attr").innerHTML = `♪ &ldquo;${esc(track.name)}&rdquo; — Kevin MacLeod · ` +
-    `<a href="https://incompetech.com" target="_blank" rel="noopener">incompetech.com</a> · CC BY 4.0`;
-  $("#credit").innerHTML = `All music by Kevin MacLeod (<a href="https://incompetech.com" target="_blank" rel="noopener">incompetech.com</a>), licensed under Creative Commons: By Attribution 4.0`;
+  $("#attr").innerHTML = `♪ &ldquo;${esc(track.name)}&rdquo; — ` +
+    `<a href="${track.url}" target="_blank" rel="noopener">${esc(track.artist)}</a> · ` +
+    `via <a href="https://ccmixter.org" target="_blank" rel="noopener">ccMixter</a> · CC BY 3.0`;
+  $("#credit").innerHTML = `Music by various artists via <a href="https://ccmixter.org" target="_blank" rel="noopener">ccMixter</a>, ` +
+    `licensed under Creative Commons Attribution 3.0 (CC BY 3.0)`;
 }
 $("#playBtn").addEventListener("click", () => {
   if (audio.paused) audio.play().catch(() => {});
