@@ -59,14 +59,16 @@ const THEROPODS = [
     facts: ["It's one of the oldest known tyrannosaur relatives on Earth, predating T. rex by roughly 100 million years.", "Its name simply means 'lizard' in the Khakas language of its Siberian discovery region.", "It was a crested proceratosaurid, sharing a backward-tilted nostril design with the English Proceratosaurus.", "Known mostly from skull scraps, it shows early tyrannosauroids ranged right across Jurassic Eurasia."] },
 ];
 
-// 6 upbeat brassy-funk royalty-free tracks — Kevin MacLeod (incompetech.com), CC BY 4.0
+// 7 jazz-fusion-leaning royalty-free tracks (smooth / electric jazz approximating
+// Japanese jazz fusion) — Kevin MacLeod (incompetech.com), CC BY 4.0
 const TRACKS = [
-  { file: "music/Funkorama.mp3", name: "Funkorama" },
-  { file: "music/Funky_Chunk.mp3", name: "Funky Chunk" },
-  { file: "music/Funk_Game_Loop.mp3", name: "Funk Game Loop" },
-  { file: "music/Hep_Cats.mp3", name: "Hep Cats" },
+  { file: "music/I_Knew_a_Guy.mp3", name: "I Knew a Guy" },
+  { file: "music/Bossa_Antigua.mp3", name: "Bossa Antigua" },
   { file: "music/Mining_by_Moonlight.mp3", name: "Mining by Moonlight" },
+  { file: "music/Spy_Glass.mp3", name: "Spy Glass" },
   { file: "music/Off_to_Osaka.mp3", name: "Off to Osaka" },
+  { file: "music/Take_the_Lead.mp3", name: "Take the Lead" },
+  { file: "music/Hep_Cats.mp3", name: "Hep Cats" },
 ];
 
 // Destiny 2 Hunter builds — Monument of Triumph (9.7.0). Exotic-armor-focused,
