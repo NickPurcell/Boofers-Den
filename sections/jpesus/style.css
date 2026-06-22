@@ -114,6 +114,7 @@ body {
 .badge.el { color: #0a0c12; background: var(--el); }
 .badge.exotic { color: #1c1402; background: var(--gold); }
 .badge.legendary { color: var(--text); background: rgba(255,255,255,.12); }
+.badge.new { color: #06210f; background: var(--strand); }
 
 .roll { font-size: .9rem; line-height: 1.4; }
 .roll .k { color: var(--dim); font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; display: block; margin-bottom: .15rem; }
