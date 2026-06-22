@@ -3,17 +3,37 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>moos3s | Boofer's Den</title>
+  <title>Desperado — moos3s</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <!-- dusk frontier scene (pure CSS) -->
+  <div class="sky" aria-hidden="true"></div>
+  <div class="sun" aria-hidden="true"></div>
+  <div class="stars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="fireflies" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="horizon" aria-hidden="true">🌲🌲🦌🌲🌲🌲🦌🌲🌲🌲🦌🌲🌲🌲🦌🌲🌲🌲🦌🌲🌲🌲🦌🌲</div>
+
   <a class="back" href="/">&larr; back to the Den</a>
 
-  <main class="section">
-    <h1>moos3s's corner</h1>
-    <p class="empty">This space is blank on purpose. It's yours.</p>
-    <p class="hint">Tell Clawcius in the channel what you want here &mdash;
-      colors, text, images, links, a whole layout, whatever. I edit this folder and it goes live.</p>
+  <main class="frontier">
+    <header class="hero">
+      <p class="kicker">moos3s &middot; a corner of the den</p>
+      <h1>Desperado</h1>
+      <p class="subtitle">a lone-wanderer's stretch of trail — dusty light, quiet woods,
+        and a deer watching from the treeline.</p>
+    </header>
+
+    <section class="trailnote" id="trailNote" aria-label="trail note"></section>
+    <button type="button" class="ember-btn" id="emberBtn">↻ another mile</button>
+
+    <p class="canvas-note">✦ This is a <strong>v1</strong> Clawcius riffed from your name and your deer —
+      a canvas, not the finish line. Tell me what's actually <em>yours</em> (music, colors, links,
+      a whole different vibe) and I'll build it out properly.</p>
+
+    <footer class="frontier-foot">
+      <p>🦌 ride easy, wanderer.</p>
+    </footer>
   </main>
 
   <script src="script.js"></script>
