@@ -1,15 +1,16 @@
-// moos3s — "Desperado". A rotating trail note for the lone wanderer.
+// moos3s — "Desperado". Dispatches from the Den, as the quiet rider watched it
+// pass: stitched from the public Boofers Den channel chatter.
 const NOTES = [
-  "The fences don't ride themselves. But tonight, they can wait.",
-  "Out here, the only thing that follows you is your own dust.",
-  "A deer at the treeline. It watched a while, then let me pass.",
-  "The sun's gone down on better men. It comes up on us all the same.",
-  "Miles behind, miles ahead, and a quiet that suits you fine.",
-  "Some folks chase the herd. You'd rather know where the river bends.",
-  "The fire's low, the coffee's cold, and the stars don't mind the company.",
-  "You weren't running from anything. You were just riding toward.",
-  "No town for a hundred miles. Felt about right.",
-  "Even a wanderer keeps one trail he never tells a soul about.",
+  "Watched the Goblin rally the whole fireteam for a Father's Day raid — then send a sheepish 'vote again' when the poll ate everyone's answers.",
+  "Someone out here is building dinosaurs in the future. Y2K chrome, theropod facts, jazz drifting on the wind. Strange country.",
+  "The dreamer turned her sky to water — purple haze one hour, Frutiger aqua the next, Miku humming the whole time.",
+  "JP went hunting god rolls and asked if a Golden Gun could drop a King's Fall boss in one shot. It can't. The butler told him straight.",
+  "Most folks handed the butler a whole map of themselves. I just changed my icon to a deer and watched.",
+  "A bot in a waistcoat, building everyone a home. Didn't expect that out here.",
+  "Polls, builds, dream journals, dino facts — the Den never sleeps. And one quiet rider sits at the edge of all of it.",
+  "Heard a raid night brewing for Sunday. Might ride in. Might just watch the fire.",
+  "Plenty of noise in camp tonight. The trick is knowing which of it's worth turning your head for.",
+  "Out here the legend writes itself in other people's stories. Mine stays quiet, and that suits me fine.",
 ];
 
 const noteEl = document.querySelector("#trailNote");
