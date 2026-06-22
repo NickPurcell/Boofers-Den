@@ -276,11 +276,101 @@ function renderLoadout() {
   });
 }
 
+// ---------- inventory checker (DIM weapon CSV, matched locally) ----------
+function allWeaponsByName() {
+  const map = new Map();
+  const add = (w, mode) => {
+    if (!map.has(w.name)) map.set(w.name, { name: w.name, rarity: w.rarity, element: w.element, ammo: w.ammo, rolls: [] });
+    map.get(w.name).rolls.push({ mode, roll: w.roll, rarity: w.rarity });
+  };
+  WEAPONS_PVE.forEach((w) => add(w, "PvE"));
+  WEAPONS_PVP.forEach((w) => add(w, "PvP"));
+  return [...map.values()];
+}
+
+function checkInventory(csvText) {
+  const lines = csvText.split(/\r?\n/);
+  const low = lines.map((l) => l.toLowerCase());
+  return allWeaponsByName().map((w) => {
+    const nameLc = w.name.toLowerCase();
+    const rows = [];
+    for (let i = 0; i < lines.length; i++) if (low[i].includes(nameLc)) rows.push(low[i]);
+    if (!rows.length) return { ...w, owned: false, quality: "missing", matched: [] };
+    if (w.rarity === "Exotic") return { ...w, owned: true, quality: "ownedExotic", matched: [] };
+
+    let best = { quality: "wrongroll", matched: [], roll: null, mode: null };
+    const order = { godroll: 3, close: 2, wrongroll: 1 };
+    w.rolls.filter((r) => r.rarity !== "Exotic").forEach((r) => {
+      const tokens = r.roll.split("/").map((t) => t.trim()).filter(Boolean);
+      const traits = tokens.slice(-2);
+      rows.forEach((line) => {
+        const matched = tokens.filter((t) => line.includes(t.toLowerCase()));
+        const traitHits = traits.filter((t) => line.includes(t.toLowerCase())).length;
+        let q = "wrongroll";
+        if (traits.length && traitHits === traits.length) q = "godroll";
+        else if (traitHits >= 1) q = "close";
+        if (order[q] > order[best.quality]) best = { quality: q, matched, roll: r.roll, mode: r.mode };
+      });
+    });
+    return { ...w, owned: true, ...best };
+  });
+}
+
+function renderInvResults(results) {
+  const buckets = [
+    { key: "godroll", title: "🎯 God roll — you have it", cls: "g-god" },
+    { key: "close", title: "◐ Close — partial match", cls: "g-close" },
+    { key: "ownedExotic", title: "✓ Owned (exotic)", cls: "g-have" },
+    { key: "wrongroll", title: "○ Owned — different roll", cls: "g-have" },
+    { key: "missing", title: "✗ Not in your file", cls: "g-miss" },
+  ];
+  const owned = results.filter((r) => r.owned).length;
+  const gods = results.filter((r) => r.quality === "godroll").length;
+  let html = `<p class="inv-summary">You have <strong>${owned}</strong> of ${results.length} listed weapons` +
+    (gods ? ` — <strong>${gods}</strong> at god roll 🎯` : "") + `.</p>`;
+  buckets.forEach((b) => {
+    const items = results.filter((r) => r.quality === b.key);
+    if (!items.length) return;
+    html += `<div class="inv-group ${b.cls}"><h4>${b.title} <span>(${items.length})</span></h4><ul>`;
+    items.forEach((r) => {
+      let extra = "";
+      if (r.quality === "godroll" || r.quality === "close") {
+        extra = ` <span class="inv-perks">${esc((r.matched || []).join(", "))}${r.mode ? ` · ${r.mode}` : ""}</span>`;
+      }
+      html += `<li style="--el:${EL_VAR[r.element]}"><span class="inv-name">${esc(r.name)}</span>` +
+        `<span class="inv-tag">${esc(r.element)} · ${esc(r.ammo)}</span>${extra}</li>`;
+    });
+    html += `</ul></div>`;
+  });
+  $("#invResults").innerHTML = html;
+}
+
+function runInvCheck() {
+  const file = $("#invFile").files[0];
+  const paste = $("#invText").value.trim();
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = () => renderInvResults(checkInventory(String(reader.result)));
+    reader.onerror = () => { $("#invResults").innerHTML = `<p class="inv-empty">Couldn't read that file.</p>`; };
+    reader.readAsText(file);
+  } else if (paste) {
+    renderInvResults(checkInventory(paste));
+  } else {
+    $("#invResults").innerHTML = `<p class="inv-empty">Choose your DIM weapon CSV (or paste it) first.</p>`;
+  }
+}
+
 // ---------- init ----------
 $("#clearLoadout").addEventListener("click", () => {
   loadout.Primary = loadout.Special = loadout.Heavy = null;
   renderLoadout();
   render();
+});
+$("#invCheckBtn").addEventListener("click", runInvCheck);
+$("#invClearBtn").addEventListener("click", () => {
+  $("#invFile").value = "";
+  $("#invText").value = "";
+  $("#invResults").innerHTML = "";
 });
 renderBuild();
 buildChips();

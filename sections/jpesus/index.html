@@ -28,6 +28,22 @@
       <button type="button" class="clear-btn" id="clearLoadout">Clear loadout</button>
     </section>
 
+    <!-- inventory checker (DIM CSV, matched locally) -->
+    <section class="invcheck" id="invcheck" aria-label="inventory checker">
+      <h2>📋 Do I have these rolls?</h2>
+      <p class="inv-help">In <strong>DIM</strong>: Settings (⚙️) → <em>Spreadsheets</em> → <strong>Download Weapon CSV</strong>,
+        then drop that file here. Everything is matched <strong>in your browser</strong> — nothing is uploaded.</p>
+      <div class="inv-controls">
+        <input type="file" id="invFile" accept=".csv,text/csv" />
+        <button type="button" class="check-btn" id="invCheckBtn">Check my rolls</button>
+        <button type="button" class="clear-btn" id="invClearBtn">Clear</button>
+      </div>
+      <details class="inv-paste"><summary>…or paste the CSV text instead</summary>
+        <textarea id="invText" rows="4" placeholder="Paste your DIM weapon CSV here, then hit Check my rolls"></textarea>
+      </details>
+      <div class="inv-results" id="invResults"></div>
+    </section>
+
     <!-- filters -->
     <div class="filters">
       <div class="filter-group" id="modeFilter" aria-label="PvE or PvP">
