@@ -126,6 +126,11 @@ body {
 .th-facts { margin: 0; padding-left: 1.1rem; }
 .th-facts li { margin-bottom: .55rem; line-height: 1.5; }
 .th-facts li::marker { content: "🦴 "; }
+.th-img { display: block; max-width: 100%; max-height: 320px; margin: .3rem auto .35rem; border-radius: 12px;
+  border: 1px solid rgba(79,240,255,.4); box-shadow: 0 6px 20px rgba(0,0,0,.5); }
+.th-img[hidden] { display: none; }
+.th-credit { font-size: .68rem; color: var(--dim); margin: 0 0 .8rem; }
+.th-credit a { color: var(--cyan); }
 
 .rotate-note { text-align: center; color: var(--lime); font-family: "Courier New", monospace; font-size: .78rem; letter-spacing: .08em; margin: 0 0 2rem; }
 
@@ -145,6 +150,8 @@ body {
 .b-exotic { font-size: .9rem; font-weight: 700; color: var(--lime); margin: 0 0 .6rem; line-height: 1.4; }
 .b-exotic span { font-weight: 400; color: var(--ink); }
 .b-line { font-size: .85rem; line-height: 1.45; margin: 0 0 .55rem; }
+.b-artifact { font-size: .82rem; line-height: 1.45; margin: 0 0 .6rem; padding: .5rem .65rem; border-radius: 8px;
+  background: rgba(79,240,255,.08); border: 1px solid rgba(79,240,255,.28); }
 .b-key { display: inline-block; font-size: .64rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: var(--magenta); margin-right: .4rem; }
 .b-row { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem; margin-bottom: .55rem; }
 .b-chip { font-size: .76rem; padding: .2rem .55rem; border-radius: 999px; background: rgba(0,0,0,.3); border: 1px solid rgba(79,240,255,.3); }

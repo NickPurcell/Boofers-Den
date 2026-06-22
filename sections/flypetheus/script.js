@@ -72,10 +72,10 @@ const TRACKS = [
 // Destiny 2 Hunter builds — Monument of Triumph (9.7.0). Exotic-armor-focused,
 // not weapon-dependent. Exotics/aspects/fragments confirmed against the live manifest.
 const BUILDS_DISCLAIMER =
-  "⚠ Exotics, aspects, fragments, supers & rotations are confirmed against the live Bungie manifest. " +
-  "Artifact perks are deliberately left off: 9.7.0 reworked the artifact (mods now save into loadouts and sync via DIM), " +
-  "and I couldn't independently verify the exact current Monument of Triumph perk names — I won't guess. " +
-  "Tell Clawcius the perks on your in-game artifact and I'll wire the exact synergies in.";
+  "✓ Exotics, aspects, fragments, supers & rotations are confirmed against the live Bungie manifest. " +
+  "Monument of Triumph reworked the artifact ('Artifacts 2.0'): 7 returning artifacts are now selectable, each with named perks, " +
+  "and champion counters are intrinsic to weapon frames — so I've recommended an artifact + perks per build below. " +
+  "⚠ The exact perk spellings are community-sourced (cross-checked across sources, not first-party confirmed), so double-check them on your in-game artifact screen.";
 
 const BUILDS = [
   {
@@ -83,6 +83,7 @@ const BUILDS = [
     subclass: "Solar · Gunslinger",
     super: "Golden Gun (Marksman) → Celestial Nighthawk collapses it into ONE supercharged shot (~6×) that ignites; precision kills refund Super.",
     exotic: { name: "Celestial Nighthawk", why: "Turns Golden Gun into a single massive shot and refunds Super on precision kills — the cornerstone of all GG burst DPS." },
+    artifact: "🎯 Queensfoil Censer (Solar): Argent Ordnance + Rays of Precision + Heart of the Flame; or Hunter's Journal → Sniper's Meditation (boosts Still Hunt's Golden Gun shots).",
     aspects: ["Gunpowder Gamble", "On Your Mark"],
     fragments: ["Ember of Torches (Radiant on melee)", "Ember of Empyrean", "Ember of Ashes", "Ember of Solace"],
     weapons: "Weapon-flexible — the biggest multiplier is a DEBUFF (Tractor Cannon ~30% / weaken / Divinity), more than any specific gun. Still Hunt (Solar exotic sniper) is the star pairing: hold-reload fires its OWN Nighthawk-empowered Golden Gun shot — effectively a second huge hit.",
@@ -95,6 +96,7 @@ const BUILDS = [
     subclass: "Void · Nightstalker",
     super: "Deadfall (tether: weaken + suppress, big team debuff) — or Moebius Quiver for personal burst on a debuffed target.",
     exotic: { name: "Gyrfalcon's Hauberk", why: "Leaving invisibility grants Volatile Rounds to all Void weapons; a finisher while invisible buffs damage and gives team overshields." },
+    artifact: "🟣 NPA Repulsion Regulator (Void): Volatile Flow (pairs perfectly with Gyrfalcon's) + Void Weapon Channeling; Tablet of Ruin → Void Flux is the alt.",
     aspects: ["Stylish Executioner", "Vanishing Step / Phantom Surge (new 9.7.0 melee)"],
     fragments: ["Echo of Persistence", "Echo of Obscurity", "Echo of Cessation", "Echo of Expulsion"],
     weapons: "Lean Void so Volatile Rounds apply to whatever you carry (auto / pulse / SMG / scout). Not gun-locked — the build supplies the buffs.",
@@ -107,6 +109,7 @@ const BUILDS = [
     subclass: "Arc · Arcstrider",
     super: "Gathering Storm (stake the boss for jolt DPS + a team debuff) — or Arc Staff for roaming survivability.",
     exotic: { name: "Liar's Handshake", why: "Cross Counter turns your Arc melee into a massive healing one-two punch; stacks with Combination Blow for a huge melee ceiling and self-heal." },
+    artifact: "⚡ NPA Repulsion Regulator (Arc): Amped Up + Shock and Awe + Lightning Strikes Twice keep you amplified and add melee lightning.",
     aspects: ["Combination Blow", "Lethal Current / Flow State"],
     fragments: ["Spark of Resistance", "Spark of Shock", "Spark of Ions", "Spark of Feedback"],
     weapons: "Weapon-light — your fists are the damage. Any Arc weapon to stay amplified + feed Ionic Traces; a heavy for bosses you can't punch.",
@@ -119,11 +122,38 @@ const BUILDS = [
     subclass: "Prismatic · Hunter",
     super: "Your slotted super (Golden Gun / Silence & Squall / Storm's Edge), overcharged by Star-Eater for bonus damage + heal + overshield.",
     exotic: { name: "Star-Eater Scales", why: "Orbs feed extra Super energy and overcharge a full Super — rewards Prismatic's heavy orb generation with a giant empowered Super on demand." },
+    artifact: "✦ Hunter's Journal (favors Prismatic): Prismatic Transfer + Transference + Elemental Siphon + Elemental Supercharger feed Transcendence and your overcharged Super.",
     aspects: ["Ascension", "Gunpowder Gamble / Winter's Shroud"],
     fragments: ["Facet of Courage", "Facet of Dawn", "Facet of Ruin", "Facet of Bravery"],
     weapons: "Fully flexible — match weapon elements to your fragments and surges. Orb generation matters more than the specific gun (orbs are Star-Eater's fuel).",
     rotation: ["Farm orbs with weapon + ability kills (Prismatic makes them trivially).", "Build to full Super, then keep grabbing orbs to OVERcharge it.", "Build Transcendence by alternating Light and Dark ability kills.", "Weaken the boss, then pop your overcharged Super for the buffed burst + heal + overshield.", "Between phases, farm orbs and Transcendence to recharge."],
     playstyle: "The flexible 'one big Super' build — orb spam + Transcendence, then a healing overcharged Super whenever you need burst. Swap in Celestial Nighthawk to become build #1.",
+    reality: "",
+  },
+  {
+    name: "Beyblade Threadrunner", featured: false,
+    subclass: "Strand · Threadrunner",
+    super: "Silkstrike (rope-dart) — a roaming panic-clear / get-out-of-jail super that also refreshes Woven Mail.",
+    exotic: { name: "Cyrtarachne's Facade", why: "Grappling instantly grants Woven Mail (~+45% DR) plus flinch resist and heal-on-kill — every grapple makes you tanky on demand." },
+    artifact: "🟢 NPA Repulsion Regulator (Strand): Improved Unraveling + Strand Soldier; or Implement of Curiosity → Refresh Threads + Tangled Web.",
+    aspects: ["Widow's Silk", "Whirling Maelstrom"],
+    fragments: ["Thread of Ascent", "Thread of Generation", "Thread of Transmutation", "Thread of Continuity"],
+    weapons: "Not weapon-locked. Strand weapons that make Tangles / apply Unravel synergize best, but any add-clear primary works — Whirling Maelstrom and Threadlings do most of the damage.",
+    rotation: ["Grapple a target/Tangle point — Widow's Silk makes a Grapple Tangle and Cyrtarachne's grants Woven Mail.", "With Woven Mail up, get weapon kills — Thread of Transmutation spawns Tangles.", "Shoot a Tangle: Whirling Maelstrom destroys it into a spinning Strand mass that shreds the pack and emits Unravel.", "Thread of Generation feeds grenade energy; Thread of Ascent reloads + buffs on grenade recharge — re-grapple to refresh Woven Mail and repeat.", "Pop Silkstrike to reset a chaotic room or chunk a miniboss."],
+    playstyle: "Hyper-mobile, tanky grapple loop — swing in, get Woven Mail, blow Tangles into spinning Strand masses, and stay near-immortal while the room clears itself.",
+    reality: "",
+  },
+  {
+    name: "Frozen Bastion", featured: false,
+    subclass: "Stasis · Revenant",
+    super: "Silence and Squall — freeze a cluster with Silence, then drop Squall's lingering Stasis storm for zone control and freeze→shatter.",
+    exotic: { name: "Renewal Grasps", why: "Hugely enlarges your Duskfield and gives allies inside Frost Armor while enemies deal reduced damage — one grenade becomes a team-wide safe zone." },
+    artifact: "🔵 Slayer Baron Apothecary Satchel (Stasis): Wind Chill + Crystalline Converter + Frost Renewal + Served Cold for crystal/shatter uptime.",
+    aspects: ["Grim Harvest", "Touch of Winter"],
+    fragments: ["Whisper of Rime", "Whisper of Shards", "Whisper of Fissures", "Whisper of Conduction"],
+    weapons: "Not weapon-locked. Lean Stasis so Frost Armor's damage bonus + Grim Harvest's shatter apply; Kinetic also shatters while armored. Bring the frame that stuns the activity's champs.",
+    rotation: ["Throw the enhanced Duskfield (Touch of Winter + Renewal Grasps = a huge field + Frost Armor).", "Slowed/frozen kills drop Stasis shards → Grim Harvest stacks Frost Armor; Whisper of Conduction auto-pulls the shards.", "Finish with Stasis/Kinetic weapons for rising shatter; Whisper of Fissures boosts the shatter burst.", "Shatter Touch-of-Winter crystals for Whisper of Shards grenade regen → near-permanent Duskfield uptime.", "Pop Silence and Squall on dense rooms or a miniboss; Whisper of Rime keeps Frost Armor high for steady DR."],
+    playstyle: "Defensive zone control — blanket the area in a giant slowing Duskfield, snowball Frost Armor DR, and clear via shatter while your team holds ground. Excellent for GMs and dungeons.",
     reality: "",
   },
 ];
@@ -138,6 +168,8 @@ function renderTheropod() {
   const t = THEROPODS[dayIndex() % THEROPODS.length];
   $("#theropodCard").innerHTML =
     `<p class="th-kicker">🦖 THEROPOD OF THE DAY</p>` +
+    `<img class="th-img" id="thImg" alt="" hidden />` +
+    `<p class="th-credit" id="thCredit"></p>` +
     `<h2 class="th-name">${esc(t.name)}</h2>` +
     `<p class="th-pron">/ ${esc(t.pronounce)} /</p>` +
     `<div class="th-stats">` +
@@ -148,6 +180,25 @@ function renderTheropod() {
       `<span><b>Range</b>${esc(t.region)}</span>` +
     `</div>` +
     `<ul class="th-facts">${t.facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>`;
+  fetchDinoImage(t.name);
+}
+
+// Pull a representative image for the day's species from Wikipedia's REST API
+// (CORS-enabled). Hidden gracefully if the species has no lead image.
+function fetchDinoImage(title) {
+  const img = $("#thImg"), credit = $("#thCredit");
+  fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`)
+    .then((r) => (r.ok ? r.json() : Promise.reject()))
+    .then((d) => {
+      let src = d.thumbnail && d.thumbnail.source;
+      if (!src) return;
+      src = src.replace(/\/\d+px-/, "/480px-");
+      img.src = src; img.alt = title + " — via Wikipedia"; img.hidden = false;
+      const page = (d.content_urls && d.content_urls.desktop && d.content_urls.desktop.page) ||
+        ("https://en.wikipedia.org/wiki/" + encodeURIComponent(title));
+      credit.innerHTML = `📷 image via <a href="${page}" target="_blank" rel="noopener">Wikipedia</a>`;
+    })
+    .catch(() => { /* no image available; leave hidden */ });
 }
 
 // ---------- hunter builds ----------
@@ -165,6 +216,7 @@ function renderBuilds() {
       chips("Aspects", b.aspects) +
       chips("Fragments", b.fragments) +
       `<p class="b-line"><span class="b-key">Weapons</span> ${esc(b.weapons)}</p>` +
+      `<p class="b-artifact"><span class="b-key">Artifact ⚙</span> ${esc(b.artifact)}</p>` +
       `<details class="b-rot"><summary>Damage rotation</summary><ol>${b.rotation.map((r) => `<li>${esc(r)}</li>`).join("")}</ol></details>` +
       `<p class="b-play">${esc(b.playstyle)}</p>` +
       (b.reality ? `<p class="b-reality">${esc(b.reality)}</p>` : "") +
