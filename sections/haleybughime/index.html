@@ -3,17 +3,63 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>haleybughime | Boofer's Den</title>
+  <title>✩ haley's dreamland ✩ | Boofer's Den</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <!-- liminal / dreamcore backdrop (pure CSS) -->
+  <div class="sky" aria-hidden="true"></div>
+  <div class="grid-floor" aria-hidden="true"></div>
+  <div class="orbs" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  <div class="vignette" aria-hidden="true"></div>
+
   <a class="back" href="/">&larr; back to the Den</a>
 
-  <main class="section">
-    <h1>haleybughime's corner</h1>
-    <p class="empty">This space is blank on purpose. It's yours.</p>
-    <p class="hint">Tell Clawcius in the channel what you want here &mdash;
-      colors, text, images, links, a whole layout, whatever. I edit this folder and it goes live.</p>
+  <marquee class="top-marquee" scrollamount="6" aria-hidden="true">
+    ✩ ｗｅｌｃｏｍｅ ｔｏ ｔｈｅ ｄｒｅａｍ ✩ &nbsp;&nbsp; you've been here before &nbsp;&nbsp; ☆ mind the puddles ☆ &nbsp;&nbsp; the lights are still on &nbsp;&nbsp; ♡ everything is soft here ♡ &nbsp;&nbsp; .｡･ﾟ best viewed in a dream ﾟ･｡.
+  </marquee>
+
+  <main class="dream">
+    <header class="dhead">
+      <h1 class="glow-title">haley's<br /><span>dreamland</span></h1>
+      <p class="subtitle">a quiet little nowhere on the old web. you can stay as long as you like.</p>
+      <p class="counter" id="counter">☆ you are wanderer #?????? ☆</p>
+    </header>
+
+    <!-- now playing: Miku -->
+    <section class="player" id="player" aria-label="music">
+      <div class="cassette" id="cassette"><span class="reel l"></span><span class="tape"></span><span class="reel r"></span></div>
+      <div class="np">
+        <button class="play-btn" id="playBtn">▶&#xFE0E; play</button>
+        <p class="np-line">♪ now playing &mdash; <marquee scrollamount="3">ＨＡＴＳＵＮＥ　ＭＩＫＵ ～ ♡ ～ press play to drift ～</marquee></p>
+      </div>
+      <audio id="audio" src="miku.mp3" loop preload="auto"></audio>
+    </section>
+
+    <!-- daily features -->
+    <div class="daily-row">
+      <section class="daily-card puppet" id="puppetCard" aria-label="puppet of the day"></section>
+      <section class="daily-card silly" id="sillyCard" aria-label="silly character of the day"></section>
+    </div>
+    <p class="daily-note" id="dailyNote">✶ both rotate at midnight ✶</p>
+
+    <!-- dreamcore mood line -->
+    <section class="dream-quote" id="dreamQuote" aria-label="mood"></section>
+
+    <!-- webcore footer -->
+    <footer class="webfoot">
+      <div class="blinkies" id="blinkies"></div>
+      <div class="under-construction"><span>🚧 this page is eternally under construction 🚧</span></div>
+      <div class="guestbook">
+        <h3>✎ sign the dream journal</h3>
+        <p class="gb-note">(kept on your own device — a little secret between you and the page)</p>
+        <input type="text" id="gbName" maxlength="24" placeholder="name" />
+        <input type="text" id="gbMsg" maxlength="80" placeholder="leave a dream..." />
+        <button id="gbSign" type="button">sign</button>
+        <ul id="gbList"></ul>
+      </div>
+      <p class="bestviewed">✦ best viewed at 800&times;600 in Netscape Navigator ✦ © 19XX&ndash;forever ✦</p>
+    </footer>
   </main>
 
   <script src="script.js"></script>
