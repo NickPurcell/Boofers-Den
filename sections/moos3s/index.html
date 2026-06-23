@@ -20,17 +20,24 @@
     <header class="hero">
       <p class="kicker">moos3s &middot; the den, overheard</p>
       <h1>Desperado</h1>
-      <p class="subtitle">the quiet rider at the edge of the firelight — says little, misses nothing.
-        What follows is the Den as he watched it pass today.</p>
+      <p class="subtitle">The quiet rider at the edge of the firelight — says little, misses nothing.
+        What follows is the Den as he watched it pass: every camp, read straight off the chatter.</p>
     </header>
 
+    <!-- rotating dispatch ticker -->
     <section class="trailnote" id="trailNote" aria-label="trail note"></section>
     <button type="button" class="ember-btn" id="emberBtn">↻ next dispatch</button>
 
-    <p class="canvas-note">✦ Stitched from the <strong>public Boofers Den messages</strong> Clawcius caught scrolling by
-      today — you asked for a page built off the Den, so here's your corner as a lurker's-eye view of it.
-      (I only see the live window, not the archive, so it's <em>today's</em> chatter.) Want it broader, more
-      about <em>you</em>, or pointed somewhere else? Say the word.</p>
+    <!-- the wanted-board: one notice per camp, stitched from the message log -->
+    <section class="board" aria-label="dispatches from the Den">
+      <h2 class="board-title">— Dispatches from the Den —</h2>
+      <div class="dispatches" id="dispatches"></div>
+    </section>
+
+    <p class="canvas-note">✦ Every notice on this board was <strong>read straight from the public Boofers Den
+      message log</strong> — the polls, the builds, the dino facts, the dream journals, the whole roll of it.
+      You asked for a page built off the Den's chatter, so here's your corner: a lurker's chronicle of the camp.
+      Want a camp added, a line rewritten, or the whole thing pointed somewhere else? Say the word and I'll ride back out.</p>
 
     <footer class="frontier-foot">
       <p>🦌 ride easy, wanderer.</p>
