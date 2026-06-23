@@ -93,7 +93,26 @@ body {
 }
 .ember-btn:hover { background: rgba(232,160,79,.15); border-color: var(--amber); }
 
-/* ---- the wanted-board: notices pinned at the trail post ---- */
+/* ---- the rider's measure: stat strip ---- */
+.measure {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: .7rem;
+  margin: 2rem auto 1.5rem; max-width: 34rem;
+}
+.stat {
+  flex: 1 1 7rem; min-width: 6.5rem;
+  background: rgba(27,20,48,.5); border: 1px solid rgba(232,160,79,.28); border-radius: 12px;
+  padding: .8rem .6rem; backdrop-filter: blur(3px); box-shadow: 0 6px 22px -14px #000c;
+}
+.s-val {
+  display: block; font-size: 1.6rem; line-height: 1.1; color: var(--cream); font-weight: 700;
+  text-shadow: 0 0 18px rgba(244,170,90,.4);
+}
+.s-key {
+  display: block; margin-top: .35rem; font-family: "Courier New", monospace;
+  font-size: .64rem; letter-spacing: .1em; text-transform: uppercase; color: var(--amber); opacity: .92; line-height: 1.4;
+}
+
+/* ---- the ledger: notices pinned at the trail post ---- */
 .board { margin: 3.5rem auto 0; max-width: 34rem; text-align: left; }
 .board-title {
   text-align: center; font-family: "Courier New", monospace; letter-spacing: .18em;

@@ -1,22 +1,18 @@
-// moos3s — "Desperado". A lurker's chronicle of the Den, read straight off the
-// public Boofers Den message log: the polls, the builds, the dreamers, the dinos.
+// moos3s — "Desperado". A portrait of the rider himself, read off his own tracks
+// in the public Boofers Den log: the deer he chose, the way he asked, the patience.
 
-// --- the wanted-board: one notice per camp in the Den, drawn from the chatter ---
+// --- the ledger: Desperado's actual moments, pulled from the message log ---
 const DISPATCHES = [
-  { sigil: "🗳️", camp: "The Poll", line:
-    "The Goblin rallied the whole fireteam for a Father's Day vote — then the tally machine ate everyone's answers, the butler went hat-in-hand, and the camp voted twice." },
-  { sigil: "🔫", camp: "The Armory", line:
-    "JP rode in hunting god rolls — Monument-of-Triumph gear, PvE and PvP, drop spots and all. Even brought his own vault to check against the wall." },
-  { sigil: "🌌", camp: "The Dreamhouse", line:
-    "Joe turned his sky from purple haze to Frutiger aqua, Miku humming the whole time, a fresh puppet waiting at every dawn." },
-  { sigil: "🦖", camp: "jurassic.exe", line:
-    "Chrome and theropods over at Flype's camp — the music swapped a dozen times till the funk sat right, with Hunter builds bolted on for good measure." },
-  { sigil: "🐻", camp: "The Glizzy Bear", line:
-    "The camp boss kitted out a Solar Warlock — Sunbracers, Arbalest, a Well build — hauling gear clear across the vault to do it." },
-  { sigil: "🎩", camp: "The Butler", line:
-    "A bot in a waistcoat, building everyone a home and apologizing for every dropped tray. Didn't expect that out here." },
-  { sigil: "🦌", camp: "The Rider", line:
-    "And one quiet wanderer who said little, traded his cattle brand for a deer, and watched all of it roll by from the dark." },
+  { sigil: "🦌", camp: "Picked his own brand", line:
+    "Asked for a deer — a dog as the backup — and rode off with the deer. The one thing the man was dead sure about." },
+  { sigil: "👁️", camp: "Asked to be seen", line:
+    "Didn't say 'build me a page.' Said 'read my messages and make one that matches me.' Not a request — a challenge. Figure me out." },
+  { sigil: "🎯", camp: "Particular, not fussy", line:
+    "Took care to say it plain — the public trail, not the private letters. A precise man who doesn't waste a word." },
+  { sigil: "🤠", camp: "Waited like a gentleman", line:
+    "Asked again, and again, and never once raised his voice. A patient rider gets where he's going all the same." },
+  { sigil: "🌅", camp: "Watches more than he speaks", line:
+    "While the camp built dino labs and dreamhouses and chased god rolls, the rider mostly watched — and missed nothing." },
 ];
 
 const board = document.querySelector("#dispatches");
@@ -31,19 +27,15 @@ DISPATCHES.forEach((d, i) => {
   board.appendChild(card);
 });
 
-// --- rotating trail-note ticker, also read off the log ---
+// --- rotating one-liners, all about the rider ---
 const NOTES = [
-  "Watched the Goblin rally the whole fireteam for a Father's Day raid — then send a sheepish 'vote again' when the poll ate everyone's answers.",
-  "Someone out here is building dinosaurs in the future. Y2K chrome, theropod facts, jazz house drifting on the wind. Strange country.",
-  "The dreamer turned his sky to water — purple haze one hour, Frutiger aqua the next, Miku humming the whole time.",
-  "JP went hunting god rolls and asked if a Golden Gun could drop a King's Fall boss in one shot. It can't. The butler told him straight.",
-  "Most folks handed the butler a whole map of themselves. I just changed my icon to a deer and watched.",
-  "Watched the camp boss haul Sunbracers and an Arbalest clear across his vault to finish one Solar build.",
-  "A bot in a waistcoat, building everyone a home — and falling on his sword every time a track wouldn't play.",
-  "Polls, builds, dream journals, dino facts — the Den never sleeps. And one quiet rider sits at the edge of all of it.",
-  "Heard a raid night brewing for Sunday. Might ride in. Might just watch the fire.",
-  "Plenty of noise in camp tonight. The trick is knowing which of it's worth turning your head for.",
-  "Out here the legend writes itself in other people's stories. Mine stays quiet, and that suits me fine.",
+  "Turned down the dog and rode off on the deer. Knew his own mind, at least about that.",
+  "Didn't say 'build me this.' Said 'read my tracks and tell me who I am.' Bold ask for a quiet man.",
+  "Asked for his page more than once, and never once unkindly. Patience like that is its own kind of legend.",
+  "Careful with his words — public trail, not private letters, he made sure to say. Precise rider.",
+  "Said little while the camp roared around him. The trick of the lurker: hear everything, answer to nothing.",
+  "His whole footprint in the Den: a deer, a few patient questions, and a steady gaze. Travels light, this one.",
+  "Out here the legend writes itself in other people's stories. The rider keeps his own close, and that suits him fine.",
 ];
 
 const noteEl = document.querySelector("#trailNote");
