@@ -4,26 +4,35 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Night City | Guitar Goblin</title>
-  <meta name="description" content="A raymarched neo-noir city. Fog, neon, rain, wet asphalt. One fragment shader." />
+  <meta name="description" content="A neo-noir street in the rain. Multilingual neon, dense fog, wet asphalt. Three.js." />
   <link rel="stylesheet" href="city.css" />
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three/three.module.min.js",
+      "three/addons/": "./vendor/three/jsm/"
+    }
+  }
+  </script>
 </head>
 <body>
-  <canvas id="gl" aria-label="Animated neon city rendered in real time"></canvas>
-  <div class="scanlines" aria-hidden="true"></div>
+  <canvas id="gl" aria-label="An animated neon city street in the rain"></canvas>
+
+  <div class="boot" id="boot"><span>wiring the signs&hellip;</span></div>
 
   <a class="back" href="./">&larr; Goblin&apos;s corner</a>
 
   <header class="title">
     <p class="kicker">Sector 7 &middot; 03:14 &middot; precipitation heavy</p>
     <h1>NIGHT<span>CITY</span></h1>
-    <p class="sub">One fragment shader. No textures, no models, no mercy.
-      Everything you can see is a distance field and a bad attitude.</p>
+    <p class="sub">Nine writing systems, one wet street, and nobody about.
+      The camera keeps moving whether you like it or not.</p>
   </header>
 
   <div class="hud">
     <button type="button" class="hud-btn" id="quality" title="Render quality">Q <b id="qLabel">med</b></button>
     <button type="button" class="hud-btn" id="pause" title="Pause">&#10073;&#10073;</button>
-    <button type="button" class="hud-btn" id="srcBtn" title="View the shader">GLSL</button>
+    <button type="button" class="hud-btn" id="srcBtn" title="View the source">SRC</button>
   </div>
 
   <p class="hint" id="hint">move the mouse &mdash; the camera leans with you</p>
@@ -34,10 +43,11 @@
     <button type="button" class="drawer-x" id="closeX" aria-label="Close">&times;</button>
     <div class="drawer-head">
       <div>
-        <h2>city.frag</h2>
-        <p>GLSL ES 3.00 &middot; paste into <a href="https://twigl.app/" target="_blank" rel="noopener">twigl.app</a>
-          in <em>geek (300 es)</em> and drop the four declaration lines &mdash; twigl hands you
-          <code>r</code>, <code>t</code>, <code>m</code> and <code>o</code> itself.</p>
+        <h2>city.js</h2>
+        <p><a href="https://threejs.org/" target="_blank" rel="noopener">three.js</a> r185, vendored into the
+          repo rather than pulled off a CDN. Every sign is drawn to a <code>&lt;canvas&gt;</code> at load and
+          uploaded as a texture &mdash; nothing here is an image file. Buildings are merged per street segment
+          and the segments recycle behind you, so the road never ends.</p>
       </div>
       <div class="drawer-actions">
         <button type="button" class="hud-btn" id="copyBtn">copy</button>
@@ -46,9 +56,8 @@
     <pre><code id="src">loading&hellip;</code></pre>
   </aside>
 
-  <noscript><p class="fallback">This one needs JavaScript and WebGL2. Sorry.</p></noscript>
+  <noscript><p class="fallback">This one needs JavaScript and WebGL. Sorry.</p></noscript>
 
-  <script src="city.shader.js"></script>
-  <script src="city.js"></script>
+  <script type="module" src="city.js"></script>
 </body>
 </html>

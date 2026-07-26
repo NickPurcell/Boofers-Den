@@ -158,6 +158,20 @@ body {
 .drawer pre::-webkit-scrollbar { width: 10px; height: 10px; }
 .drawer pre::-webkit-scrollbar-thumb { background: rgba(255,77,141,.35); border-radius: 6px; }
 
+
+/* ---- boot veil: the sign textures take a beat to draw ---- */
+.boot {
+  position: fixed; inset: 0; z-index: 9;
+  display: grid; place-items: center;
+  background: #05040a; color: var(--dim);
+  font-family: ui-monospace, "Courier New", monospace;
+  font-size: .7rem; letter-spacing: .24em; text-transform: uppercase;
+  transition: opacity .7s ease;
+}
+.boot span { animation: throb 1.6s ease-in-out infinite; }
+@keyframes throb { 50% { opacity: .35; } }
+body.ready .boot { opacity: 0; pointer-events: none; }
+
 .fallback, .oops {
   position: fixed; z-index: 9; inset: 0; margin: 0;
   display: flex; align-items: center; justify-content: center;
