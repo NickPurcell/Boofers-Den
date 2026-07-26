@@ -21,14 +21,17 @@
   </header>
 
   <div class="hud">
-    <button type="button" class="hud-btn" id="quality" title="Render scale">RES <b id="qLabel">75%</b></button>
+    <button type="button" class="hud-btn" id="quality" title="Render quality">Q <b id="qLabel">med</b></button>
     <button type="button" class="hud-btn" id="pause" title="Pause">&#10073;&#10073;</button>
     <button type="button" class="hud-btn" id="srcBtn" title="View the shader">GLSL</button>
   </div>
 
   <p class="hint" id="hint">move the mouse &mdash; the camera leans with you</p>
 
-  <aside class="drawer" id="drawer" hidden>
+  <div class="drawer-backdrop" id="backdrop"></div>
+
+  <aside class="drawer" id="drawer" aria-hidden="true">
+    <button type="button" class="drawer-x" id="closeX" aria-label="Close">&times;</button>
     <div class="drawer-head">
       <div>
         <h2>city.frag</h2>
@@ -38,7 +41,6 @@
       </div>
       <div class="drawer-actions">
         <button type="button" class="hud-btn" id="copyBtn">copy</button>
-        <button type="button" class="hud-btn" id="closeBtn">close</button>
       </div>
     </div>
     <pre><code id="src">loading&hellip;</code></pre>

@@ -15,6 +15,11 @@ out vec4 o;
 const float CELL = 9.0;   // city block size
 const float HALF = 4.5;
 
+// march budget. the page rewrites these two numbers to suit the hardware;
+// leave them be if you are pasting this into twigl.
+#define STEPS  120
+#define RSTEPS 56
+
 // ---- hashes -----------------------------------------------------
 float h21(vec2 p){
   p = fract(p * vec2(0.1031, 0.1030));
@@ -169,7 +174,7 @@ vec3 sky(vec3 rd){
 float trace(vec3 ro, vec3 rd, int steps, float far, out float mat, inout vec3 glow, float glowGain){
   float d = 0.0;
   mat = 0.0;
-  for (int i = 0; i < 160; i++) {
+  for (int i = 0; i < 256; i++) {
     if (i >= steps) break;
     vec3 p = ro + rd * d;
     float mm;
@@ -235,7 +240,7 @@ void main(){
 
   vec3 glow = vec3(0.0);
   float mat;
-  float d = trace(ro, rd, 120, 185.0, mat, glow, 0.055);
+  float d = trace(ro, rd, STEPS, 185.0, mat, glow, 0.055);
 
   vec3 col;
   float dist = (d < 0.0) ? 185.0 : d;
@@ -273,7 +278,7 @@ void main(){
       vec3 rrd = reflect(rd, pn);
       vec3 rglow = vec3(0.0);
       float rmat;
-      float rd2 = trace(p + pn * 0.05, rrd, 56, 120.0, rmat, rglow, 0.05);
+      float rd2 = trace(p + pn * 0.05, rrd, RSTEPS, 120.0, rmat, rglow, 0.05);
       vec3 refl;
       if (rd2 < 0.0) {
         refl = sky(rrd);
