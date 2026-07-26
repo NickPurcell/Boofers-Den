@@ -1,0 +1,166 @@
+/* Guitar Goblin — the corner. Two doors, and a bit of weather. */
+:root {
+  --bg: #0b0a12;
+  --card: #16121f;
+  --text: #ece8f5;
+  --dim: #9a92b3;
+  --accent: #b06cf0;
+  --gold: #ffce63;
+  --neon: #ff4d8d;
+  --cyan: #4de0ff;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(900px 520px at 50% -10%, rgba(176,108,240,.24), transparent 62%),
+    radial-gradient(700px 420px at 100% 4%, rgba(255,206,99,.10), transparent 58%),
+    radial-gradient(760px 460px at 0% 30%, rgba(77,224,255,.09), transparent 60%),
+    var(--bg);
+  overflow-x: hidden;
+}
+.grid-bg {
+  position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: .35;
+  background-image:
+    linear-gradient(rgba(176,108,240,.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(176,108,240,.09) 1px, transparent 1px);
+  background-size: 54px 54px;
+  mask-image: radial-gradient(120% 80% at 50% 0%, #000 20%, transparent 75%);
+  -webkit-mask-image: radial-gradient(120% 80% at 50% 0%, #000 20%, transparent 75%);
+}
+
+.back {
+  position: relative; z-index: 2;
+  display: inline-block; padding: 1rem 1.5rem;
+  color: var(--accent); text-decoration: none; font-weight: 600;
+}
+.back:hover { text-decoration: underline; }
+
+.wrap {
+  position: relative; z-index: 1;
+  width: 100%; max-width: 900px; margin: 0 auto; padding: 1rem 1.25rem 5rem;
+}
+
+/* ---- hero ---- */
+.hero { text-align: center; margin: 1.75rem 0 3rem; }
+.kicker {
+  letter-spacing: .24em; text-transform: uppercase; font-size: .74rem;
+  color: var(--gold); margin: 0 0 .6rem;
+}
+.hero h1 { font-size: clamp(2.3rem, 8vw, 3.9rem); line-height: 1.04; margin: 0; font-weight: 800; }
+.glow {
+  background: linear-gradient(100deg, var(--gold), var(--neon), var(--accent), var(--cyan));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 20px rgba(255,77,141,.28));
+}
+.tagline { color: var(--dim); max-width: 32rem; margin: 1.1rem auto 0; line-height: 1.65; }
+
+/* ---- the doors ---- */
+.doors { display: grid; gap: 1.25rem; grid-template-columns: 1fr 1fr; }
+.door {
+  position: relative; overflow: hidden;
+  display: flex; flex-direction: column;
+  text-decoration: none; color: inherit;
+  background: var(--card);
+  border: 1px solid rgba(255,255,255,.08); border-radius: 18px;
+  box-shadow: 0 24px 60px -34px #000;
+  transition: transform .22s ease, border-color .22s ease, box-shadow .22s ease;
+}
+.door:hover { transform: translateY(-4px); }
+.door.raid:hover { border-color: rgba(255,206,99,.55); box-shadow: 0 28px 70px -30px rgba(255,206,99,.35); }
+.door.city:hover { border-color: rgba(255,77,141,.6);  box-shadow: 0 28px 70px -30px rgba(255,77,141,.4); }
+
+.door-art { position: relative; display: block; height: 170px; overflow: hidden; }
+
+/* raid door: a pick, and the ripples off it */
+.door.raid .door-art {
+  background: radial-gradient(120% 100% at 50% 120%, rgba(255,206,99,.28), transparent 62%), #120f1b;
+}
+.sigil {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  font-size: 3.4rem; filter: drop-shadow(0 0 22px rgba(255,206,99,.55));
+}
+.rings { position: absolute; inset: 0; display: grid; place-items: center; }
+.rings i {
+  position: absolute; width: 60px; height: 60px; border-radius: 50%;
+  border: 1px solid rgba(255,206,99,.5);
+  animation: pulse 3.4s ease-out infinite;
+}
+.rings i:nth-child(2) { animation-delay: 1.13s; }
+.rings i:nth-child(3) { animation-delay: 2.26s; }
+@keyframes pulse {
+  from { transform: scale(.5); opacity: .75; }
+  to   { transform: scale(3.2); opacity: 0; }
+}
+
+/* city door: a skyline in the rain */
+.door.city .door-art {
+  background: linear-gradient(180deg, #1a0f26 0%, #2a1233 45%, #120a1a 100%);
+}
+.skyline { position: absolute; inset: auto 0 0 0; height: 118px; display: flex; align-items: flex-end; gap: 5px; padding: 0 8px; }
+.skyline i {
+  flex: 1; display: block; border-radius: 2px 2px 0 0;
+  background: linear-gradient(180deg, #241535, #0d0715);
+  box-shadow: inset 0 1px 0 rgba(255,77,141,.5);
+}
+.skyline i:nth-child(1) { height: 48%; }
+.skyline i:nth-child(2) { height: 76%; box-shadow: inset 0 1px 0 rgba(77,224,255,.6); }
+.skyline i:nth-child(3) { height: 34%; }
+.skyline i:nth-child(4) { height: 92%; box-shadow: inset 0 1px 0 rgba(255,77,141,.75); }
+.skyline i:nth-child(5) { height: 58%; }
+.skyline i:nth-child(6) { height: 82%; box-shadow: inset 0 1px 0 rgba(77,224,255,.55); }
+.skyline i:nth-child(7) { height: 40%; }
+.skyline i:nth-child(8) { height: 66%; }
+.skyline::after {
+  content: ""; position: absolute; inset: auto 0 0 0; height: 26px;
+  background: linear-gradient(180deg, transparent, rgba(255,77,141,.22));
+}
+.drizzle { position: absolute; inset: 0; }
+.drizzle i {
+  position: absolute; top: -20%; width: 1px; height: 26px;
+  background: linear-gradient(180deg, transparent, rgba(200,225,255,.7));
+  animation: fall 1.1s linear infinite;
+}
+.drizzle i:nth-child(1) { left:  6%; animation-delay: .0s;  }
+.drizzle i:nth-child(2) { left: 16%; animation-delay: .5s;  }
+.drizzle i:nth-child(3) { left: 27%; animation-delay: .17s; }
+.drizzle i:nth-child(4) { left: 36%; animation-delay: .78s; }
+.drizzle i:nth-child(5) { left: 47%; animation-delay: .32s; }
+.drizzle i:nth-child(6) { left: 58%; animation-delay: .91s; }
+.drizzle i:nth-child(7) { left: 67%; animation-delay: .09s; }
+.drizzle i:nth-child(8) { left: 76%; animation-delay: .63s; }
+.drizzle i:nth-child(9) { left: 86%; animation-delay: .41s; }
+.drizzle i:nth-child(10){ left: 94%; animation-delay: .86s; }
+@keyframes fall { to { transform: translateY(190px) translateX(-14px); } }
+
+/* ---- door copy ---- */
+.door-body { display: flex; flex-direction: column; gap: .45rem; padding: 1.15rem 1.25rem 1.35rem; }
+.door-tag {
+  font-family: ui-monospace, "Courier New", monospace;
+  font-size: .66rem; letter-spacing: .18em; text-transform: uppercase; color: var(--dim);
+}
+.door-title { font-size: 1.3rem; font-weight: 800; line-height: 1.2; }
+.door.raid .door-title { color: var(--gold); }
+.door.city .door-title { color: var(--neon); }
+.door-sub { font-size: .87rem; line-height: 1.6; color: var(--dim); }
+.door-go {
+  margin-top: .5rem; font-weight: 700; font-size: .88rem;
+  transition: transform .2s ease;
+}
+.door.raid .door-go { color: var(--gold); }
+.door.city .door-go { color: var(--cyan); }
+.door:hover .door-go { transform: translateX(4px); }
+
+.foot { margin: 3rem auto 0; text-align: center; color: var(--dim); font-size: .85rem; }
+
+@media (max-width: 720px) {
+  .doors { grid-template-columns: 1fr; }
+  .door-art { height: 140px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .rings i, .drizzle i { animation: none; opacity: .35; }
+  .door:hover { transform: none; }
+}

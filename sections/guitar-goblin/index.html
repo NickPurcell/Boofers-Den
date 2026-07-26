@@ -3,90 +3,56 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Father's Day Raid Night | Guitar Goblin</title>
-  <link rel="stylesheet" href="style.css" />
+  <title>Guitar Goblin</title>
+  <meta name="description" content="Guitar Goblin's corner of the Den. Raid night, and a city that never dries out." />
+  <link rel="stylesheet" href="landing.css" />
 </head>
 <body>
+  <div class="grid-bg" aria-hidden="true"></div>
   <a class="back" href="/">&larr; back to the Den</a>
 
-  <main class="section">
+  <main class="wrap">
     <header class="hero">
-      <p class="kicker">Sunday &middot; June 21, 2026</p>
-      <h1>Eyes Up<br /><span class="glow">Guardian</span></h1>
-      <p class="tagline">Dads, sons, Guardians. Light&apos;em up. Tell us if you&apos;re in
-        &mdash; and which raid you want to run.</p>
+      <p class="kicker">Guitar Goblin &middot; the corner</p>
+      <h1>Two doors.<br /><span class="glow">Pick one.</span></h1>
+      <p class="tagline">One of them wants to know if you can make raid night.
+        The other one is a city, and it is raining, and it will not stop.</p>
     </header>
 
-    <!-- Now playing: the McCartney Destiny song -->
-    <section class="player" id="player" aria-label="music player">
-      <button class="play-toggle" id="playToggle" aria-label="Play or pause">
-        <span class="play-icon">&#9654;</span>
-        <span class="pause-icon">&#10073;&#10073;</span>
-      </button>
-      <div class="player-meta">
-        <p class="now-label">Now playing</p>
-        <p class="track">Hope for the Future <span class="dim">&mdash; Paul McCartney</span></p>
-        <p class="track-sub">yes, the <em>Destiny</em> one</p>
-      </div>
-      <div class="eq" id="eq" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
-      <audio id="audio" src="hope-for-the-future.mp3" loop preload="auto"></audio>
-    </section>
+    <nav class="doors" aria-label="pages">
 
-    <!-- The poll -->
-    <form class="poll" id="poll" autocomplete="off">
-      <label class="field">
-        <span class="field-label">Your name</span>
-        <input type="text" id="name" name="name" placeholder="Guitar Goblin" maxlength="40" required />
-      </label>
+      <a class="door raid" href="raid.html">
+        <span class="door-art" aria-hidden="true">
+          <span class="sigil">&#127925;</span>
+          <span class="rings"><i></i><i></i><i></i></span>
+        </span>
+        <span class="door-body">
+          <span class="door-tag">June 21, 2026</span>
+          <span class="door-title">Father&apos;s Day Raid Night</span>
+          <span class="door-sub">Dads, sons, Guardians. Say whether you&apos;re in, pick your raid,
+            and let the leaderboard argue about it.</span>
+          <span class="door-go">Eyes up &rarr;</span>
+        </span>
+      </a>
 
-      <fieldset class="field avail">
-        <legend class="field-label">Can you make raid night?</legend>
-        <div class="avail-grid">
-          <label class="avail-opt in">
-            <input type="radio" name="status" value="in" required />
-            <span class="avail-face">&#127881;</span>
-            <span class="avail-text">I&apos;m in</span>
-          </label>
-          <label class="avail-opt maybe">
-            <input type="radio" name="status" value="maybe" />
-            <span class="avail-face">&#129300;</span>
-            <span class="avail-text">Maybe</span>
-          </label>
-          <label class="avail-opt out">
-            <input type="radio" name="status" value="out" />
-            <span class="avail-face">&#128564;</span>
-            <span class="avail-text">Can&apos;t make it</span>
-          </label>
-        </div>
-      </fieldset>
+      <a class="door city" href="city.html">
+        <span class="door-art" aria-hidden="true">
+          <span class="skyline"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+          <span class="drizzle"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
+        </span>
+        <span class="door-body">
+          <span class="door-tag">GLSL &middot; realtime</span>
+          <span class="door-title">Night City</span>
+          <span class="door-sub">A raymarched neo-noir block, rendered live in a single fragment
+            shader. Dense fog, neon bleeding through it, rain on the lens, wet asphalt throwing
+            the signs back up at you.</span>
+          <span class="door-go">Step outside &rarr;</span>
+        </span>
+      </a>
 
-      <div class="field raids-field" id="raidsField" hidden>
-        <span class="field-label">Which raids do you want to run? <span class="dim">(pick any)</span></span>
-        <div class="rotator-note">
-          <span class="rotator-chip">glowing</span> = raid of the week (bonus loot)
-        </div>
-        <div class="raid-grid" id="raidGrid"><!-- buttons injected by script.js --></div>
-      </div>
+    </nav>
 
-      <label class="field" id="notesField" hidden>
-        <span class="field-label">Available At</span>
-        <input type="text" id="notes" name="notes" placeholder="8pm EST" maxlength="120" />
-      </label>
-
-      <button type="submit" class="submit" id="submit">Lock it in</button>
-      <p class="save-note">Saved on this device for testing. A shared tally is one ask away.</p>
-    </form>
-
-    <!-- Results -->
-    <section class="results" id="results" hidden>
-      <h2>The roster</h2>
-      <div class="roster" id="roster"></div>
-      <h2 class="lead-title">Raid leaderboard</h2>
-      <div class="leaderboard" id="leaderboard"></div>
-      <button type="button" class="ghost-btn" id="editBtn">Edit my answer</button>
-    </section>
+    <p class="foot">Built for the Den. Turn the sound on for one of these and the resolution down for the other. 🎸</p>
   </main>
-
-  <script src="script.js"></script>
 </body>
 </html>

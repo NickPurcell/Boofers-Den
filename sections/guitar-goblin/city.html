@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Night City | Guitar Goblin</title>
+  <meta name="description" content="A raymarched neo-noir city. Fog, neon, rain, wet asphalt. One fragment shader." />
+  <link rel="stylesheet" href="city.css" />
+</head>
+<body>
+  <canvas id="gl" aria-label="Animated neon city rendered in real time"></canvas>
+  <div class="scanlines" aria-hidden="true"></div>
+
+  <a class="back" href="./">&larr; Goblin&apos;s corner</a>
+
+  <header class="title">
+    <p class="kicker">Sector 7 &middot; 03:14 &middot; precipitation heavy</p>
+    <h1>NIGHT<span>CITY</span></h1>
+    <p class="sub">One fragment shader. No textures, no models, no mercy.
+      Everything you can see is a distance field and a bad attitude.</p>
+  </header>
+
+  <div class="hud">
+    <button type="button" class="hud-btn" id="quality" title="Render scale">RES <b id="qLabel">75%</b></button>
+    <button type="button" class="hud-btn" id="pause" title="Pause">&#10073;&#10073;</button>
+    <button type="button" class="hud-btn" id="srcBtn" title="View the shader">GLSL</button>
+  </div>
+
+  <p class="hint" id="hint">move the mouse &mdash; the camera leans with you</p>
+
+  <aside class="drawer" id="drawer" hidden>
+    <div class="drawer-head">
+      <div>
+        <h2>city.frag</h2>
+        <p>GLSL ES 3.00 &middot; paste into <a href="https://twigl.app/" target="_blank" rel="noopener">twigl.app</a>
+          in <em>geek (300 es)</em> and drop the four declaration lines &mdash; twigl hands you
+          <code>r</code>, <code>t</code>, <code>m</code> and <code>o</code> itself.</p>
+      </div>
+      <div class="drawer-actions">
+        <button type="button" class="hud-btn" id="copyBtn">copy</button>
+        <button type="button" class="hud-btn" id="closeBtn">close</button>
+      </div>
+    </div>
+    <pre><code id="src">loading&hellip;</code></pre>
+  </aside>
+
+  <noscript><p class="fallback">This one needs JavaScript and WebGL2. Sorry.</p></noscript>
+
+  <script src="city.shader.js"></script>
+  <script src="city.js"></script>
+</body>
+</html>

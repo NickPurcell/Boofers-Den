@@ -1,0 +1,151 @@
+/* Night City — its own little corner of hell. Nothing here leaks elsewhere. */
+:root {
+  --ink: #e8e2f5;
+  --dim: #9c8fb8;
+  --neon: #ff4d8d;
+  --cyan: #4de0ff;
+  --amber: #ffb45c;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  background: #05040a;
+  color: var(--ink);
+  font-family: "Segoe UI", system-ui, sans-serif;
+  overflow: hidden;
+}
+
+#gl {
+  position: fixed; inset: 0;
+  width: 100vw; height: 100vh;
+  display: block;
+}
+
+/* faint CRT rake over the top, because of course */
+.scanlines {
+  position: fixed; inset: 0; pointer-events: none; z-index: 2;
+  background: repeating-linear-gradient(180deg, rgba(0,0,0,.16) 0 1px, transparent 1px 3px);
+  mix-blend-mode: multiply;
+}
+
+.back {
+  position: fixed; top: .9rem; left: 1rem; z-index: 5;
+  color: var(--cyan); text-decoration: none; font-weight: 600; font-size: .9rem;
+  text-shadow: 0 0 12px rgba(77,224,255,.55);
+}
+.back:hover { text-decoration: underline; }
+
+.title {
+  position: fixed; z-index: 4; left: 0; right: 0; bottom: 4.6rem;
+  padding: 0 1.25rem; text-align: center;
+  pointer-events: none;
+}
+.kicker {
+  margin: 0 0 .35rem; font-family: ui-monospace, "Courier New", monospace;
+  font-size: .66rem; letter-spacing: .3em; text-transform: uppercase;
+  color: var(--amber); opacity: .85; text-shadow: 0 0 14px rgba(255,180,92,.5);
+}
+.title h1 {
+  margin: 0; font-weight: 900; line-height: .9;
+  font-size: clamp(2.6rem, 11vw, 6.5rem); letter-spacing: -.02em;
+  color: #fff;
+  text-shadow:
+    0 0 6px rgba(255,255,255,.55),
+    0 0 26px rgba(255,77,141,.75),
+    0 0 60px rgba(255,77,141,.45),
+    0 0 120px rgba(77,224,255,.3);
+  animation: buzz 7s infinite;
+}
+.title h1 span {
+  color: var(--cyan);
+  text-shadow: 0 0 6px rgba(255,255,255,.5), 0 0 28px rgba(77,224,255,.8), 0 0 70px rgba(77,224,255,.45);
+}
+@keyframes buzz {
+  0%, 42%, 46%, 55%, 100% { opacity: 1; }
+  44% { opacity: .35; }
+  47% { opacity: .72; }
+  53% { opacity: .5; }
+}
+.sub {
+  margin: .85rem auto 0; max-width: 34rem;
+  font-size: .85rem; line-height: 1.6; color: var(--dim);
+  text-shadow: 0 2px 14px #000;
+}
+
+.hud {
+  position: fixed; z-index: 6; right: 1rem; top: .85rem;
+  display: flex; gap: .4rem;
+}
+.hud-btn {
+  font-family: ui-monospace, "Courier New", monospace;
+  font-size: .68rem; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--ink); background: rgba(10,8,20,.6);
+  border: 1px solid rgba(255,77,141,.4); border-radius: 6px;
+  padding: .45rem .7rem; cursor: pointer;
+  backdrop-filter: blur(6px); transition: all .16s ease;
+}
+.hud-btn:hover { border-color: var(--neon); color: #fff; box-shadow: 0 0 16px -2px rgba(255,77,141,.7); }
+.hud-btn b { color: var(--cyan); font-weight: 700; }
+
+.hint {
+  position: fixed; z-index: 4; left: 0; right: 0; bottom: 1.5rem;
+  margin: 0; text-align: center;
+  font-family: ui-monospace, "Courier New", monospace;
+  font-size: .62rem; letter-spacing: .22em; text-transform: uppercase;
+  color: var(--dim); opacity: .65; pointer-events: none;
+  transition: opacity .6s ease;
+}
+.hint.gone { opacity: 0; }
+
+/* ---- shader drawer ---- */
+.drawer {
+  position: fixed; z-index: 8; inset: auto 0 0 0;
+  max-height: 72vh; display: flex; flex-direction: column;
+  background: rgba(6,5,12,.93);
+  border-top: 1px solid rgba(255,77,141,.45);
+  box-shadow: 0 -20px 60px -20px #000;
+  backdrop-filter: blur(10px);
+  animation: slideUp .28s ease;
+}
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } }
+.drawer-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
+  padding: .9rem 1.1rem .7rem; border-bottom: 1px solid rgba(255,77,141,.2);
+}
+.drawer-head h2 {
+  margin: 0; font-family: ui-monospace, "Courier New", monospace;
+  font-size: .85rem; letter-spacing: .12em; color: var(--neon);
+}
+.drawer-head p { margin: .3rem 0 0; font-size: .72rem; color: var(--dim); line-height: 1.5; max-width: 46rem; }
+.drawer-head a { color: var(--cyan); }
+.drawer-head code {
+  font-size: .72rem; color: var(--amber);
+  background: rgba(255,180,92,.1); padding: 0 .25em; border-radius: 3px;
+}
+.drawer-actions { display: flex; gap: .4rem; flex: 0 0 auto; }
+.drawer pre {
+  margin: 0; overflow: auto; padding: 1rem 1.1rem 1.6rem;
+  font-family: ui-monospace, "Courier New", monospace;
+  font-size: .72rem; line-height: 1.55; color: #cfe8ff;
+  tab-size: 2;
+}
+.drawer pre::-webkit-scrollbar { width: 10px; height: 10px; }
+.drawer pre::-webkit-scrollbar-thumb { background: rgba(255,77,141,.35); border-radius: 6px; }
+
+.fallback, .oops {
+  position: fixed; z-index: 9; inset: 0; margin: 0;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center; padding: 2rem; line-height: 1.7;
+  background: #05040a; color: var(--dim);
+}
+
+@media (max-width: 620px) {
+  .title { bottom: 5.4rem; }
+  .sub { font-size: .78rem; }
+  .drawer { max-height: 80vh; }
+  .drawer-head { flex-direction: column; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .title h1 { animation: none; }
+}
