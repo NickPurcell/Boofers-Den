@@ -157,3 +157,10 @@ tr.total td { font-weight: 700; border-top: 2px solid var(--carpet); border-bott
 .verdict.yes { color: var(--ok); }
 .verdict.no  { color: var(--alert); }
 .verdict.maybe { color: #7a5a14; }
+
+/* The floor plan. Given room to breathe on a phone, where an 80ft-wide drawing
+   is otherwise unreadable. */
+.planfig { margin: 1.6rem 0; padding: 0; }
+.planfig svg { display: block; width: 100%; height: auto; background: var(--panel);
+               border: 1px solid var(--wall-dark); border-radius: 3px; }
+.planfig figcaption { margin-top: .6rem; font-size: .88rem; color: var(--ink-dim); }
