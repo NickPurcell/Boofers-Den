@@ -1,0 +1,120 @@
+/* The Backrooms plan. Yellow wallpaper, damp carpet, one bulb that will not
+   settle. Readable first — this is a document someone has to work from — but
+   it should feel like it was printed inside the building it describes. */
+
+:root {
+  --wall: #c8bd82;
+  --wall-dark: #b3a86f;
+  --ink: #2a2617;
+  --ink-dim: #5c543a;
+  --carpet: #6f6a4a;
+  --tube: #fff6c8;
+  --alert: #8c3a1e;
+  --ok: #3d5c2a;
+  --panel: #d6cb94;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--wall);
+  /* Wallpaper: a faint vertical stripe, and the damp coming up from the floor. */
+  background-image:
+    repeating-linear-gradient(90deg, rgba(0,0,0,.025) 0 2px, transparent 2px 46px),
+    radial-gradient(120% 60% at 50% 100%, rgba(80,70,35,.28), transparent 60%);
+  line-height: 1.6;
+  overflow-x: hidden;
+}
+
+/* The ceiling. Fixed, so it stays overhead however far you walk. */
+.ceiling {
+  position: fixed; top: 0; left: 0; right: 0; height: 74px;
+  z-index: 3; pointer-events: none;
+  background: linear-gradient(#cfc48d, #bdb27a);
+  background-image:
+    linear-gradient(90deg, rgba(0,0,0,.18) 1px, transparent 1px),
+    linear-gradient(rgba(0,0,0,.18) 1px, transparent 1px);
+  background-size: 96px 37px;
+  border-bottom: 2px solid rgba(0,0,0,.22);
+  box-shadow: 0 14px 34px rgba(0,0,0,.22);
+}
+.ceiling::after {
+  /* The tube. It hums. */
+  content: "";
+  position: absolute; left: 50%; transform: translateX(-50%);
+  top: 14px; width: min(420px, 60%); height: 9px;
+  background: var(--tube);
+  box-shadow: 0 0 26px 8px rgba(255,246,200,.55);
+  animation: buzz 7s infinite steps(1);
+}
+@keyframes buzz {
+  0%, 71%, 73%, 77%, 100% { opacity: 1; }
+  72%, 78% { opacity: .35; }
+  74% { opacity: .7; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ceiling::after { animation: none; }
+}
+
+.wrap { max-width: 62rem; margin: 0 auto; padding: 96px 1.4rem 5rem; position: relative; z-index: 1; }
+
+.back {
+  display: inline-block; margin-bottom: 1.6rem;
+  color: var(--ink-dim); text-decoration: none; font-weight: 600; font-size: .95rem;
+}
+.back:hover { text-decoration: underline; }
+
+.hero { border-bottom: 3px double var(--carpet); padding-bottom: 1.6rem; margin-bottom: 2.4rem; }
+.kicker {
+  text-transform: uppercase; letter-spacing: .22em; font-size: .72rem;
+  color: var(--ink-dim); margin: 0 0 .6rem;
+}
+h1 { font-size: clamp(2.1rem, 6vw, 3.4rem); margin: 0 0 .6rem; line-height: 1.05; }
+.hero .lede { font-size: 1.1rem; color: var(--ink-dim); margin: 0; max-width: 46rem; }
+
+h2 {
+  font-size: 1.5rem; margin: 3rem 0 .4rem;
+  border-left: 5px solid var(--carpet); padding-left: .7rem;
+}
+h3 { font-size: 1.05rem; margin: 1.8rem 0 .3rem; }
+p, li { font-size: 1rem; }
+a { color: #6b4a12; }
+
+.note {
+  background: var(--panel); border: 1px solid var(--wall-dark);
+  border-left: 5px solid var(--carpet);
+  padding: .9rem 1.1rem; margin: 1.2rem 0; border-radius: 3px;
+}
+.note.warn { border-left-color: var(--alert); }
+.note.good { border-left-color: var(--ok); }
+.note strong { display: block; margin-bottom: .2rem; }
+
+table {
+  width: 100%; border-collapse: collapse; margin: 1.1rem 0;
+  background: rgba(255,255,255,.14); font-size: .95rem;
+}
+caption { text-align: left; font-size: .82rem; color: var(--ink-dim); padding-bottom: .4rem; }
+th, td { padding: .5rem .7rem; text-align: left; border-bottom: 1px solid var(--wall-dark); }
+th { background: var(--wall-dark); font-weight: 700; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr.total td { font-weight: 700; border-top: 2px solid var(--carpet); border-bottom: none; }
+.pos { color: var(--ok); font-weight: 700; }
+.neg { color: var(--alert); font-weight: 700; }
+
+.scroller { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+
+.phase { margin: 1rem 0; padding-left: 1.1rem; border-left: 3px solid var(--wall-dark); }
+.phase h3 { margin-top: .4rem; }
+
+.foot {
+  margin-top: 4rem; padding-top: 1.2rem; border-top: 3px double var(--carpet);
+  color: var(--ink-dim); font-size: .9rem;
+}
+
+@media (max-width: 640px) {
+  .wrap { padding-top: 88px; }
+  th, td { padding: .4rem .45rem; font-size: .86rem; }
+}
