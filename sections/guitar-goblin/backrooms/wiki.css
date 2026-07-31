@@ -118,3 +118,42 @@ tr.total td { font-weight: 700; border-top: 2px solid var(--carpet); border-bott
   .wrap { padding-top: 88px; }
   th, td { padding: .4rem .45rem; font-size: .86rem; }
 }
+
+/* Wiki navigation. Every page carries the same strip, so the thing reads as a
+   set of documents rather than a stack of unrelated pages. */
+.wiki-nav {
+  display: flex; flex-wrap: wrap; gap: .35rem;
+  margin-bottom: 1.6rem; padding-bottom: .8rem;
+  border-bottom: 1px solid var(--wall-dark);
+  font-size: .9rem;
+}
+.wiki-nav a {
+  padding: .3rem .7rem; border-radius: 2px;
+  color: var(--ink-dim); text-decoration: none; font-weight: 600;
+  border: 1px solid transparent;
+}
+.wiki-nav a:hover { background: var(--panel); border-color: var(--wall-dark); }
+.wiki-nav a.here {
+  background: var(--carpet); color: var(--wall); border-color: var(--carpet);
+}
+
+/* Hub index: the outline. Cards that say what each page is for. */
+.pages { list-style: none; padding: 0; margin: 1.4rem 0 0; display: grid; gap: .9rem; }
+@media (min-width: 720px) { .pages { grid-template-columns: 1fr 1fr; } }
+.pages a {
+  display: block; padding: 1rem 1.1rem; text-decoration: none; color: inherit;
+  background: var(--panel); border: 1px solid var(--wall-dark);
+  border-left: 5px solid var(--carpet); border-radius: 3px;
+  transition: transform .12s ease;
+}
+.pages a:hover { transform: translateY(-2px); background: #dcd29c; }
+.pages .t { display: block; font-weight: 700; font-size: 1.05rem; margin-bottom: .2rem; }
+.pages .d { display: block; color: var(--ink-dim); font-size: .92rem; line-height: 1.5; }
+.pages .s { display: block; margin-top: .5rem; font-size: .74rem; letter-spacing: .12em;
+            text-transform: uppercase; color: var(--ink-dim); }
+.pages .s.todo { color: var(--alert); }
+
+.verdict { font-weight: 700; }
+.verdict.yes { color: var(--ok); }
+.verdict.no  { color: var(--alert); }
+.verdict.maybe { color: #7a5a14; }
