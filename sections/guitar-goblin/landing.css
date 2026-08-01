@@ -200,3 +200,19 @@ body {
   72% { opacity: .65; }
 }
 @media (prefers-reduced-motion: reduce) { .tube { animation: none; } }
+
+/* Fourth door: the puzzle record. The tiles are an actual solve — two greens,
+   a yellow, then the row of five. It reads instantly to anyone who plays. */
+.door.puzzles:hover {
+  border-color: rgba(75,158,95,.6);
+  box-shadow: 0 28px 70px -30px rgba(75,158,95,.35);
+}
+.door.puzzles .door-art { background: linear-gradient(#141821, #0e1118); }
+.tilegrid {
+  position: absolute; inset: 0; display: grid;
+  grid-template-columns: repeat(5, 1fr); grid-template-rows: repeat(3, 1fr);
+  gap: 6px; padding: 26px 40px;
+}
+.tilegrid i { display: block; border-radius: 3px; background: #343a49; }
+.tilegrid i.g { background: #4b9e5f; }
+.tilegrid i.y { background: #c9a227; }

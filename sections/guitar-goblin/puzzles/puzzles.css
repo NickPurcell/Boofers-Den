@@ -1,0 +1,112 @@
+/* Daily puzzles. Dark, so the tile colours carry the page — they are the whole
+   visual language of both games and anything else competing with them is noise. */
+
+:root {
+  --bg: #10131a;
+  --card: #191d27;
+  --line: #2a3040;
+  --text: #e7eaf2;
+  --dim: #939bb0;
+  --green: #4b9e5f;
+  --yellow: #c9a227;
+  --blue: #4a7fd4;
+  --purple: #8a5bd0;
+  --absent: #343a49;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(800px 400px at 50% -8%, rgba(74,127,212,.13), transparent 62%),
+    var(--bg);
+  line-height: 1.6;
+}
+
+.wrap { max-width: 54rem; margin: 0 auto; padding: 1.4rem 1.2rem 5rem; }
+
+.back { display: inline-block; margin-bottom: 1.4rem; color: var(--blue);
+        text-decoration: none; font-weight: 600; font-size: .95rem; }
+.back:hover { text-decoration: underline; }
+
+.hero { border-bottom: 1px solid var(--line); padding-bottom: 1.6rem; margin-bottom: 1.8rem; }
+.kicker { text-transform: uppercase; letter-spacing: .2em; font-size: .7rem;
+          color: var(--dim); margin: 0 0 .5rem; }
+h1 { font-size: clamp(2rem, 6vw, 3rem); margin: 0 0 .5rem; }
+.lede { color: var(--dim); margin: 0; max-width: 44rem; }
+
+/* Stats strip */
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(105px, 1fr));
+         gap: .6rem; margin-bottom: 1.6rem; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+        padding: .8rem .6rem; text-align: center; }
+.stat .n { display: block; font-size: 1.5rem; font-weight: 700; line-height: 1.1; }
+.stat .k { display: block; font-size: .72rem; color: var(--dim);
+           text-transform: uppercase; letter-spacing: .08em; margin-top: .25rem; }
+
+.note { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--blue);
+        border-radius: 6px; padding: .85rem 1rem; margin-bottom: 2rem; color: var(--dim);
+        font-size: .95rem; }
+.note strong { color: var(--text); display: block; margin-bottom: .15rem; }
+
+/* One day */
+.day { border-top: 1px solid var(--line); padding-top: 1.4rem; margin-bottom: 2rem; }
+.day h3 { font-size: 1.12rem; margin: 0 0 1rem; font-weight: 600; }
+.badge { font-size: .66rem; text-transform: uppercase; letter-spacing: .1em;
+         background: var(--line); color: var(--dim); padding: .18rem .5rem;
+         border-radius: 99px; vertical-align: middle; margin-left: .4rem; }
+
+.day details summary {
+  cursor: pointer; color: var(--blue); font-size: .93rem; padding: .5rem 0;
+  list-style: none;
+}
+.day details summary::-webkit-details-marker { display: none; }
+.day details summary::before { content: "▸ "; }
+.day details[open] summary::before { content: "▾ "; }
+.day details[open] summary { margin-bottom: .6rem; }
+
+.games { display: grid; gap: 1.2rem; }
+@media (min-width: 680px) { .games { grid-template-columns: auto 1fr; align-items: start; } }
+
+.game { background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+        padding: 1rem 1.1rem; }
+.game h4 { margin: 0 0 .7rem; font-size: .82rem; text-transform: uppercase;
+           letter-spacing: .1em; color: var(--dim); font-weight: 700; }
+.score { float: right; color: var(--text); letter-spacing: 0; text-transform: none;
+         font-size: .9rem; }
+
+/* Wordle grid */
+.wgrid { display: grid; gap: 4px; }
+.wrow { display: grid; grid-template-columns: repeat(5, 34px); gap: 4px; }
+.w { width: 34px; height: 34px; display: grid; place-items: center;
+     border-radius: 4px; font-weight: 700; font-size: .95rem; color: #fff; }
+.w.g { background: var(--green); }
+.w.y { background: var(--yellow); color: #1a1a1a; }
+.w.a { background: var(--absent); color: var(--dim); }
+
+/* Connections grid */
+.cgrid { display: grid; gap: 4px; margin-bottom: .9rem; }
+.crow { display: flex; align-items: center; gap: 4px; }
+.c { width: 26px; height: 26px; border-radius: 4px; display: block; }
+.c.y { background: var(--yellow); } .c.g { background: var(--green); }
+.c.b { background: var(--blue); }   .c.p { background: var(--purple); }
+.ctag { font-size: .74rem; color: var(--dim); margin-left: .4rem; }
+
+.groups { list-style: none; padding: 0; margin: 0; font-size: .88rem; }
+.groups li { padding: .25rem 0; color: var(--dim); }
+.groups strong { color: var(--text); }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: .5rem; }
+.dot.y { background: var(--yellow); } .dot.g { background: var(--green); }
+.dot.b { background: var(--blue); }   .dot.p { background: var(--purple); }
+
+.foot { margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid var(--line);
+        color: var(--dim); font-size: .88rem; }
+.foot a { color: var(--blue); }
+
+@media (max-width: 420px) {
+  .wrow { grid-template-columns: repeat(5, 30px); }
+  .w { width: 30px; height: 30px; font-size: .85rem; }
+}
