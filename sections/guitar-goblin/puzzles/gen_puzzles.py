@@ -20,6 +20,7 @@ from datetime import date
 
 WORDLE = os.path.expanduser("~/.wordle/games/*.json")
 CONN = os.path.expanduser("~/.connections/games/*.json")
+TURNS = "/var/lib/clawcius/workspaces/1105739162230984735/_scratch/turns.json"
 OUT = "/var/lib/clawcius/workspaces/1105739162230984735/Boofers-Den/sections/guitar-goblin/puzzles/index.html"
 
 MARK = {"correct": "g", "present": "y", "absent": "a"}
@@ -96,8 +97,45 @@ def conn_block(d: dict) -> str:
     )
 
 
+def transcript_block(steps: list[dict]) -> str:
+    """Render the working: reasoning, commands, and what came back.
+
+    Output is clipped. A full tool result can run to hundreds of lines of word
+    list, which is not evidence of anything and buries the parts that matter.
+    """
+    out = []
+    for st in steps:
+        k = st["kind"]
+        if k == "think":
+            body = st["body"].strip()
+            if len(body) > 1400:
+                body = body[:1400].rsplit(" ", 1)[0] + " …"
+            out.append(f'<div class="t think"><span class="lab">thinking</span>'
+                       f'<div class="tb">{html.escape(body)}</div></div>')
+        elif k == "say":
+            body = st["body"].strip()
+            if len(body) > 900:
+                body = body[:900].rsplit(" ", 1)[0] + " …"
+            out.append(f'<div class="t say"><span class="lab">said</span>'
+                       f'<div class="tb">{html.escape(body)}</div></div>')
+        else:
+            cmd = st["body"].strip()
+            res = (st.get("out") or "").strip()
+            if len(res) > 900:
+                res = res[:900].rsplit("\n", 1)[0] + "\n…"
+            blk = f'<pre class="cmd">{html.escape(cmd)}</pre>'
+            if res:
+                blk += f'<pre class="res">{html.escape(res)}</pre>'
+            out.append(f'<div class="t run"><span class="lab">ran</span>{blk}</div>')
+    return f'<div class="transcript">{"".join(out)}</div>'
+
+
 def main() -> None:
     w, c = load_wordle(), load_conn()
+    try:
+        turns = {t["day"]: t["steps"] for t in json.load(open(TURNS))}
+    except (OSError, ValueError):
+        turns = {}
     days = sorted(set(w) | set(c), reverse=True)
 
     counts = [len(w[d]["guesses"]) for d in days if d in w]
@@ -120,6 +158,11 @@ def main() -> None:
         inner = (w and day in w and wordle_block(w[day]) or "") + \
                 (day in c and conn_block(c[day]) or "")
         body = f'<div class="games">{inner}</div>'
+        if day in turns:
+            n = sum(1 for st in turns[day] if st["kind"] == "run")
+            body += (f'<details class="work"><summary>Show the working — '
+                     f'{n} commands, with the reasoning</summary>'
+                     f'{transcript_block(turns[day])}</details>')
         if i == 0:
             entries.append(
                 f'<section class="day newest"><h3>{pretty} '

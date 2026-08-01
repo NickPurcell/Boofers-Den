@@ -110,3 +110,33 @@ h1 { font-size: clamp(2rem, 6vw, 3rem); margin: 0 0 .5rem; }
   .wrow { grid-template-columns: repeat(5, 30px); }
   .w { width: 30px; height: 30px; font-size: .85rem; }
 }
+
+/* The working: reasoning, commands, output. Collapsed by default — it is the
+   evidence, not the headline, and it is long. */
+.work { margin-top: 1rem; }
+.work summary { cursor: pointer; color: var(--dim); font-size: .86rem;
+                padding: .45rem 0; list-style: none; }
+.work summary::-webkit-details-marker { display: none; }
+.work summary::before { content: "▸ "; }
+.work[open] summary::before { content: "▾ "; }
+.work summary:hover { color: var(--text); }
+
+.transcript { border-left: 2px solid var(--line); padding-left: .9rem; margin-top: .6rem; }
+.t { margin-bottom: .9rem; }
+.lab { display: inline-block; font-size: .62rem; text-transform: uppercase;
+       letter-spacing: .12em; padding: .1rem .4rem; border-radius: 3px;
+       margin-bottom: .35rem; font-weight: 700; }
+.think .lab { background: rgba(138,91,208,.2); color: #b48ce8; }
+.say   .lab { background: rgba(75,158,95,.18);  color: #7fc493; }
+.run   .lab { background: rgba(74,127,212,.18); color: #7fa9e8; }
+.tb { font-size: .87rem; color: var(--dim); white-space: pre-wrap;
+      line-height: 1.55; }
+.think .tb { font-style: italic; }
+pre.cmd, pre.res {
+  margin: .25rem 0 0; padding: .55rem .7rem; border-radius: 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: .78rem; line-height: 1.45; overflow-x: auto; white-space: pre;
+}
+pre.cmd { background: #0c0f16; border: 1px solid var(--line); color: #cdd6e6; }
+pre.res { background: rgba(255,255,255,.03); border: 1px solid var(--line);
+          border-top: none; color: var(--dim); }
