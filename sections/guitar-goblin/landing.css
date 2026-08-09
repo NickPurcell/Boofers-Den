@@ -216,3 +216,32 @@ body {
 .tilegrid i { display: block; border-radius: 3px; background: #343a49; }
 .tilegrid i.g { background: #4b9e5f; }
 .tilegrid i.y { background: #c9a227; }
+
+/* Fifth door: the architecture proposal. Six nodes on a wire — three above the
+   line, three below it, and the one crossing in the middle. That crossing is
+   the whole argument, so it is the only part that glows. */
+.door.agents:hover {
+  border-color: rgba(176,108,240,.6);
+  box-shadow: 0 28px 70px -30px rgba(176,108,240,.4);
+}
+.door.agents .door-art { background: linear-gradient(#151021, #0d0a14); }
+.nodes {
+  position: absolute; inset: 0; display: grid;
+  grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr);
+  gap: 10px; padding: 26px 40px;
+}
+.nodes i {
+  display: block; border-radius: 6px;
+  border: 1px solid rgba(176,108,240,.45);
+  background: rgba(176,108,240,.09);
+}
+.nodes i:nth-child(5) {
+  border-color: rgba(255,206,99,.75);
+  background: rgba(255,206,99,.14);
+  box-shadow: 0 0 18px rgba(255,206,99,.3);
+}
+/* The sandbox boundary the requests have to cross. */
+.wire {
+  position: absolute; left: 40px; right: 40px; top: 50%;
+  height: 0; border-top: 2px dashed rgba(255,77,141,.5);
+}
