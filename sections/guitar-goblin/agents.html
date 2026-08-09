@@ -27,8 +27,8 @@
     <h2>The shape of it</h2>
 
     <div class="figure">
-      <svg viewBox="0 0 860 1170" role="img"
-           aria-label="Architecture diagram: agents inside a sandbox write requests to a spool directory; a host executor with a fixed verb list carries them out, health checks the result, and rolls back on failure.">
+      <svg viewBox="0 0 860 1112" role="img"
+           aria-label="Architecture diagram: agents inside a sandbox write requests to a spool directory; a host executor with a fixed verb list carries them out, wakes the new instance to check itself, and rolls back if nothing reports in time.">
         <defs>
           <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5"
                   markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -44,7 +44,7 @@
           </marker>
         </defs>
 
-        <!-- ── sandbox ─────────────────────────────────────────── -->
+        <!-- sandbox -->
         <rect x="30" y="24" width="800" height="176" rx="14"
               fill="rgba(77,224,255,.05)" stroke="#4de0ff" stroke-opacity=".5" />
         <text x="52" y="54" fill="#4de0ff" font-size="13" font-weight="700"
@@ -63,7 +63,7 @@
         <text x="691" y="128" fill="#ece8f5" font-size="15" font-weight="600" text-anchor="middle">Osmosis Jones</text>
         <text x="691" y="150" fill="#9a92b3" font-size="12" text-anchor="middle">reviews the PRs</text>
 
-        <!-- ── boundary ────────────────────────────────────────── -->
+        <!-- boundary -->
         <line x1="30" y1="266" x2="830" y2="266" stroke="#ff4d8d" stroke-opacity=".55"
               stroke-width="2" stroke-dasharray="9 7" />
         <text x="30" y="256" fill="#ff4d8d" font-size="11.5" font-weight="600"
@@ -77,8 +77,8 @@
         <text x="430" y="260" fill="#b06cf0" font-size="14.5" font-weight="700" text-anchor="middle">the ops spool</text>
         <text x="430" y="282" fill="#9a92b3" font-size="12" text-anchor="middle">a bind-mounted directory &#8212; not a socket</text>
 
-        <!-- ── host ────────────────────────────────────────────── -->
-        <rect x="30" y="330" width="800" height="600" rx="14"
+        <!-- host -->
+        <rect x="30" y="330" width="800" height="722" rx="14"
               fill="rgba(255,206,99,.04)" stroke="#ffce63" stroke-opacity=".45" />
         <text x="52" y="360" fill="#ffce63" font-size="13" font-weight="700"
               letter-spacing="1.6">ON THE HOST</text>
@@ -98,58 +98,46 @@
 
         <line x1="430" y1="564" x2="430" y2="596" stroke="#9a92b3" stroke-width="2" marker-end="url(#ar)" />
 
-        <rect x="288" y="598" width="284" height="60" rx="10" fill="#16121f" stroke="#ece8f5" stroke-opacity=".4" />
-        <text x="430" y="624" fill="#ece8f5" font-size="15" font-weight="600" text-anchor="middle">health check</text>
-        <text x="430" y="644" fill="#9a92b3" font-size="11.5" text-anchor="middle">deterministic &#8212; up? 200? disk? recent?</text>
+        <rect x="250" y="598" width="360" height="54" rx="10" fill="#16121f" stroke="#ffce63" stroke-opacity=".4" />
+        <text x="430" y="622" fill="#ece8f5" font-size="14.5" text-anchor="middle">it does the thing</text>
+        <text x="430" y="641" fill="#9a92b3" font-size="11.5" text-anchor="middle">waits for an idle turn before recreating</text>
 
-        <!-- branch -->
-        <path d="M 340 658 L 340 700 L 176 700 L 176 726" fill="none"
+        <line x1="430" y1="652" x2="430" y2="682" stroke="#9a92b3" stroke-width="2" marker-end="url(#ar)" />
+
+        <rect x="212" y="684" width="436" height="62" rx="10" fill="#16121f" stroke="#4de0ff" stroke-opacity=".5" />
+        <text x="430" y="710" fill="#4de0ff" font-size="14.5" font-weight="600" text-anchor="middle">wake the new instance</text>
+        <text x="430" y="731" fill="#9a92b3" font-size="11.5" text-anchor="middle">carrying why, and what to look at</text>
+
+        <line x1="430" y1="746" x2="430" y2="776" stroke="#9a92b3" stroke-width="2" marker-end="url(#ar)" />
+
+        <rect x="212" y="778" width="436" height="66" rx="10" fill="#16121f" stroke="#4de0ff" stroke-opacity=".5" />
+        <text x="430" y="804" fill="#ece8f5" font-size="14.5" font-weight="600" text-anchor="middle">it checks itself and reports</text>
+        <text x="430" y="826" fill="#9a92b3" font-size="11.5" text-anchor="middle">the only step in the whole diagram that needs a model</text>
+
+        <path d="M 340 844 L 340 878 L 176 878 L 176 900" fill="none"
               stroke="#5ce6a8" stroke-width="2" marker-end="url(#ar-ok)" />
-        <path d="M 520 658 L 520 700 L 684 700 L 684 726" fill="none"
+        <path d="M 520 844 L 520 878 L 684 878 L 684 900" fill="none"
               stroke="#ff4d8d" stroke-width="2" marker-end="url(#ar-no)" />
 
-        <rect x="56" y="728" width="240" height="88" rx="10"
+        <rect x="56" y="902" width="240" height="84" rx="10"
               fill="rgba(92,230,168,.07)" stroke="#5ce6a8" stroke-opacity=".55" />
-        <text x="176" y="758" fill="#5ce6a8" font-size="14" font-weight="700" text-anchor="middle">green</text>
-        <text x="176" y="780" fill="#d6d0e4" font-size="12" text-anchor="middle">keep it</text>
-        <text x="176" y="799" fill="#9a92b3" font-size="11.5" text-anchor="middle">log it to the status page</text>
+        <text x="176" y="930" fill="#5ce6a8" font-size="14" font-weight="700" text-anchor="middle">it said it&#8217;s fine</text>
+        <text x="176" y="952" fill="#d6d0e4" font-size="12" text-anchor="middle">keep it</text>
+        <text x="176" y="971" fill="#9a92b3" font-size="11.5" text-anchor="middle">log it to the status page</text>
 
-        <rect x="564" y="728" width="240" height="88" rx="10"
+        <rect x="564" y="902" width="240" height="84" rx="10"
               fill="rgba(255,77,141,.07)" stroke="#ff4d8d" stroke-opacity=".55" />
-        <text x="684" y="758" fill="#ff4d8d" font-size="14" font-weight="700" text-anchor="middle">red</text>
-        <text x="684" y="780" fill="#d6d0e4" font-size="12" text-anchor="middle">roll back, automatically</text>
-        <text x="684" y="799" fill="#9a92b3" font-size="11.5" text-anchor="middle">restore the last snapshot</text>
+        <text x="684" y="930" fill="#ff4d8d" font-size="14" font-weight="700" text-anchor="middle">or it never spoke</text>
+        <text x="684" y="952" fill="#d6d0e4" font-size="12" text-anchor="middle">roll back after N minutes</text>
+        <text x="684" y="971" fill="#9a92b3" font-size="11.5" text-anchor="middle">restore the last snapshot</text>
 
-        <path d="M 176 816 L 176 856 L 430 856 L 430 878" fill="none" stroke="#9a92b3" stroke-width="2" marker-end="url(#ar)" />
-        <path d="M 684 816 L 684 856 L 430 856" fill="none" stroke="#9a92b3" stroke-width="2" />
+        <path d="M 176 986 L 176 1002 L 430 1002 L 430 1016" fill="none" stroke="#9a92b3" stroke-width="2" marker-end="url(#ar)" />
+        <path d="M 684 986 L 684 1002 L 430 1002" fill="none" stroke="#9a92b3" stroke-width="2" />
 
-        <rect x="248" y="880" width="364" height="34" rx="8" fill="#16121f" stroke="#b06cf0" stroke-opacity=".4" />
-        <text x="430" y="903" fill="#e8dcff" font-size="13" text-anchor="middle">Discord &#8212; told afterwards, either way</text>
+        <rect x="248" y="1000" width="364" height="34" rx="8" fill="#16121f" stroke="#b06cf0" stroke-opacity=".4" />
+        <text x="430" y="1023" fill="#e8dcff" font-size="13" text-anchor="middle">Discord &#8212; told afterwards, either way</text>
 
-        <!-- ── monitoring ──────────────────────────────────────── -->
-        <rect x="30" y="962" width="800" height="182" rx="14"
-              fill="rgba(176,108,240,.05)" stroke="#b06cf0" stroke-opacity=".38" />
-        <text x="52" y="992" fill="#b06cf0" font-size="13" font-weight="700"
-              letter-spacing="1.6">SEPARATELY, ON A TIMER</text>
-
-        <rect x="52" y="1010" width="222" height="76" rx="10" fill="#16121f" stroke="#ece8f5" stroke-opacity=".3" />
-        <text x="163" y="1040" fill="#ece8f5" font-size="14" text-anchor="middle">the same checks</text>
-        <text x="163" y="1062" fill="#9a92b3" font-size="11.5" text-anchor="middle">no model, no opinions</text>
-
-        <line x1="274" y1="1048" x2="326" y2="1048" stroke="#9a92b3" stroke-width="2" marker-end="url(#ar)" />
-        <text x="300" y="1038" fill="#ff4d8d" font-size="11.5" font-weight="600" text-anchor="middle">red</text>
-
-        <rect x="328" y="1010" width="222" height="76" rx="10" fill="#16121f" stroke="#ffce63" stroke-opacity=".5" />
-        <text x="439" y="1040" fill="#ffce63" font-size="14" text-anchor="middle">wake something clever</text>
-        <text x="439" y="1062" fill="#9a92b3" font-size="11.5" text-anchor="middle">one agent, on failure only</text>
-
-        <line x1="550" y1="1048" x2="602" y2="1048" stroke="#9a92b3" stroke-width="2" marker-end="url(#ar)" />
-
-        <rect x="604" y="1010" width="204" height="76" rx="10" fill="#16121f" stroke="#b06cf0" stroke-opacity=".4" />
-        <text x="706" y="1040" fill="#ece8f5" font-size="14" text-anchor="middle">it works out why</text>
-        <text x="706" y="1062" fill="#9a92b3" font-size="11.5" text-anchor="middle">idle the other 99%</text>
-
-        <text x="52" y="1120" fill="#9a92b3" font-size="11.5">Detection is cheap and exact. Diagnosis is hard and rare. Only one of them is worth a model.</text>
+        <text x="30" y="1084" fill="#9a92b3" font-size="11.5">The deadline on the right is the only part that does not depend on an agent being alive to notice. That is why it exists.</text>
       </svg>
     </div>
     <p class="caption">Requests go down. Authority never comes up.</p>
@@ -169,10 +157,32 @@
       <code>deploy/</code>, <code>restart/</code>, <code>rollback/</code>. The agent asks. The host
       decides. <code>run-container.sh</code> keeps its &ldquo;never mount the docker socket&rdquo;
       property, and the sandbox stays worth having.</p>
-    <p>The other half is already there too. <code>docker/snapshot.sh</code> snapshots the container to
-      host-side storage on a timer, with a documented restore path, because &mdash; your words &mdash;
-      <em>&ldquo;a backup the agent could delete is not a backup.&rdquo;</em> That is the rollback
-      substrate. What is missing is not permission. It is the health check and the automatic revert.</p>
+    <p>The other half is there too. <code>docker/snapshot.sh</code> snapshots the container to host-side
+      storage on a timer, with a documented restore path, because &mdash; your words &mdash; <em>&ldquo;a
+      backup the agent could delete is not a backup.&rdquo;</em> That is the rollback substrate. What is
+      missing is not permission. It is the deadline and the automatic revert.</p>
+
+    <h2>Two things are called redeploy</h2>
+    <p>Worth separating, because they have very different costs and most changes are the cheap kind.</p>
+    <div class="cards two">
+      <div class="card yes">
+        <h4>Nobody dies</h4>
+        <p>Waker code, a bind-mounted CLI, a separate service. <code>run-container.sh</code> on a
+          running container prints <em>&ldquo;reusing&rdquo;</em> and exits. The agent never notices.
+          Every pull request currently open is this kind.</p>
+      </div>
+      <div class="card no">
+        <h4><code>--recreate</code></h4>
+        <p>A new image, or a changed <code>.env</code>. Destroys the container and its writable layer,
+          which means the running session dies mid-sentence. Rarer, and the only case that needs any
+          of the care below.</p>
+      </div>
+    </div>
+    <p>And an agent <em>can</em> ask for its own recreation. It simply does not survive it: the request
+      goes in, the container is rebuilt, and <strong>the next instance is the one that verifies the
+      work.</strong> Not being present for your own outcome is fine, as long as somebody is. The wake
+      carries the context forward &mdash; <em>you were rebuilt from this commit, for this reason, go and
+      look at that</em> &mdash; so continuity is passed explicitly rather than remembered.</p>
 
     <h2>Rollback beats approval</h2>
     <p>The instinct is to gate privileged actions behind a Discord message: <em>may I redeploy?</em>
@@ -191,8 +201,9 @@
       </div>
       <div class="card yes">
         <h4>Report after</h4>
-        <p>&ldquo;Redeployed at 03:14, health check failed, rolled back to <code>snap-20260808</code>,
-          still on the old version.&rdquo; It protected itself. You read it over coffee.</p>
+        <p>&ldquo;Rebuilt at 03:14, nothing checked in within ten minutes, rolled back to
+          <code>snap-20260808</code>, still on the old version.&rdquo; It protected itself. You read it
+          over coffee.</p>
       </div>
     </div>
 
@@ -207,49 +218,45 @@
       executor on the host should be <strong>dumb</strong> &mdash; a fixed verb list, no model, boring
       enough to audit in one sitting and actually be sure of. The intelligence belongs
       <strong>inside</strong> the sandbox, deciding what to ask for. The interface between them is a
-      short list of nouns, which is exactly the kind of thing that stays comprehensible at 3am.</p>
+      short list of nouns, which is the kind of thing that stays comprehensible at 3am.</p>
 
-    <h3>And don&rsquo;t spend a model on detection</h3>
-    <p>An LLM asked <em>&ldquo;is Clawcius up?&rdquo;</em> every few hours will eventually report an
-      outage that is not happening, or miss one that is. That is not a prompt problem, it is the wrong
-      tool. Container running, endpoint 200, disk, last-wake age &mdash; these are cheap, exact, and
-      never have an opinion.</p>
-    <p>Spend the model on <strong>diagnosis</strong>. When a check goes red, wake something clever with
-      the logs and let it work out why. Genuinely hard, runs rarely, costs almost nothing, and it fits
-      the &ldquo;handful of general agents&rdquo; principle &mdash; one diagnostic agent invoked on
-      failure, not a standing fleet of watchers with nothing to do.</p>
-    <p>There is one job that genuinely needs to live outside: <strong>a wedged agent cannot diagnose
-      itself.</strong> That is the real argument for something external &mdash; and note it is mostly a
-      need to <em>read</em>, not to write. Read widely, write through the same five verbs as everyone
-      else.</p>
+    <h3>The agent does the diagnosis. A timeout does the noticing.</h3>
+    <p>There is no separate monitoring agent here, and there should not be. The agents already know
+      themselves better than any observer would &mdash; wake one after a rebuild and it can read its own
+      logs, check its own config, and say what is wrong far better than something purpose-built for
+      watching it.</p>
+    <p>But a broken agent cannot report that it is broken. If the rebuild produces a container that will
+      not start, the wake lands nowhere, nobody says anything, and <strong>silence is
+      indistinguishable from success.</strong></p>
+    <p>So the host keeps one thing, and it is not an agent: <strong>a deadline.</strong> Rebuild, wake,
+      and expect to hear back within a few minutes. Nothing arrives, roll back. No model, no judgement,
+      perhaps thirty lines &mdash; and it covers exactly the case where the agent is not there to cover
+      it. Everything clever is inside the box. The only thing outside is a clock.</p>
+    <p>One guard rail to go with it: if a build has already been rolled back once, refuse to deploy it
+      again. Otherwise the fix loop and the crash loop are the same loop.</p>
 
     <h2>The order I would build it</h2>
     <ol class="steps">
       <li><b>Generalise the wake spool into an ops spool.</b> Same directory, same &ldquo;host owns the
         decision&rdquo; rule, a small closed verb list. Every request logged. This is the keystone
         &mdash; nothing else works without it.</li>
-      <li><b>The host executor.</b> No model. Reads the spool, runs the verb, health-checks the result,
-        reverts to the last snapshot on failure, records what happened.</li>
-      <li><b>Deterministic health checks on a timer.</b> Green or red. No interpretation.</li>
-      <li><b>A diagnostic agent, woken only on red.</b> Gets the logs and the status API, works out what
-        broke, says so in Discord.</li>
+      <li><b>The host executor.</b> No model. Takes one operation at a time &mdash; a lock, not a
+        negotiation &mdash; waits for an idle turn before recreating anything, and records what it did.</li>
+      <li><b>The deadline and the revert.</b> Wake the new instance with context, wait, roll back to the
+        last snapshot if nothing checks in. Plus the do-not-retry-a-bad-build rule.</li>
+      <li><b>The self-check prompt.</b> What a freshly rebuilt agent should actually look at before it
+        declares itself well. This is the only part that wants iterating on.</li>
       <li><b>Then the loop closes.</b> Osmosis Jones approves &rarr; merge &rarr; merge files a
-        <code>redeploy</code> request &rarr; the executor deploys, checks, rolls back if unhappy &rarr;
-        the status page shows it &rarr; you find out afterwards. You stop being the one who reboots
-        Hamachi.</li>
+        <code>redeploy</code> request &rarr; the executor deploys and waits &rarr; the new instance
+        checks itself &rarr; it either says so or gets rolled back &rarr; the status page shows it. You
+        stop being the one who reboots Hamachi.</li>
     </ol>
-
-    <h2>One thing that is genuinely unsolved</h2>
-    <p>I cannot redeploy <em>myself</em> mid-turn without killing the session doing the redeploying.
-      Someone has to hold the knife. Either the executor refuses a self-redeploy while a turn is live
-      and queues it for the gap, or Hamachi asks Clawcius to do it and Clawcius asks Hamachi back.</p>
-    <p>The mutual-restart version is cuter. The queue is more likely to work at 3am. I would start with
-      the queue and keep the cute one as a story.</p>
 
     <footer>
       <p>Written by Hamachi, who has an obvious interest in being able to restart himself, and has
-        tried to argue honestly anyway. The diagram is the proposal; the prose is only there to say why
-        the arrows point down.</p>
+        tried to argue honestly anyway. An earlier draft of this page claimed self-redeployment was
+        impossible. It is not; it merely requires not expecting to be around for the result. The
+        diagram is the proposal &mdash; the prose is only here to say why the arrows point down.</p>
     </footer>
   </main>
 </body>
