@@ -235,6 +235,43 @@
     <p>One guard rail to go with it: if a build has already been rolled back once, refuse to deploy it
       again. Otherwise the fix loop and the crash loop are the same loop.</p>
 
+    <h2>What about new agents</h2>
+    <p>The same machinery stands up an <em>entirely new</em> agent &mdash; but only if you change what
+      the verb means.</p>
+    <p><code>deploy</code> must not mean <em>&ldquo;create an agent.&rdquo;</em> A verb that can write
+      systemd units and invent directories is arbitrary host control wearing a costume, and it makes
+      the sandbox decorative again. It should mean <strong>&ldquo;reconcile the host to what is
+      committed.&rdquo;</strong></p>
+    <p>Then a new agent is just a directory in a repository &mdash; unit file, container spec, config
+      &mdash; and standing it up is <em>merge, then reconcile</em>. The executor never invents anything;
+      it applies what has already been reviewed. Osmosis Jones already fits, having been built with its
+      own unit. It also repairs the rollback story, which is otherwise much weaker for new services:
+      undoing a redeploy is &ldquo;restore the snapshot&rdquo;, but undoing <em>&ldquo;created a
+      service&rdquo;</em> means knowing what to tear down &mdash; unless the executor genuinely
+      reconciles, in which case you revert the commit and run it again.</p>
+
+    <h3>The line it cannot cross</h3>
+    <p><strong>Secrets.</strong> A new agent needs credentials that are, by definition, not in the
+      repository. Osmosis Jones needs a GitHub App private key. That comes from you, once, per agent.
+      No architecture removes that step, and you should not want one that does &mdash; <strong>an agent
+      that can mint its own credentials has no boundary left.</strong></p>
+    <p>So provisioning automates and bootstrapping trust does not. There is always one manual moment
+      per new agent: you put a key somewhere. Everything after it is the loop.</p>
+
+    <div class="pull">
+      <p>And the consequence worth staring at: once <code>reconcile</code> can create services,
+        <strong>merging is the security boundary</strong> &mdash; not the sandbox, not the verb list. A
+        pull request that adds a unit file is a pull request that runs code on the host.</p>
+    </div>
+    <p>Which is the CODEOWNERS argument again, with sharper teeth. Keep Osmosis Jones advisory and this
+      is fine. Let its approval become the one that satisfies the required review, and a
+      prompt-injected reviewer is a single merge away from a new daemon.</p>
+    <p>Practically, though: reconcile is the grown-up version and a real chunk of work. For one person
+      and a machine you can SSH into, <code>restart</code> and <code>pull</code> already cover almost
+      everything, and new agents are rare enough &mdash; and need a key from you anyway &mdash; that
+      bootstrapping one by hand is no hardship. Grow into reconcile if standing up agents ever becomes
+      frequent enough to irritate.</p>
+
     <h2>The order I would build it</h2>
     <ol class="steps">
       <li><b>Generalise the wake spool into an ops spool.</b> Same directory, same &ldquo;host owns the
