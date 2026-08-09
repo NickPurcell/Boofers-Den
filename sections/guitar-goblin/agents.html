@@ -235,6 +235,86 @@
     <p>One guard rail to go with it: if a build has already been rolled back once, refuse to deploy it
       again. Otherwise the fix loop and the crash loop are the same loop.</p>
 
+    <h2>When the rollback fails</h2>
+    <p>Everything above assumes the revert works. Worth being honest about what happens when it does
+      not &mdash; and the first useful move is noticing that <em>&ldquo;rollback failed&rdquo;</em> is
+      two different events wearing one name.</p>
+    <div class="cards two">
+      <div class="card">
+        <h4>It rolled back fine. Still broken.</h4>
+        <p>The common one, and undramatic. The cause was never in the image &mdash; an expired token, a
+          changed API, a full disk, DNS. Reverting the code does not revert the world.</p>
+      </div>
+      <div class="card no">
+        <h4>The rollback could not run</h4>
+        <p>Rarer and genuinely nasty. Snapshot missing or corrupt, disk full, docker wedged &mdash; or
+          the deploy broke the executor, which is the thing holding the fire extinguisher.</p>
+      </div>
+    </div>
+
+    <h3>Stop before you get clever</h3>
+    <p>The most important part is not the recovery, it is the <strong>circuit breaker</strong>. After a
+      couple of failed attempts: stop. Do not retry, do not roll back again, do not improvise. Freeze
+      wherever it stands, say so loudly, wait for a person. Automation that keeps retrying a failing
+      recovery is how an outage becomes a crater with a token bill attached.</p>
+    <p>And when a human is needed, <strong>ask for one &mdash; do not summon a session and hope
+      somebody is awake.</strong> An interactive agent that spawns itself at 3am is an agent with
+      nobody in it, poking at a broken machine unsupervised. Notify, and spin it up when the reply
+      comes. Same capability, held only while someone is actually holding it.</p>
+
+    <h3>A recovery tool must depend on less than the thing it recovers</h3>
+    <p>This is the rule that decides where the clever option sits. A Claude Code session needs node, a
+      disk, a network route and credentials. If the failure <em>is</em> disk or network, it cannot
+      start &mdash; failing at precisely the moment it was wanted. So it belongs in the middle of the
+      ladder, not at the bottom.</p>
+
+    <div class="figure">
+      <svg viewBox="0 0 860 470" role="img"
+           aria-label="Five recovery tiers ordered by how much each depends on. Tier 0 the agent checks itself, tier 1 the executor rolls back, tier 2 the breaker trips and automation stops, tier 3 a recovery session on request, tier 4 a plain SSH shell over the tailnet, which is the floor.">
+        <text x="30" y="26" fill="#b06cf0" font-size="13" font-weight="700" letter-spacing="1.6">THE LADDER DOWN</text>
+        <text x="30" y="46" fill="#9a92b3" font-size="12.5">each rung works when the one above it did not</text>
+
+        <rect x="30" y="62" width="800" height="60" rx="10" fill="#16121f" stroke="#4de0ff" stroke-opacity=".45" />
+        <text x="52" y="88" fill="#4de0ff" font-size="13" font-weight="700">0</text>
+        <text x="78" y="88" fill="#ece8f5" font-size="14">the agent checks itself</text>
+        <text x="78" y="108" fill="#9a92b3" font-size="11.5">needs: its container, a network, the API, its credentials</text>
+
+        <rect x="30" y="132" width="800" height="60" rx="10" fill="#16121f" stroke="#ffce63" stroke-opacity=".45" />
+        <text x="52" y="158" fill="#ffce63" font-size="13" font-weight="700">1</text>
+        <text x="78" y="158" fill="#ece8f5" font-size="14">the executor rolls back</text>
+        <text x="78" y="178" fill="#9a92b3" font-size="11.5">needs: the host, docker, a snapshot that actually restores</text>
+
+        <rect x="30" y="202" width="800" height="60" rx="10"
+              fill="rgba(255,77,141,.07)" stroke="#ff4d8d" stroke-opacity=".6" />
+        <text x="52" y="228" fill="#ff4d8d" font-size="13" font-weight="700">2</text>
+        <text x="78" y="228" fill="#ece8f5" font-size="14">the breaker trips &#8212; automation stops here</text>
+        <text x="78" y="248" fill="#9a92b3" font-size="11.5">needs: the host, and one way to shout. Nothing below this is automatic.</text>
+
+        <rect x="30" y="272" width="800" height="60" rx="10" fill="#16121f" stroke="#b06cf0" stroke-opacity=".45" />
+        <text x="52" y="298" fill="#b06cf0" font-size="13" font-weight="700">3</text>
+        <text x="78" y="298" fill="#ece8f5" font-size="14">a recovery session, once you answer</text>
+        <text x="78" y="318" fill="#9a92b3" font-size="11.5">needs: node, disk, a route to the API &#8212; which is why it is not the floor</text>
+
+        <rect x="30" y="342" width="800" height="60" rx="10"
+              fill="rgba(92,230,168,.07)" stroke="#5ce6a8" stroke-opacity=".6" stroke-width="2" />
+        <text x="52" y="368" fill="#5ce6a8" font-size="13" font-weight="700">4</text>
+        <text x="78" y="368" fill="#ece8f5" font-size="14">a plain shell, over the tailnet</text>
+        <text x="78" y="388" fill="#9a92b3" font-size="11.5">needs: the box to be on. No agent, no app stack, nothing to go wrong.</text>
+
+        <text x="30" y="432" fill="#9a92b3" font-size="11.5">The floor is the rung with the fewest dependencies, not the cleverest one. It already exists the moment you are on the tailnet.</text>
+      </svg>
+    </div>
+    <p class="caption">Tier 3 is the interesting rung. Tier 4 is the one that saves you.</p>
+
+    <h3>Two things that stop most of this mattering</h3>
+    <p><strong>Verify the snapshot restores, on a schedule.</strong> The usual reason a rollback fails
+      is that the restore path had never once been run. Periodically restore the newest snapshot into a
+      throwaway container and check it starts. That converts a 3am surprise into a Tuesday warning.</p>
+    <p><strong>Make the box rebuildable from the repository.</strong> If reconcile genuinely works, the
+      worst case stops being <em>&ldquo;my agent host is broken&rdquo;</em> and becomes <em>&ldquo;rebuild
+      the VPS and drop three keys in.&rdquo;</em> Tedious rather than frightening &mdash; and the
+      reconcile design hands it to you as a side effect.</p>
+
     <h2>What about new agents</h2>
     <p>The same machinery stands up an <em>entirely new</em> agent &mdash; but only if you change what
       the verb means.</p>
