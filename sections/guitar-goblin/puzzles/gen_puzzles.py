@@ -18,8 +18,9 @@ import json
 import os
 from datetime import date
 
-WORDLE = os.path.expanduser("~/.wordle/games/*.json")
-CONN = os.path.expanduser("~/.connections/games/*.json")
+WORDLE = "/var/lib/clawcius/workspaces/1105739162230984735/wordle/state/games/*.json"
+CONN = "/var/lib/clawcius/workspaces/1105739162230984735/connections/state/games/*.json"
+ARCHIVE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "archive.json")
 TURNS = "/var/lib/clawcius/workspaces/1105739162230984735/_scratch/turns.json"
 OUT = "/var/lib/clawcius/workspaces/1105739162230984735/Boofers-Den/sections/guitar-goblin/puzzles/index.html"
 
@@ -140,11 +141,34 @@ def main() -> None:
 
     counts = [len(w[d]["guesses"]) for d in days if d in w]
     mistakes = [c[d]["mistakes"] for d in days if d in c]
+    # Scores for archived days come out of their own rendered HTML. The game
+    # files are gone, so the alternative is a headline average computed from
+    # two days while the page shows eight -- a statistic that is wrong in the
+    # direction of flattering, which is the worst direction.
+    archived_count = 0
+    arch_counts: list[int] = []
+    arch_mistakes: list[int] = []
+    try:
+        import re as _re
+        for a in json.load(open(ARCHIVE)):
+            if a["day"] in days:
+                continue
+            archived_count += 1
+            m = _re.search(r"Wordle <span class=\"score\">(\d+)/6", a["html"])
+            if m:
+                arch_counts.append(int(m.group(1)))
+            m = _re.search(r"Connections <span class=\"score\">(\d+) mistake", a["html"])
+            if m:
+                arch_mistakes.append(int(m.group(1)))
+    except (OSError, ValueError):
+        pass
+    counts = counts + arch_counts
+    mistakes = mistakes + arch_mistakes
     stats = [
-        ("Days played", str(len(days))),
+        ("Days played", str(len(days) + archived_count)),
         ("Wordle average", f"{sum(counts)/len(counts):.1f}" if counts else "—"),
         ("Wordle best", f"{min(counts)}" if counts else "—"),
-        ("Connections solved", f"{sum(1 for d in days if d in c and len(c[d]['solved']) == 4)}/{len(mistakes)}"),
+        ("Connections solved", f"{sum(1 for d in days if d in c and len(c[d]['solved']) == 4) + len(arch_mistakes)}/{len(mistakes)}"),
         ("Total mistakes", str(sum(mistakes))),
     ]
     stat_html = "".join(
@@ -152,8 +176,24 @@ def main() -> None:
         f'<span class="k">{html.escape(k)}</span></div>' for k, v in stats
     )
 
+    # Days already published whose game files no longer exist. $HOME was wiped
+    # on a container recreate and the saved games went with it, so for those
+    # dates the rendered page is the only surviving record. Frozen into
+    # archive.json and merged here rather than regenerated -- a generator that
+    # silently drops history because its inputs vanished is worse than no
+    # generator at all.
+    try:
+        archived = {a["day"]: a["html"] for a in json.load(open(ARCHIVE))}
+    except (OSError, ValueError):
+        archived = {}
+    archived = {d: h for d, h in archived.items() if d not in days}
+    all_days = sorted(set(days) | set(archived), reverse=True)
+
     entries = []
-    for i, day in enumerate(days):
+    for i, day in enumerate(all_days):
+        if day in archived:
+            entries.append(archived[day])
+            continue
         pretty = date.fromisoformat(day).strftime("%A %-d %B %Y")
         inner = (w and day in w and wordle_block(w[day]) or "") + \
                 (day in c and conn_block(c[day]) or "")
@@ -176,7 +216,8 @@ def main() -> None:
     page = TEMPLATE.replace("__STATS__", stat_html).replace("__ENTRIES__", "\n".join(entries))
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     open(OUT, "w").write(page)
-    print(f"  {len(days)} days written to {OUT}")
+    print(f"  {len(all_days)} days written to {OUT}")
+    print(f"  {len(days)} live, {len(archived)} from the frozen archive")
     print(f"  wordle avg {sum(counts)/len(counts):.2f} over {len(counts)}; "
           f"connections {sum(mistakes)} mistakes over {len(mistakes)}")
 
