@@ -214,9 +214,33 @@ def main() -> None:
             entries.append(f'<section class="day"><h3>{pretty}</h3>{body}</section>')
 
     page = TEMPLATE.replace("__STATS__", stat_html).replace("__ENTRIES__", "\n".join(entries))
+
+    # Refuse to publish a page with fewer days than the one already on disk.
+    #
+    # This lived in the caller as a shell grep for '<section class="day"' and
+    # was wrong every time it ran: the newest day is emitted as
+    # class="day newest", so the closing quote in that pattern never matched it
+    # and the count came back one short. Harmless as a relative check, but it
+    # meant the one day most likely to be missing -- today's -- was the one day
+    # the guard could not see, and it sent an hour into reconciling a header
+    # that said 16 against a grep that said 14.
+    #
+    # Counting here instead: the generator knows how many sections it wrote,
+    # so there is no pattern to get wrong.
+    try:
+        old = open(OUT).read().count('<section class="day')
+    except OSError:
+        old = 0
+    if len(all_days) < old:
+        raise SystemExit(
+            f"refusing to write: {len(all_days)} days, down from {old} already published.\n"
+            f"  live game files: {len(days)}; frozen archive: {len(archived)}\n"
+            f"  a day whose game file vanished belongs in archive.json, not in the bin."
+        )
+
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     open(OUT, "w").write(page)
-    print(f"  {len(all_days)} days written to {OUT}")
+    print(f"  {len(all_days)} days written to {OUT} (was {old})")
     print(f"  {len(days)} live, {len(archived)} from the frozen archive")
     print(f"  wordle avg {sum(counts)/len(counts):.2f} over {len(counts)}; "
           f"connections {sum(mistakes)} mistakes over {len(mistakes)}")
