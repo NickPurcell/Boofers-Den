@@ -245,3 +245,43 @@ body {
   position: absolute; left: 40px; right: 40px; top: 50%;
   height: 0; border-top: 2px dashed rgba(255,77,141,.5);
 }
+
+/* Sixth door: the market note. Twelve bars that climb and then roll over, with
+   a trend line running through them — the shape the S&P actually made this
+   year, peaking in early June and drifting back to its mean. The last three
+   bars are the only red ones, because that is the part the note is about. */
+.door.markets:hover {
+  border-color: rgba(107,163,240,.6);
+  box-shadow: 0 28px 70px -30px rgba(107,163,240,.4);
+}
+.door.markets .door-art { background: linear-gradient(#0f1620, #0a0e14); }
+.bars {
+  position: absolute; inset: 0;
+  display: flex; align-items: flex-end; justify-content: center;
+  gap: 6px; padding: 26px 34px;
+}
+.bars i {
+  display: block; width: 10px; border-radius: 2px 2px 0 0;
+  background: rgba(78,201,160,.5);
+  border: 1px solid rgba(78,201,160,.35);
+  border-bottom: none;
+}
+.bars i:nth-child(1)  { height: 22%; }
+.bars i:nth-child(2)  { height: 31%; }
+.bars i:nth-child(3)  { height: 27%; }
+.bars i:nth-child(4)  { height: 42%; }
+.bars i:nth-child(5)  { height: 55%; }
+.bars i:nth-child(6)  { height: 49%; }
+.bars i:nth-child(7)  { height: 68%; }
+.bars i:nth-child(8)  { height: 82%; }
+.bars i:nth-child(9)  { height: 74%; }
+.bars i:nth-child(10) { height: 61%; background: rgba(224,92,92,.45); border-color: rgba(224,92,92,.35); }
+.bars i:nth-child(11) { height: 52%; background: rgba(224,92,92,.45); border-color: rgba(224,92,92,.35); }
+.bars i:nth-child(12) { height: 57%; background: rgba(224,92,92,.45); border-color: rgba(224,92,92,.35); }
+/* The mean the whole thing keeps reverting to. */
+.trend {
+  position: absolute; left: 34px; right: 34px; bottom: 44%;
+  height: 1px;
+  background: repeating-linear-gradient(90deg, rgba(107,163,240,.55) 0 7px, transparent 7px 13px);
+}
+.door.markets:hover .bars i { transition: none; }
