@@ -182,3 +182,26 @@ footer {
 footer a { color: var(--ink-dim); }
 
 .sources { font-size: 13.5px; line-height: 1.9; }
+
+/* A claim that turned out wrong. Struck through but still legible on purpose —
+   a prediction quietly deleted after the fact is worth less than no prediction
+   at all, because the reader cannot tell which kind of page they are reading. */
+.struck {
+  color: var(--ink-faint);
+  border-left: 2px solid rgba(224,92,92,.4);
+  padding-left: 14px;
+  font-size: 15.5px;
+}
+.struck em { color: var(--ink-dim); }
+.revised {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--down);
+  border: 1px solid rgba(224,92,92,.4);
+  border-radius: 3px;
+  padding: 2px 7px;
+  vertical-align: middle;
+  margin-left: 8px;
+}
