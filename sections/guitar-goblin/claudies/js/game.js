@@ -846,12 +846,21 @@
   document.addEventListener('visibilitychange', function () {
     if (document.hidden && screen === 'play' && N && !N.over) setPause(true);
   });
+  window.addEventListener('pagehide', function () {
+    if (window.speechSynthesis) try { speechSynthesis.cancel(); } catch (e) { /* */ }
+  });
   function setPause(v) {
     paused = v;
     $('pause').classList.toggle('show', v);
     if (window.speechSynthesis) try { if (v) speechSynthesis.pause(); else speechSynthesis.resume(); } catch (e) { /* */ }
     sfx('suspend', v);
   }
+
+  // The first touch anywhere unlocks audio; on the title that means the music starts.
+  document.addEventListener('pointerdown', function () {
+    sfx('init');
+    if (screen === 'title') sfx('titleMusic', true);
+  }, true);
 
   // ---------- DOM wiring ----------
   function click(id, fn) {

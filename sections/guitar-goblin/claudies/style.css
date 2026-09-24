@@ -108,3 +108,13 @@ aside p { margin: 0; font-size: 12px; line-height: 1.35; }
   }
   .menu-inner { max-width: 90vw; }
 }
+
+/* menus scroll on small screens even though the game itself swallows touch */
+#news, #custom, #pay, #over { overflow: auto; touch-action: pan-y; }
+.paper, .custom-inner, .check { touch-action: pan-y; }
+.cc canvas { max-height: 24vh; object-fit: contain; }
+@media (max-height: 500px) {
+  .cc-blurb { display: none; }
+  .custom-inner h2 { margin-bottom: 6px; }
+  .cc { padding: 4px; }
+}
