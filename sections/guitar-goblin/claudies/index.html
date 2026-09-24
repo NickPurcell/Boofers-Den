@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <title>Five Nights at Claudie's</title>
+  <meta name="description" content="Survive five nights as the night guard at Claudie's A.I. Pizza Experience. The animatronics were trained on forty years of birthday parties. Nobody told them the party ends." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <canvas id="game" width="1280" height="720" aria-label="Five Nights at Claudie's"></canvas>
+
+  <!-- title -->
+  <div id="menu" class="layer">
+    <div class="menu-inner">
+      <h1>Five<br />Nights<br />at<br />Claudie&rsquo;s</h1>
+      <nav>
+        <button id="btn-new">&gt;&gt; New Game</button>
+        <button id="btn-continue">&gt;&gt; Continue <span id="continue-night"></span></button>
+        <button id="btn-six">&gt;&gt; 6th Night</button>
+        <button id="btn-custom">&gt;&gt; Custom Night</button>
+      </nav>
+      <div id="stars" aria-label="stars"></div>
+      <p class="hint">Sound on. Headphones if you&rsquo;re brave.<br />
+        Mouse or touch. Keys: <b>Q/E</b> doors &middot; <b>A/D</b> lights &middot; <b>Space</b> camera &middot; <b>Esc</b> pause</p>
+      <a class="back" href="../">&larr; back to Guitar Goblin&rsquo;s corner</a>
+    </div>
+  </div>
+
+  <!-- newspaper intro -->
+  <div id="news" class="layer">
+    <article class="paper">
+      <header>
+        <div id="np-mast" class="mast"></div>
+        <div id="np-date" class="pdate"></div>
+      </header>
+      <div class="cols">
+        <div class="main">
+          <h2 id="np-head"></h2>
+          <h3 id="np-sub"></h3>
+          <canvas id="np-photo" width="480" height="270"></canvas>
+          <div class="caption">Grand re-opening: Claudie &amp; Friends take the stage.</div>
+          <div id="np-body"></div>
+          <p id="np-fine" class="fine"></p>
+        </div>
+        <aside id="np-side"></aside>
+      </div>
+      <button id="news-go" class="go">Clock in &rarr;</button>
+    </article>
+  </div>
+
+  <!-- custom night -->
+  <div id="custom" class="layer">
+    <div class="custom-inner">
+      <h2>Customize Night</h2>
+      <div id="custom-cards"></div>
+      <div class="custom-actions">
+        <button id="custom-back">&larr; Back</button>
+        <button id="custom-20">20/20/20/20 mode</button>
+        <button id="custom-go" class="go">Ready</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- paycheck / pink slip -->
+  <div id="pay" class="layer">
+    <div class="check">
+      <div class="check-top"><span>Claudie&rsquo;s A.I. Pizza Experience</span><span id="pay-title">PAYCHECK</span></div>
+      <p id="pay-body"></p>
+      <div class="amt">Pay to the order of: <b>Night Guard</b> <span id="pay-amt"></span></div>
+      <p id="pay-note" class="fine"></p>
+      <button id="pay-go" class="go">Back to title</button>
+    </div>
+  </div>
+
+  <!-- game over -->
+  <div id="over" class="layer">
+    <div class="over-inner">
+      <h2>GAME OVER</h2>
+      <p id="over-line" class="over-line"></p>
+      <p id="over-sub" class="fine"></p>
+      <div class="over-actions">
+        <button id="over-retry" class="go">Try again</button>
+        <button id="over-go">Title</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- pause -->
+  <div id="pause" class="layer">
+    <div class="over-inner">
+      <h2>PAUSED</h2>
+      <p class="fine">Claudie is also paused. Probably.</p>
+      <div class="over-actions">
+        <button id="pause-resume" class="go">Resume</button>
+        <button id="pause-quit">Quit to title</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="rotate">Turn your phone sideways. The office is wide. So is her smile.</div>
+
+  <script src="js/story.js"></script>
+  <script src="js/audio.js"></script>
+  <script src="js/chars.js"></script>
+  <script src="js/rooms.js"></script>
+  <script src="js/game.js"></script>
+</body>
+</html>

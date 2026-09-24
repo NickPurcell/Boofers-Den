@@ -285,3 +285,30 @@ body {
   background: repeating-linear-gradient(90deg, rgba(107,163,240,.55) 0 7px, transparent 7px 13px);
 }
 .door.markets:hover .bars i { transition: none; }
+
+/* Seventh door: the game. Two pinprick eyes in the dark and a smile that is
+   slightly too wide. Every so often she blinks. */
+.door.claudies:hover {
+  border-color: rgba(224,122,60,.6);
+  box-shadow: 0 28px 70px -30px rgba(224,122,60,.45);
+}
+.door.claudies .door-art { background: radial-gradient(60% 70% at 50% 45%, #1a0f0a, #050303); }
+.eyes {
+  position: absolute; left: 50%; top: 34%; transform: translateX(-50%);
+  display: flex; gap: 46px;
+}
+.eyes i {
+  display: block; width: 9px; height: 9px; border-radius: 50%;
+  background: #fff; box-shadow: 0 0 10px 3px rgba(255,236,200,.75);
+  animation: claudie-blink 5s infinite;
+}
+.grin {
+  position: absolute; left: 50%; top: 52%; width: 150px; height: 26px; transform: translateX(-50%);
+  border: 2px solid rgba(236,220,190,.55); border-top: none; border-radius: 0 0 80px 80px / 0 0 26px 26px;
+  background: repeating-linear-gradient(90deg, rgba(236,220,190,.35) 0 2px, transparent 2px 11px);
+}
+@keyframes claudie-blink {
+  0%, 92%, 100% { transform: scaleY(1); }
+  94%, 96% { transform: scaleY(.1); }
+}
+@media (prefers-reduced-motion: reduce) { .eyes i { animation: none; } }
