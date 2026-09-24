@@ -988,7 +988,8 @@
     setScreen: setScreen, jumpscare: jumpscare,
     HOUR: HOUR, LEVELS: LEVELS
   };
-  window.__claudies = api;
+  // Only exposed with ?debug in the URL, so players can't stumble into the speed-up.
+  if (/[?&]debug(=|&|$)/.test(location.search)) window.__claudies = api;
 
   // ---------- boot ----------
   ROOMS.prewarm();
