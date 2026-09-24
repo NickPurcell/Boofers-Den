@@ -536,7 +536,34 @@
 
   // ---------- flow ----------
   var customLevels = [0, 0, 0, 0];
+  // Build every sprite size a night can need while the night card is up,
+  // one piece per frame, so the first camera flip doesn't hitch.
+  var warmQueue = [];
+  var warmed = false;
+  function queueWarm() {
+    if (warmed || !window.CHARS) return;
+    warmed = true;
+    var scratch = U.canvas(W, H), sx = scratch.getContext('2d');
+    ROOMS.CAMS.forEach(function (c) {
+      warmQueue.push(function () {
+        ROOMS.drawCam(sx, c.key, { occ: ['claudie', 'hallu', 'clippy'], t: 0, captchaStage: 2 });
+        ROOMS.drawCam(sx, c.key, { occ: ['clippy'], t: 0, captchaStage: 1 });
+        ROOMS.drawCam(sx, c.key, { occ: ['claudie'], t: 0, runP: 0.5 });
+      });
+    });
+    warmQueue.push(function () { ROOMS.drawOffice(sx, { lightL: 1, lightR: 1, occL: 'hallu', occR: 'clippy', golden: true }, 0); });
+    warmQueue.push(function () { ROOMS.drawOffice(sx, { powerOut: 1, lightsOutFace: 1 }, 0); });
+    ['claudie', 'hallu', 'clippy', 'captcha', 'golden'].forEach(function (id) {
+      if (CHARS.warmJumpscare) warmQueue.push(function () { CHARS.warmJumpscare(id, W, H); });
+    });
+  }
+  function warmStep() {
+    var f = warmQueue.shift();
+    if (f) try { f(); } catch (e) { /* a missing sprite is not fatal */ }
+  }
+
   function beginNight(n, levels) {
+    queueWarm();
     lastNight = n;
     newNight(n, levels);
     showDom(null);
@@ -700,7 +727,8 @@
     U.txt(ctx, title[1], W / 2, H / 2 + 40, 'bold 40px "Courier New", monospace', '#fff');
     ctx.globalAlpha = 1;
     drawNoise(t < 0.6 ? 0.7 - t : 0.08, t);
-    if (t > 3.7) startPlay();
+    warmStep();
+    if (t > 3.7) { while (warmQueue.length) warmStep(); startPlay(); }
   }
 
   function drawSix(t) {

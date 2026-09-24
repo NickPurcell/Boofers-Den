@@ -349,8 +349,8 @@
   function hall(seed, mirror, posters) {
     return {
       P: Proj(700, 250, 560, 2.5),
-      dark: 0.55,
-      spots: mirror ? { claudie: [0.1, 7.5, 'stand'], clippy: [-0.2, 5.0, 'stand'] } : { hallu: [0.2, 6.2, 'stand'] },
+      dark: 0.35,
+      spots: mirror ? { claudie: [0.1, 6.0, 'stand'], clippy: [-0.2, 4.2, 'stand'] } : { hallu: [0.2, 4.8, 'stand'] },
       build: function (ctx, P) {
         shell(ctx, P, { w: 2.6, H: 3.0, d: 16, wall: mirror ? '#2e2a26' : '#27282e', wallLow: '#1c1b1b', ceil: '#0a0a0a', floorA: '#a8a090', floorB: '#141414' });
         // far door (dark)
@@ -400,18 +400,18 @@
     return {
       P: Proj(700, 230, 520, 2.6),
       dark: 0.5,
-      spots: mirror ? { claudie: [0.3, 2.2, 'lean'], clippy: [0.3, 2.2, 'lean'] } : { hallu: [-0.3, 2.1, 'lean'] },
+      spots: mirror ? { claudie: [0.3, 2.2, 'lean'], clippy: [0.3, 2.2, 'lean'] } : { hallu: [0.3, 2.1, 'lean'] },
       build: function (ctx, P) {
         shell(ctx, P, { w: 3.2, H: 3.0, d: 4.2, wall: mirror ? '#2e2a26' : '#27282e', wallLow: '#1c1b1b', ceil: '#0a0a0a', floorA: '#a8a090', floorB: '#141414' });
         // doorway to office at back
         poly(ctx, [P.p(-0.7, 0, 4.18), P.p(0.7, 0, 4.18), P.p(0.7, 2.3, 4.18), P.p(-0.7, 2.3, 4.18)], '#030303');
         // the poster (the rules; golden variant drawn at runtime)
         var rules = posterCanvas(180, 250, '#e3dcc6', [['RULES', 'bold 30px Georgia, serif', '#8b1a1a', 34], ['1. No running', '15px Georgia, serif', '#222', 22], ['2. No yelling', '15px Georgia, serif', '#222', 22], ['3. No unplugging', '15px Georgia, serif', '#222', 22], ['4. Do not verify', '15px Georgia, serif', '#222', 22], ['    the curtain', '15px Georgia, serif', '#222', 22], ['5. Smile back', 'bold 15px Georgia, serif', '#8b1a1a', 22]], '#222', seed);
-        var X = mirror ? -1.59 : 1.59;
+        var X = mirror ? 1.59 : -1.59;
         imgQuad(ctx, rules, P.p(X, 2.4, 2.1), P.p(X, 2.4, 3.0), P.p(X, 1.2, 2.1));
         grime(ctx, 0, 0, FEED_W, FEED_H, 50, 60, seed + 1, 'rgba(0,0,0,0.3)');
       },
-      poster: mirror ? null : [1.59, 2.4, 1.2, 2.1, 3.0],
+      poster: mirror ? null : [-1.59, 2.4, 1.2, 2.1, 3.0],
       light: [700, 280, 420],
       tint: 'rgba(0,0,0,0.1)'
     };
@@ -583,7 +583,7 @@
       var P = def.P, top = P.p(0, 3, 9)[1], bot = P.p(0, 0, 9)[1];
       var p0 = P.p(-1.3, 0, 9), p1 = P.p(1.3, 0, 9);
       var fg = ctx.createRadialGradient(700, (top + bot) / 2, 10, 700, (top + bot) / 2, (p1[0] - p0[0]) * 1.2);
-      fg.addColorStop(0, 'rgba(0,0,0,0.92)');
+      fg.addColorStop(0, 'rgba(0,0,0,0.75)');
       fg.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = fg; ctx.fillRect(0, 0, FEED_W, FEED_H);
     }
@@ -667,20 +667,10 @@
       drawCurtains(ctx, P, open, t);
       if (st === 1 && window.CHARS) {
         var p1 = P.p(0.05, 0.6, 3.6);
-        CHARS.draw(ctx, 'captcha', p1[0], p1[1], P.s(3.6) * 1.1, { pose: 'peek', t: t, dark: charDark(def, 0.1), glow: true });
+        CHARS.draw(ctx, 'captcha', p1[0], p1[1], P.s(3.6) * 2.0, { pose: 'peek', t: t, dark: charDark(def, 0.1), glow: true });
       }
     }
     if (def.heads) drawHeads(ctx, t, ex.watched || 0);
-    if (key === 'wcorner' && ex.golden && window.CHARS) {
-      // the poster becomes a golden face
-      var pp = def.poster, tl = P.p(pp[0], pp[1], pp[3]), bl = P.p(pp[0], pp[2], pp[3]), tr = P.p(pp[0], pp[1], pp[4]);
-      var gp = canvas(180, 250), gx = gp.getContext('2d');
-      gx.fillStyle = '#2a2208'; gx.fillRect(0, 0, 180, 250);
-      CHARS.face(gx, 'golden', 90, 120, 170, { t: t, dark: 0.1, glow: true });
-      txt(gx, "IT'S ME", 90, 228, 'bold 26px Georgia, serif', '#e9d27a');
-      imgQuad(ctx, gp, tl, tr, bl);
-    }
-
     if (window.CHARS) {
       items.forEach(function (it) {
         var sp = it.sp, isFake = ex.fake === it.id && (ex.occ || []).indexOf(it.id) < 0;
@@ -694,12 +684,22 @@
         });
       });
     }
-    if (key === 'whall' && ex.runP != null && window.CHARS) {
-      // captcha sprinting toward the camera
-      var z = 14 - ex.runP * 12.5, q = P.p(0, 0, z);
-      CHARS.draw(ctx, 'captcha', q[0], q[1], P.s(z) * 2.0, { pose: 'run', t: t, dark: 0.25, glow: true, glitch: 0.3 });
-    }
     ctx.drawImage(lightLayer(key), 0, 0);
+    if (key === 'wcorner' && ex.golden && window.CHARS) {
+      // the poster becomes a golden face
+      var pp = def.poster, tl = P.p(pp[0], pp[1], pp[3]), bl = P.p(pp[0], pp[2], pp[3]), tr = P.p(pp[0], pp[1], pp[4]);
+      var gp = canvas(180, 250), gx = gp.getContext('2d');
+      gx.fillStyle = '#2a2208'; gx.fillRect(0, 0, 180, 250);
+      CHARS.face(gx, 'golden', 90, 120, 170, { t: t, dark: 0.1, glow: true });
+      txt(gx, "IT'S ME", 90, 228, 'bold 26px Georgia, serif', '#e9d27a');
+      ctx.globalAlpha = 0.8; imgQuad(ctx, gp, tl, tr, bl); ctx.globalAlpha = 1;
+    }
+
+    if (key === 'whall' && ex.runP != null && window.CHARS) {
+      // captcha sprinting toward the camera, lit by the hall lamps as it passes
+      var z = 14 - ex.runP * 12.5, q = P.p(0, 0, z);
+      CHARS.draw(ctx, 'captcha', q[0], q[1], P.s(z) * 2.0, { pose: 'run', t: t, dark: 0.3 + 0.3 * (z / 14), glow: true, glitch: 0.3, flip: true });
+    }
     ctx.restore();
   }
 
@@ -832,11 +832,11 @@
 
   // The hallway seen through a doorway, lit or dark, with whoever stands in it.
   function drawDoorway(ctx, side, st, t) {
-    var P = OP, X = side * OW;
+    var P = OP, X = side * OW, dx = side < 0 ? 0 : OFF_W - 300;   // doorway bounding strip
     ctx.save();
     poly(ctx, doorQuad(side, 0, DOOR.h), null);
     ctx.clip();
-    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, OFF_W, OFF_H);
+    ctx.fillStyle = '#000'; ctx.fillRect(dx, 0, 300, OFF_H);
     var lit = side < 0 ? st.lightL : st.lightR;
     var occ = side < 0 ? st.occL : st.occR;
     if (lit) {
@@ -850,24 +850,25 @@
       }
       poly(ctx, [P.p(Xf, 0, 1.4), P.p(Xf, 0, 4.2), P.p(Xf, 3, 4.2), P.p(Xf, 3, 1.4)], '#4a4538');
       if (occ && window.CHARS) {
-        var fp = P.p(side * 3.25, 0, 2.62);
-        CHARS.draw(ctx, occ, fp[0], fp[1], P.s(2.62) * 2.05, { pose: 'door', t: t, dark: 0.12, glow: true, flip: side > 0 });
+        var fp = P.p(side * 2.95, 0, 2.75);
+        CHARS.draw(ctx, occ, fp[0], fp[1], P.s(2.75) * 2.05, { pose: 'door', t: t, dark: 0.12, glow: true, flip: side > 0 });
       }
       // warm light cone
-      var cp = P.p(side * 3.0, 2.2, 2.6);
+      var cp = P.p(side * 2.95, 1.6, 2.7);
       ctx.globalCompositeOperation = 'multiply';
-      var g = ctx.createRadialGradient(cp[0], cp[1] + 120, 20, cp[0], cp[1] + 120, 420);
-      g.addColorStop(0, 'rgba(255,236,190,1)');
-      g.addColorStop(1, 'rgba(40,30,20,1)');
-      ctx.fillStyle = g; ctx.fillRect(0, 0, OFF_W, OFF_H);
+      var g = ctx.createRadialGradient(cp[0], cp[1] + 60, 30, cp[0], cp[1] + 60, 520);
+      g.addColorStop(0, 'rgba(255,240,205,1)');
+      g.addColorStop(0.6, 'rgba(190,160,120,1)');
+      g.addColorStop(1, 'rgba(60,45,30,1)');
+      ctx.fillStyle = g; ctx.fillRect(dx, 0, 300, OFF_H);
       ctx.globalCompositeOperation = 'source-over';
       ctx.fillStyle = 'rgba(0,0,0,' + (1 - flick) + ')';
-      ctx.fillRect(0, 0, OFF_W, OFF_H);
+      ctx.fillRect(dx, 0, 300, OFF_H);
     } else if (st.lightsOutFace && side < 0 && window.CHARS) {
       // power out: Claudie in the left doorway, face flashing with the music box
       var on = st.lightsOutFace > 0.5;
-      var fp2 = P.p(-3.2, 0, 2.62);
-      CHARS.draw(ctx, 'claudie', fp2[0], fp2[1], P.s(2.62) * 2.05, { pose: 'door', t: t, dark: on ? 0.55 : 0.97, glow: true });
+      var fp2 = P.p(-2.95, 0, 2.75);
+      CHARS.draw(ctx, 'claudie', fp2[0], fp2[1], P.s(2.75) * 2.05, { pose: 'door', t: t, dark: on ? 0.55 : 0.97, glow: true });
     }
     ctx.restore();
 
@@ -1006,9 +1007,9 @@
       ctx.fillStyle = 'rgba(0,0,5,0.86)'; ctx.fillRect(0, 0, OFF_W, OFF_H);
       if (st.lightsOutFace) {
         // redraw the doorway above the darkness: the face is the only light
-        var fp = OP.p(-3.2, 0, 2.62);
+        var fp = OP.p(-2.95, 0, 2.75);
         ctx.save(); poly(ctx, doorQuad(-1, 0, DOOR.h), null); ctx.clip();
-        CHARS.draw(ctx, 'claudie', fp[0], fp[1], OP.s(2.62) * 2.05, { pose: 'door', t: t, dark: st.lightsOutFace > 0.5 ? 0.4 : 0.97, glow: true });
+        CHARS.draw(ctx, 'claudie', fp[0], fp[1], OP.s(2.75) * 2.05, { pose: 'door', t: t, dark: st.lightsOutFace > 0.5 ? 0.4 : 0.97, glow: true });
         ctx.restore();
       }
     } else if (st.flicker) {
