@@ -312,3 +312,25 @@ body {
   94%, 96% { transform: scaleY(.1); }
 }
 @media (prefers-reduced-motion: reduce) { .eyes i { animation: none; } }
+
+/* Eighth door: the ferry map. A terminal's drive-time ring and Napa's, the towns in
+   the overlap lit gold like on the map, and a boat working its way over to the city. */
+.door.ferry:hover {
+  border-color: rgba(42,120,214,.6);
+  box-shadow: 0 28px 70px -30px rgba(42,120,214,.45);
+}
+.door.ferry .door-art { background: radial-gradient(120% 100% at 10% 110%, #123658, #0b1726 55%, #080c14); }
+.door.ferry .door-title, .door.ferry .door-go { color: #7fb4f0; }
+.ferry-art { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ferry-art .ring { stroke-width: 1.5; stroke-dasharray: 5 5; }
+.ferry-art .ring.term { stroke: rgba(42,120,214,.8); fill: rgba(42,120,214,.12); }
+.ferry-art .ring.napa { stroke: rgba(194,54,107,.8); fill: rgba(194,54,107,.12); }
+.ferry-art .crossing { fill: none; stroke: rgba(127,180,240,.7); stroke-width: 2; stroke-dasharray: 2 6; stroke-linecap: round; }
+.ferry-art .towns circle { fill: rgba(154,163,171,.45); stroke: rgba(255,255,255,.25); stroke-width: 1.5; }
+.ferry-art .towns .a { fill: #2a78d6; }
+.ferry-art .towns .b { fill: #c2366b; }
+.ferry-art .towns .c { fill: #eda100; stroke: #fff; }
+.ferry-art .term-mark { fill: #0b1726; stroke: #4d95e8; stroke-width: 2; }
+.ferry-art .sf-mark { fill: #e8f1fb; }
+.ferry-art .boat { fill: #e8f1fb; }
+@media (prefers-reduced-motion: reduce) { .ferry-art .boat { display: none; } }

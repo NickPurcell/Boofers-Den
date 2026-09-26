@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#ffffff" />
+  <title>Where should I live? · Ferry commute map</title>
+  <meta name="description" content="Bay Area towns by drive time to a ferry terminal and to downtown Napa, with the door-to-desk ferry commute to Salesforce Plaza." />
+  <link rel="stylesheet" href="../vendor/leaflet/leaflet.css" />
+  <link rel="stylesheet" href="ferry.css" />
+</head>
+<body>
+  <div id="map" aria-label="Map of the Bay Area"></div>
+
+  <aside class="sheet" id="sheet" aria-label="Controls">
+    <button class="grab" id="grab" type="button" aria-label="Expand or collapse controls" aria-expanded="true"><i></i></button>
+
+    <header class="head">
+      <a class="back" href="../">&larr; Guitar Goblin</a>
+      <h1>Where should I live?</h1>
+      <p class="lede">Ferry to the Ferry Building, then on to Salesforce Plaza. Pick a terminal, set how long you&rsquo;ll drive to it and how close you want Napa.</p>
+    </header>
+
+    <section class="ctl">
+      <label class="field" for="term">
+        <span class="lbl">Ferry terminal</span>
+        <select id="term"></select>
+      </label>
+      <p class="svc" id="svc"></p>
+
+      <div class="slider a">
+        <div class="row">
+          <label for="drive">Drive to terminal</label>
+          <output id="driveOut" for="drive"></output>
+        </div>
+        <input type="range" id="drive" min="5" max="60" step="1" value="20" />
+      </div>
+
+      <div class="slider b">
+        <div class="row">
+          <label for="napa">Drive to downtown Napa</label>
+          <output id="napaOut" for="napa"></output>
+        </div>
+        <input type="range" id="napa" min="5" max="90" step="1" value="30" />
+      </div>
+
+      <div class="toggles">
+        <div class="seg" role="group" aria-label="Traffic">
+          <span class="seg-lbl">Traffic</span>
+          <button type="button" data-rush="0" aria-pressed="true">Free-flow</button>
+          <button type="button" data-rush="1" aria-pressed="false">Rush &times;1.35</button>
+        </div>
+        <div class="seg" role="group" aria-label="Ferry Building to Salesforce Plaza">
+          <span class="seg-lbl">Last mile</span>
+          <button type="button" data-last="walk" aria-pressed="true">Walk 15</button>
+          <button type="button" data-last="scooter" aria-pressed="false">Scooter 3</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="legend" aria-label="Legend">
+      <ul>
+        <li><i class="sw a"></i><span>Near the terminal</span><b id="nA">0</b></li>
+        <li><i class="sw b"></i><span>Near Napa</span><b id="nB">0</b></li>
+        <li><i class="sw c"></i><span>Both</span><b id="nC">0</b></li>
+        <li><i class="sw n"></i><span>Neither</span><b id="nN">0</b></li>
+      </ul>
+      <p class="note" id="circleNote"></p>
+    </section>
+
+    <section class="matches" aria-label="Matching towns">
+      <h2>Towns that fit <small>door to desk</small></h2>
+      <ol id="list"></ol>
+    </section>
+
+    <footer class="about">
+      <h2>How this works</h2>
+      <p>Colours come from real drive times, not the circles. Each town&rsquo;s drive to every terminal and to downtown Napa was routed once with <a href="https://project-osrm.org/" rel="noopener">OSRM</a> on OpenStreetMap roads (<span id="gen"></span>) and saved with the page. Those are <strong>free-flow</strong> times with no traffic. <em>Rush</em> multiplies the drive to the terminal by 1.35; Napa stays free-flow, since that trip is for weekends.</p>
+      <p>The circles are only a guide: minutes &times; the average straight-line speed from that terminal (or Napa), fitted from the same table. A town across the water can sit inside a circle and stay grey.</p>
+      <p>Door to desk = drive + <strong>10 min</strong> to park, walk to the boat and board + the scheduled weekday morning ride + the last mile from the Ferry Building to Salesforce Plaza (walk 15 min or scooter 3 min). No wait for the next boat is included, so check the timetable for how often it runs.</p>
+      <h2>Sources</h2>
+      <ul id="sources"></ul>
+      <p class="fine">Map data &copy; <a href="https://www.openstreetmap.org/copyright" rel="noopener">OpenStreetMap</a> contributors. Base map from <a href="https://openfreemap.org" rel="noopener">OpenFreeMap</a> (OpenMapTiles), drawn with <a href="https://leafletjs.com" rel="noopener">Leaflet</a> and <a href="https://maplibre.org" rel="noopener">MapLibre</a>. Town coordinates from OpenStreetMap Nominatim.</p>
+    </footer>
+  </aside>
+
+  <article class="card" id="card" aria-live="polite" hidden></article>
+
+  <p class="status" id="status" role="status"></p>
+
+  <script src="../vendor/leaflet/leaflet.js"></script>
+  <script src="ferry.js"></script>
+</body>
+</html>
