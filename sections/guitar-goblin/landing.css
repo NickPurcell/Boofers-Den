@@ -334,3 +334,18 @@ body {
 .ferry-art .sf-mark { fill: #e8f1fb; }
 .ferry-art .boat { fill: #e8f1fb; }
 @media (prefers-reduced-motion: reduce) { .ferry-art .boat { display: none; } }
+
+/* Ninth door: Minecraft in Night City. A neon block of towers, three placed blocks
+   stacked in the street, and a stray cube hovering where it shouldn't. */
+.door.nightblock:hover {
+  border-color: rgba(252,238,10,.6);
+  box-shadow: 0 28px 70px -30px rgba(252,238,10,.4);
+}
+.door.nightblock .door-art { background: radial-gradient(120% 90% at 50% 110%, #2a0f3a, #0c0816 60%, #07070c); }
+.door.nightblock .door-title { color: #fcee0a; font-family: ui-monospace, Menlo, Consolas, monospace; letter-spacing: -.01em; }
+.door.nightblock .door-go { color: #00f0ff; }
+.nb-art { position: absolute; inset: 0; width: 100%; height: 100%; }
+.nb-art .wins rect { fill: #fcee0a; opacity: .6; }
+.nb-art .nb-float { animation: nb-bob 4s ease-in-out infinite; }
+@keyframes nb-bob { 50% { translate: 0 -6px; } }
+@media (prefers-reduced-motion: reduce) { .nb-art .nb-float { animation: none; } }
