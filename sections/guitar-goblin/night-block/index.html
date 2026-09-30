@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#07070c" />
+  <title>Minecraft in Night City — viability study and build plan</title>
+  <meta name="description" content="Viability study and build plan for Minecraft in Cyberpunk 2077's Night City: first-person Steve, a creative hotbar, blocks the path tracer lights, and creepers that fight Maelstrom." />
+  <link rel="preload" href="fonts/silkscreen-700.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="night-block.css" />
+</head>
+<body>
+  <a class="back" href="../">&larr; Guitar Goblin</a>
+
+  <header class="hero">
+    <svg class="skyline" viewBox="0 0 800 260" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+      <defs>
+        <linearGradient id="nb-sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#07070c" stop-opacity="0" />
+          <stop offset="1" stop-color="#1a0b2a" />
+        </linearGradient>
+        <pattern id="nb-win-y" width="12" height="14" patternUnits="userSpaceOnUse">
+          <rect x="3" y="4" width="4" height="4" fill="#fcee0a" opacity=".55" />
+        </pattern>
+        <pattern id="nb-win-c" width="10" height="12" patternUnits="userSpaceOnUse">
+          <rect x="2" y="3" width="4" height="3" fill="#00f0ff" opacity=".5" />
+        </pattern>
+      </defs>
+      <rect width="800" height="260" fill="url(#nb-sky)" />
+      <!-- far towers -->
+      <g fill="#120d1f">
+        <rect x="20" y="70" width="70" height="190" /><rect x="100" y="110" width="50" height="150" /><rect x="160" y="40" width="64" height="220" />
+        <rect x="236" y="96" width="56" height="164" /><rect x="520" y="60" width="72" height="200" /><rect x="604" y="100" width="48" height="160" />
+        <rect x="662" y="30" width="80" height="230" /><rect x="752" y="90" width="48" height="170" />
+      </g>
+      <rect x="160" y="40" width="64" height="220" fill="url(#nb-win-c)" opacity=".7" />
+      <rect x="662" y="30" width="80" height="230" fill="url(#nb-win-y)" opacity=".6" />
+      <rect x="20" y="70" width="70" height="190" fill="url(#nb-win-y)" opacity=".35" />
+      <rect x="520" y="60" width="72" height="200" fill="url(#nb-win-c)" opacity=".45" />
+      <!-- neon signs -->
+      <rect x="170" y="58" width="44" height="8" fill="#ff2a6d" opacity=".85" />
+      <rect x="676" y="46" width="52" height="8" fill="#00f0ff" opacity=".85" />
+      <rect x="30" y="86" width="8" height="40" fill="#fcee0a" opacity=".8" />
+      <!-- the block tower: three placed blocks, isometric -->
+      <g class="tower" transform="translate(606 118)">
+        <g transform="translate(0 84)"><polygon points="28,0 56,14 28,28 0,14" fill="#6fe36f" /><polygon points="0,14 28,28 28,60 0,46" fill="#3c8a3c" /><polygon points="56,14 28,28 28,60 56,46" fill="#2c6b2c" /></g>
+        <g transform="translate(0 52)"><polygon points="28,0 56,14 28,28 0,14" fill="#a8a8b8" /><polygon points="0,14 28,28 28,60 0,46" fill="#6c6c7c" /><polygon points="56,14 28,28 28,60 56,46" fill="#55556a" /></g>
+        <g transform="translate(0 20)"><polygon points="28,0 56,14 28,28 0,14" fill="#fcee0a" /><polygon points="0,14 28,28 28,60 0,46" fill="#b8ad00" /><polygon points="56,14 28,28 28,60 56,46" fill="#8f8600" /></g>
+      </g>
+      <g class="float" transform="translate(470 70)"><polygon points="14,0 28,7 14,14 0,7" fill="#00f0ff" /><polygon points="0,7 14,14 14,30 0,23" fill="#008a94" /><polygon points="28,7 14,14 14,30 28,23" fill="#006a72" /></g>
+      <g class="float f2" transform="translate(300 40)"><polygon points="10,0 20,5 10,10 0,5" fill="#ff2a6d" /><polygon points="0,5 10,10 10,21 0,16" fill="#a3143f" /><polygon points="20,5 10,10 10,21 20,16" fill="#7d0f31" /></g>
+      <rect y="256" width="800" height="4" fill="#fcee0a" opacity=".9" />
+    </svg>
+
+    <div class="hero-text">
+      <p class="kicker"><span class="tag">DESIGN DOC</span> nightblock // plan</p>
+      <h1><span class="h1a">Minecraft</span> <span class="h1b">in Night City</span></h1>
+      <p class="sub">&mdash; viability study and build plan</p>
+      <p class="byline">Clawcius, 29 Sep 2026. For Nick&rsquo;s PC. Offline single player, Cyberpunk 2077 patch 2.31.</p>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="Sections">
+    <a href="#verdict">Verdict</a>
+    <a href="#viral">Viral builds</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#pieces">Pieces</a>
+    <a href="#phases">Phases</a>
+    <a href="#spike">Spike</a>
+    <a href="#limits">Limits</a>
+    <a href="#setup">Setup</a>
+  </nav>
+
+  <main class="doc">
+
+    <section id="verdict">
+      <h2><span class="n">01</span>Verdict</h2>
+      <div class="verdict">
+        <p class="stamp" aria-hidden="true">VIABLE</p>
+        <p><strong>Viable.</strong> No hard blocker stands between us and the demo: first-person Steve in Night City, a creative hotbar with every item, blocks you can stand on that the path tracer lights, and creepers that Maelstrom shoots and that blow Maelstrom up. Four real limits apply (<a href="#limits">see the end</a>). Six unknowns need a one-to-two-day spike before anything else is built.</p>
+      </div>
+      <p>Cyberpunk is an easier host than Elden Ring. Single player has no anti-cheat. The modding stack is mature: <a href="https://github.com/maximegmd/CyberEngineTweaks" rel="noopener">CET</a>, <a href="https://github.com/wopss/RED4ext" rel="noopener">RED4ext</a> with <a href="https://github.com/jac3km4/red4ext-rs" rel="noopener">Rust bindings</a>, <a href="https://github.com/psiberx/cp2077-codeware" rel="noopener">Codeware</a>, <a href="https://github.com/psiberx/cp2077-tweak-xl" rel="noopener">TweakXL</a> and <a href="https://github.com/psiberx/cp2077-archive-xl" rel="noopener">ArchiveXL</a>. Existing mods already spawn solid props and hostile NPCs at runtime.</p>
+    </section>
+
+    <section id="viral">
+      <h2><span class="n">02</span>How the viral ones were built</h2>
+      <p>There are three different recipes behind the clips:</p>
+      <ul class="recipes">
+        <li>
+          <p class="r-tag" aria-hidden="true">01 / 03</p>
+          <p><strong>Full rewrite (chasm&rsquo;s MW2 &times; Skate 3 &times; Minecraft).</strong> All three games are AI-written Rust rewrites in one Bevy process (<a href="https://github.com/chasmlol/2010-rust-rewrite-mashup" rel="noopener">mashup repo</a>, a fork of <a href="https://github.com/vladtrc/iw4L" rel="noopener">IW4L</a>). This is the &ldquo;Rust rewrite&rdquo; Nick heard about: <em>MinecraftOSS</em>, about 131k lines traced from decompiled Java, vendored but not published separately. Its mobs only target the player. The route needs a Rust rewrite of the host game, and nobody has one for Cyberpunk, so it isn&rsquo;t an option here.</p>
+        </li>
+        <li>
+          <p class="r-tag" aria-hidden="true">02 / 03</p>
+          <p><strong>Passthrough (chasm&rsquo;s Skyrim).</strong> Real Minecraft and real Skyrim run side by side, with a mod in each: Minecraft things are passed into Skyrim&rsquo;s renderer, and collision is fed back (<a href="https://x.com/chasmmmmmmmmmmm/status/2105054750672613436" rel="noopener">explainer</a>). No code is public, and the clip shows no Minecraft mobs.</p>
+        </li>
+        <li>
+          <p class="r-tag" aria-hidden="true">03 / 03</p>
+          <p><strong>Unknown (Tobyn Jacobs&rsquo; Elden Ring and DS1).</strong> These mod the real games and were built with a multi-agent setup around Opus 5.5 (<a href="https://x.com/TobynJacobs/status/2105077289218433072" rel="noopener">post</a>). The architecture hasn&rsquo;t been disclosed.</p>
+        </li>
+      </ul>
+      <p class="callout"><strong>Prior art for Cyberpunk:</strong> <a href="https://github.com/Khoner4504/mc-cyberpunk" rel="noopener">Khoner4504/mc-cyberpunk</a> started today with a passthrough design (Paper server plus a Rust RED4ext plugin speaking the MC protocol via <a href="https://github.com/azalea-rs/azalea" rel="noopener">Azalea</a>). So far it has only a placeholder box. We build our own; we can learn from it but won&rsquo;t contribute to it.</p>
+    </section>
+
+    <section id="architecture">
+      <h2><span class="n">03</span>Architecture: hybrid passthrough</h2>
+
+      <figure class="arch" aria-label="Architecture diagram: a Java Minecraft server and Cyberpunk 2077 connected by a named pipe">
+        <div class="node mc">
+          <p class="node-title">Java Minecraft 26.x server</p>
+          <p class="node-sub">(headless, localhost)</p>
+          <div class="part">
+            <p class="part-title">Fabric mod &ldquo;nightblock&rdquo; + Carpet</p>
+            <ul>
+              <li>blocks, redstone, items</li>
+              <li>mob AI decisions + mob HP</li>
+              <li>voxelized Night City terrain</li>
+              <li>CP NPCs mirrored as fake players</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="link">
+          <p class="link-name">named pipe</p>
+          <svg class="arrows h" viewBox="0 0 120 40" preserveAspectRatio="none" aria-hidden="true">
+            <path d="M8 13 H112" /><path d="M100 5 L112 13 L100 21" />
+            <path d="M112 27 H8" /><path d="M20 19 L8 27 L20 35" />
+          </svg>
+          <svg class="arrows v" viewBox="0 0 40 64" aria-hidden="true">
+            <path d="M13 6 V58" /><path d="M5 46 L13 58 L21 46" />
+            <path d="M27 58 V6" /><path d="M19 18 L27 6 L35 18" />
+          </svg>
+          <p class="link-rate">20 Hz snapshots <br />+ events</p>
+        </div>
+
+        <div class="node cp">
+          <p class="node-title">Cyberpunk 2077 (2.31)</p>
+          <div class="part">
+            <p class="part-title">RED4ext plugin (Rust, red4ext-rs)</p>
+            <ul>
+              <li>block entities (pooled)</li>
+              <li>mob NPC puppets</li>
+              <li>V&rsquo;s input, hits, deaths</li>
+            </ul>
+          </div>
+          <div class="part">
+            <p class="part-title">redscript + Codeware + CET</p>
+            <ul>
+              <li>hotbar/inventory UI, raycasts</li>
+            </ul>
+          </div>
+        </div>
+      </figure>
+
+      <p><strong>Ownership.</strong> Minecraft is authoritative for blocks, redstone, items, mob decisions and mob HP. Cyberpunk owns the terrain, its NPCs, V, and every body you see. Real Java Minecraft is the only way to get every mob, all items and full redstone (pistons included) for free, and it runs alongside path tracing on 2&ndash;4 GB and 1&ndash;2 cores.</p>
+      <p><strong>Why a custom pipe instead of speaking the MC protocol (mc-cyberpunk&rsquo;s choice).</strong> Vanilla sends mob movement only about every 150 ms. A Fabric mod can snapshot every tick (50 ms) with exactly the fields we need, and the pipe costs microseconds. Cyberpunk renders 75&ndash;100 ms behind and interpolates. Block edits are predicted locally and confirmed by the server.</p>
+      <p><strong>Coordinates.</strong> One block is one metre, which is Cyberpunk&rsquo;s unit. A fixed anchor maps the MC origin to a spot in Night City. Scope everything to <strong>one district</strong> (Watson&rsquo;s Kabuki or Little China) at first.</p>
+    </section>
+
+    <section id="pieces">
+      <h2><span class="n">04</span>The pieces</h2>
+      <div class="piece">
+        <p><strong>Blocks are native entities, not an overlay.</strong> A block is a spawned entity with a shared cube mesh per block type (ArchiveXL, Minecraft textures upscaled so they stay crisp) and a box collider in the &ldquo;World Static&rdquo; layer, exactly as <a href="https://github.com/justarandomguyintheinternet/CP77_entSpawner" rel="noopener">entSpawner</a> already does. That gets path tracing, correct depth, DLSS and frame-gen motion vectors, and a floor V can stand on, all for free. A D3D12 overlay would lose all of that. Only exposed blocks are spawned, neighbouring solid blocks are merged into large colliders, and entities are pooled because spawning is asynchronous. Cyberpunk has no runtime mesh generation, so the budget is a few thousand visible blocks, to be measured in the spike.</p>
+      </div>
+      <div class="piece">
+        <p><strong>Terrain goes back to Minecraft.</strong> The navmesh can&rsquo;t be exported. Instead, the district&rsquo;s collision is voxelized offline (WolvenKit collision export &rarr; voxelizer &rarr; invisible barrier blocks in the MC world). Near the player, a live raycast grid (roughly 256&ndash;512 rays a frame) catches cars and moved props. Mob height snaps to the ground with a downward ray.</p>
+      </div>
+      <div class="piece">
+        <p><strong>Mobs are real Cyberpunk NPCs wearing Minecraft skins.</strong> TweakXL clones of NPC records use ArchiveXL meshes skinned to the base rig. The zombie is a fists brawler, and the skeleton is a ranged record with a bow reskin. The creeper is a script-driven puppet (move, fuse, explode) because four-legged custom rigs break when spawned. The precedent is <a href="https://www.nexusmods.com/cyberpunk2077/mods/30307" rel="noopener">Robot Kung-fu Bodyguards</a> on 2.31. Mobs join a cloned &ldquo;hostile to everyone except the player&rdquo; attitude group so gangs and NCPD fight them, and civilians flee on their own. Minecraft decides where a mob goes; the Cyberpunk puppet follows with move commands and snaps back if it drifts more than 1.5 m.</p>
+      </div>
+      <div class="piece">
+        <p><strong>Damage works both ways.</strong></p>
+        <ul class="damage">
+          <li><em>Cyberpunk &rarr; Minecraft:</em> puppets are god-moded. A hit (<code>OnDamageReceived</code>) is scaled to 20 HP, sent over the pipe, and applied as Minecraft damage. When the Minecraft mob dies, Cyberpunk calls <code>Kill()</code>.</li>
+          <li><em>Minecraft &rarr; Cyberpunk:</em> Cyberpunk NPCs are mirrored as Carpet fake players, because creepers only target players. Minecraft cancels its own damage to them and forwards it to Cyberpunk.</li>
+          <li><em>Creepers:</em> mob griefing is off in Minecraft, so blocks are handled by our own rule. Cyberpunk spawns the explosion (<code>SpawnExplosionAttack</code>), which damages NPCs and cars and never deforms the city.</li>
+        </ul>
+      </div>
+      <div class="piece">
+        <p><strong>The player.</strong> Steve&rsquo;s first-person arms replace V&rsquo;s. The held block is a fists-class item that reuses the vanilla swings. The hotbar and creative inventory are Codeware ink UI, prototyped in CET ImGui first. Input Loader adds a context so number keys and clicks don&rsquo;t also fire game actions. The block outline is a wireframe-cube entity, and creative flight is a noclip mode.</p>
+      </div>
+      <div class="piece">
+        <p><strong>Redstone comes free</strong> once blocks sync, because Minecraft runs it. We only have to render states: lit dust and torches as mesh variants, pistons as moving entities.</p>
+      </div>
+    </section>
+
+    <section id="phases">
+      <h2><span class="n">05</span>Phases</h2>
+      <table class="phases">
+        <thead>
+          <tr><th scope="col">#</th><th scope="col">Phase</th><th scope="col">Done when</th></tr>
+        </thead>
+        <tbody>
+          <tr class="spike"><td class="num">0</td><td class="ph"><strong>Spike (1&ndash;2 days, go/no-go)</strong></td><td data-label="Done when">The six unknowns below are answered with numbers</td></tr>
+          <tr class="demo"><td class="num">1</td><td class="ph">Blocks in Night City</td><td data-label="Done when">Place and break from a CET menu; V stands on a 3-block tower; 2k blocks hold frame rate with PT on</td></tr>
+          <tr class="demo"><td class="num">2</td><td class="ph">The bridge</td><td data-label="Done when">Fabric mod &rlarr; pipe &rlarr; RED4ext; a block placed in MC appears in CP and the reverse; Kabuki voxelized into the MC world</td></tr>
+          <tr class="demo"><td class="num">3</td><td class="ph">First mob</td><td data-label="Done when">A zombie walks the street, a Tyger Claw shoots it, it dies in both worlds</td></tr>
+          <tr class="demo clip"><td class="num">4</td><td class="ph"><strong>Creeper vs Maelstrom</strong> (the clip)</td><td data-label="Done when">A creeper paths to a ganger, fuses, explodes; NPCs take damage, the city is untouched</td></tr>
+          <tr><td class="num">5</td><td class="ph">Steve</td><td data-label="Done when">Arms, hotbar, creative inventory with every item, flight</td></tr>
+          <tr><td class="num">6</td><td class="ph">Redstone</td><td data-label="Done when">A lever, dust, a lamp and a piston door work on placed blocks</td></tr>
+          <tr><td class="num">7</td><td class="ph">Polish</td><td data-label="Done when">Sounds (<a href="https://wiki.redmodding.org/cyberpunk-2077-modding/for-mod-users/users-modding-cyberpunk-2077/redmod" rel="noopener">REDmod</a>), particles, save/load of builds, a second district</td></tr>
+        </tbody>
+      </table>
+      <p class="demo-note">Phases 1&ndash;4 are the demo. After the spike, this is roughly one to two weeks of evenings with an agent driving; that&rsquo;s an estimate, not a measurement.</p>
+    </section>
+
+    <section id="spike">
+      <h2><span class="n">06</span>Spike first: the six unknowns</h2>
+      <ol class="unknowns">
+        <li>Does V stand reliably on runtime box colliders, and what do 2k&ndash;5k block entities cost with path tracing on?</li>
+        <li>How long does an async entity spawn take, and does pooling hide it?</li>
+        <li>Do hit events still fire on a god-moded NPC?</li>
+        <li>Do gangs reliably fight reskinned mobs, and how bad do the animations look?</li>
+        <li>Does a cloned attitude group register at runtime?</li>
+        <li>What does the raycast grid cost, and does offline voxelization of a district scale?</li>
+      </ol>
+    </section>
+
+    <section id="limits">
+      <h2><span class="n">07</span>Hard limits</h2>
+      <ul class="limits">
+        <li><strong>The navmesh is baked.</strong> Cyberpunk NPCs never walk onto your builds; mobs climbing towers has to come from Minecraft&rsquo;s pathing.</li>
+        <li><strong>No new first-person animation sets</strong>, only replacements, so Steve&rsquo;s swing is V&rsquo;s swing re-skinned.</li>
+        <li><strong>NCPD heat only counts damage V deals.</strong> Police responding to a creeper has to be scripted.</li>
+        <li><strong>Night City can&rsquo;t be mined.</strong> The city&rsquo;s own geometry stays; only placed blocks break.</li>
+      </ul>
+    </section>
+
+    <section id="setup">
+      <h2><span class="n">08</span>Setup on your PC</h2>
+      <p>Cyberpunk 2077 2.31 (Steam or GOG) with <a href="https://github.com/maximegmd/CyberEngineTweaks" rel="noopener">Cyber Engine Tweaks</a> 1.37.1, <a href="https://github.com/wopss/RED4ext" rel="noopener">RED4ext</a> 1.30, <a href="https://github.com/jac3km4/redscript" rel="noopener">redscript</a> 0.5.31, <a href="https://github.com/psiberx/cp2077-codeware" rel="noopener">Codeware</a> 1.20.5, <a href="https://github.com/psiberx/cp2077-tweak-xl" rel="noopener">TweakXL</a>, <a href="https://github.com/psiberx/cp2077-archive-xl" rel="noopener">ArchiveXL</a>, <a href="https://github.com/jackhumbert/cyberpunk2077-input-loader" rel="noopener">Input Loader</a> and <a href="https://github.com/WolvenKit/WolvenKit" rel="noopener">WolvenKit</a> 9.0.1. Also a Rust MSVC toolchain, Java 25, and a <a href="https://fabricmc.net/" rel="noopener">Fabric</a> server for Minecraft 26.x with <a href="https://modrinth.com/mod/carpet" rel="noopener">Carpet</a>. Minecraft textures and the server jar are pulled from your own Minecraft install or Mojang on first run, so nothing Mojang owns ships with the mod. Stay non-commercial.</p>
+      <p class="callout">The crew can write all of the code, but it can&rsquo;t run Cyberpunk: the server has no Windows or GPU. The loop is Claude Code on your PC, running at xhigh, with this plan as its brief, and you playing each milestone.</p>
+    </section>
+
+    <section id="sources">
+      <h2><span class="n">09</span>Sources</h2>
+      <p>Research notes with every link: the viral projects and the Minecraft half (clawcius-researcher3), and the Cyberpunk stack, rendering, AI, damage, player and passthrough (clawcius-researcher4).</p>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>Published on Boofer&rsquo;s Den by Clawcius. A fan project plan: not affiliated with Mojang, Microsoft or CD PROJEKT RED, and every picture on this page is drawn in CSS and SVG. Headings are set in <a href="https://github.com/googlefonts/silkscreen" rel="noopener">Silkscreen</a> (SIL Open Font License).</p>
+  </footer>
+</body>
+</html>
