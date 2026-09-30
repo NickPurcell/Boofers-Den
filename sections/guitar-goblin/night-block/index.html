@@ -65,7 +65,8 @@
     <a href="#viral">Viral builds</a>
     <a href="#architecture">Architecture</a>
     <a href="#pieces">Pieces</a>
-    <a href="#phases">Phases</a>
+    <a href="#tracks">Tracks</a>
+    <a href="#milestones">Milestones</a>
     <a href="#spike">Spike</a>
     <a href="#limits">Limits</a>
     <a href="#setup">Setup</a>
@@ -184,28 +185,89 @@
       </div>
     </section>
 
-    <section id="phases">
-      <h2><span class="n">05</span>Phases</h2>
-      <table class="phases">
+    <section id="tracks">
+      <h2><span class="n">05</span>Parallel tracks</h2>
+      <p>The work splits into tracks that run at the same time, each with its own agent in its own git worktree and its own directory in one repo. Only one lane ever runs Cyberpunk.</p>
+
+      <div class="contract">
+        <p class="contract-tag" aria-hidden="true">CONTRACT</p>
+        <p><strong>Contract first: the pipe protocol.</strong> This is a small, versioned schema covering entity IDs, the per-tick snapshot fields, and events: block set/break, mob spawn/state, hit, death, explode, player state. It also defines a recorded-session format that any track can replay. It is written before the other tracks start, and any change to it is a pull request both sides sign off on.</p>
+      </div>
+
+      <figure class="deps" aria-label="Dependency diagram: the protocol feeds tracks A and B, spike answers feed B's colliders and C's mobs, and every track merges into the integration lane I">
+        <div class="stage">
+          <p class="stage-label">Start together</p>
+          <div class="dn proto"><b>Pipe protocol</b><small>contract first</small></div>
+          <div class="dn spike"><b>Spike</b><small>run in lane I</small></div>
+        </div>
+        <div class="flow" aria-hidden="true"><span></span></div>
+        <div class="stage">
+          <p class="stage-label">Tracks, in parallel</p>
+          <div class="dn"><b><i>A</i> Minecraft mod</b><span class="chips"><span class="dep p">&larr; protocol</span></span></div>
+          <div class="dn"><b><i>B</i> Plugin core</b><span class="chips"><span class="dep p">&larr; protocol</span><span class="dep s">colliders &larr; spike answer 1</span></span></div>
+          <div class="dn"><b><i>C</i> Assets</b><span class="chips"><span class="dep s">mobs &larr; spike answer 4</span></span></div>
+          <div class="dn"><b><i>D</i> Terrain</b></div>
+          <div class="dn"><b><i>E</i> UI data</b></div>
+        </div>
+        <div class="flow" aria-hidden="true"><span></span></div>
+        <div class="stage">
+          <p class="stage-label">All merge into</p>
+          <div class="dn lane"><b><i>I</i> Integration</b><small>the only lane that runs the game</small></div>
+        </div>
+      </figure>
+
+      <table class="tracks">
         <thead>
-          <tr><th scope="col">#</th><th scope="col">Phase</th><th scope="col">Done when</th></tr>
+          <tr><th scope="col">Track</th><th scope="col">Builds</th><th scope="col">Tested against</th><th scope="col">Needs the game?</th></tr>
         </thead>
         <tbody>
-          <tr class="spike"><td class="num">0</td><td class="ph"><strong>Spike (go/no-go)</strong></td><td data-label="Done when">The six unknowns below are answered with numbers</td></tr>
-          <tr class="demo"><td class="num">1</td><td class="ph">Blocks in Night City</td><td data-label="Done when">Place and break from a CET menu; V stands on a 3-block tower; 2k blocks hold frame rate with PT on</td></tr>
-          <tr class="demo"><td class="num">2</td><td class="ph">The bridge</td><td data-label="Done when">Fabric mod &rlarr; pipe &rlarr; RED4ext; a block placed in MC appears in CP and the reverse; Kabuki voxelized into the MC world</td></tr>
-          <tr class="demo"><td class="num">3</td><td class="ph">First mob</td><td data-label="Done when">A zombie walks the street, a Tyger Claw shoots it, it dies in both worlds</td></tr>
-          <tr class="demo clip"><td class="num">4</td><td class="ph"><strong>Creeper vs Maelstrom</strong> (the clip)</td><td data-label="Done when">A creeper paths to a ganger, fuses, explodes; NPCs take damage, the city is untouched</td></tr>
-          <tr><td class="num">5</td><td class="ph">Steve</td><td data-label="Done when">Arms, hotbar, creative inventory with every item, flight</td></tr>
-          <tr><td class="num">6</td><td class="ph">Redstone</td><td data-label="Done when">A lever, dust, a lamp and a piston door work on placed blocks</td></tr>
-          <tr><td class="num">7</td><td class="ph">Polish</td><td data-label="Done when">Sounds (<a href="https://wiki.redmodding.org/cyberpunk-2077-modding/for-mod-users/users-modding-cyberpunk-2077/redmod" rel="noopener">REDmod</a>), particles, save/load of builds, a second district</td></tr>
+          <tr><th scope="row"><strong><span class="tl">A</span> &middot; Minecraft mod</strong></th><td data-label="Builds">Fabric mod &ldquo;nightblock&rdquo; + Carpet: per-tick snapshots, CP NPCs mirrored as fake players, damage relay, creeper explosion rule, block authority</td><td data-label="Tested against">A scripted fake Cyberpunk client and replayed sessions, headless</td><td data-label="Needs the game?"><span class="need no">No</span></td></tr>
+          <tr><th scope="row"><strong><span class="tl">B</span> &middot; Plugin core</strong></th><td data-label="Builds">A Rust crate with no game dependency: pipe client, entity pool, interpolation buffer, drift correction, damage scaling, choosing exposed blocks and merging colliders</td><td data-label="Tested against">A fake Minecraft server and unit tests</td><td data-label="Needs the game?"><span class="need no">No</span></td></tr>
+          <tr><th scope="row"><strong><span class="tl">C</span> &middot; Assets</strong></th><td data-label="Builds">Block cube meshes and upscaled textures from your own MC install, redstone state variants, Steve arms, zombie and skeleton skinned to the base rig, creeper puppet mesh, TweakXL records (NPC clones, attitude group, fists item)</td><td data-label="Tested against">WolvenKit builds, then checked in game by the integration lane</td><td data-label="Needs the game?"><span class="need final">Only for the final check</span></td></tr>
+          <tr><th scope="row"><strong><span class="tl">D</span> &middot; Terrain</strong></th><td data-label="Builds">The offline voxelizer: district collision export &rarr; voxel grid &rarr; MC world with barrier blocks</td><td data-label="Tested against">Game files on disk; the game is never launched</td><td data-label="Needs the game?"><span class="need no">No</span></td></tr>
+          <tr><th scope="row"><strong><span class="tl">E</span> &middot; UI data</strong></th><td data-label="Builds">The item catalogue and an icon atlas generated from MC textures, plus the hotbar and inventory layout</td><td data-label="Tested against">Data tests; the ink widgets are wired in by the integration lane</td><td data-label="Needs the game?"><span class="need final">Only for the final check</span></td></tr>
+          <tr class="lane"><th scope="row"><strong><span class="tl">I</span> &middot; Integration</strong></th><td data-label="Builds">The thin game-binding layer (red4ext-rs, redscript, Codeware, CET) and scripted CET scenarios that capture screenshots, frame times and logs</td><td data-label="Tested against">The running game</td><td data-label="Needs the game?"><span class="need yes"><strong>Yes, and it&rsquo;s the only one</strong></span></td></tr>
         </tbody>
       </table>
-      <p class="demo-note">Phases 1&ndash;4 are the demo.</p>
+
+      <p><strong>The bridge can be proven without the game.</strong> A real Fabric server can talk over the pipe to the real Rust core with the game layer stubbed out. That end-to-end test runs in CI on every change, so tracks A and B integrate continuously, long before Cyberpunk is involved.</p>
+
+      <p><strong>What waits on what.</strong></p>
+      <ul class="waits">
+        <li>The spike and the protocol start together.</li>
+        <li>Tracks A, B&rsquo;s pipe and interpolation work, D and E start at once.</li>
+        <li>B&rsquo;s collider merging waits on spike answer 1, and C&rsquo;s mob assets wait on answer 4.</li>
+      </ul>
+
+      <div class="lane-card">
+        <p class="lane-tag" aria-hidden="true"><span>I</span> the only lane that runs the game</p>
+        <p><strong>The integration lane.</strong> It owns the GPU, and is the one place work serializes. It runs the spike first. After that it takes merged work from the tracks, runs scripted scenarios through the CET console (spawn N blocks, stand V on a tower, drop a zombie next to Tyger Claws, detonate a creeper), and files failures back to the track that owns the code. An agent on your PC can drive this lane itself, so you play-test milestones for feel rather than being the test harness.</p>
+      </div>
+    </section>
+
+    <section id="milestones">
+      <h2><span class="n">06</span>Milestones</h2>
+      <p>Each milestone is where tracks meet in the integration lane.</p>
+      <table class="phases">
+        <thead>
+          <tr><th scope="col">#</th><th scope="col">Milestone</th><th scope="col">Fed by</th><th scope="col">Done when</th></tr>
+        </thead>
+        <tbody>
+          <tr class="spike"><td class="num">0</td><td class="ph"><strong>Spike (go/no-go)</strong></td><td class="fed" data-label="Fed by"><span class="t lane">I</span></td><td data-label="Done when">The six unknowns below are answered with numbers</td></tr>
+          <tr class="demo"><td class="num">1</td><td class="ph">Blocks in Night City</td><td class="fed" data-label="Fed by"><span class="t">B</span>, <span class="t">C</span>, <span class="t lane">I</span></td><td data-label="Done when">Place and break from a CET menu; V stands on a 3-block tower; 2k blocks hold frame rate with PT on</td></tr>
+          <tr class="demo"><td class="num">2</td><td class="ph">The bridge</td><td class="fed" data-label="Fed by"><span class="t">A</span>, <span class="t">B</span>, <span class="t">D</span>, <span class="t lane">I</span></td><td data-label="Done when">A block placed in MC appears in CP and the reverse; Kabuki voxelized into the MC world</td></tr>
+          <tr class="demo"><td class="num">3</td><td class="ph">First mob</td><td class="fed" data-label="Fed by"><span class="t">A</span>, <span class="t">B</span>, <span class="t">C</span>, <span class="t lane">I</span></td><td data-label="Done when">A zombie walks the street, a Tyger Claw shoots it, it dies in both worlds</td></tr>
+          <tr class="demo clip"><td class="num">4</td><td class="ph"><strong>Creeper vs Maelstrom</strong> (the clip)</td><td class="fed" data-label="Fed by"><span class="t">A</span>, <span class="t">B</span>, <span class="t">C</span>, <span class="t lane">I</span></td><td data-label="Done when">A creeper paths to a ganger, fuses, explodes; NPCs take damage, the city is untouched</td></tr>
+          <tr><td class="num">5</td><td class="ph">Steve</td><td class="fed" data-label="Fed by"><span class="t">C</span>, <span class="t">E</span>, <span class="t lane">I</span></td><td data-label="Done when">Arms, hotbar, creative inventory with every item, flight</td></tr>
+          <tr><td class="num">6</td><td class="ph">Redstone</td><td class="fed" data-label="Fed by"><span class="t">A</span>, <span class="t">C</span>, <span class="t lane">I</span></td><td data-label="Done when">A lever, dust, a lamp and a piston door work on placed blocks</td></tr>
+          <tr><td class="num">7</td><td class="ph">Polish</td><td class="fed" data-label="Fed by"><span class="t all">all</span></td><td data-label="Done when">Sounds (<a href="https://wiki.redmodding.org/cyberpunk-2077-modding/for-mod-users/users-modding-cyberpunk-2077/redmod" rel="noopener">REDmod</a>), particles, save/load of builds, a second district</td></tr>
+        </tbody>
+      </table>
+      <p class="demo-note">Milestones 1&ndash;4 are the demo.</p>
     </section>
 
     <section id="spike">
-      <h2><span class="n">06</span>Spike first: the six unknowns</h2>
+      <h2><span class="n">07</span>Spike first: the six unknowns</h2>
       <ol class="unknowns">
         <li>Does V stand reliably on runtime box colliders, and what do 2k&ndash;5k block entities cost with path tracing on?</li>
         <li>How long does an async entity spawn take, and does pooling hide it?</li>
@@ -217,7 +279,7 @@
     </section>
 
     <section id="limits">
-      <h2><span class="n">07</span>Hard limits</h2>
+      <h2><span class="n">08</span>Hard limits</h2>
       <ul class="limits">
         <li><strong>The navmesh is baked.</strong> Cyberpunk NPCs never walk onto your builds; mobs climbing towers has to come from Minecraft&rsquo;s pathing.</li>
         <li><strong>No new first-person animation sets</strong>, only replacements, so Steve&rsquo;s swing is V&rsquo;s swing re-skinned.</li>
@@ -227,13 +289,13 @@
     </section>
 
     <section id="setup">
-      <h2><span class="n">08</span>Setup on your PC</h2>
+      <h2><span class="n">09</span>Setup on your PC</h2>
       <p>Cyberpunk 2077 2.31 (Steam or GOG) with <a href="https://github.com/maximegmd/CyberEngineTweaks" rel="noopener">Cyber Engine Tweaks</a> 1.37.1, <a href="https://github.com/wopss/RED4ext" rel="noopener">RED4ext</a> 1.30, <a href="https://github.com/jac3km4/redscript" rel="noopener">redscript</a> 0.5.31, <a href="https://github.com/psiberx/cp2077-codeware" rel="noopener">Codeware</a> 1.20.5, <a href="https://github.com/psiberx/cp2077-tweak-xl" rel="noopener">TweakXL</a>, <a href="https://github.com/psiberx/cp2077-archive-xl" rel="noopener">ArchiveXL</a>, <a href="https://github.com/jackhumbert/cyberpunk2077-input-loader" rel="noopener">Input Loader</a> and <a href="https://github.com/WolvenKit/WolvenKit" rel="noopener">WolvenKit</a> 9.0.1. Also a Rust MSVC toolchain, Java 25, and a <a href="https://fabricmc.net/" rel="noopener">Fabric</a> server for Minecraft 26.x with <a href="https://modrinth.com/mod/carpet" rel="noopener">Carpet</a>. Minecraft textures and the server jar are pulled from your own Minecraft install or Mojang on first run, so nothing Mojang owns ships with the mod. Stay non-commercial.</p>
-      <p class="callout">The crew can write all of the code, but it can&rsquo;t run Cyberpunk: the server has no Windows or GPU. The loop is Claude Code on your PC, running at xhigh, with this plan as its brief, and you playing each milestone.</p>
+      <p class="callout">Run one Claude Code agent per track, each in its own git worktree, with this plan as the shared brief; only the integration agent launches the game. The integration lane has to be your PC. You play-test each milestone for feel.</p>
     </section>
 
     <section id="sources">
-      <h2><span class="n">09</span>Sources</h2>
+      <h2><span class="n">10</span>Sources</h2>
       <p>Research notes with every link: the viral projects and the Minecraft half (clawcius-researcher3), and the Cyberpunk stack, rendering, AI, damage, player and passthrough (clawcius-researcher4).</p>
     </section>
   </main>
