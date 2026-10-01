@@ -349,3 +349,14 @@ body {
 .nb-art .nb-float { animation: nb-bob 4s ease-in-out infinite; }
 @keyframes nb-bob { 50% { translate: 0 -6px; } }
 @media (prefers-reduced-motion: reduce) { .nb-art .nb-float { animation: none; } }
+
+/* Tenth door: Minecraft in Elden Ring. A golden pixel tree over ruins, two placed
+   blocks, and an olive crosshair for the soldier mode. */
+.door.eldenblock:hover {
+  border-color: rgba(217,180,74,.6);
+  box-shadow: 0 28px 70px -30px rgba(217,180,74,.4);
+}
+.door.eldenblock .door-art { background: radial-gradient(120% 90% at 50% 110%, #2a1f0c, #120e07 60%, #0b0905); }
+.door.eldenblock .door-title { color: #f3d27a; font-family: Georgia, "Times New Roman", serif; }
+.door.eldenblock .door-go { color: #a3b764; }
+.eb-art { position: absolute; inset: 0; width: 100%; height: 100%; }
