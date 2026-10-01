@@ -145,6 +145,15 @@ li::marker { color: var(--gold); }
 .evidence > li > p { margin: 0; }
 .evidence ul { margin: .45rem 0 0; padding-left: 1.1rem; }
 .evidence ul li { margin-bottom: .25rem; }
+.case.composite { border-left: 4px solid #7fb3c9; background: linear-gradient(135deg, rgba(127, 179, 201, .08), var(--panel) 55%); }
+.case.composite .case-tag { color: #9fd0e4; display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.verdict-chip { display: inline-block; font-weight: 700; color: #120d04; background: #9fd0e4; padding: .25rem .4rem .2rem; letter-spacing: .06em; }
+.probes > li::before {
+  content: ""; background:
+    radial-gradient(circle at 42% 42%, transparent 0 4px, #120d04 4px 5.5px, transparent 5.5px),
+    linear-gradient(135deg, transparent 0 62%, #120d04 62% 74%, transparent 74%), #9fd0e4;
+}
+.answer { margin: .8rem 0 0 !important; padding: .7rem .85rem; border: 1px dashed rgba(159, 208, 228, .5); background: rgba(15, 12, 8, .5); }
 .notes-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .8rem; margin: 1rem 0; }
 .note-card { background: var(--panel-2); border: 1px solid var(--line); padding: .85rem .95rem; clip-path: var(--chamfer); }
 .note-card p { margin: 0 0 .4rem; }
