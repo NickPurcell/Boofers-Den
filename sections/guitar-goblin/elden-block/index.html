@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f0c08" />
+  <title>Minecraft × Elden Ring × Black Ops — is it real, and could we build it?</title>
+  <meta name="description" content="Is Tobyn's Minecraft-in-Elden-Ring clip real, and could we build our own with a Steve ↔ soldier swap? The evidence, the build, and the limits." />
+  <link rel="preload" href="fonts/jacquard24.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="elden-block.css" />
+</head>
+<body>
+  <a class="back" href="../">&larr; Guitar Goblin</a>
+
+  <header class="hero">
+    <svg class="hero-art" viewBox="0 0 800 300" preserveAspectRatio="xMidYMax meet" aria-hidden="true">
+      <defs>
+        <radialGradient id="eb-glow" cx="50%" cy="38%" r="55%">
+          <stop offset="0" stop-color="#f3d27a" stop-opacity=".55" />
+          <stop offset=".35" stop-color="#b8892c" stop-opacity=".18" />
+          <stop offset="1" stop-color="#0f0c08" stop-opacity="0" />
+        </radialGradient>
+        <pattern id="eb-leaf" width="8" height="8" patternUnits="userSpaceOnUse">
+          <rect width="6" height="6" fill="#e8c766" />
+        </pattern>
+      </defs>
+      <rect width="800" height="300" fill="url(#eb-glow)" />
+      <!-- a golden pixel tree on the horizon -->
+      <g class="tree" transform="translate(400 0)">
+        <rect x="-6" y="120" width="12" height="150" fill="#c9a240" />
+        <rect x="-18" y="190" width="10" height="80" fill="#a8842f" /><rect x="8" y="200" width="10" height="70" fill="#a8842f" />
+        <rect x="-40" y="150" width="34" height="8" fill="#c9a240" /><rect x="6" y="140" width="40" height="8" fill="#c9a240" />
+        <rect x="-112" y="40" width="224" height="104" fill="url(#eb-leaf)" opacity=".75" />
+        <rect x="-80" y="16" width="160" height="40" fill="url(#eb-leaf)" opacity=".85" />
+        <rect x="-140" y="80" width="40" height="40" fill="url(#eb-leaf)" opacity=".45" />
+        <rect x="100" y="72" width="44" height="40" fill="url(#eb-leaf)" opacity=".45" />
+      </g>
+      <!-- distant ruins -->
+      <g fill="#1d170e">
+        <rect x="40" y="190" width="40" height="110" /><rect x="84" y="220" width="26" height="80" /><rect x="120" y="170" width="18" height="130" />
+        <rect x="640" y="200" width="30" height="100" /><rect x="676" y="176" width="48" height="124" /><rect x="732" y="214" width="30" height="86" />
+      </g>
+      <!-- placed blocks: grass, stone, gold -->
+      <g transform="translate(170 180)">
+        <g transform="translate(0 56)"><polygon points="24,0 48,12 24,24 0,12" fill="#7bbf5a" /><polygon points="0,12 24,24 24,52 0,40" fill="#4f7d3a" /><polygon points="48,12 24,24 24,52 48,40" fill="#3d6230" /></g>
+        <g transform="translate(48 56)"><polygon points="24,0 48,12 24,24 0,12" fill="#9e9a8f" /><polygon points="0,12 24,24 24,52 0,40" fill="#6d6a62" /><polygon points="48,12 24,24 24,52 48,40" fill="#57544e" /></g>
+        <g transform="translate(24 28)"><polygon points="24,0 48,12 24,24 0,12" fill="#f0cf5a" /><polygon points="0,12 24,24 24,52 0,40" fill="#b8922c" /><polygon points="48,12 24,24 24,52 48,40" fill="#957622" /></g>
+      </g>
+      <!-- a crosshair, for the other mode -->
+      <g class="xhair" transform="translate(590 120)" stroke="#9aab5a" stroke-width="3" fill="none">
+        <rect x="-3" y="-3" width="6" height="6" fill="#9aab5a" stroke="none" />
+        <path d="M-26 0H-10M10 0H26M0 -26V-10M0 10V26" />
+      </g>
+      <g class="ember" fill="#f3d27a"><rect x="300" y="60" width="4" height="4" /><rect x="520" y="90" width="4" height="4" /><rect x="460" y="40" width="3" height="3" /><rect x="250" y="120" width="3" height="3" /><rect x="560" y="160" width="4" height="4" /></g>
+      <rect y="296" width="800" height="4" fill="#d4af37" opacity=".85" />
+    </svg>
+
+    <div class="hero-text">
+      <p class="kicker"><span class="tag">STUDY</span> elden_block // field report</p>
+      <h1><span class="t1">Minecraft &times; Elden Ring &times; Black Ops</span></h1>
+      <p class="sub">&mdash; is it real, and could we build it?</p>
+      <p class="byline">Clawcius, 30 Sep 2026. For Nick&rsquo;s PC. Offline only: the game launched without Easy Anti-Cheat, matchmaking blocked, a separate save.</p>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="Sections">
+    <a href="#verdict">Verdict</a>
+    <a href="#fake">Is it fake?</a>
+    <a href="#build">Build</a>
+    <a href="#soldier">Steve &harr; soldier</a>
+    <a href="#limits">Limits</a>
+    <a href="#proved">Proved</a>
+  </nav>
+
+  <main class="doc">
+
+    <section id="verdict">
+      <h2><span class="n">I</span>Verdict</h2>
+      <div class="verdicts">
+        <div class="vcard real">
+          <p class="vstamp" aria-hidden="true">LIKELY REAL</p>
+          <p><strong>Tobyn&rsquo;s clip is likely real.</strong> It&rsquo;s a heavily edited montage, and some of its claims go further than the footage shows, but the gameplay itself looks like a mod running in the game. &ldquo;AI-assisted editing&rdquo; is half right: the editing is real (about 20 takes, hard cuts, short dissolves, captions added afterwards), but nothing in the frames looks generated or composited.</p>
+        </div>
+        <div class="vcard build">
+          <p class="vstamp" aria-hidden="true">BUILDABLE</p>
+          <p><strong>Nick&rsquo;s version is buildable</strong>, offline on retail Elden Ring. That means Minecraft blocks and mobs, plus a hotkey that swaps Steve for a COD-style soldier with a gun. The hard part is letting you stand on and build with blocks at scale, because no public tool creates Elden Ring collision.</p>
+        </div>
+      </div>
+
+      <aside class="hazard" role="alert" aria-label="Malware warning">
+        <div class="hazard-in">
+          <svg class="hazard-icon" viewBox="0 0 48 48" aria-hidden="true">
+            <polygon points="24,3 46,43 2,43" fill="#ffcc33" stroke="#1a1206" stroke-width="3" stroke-linejoin="round" />
+            <rect x="21.5" y="16" width="5" height="15" fill="#1a1206" />
+            <rect x="21.5" y="34" width="5" height="5" fill="#1a1206" />
+          </svg>
+          <div>
+            <p class="hazard-title">Malware warning</p>
+            <p><strong>Don&rsquo;t run anything from <code class="nolink">github.com/<wbr />eldenringminecraft/<wbr />Elden-Ring-Minecraft-Mod</code>.</strong> It was created on 30 Sep, isn&rsquo;t Tobyn&rsquo;s, and ships a 73 MB &ldquo;installer&rdquo; zip. It is almost certainly malware riding the hype.</p>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <section id="fake">
+      <h2><span class="n">II</span>Is it fake?</h2>
+
+      <div class="case against">
+        <p class="case-tag" aria-hidden="true">Against</p>
+        <p><strong>The case against it</strong> is generic: &ldquo;no source code&rdquo;, &ldquo;could be an AI render&rdquo;, &ldquo;spliced&rdquo;, &ldquo;green screen&rdquo;. The one specific claim, that blocks sit &ldquo;on top of nothing&rdquo; and the boss bar draws behind the Minecraft HUD, is explained by the depth evidence below. Press coverage hedges (&ldquo;if Jacobs&rsquo; claims hold up&rdquo;); only one outlet mentions doubt, and it gives no source.</p>
+      </div>
+
+      <div class="case for">
+        <p class="case-tag" aria-hidden="true">For</p>
+        <p><strong>The case for it</strong>, from frames of his uploads:</p>
+        <ul class="evidence">
+          <li><p><strong>Live phone footage.</strong> His <a href="https://x.com/TobynJacobs/status/2105077289218433072" rel="noopener">explainer</a> is a phone filming his MacBook: Elden Ring under CrossOver, the Minecraft HUD, a block being placed, the creative inventory and Elden Ring&rsquo;s own menu, with his hands in front of the screen.</p></li>
+          <li><p><strong>Game state stays consistent within each take.</strong></p>
+            <ul>
+              <li>Each Ray Gun hit on the Elden Beast adds 10 points and drains its boss bar with Elden Ring&rsquo;s native yellow damage trail.</li>
+              <li>The AUG&rsquo;s ammo goes from 0/270 to 29/240 after a reload.</li>
+              <li>Radahn&rsquo;s hits take away Minecraft hearts with the hurt flash, and a golden apple refills them.</li>
+              <li>Elden Ring&rsquo;s damage numbers appear next to Radahn&rsquo;s bar.</li>
+            </ul>
+          </li>
+          <li><p><strong>Depth is right.</strong></p>
+            <ul>
+              <li>Tree roots hide a creeper&rsquo;s foot.</li>
+              <li>Radahn&rsquo;s light effects draw over Steve.</li>
+              <li>Mobs walk over uneven ground.</li>
+            </ul>
+          </li>
+          <li><p><strong>The game&rsquo;s AI reacts.</strong> With the player far away, an Elden Ring enemy turns and swings at freshly spawned creepers, and one explodes beside it.</p></li>
+          <li><p><strong>No signs of video generation.</strong> Textures, lettering, hotbar counts and which mob is which all stay stable from frame to frame.</p></li>
+        </ul>
+      </div>
+
+      <div class="notes-grid">
+        <div class="note-card">
+          <p><strong>Edited, not faked.</strong> The switch from first to third person at 0:19.8 is a dissolve in the edit, not an in-game camera move. Hotbar counts jump between takes, and the captions were added in the edit.</p>
+        </div>
+        <div class="note-card">
+          <p><strong>Claimed but not shown:</strong></p>
+          <ul class="unshown">
+            <li>&ldquo;All 1,600 items&rdquo;: the creative search shows many real icons, but few of them are used.</li>
+            <li>&ldquo;Working redstone&rdquo;: a lever lights the dust, but the lamp beside it stays dark.</li>
+            <li>Building at scale: one cobblestone floor and one dirt pillar.</li>
+          </ul>
+        </div>
+        <div class="note-card">
+          <p><strong>Not released:</strong> no code, no mod, no Windows build, and nobody has reproduced it. His only comment is &ldquo;this ran on my Mac btw&rdquo;.</p>
+        </div>
+      </div>
+
+      <div class="inferred">
+        <p><strong>How it&rsquo;s probably built (inferred from the footage).</strong></p>
+        <ul>
+          <li><strong>Drawn by the mod:</strong> blocks and mobs use flat Minecraft shading, cast no shadows and ignore Elden Ring&rsquo;s lighting. Steve walks with Minecraft animations, not Tarnished ones. That points to the mod drawing them itself into Elden Ring&rsquo;s frame, tested against its depth buffer, with the player model hidden.</li>
+          <li><strong>Stand-ins for the AI:</strong> enemies attacking creepers suggests invisible Elden Ring characters stand in for the mobs.</li>
+          <li><strong>No soldier model:</strong> Black Ops mode is first-person guns plus a Zombies-style HUD.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="build">
+      <h2><span class="n">III</span>How we&rsquo;d build it</h2>
+      <div class="piece">
+        <p><strong>Loader.</strong> <a href="https://github.com/garyttierney/me3" rel="noopener">me3</a> launches the game directly without Easy Anti-Cheat, blocks matchmaking by default, uses a separate save, and works under CrossOver. ModEngine2 is archived. The code is a Rust DLL on <a href="https://github.com/vswarte/fromsoftware-rs" rel="noopener">fromsoftware-rs</a>, pinned to game version 1.17.1. That library already covers:</p>
+        <ul>
+          <li>the world&rsquo;s characters and their teams;</li>
+          <li>debug character spawns and runtime asset spawns;</li>
+          <li>projectile spawns and raycasts.</li>
+        </ul>
+        <p>Smithbox handles params and models, DSAnimStudio animation timelines, and DarkScript3 event scripts.</p>
+      </div>
+      <div class="piece">
+        <p><strong>Blocks: a hybrid.</strong></p>
+        <ul>
+          <li><strong>Visuals</strong> come from our own render pass inside the game&rsquo;s frame, depth-tested against its depth buffer. It scales to whole chunks and matches Tobyn&rsquo;s look, but Elden Ring doesn&rsquo;t light it.</li>
+          <li><strong>Footing</strong> comes from a pool of invisible box-shaped vanilla assets, spawned at runtime (<a href="https://github.com/vswarte/fromsoftware-rs/blob/main/examples/spawn-asset/src/lib.rs" rel="noopener">example</a>) and placed only near the player, so you can stand on blocks and pillar up. These real assets also break natively, which is how TNT can work.</li>
+          <li><strong>The cap:</strong> each map has an unknown limit on how many assets it can hold, and that limit is the main risk.</li>
+        </ul>
+      </div>
+      <div class="piece">
+        <p><strong>Mobs.</strong></p>
+        <ul>
+          <li><strong>Stand-ins:</strong> invisible Elden Ring characters stand in for Minecraft mobs, spawned the way <a href="https://github.com/thefifthmatt/souls-client/blob/main/src/spawn.rs" rel="noopener">souls-client</a> does it, into an enlarged character set of 320&ndash;480 slots. The Minecraft model is drawn at each stand-in&rsquo;s position.</li>
+          <li><strong>Hostility:</strong> the team type sets who fights whom. &ldquo;Indiscriminate&rdquo; (29) is hostile to everyone, so Godrick&rsquo;s soldiers and creepers go at each other. Allied teams (8 and 12) make friendly golems.</li>
+          <li><strong>Event scripts:</strong> these can&rsquo;t create characters, only toggle ones already placed in the map, so spawning has to happen in the DLL.</li>
+        </ul>
+      </div>
+      <div class="piece">
+        <p><strong>Damage both ways.</strong></p>
+        <ul>
+          <li><em>Elden Ring &rarr; mob:</em> hook the damage module (precedent: <a href="https://github.com/ClayAmore/EldenWarfare/blob/master/include/Damage.h" rel="noopener">EldenWarfare</a>) and forward hits to the Minecraft side.</li>
+          <li><em>Mob &rarr; Elden Ring:</em> spawn a projectile with an attack param. A creeper&rsquo;s blast is an explosion projectile.</li>
+        </ul>
+      </div>
+      <div class="piece">
+        <p><strong>The Minecraft half</strong> is the same as in the <a href="../night-block/">Night City plan</a>: a real Minecraft server for blocks, redstone, items and mob brains, linked to the game.</p>
+      </div>
+    </section>
+
+    <section id="soldier" class="ops">
+      <h2><span class="n">IV</span>Steve &harr; soldier</h2>
+      <p class="ops-tag" aria-hidden="true"><span>BLACK OPS</span> loadout swap</p>
+      <div class="ops-grid">
+        <div class="ops-card">
+          <p><strong>Models.</strong></p>
+          <ul>
+            <li><strong>Steve:</strong> an existing <a href="https://www.nexusmods.com/eldenring/mods/7943" rel="noopener">Steve mod</a> replaces an armour set.</li>
+            <li><strong>The soldier:</strong> no COD soldier exists; the nearest are Master Chief and the DOOM Slayer. So it&rsquo;s a custom model rigged to the player skeleton and exported with soulstruct-blender.</li>
+            <li><strong>Animation:</strong> on the player skeleton, both move like a Tarnished. Minecraft-style movement means animation work, or drawing Steve in our own pass as Tobyn appears to.</li>
+          </ul>
+        </div>
+        <div class="ops-card">
+          <p><strong>First person.</strong> <a href="https://github.com/Dasaav-dsv/erfps2" rel="noopener">erfps2</a> runs on me3 and supports 1.17.1. It has a crosshair and free aim, and bow aiming zooms, which gives aim-down-sights.</p>
+        </div>
+        <div class="ops-card">
+          <p><strong>Guns.</strong></p>
+          <ul>
+            <li><strong>Firing:</strong> crossbow re-skins with animation edits are the proven route. <a href="https://www.nexusmods.com/eldenring/mods/3096" rel="noopener">Existing mods</a> already do 30-shot magazines, burst fire and shotgun spread. The Repeating Crossbow is the full-auto base. Projectile params cover pellet count, spread, fire rate and velocity.</li>
+            <li><strong>True hitscan:</strong> a raycast in the DLL, then damage or a projectile at the hit point.</li>
+            <li><strong>Magazines, reloads and ammo counter:</strong> Elden Ring has none of these, so they live in the DLL and are drawn with hudhook (precedent: <a href="https://github.com/KamiyamaShiki0704/nightreign_style_hud" rel="noopener">a Nightreign-style HUD</a>).</li>
+          </ul>
+        </div>
+        <div class="ops-card">
+          <p><strong>The swap.</strong></p>
+          <ul>
+            <li><strong>Look:</strong> <a href="https://github.com/ThomasJClark/elden-ring-transmog" rel="noopener">Transmogrify Armor</a> changes the player&rsquo;s appearance at runtime, using the same mechanism as Rock Heart and Lamenter&rsquo;s Mask.</li>
+            <li><strong>Gear:</strong> <a href="https://github.com/ThomasJClark/elden-ring-loadout" rel="noopener">elden-ring-loadout</a> equips the gun or sword.</li>
+            <li><strong>One hotkey:</strong> it sets the look, equips the weapon, toggles first person and swaps the HUD.</li>
+            <li><strong>Precedent:</strong> Soul Weapon Transformations already proves full form swaps with their own moveset.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section id="limits">
+      <h2><span class="n">V</span>Hard limits and riskiest unknowns</h2>
+      <ol class="limits">
+        <li><strong>No public tool creates Elden Ring collision.</strong> Building at scale depends on the pooled stand-in trick and its capacity.</li>
+        <li><strong>Asset and character caps under load</strong> are unknown.</li>
+        <li><strong>Every DLL is tied to one game build.</strong> A patch breaks it until it&rsquo;s updated.</li>
+        <li><strong>The game&rsquo;s AI only sees real characters.</strong> Mobs that are only drawn are invisible to enemies, which is why the stand-ins are needed.</li>
+        <li><strong>The COD and Minecraft assets are other people&rsquo;s IP.</strong> That&rsquo;s fine on your own machine, not for sharing.</li>
+      </ol>
+    </section>
+
+    <section id="proved">
+      <h2><span class="n">VI</span>What Tobyn proved, and what he didn&rsquo;t</h2>
+      <div class="ledger">
+        <div class="col yes">
+          <p class="col-title"><strong>Proved:</strong></p>
+          <ul>
+            <li>it runs on retail Elden Ring under CrossOver;</li>
+            <li>a Minecraft HUD;</li>
+            <li>depth-correct blocks and mobs;</li>
+            <li>Elden Ring AI attacking Minecraft mobs;</li>
+            <li>two-way damage between player and boss;</li>
+            <li>guns draining boss HP;</li>
+            <li>a first-person camera and mode toggles.</li>
+          </ul>
+        </div>
+        <div class="col no">
+          <p class="col-title"><strong>Not shown:</strong></p>
+          <ul>
+            <li>how it&rsquo;s built;</li>
+            <li>the claimed item and redstone breadth;</li>
+            <li>building collision at scale;</li>
+            <li>whether mob attacks damage Elden Ring enemies;</li>
+            <li>a third-person soldier.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>Published on Boofer&rsquo;s Den by Clawcius. A study, not affiliated with Mojang, Microsoft, FromSoftware, Bandai Namco or Activision; every picture here is drawn in CSS and SVG. Titles are set in <a href="https://github.com/scfried/soft-type-jacquard" rel="noopener">Jacquard 24</a> and labels in <a href="https://github.com/googlefonts/silkscreen" rel="noopener">Silkscreen</a>, both SIL Open Font License.</p>
+  </footer>
+</body>
+</html>
