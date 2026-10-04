@@ -44,13 +44,15 @@
 <li><a href="../bosses/ghost-pepper.html">Ghost Pepper</a></li>
 <li><a href="../bosses/ginger-shade.html">Ginger Shade</a></li>
 </ul></details>
-<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">1</span></summary><ul>
+<li><a href="../encounters/burrow-encounter.html">Burrow Encounter</a></li>
 </ul></details>
-<details><summary><a href="../levels/index.html">Levels</a><span class="count">4</span></summary><ul>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">5</span></summary><ul>
 <li><a href="../levels/title-sequence.html">Title Sequence</a></li>
 <li><a href="../levels/arena.html">Arena</a></li>
 <li><a href="../levels/garden-intro.html">Garden Intro</a></li>
 <li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+<li><a href="../levels/level-parts.html">Level Parts</a></li>
 </ul></details>
 <details open><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
 <li><a href="../biomes/warm-burrow.html" aria-current="page">Warm Burrow</a></li>
@@ -71,7 +73,7 @@
 <p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
 </aside>
 <main>
-<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../biomes/index.html">Biomes</a></p><h1>Warm Burrow</h1><aside class="infobox"><div class="infobox-title">Warm Burrow</div><figure><img src="../media/biome-warm-burrow.png" alt="Warm Burrow"><figcaption>Warm Burrow ground, root ledges and amber glow-caps, with carrot-sized stand-ins for scale</figcaption></figure><dl><div><dt>Mood</dt><dd>Cosy, friendly, safe</dd></div><div><dt>Key colours</dt><dd>Warm brown soil (<code>8b5636</code> to <code>2e1810</code>), carrot orange (<code>f58b2c</code>), amber (<code>ffb246</code>), plum-brown distance</dd></div><div><dt>Glow</dt><dd>Mushroom gills and cap spots, a warm cream-amber</dd></div><div><dt>Parallax layers</dt><dd>Three backdrop layers plus a blurred foreground</dd></div><div><dt>Used in</dt><dd><a href="../levels/burrow-test.html">Burrow Test</a>, <a href="../levels/garden-intro.html">Garden Intro</a>, <span class="redlink" title="This page doesn't exist yet">Burrow Encounter</span></dd></div></dl></aside><p class="lead">A cosy rabbit warren of warm brown soil just under the garden, with carrot taproots poking through and amber glow-caps for light.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#look">Look</a></li><li><a href="#palette">Palette</a></li><li><a href="#what-it-draws">What it draws</a></li><li><a href="#using-it-in-a-level">Using it in a level</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#mushroom-platform-shroom">Mushroom platform (Shroom)</a></li></ol></li></ol></nav><h2 id="look">Look</h2>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../biomes/index.html">Biomes</a></p><h1>Warm Burrow</h1><aside class="infobox"><div class="infobox-title">Warm Burrow</div><figure><img src="../media/biome-warm-burrow.png" alt="Warm Burrow"><figcaption>Warm Burrow ground, root ledges and amber glow-caps, with carrot-sized stand-ins for scale</figcaption></figure><dl><div><dt>Mood</dt><dd>Cosy, friendly, safe</dd></div><div><dt>Key colours</dt><dd>Warm brown soil (<code>8b5636</code> to <code>2e1810</code>), carrot orange (<code>f58b2c</code>), amber (<code>ffb246</code>), plum-brown distance</dd></div><div><dt>Glow</dt><dd>Mushroom gills and cap spots, a warm cream-amber</dd></div><div><dt>Parallax layers</dt><dd>Three backdrop layers plus a blurred foreground</dd></div><div><dt>Used in</dt><dd><a href="../levels/burrow-test.html">Burrow Test</a>, <a href="../levels/garden-intro.html">Garden Intro</a>, <a href="../encounters/burrow-encounter.html">Burrow Encounter</a></dd></div></dl></aside><p class="lead">A cosy rabbit warren of warm brown soil just under the garden, with carrot taproots poking through and amber glow-caps for light.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#look">Look</a></li><li><a href="#palette">Palette</a></li><li><a href="#what-it-draws">What it draws</a></li><li><a href="#using-it-in-a-level">Using it in a level</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#mushroom-platform-shroom">Mushroom platform (Shroom)</a></li></ol></li></ol></nav><h2 id="look">Look</h2>
 <p>The Warm Burrow is the first room of the dungeon: a rabbit warren dug just under the garden. It
 should feel like a safe, cosy place to start. The soil uses the same browns as the surface's dirt
 blocks, so dropping down a hole into it feels continuous rather than like a level change.</p>
@@ -168,7 +170,7 @@ silhouettes.</p>
 <h2 id="using-it-in-a-level">Using it in a level</h2>
 <ul>
 <li>On a Solid, set <code>look</code> to <strong>BURROW</strong>. On a Plank, set <code>look</code> to <strong>BURROW</strong>. On a
-  Shroom, set <code>biome</code> to <strong>BURROW</strong> (the default). See <span class="redlink" title="This page doesn't exist yet">Level Parts</span>.</li>
+  Shroom, set <code>biome</code> to <strong>BURROW</strong> (the default). See <a href="../levels/level-parts.html">Level Parts</a>.</li>
 <li>The backdrop and foreground are baked images in <code>art/baked/burrow_*</code>: <code>burrow_bg_far</code>,
   <code>burrow_bg_mid</code>, <code>burrow_bg_near</code>, and the foreground pieces <code>burrow_fg_hang</code>, <code>_taproot</code>,
   <code>_curtain</code>, <code>_hang_worm</code>, <code>_side</code> and <code>_bottom</code>, each with a <code>_blur</code> version. Use the blurred ones in

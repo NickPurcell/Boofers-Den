@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Burrow Encounter | iCarrot Wiki</title>
+<meta name="description" content="The first dungeon encounter, in the Warm Burrow. Clear three sealed boss rooms, carry each boss&#x27;s orb back to the hub, then bring down The Ginger to open the way deeper.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">4</span></summary><ul>
+<li><a href="../carrot/movement.html">Movement</a></li>
+<li><a href="../carrot/dash.html">Dash</a></li>
+<li><a href="../carrot/health.html">Health</a></li>
+<li><a href="../carrot/appearance.html">Appearance</a></li>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">5</span></summary><ul>
+<li><a href="../weapons/revolver.html">Revolver</a></li>
+<li><a href="../weapons/smg.html">SMG</a></li>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/grenade.html">Energy ball</a></li>
+<li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
+</ul></details>
+<details><summary><a href="../enemies/index.html">Enemies</a><span class="count">7</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+<li><a href="../enemies/pumpkin.html">Jacko</a></li>
+<li><a href="../enemies/asparagus.html">Spear-Gus</a></li>
+<li><a href="../enemies/mushroom.html">Shroom</a></li>
+<li><a href="../enemies/pepper.html">Hot Pepper</a></li>
+<li><a href="../enemies/corn.html">Big Cobber</a></li>
+<li><a href="../enemies/potato.html">Potato Bull</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">5</span></summary><ul>
+<li><a href="../bosses/ginger.html">The Ginger</a></li>
+<li><a href="../bosses/sweet-potato.html">Sweet Potato</a></li>
+<li><a href="../bosses/red-corn.html">Red Corn</a></li>
+<li><a href="../bosses/ghost-pepper.html">Ghost Pepper</a></li>
+<li><a href="../bosses/ginger-shade.html">Ginger Shade</a></li>
+</ul></details>
+<details open><summary><a href="../encounters/index.html">Encounters</a><span class="count">1</span></summary><ul>
+<li><a href="../encounters/burrow-encounter.html" aria-current="page">Burrow Encounter</a></li>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">5</span></summary><ul>
+<li><a href="../levels/title-sequence.html">Title Sequence</a></li>
+<li><a href="../levels/arena.html">Arena</a></li>
+<li><a href="../levels/garden-intro.html">Garden Intro</a></li>
+<li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+<li><a href="../levels/level-parts.html">Level Parts</a></li>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
+<li><a href="../biomes/warm-burrow.html">Warm Burrow</a></li>
+<li><a href="../biomes/overgrown-vault.html">Overgrown Vault</a></li>
+<li><a href="../biomes/glowshroom-grotto.html">Glowshroom Grotto</a></li>
+<li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
+<li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/co-op.html">Co-op</a></li>
+<li><a href="../mechanics/reloading.html">Reloading</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
+<li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
+<li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../encounters/index.html">Encounters</a></p><h1>Burrow Encounter</h1><aside class="infobox"><div class="infobox-title">Burrow Encounter</div><figure><img src="../media/burrow-hub.png" alt="Burrow Encounter"><figcaption>The hub. The three pedestals glow faintly in their key colours, the root gate is shut, and The Ginger waits in its shield.</figcaption></figure><dl><div><dt>Scene</dt><dd><code>scenes/burrow_encounter.tscn</code></dd></div><div><dt>Biome</dt><dd><a href="../biomes/warm-burrow.html">Warm Burrow</a></dd></div><div><dt>Players</dt><dd>1 to 3</dd></div><div><dt>Room bosses</dt><dd><a href="../bosses/sweet-potato.html">Sweet Potato</a>, <a href="../bosses/red-corn.html">Red Corn</a>, <a href="../bosses/ghost-pepper.html">Ghost Pepper</a></dd></div><div><dt>Main boss</dt><dd><a href="../bosses/ginger.html">The Ginger</a></dd></div><div><dt>Status</dt><dd>Playable, buffs still to design</dd></div></dl></aside><p class="lead">The first dungeon encounter, in the Warm Burrow. Clear three sealed boss rooms, carry each boss&#x27;s orb back to the hub, then bring down The Ginger to open the way deeper.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#overview">Overview</a></li><li><a href="#the-layout">The layout</a></li><li><a href="#a-boss-room">A boss room</a></li><li><a href="#orbs-and-buffs">Orbs and buffs</a></li><li><a href="#the-ginger-and-the-gate">The Ginger and the gate</a></li><li><a href="#the-whole-loop">The whole loop</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#known-gaps">Known gaps</a></li><li><a href="#building-it">Building it</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#encounter">Encounter</a></li><li><a href="#key-colours-and-buff-names">Key colours and buff names</a></li><li><a href="#boss-room">Boss room</a></li><li><a href="#room-spawns">Room spawns</a></li></ol></li></ol></nav><h2 id="overview">Overview</h2>
+<p>The squad starts in a hub of glowing toadstools, where three empty pedestals glow faintly in red,
+green and blue, and <a href="../bosses/ginger.html">The Ginger</a> hovers overhead in a shield bubble. A junction shaft east of the
+hub leads to three boss rooms stacked one above the other, each lit by torches in its key's colour.
+Beat a room's boss and it drops an orb in that colour. Carry the orb back to its pedestal and part of
+The Ginger's shield falls. Once The Ginger is down, the floor gate in the hub opens onto the next
+part of the dungeon.</p>
+<h2 id="the-layout">The layout</h2>
+<ul>
+<li><strong>The hub</strong> (west). The players drop in here. It holds the three pedestals, a few mushroom
+  platforms, and the closed floor gate.</li>
+<li><strong>The junction shaft.</strong> A bridge runs straight from the hub to the middle room, and you can drop
+  through it. Zigzag branch ledges climb to the top room and drop to the bottom one.</li>
+<li><strong>The boss rooms</strong> (east), each behind a root door:</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Room</th>
+<th>Key</th>
+<th>Boss</th>
+<th>Adds</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Top</td>
+<td>green</td>
+<td><a href="../bosses/sweet-potato.html">Sweet Potato</a></td>
+<td>Zombies on the open floor, which is left clear for its charges</td>
+</tr>
+<tr>
+<td>Middle</td>
+<td>red</td>
+<td><a href="../bosses/red-corn.html">Red Corn</a></td>
+<td>Asparagus snipers on perches by the ceiling, and enemies bursting up out of the floor</td>
+</tr>
+<tr>
+<td>Bottom</td>
+<td>blue</td>
+<td><a href="../bosses/ghost-pepper.html">Ghost Pepper</a></td>
+<td>Enemies on ledges all over the room, and more on the floor</td>
+</tr>
+</tbody>
+</table>
+<p>Each boss room is one fixed camera shot (a <a href="../levels/level-parts.html">CameraZone</a>). Everywhere else the camera
+follows you.</p>
+<h2 id="a-boss-room">A boss room</h2>
+<p><img alt="The door slams shut behind a carrot entering the middle room" src="../media/burrow-door.gif" /></p>
+<ol>
+<li><strong>The doors shut.</strong> Once a player is a little way inside a room (its trigger area, kept clear of
+   the doorway), the door slams behind them with a thud and a screen shake (strength 0.45 out of 1).</li>
+<li><strong>Everyone joins the fight.</strong> Any player who isn't already in a fight is pulled into the room
+   when its door shuts, so the squad never splits across a locked door.</li>
+<li><strong>Adds, then the boss.</strong> Each room's spawn points bring in their enemies after a short delay. Some
+   burst up out of the ground with a spray of dirt and a rumble. Adds keep coming back a while after
+   they die, for as long as the boss lives.</li>
+<li><strong>The boss falls.</strong> Its adds drop with it, the door slides open, and the boss leaves an orb on the
+   floor where it died.</li>
+</ol>
+<p>Different rooms can be fought at the same time by different players.</p>
+<p><img alt="The middle room as the fight begins: Red Corn rising on the right, a sniper on its perch, the
+door shut on the left" src="../media/burrow-boss-room.png" /></p>
+<h2 id="orbs-and-buffs">Orbs and buffs</h2>
+<ul>
+<li>Walk within 18 pixels of an orb to pick it up. It floats over your head, and its buff's
+  name shows above your ammo counter.</li>
+<li><strong>You can carry only one orb at a time.</strong> A player already carrying one walks straight past
+  another.</li>
+<li>If you go down, or leave the game, you drop the orb where you were.</li>
+<li>Stand on the pedestal of the matching colour to place it. The pedestal's runes blaze, the orb
+  hovers above it, and a chord rings out.</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Orb</th>
+<th>Buff</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Red, from <a href="../bosses/red-corn.html">Red Corn</a></td>
+<td>KERNEL FURY</td>
+</tr>
+<tr>
+<td>Green, from <a href="../bosses/sweet-potato.html">Sweet Potato</a></td>
+<td>SPUD RUSH</td>
+</tr>
+<tr>
+<td>Blue, from <a href="../bosses/ghost-pepper.html">Ghost Pepper</a></td>
+<td>GHOST HEAT</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Work in progress</p>
+<p>The buff names are stand-ins, and carrying an orb doesn't change anything yet beyond the orb
+over your head and the name on the HUD.</p>
+</div>
+<h2 id="the-ginger-and-the-gate">The Ginger and the gate</h2>
+<p><a href="../bosses/ginger.html">The Ginger</a> lives in the hub and is immune at first. Each orb placed on a pedestal unlocks part of
+its health, so the squad has to clear the boss rooms before it can be beaten. While the rooms are
+being fought, a <a href="../bosses/ginger-shade.html">Ginger Shade</a> haunts one of them. When The Ginger dies, the floor gate slides open
+with a big screen shake (strength 0.8 out of 1), and the squad drops through into the chamber below.</p>
+<h2 id="the-whole-loop">The whole loop</h2>
+<ol>
+<li>The squad drops into the hub. <a href="../bosses/ginger.html">The Ginger</a> appears, shielded.</li>
+<li>Clear the three boss rooms, in any order, together or split up.</li>
+<li>Bring each orb back to its pedestal, one per player at a time.</li>
+<li>Beat The Ginger as its shield falls away.</li>
+<li>Drop through the opened gate.</li>
+</ol>
+<h2 id="co-op">Co-op</h2>
+<p>The host decides everything: who is in a room, when doors shut, who picks up an orb, when one is
+placed, and when the gate opens. It tells every machine, so doors, orbs, pedestals and the gate look
+the same for everyone.</p>
+<ul>
+<li><strong>Joining late:</strong> a new player is sent the whole state (which doors are shut, where every orb is,
+  which pedestals are lit, whether the gate is open, which enemies are the bosses), so they see the
+  encounter as it stands.</li>
+<li><strong>Squad wipe:</strong> when everyone is down, the level restarts for everyone and the whole encounter
+  starts over, bosses included.</li>
+</ul>
+<h2 id="known-gaps">Known gaps</h2>
+<ul>
+<li>What each buff does is still to be designed.</li>
+<li>There are no checkpoints: a wipe restarts the whole encounter, even bosses already beaten.</li>
+<li>A player who joins mid-fight sees the shut doors but isn't pulled into the fight.</li>
+<li>The room snipers are regular asparagus for now, not a dedicated sniper enemy.</li>
+<li>Enemies bursting from the ground have the dirt spray but no climbing-out animation yet.</li>
+<li>The chamber beyond the gate is empty: the next encounter goes there.</li>
+<li>The doors, gate and torches are simple code-drawn pieces, and the hub could use more set dressing.</li>
+</ul>
+<h2 id="building-it">Building it</h2>
+<p>The encounter is laid out in the scene, so it can be reshaped in the 2D editor:</p>
+<ul>
+<li>An <code>Encounter</code> node runs it. It names the gate, the hub area and the main boss.</li>
+<li>Each boss room is a <code>BossRoom</code> node with its size, trigger area, entry point (where pulled-in
+  players appear), key and doors.</li>
+<li>Inside each room, <code>RoomSpawn</code> markers set what comes in, where, when, with how much health, and
+  whether it bursts out of the ground. One per room is its <code>BOSS</code>.</li>
+<li>The doors, gate, pedestals and torches are <a href="../levels/level-parts.html">Level Parts</a>.</li>
+</ul>
+<h2 id="tunable-parameters">Tunable parameters</h2>
+<p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
+
+<h3 id="encounter">Encounter</h3>
+<p class="params-src">Edit <code>scripts/encounter/encounter.gd</code> (script defaults; a scene or resource may override them)</p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>gate</code></td><td class="val"><code></code></td><td class="rng"></td><td>The floor gate that opens when every pedestal is lit (or, with a main_boss, when it dies).</td></tr><tr><td><code>hub</code></td><td class="val">0 x 0 at (0, 0)</td><td class="rng"></td><td>The hub, where the pedestals are and the main boss lives (world pixels). Players start in it.</td></tr><tr><td><code>main_boss</code></td><td class="val"><em>(empty)</em></td><td class="rng"></td><td>The encounter&#x27;s main boss (a key of Level.KINDS), or &quot;&quot; for none. It&#x27;s spawned once, the first time a player is in the hub, and the gate then waits for it to die instead of for the third pedestal.</td></tr><tr><td><code>main_boss_at</code></td><td class="val"><code>Vector2.ZERO</code></td><td class="rng"></td><td>Where the main boss appears (world pixels).</td></tr><tr><td><code>palette</code></td><td class="val"><code>preload(&quot;res://styles/burrow_keys.tres&quot;)</code></td><td class="rng"></td><td>The key colours, shared with the torches and pedestals.</td></tr><tr><td><code>pickup_radius</code></td><td class="val">18</td><td class="rng">4 to 80</td><td>How close (pixels) a player has to get to a buff on the ground to pick it up.</td></tr><tr><td><code>hud_lift</code></td><td class="val">24</td><td class="rng">0 to 120</td><td>Where the carried buff shows on the HUD: this many game pixels above the bottom-left weapon HUD.</td></tr><tr><td><code>carry_height</code></td><td class="val">58</td><td class="rng">0 to 120</td><td>How high over its carrier&#x27;s feet a carried buff floats (pixels).</td></tr><tr><td><code>bob</code></td><td class="val">2</td><td class="rng">0 to 10</td><td>How far a buff on the ground bobs up and down (pixels).</td></tr><tr><td><code>slam_shake</code></td><td class="val">0.45</td><td class="rng">0 to 1</td><td>Screen shake when a room&#x27;s doors slam shut (0..1).</td></tr><tr><td><code>gate_shake</code></td><td class="val">0.8</td><td class="rng">0 to 1</td><td>Screen shake when the gate opens (0..1).</td></tr><tr class="group"><th colspan="4">Stand-in boss label</th></tr><tr><td><code>wip_label_color</code></td><td class="val"><span class="swatch" style="background:#ff8a6a"></span><code>#ff8a6a</code></td><td class="rng"></td><td>The label over a stand-in boss (&quot;WIP&quot; until the real boss exists; see WIP.md).</td></tr><tr><td><code>wip_label_height</code></td><td class="val">18</td><td class="rng">0 to 60</td><td>How far above the boss&#x27;s head the label sits (pixels).</td></tr></tbody></table></div>
+
+<h3 id="key-colours-and-buff-names">Key colours and buff names</h3>
+<p class="params-src">Edit <a href="../tuning/burrow-keys.html"><code>styles/burrow_keys.tres</code></a> &middot; fields defined in <code>scripts/encounter/key_palette.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>red</code></td><td class="val"><span class="swatch" style="background:#ff4a3a"></span><code>#ff4a3a</code></td><td class="rng"></td><td>The red key&#x27;s colour (torches, buff, pedestal).</td></tr><tr><td><code>green</code></td><td class="val"><span class="swatch" style="background:#6af04a"></span><code>#6af04a</code></td><td class="rng"></td><td>The green key&#x27;s colour.</td></tr><tr><td><code>blue</code></td><td class="val"><span class="swatch" style="background:#4aa8ff"></span><code>#4aa8ff</code></td><td class="rng"></td><td>The blue key&#x27;s colour.</td></tr><tr><td><code>glow</code></td><td class="val">2.4</td><td class="rng">0.5 to 6</td><td>How brightly flames, buffs and lit pedestals glow (linear; above 1 blooms).</td></tr><tr><td><code>dim_glow</code></td><td class="val">1.1 <span class="default">script default 0.6</span></td><td class="rng">0 to 2</td><td>How brightly an unlit pedestal&#x27;s runes glow, as a hint of where things go.</td></tr><tr class="group"><th colspan="4">Buff names</th></tr><tr><td><code>red_buff</code></td><td class="val">KERNEL FURY</td><td class="rng"></td><td>What carrying the red orb is called (shown above the ammo; a stand-in, see WIP.md).</td></tr><tr><td><code>green_buff</code></td><td class="val">SPUD RUSH</td><td class="rng"></td><td>What carrying the green orb is called.</td></tr><tr><td><code>blue_buff</code></td><td class="val">GHOST HEAT</td><td class="rng"></td><td>What carrying the blue orb is called.</td></tr></tbody></table></div>
+
+<h3 id="boss-room">Boss room</h3>
+<p class="params-src">Edit <code>scripts/encounter/boss_room.gd</code> (script defaults; a scene or resource may override them)</p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>size</code></td><td class="val">(1120, 630)</td><td class="rng"></td><td>The room&#x27;s box (pixels from the node), used to tell who&#x27;s inside it.</td></tr><tr><td><code>trigger</code></td><td class="val">920 x 630 at (200, 0)</td><td class="rng"></td><td>Crossing into this box (room-local) shuts the doors. Keep it clear of the doorway.</td></tr><tr><td><code>entry</code></td><td class="val">(120, 600)</td><td class="rng"></td><td>Where stragglers are pulled in to when the doors shut (room-local, feet).</td></tr><tr><td><code>key</code></td><td class="val"><code>KeyPalette.Key.RED</code></td><td class="rng"></td><td>Which key&#x27;s buff the boss drops (match the room&#x27;s torches and a hub Pedestal).</td></tr><tr><td><code>doors</code></td><td class="val"><code>[]</code></td><td class="rng"></td><td>The doors that shut while the fight&#x27;s on.</td></tr></tbody></table></div>
+
+<h3 id="room-spawns">Room spawns</h3>
+<p class="params-src">Edit <code>scripts/encounter/room_spawn.gd</code> (script defaults; a scene or resource may override them)</p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>role</code></td><td class="val"><code>Role.ADD</code></td><td class="rng"></td><td>An add, or the room&#x27;s boss.</td></tr><tr><td><code>kind</code></td><td class="val">zombie</td><td class="rng"></td><td>Which enemy comes in (a key of Level.KINDS). Bosses are stand-ins for now (see WIP.md).</td></tr><tr><td><code>hp_scale</code></td><td class="val">1</td><td class="rng">0.1 to 50</td><td>Its health, times the kind&#x27;s usual (bosses are tougher).</td></tr><tr><td><code>delay</code></td><td class="val">1</td><td class="rng">0 to 60</td><td>Seconds after the doors shut before it first arrives.</td></tr><tr><td><code>respawn</code></td><td class="val">8</td><td class="rng">0 to 60</td><td>ADD only: seconds after it dies before another comes in (0 = just the once).</td></tr><tr><td><code>emerge</code></td><td class="val">No</td><td class="rng"></td><td>It bursts up out of the ground (a spray of dirt and a rumble) rather than just walking in.</td></tr><tr><td><code>boss_name</code></td><td class="val"><em>(empty)</em></td><td class="rng"></td><td>BOSS only: a stand-in boss shows &quot;WIP: &lt;this&gt;&quot; over it; leave it empty for a real boss.</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>

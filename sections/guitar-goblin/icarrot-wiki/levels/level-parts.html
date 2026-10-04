@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Level Parts | iCarrot Wiki</title>
+<meta name="description" content="The building blocks every level is made of, placed and tuned in the Godot 2D editor. Ground, ledges, mushrooms, doors, pedestals, torches, camera shots, spawn markers and props.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">4</span></summary><ul>
+<li><a href="../carrot/movement.html">Movement</a></li>
+<li><a href="../carrot/dash.html">Dash</a></li>
+<li><a href="../carrot/health.html">Health</a></li>
+<li><a href="../carrot/appearance.html">Appearance</a></li>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">5</span></summary><ul>
+<li><a href="../weapons/revolver.html">Revolver</a></li>
+<li><a href="../weapons/smg.html">SMG</a></li>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/grenade.html">Energy ball</a></li>
+<li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
+</ul></details>
+<details><summary><a href="../enemies/index.html">Enemies</a><span class="count">7</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+<li><a href="../enemies/pumpkin.html">Jacko</a></li>
+<li><a href="../enemies/asparagus.html">Spear-Gus</a></li>
+<li><a href="../enemies/mushroom.html">Shroom</a></li>
+<li><a href="../enemies/pepper.html">Hot Pepper</a></li>
+<li><a href="../enemies/corn.html">Big Cobber</a></li>
+<li><a href="../enemies/potato.html">Potato Bull</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">5</span></summary><ul>
+<li><a href="../bosses/ginger.html">The Ginger</a></li>
+<li><a href="../bosses/sweet-potato.html">Sweet Potato</a></li>
+<li><a href="../bosses/red-corn.html">Red Corn</a></li>
+<li><a href="../bosses/ghost-pepper.html">Ghost Pepper</a></li>
+<li><a href="../bosses/ginger-shade.html">Ginger Shade</a></li>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">1</span></summary><ul>
+<li><a href="../encounters/burrow-encounter.html">Burrow Encounter</a></li>
+</ul></details>
+<details open><summary><a href="../levels/index.html">Levels</a><span class="count">5</span></summary><ul>
+<li><a href="../levels/title-sequence.html">Title Sequence</a></li>
+<li><a href="../levels/arena.html">Arena</a></li>
+<li><a href="../levels/garden-intro.html">Garden Intro</a></li>
+<li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+<li><a href="../levels/level-parts.html" aria-current="page">Level Parts</a></li>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
+<li><a href="../biomes/warm-burrow.html">Warm Burrow</a></li>
+<li><a href="../biomes/overgrown-vault.html">Overgrown Vault</a></li>
+<li><a href="../biomes/glowshroom-grotto.html">Glowshroom Grotto</a></li>
+<li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
+<li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/co-op.html">Co-op</a></li>
+<li><a href="../mechanics/reloading.html">Reloading</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
+<li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
+<li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../levels/index.html">Levels</a></p><h1>Level Parts</h1><aside class="infobox"><div class="infobox-title">Level Parts</div><dl><div><dt>Where</dt><dd><code>scripts/level_parts/</code></dd></div><div><dt>Edited in</dt><dd>The Godot 2D editor</dd></div><div><dt>Used by</dt><dd>Every level</dd></div></dl></aside><p class="lead">The building blocks every level is made of, placed and tuned in the Godot 2D editor. Ground, ledges, mushrooms, doors, pedestals, torches, camera shots, spawn markers and props.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#how-levels-are-built">How levels are built</a></li><li><a href="#ground-and-platforms">Ground and platforms</a><ol><li><a href="#solid">Solid</a></li><li><a href="#plank">Plank</a></li><li><a href="#shroom">Shroom</a></li></ol></li><li><a href="#encounter-parts">Encounter parts</a><ol><li><a href="#door">Door</a></li><li><a href="#pedestal">Pedestal</a></li><li><a href="#torch">Torch</a></li></ol></li><li><a href="#camera-and-spawns">Camera and spawns</a><ol><li><a href="#camerazone">CameraZone</a></li><li><a href="#spawnpoint">SpawnPoint</a></li></ol></li><li><a href="#decoration">Decoration</a><ol><li><a href="#prop">Prop</a></li></ol></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#solid_1">Solid</a></li><li><a href="#plank_1">Plank</a></li><li><a href="#shroom_1">Shroom</a></li><li><a href="#door_1">Door</a></li><li><a href="#pedestal_1">Pedestal</a></li><li><a href="#torch_1">Torch</a></li><li><a href="#camerazone_1">CameraZone</a></li><li><a href="#spawnpoint_1">SpawnPoint</a></li><li><a href="#prop_1">Prop</a></li></ol></li></ol></nav><h2 id="how-levels-are-built">How levels are built</h2>
+<p>A level is a scene the owner edits in Godot's 2D editor, built from the parts below. Collision, the
+enemies' route map and the art all come from these parts, so moving a ledge or resizing a block
+needs no code. Every part draws its own art in code, in the game's pixel style, so it can be any
+size. The art is painted once, when the level loads. On desktop the big ground blocks paint on a
+background thread, so for the first few frames of a level they can show up blank.</p>
+<p>Parts go in the level scene's folders:</p>
+<ul>
+<li><code>Geometry/</code>: Solid, Plank, Shroom, Door and Pedestal (everything you collide with).</li>
+<li><code>Cameras/</code>: CameraZone.</li>
+<li><code>Spawns/</code>: SpawnPoint.</li>
+<li>Anywhere: Torch and Prop, which are decoration only.</li>
+</ul>
+<h2 id="ground-and-platforms">Ground and platforms</h2>
+<h3 id="solid">Solid</h3>
+<p>A block nothing passes through: ground, walls, ceilings and raised steps. Its top is walkable, and
+enemies route over it. Set its <code>size</code>. Its <code>look</code> is NONE (invisible, for walls at the edge of the
+level or ground already painted into the backdrop), the arena's grassy dirt, or one of the
+underground <a href="../biomes/index.html">biomes</a>' ground. Each block is painted across its whole area, so a big floor
+doesn't repeat.</p>
+<h3 id="plank">Plank</h3>
+<p>A one-way ledge: jump up through it from below, land on top, and press S to drop through. Set its
+<code>width</code>. Its <code>look</code> is the arena's wooden plank or a biome's branch ledge. Enemies jump up to planks,
+lunge across gaps and drop off them.</p>
+<h3 id="shroom">Shroom</h3>
+<p>A giant mushroom whose cap is a one-way platform, like a Plank, with a stem reaching down. Set the
+cap's <code>width</code>, how far the <code>stem</code> reaches, and which <code>biome</code> it belongs to. Its glowing spots and
+gills bloom.</p>
+<h2 id="encounter-parts">Encounter parts</h2>
+<p>These are used by encounters such as the <a href="../encounters/burrow-encounter.html">Burrow Encounter</a>.</p>
+<p><img alt="A boss room: its Door shut at the far left, red Torches on the walls, Planks as ledges" src="../media/burrow-boss-room.png" /></p>
+<h3 id="door">Door</h3>
+<p>A gate of lashed roots that opens and shuts. While it's shut it's a Solid; open, you walk through.
+A tall box is a door, whose bars slide up into the ceiling. A wide box is a floor gate, whose halves
+slide apart. <code>closed</code> sets how it starts: boss room doors start open, and the hub's floor gate
+starts shut. The encounter opens and shuts them for everyone at once.</p>
+<h3 id="pedestal">Pedestal</h3>
+<p>A one-way ledge with a strip of runes in its key's colour, marking where that key's orb goes. The
+runes glow faintly until the orb is placed, then blaze, and the orb hovers above the pedestal. Set
+its <code>width</code>, <code>look</code> and <code>key</code>.</p>
+<p><img alt="The hub's three Pedestals (red, green and blue runes) and the shut floor gate, a wide Door" src="../media/burrow-hub.png" /></p>
+<h3 id="torch">Torch</h3>
+<p>A wall torch burning in a key's colour, so players can tell which room holds which orb. It flickers
+and blooms, and has no collision. Set its <code>key</code>.</p>
+<p>The three key colours come from one shared palette, so the torches, pedestals and orbs always match.</p>
+<h2 id="camera-and-spawns">Camera and spawns</h2>
+<h3 id="camerazone">CameraZone</h3>
+<p>A box that gives a fixed camera shot. While your carrot is inside it, the camera stops following you
+and frames the whole box, zooming to fit it. Everywhere else the camera follows you. Each machine
+frames its own carrot, so co-op players can be in different shots. Arenas and boss rooms use one.</p>
+<h3 id="spawnpoint">SpawnPoint</h3>
+<p>A marker, only visible in the editor:</p>
+<ul>
+<li><strong>PLAYER:</strong> where a player drops in. Set its <code>slot</code> (P1, P2 or P3).</li>
+<li><strong>ENEMY:</strong> where enemies walk in. In wave levels, the outermost one on each side is used.</li>
+<li><strong>PERCH:</strong> a spot on a plank where perching enemies like the asparagus land.</li>
+</ul>
+<h2 id="decoration">Decoration</h2>
+<h3 id="prop">Prop</h3>
+<p>A decoration with no collision: a giant carrot, mushrooms on a wall, a fence. It can have a glow
+layer that blooms, and it can sway in the breeze around the point it grows from.</p>
+<h2 id="tunable-parameters">Tunable parameters</h2>
+<p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
+
+<h3 id="solid_1">Solid</h3>
+<p class="params-src">Edit <code>scripts/level_parts/solid.gd</code> (script defaults; a scene or resource may override them)</p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>size</code></td><td class="val">(64, 32)</td><td class="rng"></td><td>The block&#x27;s width and height (pixels).</td></tr><tr><td><code>look</code></td><td class="val"><code>Look.DIRT</code></td><td class="rng"></td><td>How it&#x27;s painted: invisible (NONE), the arena&#x27;s grassy dirt, or a biome&#x27;s ground.</td></tr></tbody></table></div>
+
+<h3 id="plank_1">Plank</h3>
+<p class="params-src">Edit <code>scripts/level_parts/plank.gd</code> (script defaults; a scene or resource may override them)</p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>width</code></td><td class="val">80</td><td class="rng">16 to 480</td><td>How long the plank is (pixels).</td></tr><tr><td><code>look</code></td><td class="val"><code>Look.WOOD</code></td><td class="rng"></td><td>What it&#x27;s made of: the arena&#x27;s wooden plank, or a biome&#x27;s branch ledge.</td></tr></tbody></table></div>
+
+<h3 id="shroom_1">Shroom</h3>
+<p class="params-src">Edit <code>scripts/level_parts/shroom.gd</code> (script defaults; a scene or resource may override them)</p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>width</code></td><td class="val">48</td><td class="rng">16 to 240</td><td>How wide the cap&#x27;s walking surface is, in pixels.</td></tr><tr><td><code>stem</code></td><td class="val">60</td><td class="rng">0 to 400</td><td>How far the stem reaches below the walking surface (to the ground, usually).</td></tr><tr><td><code>biome</code></td><td class="val"><code>Biome.Kind.BURROW</code></td><td class="rng"></td><td>Which underground biome&#x27;s mushroom it is (its cap, stem and glow colours).</td></tr></tbody></table></div>
+
+<h3 id="door_1">Door</h3>
+<p class="params-src">Edit <code>scripts/level_parts/door.gd</code> (script defaults; a scene or resource may override them)</p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>size</code></td><td class="val">(64, 32)</td><td class="rng"></td><td>The block&#x27;s width and height (pixels).</td></tr><tr><td><code>look</code></td><td class="val"><code>Look.DIRT</code></td><td class="rng"></td><td>How it&#x27;s painted: invisible (NONE), the arena&#x27;s grassy dirt, or a biome&#x27;s ground.</td></tr><tr><td><code>closed</code></td><td class="val">No</td><td class="rng"></td><td>Shut when the level starts (a floor gate), or open (a boss room&#x27;s door).</td></tr><tr><td><code>slide_time</code></td><td class="val">0.35</td><td class="rng">0.05 to 3</td><td>Seconds to slide fully open or shut.</td></tr><tr class="group"><th colspan="4">Colours</th></tr><tr><td><code>bar_light</code></td><td class="val"><span class="swatch" style="background:#eab06e"></span><code>#eab06e</code></td><td class="rng"></td><td>The lit side of each root bar.</td></tr><tr><td><code>bar_mid</code></td><td class="val"><span class="swatch" style="background:#c27c44"></span><code>#c27c44</code></td><td class="rng"></td><td>The bars&#x27; body.</td></tr><tr><td><code>bar_dark</code></td><td class="val"><span class="swatch" style="background:#7e4626"></span><code>#7e4626</code></td><td class="rng"></td><td>The bars&#x27; shaded side.</td></tr><tr><td><code>binding</code></td><td class="val"><span class="swatch" style="background:#5a301a"></span><code>#5a301a</code></td><td class="rng"></td><td>The vines lashing the bars together.</td></tr><tr><td><code>line</code></td><td class="val"><span class="swatch" style="background:#2a140c"></span><code>#2a140c</code></td><td class="rng"></td><td>Outlines, and the dark gaps between the bars.</td></tr></tbody></table></div>
+
+<h3 id="pedestal_1">Pedestal</h3>
+<p class="params-src">Edit <code>scripts/level_parts/pedestal.gd</code> (script defaults; a scene or resource may override them)</p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>width</code></td><td class="val">80</td><td class="rng">16 to 480</td><td>How long the plank is (pixels).</td></tr><tr><td><code>look</code></td><td class="val"><code>Look.WOOD</code></td><td class="rng"></td><td>What it&#x27;s made of: the arena&#x27;s wooden plank, or a biome&#x27;s branch ledge.</td></tr><tr><td><code>key</code></td><td class="val"><code>KeyPalette.Key.RED</code></td><td class="rng"></td><td>Which boss room&#x27;s buff goes here (and the colour of its runes).</td></tr><tr><td><code>palette</code></td><td class="val"><code>preload(&quot;res://styles/burrow_keys.tres&quot;)</code></td><td class="rng"></td><td>The key colours, shared with the torches and buffs.</td></tr><tr><td><code>orb_height</code></td><td class="val">14</td><td class="rng">0 to 60</td><td>How high above the ledge a placed buff floats (pixels).</td></tr></tbody></table></div>
+
+<h3 id="torch_1">Torch</h3>
+<p class="params-src">Edit <code>scripts/level_parts/torch.gd</code> (script defaults; a scene or resource may override them)</p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>key</code></td><td class="val"><code>KeyPalette.Key.RED</code></td><td class="rng"></td><td>Which key&#x27;s colour it burns.</td></tr><tr><td><code>palette</code></td><td class="val"><code>preload(&quot;res://styles/burrow_keys.tres&quot;)</code></td><td class="rng"></td><td>The key colours, shared with the pedestals and buffs.</td></tr><tr><td><code>flicker_speed</code></td><td class="val">9</td><td class="rng">1 to 30</td><td>How fast the flame flickers (frames per second).</td></tr><tr><td><code>brightness</code></td><td class="val">1</td><td class="rng">0.1 to 3</td><td>Flame brightness, times the palette&#x27;s glow.</td></tr><tr><td><code>wood</code></td><td class="val"><span class="palette"><span class="swatch" style="background:#c27c44" title="#c27c44"></span><span class="swatch" style="background:#7e4626" title="#7e4626"></span><span class="swatch" style="background:#2a140c" title="#2a140c"></span></span></td><td class="rng"></td><td>The bracket&#x27;s colours: lit wood, shaded wood and outline.</td></tr></tbody></table></div>
+
+<h3 id="camerazone_1">CameraZone</h3>
+<p class="params-src">Edit <code>scripts/level_parts/camera_zone.gd</code> (script defaults; a scene or resource may override them)</p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>size</code></td><td class="val">(480, 270)</td><td class="rng"></td><td>The shot&#x27;s width and height (pixels). Keep it 16:9 so it fills the screen.</td></tr><tr><td><code>ease_speed</code></td><td class="val">6</td><td class="rng">0.5 to 30</td><td>How quickly the camera glides into and out of this shot (per second; higher is snappier).</td></tr></tbody></table></div>
+
+<h3 id="spawnpoint_1">SpawnPoint</h3>
+<p class="params-src">Edit <code>scripts/level_parts/spawn_point.gd</code> (script defaults; a scene or resource may override them)</p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>kind</code></td><td class="val"><code>Kind.PLAYER</code></td><td class="rng"></td><td>What it marks: a player&#x27;s drop-in point, where enemies walk in, or a perch.</td></tr><tr><td><code>slot</code></td><td class="val">0</td><td class="rng">0 to 2</td><td>PLAYER only: which player slot drops in here.</td></tr></tbody></table></div>
+
+<h3 id="prop_1">Prop</h3>
+<p class="params-src">Edit <code>scripts/level_parts/prop.gd</code> (script defaults; a scene or resource may override them)</p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>glow</code></td><td class="val"><code></code></td><td class="rng"></td><td>White where the prop glows (same size as <code>texture</code>); leave empty for no glow.</td></tr><tr><td><code>glow_color</code></td><td class="val"><span class="swatch" style="background:#ffd27a"></span><code>#ffd27a</code></td><td class="rng"></td><td>The glow&#x27;s tint.</td></tr><tr><td><code>glow_intensity</code></td><td class="val">1.5</td><td class="rng">0 to 4</td><td>How bright the glow is (linear; above 1 blooms).</td></tr><tr><td><code>sway</code></td><td class="val">0</td><td class="rng">0 to 0.5</td><td>How far it leans each way in the breeze (a skew, in radians; 0 = still).</td></tr><tr><td><code>sway_speed</code></td><td class="val">0.5</td><td class="rng">0.05 to 4</td><td>Sways per second.</td></tr><tr><td><code>sway_phase</code></td><td class="val">0</td><td class="rng">0 to 1</td><td>Shifts its sway in time, so neighbouring props don&#x27;t sway in step.</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>

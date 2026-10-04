@@ -44,13 +44,15 @@
 <li><a href="../bosses/ghost-pepper.html">Ghost Pepper</a></li>
 <li><a href="../bosses/ginger-shade.html">Ginger Shade</a></li>
 </ul></details>
-<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">1</span></summary><ul>
+<li><a href="../encounters/burrow-encounter.html">Burrow Encounter</a></li>
 </ul></details>
-<details><summary><a href="../levels/index.html">Levels</a><span class="count">4</span></summary><ul>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">5</span></summary><ul>
 <li><a href="../levels/title-sequence.html">Title Sequence</a></li>
 <li><a href="../levels/arena.html">Arena</a></li>
 <li><a href="../levels/garden-intro.html">Garden Intro</a></li>
 <li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+<li><a href="../levels/level-parts.html">Level Parts</a></li>
 </ul></details>
 <details><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
 <li><a href="../biomes/warm-burrow.html">Warm Burrow</a></li>
@@ -71,10 +73,10 @@
 <p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
 </aside>
 <main>
-<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../bosses/index.html">Bosses</a></p><h1>The Ginger</h1><aside class="infobox"><div class="infobox-title">The Ginger</div><figure><img src="../media/ginger.png" alt="The Ginger"></figure><dl><div><dt>Kind</dt><dd><code>ginger</code></dd></div><div><dt>Type</dt><dd>Main boss</dd></div><div><dt>Health</dt><dd>3000 hp</dd></div><div><dt>Bomb damage</dt><dd>18 hp (10 hp while immune)</dd></div><div><dt>Bolt damage</dt><dd>12 hp</dd></div><div><dt>Eruption damage</dt><dd>22 hp</dd></div><div><dt>Root sweep damage</dt><dd>20 hp</dd></div><div><dt>Keys</dt><dd>All three (red, green, blue)</dd></div><div><dt>Found in</dt><dd><span class="redlink" title="This page doesn't exist yet">Burrow Encounter</span>, the hub</dd></div></dl></aside><p class="lead">A flying ginger-root sorcerer that rules the burrow&#x27;s hub. It can&#x27;t be hurt until the squad brings back the three key orbs, and every orb unlocks more of its health and more of its fury.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#behaviour">Behaviour</a><ol><li><a href="#immune-phase">Immune phase</a></li><li><a href="#health-unlocks">Health unlocks</a></li><li><a href="#the-transformation">The transformation</a></li><li><a href="#full-boss-mode">Full boss mode</a></li></ol></li><li><a href="#attacks">Attacks</a><ol><li><a href="#bombs-and-cluster-bombs">Bombs and cluster bombs</a></li><li><a href="#bolt-fans-and-spirals">Bolt fans and spirals</a></li><li><a href="#floor-eruptions">Floor eruptions</a></li><li><a href="#root-sweep">Root sweep</a></li></ol></li><li><a href="#enrage">Enrage</a></li><li><a href="#death">Death</a></li><li><a href="#the-boss-bar">The boss bar</a></li><li><a href="#the-ginger-shade">The Ginger Shade</a></li><li><a href="#strategy">Strategy</a></li><li><a href="#headshots">Headshots</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#testing">Testing</a></li><li><a href="#appearances">Appearances</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#stats">Stats</a></li></ol></li></ol></nav><p>An evil sorcerer made of a gnarled, knobbly ginger root, in a tattered purple hood and cape of root
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../bosses/index.html">Bosses</a></p><h1>The Ginger</h1><aside class="infobox"><div class="infobox-title">The Ginger</div><figure><img src="../media/ginger.png" alt="The Ginger"></figure><dl><div><dt>Kind</dt><dd><code>ginger</code></dd></div><div><dt>Type</dt><dd>Main boss</dd></div><div><dt>Health</dt><dd>3000 hp</dd></div><div><dt>Bomb damage</dt><dd>18 hp (10 hp while immune)</dd></div><div><dt>Bolt damage</dt><dd>12 hp</dd></div><div><dt>Eruption damage</dt><dd>22 hp</dd></div><div><dt>Root sweep damage</dt><dd>20 hp</dd></div><div><dt>Keys</dt><dd>All three (red, green, blue)</dd></div><div><dt>Found in</dt><dd><a href="../encounters/burrow-encounter.html">Burrow Encounter</a>, the hub</dd></div></dl></aside><p class="lead">A flying ginger-root sorcerer that rules the burrow&#x27;s hub. It can&#x27;t be hurt until the squad brings back the three key orbs, and every orb unlocks more of its health and more of its fury.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#behaviour">Behaviour</a><ol><li><a href="#immune-phase">Immune phase</a></li><li><a href="#health-unlocks">Health unlocks</a></li><li><a href="#the-transformation">The transformation</a></li><li><a href="#full-boss-mode">Full boss mode</a></li></ol></li><li><a href="#attacks">Attacks</a><ol><li><a href="#bombs-and-cluster-bombs">Bombs and cluster bombs</a></li><li><a href="#bolt-fans-and-spirals">Bolt fans and spirals</a></li><li><a href="#floor-eruptions">Floor eruptions</a></li><li><a href="#root-sweep">Root sweep</a></li></ol></li><li><a href="#enrage">Enrage</a></li><li><a href="#death">Death</a></li><li><a href="#the-boss-bar">The boss bar</a></li><li><a href="#the-ginger-shade">The Ginger Shade</a></li><li><a href="#strategy">Strategy</a></li><li><a href="#headshots">Headshots</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#testing">Testing</a></li><li><a href="#appearances">Appearances</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#stats">Stats</a></li></ol></li></ol></nav><p>An evil sorcerer made of a gnarled, knobbly ginger root, in a tattered purple hood and cape of root
 skin. It has branching root arms, glowing purple eyes, a floating staff tipped with a purple crystal
 and a ring of purple runes orbiting it. Comical-evil, not scary. It is the main boss of the
-<span class="redlink" title="This page doesn't exist yet">Burrow Encounter</span>, and it lives in the hub, the cavern where the squad starts and where the three
+<a href="../encounters/burrow-encounter.html">Burrow Encounter</a>, and it lives in the hub, the cavern where the squad starts and where the three
 key pedestals stand.</p>
 <p>The whole encounter is built around it. It starts shielded and can't be hurt. Each boss room the
 squad clears drops a key orb; each orb placed on its hub pedestal unlocks more of The Ginger's health
@@ -254,7 +256,7 @@ encounter's real pedestals. Outside an encounter (the arena) it always counts al
 at full strength straight away.</p>
 <h2 id="appearances">Appearances</h2>
 <ul>
-<li><span class="redlink" title="This page doesn't exist yet">Burrow Encounter</span>: the main boss, in the hub. The three room bosses, <a href="../bosses/sweet-potato.html">Sweet Potato</a>,
+<li><a href="../encounters/burrow-encounter.html">Burrow Encounter</a>: the main boss, in the hub. The three room bosses, <a href="../bosses/sweet-potato.html">Sweet Potato</a>,
   <a href="../bosses/red-corn.html">Red Corn</a> and <a href="../bosses/ghost-pepper.html">Ghost Pepper</a>, each drop a key orb that goes on a hub pedestal; those orbs
   unlock The Ginger.</li>
 </ul>

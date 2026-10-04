@@ -44,13 +44,15 @@
 <li><a href="../bosses/ghost-pepper.html">Ghost Pepper</a></li>
 <li><a href="../bosses/ginger-shade.html" aria-current="page">Ginger Shade</a></li>
 </ul></details>
-<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">1</span></summary><ul>
+<li><a href="../encounters/burrow-encounter.html">Burrow Encounter</a></li>
 </ul></details>
-<details><summary><a href="../levels/index.html">Levels</a><span class="count">4</span></summary><ul>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">5</span></summary><ul>
 <li><a href="../levels/title-sequence.html">Title Sequence</a></li>
 <li><a href="../levels/arena.html">Arena</a></li>
 <li><a href="../levels/garden-intro.html">Garden Intro</a></li>
 <li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+<li><a href="../levels/level-parts.html">Level Parts</a></li>
 </ul></details>
 <details><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
 <li><a href="../biomes/warm-burrow.html">Warm Burrow</a></li>
@@ -71,7 +73,7 @@
 <p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
 </aside>
 <main>
-<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../bosses/index.html">Bosses</a></p><h1>Ginger Shade</h1><aside class="infobox"><div class="infobox-title">Ginger Shade</div><figure><img src="../media/ginger-shade.png" alt="Ginger Shade"></figure><dl><div><dt>Kind</dt><dd><code>ginger_shade</code></dd></div><div><dt>Type</dt><dd>Immune harasser</dd></div><div><dt>Health</dt><dd>Immune (bar shows 1000 hp)</dd></div><div><dt>Bolt damage</dt><dd>10 per bolt (players have 130 pts shield and 70 hp health)</dd></div><div><dt>Bolts per volley</dt><dd>3</dd></div><div><dt>Spawned by</dt><dd><a href="../bosses/ginger.html">The Ginger</a></dd></div><div><dt>Found in</dt><dd><span class="redlink" title="This page doesn't exist yet">Burrow Encounter</span>, the active boss room</dd></div></dl></aside><p class="lead">The Ginger&#x27;s immune spectral projection. It haunts whichever boss room the squad is fighting in and harasses the players there with telegraphed bolt fans.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#behaviour">Behaviour</a></li><li><a href="#attacks">Attacks</a><ol><li><a href="#bolt-fan">Bolt fan</a></li></ol></li><li><a href="#strategy">Strategy</a></li><li><a href="#headshots">Headshots</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#death">Death</a></li><li><a href="#appearances">Appearances</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#stats">Stats</a></li></ol></li></ol></nav><p>A ghostly projection of <a href="../bosses/ginger.html">The Ginger</a>: a translucent purple-black silhouette of the ginger-root
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../bosses/index.html">Bosses</a></p><h1>Ginger Shade</h1><aside class="infobox"><div class="infobox-title">Ginger Shade</div><figure><img src="../media/ginger-shade.png" alt="Ginger Shade"></figure><dl><div><dt>Kind</dt><dd><code>ginger_shade</code></dd></div><div><dt>Type</dt><dd>Immune harasser</dd></div><div><dt>Health</dt><dd>Immune (bar shows 1000 hp)</dd></div><div><dt>Bolt damage</dt><dd>10 per bolt (players have 130 pts shield and 70 hp health)</dd></div><div><dt>Bolts per volley</dt><dd>3</dd></div><div><dt>Spawned by</dt><dd><a href="../bosses/ginger.html">The Ginger</a></dd></div><div><dt>Found in</dt><dd><a href="../encounters/burrow-encounter.html">Burrow Encounter</a>, the active boss room</dd></div></dl></aside><p class="lead">The Ginger&#x27;s immune spectral projection. It haunts whichever boss room the squad is fighting in and harasses the players there with telegraphed bolt fans.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#behaviour">Behaviour</a></li><li><a href="#attacks">Attacks</a><ol><li><a href="#bolt-fan">Bolt fan</a></li></ol></li><li><a href="#strategy">Strategy</a></li><li><a href="#headshots">Headshots</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#death">Death</a></li><li><a href="#appearances">Appearances</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#stats">Stats</a></li></ol></li></ol></nav><p>A ghostly projection of <a href="../bosses/ginger.html">The Ginger</a>: a translucent purple-black silhouette of the ginger-root
 sorcerer, with a crooked root hood, a knobbly body, a dangling rootlet beard, glowing purple eyes, a
 flickering glowing rim and a wispy trailing tail. It is much smaller than its master. The Ginger
 can't leave the hub, so it sends the shade into the boss rooms to make the squad's life harder there.</p>
@@ -149,7 +151,7 @@ rooms or the hub are never hit by it.</strong> Dash i-frames dodge everything.</
 dissolves over 1.8 s with a long wail, and any bolts still flying fizzle out.</p>
 <h2 id="appearances">Appearances</h2>
 <ul>
-<li><span class="redlink" title="This page doesn't exist yet">Burrow Encounter</span>: it haunts the boss rooms while their fights are on. The three room bosses,
+<li><a href="../encounters/burrow-encounter.html">Burrow Encounter</a>: it haunts the boss rooms while their fights are on. The three room bosses,
   <a href="../bosses/sweet-potato.html">Sweet Potato</a>, <a href="../bosses/red-corn.html">Red Corn</a> and <a href="../bosses/ghost-pepper.html">Ghost Pepper</a>, each drop a key orb that goes on a hub
   pedestal; those orbs unlock <a href="../bosses/ginger.html">The Ginger</a>.</li>
 <li>Outside an encounter (the arena, for testing) it haunts the whole level.</li>
