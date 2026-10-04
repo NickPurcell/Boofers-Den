@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Big Cobber | iCarrot Wiki</title>
+<meta name="description" content="The Corn Ogre, a giant ear of corn in a husk jacket that stumbles after players, peels its husk open and sprays a sweeping volley of red-hot kernels.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">4</span></summary><ul>
+<li><a href="../carrot/movement.html">Movement</a></li>
+<li><a href="../carrot/dash.html">Dash</a></li>
+<li><a href="../carrot/health.html">Health</a></li>
+<li><a href="../carrot/appearance.html">Appearance</a></li>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">5</span></summary><ul>
+<li><a href="../weapons/revolver.html">Revolver</a></li>
+<li><a href="../weapons/smg.html">SMG</a></li>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/grenade.html">Energy ball</a></li>
+<li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
+</ul></details>
+<details open><summary><a href="../enemies/index.html">Enemies</a><span class="count">7</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+<li><a href="../enemies/pumpkin.html">Jacko</a></li>
+<li><a href="../enemies/asparagus.html">Spear-Gus</a></li>
+<li><a href="../enemies/mushroom.html">Shroom</a></li>
+<li><a href="../enemies/pepper.html">Hot Pepper</a></li>
+<li><a href="../enemies/corn.html" aria-current="page">Big Cobber</a></li>
+<li><a href="../enemies/potato.html">Potato Bull</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">5</span></summary><ul>
+<li><a href="../bosses/ginger.html">The Ginger</a></li>
+<li><a href="../bosses/sweet-potato.html">Sweet Potato</a></li>
+<li><a href="../bosses/red-corn.html">Red Corn</a></li>
+<li><a href="../bosses/ghost-pepper.html">Ghost Pepper</a></li>
+<li><a href="../bosses/ginger-shade.html">Ginger Shade</a></li>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">4</span></summary><ul>
+<li><a href="../levels/title-sequence.html">Title Sequence</a></li>
+<li><a href="../levels/arena.html">Arena</a></li>
+<li><a href="../levels/garden-intro.html">Garden Intro</a></li>
+<li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
+<li><a href="../biomes/warm-burrow.html">Warm Burrow</a></li>
+<li><a href="../biomes/overgrown-vault.html">Overgrown Vault</a></li>
+<li><a href="../biomes/glowshroom-grotto.html">Glowshroom Grotto</a></li>
+<li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
+<li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/co-op.html">Co-op</a></li>
+<li><a href="../mechanics/reloading.html">Reloading</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
+<li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
+<li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../enemies/index.html">Enemies</a></p><h1>Big Cobber</h1><aside class="infobox"><div class="infobox-title">Big Cobber</div><dl><div><dt>Kind</dt><dd><code>corn</code></dd></div><div><dt>Type</dt><dd>Regular enemy</dd></div><div><dt>Health</dt><dd>500 hp</dd></div><div><dt>Kernel damage</dt><dd>8 hp</dd></div><div><dt>Kernels per volley</dt><dd>9x</dd></div><div><dt>Attack range</dt><dd>400 px</dd></div><div><dt>Found in</dt><dd><a href="../levels/arena.html">Arena</a></dd></div></dl></aside><p class="lead">The Corn Ogre, a giant ear of corn in a husk jacket that stumbles after players, peels its husk open and sprays a sweeping volley of red-hot kernels.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#behaviour">Behaviour</a></li><li><a href="#attacks">Attacks</a><ol><li><a href="#kernel-volley">Kernel volley</a></li></ol></li><li><a href="#headshots">Headshots</a></li><li><a href="#strategy">Strategy</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#death">Death</a></li><li><a href="#appearances">Appearances</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#stats">Stats</a></li><li><a href="#movement-feel">Movement feel</a></li></ol></li></ol></nav><h2 id="behaviour">Behaviour</h2>
+<p>Big Cobber is the biggest thing in the <a href="../levels/arena.html">Arena</a>: a towering ear of corn on stubby legs, wrapped in
+a green husk jacket, with a silk-tassel mop, a heavy brow and an underbite of kernel teeth. It is
+slow and heavy, and it shrugs off a lot of lead.</p>
+<p>It lumbers toward the nearest standing player one step at a time. Every footfall thuds, puffs dust
+and nudges the screen. A step only moves it for part of the stride and peaks at 34 px/s, so
+on average it creeps along far slower than a carrot runs. Now and then a step turns into a
+<strong>stumble</strong>: it lurches forward faster and further, lands with a bigger thud, and teeters for
+0.8 s before it catches itself.</p>
+<p>It stops about 60 px short of its target (a little further for each extra corn, by
+14 px, so two of them don't stand on the same spot). It never jumps onto planks; it only
+hops heavily up ledges no taller than 26 px. If a player stands on a plank right above it,
+where it has no line of fire, it backs away for 1.5 s to get an angle. If it walks for
+2.5 s without getting anywhere, it hops to free itself.</p>
+<p>Bullets barely shove it (8 px/s per hit).</p>
+<h2 id="attacks">Attacks</h2>
+<h3 id="kernel-volley">Kernel volley</h3>
+<p>When a player is within 400 px and it has a clear line from its belly to them, it stops
+between steps and attacks. It first waits 1.6 s to 2.6 s after it appears, and
+2.4 s to 3.6 s between volleys.</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Lasts</th>
+<th>What you see</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Open</td>
+<td>1.2 s</td>
+<td>It pulls its husk open like a jacket (the peel takes 0.4 s). The belly kernels glow hotter and hotter while it turns its aim toward you. For the last 0.3 s the aim stops following you. This is the telegraph.</td>
+</tr>
+<tr>
+<td>Fire</td>
+<td>One kernel every 0.12 s</td>
+<td>A stream of glowing kernels sprays from the belly (count: 9x), sweeping across 0.55 rad through the aim. The aim still drifts after you, but slowly (0.45 rad/s).</td>
+</tr>
+<tr>
+<td>Close</td>
+<td>0.6 s</td>
+<td>The husk folds shut and it walks on.</td>
+</tr>
+</tbody>
+</table>
+<p>Each kernel flies at 230 px/s for up to 2.5 s, deals 8 hp (players
+have 100 hp) and knocks the carrot along the shot and upward. A kernel
+that strikes a carrot's head does 2x times the damage. Kernels
+that hit a wall or the floor pop into popcorn.</p>
+<p>It can aim up to 1.15 rad above straight ahead and 0.7 rad below, so a player high above it
+or tucked right under its belly is out of its arc.</p>
+<h2 id="headshots">Headshots</h2>
+<p>While the husk is closed, the weak spot is the face and tassel at the very top of the cob. While
+the husk is open (during the telegraph and the volley), the weak spot moves to the glowing belly
+kernels in the middle of its body. Shots there show kernels flying; shots on the husk tear off green
+shreds instead.</p>
+<h2 id="strategy">Strategy</h2>
+<ul>
+<li>The open husk is both the warning and the opening. Put headshots into the glowing chest during
+  the telegraph, then get out of the line before the aim locks.</li>
+<li>The volley sweeps one way across a fixed arc. Move against the sweep, or jump over the low end of
+  it. Once the aim locks it barely tracks you, so sideways movement beats it.</li>
+<li>Dashing through the stream dodges it: dash i-frames beat every attack in the game.</li>
+<li>It needs a clear line from its belly. A plank between you and it stops the volley entirely,
+  though it will back off to find an angle.</li>
+<li>It is slow. Kiting it is easy; the danger is the volley landing while you are busy with other
+  enemies.</li>
+</ul>
+<h2 id="co-op">Co-op</h2>
+<p>The host runs Big Cobber's AI and physics and streams its state (husk opening, aim, gait, stumble)
+to everyone else. Every kernel is announced as an event, and each machine launches the same kernel
+and checks only its own carrot against it, so a hit always matches what that player saw. Kernels in
+flight keep going even if the corn dies first.</p>
+<h2 id="death">Death</h2>
+<p>It bursts in a shower of popcorn: a flash, kernels popping one after another, husk leaves
+fluttering down, silk strands drifting and a big thump.</p>
+<h2 id="appearances">Appearances</h2>
+<ul>
+<li><strong><a href="../levels/arena.html">Arena</a></strong>: one <code>corn</code> is in the arena's enemy roster, so one Big Cobber is in every wave and
+  comes back after it dies.</li>
+<li>It does not appear as an add in the <span class="redlink" title="This page doesn't exist yet">Burrow Encounter</span>. Its big, angry cousin <a href="../bosses/red-corn.html">Red Corn</a> is
+  the boss of the encounter's middle room.</li>
+</ul>
+<h2 id="design-notes">Design notes</h2>
+<p>Big Cobber is built like an Ogre from a shooter raid: a slow, tanky body with a big, readable
+charge-up whose weak spot is exposed only while it is about to fire. The open husk turns the
+telegraph into a risk-reward choice: stay in its line for the crit, or get clear.</p>
+<h2 id="tunable-parameters">Tunable parameters</h2>
+<p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
+
+<h3 id="stats">Stats</h3>
+<p class="params-src">Edit <a href="../tuning/enemies-corn.html"><code>styles/enemies/corn.tres</code></a> &middot; fields defined in <code>scripts/enemy_stats/corn_stats.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Health</th></tr><tr><td><code>hp</code></td><td class="val">500 hp</td><td class="rng">1 to 3000</td><td>Hit points. A revolver body shot does 10.</td></tr><tr><td><code>flash_gap</code></td><td class="val">0.25 s</td><td class="rng">0 to 1</td><td>Least time between white hit flashes (a sprite this big strobes under the SMG otherwise).</td></tr><tr><td><code>hit_push</code></td><td class="val">8 px/s</td><td class="rng">0 to 50</td><td>How hard a bullet shoves it sideways.</td></tr><tr class="group"><th colspan="4">Movement</th></tr><tr><td><code>gait</code></td><td class="val">1.1x</td><td class="rng">0.1 to 4</td><td>Steps per second.</td></tr><tr><td><code>lift</code></td><td class="val">0.55</td><td class="rng">0.05 to 0.95</td><td>The share of each step spent moving; the rest is the planted pause.</td></tr><tr><td><code>walk_peak</code></td><td class="val">34 px/s</td><td class="rng">0 to 150</td><td>Top speed mid-step (it averages roughly a third of this). A carrot runs 115.</td></tr><tr><td><code>stumble_chance</code></td><td class="val">0.14</td><td class="rng">0 to 1</td><td>Chance per step that it stumbles.</td></tr><tr><td><code>stumble_rate</code></td><td class="val">1.5x</td><td class="rng">0.5 to 4</td><td>A stumbling step goes this much quicker...</td></tr><tr><td><code>stumble_speed</code></td><td class="val">2x</td><td class="rng">0.5 to 5</td><td>...and this much faster (so further).</td></tr><tr><td><code>teeter</code></td><td class="val">0.8 s</td><td class="rng">0 to 3</td><td>How long it teeters after a stumble before catching itself.</td></tr><tr><td><code>keep</code></td><td class="val">60 px</td><td class="rng">0 to 300</td><td>Stops this far from its target...</td></tr><tr><td><code>keep_spread</code></td><td class="val">14 px</td><td class="rng">0 to 60</td><td>...plus this much per id (0, 1 or 2 times), so a pair doesn&#x27;t overlap exactly.</td></tr><tr><td><code>back_off</code></td><td class="val">1.5 s</td><td class="rng">0 to 5</td><td>With a player on a plank right overhead, it backs off this long for an angle.</td></tr><tr><td><code>hop_max</code></td><td class="val">26 px</td><td class="rng">0 to 80</td><td>The highest ledge it will hop up.</td></tr><tr><td><code>hop_x</code></td><td class="val">70 px/s</td><td class="rng">0 to 200</td><td>Sideways speed of a hop.</td></tr><tr><td><code>stuck_time</code></td><td class="val">2.5 s</td><td class="rng">0.1 to 8</td><td>Walking this long without getting anywhere makes it hop.</td></tr><tr class="group"><th colspan="4">Husk</th></tr><tr><td><code>attack_range</code></td><td class="val">400 px</td><td class="rng">0 to 1200</td><td>It attacks a player within this distance (with a clear line from its belly).</td></tr><tr><td><code>cooldown_min</code></td><td class="val">2.4 s</td><td class="rng">0 to 10</td><td>Time between attacks (random in range).</td></tr><tr><td><code>cooldown_max</code></td><td class="val">3.6 s</td><td class="rng">0 to 10</td><td></td></tr><tr><td><code>first_min</code></td><td class="val">1.6 s</td><td class="rng">0 to 8</td><td>Time before its first attack after spawning (random in range).</td></tr><tr><td><code>first_max</code></td><td class="val">2.6 s</td><td class="rng">0 to 8</td><td></td></tr><tr><td><code>open_time</code></td><td class="val">1.2 s</td><td class="rng">0.05 to 4</td><td>The telegraph: the husk is open and glowing this long before it fires.</td></tr><tr><td><code>open_peel</code></td><td class="val">0.4 s</td><td class="rng">0.05 to 2</td><td>How long the husk takes to peel open.</td></tr><tr><td><code>lock</code></td><td class="val">0.3 s</td><td class="rng">0 to 2</td><td>For the last lock seconds of the telegraph the aim stops following the player.</td></tr><tr><td><code>turn</code></td><td class="val">2.5 rad/s</td><td class="rng">0 to 10</td><td>How fast the aim turns toward the player during the telegraph.</td></tr><tr><td><code>aim_up</code></td><td class="val">1.15 rad</td><td class="rng">0 to 1.57</td><td>How far the aim may point up / down from straight ahead.</td></tr><tr><td><code>aim_down</code></td><td class="val">0.7 rad</td><td class="rng">0 to 1.57</td><td></td></tr><tr><td><code>close_time</code></td><td class="val">0.6 s</td><td class="rng">0.05 to 3</td><td>Closing up again after the volley before it walks on.</td></tr><tr class="group"><th colspan="4">Volley</th></tr><tr><td><code>volley</code></td><td class="val">9x</td><td class="rng">1 to 40</td><td>Kernels per volley.</td></tr><tr><td><code>volley_gap</code></td><td class="val">0.12 s</td><td class="rng">0.01 to 1</td><td>Time between kernels.</td></tr><tr><td><code>sweep</code></td><td class="val">0.55 rad</td><td class="rng">0 to 2</td><td>The volley sweeps across this angle through the aim.</td></tr><tr><td><code>jitter</code></td><td class="val">0.05 rad</td><td class="rng">0 to 0.5</td><td>Random wobble on each kernel&#x27;s angle.</td></tr><tr><td><code>turn_fire</code></td><td class="val">0.45 rad/s</td><td class="rng">0 to 4</td><td>How fast the aim follows the player while firing.</td></tr><tr><td><code>pellet_speed</code></td><td class="val">230 px/s</td><td class="rng">20 to 800</td><td>Kernel speed.</td></tr><tr><td><code>pellet_life</code></td><td class="val">2.5 s</td><td class="rng">0.2 to 8</td><td>How long a kernel flies before it vanishes.</td></tr><tr class="group"><th colspan="4">Damage</th></tr><tr><td><code>pellet_damage</code></td><td class="val">8 hp</td><td class="rng">0 to 100</td><td>Damage per kernel that hits a player.</td></tr><tr><td><code>pellet_knock_x</code></td><td class="val">130 px/s</td><td class="rng">0 to 500</td><td>Kernel knockback (along the shot, upwards).</td></tr><tr><td><code>pellet_knock_y</code></td><td class="val">100 px/s</td><td class="rng">0 to 500</td><td></td></tr></tbody></table></div>
+
+<h3 id="movement-feel">Movement feel</h3>
+<p class="params-src">Edit <a href="../tuning/corn-tuning.html"><code>styles/corn_tuning.tres</code></a> &middot; fields defined in <code>scripts/tuning.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Movement</th></tr><tr><td><code>run_speed</code></td><td class="val">115 px/s</td><td class="rng">0 to 400 or more</td><td>Players only: top running speed (enemies take their walk speed from their stats).</td></tr><tr><td><code>accel</code></td><td class="val">700 px/s² <span class="default">script default 1300 px/s²</span></td><td class="rng">0 to 3000 or more</td><td>How quickly it speeds up to full speed on the ground.</td></tr><tr><td><code>decel</code></td><td class="val">1400 px/s² <span class="default">script default 1700 px/s²</span></td><td class="rng">0 to 3000 or more</td><td>How quickly it slows to a stop on the ground once it lets go (lower = more slide).</td></tr><tr><td><code>air_accel</code></td><td class="val">300 px/s² <span class="default">script default 800 px/s²</span></td><td class="rng">0 to 3000 or more</td><td>How quickly it can change speed in mid-air (lower = less air control).</td></tr><tr><td><code>gravity</code></td><td class="val">1150 px/s² <span class="default">script default 1050 px/s²</span></td><td class="rng">0 to 3000 or more</td><td>Downward pull while rising (falling multiplies this by fall_mult).</td></tr><tr><td><code>fall_mult</code></td><td class="val">1.45x</td><td class="rng">0.5 to 4 or more</td><td>Gravity is this many times stronger while falling, so falls are snappier than rises.</td></tr><tr><td><code>max_fall</code></td><td class="val">440 px/s</td><td class="rng">0 to 1500 or more</td><td>Fastest it can fall.</td></tr><tr><td><code>jump_speed</code></td><td class="val">300 px/s <span class="default">script default 390 px/s</span></td><td class="rng">0 to 1000 or more</td><td>Launch speed of a jump (the carrot&#x27;s default reaches about 72px high).</td></tr><tr><td><code>jump_cut</code></td><td class="val">0.45x</td><td class="rng">0 to 1</td><td>Letting go of jump early multiplies the upward speed by this, for short hops (1 = no cut).</td></tr><tr><td><code>coyote</code></td><td class="val">0.09 s</td><td class="rng">0 to 0.5 or more</td><td>Grace period to still jump after walking off a ledge.</td></tr><tr><td><code>jump_buffer</code></td><td class="val">0.12 s</td><td class="rng">0 to 0.5 or more</td><td>A jump pressed this long before landing still counts.</td></tr><tr class="group"><th colspan="4">Double jump and dash</th></tr><tr><td><code>air_jumps</code></td><td class="val">0</td><td class="rng">0 to 5 or more</td><td>Extra jumps in mid-air before landing (0 = no double jump; enemies use 0).</td></tr><tr><td><code>air_jump_speed</code></td><td class="val">340 px/s</td><td class="rng">0 to 1200 or more</td><td>Launch speed of a mid-air jump (a touch weaker than the ground jump: about 55px).</td></tr><tr><td><code>dash_speed</code></td><td class="val">360 px/s</td><td class="rng">0 to 1200 or more</td><td>Speed during a dash.</td></tr><tr><td><code>dash_time</code></td><td class="val">0.15 s</td><td class="rng">0 to 1 or more</td><td>How long a dash lasts; distance is dash_speed * dash_time (about 54px).</td></tr><tr><td><code>dash_cooldown</code></td><td class="val">0.45 s</td><td class="rng">0 to 3 or more</td><td>Wait from the start of one dash until the next one is allowed.</td></tr><tr><td><code>air_dashes</code></td><td class="val">1</td><td class="rng">0 to 5 or more</td><td>Dashes allowed per trip through the air (ground dashes are only limited by the cooldown).</td></tr><tr><td><code>dash_iframes</code></td><td class="val">0.2 s</td><td class="rng">0 to 1 or more</td><td>Invincible for this long from the start of a dash: the whole dash plus a little grace, so a dash *through* a shot never gets you hit on the way out. Bullets pass through you meanwhile.</td></tr><tr class="group"><th colspan="4">Health</th></tr><tr><td><code>max_health</code></td><td class="val">100 hp</td><td class="rng">1 to 1000 or more</td><td>Players only: every carrot&#x27;s full health. Enemy damage is balanced against it. (Enemies&#x27; own health is in their stats.)</td></tr><tr><td><code>regen_delay</code></td><td class="val">3 s</td><td class="rng">0 to 30 or more</td><td>Players only: time without being hit before health starts to recharge...</td></tr><tr><td><code>regen_rate</code></td><td class="val">18 hp/s</td><td class="rng">0 to 200 or more</td><td>...and how fast it then refills.</td></tr><tr class="group"><th colspan="4">Getting hit</th></tr><tr><td><code>headshot_mult</code></td><td class="val">2x</td><td class="rng">1 to 5 or more</td><td>Players only: enemy shots that land on a player&#x27;s head do this many times the damage. (Guns, their damage and falloff live in Weapon resources: styles/weapons/.)</td></tr><tr><td><code>hurt_grace</code></td><td class="val">1 s</td><td class="rng">0 to 5 or more</td><td>Players only: after a hit the carrot flashes white, then blinks and can&#x27;t be hurt again for this long.</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>

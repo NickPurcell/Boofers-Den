@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hot Pepper | iCarrot Wiki</title>
+<meta name="description" content="A big hot-headed chili brute that lobs fireballs from afar, advances step by step, and breathes fire at point-blank range.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">4</span></summary><ul>
+<li><a href="../carrot/movement.html">Movement</a></li>
+<li><a href="../carrot/dash.html">Dash</a></li>
+<li><a href="../carrot/health.html">Health</a></li>
+<li><a href="../carrot/appearance.html">Appearance</a></li>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">5</span></summary><ul>
+<li><a href="../weapons/revolver.html">Revolver</a></li>
+<li><a href="../weapons/smg.html">SMG</a></li>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/grenade.html">Energy ball</a></li>
+<li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
+</ul></details>
+<details open><summary><a href="../enemies/index.html">Enemies</a><span class="count">7</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+<li><a href="../enemies/pumpkin.html">Jacko</a></li>
+<li><a href="../enemies/asparagus.html">Spear-Gus</a></li>
+<li><a href="../enemies/mushroom.html">Shroom</a></li>
+<li><a href="../enemies/pepper.html" aria-current="page">Hot Pepper</a></li>
+<li><a href="../enemies/corn.html">Big Cobber</a></li>
+<li><a href="../enemies/potato.html">Potato Bull</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">5</span></summary><ul>
+<li><a href="../bosses/ginger.html">The Ginger</a></li>
+<li><a href="../bosses/sweet-potato.html">Sweet Potato</a></li>
+<li><a href="../bosses/red-corn.html">Red Corn</a></li>
+<li><a href="../bosses/ghost-pepper.html">Ghost Pepper</a></li>
+<li><a href="../bosses/ginger-shade.html">Ginger Shade</a></li>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">4</span></summary><ul>
+<li><a href="../levels/title-sequence.html">Title Sequence</a></li>
+<li><a href="../levels/arena.html">Arena</a></li>
+<li><a href="../levels/garden-intro.html">Garden Intro</a></li>
+<li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
+<li><a href="../biomes/warm-burrow.html">Warm Burrow</a></li>
+<li><a href="../biomes/overgrown-vault.html">Overgrown Vault</a></li>
+<li><a href="../biomes/glowshroom-grotto.html">Glowshroom Grotto</a></li>
+<li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
+<li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/co-op.html">Co-op</a></li>
+<li><a href="../mechanics/reloading.html">Reloading</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
+<li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
+<li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../enemies/index.html">Enemies</a></p><h1>Hot Pepper</h1><aside class="infobox"><div class="infobox-title">Hot Pepper</div><dl><div><dt>Kind</dt><dd><code>pepper</code></dd></div><div><dt>Type</dt><dd>Regular enemy</dd></div><div><dt>Health</dt><dd>80 hp</dd></div><div><dt>Fireball hit</dt><dd>20 hp</dd></div><div><dt>Fireball splash</dt><dd>20 hp</dd></div><div><dt>Flame breath</dt><dd>15 hp</dd></div><div><dt>Walk speed</dt><dd>22 px/s</dd></div></dl></aside><p class="lead">A big hot-headed chili brute that lobs fireballs from afar, advances step by step, and breathes fire at point-blank range.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#behaviour">Behaviour</a></li><li><a href="#attacks">Attacks</a><ol><li><a href="#lobbed-fireball">Lobbed fireball</a></li><li><a href="#flame-breath">Flame breath</a></li></ol></li><li><a href="#strategy">Strategy</a></li><li><a href="#headshots">Headshots</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#appearances">Appearances</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#stats">Stats</a></li><li><a href="#movement-feel">Movement feel</a></li></ol></li></ol></nav><h2 id="behaviour">Behaviour</h2>
+<p>Hot Pepper is the big brute: a red chili with a green stem cap, angry eyebrows and smoke curling off
+its head. It is tough, with 80 hp. Which move it uses depends on how far away
+the nearest player is: fireballs from afar, flame breath up close.</p>
+<p>It advances in a measured way: it walks at 22 px/s for 0.7 s to 1.4 s, then
+pauses for 0.35 s to 0.8 s, and repeats, throwing fireballs in between. Once a
+player is within 95 px it stops stepping and hustles in at 40 px/s for a breath. After a
+throw, if you're within 140 px, there's a chance (<code>back_chance</code>) it backs off a little for
+0.35 s to 0.6 s.</p>
+<p>To reach you on another surface it follows the level's route map like the <a href="../enemies/zombie.html">Zombie</a>, at
+1.4x its walking speed: up through planks, lunging across gaps at 140 px/s, and down
+through planks. It waits 0.8 s between jumps and hops if it walks for 1.5 s
+without getting anywhere. Bullets shove it 35 px/s each.</p>
+<h2 id="attacks">Attacks</h2>
+<h3 id="lobbed-fireball">Lobbed fireball</h3>
+<p>It throws when you are between 75 px and 330 px away sideways and it has a clear arc to
+you. Its first throw comes 0.6 s to 1.4 s after it arrives.</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Lasts</th>
+<th>What you see</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Wind-up</td>
+<td>0.65 s</td>
+<td>It rears back with a fireball held over its head. This is the telegraph.</td>
+</tr>
+<tr>
+<td>Throw</td>
+<td>Instant</td>
+<td>The fireball leaves in a high arc with an ember trail.</td>
+</tr>
+<tr>
+<td>Recover</td>
+<td>0.35 s</td>
+<td>It stays put in the follow-through.</td>
+</tr>
+</tbody>
+</table>
+<p>The arc is solved to land on you. It aims ahead of a moving player by 0.6x their speed times
+the flight time (at most 60 px) and misses by up to 12 px either way at random. The fireball falls
+under 520 px/s² and fizzles after 3 s.</p>
+<ul>
+<li><strong>Direct hit:</strong> 20 hp, with a knock of 250 px/s along the throw and
+  250 px/s upward. A direct hit on a carrot's head does 2x
+  times the damage.</li>
+<li><strong>Landing:</strong> it bursts into flame where it hits the floor or a wall. A carrot within
+  13 px takes 20 hp and is knocked away at 210 px/s.</li>
+</ul>
+<p>Sometimes (<code>double_chance</code>) it throws a second fireball straight after the first, with a shorter
+wind-up of 0.38 s. Otherwise it waits 1.5 s to 2.6 s before
+the next throw. If a plank overhead blocks every arc, it hustles toward you for 0.6 s and
+tries again 0.3 s later.</p>
+<h3 id="flame-breath">Flame breath</h3>
+<p>When you are within 46 px sideways and 26 px vertically, it breathes fire.</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Lasts</th>
+<th>What you see</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Puff up</td>
+<td>0.55 s</td>
+<td>Its cheeks swell and glow. It turns toward you at twice its breath turn speed. This is the telegraph.</td>
+</tr>
+<tr>
+<td>Breath</td>
+<td>0.9 s</td>
+<td>A roar and a cone of fire 66 px long, 0.34 rad either side of its aim. It creeps forward at 10 px/s and the flames follow you at 1.2 rad/s, tilting up or down by at most 0.4 rad.</td>
+</tr>
+<tr>
+<td>Recover</td>
+<td>0.5 s</td>
+<td>It stands still.</td>
+</tr>
+</tbody>
+</table>
+<p>A carrot in the flames takes 15 hp every 0.3 s and is pushed away from the mouth
+(210 px/s sideways, 160 px/s up). A carrot can't be hurt again during its short grace
+after a hit, so in practice the flames burn about once a second. Walls and planks shield you from
+the cone. The next breath can't come for 1.4 s to 2.2 s, and it
+won't throw again for 0.6 s after a breath.</p>
+<h2 id="strategy">Strategy</h2>
+<ul>
+<li>At range, keep moving. The throw leads you, so change direction once the fireball leaves its hand;
+  standing still only leaves the random miss to save you. Watch where it lands as well: the splash
+  hurts too.</li>
+<li>Up close, back off or jump over it when it puffs up. The cone is short and only tilts so far, so
+  getting above it or behind it is safe.</li>
+<li>Planks protect you from both attacks: a plank overhead blocks its arcs, and the flames stop at
+  walls and planks.</li>
+<li>Dash i-frames beat every attack in the game: dash through a fireball or the flames.</li>
+<li>It is slow. With 80 hp it takes a while to bring down, so fight it from mid-range between throws.</li>
+</ul>
+<h2 id="headshots">Headshots</h2>
+<p>Its head box is the top of its body, from the stem cap down through the angry face. Headshots there
+do the weapon's headshot multiplier (see the weapon pages, such as <a href="../weapons/shotgun.html">Shotgun</a>). It is big, so its
+head is an easy target.</p>
+<h2 id="co-op">Co-op</h2>
+<p>The host runs Hot Pepper's AI and physics, and streams its state and aim to everyone for the poses.
+Each throw and the start and end of each breath are announced to every machine. Every machine flies
+the fireballs itself, draws the flames, and checks only its own carrot against the fireball, the
+splash and the cone, so a hit always matches what that player saw. It goes after the nearest player,
+so the player furthest away is safest to shoot it. Dash i-frames dodge everything it does.</p>
+<h2 id="appearances">Appearances</h2>
+<ul>
+<li><a href="../levels/arena.html">Arena</a>: one Hot Pepper is in the standing roster, replaced by another whenever it dies.</li>
+<li>It isn't an add in any <span class="redlink" title="This page doesn't exist yet">Burrow Encounter</span> room yet.</li>
+</ul>
+<h2 id="design-notes">Design notes</h2>
+<p>Hot Pepper covers every range so you can't simply stand back from it: the fireballs punish standing
+still at range, and the breath punishes standing next to it. The stop-and-go advance and the long
+wind-ups keep that fair, and its slow, measured walk is what makes it read as a heavy brute.</p>
+<h2 id="tunable-parameters">Tunable parameters</h2>
+<p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
+
+<h3 id="stats">Stats</h3>
+<p class="params-src">Edit <a href="../tuning/enemies-pepper.html"><code>styles/enemies/pepper.tres</code></a> &middot; fields defined in <code>scripts/enemy_stats/pepper_stats.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Health</th></tr><tr><td><code>hp</code></td><td class="val">80 hp</td><td class="rng">1 to 400</td><td>Hit points. A revolver body shot does 10.</td></tr><tr><td><code>hit_push</code></td><td class="val">35 px/s</td><td class="rng">0 to 150</td><td>How hard a bullet shoves it sideways.</td></tr><tr class="group"><th colspan="4">Movement</th></tr><tr><td><code>walk</code></td><td class="val">22 px/s</td><td class="rng">0 to 100</td><td>The measured advance, step by step. A carrot runs 115.</td></tr><tr><td><code>rush</code></td><td class="val">40 px/s</td><td class="rng">0 to 150</td><td>The hustle in for a breath once a player is within close_range (or its throws are blocked).</td></tr><tr><td><code>route_walk</code></td><td class="val">1.4x</td><td class="rng">0 to 4</td><td>Walking speed while routing to another surface, as a multiple of walk.</td></tr><tr><td><code>lunge</code></td><td class="val">140 px/s</td><td class="rng">0 to 400</td><td>Sideways speed of a lunge across a gap (half of it for a hop onto a block).</td></tr><tr><td><code>jump_cooldown</code></td><td class="val">0.8 s</td><td class="rng">0 to 3</td><td>Least time between jumps.</td></tr><tr><td><code>step_walk_min</code></td><td class="val">0.7 s</td><td class="rng">0 to 4</td><td>How long each walking step of the advance lasts (random in range).</td></tr><tr><td><code>step_walk_max</code></td><td class="val">1.4 s</td><td class="rng">0 to 4</td><td></td></tr><tr><td><code>step_pause_min</code></td><td class="val">0.35 s</td><td class="rng">0 to 3</td><td>How long it pauses between steps (random in range).</td></tr><tr><td><code>step_pause_max</code></td><td class="val">0.8 s</td><td class="rng">0 to 3</td><td></td></tr><tr><td><code>close_range</code></td><td class="val">95 px</td><td class="rng">0 to 300</td><td>Within this distance (feet to feet) it stops stepping and hustles in for a breath.</td></tr><tr><td><code>back_chance</code></td><td class="val">0.35</td><td class="rng">0 to 1</td><td>After a lob, the chance it backs off a little when the player is within back_range.</td></tr><tr><td><code>back_range</code></td><td class="val">140 px</td><td class="rng">0 to 400</td><td></td></tr><tr><td><code>back_time_min</code></td><td class="val">0.35 s</td><td class="rng">0 to 2</td><td>How long it backs off for (random in range).</td></tr><tr><td><code>back_time_max</code></td><td class="val">0.6 s</td><td class="rng">0 to 2</td><td></td></tr><tr><td><code>stuck_dist</code></td><td class="val">3 px</td><td class="rng">0 to 20</td><td>Stuck: if it has moved less than stuck_dist after stuck_time of walking, it hops.</td></tr><tr><td><code>stuck_time</code></td><td class="val">1.5 s</td><td class="rng">0.1 to 5</td><td></td></tr><tr class="group"><th colspan="4">Lob</th></tr><tr><td><code>lob_min</code></td><td class="val">75 px</td><td class="rng">0 to 300</td><td>Horizontal distance to the target within which it throws fireballs.</td></tr><tr><td><code>lob_max</code></td><td class="val">330 px</td><td class="rng">0 to 1000</td><td></td></tr><tr><td><code>lob_wind</code></td><td class="val">0.65 s</td><td class="rng">0 to 2</td><td>Wind-up before a throw (the fireball held overhead), and for a quick second throw.</td></tr><tr><td><code>lob_wind_quick</code></td><td class="val">0.38 s</td><td class="rng">0 to 2</td><td></td></tr><tr><td><code>lob_recover</code></td><td class="val">0.35 s</td><td class="rng">0 to 2</td><td>Recovery after a throw before it moves again.</td></tr><tr><td><code>lob_cooldown_min</code></td><td class="val">1.5 s</td><td class="rng">0 to 8</td><td>Time between throws (random in range).</td></tr><tr><td><code>lob_cooldown_max</code></td><td class="val">2.6 s</td><td class="rng">0 to 8</td><td></td></tr><tr><td><code>first_lob_min</code></td><td class="val">0.6 s</td><td class="rng">0 to 5</td><td>Time before its first throw after spawning (random in range).</td></tr><tr><td><code>first_lob_max</code></td><td class="val">1.4 s</td><td class="rng">0 to 5</td><td></td></tr><tr><td><code>double_chance</code></td><td class="val">0.3</td><td class="rng">0 to 1</td><td>Chance of throwing a quick second fireball right after the first.</td></tr><tr><td><code>lob_retry</code></td><td class="val">0.3 s</td><td class="rng">0 to 2</td><td>With no clear arc (a plank overhead), it tries again this soon...</td></tr><tr><td><code>blocked_rush</code></td><td class="val">0.6 s</td><td class="rng">0 to 3</td><td>...and hustles toward the player for this long meanwhile.</td></tr><tr><td><code>lob_after_breath</code></td><td class="val">0.6 s</td><td class="rng">0 to 3</td><td>After a breath, at least this long before it throws again.</td></tr><tr><td><code>lob_gravity</code></td><td class="val">520 px/s²</td><td class="rng">50 to 2000</td><td>Gravity on the fireball (a heavier arc is higher and slower to land).</td></tr><tr><td><code>lead</code></td><td class="val">0.6x</td><td class="rng">0 to 2</td><td>How much it leads a moving target (fraction of their velocity x flight time), and the cap.</td></tr><tr><td><code>lead_max</code></td><td class="val">60 px</td><td class="rng">0 to 200</td><td></td></tr><tr><td><code>scatter</code></td><td class="val">12 px</td><td class="rng">0 to 60</td><td>Random miss either way, so a moving player can dodge.</td></tr><tr><td><code>lob_life</code></td><td class="val">3 s</td><td class="rng">0.5 to 10</td><td>How long a fireball flies before it fizzles.</td></tr><tr class="group"><th colspan="4">Breath</th></tr><tr><td><code>breath_reach</code></td><td class="val">46 px</td><td class="rng">0 to 200</td><td>It starts a breath when the target is this close sideways (|dx|) and vertically (|dy|).</td></tr><tr><td><code>breath_height</code></td><td class="val">26 px</td><td class="rng">0 to 100</td><td></td></tr><tr><td><code>breath_wind</code></td><td class="val">0.55 s</td><td class="rng">0 to 2</td><td>Puffing up before it blows (the telegraph).</td></tr><tr><td><code>breath_time</code></td><td class="val">0.9 s</td><td class="rng">0 to 4</td><td>How long it blows fire.</td></tr><tr><td><code>breath_recover</code></td><td class="val">0.5 s</td><td class="rng">0 to 2</td><td>Recovery after a breath before it moves again.</td></tr><tr><td><code>breath_cooldown_min</code></td><td class="val">1.4 s</td><td class="rng">0 to 8</td><td>Time between breaths (random in range).</td></tr><tr><td><code>breath_cooldown_max</code></td><td class="val">2.2 s</td><td class="rng">0 to 8</td><td></td></tr><tr><td><code>breath_len</code></td><td class="val">66 px</td><td class="rng">0 to 200</td><td>Length of the flame cone.</td></tr><tr><td><code>breath_spread</code></td><td class="val">0.34 rad</td><td class="rng">0 to 1.2</td><td>Half-angle of the flame cone.</td></tr><tr><td><code>breath_max_tilt</code></td><td class="val">0.4 rad</td><td class="rng">0 to 1.5</td><td>How far the flames may tilt up or down toward the target.</td></tr><tr><td><code>breath_turn</code></td><td class="val">1.2 rad/s</td><td class="rng">0 to 6</td><td>How fast the flames turn to follow the target (twice this while puffing up).</td></tr><tr><td><code>breath_creep</code></td><td class="val">10 px/s</td><td class="rng">0 to 60</td><td>How fast it creeps forward while blowing.</td></tr><tr class="group"><th colspan="4">Damage</th></tr><tr><td><code>fire_damage</code></td><td class="val">20 hp</td><td class="rng">0 to 100</td><td>A direct fireball hit on a player, and its knockback (sideways along the throw, upwards).</td></tr><tr><td><code>fire_knock_x</code></td><td class="val">250 px/s</td><td class="rng">0 to 800</td><td></td></tr><tr><td><code>fire_knock_y</code></td><td class="val">250 px/s</td><td class="rng">0 to 800</td><td></td></tr><tr><td><code>splash_damage</code></td><td class="val">20 hp</td><td class="rng">0 to 100</td><td>Where a fireball bursts on a surface: damage to a player within splash_radius, and knockback.</td></tr><tr><td><code>splash_radius</code></td><td class="val">13 px</td><td class="rng">0 to 60</td><td></td></tr><tr><td><code>splash_knock</code></td><td class="val">210 px/s</td><td class="rng">0 to 800</td><td></td></tr><tr><td><code>burn_damage</code></td><td class="val">15 hp</td><td class="rng">0 to 100</td><td>Burn damage while a player is in the flames, every burn_tick seconds (on top of their 1 s grace).</td></tr><tr><td><code>burn_tick</code></td><td class="val">0.3 s</td><td class="rng">0.05 to 2</td><td></td></tr><tr><td><code>burn_knock_x</code></td><td class="val">210 px/s</td><td class="rng">0 to 800</td><td>Burn knockback (away from the mouth, upwards).</td></tr><tr><td><code>burn_knock_y</code></td><td class="val">160 px/s</td><td class="rng">0 to 800</td><td></td></tr></tbody></table></div>
+
+<h3 id="movement-feel">Movement feel</h3>
+<p class="params-src">Edit <a href="../tuning/pepper-tuning.html"><code>styles/pepper_tuning.tres</code></a> &middot; fields defined in <code>scripts/tuning.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Movement</th></tr><tr><td><code>run_speed</code></td><td class="val">115 px/s</td><td class="rng">0 to 400 or more</td><td>Players only: top running speed (enemies take their walk speed from their stats).</td></tr><tr><td><code>accel</code></td><td class="val">650 px/s² <span class="default">script default 1300 px/s²</span></td><td class="rng">0 to 3000 or more</td><td>How quickly it speeds up to full speed on the ground.</td></tr><tr><td><code>decel</code></td><td class="val">1000 px/s² <span class="default">script default 1700 px/s²</span></td><td class="rng">0 to 3000 or more</td><td>How quickly it slows to a stop on the ground once it lets go (lower = more slide).</td></tr><tr><td><code>air_accel</code></td><td class="val">450 px/s² <span class="default">script default 800 px/s²</span></td><td class="rng">0 to 3000 or more</td><td>How quickly it can change speed in mid-air (lower = less air control).</td></tr><tr><td><code>gravity</code></td><td class="val">1050 px/s²</td><td class="rng">0 to 3000 or more</td><td>Downward pull while rising (falling multiplies this by fall_mult).</td></tr><tr><td><code>fall_mult</code></td><td class="val">1.45x</td><td class="rng">0.5 to 4 or more</td><td>Gravity is this many times stronger while falling, so falls are snappier than rises.</td></tr><tr><td><code>max_fall</code></td><td class="val">440 px/s</td><td class="rng">0 to 1500 or more</td><td>Fastest it can fall.</td></tr><tr><td><code>jump_speed</code></td><td class="val">390 px/s</td><td class="rng">0 to 1000 or more</td><td>Launch speed of a jump (the carrot&#x27;s default reaches about 72px high).</td></tr><tr><td><code>jump_cut</code></td><td class="val">0.45x</td><td class="rng">0 to 1</td><td>Letting go of jump early multiplies the upward speed by this, for short hops (1 = no cut).</td></tr><tr><td><code>coyote</code></td><td class="val">0.09 s</td><td class="rng">0 to 0.5 or more</td><td>Grace period to still jump after walking off a ledge.</td></tr><tr><td><code>jump_buffer</code></td><td class="val">0.12 s</td><td class="rng">0 to 0.5 or more</td><td>A jump pressed this long before landing still counts.</td></tr><tr class="group"><th colspan="4">Double jump and dash</th></tr><tr><td><code>air_jumps</code></td><td class="val">0</td><td class="rng">0 to 5 or more</td><td>Extra jumps in mid-air before landing (0 = no double jump; enemies use 0).</td></tr><tr><td><code>air_jump_speed</code></td><td class="val">340 px/s</td><td class="rng">0 to 1200 or more</td><td>Launch speed of a mid-air jump (a touch weaker than the ground jump: about 55px).</td></tr><tr><td><code>dash_speed</code></td><td class="val">360 px/s</td><td class="rng">0 to 1200 or more</td><td>Speed during a dash.</td></tr><tr><td><code>dash_time</code></td><td class="val">0.15 s</td><td class="rng">0 to 1 or more</td><td>How long a dash lasts; distance is dash_speed * dash_time (about 54px).</td></tr><tr><td><code>dash_cooldown</code></td><td class="val">0.45 s</td><td class="rng">0 to 3 or more</td><td>Wait from the start of one dash until the next one is allowed.</td></tr><tr><td><code>air_dashes</code></td><td class="val">1</td><td class="rng">0 to 5 or more</td><td>Dashes allowed per trip through the air (ground dashes are only limited by the cooldown).</td></tr><tr><td><code>dash_iframes</code></td><td class="val">0.2 s</td><td class="rng">0 to 1 or more</td><td>Invincible for this long from the start of a dash: the whole dash plus a little grace, so a dash *through* a shot never gets you hit on the way out. Bullets pass through you meanwhile.</td></tr><tr class="group"><th colspan="4">Health</th></tr><tr><td><code>max_health</code></td><td class="val">100 hp</td><td class="rng">1 to 1000 or more</td><td>Players only: every carrot&#x27;s full health. Enemy damage is balanced against it. (Enemies&#x27; own health is in their stats.)</td></tr><tr><td><code>regen_delay</code></td><td class="val">3 s</td><td class="rng">0 to 30 or more</td><td>Players only: time without being hit before health starts to recharge...</td></tr><tr><td><code>regen_rate</code></td><td class="val">18 hp/s</td><td class="rng">0 to 200 or more</td><td>...and how fast it then refills.</td></tr><tr class="group"><th colspan="4">Getting hit</th></tr><tr><td><code>headshot_mult</code></td><td class="val">2x</td><td class="rng">1 to 5 or more</td><td>Players only: enemy shots that land on a player&#x27;s head do this many times the damage. (Guns, their damage and falloff live in Weapon resources: styles/weapons/.)</td></tr><tr><td><code>hurt_grace</code></td><td class="val">1 s</td><td class="rng">0 to 5 or more</td><td>Players only: after a hit the carrot flashes white, then blinks and can&#x27;t be hurt again for this long.</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>

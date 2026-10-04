@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ginger Shade | iCarrot Wiki</title>
+<meta name="description" content="The Ginger&#x27;s immune spectral projection. It haunts whichever boss room the squad is fighting in and harasses the players there with telegraphed bolt fans.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">4</span></summary><ul>
+<li><a href="../carrot/movement.html">Movement</a></li>
+<li><a href="../carrot/dash.html">Dash</a></li>
+<li><a href="../carrot/health.html">Health</a></li>
+<li><a href="../carrot/appearance.html">Appearance</a></li>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">5</span></summary><ul>
+<li><a href="../weapons/revolver.html">Revolver</a></li>
+<li><a href="../weapons/smg.html">SMG</a></li>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/grenade.html">Energy ball</a></li>
+<li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
+</ul></details>
+<details><summary><a href="../enemies/index.html">Enemies</a><span class="count">7</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+<li><a href="../enemies/pumpkin.html">Jacko</a></li>
+<li><a href="../enemies/asparagus.html">Spear-Gus</a></li>
+<li><a href="../enemies/mushroom.html">Shroom</a></li>
+<li><a href="../enemies/pepper.html">Hot Pepper</a></li>
+<li><a href="../enemies/corn.html">Big Cobber</a></li>
+<li><a href="../enemies/potato.html">Potato Bull</a></li>
+</ul></details>
+<details open><summary><a href="../bosses/index.html">Bosses</a><span class="count">5</span></summary><ul>
+<li><a href="../bosses/ginger.html">The Ginger</a></li>
+<li><a href="../bosses/sweet-potato.html">Sweet Potato</a></li>
+<li><a href="../bosses/red-corn.html">Red Corn</a></li>
+<li><a href="../bosses/ghost-pepper.html">Ghost Pepper</a></li>
+<li><a href="../bosses/ginger-shade.html" aria-current="page">Ginger Shade</a></li>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">4</span></summary><ul>
+<li><a href="../levels/title-sequence.html">Title Sequence</a></li>
+<li><a href="../levels/arena.html">Arena</a></li>
+<li><a href="../levels/garden-intro.html">Garden Intro</a></li>
+<li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
+<li><a href="../biomes/warm-burrow.html">Warm Burrow</a></li>
+<li><a href="../biomes/overgrown-vault.html">Overgrown Vault</a></li>
+<li><a href="../biomes/glowshroom-grotto.html">Glowshroom Grotto</a></li>
+<li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
+<li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/co-op.html">Co-op</a></li>
+<li><a href="../mechanics/reloading.html">Reloading</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
+<li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
+<li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../bosses/index.html">Bosses</a></p><h1>Ginger Shade</h1><aside class="infobox"><div class="infobox-title">Ginger Shade</div><dl><div><dt>Kind</dt><dd><code>ginger_shade</code></dd></div><div><dt>Type</dt><dd>Immune harasser</dd></div><div><dt>Health</dt><dd>Immune (bar shows 1000 hp)</dd></div><div><dt>Bolt damage</dt><dd>10 per bolt (players have 100 hp)</dd></div><div><dt>Bolts per volley</dt><dd>3</dd></div><div><dt>Spawned by</dt><dd><a href="../bosses/ginger.html">The Ginger</a></dd></div><div><dt>Found in</dt><dd><span class="redlink" title="This page doesn't exist yet">Burrow Encounter</span>, the active boss room</dd></div></dl></aside><p class="lead">The Ginger&#x27;s immune spectral projection. It haunts whichever boss room the squad is fighting in and harasses the players there with telegraphed bolt fans.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#behaviour">Behaviour</a></li><li><a href="#attacks">Attacks</a><ol><li><a href="#bolt-fan">Bolt fan</a></li></ol></li><li><a href="#strategy">Strategy</a></li><li><a href="#headshots">Headshots</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#death">Death</a></li><li><a href="#appearances">Appearances</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#stats">Stats</a></li></ol></li></ol></nav><p>A ghostly projection of <a href="../bosses/ginger.html">The Ginger</a>: a translucent purple-black silhouette of the ginger-root
+sorcerer, with a crooked root hood, a knobbly body, a dangling rootlet beard, glowing purple eyes, a
+flickering glowing rim and a wispy trailing tail. It is much smaller than its master. The Ginger
+can't leave the hub, so it sends the shade into the boss rooms to make the squad's life harder there.</p>
+<p>It can't be hurt. Shots that hit it show "IMMUNE" and do nothing. It is a nuisance to dodge, not an
+enemy to kill.</p>
+<h2 id="behaviour">Behaviour</h2>
+<p><a href="../bosses/ginger.html">The Ginger</a> brings in exactly one shade as soon as it appears. From then on the shade picks its
+own room:</p>
+<ul>
+<li><strong>Haunting.</strong> While any boss room's fight is on, it haunts one of them: the active room with the
+  most players in it (ties go to the first room). Once there, it sticks with that room while its
+  fight lasts, even if the squad moves about.</li>
+<li><strong>Travelling.</strong> It streaks to its room straight through the walls at 900 px/s, as a faint
+  see-through streak, then phases in over 0.9 s beside the player nearest the room's
+  middle. It can't attack while phasing in, and can't be hit until it's mostly solid.</li>
+<li><strong>Floating.</strong> In its room it drifts after the nearest standing player there at up to
+  70 px/s, hovering 110 px to their side with its tail 70 px above their
+  feet, wandering lazily and bobbing. It keeps 24 px inside the room's walls and ceiling.
+  Touching it does no harm.</li>
+<li><strong>Moving on.</strong> When its room's boss dies (the room clears), it fades out with a wail over
+  1 s. If another room's fight is on it heads there; otherwise it goes <strong>dormant</strong>:
+  invisible, untouchable and silent, parked by The Ginger in the hub until a room's fight starts
+  again.</li>
+</ul>
+<p>Its name tag and little health bar show only while it's properly in a room. It never fights in the
+hub.</p>
+<h2 id="attacks">Attacks</h2>
+<h3 id="bolt-fan">Bolt fan</h3>
+<p>Its first volley comes 1.4 s after it phases in, then one every 2.6 s to
+3.8 s. It only starts a volley at a player within 520 px with a clear line
+of sight.</p>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Lasts</th>
+<th>What you see</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Wind-up</td>
+<td>0.9 s</td>
+<td>It raises its arms, a spectral orb swells between its hands, and a dotted aim line flickers at its target. Its eyes burn brighter. The aim follows you, but only slowly (at 2.5 rad/s). This is the telegraph.</td>
+</tr>
+<tr>
+<td>Volley</td>
+<td>instant</td>
+<td>It looses 3 slow purple bolts in a fan, 14 ° apart, along the aim line.</td>
+</tr>
+</tbody>
+</table>
+<p>Each bolt flies at 165 px/s for up to 3 s and deals 10 damage with very little
+knockback. Bolts fizzle on walls and when they leave the room.</p>
+<p><strong>Dodge:</strong> when the aim line appears, move sideways; the aim lags behind you. The bolts are slow, so
+jumping over or slipping between them works too, and a dash carries you straight through.</p>
+<h2 id="strategy">Strategy</h2>
+<ul>
+<li>Don't shoot it. It's immune; spend the ammo on the room's boss and adds.</li>
+<li>Keep an eye out for its aim line while you fight the room boss. Its bolts are light, but they add
+  up and can knock you into something worse.</li>
+<li>The quicker the room's boss dies, the sooner it leaves.</li>
+<li>A squad split across rooms can choose where it goes: it haunts the room with the most players.</li>
+</ul>
+<h2 id="headshots">Headshots</h2>
+<p>Its head box is its face, near the top of its body, a little forward on the side it's facing. As it
+is immune, a headshot does nothing more than a body shot.</p>
+<h2 id="co-op">Co-op</h2>
+<p>The host chooses its room and target and streams its state and aim to everyone. Each wind-up and
+volley is an event every machine plays out, and every machine flies the bolts itself. Each machine
+checks only its own carrot, and only while that carrot is inside the bolt's room: <strong>players in other
+rooms or the hub are never hit by it.</strong> Dash i-frames dodge everything.</p>
+<h2 id="death">Death</h2>
+<p>It can't be killed by players. When <a href="../bosses/ginger.html">The Ginger</a> dies it takes the shade with it: the shade
+dissolves over 1.8 s with a long wail, and any bolts still flying fizzle out.</p>
+<h2 id="appearances">Appearances</h2>
+<ul>
+<li><span class="redlink" title="This page doesn't exist yet">Burrow Encounter</span>: it haunts the boss rooms while their fights are on. The three room bosses,
+  <a href="../bosses/sweet-potato.html">Sweet Potato</a>, <a href="../bosses/red-corn.html">Red Corn</a> and <a href="../bosses/ghost-pepper.html">Ghost Pepper</a>, each drop a key orb that goes on a hub
+  pedestal; those orbs unlock <a href="../bosses/ginger.html">The Ginger</a>.</li>
+<li>Outside an encounter (the arena, for testing) it haunts the whole level.</li>
+</ul>
+<h2 id="design-notes">Design notes</h2>
+<p>The Ginger is stuck in the hub, so without the shade the room fights would have nothing to do with
+the main boss. The shade ties them together: the room fights feel like part of one raid, with the
+big boss reaching into every room. It is immune so it can't distract from the room's real target,
+and it is light and well telegraphed so it adds pressure without taking over the fight.</p>
+<h2 id="tunable-parameters">Tunable parameters</h2>
+<p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
+
+<h3 id="stats">Stats</h3>
+<p class="params-src">Edit <a href="../tuning/enemies-ginger-shade.html"><code>styles/enemies/ginger_shade.tres</code></a> &middot; fields defined in <code>scripts/enemy_stats/ginger_shade_stats.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Health</th></tr><tr><td><code>hp</code></td><td class="val">1000 hp</td><td class="rng">1 to 10000</td><td>Hit points. It&#x27;s always immune, so this only fills its little health bar.</td></tr><tr class="group"><th colspan="4">Float</th></tr><tr><td><code>float_speed</code></td><td class="val">70 px/s</td><td class="rng">0 to 300</td><td>Top drifting speed while it haunts a room.</td></tr><tr><td><code>float_accel</code></td><td class="val">140 px/s²</td><td class="rng">1 to 1000</td><td>How quickly it changes its drift (lower is floatier).</td></tr><tr><td><code>hover_dist</code></td><td class="val">110 px</td><td class="rng">0 to 400</td><td>It likes to hover this far to the side of the player it&#x27;s harassing...</td></tr><tr><td><code>hover_height</code></td><td class="val">70 px</td><td class="rng">-100 to 300</td><td>...with the tip of its tail this far above their feet.</td></tr><tr><td><code>hover_margin</code></td><td class="val">24 px</td><td class="rng">0 to 200</td><td>It keeps at least this far inside its room&#x27;s walls and ceiling.</td></tr><tr><td><code>hover_min</code></td><td class="val">20 px</td><td class="rng">0 to 100</td><td>The tip of its tail never sinks closer than this to the floor below it.</td></tr><tr><td><code>wander_x</code></td><td class="val">50 px</td><td class="rng">0 to 200</td><td>A lazy wander around that spot: how far sideways and up and down, and how fast.</td></tr><tr><td><code>wander_y</code></td><td class="val">20 px</td><td class="rng">0 to 100</td><td></td></tr><tr><td><code>wander_speed</code></td><td class="val">0.12 Hz</td><td class="rng">0 to 3</td><td></td></tr><tr><td><code>bob_amp</code></td><td class="val">3 px</td><td class="rng">0 to 20</td><td>The ghostly bob: height and speed.</td></tr><tr><td><code>bob_speed</code></td><td class="val">3 rad/s</td><td class="rng">0 to 10</td><td></td></tr><tr class="group"><th colspan="4">Haunting</th></tr><tr><td><code>travel_speed</code></td><td class="val">900 px/s</td><td class="rng">50 to 3000</td><td>Speed of its spectral streak flying between rooms (through walls).</td></tr><tr><td><code>travel_alpha</code></td><td class="val">0.55</td><td class="rng">0 to 1</td><td>How see-through that streak is (0 invisible .. 1 solid).</td></tr><tr><td><code>phase_in_time</code></td><td class="val">0.9 s</td><td class="rng">0.05 to 5</td><td>How long it takes to phase in once it reaches its room (it can&#x27;t attack meanwhile).</td></tr><tr><td><code>fade_out_time</code></td><td class="val">1 s</td><td class="rng">0.05 to 5</td><td>How long it takes to fade out, wailing, when its room clears.</td></tr><tr><td><code>park_offset</code></td><td class="val"><code>Vector2(0, -50)</code></td><td class="rng"></td><td>Where it waits while dormant: this far from The Ginger (or the hub&#x27;s middle without one).</td></tr><tr class="group"><th colspan="4">Attack</th></tr><tr><td><code>first_shot</code></td><td class="val">1.4 s</td><td class="rng">0 to 10</td><td>Time from phasing in to its first volley.</td></tr><tr><td><code>fire_cooldown_min</code></td><td class="val">2.6 s</td><td class="rng">0.1 to 20</td><td>Time between volleys (a random pick between these).</td></tr><tr><td><code>fire_cooldown_max</code></td><td class="val">3.8 s</td><td class="rng">0.1 to 20</td><td></td></tr><tr><td><code>telegraph</code></td><td class="val">0.9 s</td><td class="rng">0.1 to 5</td><td>The telegraph: arms up, a spectral orb swelling and an aim line flickering at its target.</td></tr><tr><td><code>aim_track</code></td><td class="val">2.5 rad/s</td><td class="rng">0 to 20</td><td>How fast its aim follows its target during the telegraph (0 locks it where it started).</td></tr><tr><td><code>fire_range</code></td><td class="val">520 px</td><td class="rng">50 to 2000</td><td>It only starts a volley at a player within this distance.</td></tr><tr><td><code>shot_count</code></td><td class="val">3</td><td class="rng">1 to 9</td><td>Bolts per volley, fanned out evenly.</td></tr><tr><td><code>shot_spread</code></td><td class="val">14 °</td><td class="rng">0 to 60</td><td>The angle between neighbouring bolts.</td></tr><tr><td><code>shot_speed</code></td><td class="val">165 px/s</td><td class="rng">20 to 800</td><td>Bolt speed (slow to medium: dodgeable).</td></tr><tr><td><code>shot_life</code></td><td class="val">3 s</td><td class="rng">0.2 to 10</td><td>How long a bolt flies before it fizzles.</td></tr><tr><td><code>shot_damage</code></td><td class="val">10</td><td class="rng">0 to 100</td><td>Damage per bolt (players have 100 health).</td></tr><tr><td><code>knockback_x</code></td><td class="val">40 px/s</td><td class="rng">0 to 600</td><td>Knockback per bolt: sideways along its flight, and upward.</td></tr><tr><td><code>knockback_y</code></td><td class="val">30 px/s</td><td class="rng">0 to 600</td><td></td></tr><tr><td><code>shot_size</code></td><td class="val">4 px</td><td class="rng">1 to 12</td><td>Bolt radius (hit size and look).</td></tr><tr class="group"><th colspan="4">Look</th></tr><tr><td><code>body_alpha</code></td><td class="val">0.78</td><td class="rng">0 to 1</td><td>How see-through the body is (0 invisible .. 1 solid).</td></tr><tr><td><code>edge_glow</code></td><td class="val">2.2</td><td class="rng">0 to 6</td><td>Its glowing rim: brightness and opacity, and how much it flickers.</td></tr><tr><td><code>edge_alpha</code></td><td class="val">0.95</td><td class="rng">0 to 1</td><td></td></tr><tr><td><code>edge_flicker</code></td><td class="val">0.45</td><td class="rng">0 to 1</td><td></td></tr><tr><td><code>glow</code></td><td class="val">1.4</td><td class="rng">0 to 6</td><td>The halo around it: brightness, opacity and pulse.</td></tr><tr><td><code>glow_alpha</code></td><td class="val">0.45</td><td class="rng">0 to 1</td><td></td></tr><tr><td><code>glow_pulse</code></td><td class="val">0.2</td><td class="rng">0 to 1</td><td></td></tr><tr><td><code>eye_glow</code></td><td class="val">3.2</td><td class="rng">0 to 8</td><td>How bright its eyes burn (and how much brighter while it winds up).</td></tr><tr><td><code>eye_wind_glow</code></td><td class="val">4.5</td><td class="rng">0 to 8</td><td></td></tr><tr><td><code>shot_glow</code></td><td class="val">2.4</td><td class="rng">0 to 8</td><td>How bright the bolts and the wind-up orb glow.</td></tr><tr class="group"><th colspan="4">Juice</th></tr><tr><td><code>shake_phase_in</code></td><td class="val">0.2</td><td class="rng">0 to 1</td><td>Screen shake as it phases into a room, wails out, and dies (0..1).</td></tr><tr><td><code>shake_wail</code></td><td class="val">0.25</td><td class="rng">0 to 1</td><td></td></tr><tr><td><code>shake_death</code></td><td class="val">0.6</td><td class="rng">0 to 1</td><td></td></tr><tr><td><code>death_time</code></td><td class="val">1.8 s</td><td class="rng">0.3 to 6</td><td>How long the death dissolve lasts.</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>

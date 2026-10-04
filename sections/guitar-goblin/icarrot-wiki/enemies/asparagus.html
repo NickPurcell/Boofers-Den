@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Spear-Gus | iCarrot Wiki</title>
+<meta name="description" content="A tall asparagus sniper that drops onto a high perch, puffs up its cheeks behind a laser sight and spits a glowing scale at you.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">4</span></summary><ul>
+<li><a href="../carrot/movement.html">Movement</a></li>
+<li><a href="../carrot/dash.html">Dash</a></li>
+<li><a href="../carrot/health.html">Health</a></li>
+<li><a href="../carrot/appearance.html">Appearance</a></li>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">5</span></summary><ul>
+<li><a href="../weapons/revolver.html">Revolver</a></li>
+<li><a href="../weapons/smg.html">SMG</a></li>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/grenade.html">Energy ball</a></li>
+<li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
+</ul></details>
+<details open><summary><a href="../enemies/index.html">Enemies</a><span class="count">7</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+<li><a href="../enemies/pumpkin.html">Jacko</a></li>
+<li><a href="../enemies/asparagus.html" aria-current="page">Spear-Gus</a></li>
+<li><a href="../enemies/mushroom.html">Shroom</a></li>
+<li><a href="../enemies/pepper.html">Hot Pepper</a></li>
+<li><a href="../enemies/corn.html">Big Cobber</a></li>
+<li><a href="../enemies/potato.html">Potato Bull</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">5</span></summary><ul>
+<li><a href="../bosses/ginger.html">The Ginger</a></li>
+<li><a href="../bosses/sweet-potato.html">Sweet Potato</a></li>
+<li><a href="../bosses/red-corn.html">Red Corn</a></li>
+<li><a href="../bosses/ghost-pepper.html">Ghost Pepper</a></li>
+<li><a href="../bosses/ginger-shade.html">Ginger Shade</a></li>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">4</span></summary><ul>
+<li><a href="../levels/title-sequence.html">Title Sequence</a></li>
+<li><a href="../levels/arena.html">Arena</a></li>
+<li><a href="../levels/garden-intro.html">Garden Intro</a></li>
+<li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
+<li><a href="../biomes/warm-burrow.html">Warm Burrow</a></li>
+<li><a href="../biomes/overgrown-vault.html">Overgrown Vault</a></li>
+<li><a href="../biomes/glowshroom-grotto.html">Glowshroom Grotto</a></li>
+<li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
+<li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/co-op.html">Co-op</a></li>
+<li><a href="../mechanics/reloading.html">Reloading</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
+<li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
+<li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../enemies/index.html">Enemies</a></p><h1>Spear-Gus</h1><aside class="infobox"><div class="infobox-title">Spear-Gus</div><dl><div><dt>Kind</dt><dd><code>asparagus</code></dd></div><div><dt>Type</dt><dd>Regular enemy</dd></div><div><dt>Health</dt><dd>40 hp</dd></div><div><dt>Scale damage</dt><dd>20 hp</dd></div><div><dt>Wind-up</dt><dd>0.9 s</dd></div><div><dt>Sight range</dt><dd>420 px</dd></div></dl></aside><p class="lead">A tall asparagus sniper that drops onto a high perch, puffs up its cheeks behind a laser sight and spits a glowing scale at you.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#behaviour">Behaviour</a></li><li><a href="#attacks">Attacks</a><ol><li><a href="#spat-scale">Spat scale</a></li></ol></li><li><a href="#strategy">Strategy</a></li><li><a href="#headshots">Headshots</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#appearances">Appearances</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#stats">Stats</a></li></ol></li></ol></nav><h2 id="behaviour">Behaviour</h2>
+<p>Spear-Gus never walks. It falls out of the sky (with a whistle) under 900 px/s² of gravity and
+stakes itself into a plank perch with a thud, a wobble and a spray of wood chips. From then on it
+stays put. In the <a href="../levels/arena.html">Arena</a> it lands on the perches near the inner ends of the side planks, high
+enough to snipe across the screen; if one is taken it uses the other side, then spots further out
+along the planks.</p>
+<p>Once planted it watches the nearest player, turning its aim toward them at 4 rad/s, and leans toward
+them a little. Bullets don't shove it around.</p>
+<h2 id="attacks">Attacks</h2>
+<h3 id="spat-scale">Spat scale</h3>
+<p>It can only start a shot at a player within 420 px of its mouth with a clear line: walls
+and planks both block its view. Its first shot can't come sooner than 1.1 s after it plants
+itself.</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Lasts</th>
+<th>What you see</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Breath in</td>
+<td>0.9 s minus the lock</td>
+<td>A rising inhale. Its cheeks swell and a thin pink laser runs from its pursed lips to you, getting brighter. The aim still follows you, but slower (2 rad/s).</td>
+</tr>
+<tr>
+<td>Lock</td>
+<td>0.3 s</td>
+<td>The laser turns bright and blinks fast. The aim is frozen. <strong>Move now.</strong></td>
+</tr>
+<tr>
+<td>Ptoo!</td>
+<td>Instant</td>
+<td>The cheeks empty and a glowing scale flutters out along the laser's last line.</td>
+</tr>
+</tbody>
+</table>
+<p>The scale flies straight at 260 px/s and vanishes after 2 s if it hits nothing.
+Walls and planks stop it. A hit deals 20 hp (players have
+100 hp) and knocks the carrot 110 px/s along the scale's flight and
+70 px/s upward. A scale that strikes a carrot's head does
+2x times the damage. Spear-Gus aims a little above your feet, at
+17 px, so standing tall in its path is the worst place to be.</p>
+<p>After a shot it waits between 1.5 s and 2.3 s before the next wind-up.</p>
+<h2 id="strategy">Strategy</h2>
+<ul>
+<li>Watch the laser. As long as it is faint and following you, you're fine; the moment it locks and
+  blinks, step, jump or dash off the line. The shot goes where the laser was, not where you are.</li>
+<li>Dash i-frames beat every attack in the game: dashing through a scale lets it fly on past.</li>
+<li>Break line of sight. It won't wind up without a clear view, and planks block both its view and
+  its scales. The patch of ground right under its own plank is safe.</li>
+<li>It never moves and isn't knocked back, so it is an easy target for steady fire, and headshots on
+  its tall bud are easy to land.</li>
+</ul>
+<h2 id="headshots">Headshots</h2>
+<p>Its head box is the top of the spear: the purple bud and the face, down to just below the mouth.
+Headshots there do the weapon's headshot multiplier (see the weapon pages, such as <a href="../weapons/shotgun.html">Shotgun</a>).</p>
+<h2 id="co-op">Co-op</h2>
+<p>The host runs Spear-Gus's aim and timing. The start of a wind-up and the shot are announced to every
+machine, so everyone hears the inhale, sees the laser, and sees the scale leave from the same spot at
+the same angle. Every machine flies the scales itself and checks only its own carrot against them,
+so a hit always matches what that player saw. It targets the nearest player, so whoever is closest
+should be the one watching the laser. Dash i-frames dodge a scale for everyone.</p>
+<h2 id="appearances">Appearances</h2>
+<ul>
+<li><a href="../levels/arena.html">Arena</a>: one Spear-Gus is in the standing roster, replaced by another whenever it dies.</li>
+<li><span class="redlink" title="This page doesn't exist yet">Burrow Encounter</span>: in the <a href="../bosses/red-corn.html">Red Corn</a> room, two of them perch on the high ledges at either
+  end of the room as adds, and come back a while after each death until the boss is down.</li>
+</ul>
+<h2 id="design-notes">Design notes</h2>
+<p>The wind-up is long and the aim keeps following until the lock, so a player can't dodge early and
+must time it. The short lock at the end is the fair part: the laser shows exactly where the shot will
+go and leaves just enough time to get off the line. Spear-Gus never moves, so it is a target to
+prioritise rather than something that chases you.</p>
+<h2 id="tunable-parameters">Tunable parameters</h2>
+<p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
+
+<h3 id="stats">Stats</h3>
+<p class="params-src">Edit <a href="../tuning/enemies-asparagus.html"><code>styles/enemies/asparagus.tres</code></a> &middot; fields defined in <code>scripts/enemy_stats/asparagus_stats.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Health</th></tr><tr><td><code>hp</code></td><td class="val">40 hp</td><td class="rng">1 to 2000</td><td>Hit points. A revolver body shot does 10.</td></tr><tr class="group"><th colspan="4">Movement</th></tr><tr><td><code>fall_gravity</code></td><td class="val">900 px/s²</td><td class="rng">0 to 3000</td><td>Gravity while it drops in from the sky onto its perch.</td></tr><tr><td><code>fall_height</code></td><td class="val">230 px</td><td class="rng">20 to 800</td><td>How far above its perch it starts falling when it arrives.</td></tr><tr class="group"><th colspan="4">Aim</th></tr><tr><td><code>sight_range</code></td><td class="val">420 px</td><td class="rng">0 to 1500</td><td>Won&#x27;t wind up at a player further than this from its mouth.</td></tr><tr><td><code>aim_height</code></td><td class="val">17 px</td><td class="rng">0 to 40</td><td>Where it aims on a player: this far above their feet.</td></tr><tr><td><code>turn</code></td><td class="val">4 rad/s</td><td class="rng">0 to 20</td><td>How fast it turns toward its target normally.</td></tr><tr><td><code>turn_windup</code></td><td class="val">2 rad/s</td><td class="rng">0 to 20</td><td>How fast it keeps turning while winding up (before the lock).</td></tr><tr class="group"><th colspan="4">Shot</th></tr><tr><td><code>first_shot</code></td><td class="val">1.1 s</td><td class="rng">0 to 10</td><td>The first shot can&#x27;t come sooner than this after it plants itself.</td></tr><tr><td><code>windup</code></td><td class="val">0.9 s</td><td class="rng">0.05 to 5</td><td>The wind-up (breath in, laser showing) before each shot.</td></tr><tr><td><code>lock</code></td><td class="val">0.3 s</td><td class="rng">0 to 5</td><td>For the last this-many seconds of the wind-up the aim stops following (the dodge window).</td></tr><tr><td><code>cooldown_min</code></td><td class="val">1.5 s</td><td class="rng">0 to 10</td><td>Shortest wait after a shot before the next wind-up can start.</td></tr><tr><td><code>cooldown_max</code></td><td class="val">2.3 s</td><td class="rng">0 to 10</td><td>Longest wait after a shot before the next wind-up can start.</td></tr><tr class="group"><th colspan="4">Scale</th></tr><tr><td><code>scale_speed</code></td><td class="val">260 px/s</td><td class="rng">10 to 1500</td><td>Speed of a spat scale.</td></tr><tr><td><code>scale_life</code></td><td class="val">2 s</td><td class="rng">0.1 to 10</td><td>A spat scale vanishes after this long if it hasn&#x27;t hit anything.</td></tr><tr class="group"><th colspan="4">Damage</th></tr><tr><td><code>scale_damage</code></td><td class="val">20 hp</td><td class="rng">0 to 200</td><td>Damage a scale does to a player (out of 100 health; headshots double it).</td></tr><tr><td><code>knockback_x</code></td><td class="val">110 px/s</td><td class="rng">0 to 600</td><td>Sideways shove a scale gives the player it hits, along its flight.</td></tr><tr><td><code>knockback_y</code></td><td class="val">70 px/s</td><td class="rng">0 to 600</td><td>Upward pop a scale gives the player it hits.</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>

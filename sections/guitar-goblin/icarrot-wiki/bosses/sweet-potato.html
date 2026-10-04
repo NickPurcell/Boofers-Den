@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sweet Potato | iCarrot Wiki</title>
+<meta name="description" content="The top-room boss of the Burrow Encounter, a huge rosy sweet potato bull that chains charges into the walls, sends shockwaves along the floor and ambushes from underground.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">4</span></summary><ul>
+<li><a href="../carrot/movement.html">Movement</a></li>
+<li><a href="../carrot/dash.html">Dash</a></li>
+<li><a href="../carrot/health.html">Health</a></li>
+<li><a href="../carrot/appearance.html">Appearance</a></li>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">5</span></summary><ul>
+<li><a href="../weapons/revolver.html">Revolver</a></li>
+<li><a href="../weapons/smg.html">SMG</a></li>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/grenade.html">Energy ball</a></li>
+<li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
+</ul></details>
+<details><summary><a href="../enemies/index.html">Enemies</a><span class="count">7</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+<li><a href="../enemies/pumpkin.html">Jacko</a></li>
+<li><a href="../enemies/asparagus.html">Spear-Gus</a></li>
+<li><a href="../enemies/mushroom.html">Shroom</a></li>
+<li><a href="../enemies/pepper.html">Hot Pepper</a></li>
+<li><a href="../enemies/corn.html">Big Cobber</a></li>
+<li><a href="../enemies/potato.html">Potato Bull</a></li>
+</ul></details>
+<details open><summary><a href="../bosses/index.html">Bosses</a><span class="count">5</span></summary><ul>
+<li><a href="../bosses/ginger.html">The Ginger</a></li>
+<li><a href="../bosses/sweet-potato.html" aria-current="page">Sweet Potato</a></li>
+<li><a href="../bosses/red-corn.html">Red Corn</a></li>
+<li><a href="../bosses/ghost-pepper.html">Ghost Pepper</a></li>
+<li><a href="../bosses/ginger-shade.html">Ginger Shade</a></li>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">4</span></summary><ul>
+<li><a href="../levels/title-sequence.html">Title Sequence</a></li>
+<li><a href="../levels/arena.html">Arena</a></li>
+<li><a href="../levels/garden-intro.html">Garden Intro</a></li>
+<li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
+<li><a href="../biomes/warm-burrow.html">Warm Burrow</a></li>
+<li><a href="../biomes/overgrown-vault.html">Overgrown Vault</a></li>
+<li><a href="../biomes/glowshroom-grotto.html">Glowshroom Grotto</a></li>
+<li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
+<li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/co-op.html">Co-op</a></li>
+<li><a href="../mechanics/reloading.html">Reloading</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
+<li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
+<li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../bosses/index.html">Bosses</a></p><h1>Sweet Potato</h1><aside class="infobox"><div class="infobox-title">Sweet Potato</div><dl><div><dt>Kind</dt><dd><code>sweet_potato</code></dd></div><div><dt>Type</dt><dd>Boss</dd></div><div><dt>Health</dt><dd>1800 hp</dd></div><div><dt>Charge damage</dt><dd>40 hp</dd></div><div><dt>Shockwave damage</dt><dd>25 hp</dd></div><div><dt>Eruption damage</dt><dd>35 hp</dd></div><div><dt>Key</dt><dd>Green</dd></div><div><dt>Found in</dt><dd><span class="redlink" title="This page doesn't exist yet">Burrow Encounter</span></dd></div></dl></aside><p class="lead">The top-room boss of the Burrow Encounter, a huge rosy sweet potato bull that chains charges into the walls, sends shockwaves along the floor and ambushes from underground.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#behaviour">Behaviour</a></li><li><a href="#attacks">Attacks</a><ol><li><a href="#charge-combo">Charge combo</a></li><li><a href="#wall-slam-and-shockwave">Wall slam and shockwave</a></li><li><a href="#burrow-ambush">Burrow ambush</a></li></ol></li><li><a href="#enrage">Enrage</a></li><li><a href="#headshots">Headshots</a></li><li><a href="#strategy">Strategy</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#death">Death</a></li><li><a href="#appearances">Appearances</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#stats">Stats</a></li></ol></li></ol></nav><h2 id="behaviour">Behaviour</h2>
+<p>The Sweet Potato is the <a href="../enemies/potato.html">Potato Bull</a>'s big angry cousin: a huge rosy sweet potato, tapered at
+both ends and scarred with glimpses of bright orange flesh, with a crown of gnarly purple sprouts and
+two great sprout horns. It stands about one and a half times a Potato Bull's height and is much
+wider.</p>
+<p>Like the bull, it stays on the ground. It trots after the nearest player at up to 36 px/s,
+hops up steps no taller than 26 px, and turns round slowly (0.4 s). It stops
+60 px from its target to wait for an attack, and shuffles back if a player gets closer
+than 40 px. Bullets barely nudge it (3 px/s per hit).</p>
+<p>It has two attacks it chooses between: a <strong>charge combo</strong> and a <strong>burrow ambush</strong>. The first attack
+comes 1.8 s after it appears, then one every 1.2 s to 2.2 s. The
+burrow has its own timer: the first is ready after 7 s, then one every
+10 s. When both are ready it picks the burrow with a chance of 0.4; it
+always burrows if its target is somewhere it can't charge (up on a ledge, say), and never dives
+while standing on a plank.</p>
+<h2 id="attacks">Attacks</h2>
+<h3 id="charge-combo">Charge combo</h3>
+<p>It charges when a player is in front of it, between 40 px and 600 px away,
+roughly level with it (feet no more than 40 px apart vertically), with no wall in
+between. A combo chains 2 charges to 3 charges.</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Lasts</th>
+<th>What you see</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Wind-up</td>
+<td>1.1 s</td>
+<td>It paws the ground, snorts, lowers its head, and its eyes go red. This is the telegraph for the whole combo.</td>
+</tr>
+<tr>
+<td>Charge</td>
+<td>Until it passes you, or 2.2 s</td>
+<td>It barrels straight ahead at up to 300 px/s. If you run on ahead it keeps going after you, braking only 80 px past you.</td>
+</tr>
+<tr>
+<td>Re-paw</td>
+<td>0.5 s</td>
+<td>Between charges it skids to a quick stop, swings round to face its target, snorts and goes again.</td>
+</tr>
+<tr>
+<td>Last charge</td>
+<td>Until it hits a wall, or 4 s</td>
+<td>The last charge of a combo does not brake for anyone: it runs on into the wall.</td>
+</tr>
+<tr>
+<td>Recover</td>
+<td>0.8 s</td>
+<td>After a skid, a stun or an eruption it shakes itself off and turns round.</td>
+</tr>
+</tbody>
+</table>
+<p>Each charge that runs into a player deals 40 hp (players have
+100 hp) and launches them along the charge and upward, at most once per
+charge per player.</p>
+<h3 id="wall-slam-and-shockwave">Wall slam and shockwave</h3>
+<p>Running into a wall at 120 px/s or more is a <strong>slam</strong>. It bounces off and is <strong>stunned</strong> for
+3 s under dizzy stars, which is the main punish window. The slam also sends a wave of dirt
+and glowing orange rolling along the floor both ways from the impact, at 230 px/s.</p>
+<p>The wave is 18 px tall: a carrot whose feet are above that clears it, so <strong>jump it</strong>. It
+dies out after 760 px, or at a wall or the floor's edge. A wave that rolls through a player
+deals 25 hp and launches them, once per wave.</p>
+<p>Hitting a wall slower than 120 px/s just stops it, with no stun and no wave.</p>
+<h3 id="burrow-ambush">Burrow ambush</h3>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Lasts</th>
+<th>What you see</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Dive</td>
+<td>0.75 s</td>
+<td>It crouches and digs in, then vanishes underground.</td>
+</tr>
+<tr>
+<td>Burrow</td>
+<td>Up to 3 s</td>
+<td>A dirt mound with its crown poking out tunnels toward its target at 170 px/s, with a rumble. It never tunnels off a ledge.</td>
+</tr>
+<tr>
+<td>Telegraph</td>
+<td>0.9 s</td>
+<td>It stops under its target and a dirt circle cracks open and glows. Get out of it.</td>
+</tr>
+<tr>
+<td>Erupt</td>
+<td>Until it lands</td>
+<td>It bursts out of the ground in a geyser of dirt.</td>
+</tr>
+</tbody>
+</table>
+<p>The eruption hits anyone within 44 px either side of the spot, up to 120 px
+above the floor, so a normal jump does not clear it. It deals 35 hp and launches them
+sideways away from the spot and high into the air.</p>
+<p>While it is underground it cannot be hit at all.</p>
+<h2 id="enrage">Enrage</h2>
+<p>When its health drops to 0.5 of its maximum, it stops at the next chance and <strong>roars</strong> for
+1.6 s, shaking the screen. Its scars split into glowing caramelized cracks that vent steam.
+From then on:</p>
+<table>
+<thead>
+<tr>
+<th>What</th>
+<th>Multiplier or change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Charge speed</td>
+<td>1.25x</td>
+</tr>
+<tr>
+<td>Charge acceleration</td>
+<td>1.3x</td>
+</tr>
+<tr>
+<td>Wind-up and re-paw time</td>
+<td>0.7x</td>
+</tr>
+<tr>
+<td>Extra charges per combo</td>
+<td>1 charges</td>
+</tr>
+<tr>
+<td>Time between attacks and between burrows</td>
+<td>0.6x</td>
+</tr>
+<tr>
+<td>Burrow speed</td>
+<td>1.3x</td>
+</tr>
+<tr>
+<td>Eruption telegraph</td>
+<td>0.85x</td>
+</tr>
+<tr>
+<td>Shockwave speed</td>
+<td>1.2x</td>
+</tr>
+</tbody>
+</table>
+<h2 id="headshots">Headshots</h2>
+<p>The weak spot is its brow and the roots of its crown, on the front-top of its head. While it is
+stunned, the weak spot grows down over most of its body (2.4x its usual height), so
+nearly every shot counts as a headshot. Underground it has no hitbox at all.</p>
+<h2 id="strategy">Strategy</h2>
+<ul>
+<li>Fight with a wall behind you. Sidestep or jump each charge, and the last one of the combo will
+  slam that wall.</li>
+<li>When it slams, jump the shockwave first, then pour damage into the stunned boss.</li>
+<li>Count the charges: only the last one of a combo hits the wall, and the re-paws are short.</li>
+<li>When the ground rumbles and a mound heads your way, keep moving. When the circle cracks, leave it
+  sideways; jumping is not enough.</li>
+<li>Dashing through a charge, a wave or an eruption dodges it: dash i-frames beat every attack in the
+  game.</li>
+<li>After the enrage everything comes faster, but the combos are longer, so the wall slam (and the
+  stun) still comes.</li>
+</ul>
+<h2 id="co-op">Co-op</h2>
+<p>The host runs the Sweet Potato's AI and physics and streams its state (charge direction, charge
+number, combo progress, enraged) to everyone else. The charge, slam, dive, crack, eruption and
+enrage are events every machine plays. Each machine checks only its own carrot: against the charge
+(once per charge), against each shockwave (simulated locally, once per wave) and against each
+eruption, so a hit always matches what that player saw.</p>
+<p>The boss charges at the nearest player, so in a squad one player can bait combos into a wall while
+the others shoot.</p>
+<h2 id="death">Death</h2>
+<p>It bursts like an overdone roast: a hot flash, glowing roasted chunks and skin raining down, orange
+mash, its crown flying off, and a great column of steam that lingers.</p>
+<h2 id="appearances">Appearances</h2>
+<ul>
+<li><strong><span class="redlink" title="This page doesn't exist yet">Burrow Encounter</span></strong>: the boss of the top room, lit by green torches. When a player gets far
+  enough in, the doors shut and the Sweet Potato arrives with two zombie adds (<a href="../enemies/zombie.html">Zombie</a>) that keep
+  coming back while the fight is on.</li>
+<li>Killing it opens the doors, takes the adds down and drops the room's green key orb (its buff is
+  called SPUD RUSH). Carry it back to the green pedestal in the hub.
+  Each orb placed there breaks part of <a href="../bosses/ginger.html">The Ginger</a>'s shield and unlocks more of its health.</li>
+<li>The <a href="../bosses/ginger-shade.html">Ginger Shade</a> may haunt its room during the fight, sniping at the players there.</li>
+</ul>
+<h2 id="design-notes">Design notes</h2>
+<p>The Sweet Potato scales up the <a href="../enemies/potato.html">Potato Bull</a>'s lesson: the charge is dangerous in the open but a
+wall turns it into a damage window. Combos and the shockwave add a dodge-then-jump rhythm, and the
+burrow stops players from simply camping a wall or a ledge.</p>
+<h2 id="tunable-parameters">Tunable parameters</h2>
+<p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
+
+<h3 id="stats">Stats</h3>
+<p class="params-src">Edit <a href="../tuning/enemies-sweet-potato.html"><code>styles/enemies/sweet_potato.tres</code></a> &middot; fields defined in <code>scripts/enemy_stats/sweet_potato_stats.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Health</th></tr><tr><td><code>max_hp</code></td><td class="val">1800 hp</td><td class="rng">100 to 6000</td><td>Hit points (before the encounter&#x27;s hp_scale). The potato bull has 300, the corn ogre 500.</td></tr><tr><td><code>hit_push</code></td><td class="val">3 px/s</td><td class="rng">0 to 100</td><td>How far a bullet nudges it while it trots (it&#x27;s very heavy).</td></tr><tr class="group"><th colspan="4">Movement</th></tr><tr><td><code>trot_speed</code></td><td class="val">36 px/s</td><td class="rng">0 to 120</td><td>Top speed of the heavy waddling trot toward the nearest player.</td></tr><tr><td><code>trot_accel</code></td><td class="val">340 px/s²</td><td class="rng">50 to 3000</td><td>How quickly the trot gets up to speed (and slows down again).</td></tr><tr><td><code>keep_distance</code></td><td class="val">60 px</td><td class="rng">0 to 300</td><td>Stops trotting this close to its target (feet to feet) and waits for a run at them.</td></tr><tr><td><code>turn_time</code></td><td class="val">0.4 s</td><td class="rng">0 to 2</td><td>Time to turn round to face the other way (a slow, heavy turn).</td></tr><tr><td><code>hop_speed</code></td><td class="val">320 px/s</td><td class="rng">0 to 600</td><td>Upward speed of a heavy hop up a low step in its way.</td></tr><tr><td><code>gravity</code></td><td class="val">1200 px/s²</td><td class="rng">200 to 3000</td><td>Gravity on it, and the fastest it falls.</td></tr><tr><td><code>max_fall</code></td><td class="val">520 px/s</td><td class="rng">100 to 1200</td><td></td></tr><tr><td><code>hop_max</code></td><td class="val">26 px</td><td class="rng">0 to 80</td><td>The tallest step it will hop up onto while trotting (anything higher stops it).</td></tr><tr class="group"><th colspan="4">Charge</th></tr><tr><td><code>charge_range</code></td><td class="val">600 px</td><td class="rng">0 to 1200</td><td>Starts a charge combo at a player at most this far away (horizontally) ...</td></tr><tr><td><code>charge_min_range</code></td><td class="val">40 px</td><td class="rng">0 to 300</td><td>... and at least this far (closer than that it shuffles back a step first).</td></tr><tr><td><code>charge_height</code></td><td class="val">40 px</td><td class="rng">0 to 200</td><td>... and only if they&#x27;re roughly level with it: feet no more than this far apart vertically.</td></tr><tr><td><code>windup_time</code></td><td class="val">1.1 s</td><td class="rng">0.2 to 3</td><td>The first wind-up telegraph of a combo (pawing, snorting, head down) before it goes.</td></tr><tr><td><code>charge_speed</code></td><td class="val">300 px/s</td><td class="rng">60 to 800</td><td>Top charging speed and how fast it gets there.</td></tr><tr><td><code>charge_accel</code></td><td class="val">1000 px/s²</td><td class="rng">100 to 5000</td><td></td></tr><tr><td><code>overshoot</code></td><td class="val">80 px</td><td class="rng">0 to 300</td><td>A combo charge (not the last) keeps going this far past where the player was before it brakes.</td></tr><tr><td><code>charge_max_time</code></td><td class="val">2.2 s</td><td class="rng">0.3 to 6</td><td>A combo charge brakes after this long even if it hasn&#x27;t passed the player.</td></tr><tr><td><code>final_charge_max_time</code></td><td class="val">4 s</td><td class="rng">0.3 to 8</td><td>The last charge of a combo doesn&#x27;t brake for the player: it runs until it hits a wall, or this long.</td></tr><tr><td><code>skid_decel</code></td><td class="val">560 px/s²</td><td class="rng">50 to 3000</td><td>How hard it brakes in the skid after the last charge.</td></tr><tr><td><code>stun_speed</code></td><td class="val">120 px/s</td><td class="rng">0 to 600</td><td>Hitting a wall at least this fast is a slam (stun and shockwave); slower, it just stops.</td></tr><tr><td><code>stun_time</code></td><td class="val">3 s</td><td class="rng">0 to 10</td><td>How long it&#x27;s dizzy after a wall slam (the punish window; its weak spot grows meanwhile).</td></tr><tr><td><code>recover_time</code></td><td class="val">0.8 s</td><td class="rng">0 to 3</td><td>Shaking it off and turning round after a skid, a stun or an eruption.</td></tr><tr><td><code>cooldown_min</code></td><td class="val">1.2 s</td><td class="rng">0 to 10</td><td>Time between attacks (random in this range), and before the first one after it appears.</td></tr><tr><td><code>cooldown_max</code></td><td class="val">2.2 s</td><td class="rng">0 to 10</td><td></td></tr><tr><td><code>first_charge</code></td><td class="val">1.8 s</td><td class="rng">0 to 10</td><td></td></tr><tr class="group"><th colspan="4">Combo</th></tr><tr><td><code>combo_min</code></td><td class="val">2 charges</td><td class="rng">1 to 6</td><td>How many charges it chains in a row (random in this range). The last one runs into the wall.</td></tr><tr><td><code>combo_max</code></td><td class="val">3 charges</td><td class="rng">1 to 6</td><td></td></tr><tr><td><code>repaw_time</code></td><td class="val">0.5 s</td><td class="rng">0.05 to 2</td><td>The short re-paw between combo charges: it turns, re-aims at its target and goes again.</td></tr><tr><td><code>combo_skid_decel</code></td><td class="val">1100 px/s²</td><td class="rng">50 to 4000</td><td>How hard it brakes between combo charges (a quick, sharp skid).</td></tr><tr class="group"><th colspan="4">Shockwave</th></tr><tr><td><code>wave_speed</code></td><td class="val">230 px/s</td><td class="rng">30 to 800</td><td>A wall slam sends a wave of dirt rolling along the floor both ways from the impact. Jump it.</td></tr><tr><td><code>wave_height</code></td><td class="val">18 px</td><td class="rng">2 to 60</td><td>Height of the wave (a carrot whose feet are above this clears it) and its width.</td></tr><tr><td><code>wave_width</code></td><td class="val">34 px</td><td class="rng">4 to 80</td><td></td></tr><tr><td><code>wave_range</code></td><td class="val">760 px</td><td class="rng">20 to 2000</td><td>It dies out after rolling this far (or at a wall or the floor&#x27;s edge).</td></tr><tr><td><code>wave_damage</code></td><td class="val">25 hp</td><td class="rng">0 to 100</td><td>Damage to a player it rolls through (once per wave per player), and the launch.</td></tr><tr><td><code>wave_knock_x</code></td><td class="val">180 px/s</td><td class="rng">0 to 1000</td><td></td></tr><tr><td><code>wave_knock_y</code></td><td class="val">400 px/s</td><td class="rng">0 to 1000</td><td></td></tr><tr class="group"><th colspan="4">Burrow</th></tr><tr><td><code>first_burrow</code></td><td class="val">7 s</td><td class="rng">0 to 60</td><td>Seconds before its first burrow ambush, and between ambushes.</td></tr><tr><td><code>burrow_cooldown</code></td><td class="val">10 s</td><td class="rng">0 to 60</td><td></td></tr><tr><td><code>burrow_chance</code></td><td class="val">0.4</td><td class="rng">0 to 1</td><td>When a burrow is ready, the chance it picks one over a charge combo (it always burrows when it can&#x27;t charge, e.g. its target is up on a ledge).</td></tr><tr><td><code>dive_time</code></td><td class="val">0.75 s</td><td class="rng">0.1 to 3</td><td>The dive: crouching and digging in before it vanishes underground.</td></tr><tr><td><code>burrow_speed</code></td><td class="val">170 px/s</td><td class="rng">20 to 600</td><td>The dirt mound&#x27;s speed toward its target, and the longest it tunnels before surfacing anyway.</td></tr><tr><td><code>burrow_max_time</code></td><td class="val">3 s</td><td class="rng">0.3 to 10</td><td></td></tr><tr><td><code>telegraph_time</code></td><td class="val">0.9 s</td><td class="rng">0.1 to 3</td><td>The cracking dirt circle under the target before it erupts (the time to get out of it).</td></tr><tr><td><code>erupt_radius</code></td><td class="val">44 px</td><td class="rng">5 to 150</td><td>The eruption&#x27;s reach: half its width, and how high above the floor it hits.</td></tr><tr><td><code>erupt_height</code></td><td class="val">120 px</td><td class="rng">10 to 300</td><td></td></tr><tr><td><code>erupt_damage</code></td><td class="val">35 hp</td><td class="rng">0 to 100</td><td>Damage to a player caught on the spot, and the launch (sideways away from it, and up).</td></tr><tr><td><code>erupt_knock_x</code></td><td class="val">200 px/s</td><td class="rng">0 to 1000</td><td></td></tr><tr><td><code>erupt_knock_y</code></td><td class="val">560 px/s</td><td class="rng">0 to 1200</td><td></td></tr><tr><td><code>erupt_jump</code></td><td class="val">430 px/s</td><td class="rng">0 to 1000</td><td>How hard it bursts up out of the ground.</td></tr><tr class="group"><th colspan="4">Enrage</th></tr><tr><td><code>enrage_at</code></td><td class="val">0.5</td><td class="rng">0 to 1</td><td>It enrages once its health drops to this fraction of its maximum.</td></tr><tr><td><code>roar_time</code></td><td class="val">1.6 s</td><td class="rng">0 to 5</td><td>The roar when it enrages (it stands its ground meanwhile).</td></tr><tr><td><code>enrage_speed_mult</code></td><td class="val">1.25x</td><td class="rng">1 to 3</td><td>Enraged: charge speed and acceleration multipliers.</td></tr><tr><td><code>enrage_accel_mult</code></td><td class="val">1.3x</td><td class="rng">1 to 3</td><td></td></tr><tr><td><code>enrage_windup_mult</code></td><td class="val">0.7x</td><td class="rng">0.2 to 1</td><td>Enraged: wind-up and re-paw time multiplier (shorter tells).</td></tr><tr><td><code>enrage_extra_charges</code></td><td class="val">1 charges</td><td class="rng">0 to 4</td><td>Enraged: extra charges added to each combo.</td></tr><tr><td><code>enrage_cooldown_mult</code></td><td class="val">0.6x</td><td class="rng">0.1 to 1</td><td>Enraged: cooldown multiplier (between attacks and burrows).</td></tr><tr><td><code>enrage_burrow_mult</code></td><td class="val">1.3x</td><td class="rng">1 to 3</td><td>Enraged: burrow speed multiplier, and telegraph time multiplier.</td></tr><tr><td><code>enrage_telegraph_mult</code></td><td class="val">0.85x</td><td class="rng">0.3 to 1</td><td></td></tr><tr><td><code>enrage_wave_mult</code></td><td class="val">1.2x</td><td class="rng">1 to 3</td><td>Enraged: shockwave speed multiplier.</td></tr><tr class="group"><th colspan="4">Damage</th></tr><tr><td><code>charge_damage</code></td><td class="val">40 hp</td><td class="rng">0 to 100</td><td>Damage to a player it runs into while charging (players have 100). Once per charge per player.</td></tr><tr><td><code>knock_x</code></td><td class="val">460 px/s</td><td class="rng">0 to 1000</td><td>The launch: sideways along the charge, and upwards.</td></tr><tr><td><code>knock_y</code></td><td class="val">360 px/s</td><td class="rng">0 to 1000</td><td></td></tr><tr><td><code>stun_weak_spot</code></td><td class="val">2.4x</td><td class="rng">1 to 4</td><td>While stunned, its weak spot (head box, headshots x2) grows to this many times its normal height.</td></tr><tr class="group"><th colspan="4">Feel</th></tr><tr><td><code>footfall_shake</code></td><td class="val">0.3</td><td class="rng">0 to 1</td><td>Screen shake per charging footfall (scaled down with distance), a wall slam, an eruption, the enrage roar, the underground rumble and the death.</td></tr><tr><td><code>slam_shake</code></td><td class="val">1</td><td class="rng">0 to 1</td><td></td></tr><tr><td><code>erupt_shake</code></td><td class="val">0.9</td><td class="rng">0 to 1</td><td></td></tr><tr><td><code>roar_shake</code></td><td class="val">0.8</td><td class="rng">0 to 1</td><td></td></tr><tr><td><code>burrow_shake</code></td><td class="val">0.18</td><td class="rng">0 to 1</td><td></td></tr><tr><td><code>death_shake</code></td><td class="val">1</td><td class="rng">0 to 1</td><td></td></tr><tr><td><code>flash_gap</code></td><td class="val">0.25 s</td><td class="rng">0.05 to 1</td><td>Least time between white hit flashes, so the SMG doesn&#x27;t strobe it, and how bright and long one is.</td></tr><tr><td><code>flash_brightness</code></td><td class="val">1.3x</td><td class="rng">1 to 2</td><td></td></tr><tr><td><code>flash_time</code></td><td class="val">0.05 s</td><td class="rng">0.01 to 0.2</td><td></td></tr><tr><td><code>crack_glow</code></td><td class="val">1.8</td><td class="rng">0.5 to 5</td><td>Glow (HDR intensity) of its caramelized cracks once enraged, and of the eruption&#x27;s dirt circle.</td></tr><tr><td><code>steam_gap</code></td><td class="val">0.35 s</td><td class="rng">0.05 to 3</td><td>Seconds between steam vents from its cracks once enraged.</td></tr><tr><td><code>debris_gravity</code></td><td class="val">560 px/s²</td><td class="rng">0 to 2000</td><td>Gravity on the roasted chunks, skin and clods as they bounce and settle.</td></tr><tr><td><code>debris_life</code></td><td class="val">3.5 s</td><td class="rng">0.2 to 15</td><td>How long the chunks lie around before they blink out.</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>

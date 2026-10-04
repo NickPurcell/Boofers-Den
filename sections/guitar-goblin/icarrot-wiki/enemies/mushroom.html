@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shroom | iCarrot Wiki</title>
+<meta name="description" content="A portobello outlaw with a pistol in each hand that keeps its distance, takes aim and fires short bursts of slow glowing slugs.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">4</span></summary><ul>
+<li><a href="../carrot/movement.html">Movement</a></li>
+<li><a href="../carrot/dash.html">Dash</a></li>
+<li><a href="../carrot/health.html">Health</a></li>
+<li><a href="../carrot/appearance.html">Appearance</a></li>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">5</span></summary><ul>
+<li><a href="../weapons/revolver.html">Revolver</a></li>
+<li><a href="../weapons/smg.html">SMG</a></li>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/grenade.html">Energy ball</a></li>
+<li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
+</ul></details>
+<details open><summary><a href="../enemies/index.html">Enemies</a><span class="count">7</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+<li><a href="../enemies/pumpkin.html">Jacko</a></li>
+<li><a href="../enemies/asparagus.html">Spear-Gus</a></li>
+<li><a href="../enemies/mushroom.html" aria-current="page">Shroom</a></li>
+<li><a href="../enemies/pepper.html">Hot Pepper</a></li>
+<li><a href="../enemies/corn.html">Big Cobber</a></li>
+<li><a href="../enemies/potato.html">Potato Bull</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">5</span></summary><ul>
+<li><a href="../bosses/ginger.html">The Ginger</a></li>
+<li><a href="../bosses/sweet-potato.html">Sweet Potato</a></li>
+<li><a href="../bosses/red-corn.html">Red Corn</a></li>
+<li><a href="../bosses/ghost-pepper.html">Ghost Pepper</a></li>
+<li><a href="../bosses/ginger-shade.html">Ginger Shade</a></li>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">4</span></summary><ul>
+<li><a href="../levels/title-sequence.html">Title Sequence</a></li>
+<li><a href="../levels/arena.html">Arena</a></li>
+<li><a href="../levels/garden-intro.html">Garden Intro</a></li>
+<li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
+<li><a href="../biomes/warm-burrow.html">Warm Burrow</a></li>
+<li><a href="../biomes/overgrown-vault.html">Overgrown Vault</a></li>
+<li><a href="../biomes/glowshroom-grotto.html">Glowshroom Grotto</a></li>
+<li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
+<li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/co-op.html">Co-op</a></li>
+<li><a href="../mechanics/reloading.html">Reloading</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
+<li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
+<li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../enemies/index.html">Enemies</a></p><h1>Shroom</h1><aside class="infobox"><div class="infobox-title">Shroom</div><dl><div><dt>Kind</dt><dd><code>mushroom</code></dd></div><div><dt>Type</dt><dd>Regular enemy</dd></div><div><dt>Health</dt><dd>40 hp</dd></div><div><dt>Slug damage</dt><dd>15 hp</dd></div><div><dt>Shots per burst</dt><dd>3 shots</dd></div><div><dt>Fire range</dt><dd>230 px</dd></div></dl></aside><p class="lead">A portobello outlaw with a pistol in each hand that keeps its distance, takes aim and fires short bursts of slow glowing slugs.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#behaviour">Behaviour</a></li><li><a href="#attacks">Attacks</a><ol><li><a href="#pistol-burst">Pistol burst</a></li></ol></li><li><a href="#strategy">Strategy</a></li><li><a href="#headshots">Headshots</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#appearances">Appearances</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#stats">Stats</a></li><li><a href="#movement-feel">Movement feel</a></li></ol></li></ol></nav><h2 id="behaviour">Behaviour</h2>
+<p>Shroom is a gunslinger: a big brown cap, a bandana over its face and two pistols. It goes after the
+nearest player but doesn't want to get close. Each Shroom picks its own preferred distance, somewhere
+between 95 px and 140 px, and is happy anywhere within 24 px of it.</p>
+<ul>
+<li><strong>Too far:</strong> it walks in at 42 px/s.</li>
+<li><strong>Too close:</strong> it backs away at 32 px/s, still facing you, but never off the end of its plank
+  or into a wall.</li>
+<li><strong>Right in its face</strong> (closer than 30 px): it hops backwards, 110 px/s back and
+  230 px/s up.</li>
+</ul>
+<p>Each Shroom walks at its own pace, its speeds scaled by a random multiple up to 0.15x above or below 1, and
+two Shrooms shuffle apart rather than stand inside each other.</p>
+<p>When it can't see you, it closes in. If you're on another surface, it first looks for a spot on its
+own surface with a clear shot; failing that, it follows the level's route map like the <a href="../enemies/zombie.html">Zombie</a>:
+up through planks, lunging across gaps at 140 px/s, and down through planks. It waits
+0.8 s between jumps, and hops if it shuffles for 1.5 s without getting anywhere.</p>
+<h2 id="attacks">Attacks</h2>
+<h3 id="pistol-burst">Pistol burst</h3>
+<p>It only starts a burst standing on the ground, with a clear line to you, within 230 px. Its
+first burst comes between 0.6 s and 1.6 s after it arrives.</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Lasts</th>
+<th>What you see</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Aim</td>
+<td>0.45 s to 0.65 s</td>
+<td>A cock-click, both pistols raised, and a glint on the barrel. The aim tracks you quickly (6 rad/s). This is the telegraph.</td>
+</tr>
+<tr>
+<td>Burst</td>
+<td>3 shots, 0.2 s apart</td>
+<td>Alternating pistols, each shot wobbling up to 0.07 rad either way. The aim now turns slowly (0.9 rad/s), so you can run out from under it.</td>
+</tr>
+<tr>
+<td>Pause</td>
+<td>1 s to 1.8 s</td>
+<td>It repositions before the next aim.</td>
+</tr>
+<tr>
+<td>Reload</td>
+<td>1.6 s, once every 2 bursts</td>
+<td>It twirls its pistols. It still moves, but can't shoot. A short wait of 0.2 s to 0.5 s follows.</td>
+</tr>
+</tbody>
+</table>
+<p>If it loses sight of you while aiming, it gives up and waits 0.4 s before trying again.
+Shooting it while it aims stretches the aim out a little.</p>
+<p>Its slugs are slow glowing magenta bolts: 170 px/s, slow enough to jump over. They fly
+straight, stop on walls and planks, and fade after 2.5 s. Each one deals 15 hp
+(players have 100 hp) and knocks the carrot 110 px/s along its flight
+and 90 px/s upward. It aims 17 px above your feet, and a slug that lands on a carrot's
+head does 2x times the damage.</p>
+<h2 id="strategy">Strategy</h2>
+<ul>
+<li>The click and the glint are the cue. Jump over the slugs, or move sideways once the burst starts:
+  the burst turns slowly, so running outpaces it.</li>
+<li>Dash i-frames beat every attack in the game: a dash through a burst lets the slugs pass.</li>
+<li>Count bursts. Once every 2 bursts it reloads; that is the time to push in.</li>
+<li>Rushing it works. Up close it backpedals or hops away instead of shooting, and it can't back off
+  the end of a plank.</li>
+<li>Break line of sight to stop a burst before it starts.</li>
+</ul>
+<h2 id="headshots">Headshots</h2>
+<p>Its head box is the cap, which is wider than its body. Headshots there do the weapon's headshot
+multiplier (see the weapon pages, such as <a href="../weapons/shotgun.html">Shotgun</a>). The wide cap makes headshots easy to land.</p>
+<h2 id="co-op">Co-op</h2>
+<p>The host runs Shroom's AI and physics; everyone else follows its streamed state, so all players hear
+the same cock-click and see the same reload. Every shot is announced to every machine, which flies
+the slug itself and checks only its own carrot against it, so a hit always matches what that player
+saw. It targets the nearest player; a second player off to the side can shoot it freely while it
+duels the first. Dash i-frames dodge the slugs for everyone.</p>
+<h2 id="appearances">Appearances</h2>
+<ul>
+<li><a href="../levels/arena.html">Arena</a>: one Shroom is in the standing roster, replaced by another whenever it dies.</li>
+<li><span class="redlink" title="This page doesn't exist yet">Burrow Encounter</span>: an add in two boss rooms, coming back a while after each death until the
+  boss is down:<ul>
+<li>the <a href="../bosses/red-corn.html">Red Corn</a> room, where it bursts up out of the floor;</li>
+<li>the <a href="../bosses/ghost-pepper.html">Ghost Pepper</a> room, where it starts high on the right.</li>
+</ul>
+</li>
+</ul>
+<h2 id="design-notes">Design notes</h2>
+<p>Shroom is the ranged enemy that moves. The range band keeps it out of slap range and in the open,
+and the slow slugs and slow-turning burst make it a test of footwork rather than reflexes. The
+reload gives a clear window to rush it.</p>
+<h2 id="tunable-parameters">Tunable parameters</h2>
+<p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
+
+<h3 id="stats">Stats</h3>
+<p class="params-src">Edit <a href="../tuning/enemies-mushroom.html"><code>styles/enemies/mushroom.tres</code></a> &middot; fields defined in <code>scripts/enemy_stats/mushroom_stats.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Health</th></tr><tr><td><code>hp</code></td><td class="val">40 hp</td><td class="rng">1 to 2000</td><td>Hit points. A revolver body shot does 10.</td></tr><tr class="group"><th colspan="4">Movement</th></tr><tr><td><code>walk</code></td><td class="val">42 px/s</td><td class="rng">0 to 300</td><td>Walking speed while closing in or routing around.</td></tr><tr><td><code>backpedal</code></td><td class="val">32 px/s</td><td class="rng">0 to 300</td><td>Walking speed while backing away from a player (still facing them).</td></tr><tr><td><code>speed_jitter</code></td><td class="val">0.15x</td><td class="rng">0 to 0.9</td><td>Each mushroom walks at a random multiple of the speeds above, 1 ± this.</td></tr><tr><td><code>lunge</code></td><td class="val">140 px/s</td><td class="rng">0 to 600</td><td>Sideways speed of a jump across a gap.</td></tr><tr><td><code>jump_cooldown</code></td><td class="val">0.8 s</td><td class="rng">0 to 5</td><td>Shortest time between jumps.</td></tr><tr><td><code>crowded</code></td><td class="val">30 px</td><td class="rng">0 to 200</td><td>A player closer than this (gun to their middle) makes it hop backwards.</td></tr><tr><td><code>hop_back_speed</code></td><td class="val">110 px/s</td><td class="rng">0 to 600</td><td>Backwards speed of that hop.</td></tr><tr><td><code>hop_back_jump</code></td><td class="val">230 px/s</td><td class="rng">0 to 800</td><td>Upward speed of that hop.</td></tr><tr><td><code>stuck_dist</code></td><td class="val">3 px</td><td class="rng">0 to 30</td><td>Moving less than this over stuck_time while trying to walk means something&#x27;s in the way: it hops.</td></tr><tr><td><code>stuck_time</code></td><td class="val">1.5 s</td><td class="rng">0.1 to 10</td><td>How long it shuffles without progress before hopping.</td></tr><tr class="group"><th colspan="4">Range</th></tr><tr><td><code>range_min</code></td><td class="val">95 px</td><td class="rng">0 to 500</td><td>Its preferred distance to its target is picked at random per mushroom, at least this.</td></tr><tr><td><code>range_max</code></td><td class="val">140 px</td><td class="rng">0 to 500</td><td>...and at most this.</td></tr><tr><td><code>band</code></td><td class="val">24 px</td><td class="rng">0 to 150</td><td>How far either side of the preferred distance is still comfortable (it doesn&#x27;t move).</td></tr><tr><td><code>fire_range</code></td><td class="val">230 px</td><td class="rng">0 to 1000</td><td>Won&#x27;t start a burst at a player further than this.</td></tr><tr><td><code>aim_height</code></td><td class="val">17 px</td><td class="rng">0 to 40</td><td>Where it aims on a player: this far above their feet.</td></tr><tr class="group"><th colspan="4">Aim</th></tr><tr><td><code>first_shot_min</code></td><td class="val">0.6 s</td><td class="rng">0 to 10</td><td>Shortest delay after spawning before its first burst can start.</td></tr><tr><td><code>first_shot_max</code></td><td class="val">1.6 s</td><td class="rng">0 to 10</td><td>Longest delay after spawning before its first burst can start.</td></tr><tr><td><code>aim_time_min</code></td><td class="val">0.45 s</td><td class="rng">0 to 3</td><td>Shortest aim beat (cock-click and barrel glint) before a burst.</td></tr><tr><td><code>aim_time_max</code></td><td class="val">0.65 s</td><td class="rng">0 to 3</td><td>Longest aim beat before a burst.</td></tr><tr><td><code>aim_turn</code></td><td class="val">6 rad/s</td><td class="rng">0 to 30</td><td>How fast the aim follows the target while aiming.</td></tr><tr><td><code>lost_sight_pause</code></td><td class="val">0.4 s</td><td class="rng">0 to 5</td><td>Losing sight of the target mid-aim: it waits this long before trying again.</td></tr><tr class="group"><th colspan="4">Burst</th></tr><tr><td><code>shots</code></td><td class="val">3 shots</td><td class="rng">1 to 20</td><td>Shots per burst (alternating pistols).</td></tr><tr><td><code>shot_gap</code></td><td class="val">0.2 s</td><td class="rng">0.02 to 2</td><td>Time between shots in a burst.</td></tr><tr><td><code>spread</code></td><td class="val">0.07 rad</td><td class="rng">0 to 1</td><td>Random wobble per shot, either way.</td></tr><tr><td><code>fire_turn</code></td><td class="val">0.9 rad/s</td><td class="rng">0 to 20</td><td>How fast the aim follows the target while firing (slower, so you can outrun a burst).</td></tr><tr><td><code>pause_min</code></td><td class="val">1 s</td><td class="rng">0 to 10</td><td>Shortest pause (repositioning) after a burst that doesn&#x27;t need a reload.</td></tr><tr><td><code>pause_max</code></td><td class="val">1.8 s</td><td class="rng">0 to 10</td><td>Longest pause after a burst that doesn&#x27;t need a reload.</td></tr><tr class="group"><th colspan="4">Reload</th></tr><tr><td><code>bursts_per_reload</code></td><td class="val">2 bursts</td><td class="rng">1 to 10</td><td>It reloads after this many bursts.</td></tr><tr><td><code>reload_time</code></td><td class="val">1.6 s</td><td class="rng">0.3 to 10</td><td>How long a reload (the pistol twirl) takes.</td></tr><tr><td><code>after_reload_min</code></td><td class="val">0.2 s</td><td class="rng">0 to 5</td><td>Shortest wait after a reload before the next aim.</td></tr><tr><td><code>after_reload_max</code></td><td class="val">0.5 s</td><td class="rng">0 to 5</td><td>Longest wait after a reload before the next aim.</td></tr><tr class="group"><th colspan="4">Bullet</th></tr><tr><td><code>bullet_speed</code></td><td class="val">170 px/s</td><td class="rng">10 to 1500</td><td>Speed of a slug (slow enough to jump over).</td></tr><tr><td><code>bullet_life</code></td><td class="val">2.5 s</td><td class="rng">0.1 to 10</td><td>A slug vanishes after this long if it hasn&#x27;t hit anything.</td></tr><tr class="group"><th colspan="4">Damage</th></tr><tr><td><code>damage</code></td><td class="val">15 hp</td><td class="rng">0 to 200</td><td>Damage a slug does to a player (out of 100 health; headshots double it).</td></tr><tr><td><code>knockback_x</code></td><td class="val">110 px/s</td><td class="rng">0 to 600</td><td>Sideways shove a slug gives the player it hits, along its flight.</td></tr><tr><td><code>knockback_y</code></td><td class="val">90 px/s</td><td class="rng">0 to 600</td><td>Upward pop a slug gives the player it hits.</td></tr></tbody></table></div>
+
+<h3 id="movement-feel">Movement feel</h3>
+<p class="params-src">Edit <a href="../tuning/mushroom-tuning.html"><code>styles/mushroom_tuning.tres</code></a> &middot; fields defined in <code>scripts/tuning.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Movement</th></tr><tr><td><code>run_speed</code></td><td class="val">115 px/s</td><td class="rng">0 to 400 or more</td><td>Players only: top running speed (enemies take their walk speed from their stats).</td></tr><tr><td><code>accel</code></td><td class="val">700 px/s² <span class="default">script default 1300 px/s²</span></td><td class="rng">0 to 3000 or more</td><td>How quickly it speeds up to full speed on the ground.</td></tr><tr><td><code>decel</code></td><td class="val">1000 px/s² <span class="default">script default 1700 px/s²</span></td><td class="rng">0 to 3000 or more</td><td>How quickly it slows to a stop on the ground once it lets go (lower = more slide).</td></tr><tr><td><code>air_accel</code></td><td class="val">500 px/s² <span class="default">script default 800 px/s²</span></td><td class="rng">0 to 3000 or more</td><td>How quickly it can change speed in mid-air (lower = less air control).</td></tr><tr><td><code>gravity</code></td><td class="val">1050 px/s²</td><td class="rng">0 to 3000 or more</td><td>Downward pull while rising (falling multiplies this by fall_mult).</td></tr><tr><td><code>fall_mult</code></td><td class="val">1.45x</td><td class="rng">0.5 to 4 or more</td><td>Gravity is this many times stronger while falling, so falls are snappier than rises.</td></tr><tr><td><code>max_fall</code></td><td class="val">440 px/s</td><td class="rng">0 to 1500 or more</td><td>Fastest it can fall.</td></tr><tr><td><code>jump_speed</code></td><td class="val">390 px/s</td><td class="rng">0 to 1000 or more</td><td>Launch speed of a jump (the carrot&#x27;s default reaches about 72px high).</td></tr><tr><td><code>jump_cut</code></td><td class="val">0.45x</td><td class="rng">0 to 1</td><td>Letting go of jump early multiplies the upward speed by this, for short hops (1 = no cut).</td></tr><tr><td><code>coyote</code></td><td class="val">0.09 s</td><td class="rng">0 to 0.5 or more</td><td>Grace period to still jump after walking off a ledge.</td></tr><tr><td><code>jump_buffer</code></td><td class="val">0.12 s</td><td class="rng">0 to 0.5 or more</td><td>A jump pressed this long before landing still counts.</td></tr><tr class="group"><th colspan="4">Double jump and dash</th></tr><tr><td><code>air_jumps</code></td><td class="val">0</td><td class="rng">0 to 5 or more</td><td>Extra jumps in mid-air before landing (0 = no double jump; enemies use 0).</td></tr><tr><td><code>air_jump_speed</code></td><td class="val">340 px/s</td><td class="rng">0 to 1200 or more</td><td>Launch speed of a mid-air jump (a touch weaker than the ground jump: about 55px).</td></tr><tr><td><code>dash_speed</code></td><td class="val">360 px/s</td><td class="rng">0 to 1200 or more</td><td>Speed during a dash.</td></tr><tr><td><code>dash_time</code></td><td class="val">0.15 s</td><td class="rng">0 to 1 or more</td><td>How long a dash lasts; distance is dash_speed * dash_time (about 54px).</td></tr><tr><td><code>dash_cooldown</code></td><td class="val">0.45 s</td><td class="rng">0 to 3 or more</td><td>Wait from the start of one dash until the next one is allowed.</td></tr><tr><td><code>air_dashes</code></td><td class="val">1</td><td class="rng">0 to 5 or more</td><td>Dashes allowed per trip through the air (ground dashes are only limited by the cooldown).</td></tr><tr><td><code>dash_iframes</code></td><td class="val">0.2 s</td><td class="rng">0 to 1 or more</td><td>Invincible for this long from the start of a dash: the whole dash plus a little grace, so a dash *through* a shot never gets you hit on the way out. Bullets pass through you meanwhile.</td></tr><tr class="group"><th colspan="4">Health</th></tr><tr><td><code>max_health</code></td><td class="val">100 hp</td><td class="rng">1 to 1000 or more</td><td>Players only: every carrot&#x27;s full health. Enemy damage is balanced against it. (Enemies&#x27; own health is in their stats.)</td></tr><tr><td><code>regen_delay</code></td><td class="val">3 s</td><td class="rng">0 to 30 or more</td><td>Players only: time without being hit before health starts to recharge...</td></tr><tr><td><code>regen_rate</code></td><td class="val">18 hp/s</td><td class="rng">0 to 200 or more</td><td>...and how fast it then refills.</td></tr><tr class="group"><th colspan="4">Getting hit</th></tr><tr><td><code>headshot_mult</code></td><td class="val">2x</td><td class="rng">1 to 5 or more</td><td>Players only: enemy shots that land on a player&#x27;s head do this many times the damage. (Guns, their damage and falloff live in Weapon resources: styles/weapons/.)</td></tr><tr><td><code>hurt_grace</code></td><td class="val">1 s</td><td class="rng">0 to 5 or more</td><td>Players only: after a hit the carrot flashes white, then blinks and can&#x27;t be hurt again for this long.</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>

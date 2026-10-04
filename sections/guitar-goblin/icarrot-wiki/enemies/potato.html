@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Potato Bull | iCarrot Wiki</title>
+<meta name="description" content="A lumpy potato on four stubby legs that paws the ground, charges in a straight line, and is left stunned and open if it slams into a wall.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">4</span></summary><ul>
+<li><a href="../carrot/movement.html">Movement</a></li>
+<li><a href="../carrot/dash.html">Dash</a></li>
+<li><a href="../carrot/health.html">Health</a></li>
+<li><a href="../carrot/appearance.html">Appearance</a></li>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">5</span></summary><ul>
+<li><a href="../weapons/revolver.html">Revolver</a></li>
+<li><a href="../weapons/smg.html">SMG</a></li>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/grenade.html">Energy ball</a></li>
+<li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
+</ul></details>
+<details open><summary><a href="../enemies/index.html">Enemies</a><span class="count">7</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+<li><a href="../enemies/pumpkin.html">Jacko</a></li>
+<li><a href="../enemies/asparagus.html">Spear-Gus</a></li>
+<li><a href="../enemies/mushroom.html">Shroom</a></li>
+<li><a href="../enemies/pepper.html">Hot Pepper</a></li>
+<li><a href="../enemies/corn.html">Big Cobber</a></li>
+<li><a href="../enemies/potato.html" aria-current="page">Potato Bull</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">5</span></summary><ul>
+<li><a href="../bosses/ginger.html">The Ginger</a></li>
+<li><a href="../bosses/sweet-potato.html">Sweet Potato</a></li>
+<li><a href="../bosses/red-corn.html">Red Corn</a></li>
+<li><a href="../bosses/ghost-pepper.html">Ghost Pepper</a></li>
+<li><a href="../bosses/ginger-shade.html">Ginger Shade</a></li>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">4</span></summary><ul>
+<li><a href="../levels/title-sequence.html">Title Sequence</a></li>
+<li><a href="../levels/arena.html">Arena</a></li>
+<li><a href="../levels/garden-intro.html">Garden Intro</a></li>
+<li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
+<li><a href="../biomes/warm-burrow.html">Warm Burrow</a></li>
+<li><a href="../biomes/overgrown-vault.html">Overgrown Vault</a></li>
+<li><a href="../biomes/glowshroom-grotto.html">Glowshroom Grotto</a></li>
+<li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
+<li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/co-op.html">Co-op</a></li>
+<li><a href="../mechanics/reloading.html">Reloading</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
+<li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
+<li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../enemies/index.html">Enemies</a></p><h1>Potato Bull</h1><aside class="infobox"><div class="infobox-title">Potato Bull</div><dl><div><dt>Kind</dt><dd><code>potato</code></dd></div><div><dt>Type</dt><dd>Regular enemy</dd></div><div><dt>Health</dt><dd>300 hp</dd></div><div><dt>Charge damage</dt><dd>35 hp</dd></div><div><dt>Charge speed</dt><dd>270 px/s</dd></div><div><dt>Stun</dt><dd>2.2 s</dd></div><div><dt>Found in</dt><dd><a href="../levels/arena.html">Arena</a></dd></div></dl></aside><p class="lead">A lumpy potato on four stubby legs that paws the ground, charges in a straight line, and is left stunned and open if it slams into a wall.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#behaviour">Behaviour</a></li><li><a href="#attacks">Attacks</a><ol><li><a href="#charge">Charge</a></li><li><a href="#wall-slam">Wall slam</a></li></ol></li><li><a href="#headshots">Headshots</a></li><li><a href="#strategy">Strategy</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#death">Death</a></li><li><a href="#appearances">Appearances</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#stats">Stats</a></li></ol></li></ol></nav><h2 id="behaviour">Behaviour</h2>
+<p>The Potato Bull is a big lumpy potato on four stubby legs, with gnarly purple sprouts curling off
+its eyes like horns and bristling down its back, and a grumpy bull muzzle with flaring nostrils.</p>
+<p>It stays on the ground and does not use the level's route map. It trots after the nearest player at
+up to 30 px/s, following them left and right, and hops up low steps in its way. Turning
+round is slow: it plants its feet and swings about over 0.35 s, so getting behind it buys
+time. It stops trotting 34 px from its target and waits for a chance to charge. If a
+player gets closer than 26 px, it shuffles back a step to make room for a run.</p>
+<p>Bullets barely nudge it (6 px/s per hit), and only while it trots.</p>
+<h2 id="attacks">Attacks</h2>
+<h3 id="charge">Charge</h3>
+<p>It charges when a player is in front of it, no more than 330 px away and at least
+26 px, roughly level with it (feet no more than 30 px apart vertically),
+with no wall in between. Its first charge comes 1.2 s after it appears; after that it
+waits 1 s to 2 s between charges.</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Lasts</th>
+<th>What you see</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Wind-up</td>
+<td>1 s</td>
+<td>It stops, faces you, paws the ground so dust kicks back, lowers its head so the sprout horns point forward, snorts steam, and its eyes go red, with a rumble. This is the telegraph.</td>
+</tr>
+<tr>
+<td>Charge</td>
+<td>Until it passes you, or 2.2 s</td>
+<td>It barrels straight ahead, up to 270 px/s, with a dust trail, speed lines and screen-shaking footfalls. It can't steer. If you run on ahead of it, it keeps going after you, and it brakes only once it is 70 px past you.</td>
+</tr>
+<tr>
+<td>Skid</td>
+<td>Until it stops</td>
+<td>It brakes hard in a spray of dust.</td>
+</tr>
+<tr>
+<td>Recover</td>
+<td>0.7 s</td>
+<td>It shakes itself off and turns to face its target, then trots again.</td>
+</tr>
+</tbody>
+</table>
+<p>Running into a player during the charge deals 35 hp (players have
+100 hp) and launches them along the charge and upward. It hits each
+player at most once per charge.</p>
+<h3 id="wall-slam">Wall slam</h3>
+<p>If it runs into a wall while charging or skidding at 110 px/s or more, it slams: the screen
+shakes, it bounces off, and it is <strong>stunned</strong> for 2.2 s, wobbling under dizzy stars. Then it
+recovers as above. Slower than that, it just stops.</p>
+<h2 id="headshots">Headshots</h2>
+<p>The weak spot is the brow and horn roots on the front-top of its head. While it is stunned, the weak
+spot grows down over most of its body (2.6x its usual height), so almost every shot
+counts as a headshot.</p>
+<h2 id="strategy">Strategy</h2>
+<ul>
+<li>Stand with your back to a wall. When it winds up, step aside or jump over it, and it will slam the
+  wall behind you and stun itself.</li>
+<li>During the stun, empty your gun into it. This is the punish window, and almost everything is a
+  headshot.</li>
+<li>Dashing through the charge dodges it: dash i-frames beat every attack in the game.</li>
+<li>It only charges at players roughly level with it. Standing on a plank above it is safe from the
+  charge.</li>
+<li>Its turn is slow. Jumping over it mid-charge leaves it facing the wrong way for a while.</li>
+</ul>
+<h2 id="co-op">Co-op</h2>
+<p>The host runs the Potato Bull's AI and physics and streams its state, charge direction and charge
+number to everyone else. Each machine checks its own carrot against the charging potato, once per
+charge, so a hit always matches what that player saw. The wall slam is an event every machine plays.</p>
+<h2 id="death">Death</h2>
+<p>It bursts into fries: a flash, a splat of mash, fries and chunks of potato raining down, its sprouts
+flying off, a cloud of starch and a big thump.</p>
+<h2 id="appearances">Appearances</h2>
+<ul>
+<li><strong><a href="../levels/arena.html">Arena</a></strong>: one <code>potato</code> is in the arena's enemy roster, so one Potato Bull is in every wave and
+  comes back after it dies.</li>
+<li>It does not appear as an add in the <span class="redlink" title="This page doesn't exist yet">Burrow Encounter</span>. Its huge cousin the <a href="../bosses/sweet-potato.html">Sweet Potato</a> is
+  the boss of the encounter's top room.</li>
+</ul>
+<h2 id="design-notes">Design notes</h2>
+<p>The bull is a lesson in using the level: the charge is dangerous in the open, but a wall turns it
+into a free damage window. The <a href="../bosses/sweet-potato.html">Sweet Potato</a> builds its whole fight on the same idea.</p>
+<h2 id="tunable-parameters">Tunable parameters</h2>
+<p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
+
+<h3 id="stats">Stats</h3>
+<p class="params-src">Edit <a href="../tuning/enemies-potato.html"><code>styles/enemies/potato.tres</code></a> &middot; fields defined in <code>scripts/enemy_stats/potato_stats.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Health</th></tr><tr><td><code>max_hp</code></td><td class="val">300 hp</td><td class="rng">10 to 1500</td><td>Hit points. A zombie has 60, a pepper 80, the corn ogre 500.</td></tr><tr><td><code>hit_push</code></td><td class="val">6 px/s</td><td class="rng">0 to 100</td><td>How far a bullet nudges it (it&#x27;s heavy).</td></tr><tr class="group"><th colspan="4">Movement</th></tr><tr><td><code>trot_speed</code></td><td class="val">30 px/s</td><td class="rng">0 to 120</td><td>Top speed of the heavy waddling trot toward the nearest player.</td></tr><tr><td><code>trot_accel</code></td><td class="val">360 px/s²</td><td class="rng">50 to 3000</td><td>How quickly the trot gets up to speed (and slows down again).</td></tr><tr><td><code>keep_distance</code></td><td class="val">34 px</td><td class="rng">0 to 200</td><td>Stops trotting this close to its target (feet to feet) and waits for a run at them.</td></tr><tr><td><code>turn_time</code></td><td class="val">0.35 s</td><td class="rng">0 to 2</td><td>Time to turn round to face the other way (a slow, heavy turn).</td></tr><tr><td><code>hop_speed</code></td><td class="val">300 px/s</td><td class="rng">0 to 600</td><td>Upward speed of a heavy hop up a low step in its way.</td></tr><tr><td><code>gravity</code></td><td class="val">1200 px/s²</td><td class="rng">200 to 3000</td><td>Gravity on it, and the fastest it falls.</td></tr><tr><td><code>max_fall</code></td><td class="val">480 px/s</td><td class="rng">100 to 1200</td><td></td></tr><tr class="group"><th colspan="4">Charge</th></tr><tr><td><code>charge_range</code></td><td class="val">330 px</td><td class="rng">0 to 800</td><td>Starts a charge at a player at most this far away (horizontally) ...</td></tr><tr><td><code>charge_min_range</code></td><td class="val">26 px</td><td class="rng">0 to 200</td><td>... and at least this far (closer than that it shuffles back a step first).</td></tr><tr><td><code>charge_height</code></td><td class="val">30 px</td><td class="rng">0 to 120</td><td>... and only if they&#x27;re roughly level with it: feet no more than this far apart vertically.</td></tr><tr><td><code>windup_time</code></td><td class="val">1 s</td><td class="rng">0.2 to 3</td><td>The wind-up telegraph (pawing, snorting, head down) before it goes.</td></tr><tr><td><code>charge_speed</code></td><td class="val">270 px/s</td><td class="rng">60 to 700</td><td>Top charging speed and how fast it gets there.</td></tr><tr><td><code>charge_accel</code></td><td class="val">900 px/s²</td><td class="rng">100 to 5000</td><td></td></tr><tr><td><code>overshoot</code></td><td class="val">70 px</td><td class="rng">0 to 300</td><td>It keeps charging this far past where the player was before it brakes (the overshoot).</td></tr><tr><td><code>charge_max_time</code></td><td class="val">2.2 s</td><td class="rng">0.3 to 6</td><td>A charge brakes after this long even if it hasn&#x27;t passed the player.</td></tr><tr><td><code>skid_decel</code></td><td class="val">520 px/s²</td><td class="rng">50 to 3000</td><td>How hard it brakes in the skid after a charge.</td></tr><tr><td><code>stun_speed</code></td><td class="val">110 px/s</td><td class="rng">0 to 600</td><td>Hitting a wall at least this fast stuns it; slower, it just stops.</td></tr><tr><td><code>stun_time</code></td><td class="val">2.2 s</td><td class="rng">0 to 8</td><td>How long it&#x27;s dizzy after a wall slam (the punish window; its weak spot grows meanwhile).</td></tr><tr><td><code>recover_time</code></td><td class="val">0.7 s</td><td class="rng">0 to 3</td><td>Shaking it off and turning round after a skid or a stun.</td></tr><tr><td><code>cooldown_min</code></td><td class="val">1 s</td><td class="rng">0 to 10</td><td>Time between charges (random in this range), and before the first one after it appears.</td></tr><tr><td><code>cooldown_max</code></td><td class="val">2 s</td><td class="rng">0 to 10</td><td></td></tr><tr><td><code>first_charge</code></td><td class="val">1.2 s</td><td class="rng">0 to 10</td><td></td></tr><tr class="group"><th colspan="4">Damage</th></tr><tr><td><code>charge_damage</code></td><td class="val">35 hp</td><td class="rng">0 to 100</td><td>Damage to a player it runs into while charging (players have 100). Once per charge per player.</td></tr><tr><td><code>knock_x</code></td><td class="val">420 px/s</td><td class="rng">0 to 1000</td><td>The launch: sideways along the charge, and upwards.</td></tr><tr><td><code>knock_y</code></td><td class="val">330 px/s</td><td class="rng">0 to 1000</td><td></td></tr><tr><td><code>stun_weak_spot</code></td><td class="val">2.6x</td><td class="rng">1 to 4</td><td>While stunned, its weak spot (head box, headshots x2) grows to this many times its normal height.</td></tr><tr class="group"><th colspan="4">Feel</th></tr><tr><td><code>footfall_shake</code></td><td class="val">0.2</td><td class="rng">0 to 1</td><td>Screen shake per charging footfall (scaled down with distance) and for a wall slam.</td></tr><tr><td><code>slam_shake</code></td><td class="val">0.9</td><td class="rng">0 to 1</td><td></td></tr><tr><td><code>flash_gap</code></td><td class="val">0.25 s</td><td class="rng">0.05 to 1</td><td>Least time between white hit flashes, so the SMG doesn&#x27;t strobe it.</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>

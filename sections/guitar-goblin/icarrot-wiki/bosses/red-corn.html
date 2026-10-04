@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Red Corn | iCarrot Wiki</title>
+<meta name="description" content="The middle-room boss of the Burrow Encounter, a towering red-and-black ear of corn that sprays scissoring kernel streams, lobs popcorn mortars that leave burning patches, and slams its husk into the ground.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">4</span></summary><ul>
+<li><a href="../carrot/movement.html">Movement</a></li>
+<li><a href="../carrot/dash.html">Dash</a></li>
+<li><a href="../carrot/health.html">Health</a></li>
+<li><a href="../carrot/appearance.html">Appearance</a></li>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">5</span></summary><ul>
+<li><a href="../weapons/revolver.html">Revolver</a></li>
+<li><a href="../weapons/smg.html">SMG</a></li>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/grenade.html">Energy ball</a></li>
+<li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
+</ul></details>
+<details><summary><a href="../enemies/index.html">Enemies</a><span class="count">7</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+<li><a href="../enemies/pumpkin.html">Jacko</a></li>
+<li><a href="../enemies/asparagus.html">Spear-Gus</a></li>
+<li><a href="../enemies/mushroom.html">Shroom</a></li>
+<li><a href="../enemies/pepper.html">Hot Pepper</a></li>
+<li><a href="../enemies/corn.html">Big Cobber</a></li>
+<li><a href="../enemies/potato.html">Potato Bull</a></li>
+</ul></details>
+<details open><summary><a href="../bosses/index.html">Bosses</a><span class="count">5</span></summary><ul>
+<li><a href="../bosses/ginger.html">The Ginger</a></li>
+<li><a href="../bosses/sweet-potato.html">Sweet Potato</a></li>
+<li><a href="../bosses/red-corn.html" aria-current="page">Red Corn</a></li>
+<li><a href="../bosses/ghost-pepper.html">Ghost Pepper</a></li>
+<li><a href="../bosses/ginger-shade.html">Ginger Shade</a></li>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">4</span></summary><ul>
+<li><a href="../levels/title-sequence.html">Title Sequence</a></li>
+<li><a href="../levels/arena.html">Arena</a></li>
+<li><a href="../levels/garden-intro.html">Garden Intro</a></li>
+<li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
+<li><a href="../biomes/warm-burrow.html">Warm Burrow</a></li>
+<li><a href="../biomes/overgrown-vault.html">Overgrown Vault</a></li>
+<li><a href="../biomes/glowshroom-grotto.html">Glowshroom Grotto</a></li>
+<li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
+<li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/co-op.html">Co-op</a></li>
+<li><a href="../mechanics/reloading.html">Reloading</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
+<li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
+<li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../bosses/index.html">Bosses</a></p><h1>Red Corn</h1><aside class="infobox"><div class="infobox-title">Red Corn</div><dl><div><dt>Kind</dt><dd><code>red_corn</code></dd></div><div><dt>Type</dt><dd>Boss</dd></div><div><dt>Health</dt><dd>1600 hp</dd></div><div><dt>Kernel damage</dt><dd>8 hp</dd></div><div><dt>Mortar pop damage</dt><dd>20 hp</dd></div><div><dt>Husk slam damage</dt><dd>25 hp</dd></div><div><dt>Key</dt><dd>Red</dd></div><div><dt>Found in</dt><dd><span class="redlink" title="This page doesn't exist yet">Burrow Encounter</span></dd></div></dl></aside><p class="lead">The middle-room boss of the Burrow Encounter, a towering red-and-black ear of corn that sprays scissoring kernel streams, lobs popcorn mortars that leave burning patches, and slams its husk into the ground.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#behaviour">Behaviour</a></li><li><a href="#attacks">Attacks</a><ol><li><a href="#the-husk-telegraph">The husk telegraph</a></li><li><a href="#twin-streams">Twin streams</a></li><li><a href="#fan">Fan</a></li><li><a href="#popcorn-mortars">Popcorn mortars</a></li><li><a href="#husk-slam">Husk slam</a></li></ol></li><li><a href="#enrage">Enrage</a></li><li><a href="#headshots">Headshots</a></li><li><a href="#strategy">Strategy</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#death">Death</a></li><li><a href="#appearances">Appearances</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#stats">Stats</a></li><li><a href="#movement-feel">Movement feel</a></li></ol></li></ol></nav><h2 id="behaviour">Behaviour</h2>
+<p>Red Corn is <a href="../enemies/corn.html">Big Cobber</a>'s big, angry cousin: a towering heirloom ear of blood-red and glossy
+black kernels in a charred, red-veined husk jacket, with a wild dark-red mane of silk and a jagged
+grin. It stands roughly a third taller than Big Cobber.</p>
+<p>It moves the same way, only heavier. It lumbers toward the nearest player one step at a time,
+peaking at 36 px/s mid-step, swaying, and sometimes stumbling into a teeter that lasts
+0.9 s. It stops about 70 px from its target, hops up ledges no taller than 26 px and
+never climbs onto planks. If a player stands on a plank right above it, it backs off for
+1.2 s to get an angle. It keeps its wide body clear of walls and shut doors. Bullets barely
+shove it (4 px/s per hit).</p>
+<p>Between steps it picks an attack. Its first comes 1.4 s to 2.2 s after it appears,
+then one every 1.5 s to 2.5 s:</p>
+<ul>
+<li>If someone is close, it <strong>husk slams</strong> (this has its own cooldown, 3.5 s).</li>
+<li>Otherwise, with a clear line from its chest to its target within 520 px, it usually
+  <strong>sprays</strong> kernels: either <strong>twin streams</strong> or a <strong>fan</strong>. Sometimes it lobs <strong>mortars</strong> instead.</li>
+<li>Without a clear line, it lobs <strong>mortars</strong> at a target within 900 px, over planks and
+  all.</li>
+</ul>
+<h2 id="attacks">Attacks</h2>
+<h3 id="the-husk-telegraph">The husk telegraph</h3>
+<p>Before a spray it pulls its husk open and the chest kernels glow hotter and hotter while it tracks
+its target. The husk takes 0.45 s to peel open and stays open for 1.1 s before it
+fires; for the last 0.35 s the aim stops following you. It can aim up to 1.15 rad above straight
+ahead and 0.7 rad below. After any attack it takes 0.7 s to close up before it walks
+on.</p>
+<h3 id="twin-streams">Twin streams</h3>
+<p>Two streams of kernels (per stream: 13x, one every 0.09 s) spray from its chest,
+starting 10 px apart. They sweep across 1 rad in opposite directions, crossing
+at the aim like scissors. The aim drifts after you slowly (0.3 rad/s).</p>
+<p>Both streams skip the same <strong>safe lane</strong>, 0.2 rad wide, somewhere in the sweep. Stand in it
+and both streams pass you by.</p>
+<h3 id="fan">Fan</h3>
+<p>Waves of kernels (waves: 3x; kernels per wave: 6x; 0.38 s apart), each spread across
+1.2 rad. Every other wave is shifted half a gap, so the holes move: step between the kernels
+of one wave, then shift for the next.</p>
+<p>Stream and fan kernels fly at 240 px/s for up to 3 s, each dealing
+8 hp (players have 100 hp) and knocking the carrot along the
+shot and upward. A kernel to the head does 2x times the damage.</p>
+<h3 id="popcorn-mortars">Popcorn mortars</h3>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Lasts</th>
+<th>What you see</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Wind-up</td>
+<td>0.8 s</td>
+<td>The chest glows and it rears back.</td>
+</tr>
+<tr>
+<td>Lobs</td>
+<td>One every 0.25 s</td>
+<td>Red-hot kernels (per volley: 3x) arc high, each in flight for about 1.15 s. A reticle marks where each will land. The first lands on its target; the rest scatter up to 110 px either side of any player.</td>
+</tr>
+<tr>
+<td>Fuse</td>
+<td>1 s</td>
+<td>A landed kernel sits glowing inside a shrinking warning circle.</td>
+</tr>
+<tr>
+<td>Pop</td>
+<td>Instant</td>
+<td>It explodes: 20 hp to anyone within 30 px, with a knockback.</td>
+</tr>
+</tbody>
+</table>
+<p>A lob that lands right on a player deals 12 hp and then drops there to start its
+fuse. A kernel that landed on the ground leaves a <strong>burning popcorn patch</strong> up to 46 px
+wide for 3.5 s. Standing in a patch deals 6 hp every 0.45 s and kicks
+you upward; patches don't stack.</p>
+<h3 id="husk-slam">Husk slam</h3>
+<p>When a player is within 80 px either side of it and no more than 50 px above or
+below its feet, it raises two huge husk leaves overhead for 0.75 s while a dashed line on
+the floor marks the shockwave's reach. Then it slams them down and stays stuck in the ground for
+0.7 s.</p>
+<ul>
+<li>Within 34 px of the impact, everyone is hit, jumping or not.</li>
+<li>A shockwave rolls along the ground 170 px each way at 360 px/s (stopping at walls and
+  ledge ends). A carrot whose feet are 8 px or more off the ground clears it, so <strong>jump
+  it</strong>.</li>
+</ul>
+<p>Both deal 25 hp and knock the carrot away and upward.</p>
+<h2 id="enrage">Enrage</h2>
+<p>When its health drops below the enrage threshold (<code>enrage_at</code> in the stats), it roars for
+1.6 s and <strong>tears its husk off for good</strong>, flinging shredded leaves away. From then on the
+bare kernels smoulder, the chest weak spot is always exposed, and every attack is faster and
+denser:</p>
+<table>
+<thead>
+<tr>
+<th>What</th>
+<th>Multiplier or change</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Time between attacks and slams</td>
+<td>0.6x</td>
+</tr>
+<tr>
+<td>Telegraphs (opening, wind-ups)</td>
+<td>0.7x</td>
+</tr>
+<tr>
+<td>Walking pace</td>
+<td>1.25x</td>
+</tr>
+<tr>
+<td>Kernels per stream or fan wave</td>
+<td>1.45x</td>
+</tr>
+<tr>
+<td>Time between kernels and waves</td>
+<td>0.8x</td>
+</tr>
+<tr>
+<td>Extra mortars per volley</td>
+<td>2x</td>
+</tr>
+<tr>
+<td>Extra fan waves</td>
+<td>one</td>
+</tr>
+</tbody>
+</table>
+<p>With no leaves left, the enraged slam is a crouch, a hop and a stomp, with the same hit and
+shockwave.</p>
+<h2 id="headshots">Headshots</h2>
+<p>While the husk is closed, the weak spot is its face and mane at the top of the cob. While the husk is
+open, and permanently once it is torn off, the weak spot is the glowing chest kernels in the middle of
+its body.</p>
+<h2 id="strategy">Strategy</h2>
+<ul>
+<li>Shoot the chest whenever the husk is open: the telegraph is the damage window. After the enrage
+  the chest is always open.</li>
+<li>Twin streams: find the safe lane and stand in it. Moving across the scissors is harder than
+  standing still in the gap.</li>
+<li>Fan: step into a gap, then shift half a gap as the next wave comes.</li>
+<li>Mortars: keep moving off the reticles and away from the warning circles, and don't fight standing
+  in a burning patch.</li>
+<li>Close up it will slam. Back out of the inner circle and jump the wave, or stay at range.</li>
+<li>Dashing through kernels, a pop or a slam dodges it: dash i-frames beat every attack in the game.
+  Patches don't hurt during a dash either.</li>
+<li>Planks block the sprays but not the mortars.</li>
+</ul>
+<h2 id="co-op">Co-op</h2>
+<p>The host runs Red Corn's AI and physics and streams its state (husk opening, aim, gait, stumble,
+enraged, sweep, fan) to everyone else. Kernels, mortars, the slam and the enrage are events every
+machine plays out. Each machine checks only its own carrot against the kernels, mortar pops,
+burning patches and shockwaves, so a hit always matches what that player saw. Kernels, mines and
+patches already out keep going even after it dies.</p>
+<p>Mortars after the first scatter around any player, not just its target, so spread-out squads all
+have to watch the sky.</p>
+<h2 id="death">Death</h2>
+<p>It goes up in a giant eruption: a blinding pop, a fountain of red-and-black popcorn popping for
+over a second, charred husk flakes fluttering down, mane strands, embers, smoke and a huge thump.</p>
+<h2 id="appearances">Appearances</h2>
+<ul>
+<li><strong><span class="redlink" title="This page doesn't exist yet">Burrow Encounter</span></strong>: the boss of the middle room, lit by red torches. When a player gets far
+  enough in, the doors shut and Red Corn arrives with adds that keep coming back while the fight is
+  on: two <a href="../enemies/asparagus.html">Spear-Gus</a> up on the ledges, a <a href="../enemies/zombie.html">Zombie</a> and a <a href="../enemies/mushroom.html">Shroom</a> on the floor.</li>
+<li>Killing it opens the doors, takes the adds down and drops the room's red key orb (its buff is
+  called KERNEL FURY). Carry it back to the red pedestal in the hub. Each
+  orb placed there breaks part of <a href="../bosses/ginger.html">The Ginger</a>'s shield and unlocks more of its health.</li>
+<li>The <a href="../bosses/ginger-shade.html">Ginger Shade</a> may haunt its room during the fight, sniping at the players there.</li>
+</ul>
+<h2 id="design-notes">Design notes</h2>
+<p>Red Corn takes <a href="../enemies/corn.html">Big Cobber</a>'s open-husk telegraph and builds a bullet-pattern fight around it:
+each attack has a readable answer (the lane, the moving gaps, the reticles, the jump), and the
+mortars punish standing still while the slam punishes hugging it. The enrage removes the telegraph's
+cover for good, trading a permanent weak spot for denser fire.</p>
+<h2 id="tunable-parameters">Tunable parameters</h2>
+<p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
+
+<h3 id="stats">Stats</h3>
+<p class="params-src">Edit <a href="../tuning/enemies-red-corn.html"><code>styles/enemies/red_corn.tres</code></a> &middot; fields defined in <code>scripts/enemy_stats/red_corn_stats.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Health</th></tr><tr><td><code>hp</code></td><td class="val">1600 hp</td><td class="rng">1 to 20000</td><td>Hit points. A revolver body shot does 10, a headshot 20.</td></tr><tr><td><code>flash_gap</code></td><td class="val">0.25 s</td><td class="rng">0 to 1</td><td>Least time between hit flashes (at most ~4 a second; a sprite this big strobes otherwise).</td></tr><tr><td><code>flash_time</code></td><td class="val">0.05 s</td><td class="rng">0 to 0.3</td><td>How long a hit flash lasts.</td></tr><tr><td><code>flash_bright</code></td><td class="val">1.25x</td><td class="rng">1 to 3</td><td>How bright a hit flash is (1 = no flash).</td></tr><tr><td><code>hit_push</code></td><td class="val">4 px/s</td><td class="rng">0 to 50</td><td>How hard a bullet shoves it sideways.</td></tr><tr class="group"><th colspan="4">Movement</th></tr><tr><td><code>gait</code></td><td class="val">0.85x</td><td class="rng">0.1 to 4</td><td>Steps per second.</td></tr><tr><td><code>lift</code></td><td class="val">0.55</td><td class="rng">0.05 to 0.95</td><td>The share of each step spent moving; the rest is the planted pause.</td></tr><tr><td><code>walk_peak</code></td><td class="val">36 px/s</td><td class="rng">0 to 150</td><td>Top speed mid-step (it averages roughly a third of this). A carrot runs 115.</td></tr><tr><td><code>stumble_chance</code></td><td class="val">0.12</td><td class="rng">0 to 1</td><td>Chance per step that it stumbles.</td></tr><tr><td><code>stumble_rate</code></td><td class="val">1.4x</td><td class="rng">0.5 to 4</td><td>A stumbling step goes this much quicker...</td></tr><tr><td><code>stumble_speed</code></td><td class="val">2x</td><td class="rng">0.5 to 5</td><td>...and this much faster (so further).</td></tr><tr><td><code>teeter</code></td><td class="val">0.9 s</td><td class="rng">0 to 3</td><td>How long it teeters after a stumble before catching itself.</td></tr><tr><td><code>keep</code></td><td class="val">70 px</td><td class="rng">0 to 400</td><td>Stops this far from its target.</td></tr><tr><td><code>back_off</code></td><td class="val">1.2 s</td><td class="rng">0 to 5</td><td>With a player on a plank right overhead, it backs off this long for an angle.</td></tr><tr><td><code>hop_max</code></td><td class="val">26 px</td><td class="rng">0 to 80</td><td>The highest ledge it will hop up.</td></tr><tr><td><code>hop_x</code></td><td class="val">60 px/s</td><td class="rng">0 to 200</td><td>Sideways speed of a hop.</td></tr><tr><td><code>stuck_time</code></td><td class="val">2.5 s</td><td class="rng">0.1 to 8</td><td>Walking this long without getting anywhere makes it hop.</td></tr><tr><td><code>wall_margin</code></td><td class="val">2 px</td><td class="rng">0 to 20</td><td>Extra gap it keeps between its drawn sides and any wall or shut door.</td></tr><tr class="group"><th colspan="4">Attacks</th></tr><tr><td><code>cooldown_min</code></td><td class="val">1.5 s</td><td class="rng">0 to 10</td><td>Time between attacks (random in range).</td></tr><tr><td><code>cooldown_max</code></td><td class="val">2.5 s</td><td class="rng">0 to 10</td><td></td></tr><tr><td><code>first_min</code></td><td class="val">1.4 s</td><td class="rng">0 to 8</td><td>Time before its first attack after spawning (random in range).</td></tr><tr><td><code>first_max</code></td><td class="val">2.2 s</td><td class="rng">0 to 8</td><td></td></tr><tr><td><code>attack_range</code></td><td class="val">520 px</td><td class="rng">0 to 1500</td><td>It sprays kernels at a player within this distance (with a clear line from its chest).</td></tr><tr><td><code>mortar_range</code></td><td class="val">900 px</td><td class="rng">0 to 1500</td><td>It lobs mortars at a player within this distance (no clear line needed).</td></tr><tr><td><code>mortar_chance</code></td><td class="val">0.35</td><td class="rng">0 to 1</td><td>With a clear shot, the chance it lobs mortars anyway instead of spraying.</td></tr><tr><td><code>fan_chance</code></td><td class="val">0.35</td><td class="rng">0 to 1</td><td>Of its sprays, the share that are fans instead of twin streams.</td></tr><tr class="group"><th colspan="4">Husk telegraph</th></tr><tr><td><code>open_time</code></td><td class="val">1.1 s</td><td class="rng">0.05 to 4</td><td>The telegraph: the husk is open and glowing this long before it sprays.</td></tr><tr><td><code>open_peel</code></td><td class="val">0.45 s</td><td class="rng">0.05 to 2</td><td>How long the husk takes to peel open.</td></tr><tr><td><code>lock</code></td><td class="val">0.35 s</td><td class="rng">0 to 2</td><td>For the last lock seconds of the telegraph the aim stops following the player.</td></tr><tr><td><code>turn</code></td><td class="val">2.2 rad/s</td><td class="rng">0 to 10</td><td>How fast the aim turns toward the player during the telegraph.</td></tr><tr><td><code>aim_up</code></td><td class="val">1.15 rad</td><td class="rng">0 to 1.57</td><td>How far the aim may point up / down from straight ahead.</td></tr><tr><td><code>aim_down</code></td><td class="val">0.7 rad</td><td class="rng">0 to 1.57</td><td></td></tr><tr><td><code>close_time</code></td><td class="val">0.7 s</td><td class="rng">0.05 to 3</td><td>Closing up again after an attack before it walks on.</td></tr><tr class="group"><th colspan="4">Twin streams</th></tr><tr><td><code>stream_count</code></td><td class="val">13x</td><td class="rng">1 to 60</td><td>Kernels in each of the two streams.</td></tr><tr><td><code>stream_gap</code></td><td class="val">0.09 s</td><td class="rng">0.01 to 1</td><td>Time between kernels in a stream.</td></tr><tr><td><code>stream_sweep</code></td><td class="val">1 rad</td><td class="rng">0 to 3</td><td>Each stream sweeps across this angle through the aim; the two cross like scissors.</td></tr><tr><td><code>stream_lane</code></td><td class="val">0.2 rad</td><td class="rng">0 to 1</td><td>Both streams skip a lane this wide (somewhere in the sweep): stand in it to dodge.</td></tr><tr><td><code>stream_split</code></td><td class="val">10 px</td><td class="rng">0 to 40</td><td>The two streams start this far apart up and down the chest.</td></tr><tr><td><code>turn_fire</code></td><td class="val">0.3 rad/s</td><td class="rng">0 to 4</td><td>How fast the aim follows the player while spraying.</td></tr><tr><td><code>jitter</code></td><td class="val">0.03 rad</td><td class="rng">0 to 0.5</td><td>Random wobble on each kernel&#x27;s angle.</td></tr><tr><td><code>pellet_speed</code></td><td class="val">240 px/s</td><td class="rng">20 to 800</td><td>Kernel speed.</td></tr><tr><td><code>pellet_life</code></td><td class="val">3 s</td><td class="rng">0.2 to 8</td><td>How long a kernel flies before it vanishes.</td></tr><tr class="group"><th colspan="4">Fan</th></tr><tr><td><code>fan_waves</code></td><td class="val">3x</td><td class="rng">1 to 12</td><td>Waves in a fan attack.</td></tr><tr><td><code>fan_count</code></td><td class="val">6x</td><td class="rng">1 to 20</td><td>Kernels in each wave.</td></tr><tr><td><code>fan_spread</code></td><td class="val">1.2 rad</td><td class="rng">0 to 3</td><td>Each wave spreads across this angle; every other wave is shifted half a gap.</td></tr><tr><td><code>fan_wave_gap</code></td><td class="val">0.38 s</td><td class="rng">0.05 to 2</td><td>Time between waves.</td></tr><tr class="group"><th colspan="4">Popcorn mortars</th></tr><tr><td><code>lob_windup</code></td><td class="val">0.8 s</td><td class="rng">0.05 to 3</td><td>Windup before the first lob (the chest glows, it rears back).</td></tr><tr><td><code>mortar_count</code></td><td class="val">3x</td><td class="rng">1 to 16</td><td>Mortars per volley.</td></tr><tr><td><code>mortar_gap</code></td><td class="val">0.25 s</td><td class="rng">0.02 to 2</td><td>Time between lobs.</td></tr><tr><td><code>mortar_flight</code></td><td class="val">1.15 s</td><td class="rng">0.3 to 3</td><td>Flight time of a lob (higher means a taller arc).</td></tr><tr><td><code>mortar_gravity</code></td><td class="val">520 px/s²</td><td class="rng">50 to 2000</td><td>Gravity on a lobbed kernel.</td></tr><tr><td><code>mortar_spread</code></td><td class="val">110 px</td><td class="rng">0 to 400</td><td>The first lands on its target; the rest scatter up to this far either side.</td></tr><tr><td><code>mortar_hit_damage</code></td><td class="val">12 hp</td><td class="rng">0 to 100</td><td>A lob that lands on a player directly does this much.</td></tr><tr><td><code>mortar_fuse</code></td><td class="val">1 s</td><td class="rng">0.1 to 4</td><td>How long a landed kernel sits glowing (its warning circle shrinking) before it pops.</td></tr><tr><td><code>blast_radius</code></td><td class="val">30 px</td><td class="rng">4 to 150</td><td>Radius of the pop.</td></tr><tr><td><code>blast_damage</code></td><td class="val">20 hp</td><td class="rng">0 to 100</td><td>Damage of the pop to a player inside the circle.</td></tr><tr><td><code>blast_knock</code></td><td class="val">220 px/s</td><td class="rng">0 to 600</td><td>Knockback of the pop.</td></tr><tr><td><code>patch_width</code></td><td class="val">46 px</td><td class="rng">4 to 200</td><td>Width of the burning popcorn patch the pop leaves.</td></tr><tr><td><code>patch_time</code></td><td class="val">3.5 s</td><td class="rng">0 to 15</td><td>How long the patch burns.</td></tr><tr><td><code>patch_damage</code></td><td class="val">6 hp</td><td class="rng">0 to 100</td><td>Damage per tick to a player standing in the patch.</td></tr><tr><td><code>patch_tick</code></td><td class="val">0.45 s</td><td class="rng">0.05 to 3</td><td>Least time between patch ticks on one player (patches don&#x27;t stack).</td></tr><tr><td><code>patch_knock</code></td><td class="val">120 px/s</td><td class="rng">0 to 400</td><td>The patch&#x27;s hop-out kick (upwards).</td></tr><tr class="group"><th colspan="4">Husk slam</th></tr><tr><td><code>slam_range</code></td><td class="val">80 px</td><td class="rng">0 to 300</td><td>It slams when a player is within this distance either side...</td></tr><tr><td><code>slam_height</code></td><td class="val">50 px</td><td class="rng">0 to 200</td><td>...and no more than this far above or below its feet.</td></tr><tr><td><code>slam_cooldown</code></td><td class="val">3.5 s</td><td class="rng">0 to 15</td><td>Least time between slams.</td></tr><tr><td><code>slam_windup</code></td><td class="val">0.75 s</td><td class="rng">0.05 to 3</td><td>The telegraph: husk leaves raised (enraged: crouched) this long before they come down.</td></tr><tr><td><code>slam_recover</code></td><td class="val">0.7 s</td><td class="rng">0.05 to 3</td><td>Stuck in the ground after the slam before it walks on.</td></tr><tr><td><code>slam_inner</code></td><td class="val">34 px</td><td class="rng">0 to 150</td><td>Close to the impact, anyone is hit (jumping or not).</td></tr><tr><td><code>wave_reach</code></td><td class="val">170 px</td><td class="rng">0 to 600</td><td>The shockwave rolls along the ground this far each side (jump it).</td></tr><tr><td><code>wave_speed</code></td><td class="val">360 px/s</td><td class="rng">20 to 1500</td><td>Shockwave speed.</td></tr><tr><td><code>wave_clear</code></td><td class="val">8 px</td><td class="rng">0 to 60</td><td>A player whose feet are this far above the ground clears the wave.</td></tr><tr><td><code>slam_damage</code></td><td class="val">25 hp</td><td class="rng">0 to 100</td><td>Damage of the slam and of its shockwave.</td></tr><tr><td><code>slam_knock_x</code></td><td class="val">300 px/s</td><td class="rng">0 to 800</td><td>Slam knockback (away, and up).</td></tr><tr><td><code>slam_knock_y</code></td><td class="val">230 px/s</td><td class="rng">0 to 800</td><td></td></tr><tr class="group"><th colspan="4">Enrage</th></tr><tr><td><code>enrage_at</code></td><td class="val">0.5</td><td class="rng">0 to 1</td><td>Below this share of its health, the husk tears off for good.</td></tr><tr><td><code>roar_time</code></td><td class="val">1.6 s</td><td class="rng">0 to 5</td><td>How long the tear-off roar lasts (it does nothing else meanwhile).</td></tr><tr><td><code>rage_cooldown</code></td><td class="val">0.6x</td><td class="rng">0.1 to 2</td><td>Enraged: cooldowns are this many times as long.</td></tr><tr><td><code>rage_telegraph</code></td><td class="val">0.7x</td><td class="rng">0.1 to 2</td><td>Enraged: telegraphs (opening, windups) are this many times as long.</td></tr><tr><td><code>rage_gait</code></td><td class="val">1.25x</td><td class="rng">0.5 to 3</td><td>Enraged: steps per second this many times as fast.</td></tr><tr><td><code>rage_density</code></td><td class="val">1.45x</td><td class="rng">0.5 to 4</td><td>Enraged: kernels per stream / fan this many times as many.</td></tr><tr><td><code>rage_gap</code></td><td class="val">0.8x</td><td class="rng">0.1 to 2</td><td>Enraged: kernels this many times as close together in time.</td></tr><tr><td><code>rage_mortars</code></td><td class="val">2x</td><td class="rng">0 to 10</td><td>Enraged: this many more mortars per volley, and one more fan wave.</td></tr><tr class="group"><th colspan="4">Damage</th></tr><tr><td><code>pellet_damage</code></td><td class="val">8 hp</td><td class="rng">0 to 100</td><td>Damage per stream or fan kernel that hits a player.</td></tr><tr><td><code>pellet_knock_x</code></td><td class="val">130 px/s</td><td class="rng">0 to 500</td><td>Kernel knockback (along the shot, upwards).</td></tr><tr><td><code>pellet_knock_y</code></td><td class="val">100 px/s</td><td class="rng">0 to 500</td><td></td></tr><tr class="group"><th colspan="4">Feel</th></tr><tr><td><code>step_shake</code></td><td class="val">0.22x</td><td class="rng">0 to 1</td><td>Screen shake of a footfall (nearby; a stumble&#x27;s is about double).</td></tr><tr><td><code>slam_shake</code></td><td class="val">0.8x</td><td class="rng">0 to 1</td><td>Screen shake of the slam.</td></tr><tr><td><code>pop_shake</code></td><td class="val">0.3x</td><td class="rng">0 to 1</td><td>Screen shake of a mortar popping.</td></tr><tr><td><code>roar_shake</code></td><td class="val">0.9x</td><td class="rng">0 to 1</td><td>Screen shake of the enrage roar.</td></tr><tr><td><code>death_shake</code></td><td class="val">1x</td><td class="rng">0 to 1</td><td>Screen shake of the death.</td></tr><tr><td><code>glow_base</code></td><td class="val">0.9x</td><td class="rng">0 to 4</td><td>Brightness (HDR intensity) of the open chest&#x27;s glow when cool...</td></tr><tr><td><code>glow_heat</code></td><td class="val">0.8x</td><td class="rng">0 to 4</td><td>...plus this much at full heat. Too much and the kernels wash out into a blob.</td></tr><tr><td><code>glow_alpha</code></td><td class="val">0.35</td><td class="rng">0 to 1</td><td>Opacity of the chest&#x27;s glow overlay when cool, plus this much at full heat.</td></tr><tr><td><code>glow_alpha_heat</code></td><td class="val">0.5</td><td class="rng">0 to 1</td><td></td></tr><tr><td><code>rage_heat</code></td><td class="val">0.5</td><td class="rng">0 to 1</td><td>Enraged, the bare kernels always smoulder at least this hot (0..1).</td></tr><tr><td><code>death_popcorn</code></td><td class="val">120x</td><td class="rng">0 to 300</td><td>Popcorn pieces in the death eruption.</td></tr><tr><td><code>mine_gravity</code></td><td class="val">600 px/s²</td><td class="rng">0 to 2000</td><td>How hard a landed mortar kernel falls if it&#x27;s knocked into the air (or lands on a ledge edge).</td></tr><tr><td><code>popcorn_gravity</code></td><td class="val">380 px/s²</td><td class="rng">0 to 2000</td><td>Gravity on popped popcorn and debris as it bounces and settles.</td></tr><tr><td><code>popcorn_life</code></td><td class="val">3 s</td><td class="rng">0.2 to 15</td><td>How long popped popcorn lies around before it blinks out.</td></tr></tbody></table></div>
+
+<h3 id="movement-feel">Movement feel</h3>
+<p class="params-src">Edit <a href="../tuning/red-corn-tuning.html"><code>styles/red_corn_tuning.tres</code></a> &middot; fields defined in <code>scripts/tuning.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Movement</th></tr><tr><td><code>run_speed</code></td><td class="val">115 px/s</td><td class="rng">0 to 400 or more</td><td>Players only: top running speed (enemies take their walk speed from their stats).</td></tr><tr><td><code>accel</code></td><td class="val">600 px/s² <span class="default">script default 1300 px/s²</span></td><td class="rng">0 to 3000 or more</td><td>How quickly it speeds up to full speed on the ground.</td></tr><tr><td><code>decel</code></td><td class="val">1500 px/s² <span class="default">script default 1700 px/s²</span></td><td class="rng">0 to 3000 or more</td><td>How quickly it slows to a stop on the ground once it lets go (lower = more slide).</td></tr><tr><td><code>air_accel</code></td><td class="val">260 px/s² <span class="default">script default 800 px/s²</span></td><td class="rng">0 to 3000 or more</td><td>How quickly it can change speed in mid-air (lower = less air control).</td></tr><tr><td><code>gravity</code></td><td class="val">1250 px/s² <span class="default">script default 1050 px/s²</span></td><td class="rng">0 to 3000 or more</td><td>Downward pull while rising (falling multiplies this by fall_mult).</td></tr><tr><td><code>fall_mult</code></td><td class="val">1.45x</td><td class="rng">0.5 to 4 or more</td><td>Gravity is this many times stronger while falling, so falls are snappier than rises.</td></tr><tr><td><code>max_fall</code></td><td class="val">440 px/s</td><td class="rng">0 to 1500 or more</td><td>Fastest it can fall.</td></tr><tr><td><code>jump_speed</code></td><td class="val">300 px/s <span class="default">script default 390 px/s</span></td><td class="rng">0 to 1000 or more</td><td>Launch speed of a jump (the carrot&#x27;s default reaches about 72px high).</td></tr><tr><td><code>jump_cut</code></td><td class="val">0.45x</td><td class="rng">0 to 1</td><td>Letting go of jump early multiplies the upward speed by this, for short hops (1 = no cut).</td></tr><tr><td><code>coyote</code></td><td class="val">0.09 s</td><td class="rng">0 to 0.5 or more</td><td>Grace period to still jump after walking off a ledge.</td></tr><tr><td><code>jump_buffer</code></td><td class="val">0.12 s</td><td class="rng">0 to 0.5 or more</td><td>A jump pressed this long before landing still counts.</td></tr><tr class="group"><th colspan="4">Double jump and dash</th></tr><tr><td><code>air_jumps</code></td><td class="val">0</td><td class="rng">0 to 5 or more</td><td>Extra jumps in mid-air before landing (0 = no double jump; enemies use 0).</td></tr><tr><td><code>air_jump_speed</code></td><td class="val">340 px/s</td><td class="rng">0 to 1200 or more</td><td>Launch speed of a mid-air jump (a touch weaker than the ground jump: about 55px).</td></tr><tr><td><code>dash_speed</code></td><td class="val">360 px/s</td><td class="rng">0 to 1200 or more</td><td>Speed during a dash.</td></tr><tr><td><code>dash_time</code></td><td class="val">0.15 s</td><td class="rng">0 to 1 or more</td><td>How long a dash lasts; distance is dash_speed * dash_time (about 54px).</td></tr><tr><td><code>dash_cooldown</code></td><td class="val">0.45 s</td><td class="rng">0 to 3 or more</td><td>Wait from the start of one dash until the next one is allowed.</td></tr><tr><td><code>air_dashes</code></td><td class="val">1</td><td class="rng">0 to 5 or more</td><td>Dashes allowed per trip through the air (ground dashes are only limited by the cooldown).</td></tr><tr><td><code>dash_iframes</code></td><td class="val">0.2 s</td><td class="rng">0 to 1 or more</td><td>Invincible for this long from the start of a dash: the whole dash plus a little grace, so a dash *through* a shot never gets you hit on the way out. Bullets pass through you meanwhile.</td></tr><tr class="group"><th colspan="4">Health</th></tr><tr><td><code>max_health</code></td><td class="val">100 hp</td><td class="rng">1 to 1000 or more</td><td>Players only: every carrot&#x27;s full health. Enemy damage is balanced against it. (Enemies&#x27; own health is in their stats.)</td></tr><tr><td><code>regen_delay</code></td><td class="val">3 s</td><td class="rng">0 to 30 or more</td><td>Players only: time without being hit before health starts to recharge...</td></tr><tr><td><code>regen_rate</code></td><td class="val">18 hp/s</td><td class="rng">0 to 200 or more</td><td>...and how fast it then refills.</td></tr><tr class="group"><th colspan="4">Getting hit</th></tr><tr><td><code>headshot_mult</code></td><td class="val">2x</td><td class="rng">1 to 5 or more</td><td>Players only: enemy shots that land on a player&#x27;s head do this many times the damage. (Guns, their damage and falloff live in Weapon resources: styles/weapons/.)</td></tr><tr><td><code>hurt_grace</code></td><td class="val">1 s</td><td class="rng">0 to 5 or more</td><td>Players only: after a hit the carrot flashes white, then blinks and can&#x27;t be hurt again for this long.</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>
