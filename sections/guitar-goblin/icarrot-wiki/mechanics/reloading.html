@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reloading | iCarrot Wiki</title>
+<meta name="description" content="How the guns reload, what each reload looks and sounds like, the reload bar under the crosshair, and what your co-op partners see.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">1</span></summary><ul>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+</ul></details>
+<details><summary><a href="../enemies/index.html">Enemies</a><span class="count">1</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details open><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">1</span></summary><ul>
+<li><a href="../mechanics/reloading.html" aria-current="page">Reloading</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../mechanics/index.html">Mechanics</a></p><h1>Reloading</h1><aside class="infobox"><div class="infobox-title">Reloading</div><dl><div><dt>Key</dt><dd>R (or automatic when empty)</dd></div><div><dt>Revolver</dt><dd>0.5 s, a round at a time</dd></div><div><dt>SMG</dt><dd>1.1 s, one magazine</dd></div><div><dt>Shotgun</dt><dd>1.4 s, a shell at a time, then a pump</dd></div><div><dt>Seen by</dt><dd>Everyone in the game</dd></div></dl></aside><p class="lead">How the guns reload, what each reload looks and sounds like, the reload bar under the crosshair, and what your co-op partners see.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#starting-and-stopping-a-reload">Starting and stopping a reload</a></li><li><a href="#each-guns-reload">Each gun's reload</a><ol><li><a href="#revolver">Revolver</a></li><li><a href="#smg">SMG</a></li><li><a href="#shotgun">Shotgun</a></li></ol></li><li><a href="#sounds">Sounds</a></li><li><a href="#the-reload-bar">The reload bar</a></li><li><a href="#tuning">Tuning</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#reload-bar-scenesreload_hudtscn">Reload bar (scenes/reload_hud.tscn)</a></li></ol></li></ol></nav><p>Every gun reloads with its own little animation and its own sound: the <span class="redlink" title="This page doesn't exist yet">Revolver</span> ticks rounds
+into its cylinder, the <span class="redlink" title="This page doesn't exist yet">SMG</span> swaps a magazine, and the <a href="../weapons/shotgun.html">Shotgun</a> takes shells one at a time and
+racks its pump. While a reload runs you can't shoot, and a bar under your crosshair fills as the gun
+loads.</p>
+<h2 id="starting-and-stopping-a-reload">Starting and stopping a reload</h2>
+<ul>
+<li>Press <strong>R</strong> to reload, or just keep firing: an empty gun reloads by itself.</li>
+<li>A full gun, or one that's already reloading, ignores R.</li>
+<li>The gun is loaded only when the reload finishes. Until then it can't fire.</li>
+<li>Switching guns drops the reload in progress. Each gun keeps the rounds it had, so you can swap away
+  and come back to finish later.</li>
+<li>Being knocked down drops the reload too.</li>
+</ul>
+<p>How long a reload takes is set per gun: 0.5 s for the
+revolver, 1.1 s for the SMG and
+1.4 s for the shotgun.</p>
+<h2 id="each-guns-reload">Each gun's reload</h2>
+<p>The animation and the sound follow one shared list of beats (each round, the magazine slap, the
+pump), so every click you hear lands on a move you see.</p>
+<h3 id="revolver">Revolver</h3>
+<p>The carrot drops the revolver into a lowered, muzzle-up pose and the spent brass tumbles out of the
+cylinder onto the floor. The free hand cups the open cylinder, and each round going in ticks the gun
+up with a tiny high click. The cylinder snaps shut with a ratchet, the biggest tick, and the gun
+pops back up to aim with a little overshoot. Only the rounds you fired go in, so a top-up after two
+shots is two ticks spread over the same reload time.</p>
+<h3 id="smg">SMG</h3>
+<p>The empty magazine drops out and falls to the floor as a real object: it bounces, clatters and lies
+there for a while. The gun is drawn with an empty well while the off hand fetches a fresh magazine
+and slaps it in with a thump (the gun jolts up), then racks the bolt back and lets it slam home.</p>
+<h3 id="shotgun">Shotgun</h3>
+<p>The shotgun cants up and the off hand reaches down for a red shell, brings it up and pushes it into
+the loading port, once for each shell fired. Each shell is a plastic thup, a little higher in pitch
+than the last. Then the hand grabs the pump and racks it: the wooden pump slides back and slams home.</p>
+<p>The shotgun also <strong>pumps after every shot</strong>. 0.28 s after the
+blast the pump slides back, the spent red hull flips out, and
+0.1 s later it snaps home, with the same sound as the
+reload's pump. If that shot emptied the gun, the reload starts straight away and its own pump at the
+end takes the place of this one.</p>
+<h2 id="sounds">Sounds</h2>
+<p>Each gun's reload is synthesised at startup, so the three are easy to tell apart without looking:</p>
+<table>
+<thead>
+<tr>
+<th>Gun</th>
+<th>Sound</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><span class="redlink" title="This page doesn't exist yet">Revolver</span></td>
+<td>Bright and tinny: a latch click, a tiny tick per round climbing in pitch, a snap and a ratchet</td>
+</tr>
+<tr>
+<td><span class="redlink" title="This page doesn't exist yet">SMG</span></td>
+<td>Mid-range clacks: a release click, a thump as the mag slaps home, a spring scrape and a sharp bolt clack</td>
+</tr>
+<tr>
+<td><a href="../weapons/shotgun.html">Shotgun</a></td>
+<td>Low and chunky: a plastic thup per shell, a long "chk" back and a deep "CHUNK" home</td>
+</tr>
+</tbody>
+</table>
+<h2 id="the-reload-bar">The reload bar</h2>
+<p>While you reload, a small bar sits just under your crosshair:</p>
+<ul>
+<li>The revolver and shotgun show <strong>one pip per round</strong>. The rounds still in the gun start lit, and
+  each one that goes in lights up with a brief glow.</li>
+<li>The SMG (and any gun holding more than 8 rounds) shows <strong>one bar</strong> that fills smoothly
+  over the whole reload.</li>
+<li>When the gun is ready, the crosshair and the bar flash bright and fade over 0.22 s.</li>
+</ul>
+<p>The bar is only drawn for your own carrot. The ammo pips in the weapon HUD at the bottom left also
+refill as the reload runs.</p>
+<div class="admonition note">
+<p class="admonition-title">Co-op</p>
+<p>Everyone sees and hears everyone's reloads. Your reload is sent to the other players as a single
+message saying how many rounds went in, and each machine plays the same animation, sound and
+falling brass, mag or hulls from it. Other players' reloads play a little quieter than your own.
+The reload bar under the crosshair is yours alone; partners just see your carrot reloading.</p>
+</div>
+<h2 id="tuning">Tuning</h2>
+<p>Each gun's reload is tuned in the <strong>Reload</strong> group of its weapon file (see <span class="redlink" title="This page doesn't exist yet">Revolver</span>, <span class="redlink" title="This page doesn't exist yet">SMG</span> and
+<a href="../weapons/shotgun.html">Shotgun</a>): the reload pose, when each beat lands (as fractions of the reload time), how hard each
+beat jolts the gun, where the off hand goes, and how far the pump or bolt travels. The shotgun's
+after-shot pump is <code>pump_after_shot</code> and <code>pump_slam</code>. The reload bar's size, colours and glow are on
+<code>scenes/reload_hud.tscn</code>, listed below.</p>
+<h2 id="design-notes">Design notes</h2>
+<p>Three reload concepts were built side by side and compared as in-game captures:</p>
+<ul>
+<li><strong>A: Mechanical.</strong> Believable gun handling: brass dumped and rounds thumbed in, a magazine dropped,
+  fetched and slapped home, shells pushed in one at a time and a pump. <strong>Shipped</strong> for the SMG and
+  the shotgun.</li>
+<li><strong>B: Cartoon flourish.</strong> Showy and bouncy: a gunslinger twirl, the SMG tossed up and caught,
+  shells flipped into the shotgun and a one-handed spin-cock, with squash and stretch and a ready
+  sparkle. <strong>Not shipped.</strong></li>
+<li><strong>C: Minimal and snappy.</strong> A lowered "can't shoot" pose with a bump on every beat and a pop back
+  to aim, plus a reload bar under the crosshair. <strong>Shipped</strong> for the revolver's reload and the
+  crosshair bar.</li>
+</ul>
+<p>The owner then added the shotgun's pump after every shot. All three concepts are kept in full on the
+<code>reload-feel/idea-a</code>, <code>reload-feel/idea-b</code> and <code>reload-feel/idea-c</code> branches, so pieces (B's twirl,
+say) can be brought back later.</p>
+<h2 id="tunable-parameters">Tunable parameters</h2>
+<p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
+
+<h3 id="reload-bar-scenesreload_hudtscn">Reload bar (scenes/reload_hud.tscn)</h3>
+<p class="params-src">Edit <a href="../tuning/scripts-reload-hud.html"><code>scripts/reload_hud.gd</code></a></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>offset</code></td><td class="val"><code>Vector2i(0, 8)</code></td><td class="rng"></td><td>Where the pips sit, from the crosshair&#x27;s centre.</td></tr><tr><td><code>pip_size</code></td><td class="val">2 px</td><td class="rng">1 to 4</td><td></td></tr><tr><td><code>pip_gap</code></td><td class="val">1 px</td><td class="rng">0 to 3</td><td></td></tr><tr><td><code>max_pips</code></td><td class="val">8</td><td class="rng">1 to 16</td><td>Guns with more rounds than this (and magazines) get a bar instead of pips.</td></tr><tr><td><code>bar_width</code></td><td class="val">15 px</td><td class="rng">4 to 40</td><td></td></tr><tr><td><code>bar_height</code></td><td class="val">2 px</td><td class="rng">1 to 4</td><td></td></tr><tr><td><code>empty_color</code></td><td class="val"><span class="swatch" style="background:#3a3248"></span><code>#3a3248</code></td><td class="rng"></td><td></td></tr><tr><td><code>full_color</code></td><td class="val"><span class="swatch" style="background:#fffaf0"></span><code>#fffaf0</code></td><td class="rng"></td><td></td></tr><tr><td><code>outline_color</code></td><td class="val"><span class="swatch" style="background:#15111f"></span><code>#15111f</code></td><td class="rng"></td><td></td></tr><tr><td><code>fresh_glow</code></td><td class="val">1.6</td><td class="rng">1 to 6</td><td>A round that just went in (and the bar&#x27;s leading edge) glows this bright (linear; above 1 blooms) for <code>fresh_time</code>.</td></tr><tr><td><code>fresh_time</code></td><td class="val">0.12 s</td><td class="rng">0.02 to 0.5</td><td></td></tr><tr><td><code>ready_color</code></td><td class="val"><span class="swatch" style="background:#fff2b0"></span><code>#fff2b0</code></td><td class="rng"></td><td>The &quot;ready&quot; flash: the crosshair and the full row glow this bright, fading over <code>ready_time</code>.</td></tr><tr><td><code>ready_glow</code></td><td class="val">3</td><td class="rng">1 to 8</td><td></td></tr><tr><td><code>ready_time</code></td><td class="val">0.22 s</td><td class="rng">0.05 to 0.8</td><td></td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>
