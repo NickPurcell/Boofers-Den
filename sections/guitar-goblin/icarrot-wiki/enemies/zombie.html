@@ -71,7 +71,7 @@
 <p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
 </aside>
 <main>
-<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../enemies/index.html">Enemies</a></p><h1>Zombie</h1><aside class="infobox"><div class="infobox-title">Zombie</div><dl><div><dt>Kind</dt><dd><code>zombie</code></dd></div><div><dt>Type</dt><dd>Regular enemy</dd></div><div><dt>Health</dt><dd>60 hp</dd></div><div><dt>Slap damage</dt><dd>15 hp</dd></div><div><dt>Walk speed</dt><dd>14 px/s</dd></div></dl></aside><p class="lead">A rotten carrot that shambles toward the nearest player with its arms out and slaps them.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#behaviour">Behaviour</a></li><li><a href="#attacks">Attacks</a><ol><li><a href="#slap">Slap</a></li></ol></li><li><a href="#strategy">Strategy</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#stats">Stats</a></li><li><a href="#movement-feel">Movement feel</a></li><li><a href="#colours">Colours</a></li></ol></li></ol></nav><h2 id="behaviour">Behaviour</h2>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../enemies/index.html">Enemies</a></p><h1>Zombie</h1><aside class="infobox"><div class="infobox-title">Zombie</div><figure><img src="../media/zombie.png" alt="Zombie"><figcaption>Car-Rotten, the zombie</figcaption></figure><dl><div><dt>Kind</dt><dd><code>zombie</code></dd></div><div><dt>Type</dt><dd>Regular enemy</dd></div><div><dt>Health</dt><dd>60 hp</dd></div><div><dt>Slap damage</dt><dd>15 hp</dd></div><div><dt>Walk speed</dt><dd>14 px/s</dd></div></dl></aside><p class="lead">A rotten carrot that shambles toward the nearest player with its arms out and slaps them.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#behaviour">Behaviour</a></li><li><a href="#attacks">Attacks</a><ol><li><a href="#slap">Slap</a></li></ol></li><li><a href="#strategy">Strategy</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#stats">Stats</a></li><li><a href="#movement-feel">Movement feel</a></li><li><a href="#colours">Colours</a></li></ol></li></ol></nav><h2 id="behaviour">Behaviour</h2>
 <p>The zombie goes after the nearest standing player. On the same surface it simply walks at them with
 a lurching gait, top speed 14 px/s, dragging a foot between steps. Otherwise it follows the
 level's route map: it jumps up through planks from below, lunges across gaps at 140 px/s, and drops
@@ -84,6 +84,7 @@ stacking on one spot.</p>
 <h3 id="slap">Slap</h3>
 <p>When a standing player is within 36 px sideways and 24 px vertically, the zombie
 plants its feet and slaps.</p>
+<p><img alt="A zombie winds up and slaps the carrot back" src="../media/zombie-slap.gif" /></p>
 <table>
 <thead>
 <tr>

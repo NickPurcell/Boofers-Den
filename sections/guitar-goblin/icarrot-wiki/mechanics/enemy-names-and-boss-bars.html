@@ -72,7 +72,8 @@
 </aside>
 <main>
 <article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../mechanics/index.html">Mechanics</a></p><h1>Enemy names and boss bars</h1><aside class="infobox"><div class="infobox-title">Enemy names and boss bars</div><dl><div><dt>Names set in</dt><dd><code>styles/enemy_labels.tres</code></dd></div><div><dt>Boss bar</dt><dd>Top of the screen (bottom in some fights)</dd></div></dl></aside><p class="lead">Regular enemies wear their name over their head with a little health bar. Bosses get a big name-and-health bar on the screen&#x27;s edge instead, which shows when they&#x27;re shielded or partly locked.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#name-tags">Name tags</a></li><li><a href="#boss-bars">Boss bars</a><ol><li><a href="#locked-health">Locked health</a></li><li><a href="#immune">Immune</a></li></ol></li><li><a href="#your-health">Your health</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#for-enemy-makers">For enemy makers</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#names-tags-and-boss-bars">Names, tags and boss bars</a></li></ol></li></ol></nav><h2 id="name-tags">Name tags</h2>
-<p>Every regular enemy shows its name just over its head, with a little health bar above the name.
+<p>Every regular enemy shows its name just over its head, with a little health bar above the name.</p>
+<p><img alt="A zombie's name tag and health bar" src="../media/enemy-name-tags.gif" />
 The bar drains as it takes damage: green, then yellow, then red as it gets low. A white chip shows
 the last hits for a moment before it drains away. Bigger enemies get wider bars.</p>
 <p>Each enemy's name is set in <code>styles/enemy_labels.tres</code>, keyed by its kind (the zombie is
@@ -90,7 +91,9 @@ locked part as a dark striped chunk on the right of its bar. Dividers mark where
 (3 steps). Damage can't eat into the locked part until it unlocks.</p>
 <h3 id="immune">Immune</h3>
 <p>While a boss can't be hurt at all, its bar turns grey, the frame glows, and
-"IMMUNE" appears after its name. Bullets that hit it show the same word instead of a
+"IMMUNE" appears after its name.</p>
+<p><img alt="The Ginger's bar while it's immune" src="../media/boss-bar-immune.gif" />
+ Bullets that hit it show the same word instead of a
 damage number. See <a href="../mechanics/damage.html">Damage</a>.</p>
 <h2 id="your-health">Your health</h2>
 <p>Your own health bar sits at the bottom centre of the screen. See <a href="../carrot/health.html">Health</a>.</p>
