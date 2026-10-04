@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>styles/shield_look.tres | iCarrot Wiki</title>
+<meta name="description" content="How a carrot&#x27;s shield breaking, staying down and recharging looks and sounds (the numbers it runs on are in styles/tuning.tres: Shield and health). Lives in styles/shield_look.tres.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">4</span></summary><ul>
+<li><a href="../carrot/movement.html">Movement</a></li>
+<li><a href="../carrot/dash.html">Dash</a></li>
+<li><a href="../carrot/health.html">Health</a></li>
+<li><a href="../carrot/appearance.html">Appearance</a></li>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">5</span></summary><ul>
+<li><a href="../weapons/revolver.html">Revolver</a></li>
+<li><a href="../weapons/smg.html">SMG</a></li>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/grenade.html">Energy ball</a></li>
+<li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
+</ul></details>
+<details><summary><a href="../enemies/index.html">Enemies</a><span class="count">7</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+<li><a href="../enemies/pumpkin.html">Jacko</a></li>
+<li><a href="../enemies/asparagus.html">Spear-Gus</a></li>
+<li><a href="../enemies/mushroom.html">Shroom</a></li>
+<li><a href="../enemies/pepper.html">Hot Pepper</a></li>
+<li><a href="../enemies/corn.html">Big Cobber</a></li>
+<li><a href="../enemies/potato.html">Potato Bull</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">5</span></summary><ul>
+<li><a href="../bosses/ginger.html">The Ginger</a></li>
+<li><a href="../bosses/sweet-potato.html">Sweet Potato</a></li>
+<li><a href="../bosses/red-corn.html">Red Corn</a></li>
+<li><a href="../bosses/ghost-pepper.html">Ghost Pepper</a></li>
+<li><a href="../bosses/ginger-shade.html">Ginger Shade</a></li>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">4</span></summary><ul>
+<li><a href="../levels/title-sequence.html">Title Sequence</a></li>
+<li><a href="../levels/arena.html">Arena</a></li>
+<li><a href="../levels/garden-intro.html">Garden Intro</a></li>
+<li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
+<li><a href="../biomes/warm-burrow.html">Warm Burrow</a></li>
+<li><a href="../biomes/overgrown-vault.html">Overgrown Vault</a></li>
+<li><a href="../biomes/glowshroom-grotto.html">Glowshroom Grotto</a></li>
+<li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
+<li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/co-op.html">Co-op</a></li>
+<li><a href="../mechanics/reloading.html">Reloading</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
+<li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
+<li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html" aria-current="page">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="index.html">Tuning files</a></p><h1><code>styles/shield_look.tres</code></h1><p class="lead">How a carrot&#x27;s shield breaking, staying down and recharging looks and sounds (the numbers it runs on are in styles/tuning.tres: Shield and health). Lives in styles/shield_look.tres.</p><p class="used-by">Described on: <a href="../carrot/health.html">Health</a></p><p>Open this file in the Godot Inspector to change these values. While the game runs from the editor, most of them can also be changed live through the Remote scene tree.</p><p>Its fields are defined in <code>scripts/shield_look.gd</code>.</p><div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Break</th></tr><tr><td><code>break_whiten</code></td><td class="val">0.85</td><td class="rng">0 to 1</td><td>The flash on the carrot when its shield breaks: how far its colours go to white, then this tint on top (brighter than 1 blooms).</td></tr><tr><td><code>break_color</code></td><td class="val"><span class="swatch" style="background:#bfe8ff"></span><code>#bfe8ff</code></td><td class="rng"></td><td></td></tr><tr><td><code>break_glow</code></td><td class="val">2.6</td><td class="rng">0.5 to 4</td><td></td></tr><tr><td><code>break_time</code></td><td class="val">0.14 s</td><td class="rng">0.02 to 0.6</td><td></td></tr><tr><td><code>shard_count</code></td><td class="val">18</td><td class="rng">0 to 60</td><td>Shards bursting off the carrot.</td></tr><tr><td><code>shard_speed</code></td><td class="val">150 px/s</td><td class="rng">20 to 400</td><td></td></tr><tr><td><code>shard_color</code></td><td class="val"><span class="swatch" style="background:#dff4ff"></span><code>#dff4ff</code></td><td class="rng"></td><td></td></tr><tr><td><code>shard_end</code></td><td class="val"><span class="swatch" style="background:#4a90d8"></span><code>#4a90d8</code></td><td class="rng"></td><td>The colour shards fade to as they fall.</td></tr><tr><td><code>shard_glow</code></td><td class="val">1.6</td><td class="rng">0.5 to 3</td><td></td></tr><tr><td><code>shard_life</code></td><td class="val">0.7 s</td><td class="rng">0.1 to 2</td><td></td></tr><tr><td><code>break_shake</code></td><td class="val">0.5</td><td class="rng">0 to 1</td><td></td></tr><tr class="group"><th colspan="4">Down: zaps</th></tr><tr><td><code>zap_color</code></td><td class="val"><span class="swatch" style="background:#9ad8ff"></span><code>#9ad8ff</code></td><td class="rng"></td><td>The little arcs crawling over the carrot while its shield is down.</td></tr><tr><td><code>zap_glow</code></td><td class="val">2.4</td><td class="rng">0.5 to 4</td><td></td></tr><tr><td><code>zap_gap_min</code></td><td class="val">0.12 s</td><td class="rng">0.02 to 2</td><td>Seconds between arcs (a random time in this range).</td></tr><tr><td><code>zap_gap_max</code></td><td class="val">0.45 s</td><td class="rng">0.02 to 2</td><td></td></tr><tr><td><code>zap_time</code></td><td class="val">0.07 s</td><td class="rng">0.02 to 0.4</td><td>How long each arc shows.</td></tr><tr><td><code>zap_length</code></td><td class="val">13 px</td><td class="rng">4 to 40</td><td>An arc&#x27;s length, and how many kinks it has.</td></tr><tr><td><code>zap_kinks</code></td><td class="val">4</td><td class="rng">1 to 8</td><td></td></tr><tr><td><code>zap_sound_chance</code></td><td class="val">0.35</td><td class="rng">0 to 1</td><td>Chance that an arc crackles audibly.</td></tr><tr class="group"><th colspan="4">Recharge</th></tr><tr><td><code>recharge_whiten</code></td><td class="val">0.45</td><td class="rng">0 to 1</td><td>The softer flash when the shield starts refilling: how far its colours go to white, then this tint on top (brighter than 1 blooms).</td></tr><tr><td><code>recharge_color</code></td><td class="val"><span class="swatch" style="background:#bfe6ff"></span><code>#bfe6ff</code></td><td class="rng"></td><td></td></tr><tr><td><code>recharge_glow</code></td><td class="val">2.1</td><td class="rng">0.5 to 4</td><td></td></tr><tr><td><code>recharge_time</code></td><td class="val">0.18 s</td><td class="rng">0.02 to 0.6</td><td></td></tr><tr class="group"><th colspan="4">Sound</th></tr><tr><td><code>break_volume</code></td><td class="val">0.9</td><td class="rng">0 to 1</td><td></td></tr><tr><td><code>zap_volume</code></td><td class="val">0.25</td><td class="rng">0 to 1</td><td></td></tr><tr><td><code>recharge_volume</code></td><td class="val">0.55</td><td class="rng">0 to 1</td><td></td></tr><tr><td><code>others_volume</code></td><td class="val">0.6</td><td class="rng">0 to 1</td><td>Other players&#x27; carrots play these this much quieter.</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>

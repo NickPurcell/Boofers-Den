@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>styles/player_hud.tres | iCarrot Wiki</title>
+<meta name="description" content="How your own shield and health show: the bars at the top of the screen and the red &quot;jelly&quot; that creeps in from the screen&#x27;s edges as your health runs low. Lives in styles/player_hud.tres. (The numbers they show are in styles/tuning.tres: Shield and health.)">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">4</span></summary><ul>
+<li><a href="../carrot/movement.html">Movement</a></li>
+<li><a href="../carrot/dash.html">Dash</a></li>
+<li><a href="../carrot/health.html">Health</a></li>
+<li><a href="../carrot/appearance.html">Appearance</a></li>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">5</span></summary><ul>
+<li><a href="../weapons/revolver.html">Revolver</a></li>
+<li><a href="../weapons/smg.html">SMG</a></li>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/grenade.html">Energy ball</a></li>
+<li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
+</ul></details>
+<details><summary><a href="../enemies/index.html">Enemies</a><span class="count">7</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+<li><a href="../enemies/pumpkin.html">Jacko</a></li>
+<li><a href="../enemies/asparagus.html">Spear-Gus</a></li>
+<li><a href="../enemies/mushroom.html">Shroom</a></li>
+<li><a href="../enemies/pepper.html">Hot Pepper</a></li>
+<li><a href="../enemies/corn.html">Big Cobber</a></li>
+<li><a href="../enemies/potato.html">Potato Bull</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">5</span></summary><ul>
+<li><a href="../bosses/ginger.html">The Ginger</a></li>
+<li><a href="../bosses/sweet-potato.html">Sweet Potato</a></li>
+<li><a href="../bosses/red-corn.html">Red Corn</a></li>
+<li><a href="../bosses/ghost-pepper.html">Ghost Pepper</a></li>
+<li><a href="../bosses/ginger-shade.html">Ginger Shade</a></li>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">4</span></summary><ul>
+<li><a href="../levels/title-sequence.html">Title Sequence</a></li>
+<li><a href="../levels/arena.html">Arena</a></li>
+<li><a href="../levels/garden-intro.html">Garden Intro</a></li>
+<li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
+<li><a href="../biomes/warm-burrow.html">Warm Burrow</a></li>
+<li><a href="../biomes/overgrown-vault.html">Overgrown Vault</a></li>
+<li><a href="../biomes/glowshroom-grotto.html">Glowshroom Grotto</a></li>
+<li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
+<li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/co-op.html">Co-op</a></li>
+<li><a href="../mechanics/reloading.html">Reloading</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
+<li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
+<li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html" aria-current="page">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="index.html">Tuning files</a></p><h1><code>styles/player_hud.tres</code></h1><p class="lead">How your own shield and health show: the bars at the top of the screen and the red &quot;jelly&quot; that creeps in from the screen&#x27;s edges as your health runs low. Lives in styles/player_hud.tres. (The numbers they show are in styles/tuning.tres: Shield and health.)</p><p class="used-by">Described on: <a href="../carrot/health.html">Health</a></p><p>Open this file in the Godot Inspector to change these values. While the game runs from the editor, most of them can also be changed live through the Remote scene tree.</p><p>Its fields are defined in <code>scripts/player_hud.gd</code>.</p><div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Bars</th></tr><tr><td><code>top</code></td><td class="val">6 px</td><td class="rng">0 to 80</td><td>From the top of the screen to the top of the shield bar.</td></tr><tr><td><code>px_per_point</code></td><td class="val">1.2 px</td><td class="rng">0.25 to 4</td><td>Bar length per point, so the shield bar and the health bar are as long as each other&#x27;s maximum (130 shield is nearly twice as long as 70 health).</td></tr><tr><td><code>shield_height</code></td><td class="val">5 px</td><td class="rng">2 to 16</td><td></td></tr><tr><td><code>health_height</code></td><td class="val">5 px</td><td class="rng">2 to 16</td><td></td></tr><tr><td><code>gap</code></td><td class="val">2 px</td><td class="rng">0 to 12</td><td>Pixels between the shield bar and the health bar under it.</td></tr><tr><td><code>notch_every</code></td><td class="val">10 pts</td><td class="rng">0 to 100</td><td>A thin notch every this many points, so you can count chunks.</td></tr><tr><td><code>chip_hold</code></td><td class="val">0.5 s</td><td class="rng">0 to 2</td><td>The white chip of recent damage: how long it holds, then how fast it drains.</td></tr><tr><td><code>chip_speed</code></td><td class="val">80 pts/s</td><td class="rng">5 to 400</td><td></td></tr><tr><td><code>chip_color</code></td><td class="val"><span class="swatch" style="background:#fff0e0"></span><code>#fff0e0</code></td><td class="rng"></td><td></td></tr><tr class="group"><th colspan="4">Bars / Shield</th></tr><tr><td><code>shield_fill</code></td><td class="val"><span class="swatch" style="background:#4aa8ff"></span><code>#4aa8ff</code></td><td class="rng"></td><td></td></tr><tr><td><code>shield_top</code></td><td class="val"><span class="swatch" style="background:#bfe6ff"></span><code>#bfe6ff</code></td><td class="rng"></td><td>The bright top row of the fill.</td></tr><tr><td><code>shield_empty</code></td><td class="val"><span class="swatch" style="background:#16243a"></span><code>#16243a</code></td><td class="rng"></td><td>The empty part of the shield bar.</td></tr><tr><td><code>shield_down_edge</code></td><td class="val"><span class="swatch" style="background:#9ad8ff"></span><code>#9ad8ff</code></td><td class="rng"></td><td>While the shield is down, its empty bar&#x27;s frame flickers in this colour (brighter than 1 glows)...</td></tr><tr><td><code>shield_down_glow</code></td><td class="val">1.8</td><td class="rng">0.5 to 4</td><td></td></tr><tr><td><code>shield_down_sparks</code></td><td class="val">0.35</td><td class="rng">0 to 1</td><td>...with sparks of it crackling inside the bar.</td></tr><tr class="group"><th colspan="4">Bars / Health</th></tr><tr><td><code>health_fill</code></td><td class="val"><span class="swatch" style="background:#ff6a5a"></span><code>#ff6a5a</code></td><td class="rng"></td><td></td></tr><tr><td><code>health_top</code></td><td class="val"><span class="swatch" style="background:#ffb0a0"></span><code>#ffb0a0</code></td><td class="rng"></td><td></td></tr><tr><td><code>health_empty</code></td><td class="val"><span class="swatch" style="background:#1e1828"></span><code>#1e1828</code></td><td class="rng"></td><td></td></tr><tr><td><code>health_low_color</code></td><td class="val"><span class="swatch" style="background:#ff2030"></span><code>#ff2030</code></td><td class="rng"></td><td>Below this fraction of health the fill pulses between health_fill and this.</td></tr><tr><td><code>health_low</code></td><td class="val">0.3</td><td class="rng">0 to 1</td><td></td></tr><tr class="group"><th colspan="4">Low health jelly</th></tr><tr><td><code>jelly_edge</code></td><td class="val"><span class="swatch" style="background:#b01224"></span><code>#b01224</code></td><td class="rng"></td><td>Red bands creep in from every edge of the screen as your health drops: none at full health, from the first point lost, and nearly closing in at 0. Only you see your own. The outermost band...</td></tr><tr><td><code>jelly_inner</code></td><td class="val"><span class="swatch" style="background:#e0303c"></span><code>#e0303c</code></td><td class="rng"></td><td>...and the innermost one.</td></tr><tr><td><code>jelly_reach</code></td><td class="val">0.55</td><td class="rng">0.05 to 1</td><td>How far in it reaches at 0 health, as a fraction of the way to the screen&#x27;s middle.</td></tr><tr><td><code>jelly_strength</code></td><td class="val">0.8</td><td class="rng">0 to 1</td><td>How solid it is at the very edge at 0 health (the bands thin out inward with a dither).</td></tr><tr><td><code>jelly_bands</code></td><td class="val">5</td><td class="rng">1 to 12</td><td>Bands from the edge inward.</td></tr><tr><td><code>jelly_cell</code></td><td class="val">2 px</td><td class="rng">1 to 8</td><td>Size of a dither cell, in game pixels.</td></tr><tr><td><code>jelly_wobble</code></td><td class="val">0.12</td><td class="rng">0 to 0.5</td><td>Its edge wobbles like jelly...</td></tr><tr><td><code>jelly_pulse</code></td><td class="val">0.08</td><td class="rng">0 to 0.5</td><td>...and it all breathes in and out, faster as health gets lower.</td></tr><tr><td><code>jelly_pulse_speed</code></td><td class="val">2.5 /s</td><td class="rng">0.1 to 10</td><td></td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>
