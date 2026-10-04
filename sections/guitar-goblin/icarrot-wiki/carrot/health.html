@@ -71,7 +71,7 @@
 <p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
 </aside>
 <main>
-<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../carrot/index.html">The Carrot</a></p><h1>Health</h1><aside class="infobox"><div class="infobox-title">Health</div><dl><div><dt>Health</dt><dd>100 hp</dd></div><div><dt>Recharge starts after</dt><dd>3 s</dd></div><div><dt>Recharge rate</dt><dd>18 hp/s</dd></div><div><dt>Headshots</dt><dd>2x damage</dd></div><div><dt>After a hit</dt><dd>1 s of safety</dd></div></dl></aside><p class="lead">The carrot&#x27;s health, how it recharges, what happens when it&#x27;s knocked down, and the restart when the whole squad is down.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#health">Health</a></li><li><a href="#taking-a-hit">Taking a hit</a></li><li><a href="#recharging">Recharging</a></li><li><a href="#knocked-down">Knocked down</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#player-health-and-movement">Player health and movement</a></li></ol></li></ol></nav><h2 id="health">Health</h2>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../carrot/index.html">The Carrot</a></p><h1>Health</h1><aside class="infobox"><div class="infobox-title">Health</div><figure><img src="../media/carrot-downed.gif" alt="Health"><figcaption>Slapped by a zombie on its last few points of health</figcaption></figure><dl><div><dt>Health</dt><dd>100 hp</dd></div><div><dt>Recharge starts after</dt><dd>3 s</dd></div><div><dt>Recharge rate</dt><dd>18 hp/s</dd></div><div><dt>Headshots</dt><dd>2x damage</dd></div><div><dt>After a hit</dt><dd>1 s of safety</dd></div></dl></aside><p class="lead">The carrot&#x27;s health, how it recharges, what happens when it&#x27;s knocked down, and the restart when the whole squad is down.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#health">Health</a></li><li><a href="#taking-a-hit">Taking a hit</a></li><li><a href="#recharging">Recharging</a></li><li><a href="#knocked-down">Knocked down</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#player-health-and-movement">Player health and movement</a></li></ol></li></ol></nav><h2 id="health">Health</h2>
 <p>Each carrot has 100 hp health, shown as the bar at the top middle of the screen. Enemy
 attacks are on the same scale, so you can read an attack's damage as a share of your bar (each enemy
 page lists its damage, for example the <a href="../enemies/zombie.html">Zombie</a>'s slap).</p>
@@ -92,6 +92,7 @@ it's full. Any hit restarts the wait, so the way to heal is to break off and sta
 <h2 id="knocked-down">Knocked down</h2>
 <p>At 0 health the carrot is <strong>down</strong>. It tips over onto its back with its boots kicking in the air,
 stars circling its head, and drops its gun. A downed carrot can't move or shoot and stays down.</p>
+<p><img alt="A zombie's slap takes the carrot's last health and it falls onto its back" src="../media/carrot-downed.gif" /></p>
 <p>When <strong>every</strong> player is down, the squad is wiped: a banner shows, and
 3.5 s later the host restarts the level for everyone.</p>
 <div class="admonition note">

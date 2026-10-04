@@ -71,12 +71,13 @@
 <p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
 </aside>
 <main>
-<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../carrot/index.html">The Carrot</a></p><h1>Dash</h1><aside class="infobox"><div class="infobox-title">Dash</div><dl><div><dt>Key</dt><dd>Shift</dd></div><div><dt>Speed</dt><dd>360 px/s</dd></div><div><dt>Lasts</dt><dd>0.15 s</dd></div><div><dt>Cooldown</dt><dd>0.45 s</dd></div><div><dt>Invincible for</dt><dd>0.2 s</dd></div><div><dt>Air dashes</dt><dd>1</dd></div></dl></aside><p class="lead">A quick horizontal burst that makes the carrot untouchable for its whole length, so you can dash straight through attacks.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#how-it-works">How it works</a></li><li><a href="#invincibility">Invincibility</a></li><li><a href="#what-you-see">What you see</a></li><li><a href="#strategy">Strategy</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#player-movement">Player movement</a></li></ol></li></ol></nav><h2 id="how-it-works">How it works</h2>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../carrot/index.html">The Carrot</a></p><h1>Dash</h1><aside class="infobox"><div class="infobox-title">Dash</div><figure><img src="../media/dash.gif" alt="Dash"><figcaption>A ground dash, then a jump and an air dash</figcaption></figure><dl><div><dt>Key</dt><dd>Shift</dd></div><div><dt>Speed</dt><dd>360 px/s</dd></div><div><dt>Lasts</dt><dd>0.15 s</dd></div><div><dt>Cooldown</dt><dd>0.45 s</dd></div><div><dt>Invincible for</dt><dd>0.2 s</dd></div><div><dt>Air dashes</dt><dd>1</dd></div></dl></aside><p class="lead">A quick horizontal burst that makes the carrot untouchable for its whole length, so you can dash straight through attacks.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#how-it-works">How it works</a></li><li><a href="#invincibility">Invincibility</a></li><li><a href="#what-you-see">What you see</a></li><li><a href="#strategy">Strategy</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#player-movement">Player movement</a></li></ol></li></ol></nav><h2 id="how-it-works">How it works</h2>
 <p>Shift dashes the way you're steering, or the way you're facing if you aren't steering. The carrot
 shoots forward at 360 px/s for 0.15 s, then carries on at running speed instead of
 skidding to a stop. You can dash again 0.45 s after the last one started.</p>
 <ul>
-<li><strong>On the ground</strong> the dash keeps you on the ground, so dashing off a ledge carries you over it.</li>
+<li><strong>On the ground</strong> the dash hugs the ground; gravity still applies, so dashing off a ledge drops
+  you over the edge like running off it does.</li>
 <li><strong>In the air</strong> the dash holds your height for its whole length. You get 1 per trip
   through the air, refilled when you land.</li>
 <li><strong>Dash-jump:</strong> jumping during a dash ends it but keeps its speed, so a dash then a jump carries you
@@ -92,10 +93,12 @@ grace, so dashing <em>through</em> a shot never gets you hit on the way out.</p>
 </ul>
 <p>Every attack in the game respects this, so a well-timed dash beats anything if you read its
 telegraph.</p>
+<p><img alt="Dashing straight through a zombie and out the other side" src="../media/dash-through.gif" /></p>
 <h2 id="what-you-see">What you see</h2>
 <p>The carrot squashes wide as it launches, flings its leaves and cape back, and leaves a trail of
 fading afterimages in the player's colour. While it's invincible its outline glows in the player's
 colour, so you can see exactly how long the dodge lasts.</p>
+<p><img alt="A ground dash, then a jump with an air dash at the top" src="../media/dash.gif" /></p>
 <div class="admonition note">
 <p class="admonition-title">Co-op</p>
 <p>Dashes are counted and streamed, so a dropped update can't swallow one: every machine plays a

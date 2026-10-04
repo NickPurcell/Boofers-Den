@@ -71,7 +71,7 @@
 <p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
 </aside>
 <main>
-<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../carrot/index.html">The Carrot</a></p><h1>Appearance</h1><aside class="infobox"><div class="infobox-title">Appearance</div><dl><div><dt>Drawn by</dt><dd>A per-pixel shader</dd></div><div><dt>Cape length</dt><dd>19 px</dd></div><div><dt>Boots float</dt><dd>3 px below the body</dd></div><div><dt>Player colours</dt><dd>Orange (P1, P3), purple (P2)</dd></div></dl></aside><p class="lead">How the carrot is drawn and brought to life: a per-pixel shaded body with a face, a cape, gold epaulettes, a belt and floating boots that all move as it runs, jumps and dashes.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#the-body">The body</a></li><li><a href="#the-face">The face</a></li><li><a href="#the-gear">The gear</a><ol><li><a href="#cape">Cape</a></li><li><a href="#epaulettes">Epaulettes</a></li><li><a href="#belt">Belt</a></li><li><a href="#boots">Boots</a></li></ol></li><li><a href="#footsteps">Footsteps</a></li><li><a href="#colours">Colours</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#face-gear-and-footsteps">Face, gear and footsteps</a></li><li><a href="#player-1-and-3-colours">Player 1 and 3 colours</a></li><li><a href="#player-2-colours">Player 2 colours</a></li></ol></li></ol></nav><h2 id="the-body">The body</h2>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../carrot/index.html">The Carrot</a></p><h1>Appearance</h1><aside class="infobox"><div class="infobox-title">Appearance</div><figure><img src="../media/carrot.png" alt="Appearance"><figcaption>Player 1&#x27;s carrot</figcaption></figure><dl><div><dt>Drawn by</dt><dd>A per-pixel shader</dd></div><div><dt>Cape length</dt><dd>19 px</dd></div><div><dt>Boots float</dt><dd>3 px below the body</dd></div><div><dt>Player colours</dt><dd>Orange (P1, P3), purple (P2)</dd></div></dl></aside><p class="lead">How the carrot is drawn and brought to life: a per-pixel shaded body with a face, a cape, gold epaulettes, a belt and floating boots that all move as it runs, jumps and dashes.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#the-body">The body</a></li><li><a href="#the-face">The face</a></li><li><a href="#the-gear">The gear</a><ol><li><a href="#cape">Cape</a></li><li><a href="#epaulettes">Epaulettes</a></li><li><a href="#belt">Belt</a></li><li><a href="#boots">Boots</a></li></ol></li><li><a href="#footsteps">Footsteps</a></li><li><a href="#colours">Colours</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#face-gear-and-footsteps">Face, gear and footsteps</a></li><li><a href="#player-1-and-3-colours">Player 1 and 3 colours</a></li><li><a href="#player-2-colours">Player 2 colours</a></li></ol></li></ol></nav><h2 id="the-body">The body</h2>
 <p>The carrot isn't a sprite sheet. A shader works out every pixel each frame: a lit, tapering cone
 with a domed top, creases that wrap around it, dithered shading in a hand-picked palette, and a dark
 ink outline that softens on the edges facing the light. Because it's computed rather than drawn, it
@@ -85,8 +85,7 @@ can squash, stretch and lean while staying pixel-crisp.</p>
 <h2 id="the-face">The face</h2>
 <p>Two eyes sit high on the body, 27.6 px up from the tip, with the mouth just under them at
 22 px. (The body is 36 px tall from tip to dome; all the heights on this page are measured
-up from the tip.)
-The eyes look toward where you aim and blink now and then (sometimes twice). The face turns a little
+up from the tip.) The eyes look toward where you aim and blink now and then (sometimes twice). The face turns a little
 toward the side the carrot faces, for a three-quarter view.</p>
 <table>
 <thead>
@@ -115,6 +114,7 @@ toward the side the carrot faces, for a three-quarter view.</p>
 </tbody>
 </table>
 <h2 id="the-gear">The gear</h2>
+<p><img alt="A close-up in slow motion: the cape trailing, the boots stepping and the tassels swinging, then a jump" src="../media/carrot-gear.gif" /></p>
 <h3 id="cape">Cape</h3>
 <p>A cape hangs from the shoulders. It has folds that fan out toward a gold-trimmed hem, and a lining
 in a contrasting colour. It moves as if air were rushing past it:</p>
@@ -146,13 +146,27 @@ you move.</p>
 <h2 id="footsteps">Footsteps</h2>
 <p>Every time a boot plants, there's a footstep: a soft boot sound and a puff of dust. Your own
 footsteps play at volume 0.6 and teammates' at 0.3 (out of 1), so
-yours stand out. On
-the title screen, the carrots' walk to the cliff edge has its own footsteps in the grass.</p>
+yours stand out. On the title screen, the carrots' walk to the cliff edge has its own footsteps in
+the grass.</p>
 <h2 id="colours">Colours</h2>
 <p>Each player slot has its own colours: player 1 is orange with a navy cape and red lining, player 2 is
 purple with a crimson cape and navy lining, and player 3 is orange again. The same colour styles
 set the body, leaves, hands, boots, the gold, the belt leather and the name-tag accent. The dash
 trail and the invincibility glow use the player's colour too.</p>
+<table>
+<thead>
+<tr>
+<th>Player 1 and 3</th>
+<th>Player 2</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><img alt="The orange carrot with a navy cape" src="../media/carrot.png" /></td>
+<td><img alt="The purple carrot with a crimson cape" src="../media/carrot-purple.png" /></td>
+</tr>
+</tbody>
+</table>
 <div class="admonition note">
 <p class="admonition-title">Co-op</p>
 <p>All of this animation is worked out from each carrot's velocity and whether it's on the ground,

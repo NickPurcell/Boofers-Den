@@ -71,7 +71,7 @@
 <p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
 </aside>
 <main>
-<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../carrot/index.html">The Carrot</a></p><h1>Movement</h1><aside class="infobox"><div class="infobox-title">Movement</div><dl><div><dt>Run speed</dt><dd>115 px/s</dd></div><div><dt>Jump</dt><dd>390 px/s</dd></div><div><dt>Double jumps</dt><dd>1</dd></div><div><dt>Fastest fall</dt><dd>440 px/s</dd></div></dl></aside><p class="lead">How the carrot runs, jumps, double jumps and drops through planks, on fixed-step platformer physics.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#running">Running</a></li><li><a href="#jumping">Jumping</a></li><li><a href="#double-jump">Double jump</a></li><li><a href="#planks-and-dropping">Planks and dropping</a></li><li><a href="#fixed-step-physics">Fixed-step physics</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#player-movement">Player movement</a></li></ol></li></ol></nav><h2 id="running">Running</h2>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../carrot/index.html">The Carrot</a></p><h1>Movement</h1><aside class="infobox"><div class="infobox-title">Movement</div><figure><img src="../media/carrot-run-jump.gif" alt="Movement"><figcaption>Running, a jump and a double jump</figcaption></figure><dl><div><dt>Run speed</dt><dd>115 px/s</dd></div><div><dt>Jump</dt><dd>390 px/s</dd></div><div><dt>Double jumps</dt><dd>1</dd></div><div><dt>Fastest fall</dt><dd>440 px/s</dd></div></dl></aside><p class="lead">How the carrot runs, jumps, double jumps and drops through planks, on fixed-step platformer physics.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#running">Running</a></li><li><a href="#jumping">Jumping</a></li><li><a href="#double-jump">Double jump</a></li><li><a href="#planks-and-dropping">Planks and dropping</a></li><li><a href="#fixed-step-physics">Fixed-step physics</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#player-movement">Player movement</a></li></ol></li></ol></nav><h2 id="running">Running</h2>
 <p>A and D run left and right. On the ground the carrot speeds up at 1300 px/s² to a top speed of
 115 px/s, and when you let go it stops at 1700 px/s², so it starts quickly and stops almost dead
 without sliding. In mid-air you can still steer, but more gently: speed changes at 800 px/s².</p>
@@ -93,6 +93,7 @@ screen.</p>
 <p>Press jump again in mid-air for a second jump at 340 px/s, a little weaker than the ground
 jump. You get 1 before you have to land, and landing gives them back. It kicks a ring of
 dust and sparks off your boots.</p>
+<p><img alt="Running right with a full jump, then a double jump at the top" src="../media/carrot-run-jump.gif" /></p>
 <h2 id="planks-and-dropping">Planks and dropping</h2>
 <p>Wooden planks and mushroom caps are one-way: jump up through them from below and land on top. Press
 S while standing on one to drop through it. Solid ground and walls can't be passed in either
