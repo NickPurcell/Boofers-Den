@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Title Sequence | iCarrot Wiki</title>
+<meta name="description" content="The opening of the game, timed to its music. A star screen doubles as the lobby, a shooting star starts the song, the carrots walk to a cliff above a sea of clouds, the logo booms in, and everyone leaps.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">5</span></summary><ul>
+<li><a href="../weapons/revolver.html">Revolver</a></li>
+<li><a href="../weapons/smg.html">SMG</a></li>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/grenade.html">Energy ball</a></li>
+<li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
+</ul></details>
+<details><summary><a href="../enemies/index.html">Enemies</a><span class="count">1</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details open><summary><a href="../levels/index.html">Levels</a><span class="count">4</span></summary><ul>
+<li><a href="../levels/title-sequence.html" aria-current="page">Title Sequence</a></li>
+<li><a href="../levels/arena.html">Arena</a></li>
+<li><a href="../levels/garden-intro.html">Garden Intro</a></li>
+<li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
+<li><a href="../biomes/warm-burrow.html">Warm Burrow</a></li>
+<li><a href="../biomes/overgrown-vault.html">Overgrown Vault</a></li>
+<li><a href="../biomes/glowshroom-grotto.html">Glowshroom Grotto</a></li>
+<li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
+<li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/co-op.html">Co-op</a></li>
+<li><a href="../mechanics/reloading.html">Reloading</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
+<li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
+<li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../levels/index.html">Levels</a></p><h1>Title Sequence</h1><aside class="infobox"><div class="infobox-title">Title Sequence</div><dl><div><dt>Scene</dt><dd><code>scenes/title.tscn</code></dd></div><div><dt>Music</dt><dd>SNES Siren (<code>pedal-snes-siren</code>)</dd></div><div><dt>View</dt><dd>480x270, the game's original pixel size</dd></div><div><dt>Who controls it</dt><dd>The host's key presses, played on every machine</dd></div></dl></aside><p class="lead">The opening of the game, timed to its music. A star screen doubles as the lobby, a shooting star starts the song, the carrots walk to a cliff above a sea of clouds, the logo booms in, and everyone leaps.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#the-sequence">The sequence</a></li><li><a href="#controls">Controls</a></li><li><a href="#music-sync">Music sync</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#tuning">Tuning</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#timing">Timing</a></li></ol></li></ol></nav><p>The title is a short cinematic locked to the title music. It's also the lobby: players join on the
+star screen, and the host starts the show for everyone.</p>
+<h2 id="the-sequence">The sequence</h2>
+<ol>
+<li><strong>Star screen (the lobby):</strong> the screen fades in from black over 1.2 s to a sky full of
+   stars, with the player roster underneath and the song's pad looping softly. Random stars twinkle,
+   each with a little chime.</li>
+<li><strong>The key press:</strong> when the host presses a key, everything goes still for 0.5 s. Then the
+   main track starts as one star swells and streaks across the sky in 1 s. Its shimmer and
+   whoosh pan from right to left as it crosses.</li>
+<li><strong>The tilt:</strong> after a short pause (0.3 s), the camera tilts down from the stars to a sea
+   of clouds over 2 s.</li>
+<li><strong>The walk:</strong> the carrots walk to the cliff edge in single file, hero first, with footsteps in
+   the grass. They're already on their way in as the tilt lands.</li>
+<li><strong>The gaze:</strong> the hero stands at the edge for 0.9 s while the music slides up.</li>
+<li><strong>The boom:</strong> the logo and the sun come up together, each logo part lighting up on its note. The
+   sun takes 3.4 s to rise.</li>
+<li><strong>The final chord:</strong> everyone fires into the sky, one shot after another.</li>
+<li><strong>The leap:</strong> "PRESS SPACE" appears. On Space the carrots leap off the cliff one after another,
+   the camera follows them down, and the screen whites out into the level.</li>
+</ol>
+<h2 id="controls">Controls</h2>
+<ul>
+<li><strong>Any key or click (host):</strong> starts the sequence.</li>
+<li><strong>Space:</strong> skips the intro, and at "PRESS SPACE" it leaps.</li>
+<li><strong>Escape:</strong> goes straight to the level for everyone.</li>
+<li><strong>R:</strong> replays the title in debug builds, after you've tuned the timing.</li>
+</ul>
+<h2 id="music-sync">Music sync</h2>
+<p>The visuals follow the song, not the other way round. The intro runs forward (the star, the pause,
+the tilt, the walk, the gaze), and the music holds its pad for however long that takes. The boom
+lands when it ends. The logo's notes and the final chord then follow at the song's own spacing. Cue
+times come from the rendered song's <code>title_music.json</code> and are never typed into the code.</p>
+<h2 id="co-op">Co-op</h2>
+<p>The host's key presses are sent to every machine, and each one plays the same sequence, so everyone
+sees the same show at the same time.</p>
+<h2 id="tuning">Tuning</h2>
+<p>All the timing lives in <code>styles/title_timing.tres</code>. Edit it in the Inspector, save, and press R in
+the running game to replay with the new numbers. While running from the editor you can also edit it
+live on <code>Title</code> in the Remote scene tree.</p>
+<h2 id="tunable-parameters">Tunable parameters</h2>
+<p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
+
+<h3 id="timing">Timing</h3>
+<p class="params-src">Edit <a href="../tuning/title-timing.html"><code>styles/title_timing.tres</code></a> &middot; fields defined in <code>scripts/title_timing.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Key press</th></tr><tr><td><code>start_beat</code></td><td class="val">0.5 s <span class="default">script default 1 s</span></td><td class="rng">0 to 4</td><td>Stillness between the host&#x27;s key press and the twinkle that starts the music.</td></tr><tr class="group"><th colspan="4">Shooting star</th></tr><tr><td><code>twinkle</code></td><td class="val">0.3 s</td><td class="rng">0.05 to 2</td><td>Sequence time the star stops swelling and starts to streak; its streak sound starts then too.</td></tr><tr><td><code>streak</code></td><td class="val">1 s</td><td class="rng">0.2 to 3</td><td>How long the streak takes to cross the sky. Its sound is about 1.1 s whatever this is.</td></tr><tr><td><code>twinkle_sound_volume</code></td><td class="val">0.1 <span class="default">script default 1</span></td><td class="rng">0 to 2</td><td>Volume of the star&#x27;s twinkle (the shimmer as it swells).</td></tr><tr><td><code>streak_sound_volume</code></td><td class="val">0.1 <span class="default">script default 1</span></td><td class="rng">0 to 2</td><td>Volume of the streak (the glint, the whoosh and the falling sparkles).</td></tr><tr><td><code>star_sound_offset</code></td><td class="val">0.1 s <span class="default">script default 0 s</span></td><td class="rng">-0.5 to 0.5</td><td>Moves both star sounds against the picture: negative plays them earlier.</td></tr><tr><td><code>star_pan</code></td><td class="val">0.9 <span class="default">script default 1.6</span></td><td class="rng">0 to 3</td><td>How far the star&#x27;s sounds pan with it: 0 keeps them centred, 1 follows its place on screen, more exaggerates it (clamped at hard left and right).</td></tr><tr class="group"><th colspan="4">Camera</th></tr><tr><td><code>star_pause</code></td><td class="val">0.3 s</td><td class="rng">-2 to 5</td><td>Pause after the streak ends before the camera starts to tilt down. Negative starts the tilt while the star is still streaking.</td></tr><tr><td><code>pan_time</code></td><td class="val">2 s <span class="default">script default 3.6 s</span></td><td class="rng">0.5 to 8</td><td>How long the camera takes to tilt down from the stars.</td></tr><tr><td><code>pan_reveal</code></td><td class="val">0.3 s <span class="default">script default 1.2 s</span></td><td class="rng">-2 to 4</td><td>The carrots start walking this long before the tilt lands, so they&#x27;re already on their way in (negative: they wait until after it lands).</td></tr><tr class="group"><th colspan="4">Walk</th></tr><tr><td><code>walk_speed</code></td><td class="val">63 px/s <span class="default">script default 46 px/s</span></td><td class="rng">10 to 120</td><td></td></tr><tr><td><code>gaze</code></td><td class="val">0.9 s <span class="default">script default 1.8 s</span></td><td class="rng">0 to 5</td><td>How long the hero stands at the cliff edge before the boom. The music&#x27;s slide up into the boom is its last 2 s (render_godot.py --slide), so below 2 the slide starts while the hero is walking.</td></tr><tr><td><code>step_volume</code></td><td class="val">0.45</td><td class="rng">0 to 1</td><td></td></tr><tr class="group"><th colspan="4">Logo and finale</th></tr><tr><td><code>sun_rise</code></td><td class="val">3.4 s</td><td class="rng">0.5 to 8</td><td>How long the sun takes to rise after the boom.</td></tr><tr><td><code>shot_stagger</code></td><td class="val">0.07 s</td><td class="rng">0 to 0.5</td><td>Delay between each carrot&#x27;s shot on the final chord.</td></tr><tr><td><code>prompt_after</code></td><td class="val">1.4 s</td><td class="rng">0 to 5</td><td>Wait after the final chord before PRESS SPACE shows.</td></tr><tr><td><code>leap_stagger</code></td><td class="val">0.14 s</td><td class="rng">0 to 1</td><td>Delay between each carrot&#x27;s leap into the clouds.</td></tr><tr class="group"><th colspan="4">Star screen</th></tr><tr><td><code>fade_in</code></td><td class="val">1.2 s</td><td class="rng">0 to 4</td><td>Fade in from black when the title opens.</td></tr><tr><td><code>twinkle_gap</code></td><td class="val"><code>Vector2(0.4, 1.4)</code></td><td class="rng"></td><td>Seconds between ambient twinkles (random between x and y).</td></tr><tr><td><code>twinkle_life</code></td><td class="val"><code>Vector2(0.7, 1.3)</code></td><td class="rng"></td><td>Seconds one twinkle takes to swell and fade (random between x and y).</td></tr><tr><td><code>twinkle_volume</code></td><td class="val">0.3</td><td class="rng">0 to 1</td><td></td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>

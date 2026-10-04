@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Warm Burrow | iCarrot Wiki</title>
+<meta name="description" content="A cosy rabbit warren of warm brown soil just under the garden, with carrot taproots poking through and amber glow-caps for light.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">5</span></summary><ul>
+<li><a href="../weapons/revolver.html">Revolver</a></li>
+<li><a href="../weapons/smg.html">SMG</a></li>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/grenade.html">Energy ball</a></li>
+<li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
+</ul></details>
+<details><summary><a href="../enemies/index.html">Enemies</a><span class="count">1</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">4</span></summary><ul>
+<li><a href="../levels/title-sequence.html">Title Sequence</a></li>
+<li><a href="../levels/arena.html">Arena</a></li>
+<li><a href="../levels/garden-intro.html">Garden Intro</a></li>
+<li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+</ul></details>
+<details open><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
+<li><a href="../biomes/warm-burrow.html" aria-current="page">Warm Burrow</a></li>
+<li><a href="../biomes/overgrown-vault.html">Overgrown Vault</a></li>
+<li><a href="../biomes/glowshroom-grotto.html">Glowshroom Grotto</a></li>
+<li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
+<li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/co-op.html">Co-op</a></li>
+<li><a href="../mechanics/reloading.html">Reloading</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
+<li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
+<li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../biomes/index.html">Biomes</a></p><h1>Warm Burrow</h1><aside class="infobox"><div class="infobox-title">Warm Burrow</div><dl><div><dt>Mood</dt><dd>Cosy, friendly, safe</dd></div><div><dt>Key colours</dt><dd>Warm brown soil (<code>8b5636</code> to <code>2e1810</code>), carrot orange (<code>f58b2c</code>), amber (<code>ffb246</code>), plum-brown distance</dd></div><div><dt>Glow</dt><dd>Mushroom gills and cap spots, a warm cream-amber</dd></div><div><dt>Parallax layers</dt><dd>Three backdrop layers plus a blurred foreground</dd></div><div><dt>Used in</dt><dd><a href="../levels/burrow-test.html">Burrow Test</a>, <a href="../levels/garden-intro.html">Garden Intro</a>, <span class="redlink" title="This page doesn't exist yet">Burrow Encounter</span></dd></div></dl></aside><p class="lead">A cosy rabbit warren of warm brown soil just under the garden, with carrot taproots poking through and amber glow-caps for light.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#look">Look</a></li><li><a href="#palette">Palette</a></li><li><a href="#what-it-draws">What it draws</a></li><li><a href="#using-it-in-a-level">Using it in a level</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#mushroom-platform-shroom">Mushroom platform (Shroom)</a></li></ol></li></ol></nav><h2 id="look">Look</h2>
+<p>The Warm Burrow is the first room of the dungeon: a rabbit warren dug just under the garden. It
+should feel like a safe, cosy place to start. The soil uses the same browns as the surface's dirt
+blocks, so dropping down a hole into it feels continuous rather than like a level change.</p>
+<p>The joke of the room is that the carrots growing in the garden above push their orange taproots down
+through the ceiling and walls. Worms peek out of their tunnels, pebbles are stuck in the soil, and
+little amber glow-caps supply all the light. Further back the warren gets darker and turns
+plum-brown, so the lit edges of the playfield always read first.</p>
+<p>It comes before the <a href="../biomes/overgrown-vault.html">Overgrown Vault</a> in the dungeon's progression.</p>
+<h2 id="palette">Palette</h2>
+<table>
+<thead>
+<tr>
+<th>Colour</th>
+<th>Hex</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Soil, light to deep</td>
+<td><code>8b5636</code> <code>74452b</code> <code>5c3622</code> <code>452818</code></td>
+<td>Ground blocks, darkening with depth (the surface dirt's own colours)</td>
+</tr>
+<tr>
+<td>Top lip</td>
+<td><code>c99566</code> <code>a8714a</code></td>
+<td>The crumbly lit edge you walk on</td>
+</tr>
+<tr>
+<td>Taproot orange</td>
+<td><code>ffc27a</code> <code>f58b2c</code> <code>cf6418</code></td>
+<td>Carrot roots pushing through the soil</td>
+</tr>
+<tr>
+<td>Worm pink</td>
+<td><code>ffb8a8</code> <code>ec8486</code></td>
+<td>Worms in their tunnels</td>
+</tr>
+<tr>
+<td>Branch wood</td>
+<td><code>eab06e</code> <code>c27c44</code></td>
+<td>Root-branch ledges</td>
+</tr>
+<tr>
+<td>Glow-cap amber</td>
+<td><code>ffe2a6</code> <code>ffb246</code> <code>f08a28</code></td>
+<td>Mushroom caps</td>
+</tr>
+<tr>
+<td>Cream</td>
+<td><code>fffae6</code> <code>f8e6c4</code></td>
+<td>Cap spots and stems</td>
+</tr>
+<tr>
+<td>Plum-brown</td>
+<td><code>170e0f</code> <code>2f1f19</code></td>
+<td>The far backdrop</td>
+</tr>
+</tbody>
+</table>
+<h2 id="what-it-draws">What it draws</h2>
+<p><strong>Ground blocks (Solid).</strong> A block of warm soil of any size with a lit, crumbly top lip and a dark
+outline down the sides and along the underside. The fill is a calm mottle that gets darker the deeper
+it goes. Scattered through it are pebbles, fine dark rootlets, the odd worm tunnel (sometimes with a
+worm in it), "root coins" showing the cut end of a carrot root, and orange carrot taproots pushing
+down from the surface. Every block is painted fresh, so even a very wide floor never repeats.</p>
+<p><strong>Jump-through ledges (Plank).</strong> A twisted root branch with a lit top and braided grain. It has a
+gnarled knob on the left end, a curly tendril on the right, and pale root hairs hanging below the
+walking band.</p>
+<p><strong>Mushroom platforms (Shroom).</strong></p>
+<ul>
+<li><em>Cap:</em> an amber glow-cap. A domed toadstool top with cream spots, a scalloped brim that overhangs
+  and curls down at both ends, and a lens of gills underneath fanning in towards the stem.</li>
+<li><em>Glow:</em> the gills' light stripes and the cores of the spots bloom a warm cream-amber. Because the
+  underside glows, a mushroom lights the carrot standing under it.</li>
+<li><em>Stem:</em> cream, lit on the left, with a frilly ring under the gills, a gentle bend and a bulb at the
+  base that darkens into the ground.</li>
+</ul>
+<p><strong>Backdrop.</strong> Three baked layers, each seamless in both directions so a level can scroll any way.</p>
+<ul>
+<li><em>Far:</em> the far wall of the warren. Flat plum-brown earth with faint strata, distant tunnel bores and
+  round-topped burrow doors, and a few warm lit hollows as focal points. This layer barely moves.</li>
+<li><em>Mid:</em> earth pillars joined by natural arches, with root curtains hanging from them and a few dim
+  glow-caps on top. It drifts a little more.</li>
+<li><em>Near:</em> two thick roots running down through the room, with clods of earth caught on them and muted
+  carrot taproots dangling from the clods. It moves the most of the three, but still slower than the
+  playfield.</li>
+</ul>
+<p><strong>Foreground.</strong> Out-of-focus silhouettes that slide past in front of the playfield, a bit faster than
+it: a hanging clump of soil with roots and a taproot, one long dangling taproot, a root running
+across with a curtain of rootlets, a hanging bundle with a worm dangling from it, a side wall with
+roots poking into the room, and a bottom lip of mounds with root loops and little mushroom
+silhouettes.</p>
+<h2 id="using-it-in-a-level">Using it in a level</h2>
+<ul>
+<li>On a Solid, set <code>look</code> to <strong>BURROW</strong>. On a Plank, set <code>look</code> to <strong>BURROW</strong>. On a
+  Shroom, set <code>biome</code> to <strong>BURROW</strong> (the default). See <span class="redlink" title="This page doesn't exist yet">Level Parts</span>.</li>
+<li>The backdrop and foreground are baked images in <code>art/baked/burrow_*</code>: <code>burrow_bg_far</code>,
+  <code>burrow_bg_mid</code>, <code>burrow_bg_near</code>, and the foreground pieces <code>burrow_fg_hang</code>, <code>_taproot</code>,
+  <code>_curtain</code>, <code>_hang_worm</code>, <code>_side</code> and <code>_bottom</code>, each with a <code>_blur</code> version. Use the blurred ones in
+  game; the sharp ones are for reference. <code>scenes/burrow_test.tscn</code> shows the full setup: each
+  backdrop layer in its own Parallax2D under <code>Backdrop</code>, and the foreground pieces in one Parallax2D
+  above everything.</li>
+<li>To re-bake after changing the art, run <code>tools/underground/warm_burrow/bake.gd</code> as a headless Godot
+  script (the command is at the top of the file).</li>
+</ul>
+<h2 id="design-notes">Design notes</h2>
+<ul>
+<li><strong>The carrots must pop.</strong> Everything in the backdrop stays well below the playfield's soil in
+  brightness, and the far layer is the darkest and flattest. Only the mushrooms bloom; soil, roots and
+  backdrop never do, so a glow always means something.</li>
+<li><strong>Nothing in the backdrop may look like a platform.</strong> The near roots run mostly up and down, and the
+  arches are curved, so a player never jumps at a ledge that isn't there.</li>
+<li><strong>The foreground blur is dithered, not smooth.</strong> The silhouettes' edges are softened to a few
+  steps of see-through and mixed with an ordered dither, so they look out of focus while staying
+  clean pixel art. The edge facing the light gets a faint warm rim so the shapes don't vanish
+  against the dark. Foreground roots are drawn thick on purpose, because thin ones turn to fuzz when
+  blurred.</li>
+<li><strong>Known weak spots</strong> (from the art notes): the mushroom cap can still look a little bun-shaped from
+  the side; the soil fill is on the busy side; the middle of the far wall is a big flat dark area that
+  could use a focal point, like a lantern-lit side burrow; and the top foreground corners are heavy.
+  Wiggling worms and drifting dust would bring it to life.</li>
+</ul>
+<h2 id="tunable-parameters">Tunable parameters</h2>
+<p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
+
+<h3 id="mushroom-platform-shroom">Mushroom platform (Shroom)</h3>
+<p class="params-src">Edit <a href="../tuning/scripts-level-parts-shroom.html"><code>scripts/level_parts/shroom.gd</code></a></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>width</code></td><td class="val">48</td><td class="rng">16 to 240</td><td>How wide the cap&#x27;s walking surface is, in pixels.</td></tr><tr><td><code>stem</code></td><td class="val">60</td><td class="rng">0 to 400</td><td>How far the stem reaches below the walking surface (to the ground, usually).</td></tr><tr><td><code>biome</code></td><td class="val"><code>Biome.Kind.BURROW</code></td><td class="rng"></td><td>Which underground biome&#x27;s mushroom it is (its cap, stem and glow colours).</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>

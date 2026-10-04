@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Camera | iCarrot Wiki</title>
-<meta name="description" content="The camera follows your own carrot, Terraria-style, leads ahead when you fall, and switches to a fixed shot inside arenas and boss rooms.">
+<title>Garden Intro | iCarrot Wiki</title>
+<meta name="description" content="Work in progress: the game opens in a sunny vegetable garden, where the carrots walk past a giant carrot and jump down a mushroom-lined hole into the burrow.">
 <link rel="stylesheet" href="../wiki.css">
 </head>
 <body>
@@ -31,10 +31,10 @@
 </ul></details>
 <details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
 </ul></details>
-<details><summary><a href="../levels/index.html">Levels</a><span class="count">4</span></summary><ul>
+<details open><summary><a href="../levels/index.html">Levels</a><span class="count">4</span></summary><ul>
 <li><a href="../levels/title-sequence.html">Title Sequence</a></li>
 <li><a href="../levels/arena.html">Arena</a></li>
-<li><a href="../levels/garden-intro.html">Garden Intro</a></li>
+<li><a href="../levels/garden-intro.html" aria-current="page">Garden Intro</a></li>
 <li><a href="../levels/burrow-test.html">Burrow Test</a></li>
 </ul></details>
 <details><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
@@ -44,11 +44,11 @@
 <li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
 <li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
 </ul></details>
-<details open><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
 <li><a href="../mechanics/damage.html">Damage</a></li>
 <li><a href="../mechanics/co-op.html">Co-op</a></li>
 <li><a href="../mechanics/reloading.html">Reloading</a></li>
-<li><a href="../mechanics/camera.html" aria-current="page">Camera</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
 <li><a href="../mechanics/pause.html">Pause</a></li>
 <li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
 <li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
@@ -56,48 +56,61 @@
 <p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
 </aside>
 <main>
-<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../mechanics/index.html">Mechanics</a></p><h1>Camera</h1><aside class="infobox"><div class="infobox-title">Camera</div><dl><div><dt>View</dt><dd>Set per level (<code>view_size</code>)</dd></div><div><dt>Follow speed</dt><dd>7 /s</dd></div><div><dt>Fall lead</dt><dd>up to 140 px</dd></div></dl></aside><p class="lead">The camera follows your own carrot, Terraria-style, leads ahead when you fall, and switches to a fixed shot inside arenas and boss rooms.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#following-your-carrot">Following your carrot</a></li><li><a href="#camera-zones-fixed-shots">Camera zones: fixed shots</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#for-level-makers">For level makers</a></li><li><a href="#history">History</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#level">Level</a></li><li><a href="#camera-zone">Camera zone</a></li></ol></li></ol></nav><h2 id="following-your-carrot">Following your carrot</h2>
-<p>Levels are bigger than the screen. Each level sets how many game pixels the screen shows
-(<code>view_size</code>; normally every game pixel is 2x2 screen pixels at 1080p), and the camera glides after
-your carrot, catching up at 7 /s. It aims a little above your feet (<code>follow_offset</code>), so
-you see more of what's above and ahead. It never shows past the
-level's edges. A level smaller than the view is zoomed in until it fills the screen.</p>
-<p>When you fall faster than 300 px/s, the camera starts leading below you, up to
-140 px at full fall speed, so you can see where you're going to land on the way down a shaft.</p>
-<p>Getting hurt, firing and big impacts shake the camera; how hard depends on what happened.</p>
-<h2 id="camera-zones-fixed-shots">Camera zones: fixed shots</h2>
-<p>Arenas and boss rooms use <strong>camera zones</strong>. While your carrot is inside a zone, the camera stops
-following and holds a fixed shot of the whole zone: centred on it, and zoomed so the zone fills the
-screen. It glides into and out of the shot at the zone's own ease speed.</p>
-<p>The zone goes by the middle of your carrot, not its feet, so hopping along a floor at a zone's
-bottom edge doesn't flick you in and out. Once the camera has switched to a zone's shot, it keeps it
-until you're 12 px outside the zone. That way hovering on the edge doesn't make it
-switch back and forth.</p>
-<h2 id="co-op">Co-op</h2>
-<p>Every machine frames its own carrot, so players in a squad can be in different places, and even in
-different zones' shots, at once.</p>
-<h2 id="for-level-makers">For level makers</h2>
-<p>Add a <strong>CameraZone</strong> node to a level scene, place its top-left corner, and set its <code>size</code> in the
-Inspector; it shows as a yellow box in the editor. Draw boss rooms as zones so the whole fight is on
-screen. A zone's size sets the zoom, so one the same size as the level's <code>view_size</code> shows it at the
-normal scale.</p>
-<h2 id="history">History</h2>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../levels/index.html">Levels</a></p><h1>Garden Intro</h1><aside class="infobox"><div class="infobox-title">Garden Intro</div><dl><div><dt>Scene</dt><dd><code>scenes/intro_garden.tscn</code></dd></div><div><dt>Size</dt><dd>About two screens wide, with a deep shaft below</dd></div><div><dt>Camera</dt><dd>Follows you, framed high to show the garden, and leads below you as you fall</dd></div><div><dt>Enemies</dt><dd>None</dd></div><div><dt>Leads to</dt><dd><a href="../biomes/warm-burrow.html">Warm Burrow</a> (the first area, coming)</dd></div><div><dt>Status</dt><dd>Work in progress</dd></div></dl></aside><p class="lead">Work in progress: the game opens in a sunny vegetable garden, where the carrots walk past a giant carrot and jump down a mushroom-lined hole into the burrow.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#what-happens">What happens</a></li><li><a href="#camera">Camera</a></li><li><a href="#what-its-made-of">What it's made of</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#level-settings-the-defaults-the-garden-overrides-its-size-and-camera-framing">Level settings (the defaults; the garden overrides its size and camera framing)</a></li><li><a href="#decorations-prop-defaults-each-placed-prop-sets-its-own-sway-and-glow">Decorations (Prop defaults; each placed prop sets its own sway and glow)</a></li></ol></li></ol></nav><div class="admonition note">
+<p class="admonition-title">Work in progress</p>
+<p>The garden and the fall are done. Nothing loads the intro yet (the title still goes to the
+<a href="../levels/arena.html">Arena</a>), and the cave at the bottom of the shaft is a placeholder for the first burrow area.</p>
+</div>
+<p>The Garden Intro is the calm before the dungeon. The carrots drop into a sunny vegetable garden,
+stroll across it, and jump into a hole that leads down into the <a href="../biomes/warm-burrow.html">Warm Burrow</a>.</p>
+<h2 id="what-happens">What happens</h2>
+<ol>
+<li><strong>The garden:</strong> you land on grass under a blue sky with puffy clouds and a sun. Behind you are
+   rolling hills with a little red barn, then a picket fence with leafy rows, sunflowers, a bean pole
+   and a scarecrow.</li>
+<li><strong>The giant carrot:</strong> right next to where you land, a huge carrot grows out of the soil. Only its
+   fat orange shoulder shows above the grass, with a sleepy, blushing face and a big bushy leaf top
+   that sways in the breeze. It's a plant, not an enemy: a nod to the heroes being carrots too.</li>
+<li><strong>The walk:</strong> a few seconds of running across the garden, with the backdrop scrolling at
+   different depths.</li>
+<li><strong>The hole:</strong> a wide opening in the ground, with grass curling over its lips, roots dangling down
+   it, and amber mushrooms glowing on both walls.</li>
+<li><strong>The fall:</strong> jump in and the camera follows you down a deep shaft. Mushrooms glow past on the
+   walls, the garden slides away above, and the blurred foreground grass sweeps past the camera. You
+   land in a small burrow cave.</li>
+</ol>
+<h2 id="camera">Camera</h2>
+<p>The garden raises the camera's <code>follow_offset</code> well above the default, so the sky and the garden
+fill most of the screen instead of the dirt under your feet. Its <code>fall_lead</code> is also bigger than
+usual: once you're falling fast, the camera drops well ahead of you so you can see the bottom coming.
+Enemy waves are switched off (<code>enemy_waves</code>).</p>
+<h2 id="what-its-made-of">What it's made of</h2>
 <ul>
-<li>A camera zone drawn down exactly to the floor used to flick between following and the fixed shot
-  on every hop. The zone now goes by the carrot's middle, and the exit margin was added.</li>
+<li><strong>Ground:</strong> a thin strip of the arena's grassy dirt over <a href="../biomes/warm-burrow.html">Warm Burrow</a> soil, so the shaft walls
+  turn into burrow dirt as you fall.</li>
+<li><strong>Backdrop:</strong> a sky fixed to the screen, then clouds, far hills, near hills and the garden rows,
+  each scrolling a little faster than the one behind it.</li>
+<li><strong>Decorations:</strong> the giant carrot, its leaves, the hole's rims and the wall mushrooms are <code>Prop</code>s.
+  These are sprites with an optional glow that blooms, and an optional sway. The art is baked by
+  <code>tools/garden/bake.gd</code>.</li>
+</ul>
+<h2 id="design-notes">Design notes</h2>
+<ul>
+<li>The giant carrot sits right beside the spawn, so it's the first thing everyone sees.</li>
+<li>The amber wall mushrooms use the Warm Burrow's glow-cap colours, a hint of where the hole leads.</li>
 </ul>
 <h2 id="tunable-parameters">Tunable parameters</h2>
 <p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
 
-<h3 id="level">Level</h3>
+<h3 id="level-settings-the-defaults-the-garden-overrides-its-size-and-camera-framing">Level settings (the defaults; the garden overrides its size and camera framing)</h3>
 <p class="params-src">Edit <a href="../tuning/scripts-level.html"><code>scripts/level.gd</code></a></p>
 
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>size</code></td><td class="val"><code>Vector2(480, 270)</code></td><td class="rng"></td><td>The level&#x27;s size in game pixels (y down from the top-left). The camera never shows past it and bullets and goo stop at it. The arena is exactly one 480x270 screen.</td></tr><tr><td><code>view_size</code></td><td class="val"><code>Vector2i(960, 540)</code></td><td class="rng"></td><td>How many game pixels the screen shows (Main reads this when the level loads). At 1080p, 960x540 makes every game pixel 2x2 screen pixels. A level smaller than the view is zoomed in to fill it.</td></tr><tr><td><code>clouds</code></td><td class="val">Yes</td><td class="rng"></td><td>The arena&#x27;s drifting clouds (baked from the prototype). Off for levels without a sky.</td></tr><tr><td><code>follow_speed</code></td><td class="val">7 /s</td><td class="rng">0.5 to 30</td><td>How quickly the camera catches up with your carrot (per second; higher is snappier).</td></tr><tr><td><code>follow_offset</code></td><td class="val"><code>Vector2(0, -24)</code></td><td class="rng"></td><td>The camera aims this far above your carrot&#x27;s feet, so you see more of what&#x27;s ahead and above.</td></tr><tr><td><code>fall_lead</code></td><td class="val">140 px</td><td class="rng">0 to 400</td><td>While you fall faster than <code>fall_lead_from</code> (px/s), the camera leads below you, up to <code>fall_lead</code> px at full fall speed, so you can see where you&#x27;ll land (down a shaft, say).</td></tr><tr><td><code>fall_lead_from</code></td><td class="val">300 px/s</td><td class="rng">0 to 1000</td><td></td></tr><tr><td><code>zone_exit_margin</code></td><td class="val">12 px</td><td class="rng">0 to 64</td><td>Once the camera has switched to a CameraZone&#x27;s shot, it keeps it until your carrot is this far outside the zone, so hopping or bobbing on a zone&#x27;s edge doesn&#x27;t flick the camera back and forth.</td></tr><tr><td><code>wipe_restart</code></td><td class="val">3.5 s</td><td class="rng">0.5 to 15</td><td>After the whole squad is down: how long the &quot;wiped&quot; banner shows before the level restarts.</td></tr><tr class="group"><th colspan="4">Enemy waves</th></tr><tr><td><code>enemy_waves</code></td><td class="val">Yes</td><td class="rng"></td><td>Enemy waves arrive (the <code>roster</code>, or --enemies=) and killed enemies are replaced. Off for calm levels like the garden intro, and for encounters, which bring in their own enemies.</td></tr><tr><td><code>roster</code></td><td class="val"><code>[&quot;zombie&quot;, &quot;zombie&quot;, &quot;pumpkin&quot;, &quot;asparagus&quot;, &quot;mushroom&quot;, &quot;pepper&quot;, &quot;corn&quot;, &quot;potato&quot;]</code></td><td class="rng"></td><td>Who&#x27;s about at once: one enemy per entry (kinds from Level.KINDS; list one twice for two). Each is replaced by the same kind when it dies. --enemies= overrides it for testing.</td></tr><tr><td><code>first_enemy_at</code></td><td class="val">1.5 s</td><td class="rng">0 to 30</td><td>Seconds after the level starts before the first enemy arrives...</td></tr><tr><td><code>enemy_stagger</code></td><td class="val">0.8 s</td><td class="rng">0 to 10</td><td>...and between each of the rest of the roster arriving after it.</td></tr><tr><td><code>respawn</code></td><td class="val">2.5 s</td><td class="rng">0 to 60</td><td>Seconds after an enemy dies before its replacement arrives.</td></tr><tr><td><code>grenade</code></td><td class="val"><code>preload(&quot;res://styles/grenade.tres&quot;)</code></td><td class="rng"></td><td>The grenade everyone carries (styles/grenade.tres), how many are ready (fractions are the one recharging), and the gap before the next throw.</td></tr></tbody></table></div>
 
-<h3 id="camera-zone">Camera zone</h3>
-<p class="params-src">Edit <a href="../tuning/scripts-level-parts-camera-zone.html"><code>scripts/level_parts/camera_zone.gd</code></a></p>
+<h3 id="decorations-prop-defaults-each-placed-prop-sets-its-own-sway-and-glow">Decorations (Prop defaults; each placed prop sets its own sway and glow)</h3>
+<p class="params-src">Edit <a href="../tuning/scripts-level-parts-prop.html"><code>scripts/level_parts/prop.gd</code></a></p>
 
-<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>size</code></td><td class="val"><code>Vector2i(480, 270)</code></td><td class="rng"></td><td></td></tr><tr><td><code>ease_speed</code></td><td class="val">6</td><td class="rng">0.5 to 30</td><td>How quickly the camera glides into and out of this shot (per second; higher is snappier).</td></tr></tbody></table></div></article>
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>glow</code></td><td class="val"><code></code></td><td class="rng"></td><td>White where the prop glows (same size as <code>texture</code>); leave empty for no glow.</td></tr><tr><td><code>glow_color</code></td><td class="val"><span class="swatch" style="background:#ffd27a"></span><code>#ffd27a</code></td><td class="rng"></td><td>The glow&#x27;s tint.</td></tr><tr><td><code>glow_intensity</code></td><td class="val">1.5</td><td class="rng">0 to 4</td><td>How bright the glow is (linear; above 1 blooms).</td></tr><tr><td><code>sway</code></td><td class="val">0</td><td class="rng">0 to 0.5</td><td>How far it leans each way in the breeze (a skew, in radians; 0 = still).</td></tr><tr><td><code>sway_speed</code></td><td class="val">0.5</td><td class="rng">0.05 to 4</td><td>Sways per second.</td></tr><tr><td><code>sway_phase</code></td><td class="val">0</td><td class="rng">0 to 1</td><td>Shifts its sway in time, so neighbouring props don&#x27;t sway in step.</td></tr></tbody></table></div></article>
 <footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
 </main>
 </div>

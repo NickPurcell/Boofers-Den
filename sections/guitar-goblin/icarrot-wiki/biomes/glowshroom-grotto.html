@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Glowshroom Grotto | iCarrot Wiki</title>
+<meta name="description" content="A deep indigo cavern lit almost only by living things, with candy-coloured cyan, magenta and lime toadstools glowing out of the dark.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">5</span></summary><ul>
+<li><a href="../weapons/revolver.html">Revolver</a></li>
+<li><a href="../weapons/smg.html">SMG</a></li>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/grenade.html">Energy ball</a></li>
+<li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
+</ul></details>
+<details><summary><a href="../enemies/index.html">Enemies</a><span class="count">1</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">4</span></summary><ul>
+<li><a href="../levels/title-sequence.html">Title Sequence</a></li>
+<li><a href="../levels/arena.html">Arena</a></li>
+<li><a href="../levels/garden-intro.html">Garden Intro</a></li>
+<li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+</ul></details>
+<details open><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
+<li><a href="../biomes/warm-burrow.html">Warm Burrow</a></li>
+<li><a href="../biomes/overgrown-vault.html">Overgrown Vault</a></li>
+<li><a href="../biomes/glowshroom-grotto.html" aria-current="page">Glowshroom Grotto</a></li>
+<li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
+<li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/co-op.html">Co-op</a></li>
+<li><a href="../mechanics/reloading.html">Reloading</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
+<li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
+<li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../biomes/index.html">Biomes</a></p><h1>Glowshroom Grotto</h1><aside class="infobox"><div class="infobox-title">Glowshroom Grotto</div><dl><div><dt>Mood</dt><dd>Dreamy, mysterious, magical</dd></div><div><dt>Key colours</dt><dd>Indigo-violet earth (<code>51497a</code> to <code>1b1830</code>), bright teal moss (<code>72f6d4</code>), cyan (<code>6af4ff</code>), magenta (<code>ff74e2</code>), lime (<code>cbff52</code>)</dd></div><div><dt>Glow</dt><dd>Toadstool gills, drips and spots, each in its own colour</dd></div><div><dt>Parallax layers</dt><dd>Three backdrop layers plus a blurred foreground</dd></div><div><dt>Used in</dt><dd><span class="redlink" title="This page doesn't exist yet">Grotto Test</span></dd></div></dl></aside><p class="lead">A deep indigo cavern lit almost only by living things, with candy-coloured cyan, magenta and lime toadstools glowing out of the dark.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#look">Look</a></li><li><a href="#palette">Palette</a></li><li><a href="#what-it-draws">What it draws</a></li><li><a href="#using-it-in-a-level">Using it in a level</a></li><li><a href="#design-notes">Design notes</a></li></ol></nav><h2 id="look">Look</h2>
+<p>A deep cavern where nearly all the light comes from living things. The earth, roots and backdrop are
+cool indigo, violet and deep teal, and three candy colours glow out of it: cyan, magenta and lime
+toadstools, moss, buds and spores. Every walkable top has a bright teal moss lip, so the playfield
+sits clearly in front of the near-black backdrop.</p>
+<p>Orange is the only warm colour on screen, so the carrots always pop.</p>
+<p>It comes after the <a href="../biomes/overgrown-vault.html">Overgrown Vault</a> and before the <a href="../biomes/compost-depths.html">Compost Depths</a>.</p>
+<h2 id="palette">Palette</h2>
+<table>
+<thead>
+<tr>
+<th>Colour</th>
+<th>Hex</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Indigo-violet earth</td>
+<td><code>51497a</code> <code>433c69</code> <code>373159</code></td>
+<td>Ground blocks, darkening with depth</td>
+</tr>
+<tr>
+<td>Teal moss</td>
+<td><code>e0fff6</code> <code>72f6d4</code> <code>2fbfae</code></td>
+<td>The glowing lip on every walkable top</td>
+</tr>
+<tr>
+<td>Lavender wood</td>
+<td><code>f1e8ff</code> <code>c6b2f2</code> <code>9c84d8</code></td>
+<td>Branch ledges and stems</td>
+</tr>
+<tr>
+<td>Pink rings</td>
+<td><code>fff0fa</code> <code>f2c4e6</code></td>
+<td>The cut end of a branch</td>
+</tr>
+<tr>
+<td>Cyan</td>
+<td><code>e4ffff</code> <code>6af4ff</code> <code>1fb4ea</code></td>
+<td>Toadstool caps, buried crystals</td>
+</tr>
+<tr>
+<td>Magenta</td>
+<td><code>ffe2f8</code> <code>ff74e2</code> <code>d42fae</code></td>
+<td>Toadstool caps</td>
+</tr>
+<tr>
+<td>Lime</td>
+<td><code>f6ffd0</code> <code>cbff52</code> <code>7cd42c</code></td>
+<td>Toadstool caps, vines</td>
+</tr>
+<tr>
+<td>Deep indigo</td>
+<td><code>08061e</code> to <code>181a44</code></td>
+<td>The far backdrop</td>
+</tr>
+</tbody>
+</table>
+<h2 id="what-it-draws">What it draws</h2>
+<p><strong>Ground blocks (Solid).</strong> Muted indigo-violet earth under a bright teal moss lip with hanging drips.
+The sides are inked dark, and the underside catches a faint light, as if lit by a glowing floor below.
+The fill is a calm mottle that darkens with depth, with pebbles, buried cyan crystals, rootlets ending
+in little glowing bulbs, and the odd pink worm curled in a pocket. The earth is kept dull on purpose so
+it never competes with the glow.</p>
+<p><strong>Jump-through ledges (Plank).</strong> A pale lavender branch with a lit top and grain. The left end is a
+cut end showing pink growth rings; the right end tapers into a curly vine tendril. The odd lime vine
+is lashed round it, and rootlets with glowing bulbs hang below.</p>
+<p><strong>Mushroom platforms (Shroom).</strong></p>
+<ul>
+<li><em>Cap:</em> a glossy candy toadstool in cyan, magenta or lime. The colour is picked from the node's name,
+  so a row of mushrooms comes out mixed. A dome, a dark crease, then a lit brim that sticks out past
+  the dome and curls down at the ends, over a lens of gills and a few luminous drips. That
+  light-dark-light banding stops it reading as a pill.</li>
+<li><em>Glow:</em> the gill blades, drips, spot cores and a glint, each in the cap's own colour.</li>
+<li><em>Stem:</em> pale lavender, tinted by the gills' glow at the top and falling into shadow further down,
+  with a frilly ring in the cap's colour, a gentle bow and a bulb at the base. Tall stems bow more and
+  dim more, so a forest of them recedes.</li>
+</ul>
+<p><strong>Backdrop.</strong> Three baked layers, seamless in both directions.</p>
+<ul>
+<li><em>Far:</em> flat deep indigo with faint hanging drapery, soft pools of light where distant colonies of
+  glowshrooms grow, and a sprinkle of glow-worms. This layer barely moves.</li>
+<li><em>Mid:</em> giant twisted root trunks running the full height, sagging roots slung between them with
+  curtains of rootlets, and dim toadstools growing out of the trunks at an angle. Everything is lit
+  from below: dark tops, cool-lit undersides. It drifts a little more.</li>
+<li><em>Near:</em> two thick twisted roots with leaves and clusters of dim toadstools jutting out, two hanging
+  vines with dim bulbs, and drifting spore motes. It moves the most of the three.</li>
+</ul>
+<p><strong>Foreground.</strong> Blurred silhouettes in front of the playfield: a hanging clump with roots and a leafy
+vine ending in a bulb, one long dangling vine, a root running across with a curtain of rootlets, a
+side wall with a toadstool growing out sideways, a bottom lip of mounds and little toadstools, and a
+tall cluster of toadstools rising from the bottom edge, the grotto's signature shape.</p>
+<h2 id="using-it-in-a-level">Using it in a level</h2>
+<ul>
+<li>On a Solid set <code>look</code> to <strong>GROTTO</strong>, on a Plank set <code>look</code> to <strong>GROTTO</strong>, and on a Shroom set
+  <code>biome</code> to <strong>GROTTO</strong>. Rename a Shroom to change its colour. See <span class="redlink" title="This page doesn't exist yet">Level Parts</span>.</li>
+<li>Baked files are in <code>art/baked/grotto_*</code>: <code>grotto_bg_far</code>, <code>grotto_bg_mid</code>, <code>grotto_bg_near</code>, and
+  the foreground pieces <code>grotto_fg_hang</code>, <code>_vine</code>, <code>_curtain</code>, <code>_side</code>, <code>_bottom</code> and <code>_cluster</code>,
+  each with a <code>_blur</code> version for the game. <code>scenes/grotto_test.tscn</code> shows the setup.</li>
+<li>To re-bake, run <code>tools/underground/glowshroom_grotto/bake.gd</code> as a headless Godot script.</li>
+</ul>
+<h2 id="design-notes">Design notes</h2>
+<ul>
+<li><strong>The carrots must pop.</strong> The cave is all cool colours, so orange carrots are the only warm thing
+  on screen. Only living things glow; the earth, wood and backdrop stay dark so the glow has
+  something to bloom against. The teal moss on every walkable top doubles as a readability line.</li>
+<li><strong>Nothing in the backdrop may look like a platform.</strong> The playfield owns the bright moss tops, so
+  backdrop shapes keep dark tops. Distant mushrooms are small, dark, domed and tilted, standing in
+  soft light pools on hills that fade out downwards; the only light back there is pools, undersides
+  and pinprick glows.</li>
+<li><strong>The foreground blur is dithered.</strong> Edges soften in a few see-through steps with an ordered dither.
+  Pure black silhouettes vanish against a black ceiling, so each one carries a cool "underlight" rim
+  on the side facing the glowing floor. Roots are drawn thick so the blur doesn't eat them.</li>
+<li><strong>Known weak spots:</strong> stems are plain; the glow doesn't animate yet (a slow pulse on spots and
+  bulbs, and drifting spores, would suit it); and very large ground fills can show a faint repeat.</li>
+</ul></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>
