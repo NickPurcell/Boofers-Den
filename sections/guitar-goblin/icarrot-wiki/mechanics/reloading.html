@@ -83,6 +83,7 @@ loads.</p>
 <li>Switching guns drops the reload in progress. Each gun keeps the rounds it had, so you can swap away
   and come back to finish later.</li>
 <li>Being knocked down drops the reload too.</li>
+<li>A dropped reload goes quiet at once: the clicks it hadn't reached yet never play.</li>
 </ul>
 <p>How long a reload takes is set per gun: 0.5 s for the
 revolver, 1.1 s for the SMG and
@@ -113,7 +114,8 @@ blast the pump slides back, the spent red hull flips out, and
 reload's pump. If that shot emptied the gun, the reload starts straight away and its own pump at the
 end takes the place of this one.</p>
 <h2 id="sounds">Sounds</h2>
-<p>Each gun's reload is synthesised at startup, so the three are easy to tell apart without looking:</p>
+<p>Every click, slap and rack is synthesised once at startup and played on its beat, so reloading never
+costs a frame. The three guns are easy to tell apart without looking:</p>
 <table>
 <thead>
 <tr>
@@ -128,7 +130,7 @@ end takes the place of this one.</p>
 </tr>
 <tr>
 <td><a href="../weapons/smg.html">SMG</a></td>
-<td>Mid-range clacks: a release click, a thump as the mag slaps home, a spring scrape and a sharp bolt clack</td>
+<td>Mid-range clacks: a release click and a hollow clack as the empty mag drops, a thump as the mag slaps home, a spring scrape and a sharp bolt clack</td>
 </tr>
 <tr>
 <td><a href="../weapons/shotgun.html">Shotgun</a></td>
@@ -152,6 +154,7 @@ refill as the reload runs.</p>
 <p>Everyone sees and hears everyone's reloads. Your reload is sent to the other players as a single
 message saying how many rounds went in, and each machine plays the same animation, sound and
 falling brass, mag or hulls from it. Other players' reloads play a little quieter than your own.
+If a partner swaps guns or goes down mid-reload, the rest of it goes quiet on your machine too.
 The reload bar under the crosshair is yours alone; partners just see your carrot reloading.</p>
 </div>
 <h2 id="tuning">Tuning</h2>
