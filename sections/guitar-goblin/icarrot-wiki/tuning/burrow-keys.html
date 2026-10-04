@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>styles/burrow_keys.tres | iCarrot Wiki</title>
+<meta name="description" content="The colours of an encounter&#x27;s keys: each boss room&#x27;s torches, the buff its boss drops and the hub pedestal it belongs on all share one colour, so players can tell which goes where.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">1</span></summary><ul>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+</ul></details>
+<details><summary><a href="../enemies/index.html">Enemies</a><span class="count">1</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">0</span></summary><ul>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html" aria-current="page">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="index.html">Tuning files</a></p><h1><code>styles/burrow_keys.tres</code></h1><p class="lead">The colours of an encounter&#x27;s keys: each boss room&#x27;s torches, the buff its boss drops and the hub pedestal it belongs on all share one colour, so players can tell which goes where.</p><p>Open this file in the Godot Inspector to change these values. While the game runs from the editor, most of them can also be changed live through the Remote scene tree.</p><p>Its fields are defined in <code>scripts/encounter/key_palette.gd</code>.</p><div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>red</code></td><td class="val"><span class="swatch" style="background:#ff4a3a"></span><code>#ff4a3a</code></td><td class="rng"></td><td>The red key&#x27;s colour (torches, buff, pedestal).</td></tr><tr><td><code>green</code></td><td class="val"><span class="swatch" style="background:#6af04a"></span><code>#6af04a</code></td><td class="rng"></td><td>The green key&#x27;s colour.</td></tr><tr><td><code>blue</code></td><td class="val"><span class="swatch" style="background:#4aa8ff"></span><code>#4aa8ff</code></td><td class="rng"></td><td>The blue key&#x27;s colour.</td></tr><tr><td><code>glow</code></td><td class="val">2.4</td><td class="rng">0.5 to 6</td><td>How brightly flames, buffs and lit pedestals glow (linear; above 1 blooms).</td></tr><tr><td><code>dim_glow</code></td><td class="val">1.1 <span class="default">script default 0.6</span></td><td class="rng">0 to 2</td><td>How brightly an unlit pedestal&#x27;s runes glow, as a hint of where things go.</td></tr><tr class="group"><th colspan="4">Buff names</th></tr><tr><td><code>red_buff</code></td><td class="val">KERNEL FURY</td><td class="rng"></td><td>What carrying the red orb is called (shown above the ammo; a stand-in, see WIP.md).</td></tr><tr><td><code>green_buff</code></td><td class="val">SPUD RUSH</td><td class="rng"></td><td>What carrying the green orb is called.</td></tr><tr><td><code>blue_buff</code></td><td class="val">GHOST HEAT</td><td class="rng"></td><td>What carrying the blue orb is called.</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>

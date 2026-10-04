@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>styles/red_corn_tuning.tres | iCarrot Wiki</title>
+<meta name="description" content="Feel knobs for the carrots (movement, double jump, dash). Shared by every player via tuning.tres. While the game runs from the editor, select a carrot in the Remote scene tree to edit these live.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">1</span></summary><ul>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+</ul></details>
+<details><summary><a href="../enemies/index.html">Enemies</a><span class="count">1</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">0</span></summary><ul>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html" aria-current="page">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="index.html">Tuning files</a></p><h1><code>styles/red_corn_tuning.tres</code></h1><p class="lead">Feel knobs for the carrots (movement, double jump, dash). Shared by every player via tuning.tres. While the game runs from the editor, select a carrot in the Remote scene tree to edit these live.</p><p>Open this file in the Godot Inspector to change these values. While the game runs from the editor, most of them can also be changed live through the Remote scene tree.</p><p>Its fields are defined in <code>scripts/tuning.gd</code>.</p><div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Movement</th></tr><tr><td><code>run_speed</code></td><td class="val">115</td><td class="rng"></td><td></td></tr><tr><td><code>accel</code></td><td class="val">600 <span class="default">script default 1300</span></td><td class="rng"></td><td></td></tr><tr><td><code>decel</code></td><td class="val">1500 <span class="default">script default 1700</span></td><td class="rng"></td><td></td></tr><tr><td><code>air_accel</code></td><td class="val">260 <span class="default">script default 800</span></td><td class="rng"></td><td></td></tr><tr><td><code>gravity</code></td><td class="val">1250 <span class="default">script default 1050</span></td><td class="rng"></td><td></td></tr><tr><td><code>fall_mult</code></td><td class="val">1.45</td><td class="rng"></td><td>Falling is snappier than rising.</td></tr><tr><td><code>max_fall</code></td><td class="val">440</td><td class="rng"></td><td></td></tr><tr><td><code>jump_speed</code></td><td class="val">300 <span class="default">script default 390</span></td><td class="rng"></td><td>About 72px high.</td></tr><tr><td><code>jump_cut</code></td><td class="val">0.45</td><td class="rng"></td><td>Releasing jump early multiplies upward speed by this.</td></tr><tr><td><code>coyote</code></td><td class="val">0.09</td><td class="rng"></td><td>Grace period to jump after walking off a ledge.</td></tr><tr><td><code>jump_buffer</code></td><td class="val">0.12</td><td class="rng"></td><td>A jump pressed slightly before landing still counts.</td></tr><tr class="group"><th colspan="4">Double jump and dash</th></tr><tr><td><code>air_jumps</code></td><td class="val">0</td><td class="rng"></td><td>Extra jumps in mid-air before landing (0 = no double jump; enemies use 0).</td></tr><tr><td><code>air_jump_speed</code></td><td class="val">340</td><td class="rng"></td><td>A touch weaker than the ground jump (about 55px).</td></tr><tr><td><code>dash_speed</code></td><td class="val">360</td><td class="rng"></td><td></td></tr><tr><td><code>dash_time</code></td><td class="val">0.15</td><td class="rng"></td><td>How long a dash lasts; distance is dash_speed * dash_time (about 54px).</td></tr><tr><td><code>dash_cooldown</code></td><td class="val">0.45</td><td class="rng"></td><td></td></tr><tr><td><code>air_dashes</code></td><td class="val">1</td><td class="rng"></td><td>Dashes allowed per trip through the air (ground dashes are only limited by the cooldown).</td></tr><tr><td><code>dash_iframes</code></td><td class="val">0.2</td><td class="rng"></td><td>Invincible for this long from the start of a dash: the whole dash plus a little grace, so a dash *through* a shot never gets you hit on the way out. Bullets pass through you meanwhile.</td></tr><tr class="group"><th colspan="4">Health</th></tr><tr><td><code>max_health</code></td><td class="val">100</td><td class="rng"></td><td></td></tr><tr><td><code>regen_delay</code></td><td class="val">3</td><td class="rng"></td><td>Seconds without being hit before health starts to recharge...</td></tr><tr><td><code>regen_rate</code></td><td class="val">18</td><td class="rng"></td><td>...and how fast it then refills, per second (100 in about 5.5 s).</td></tr><tr class="group"><th colspan="4">Getting hit</th></tr><tr><td><code>headshot_mult</code></td><td class="val">2</td><td class="rng"></td><td>Enemy shots that land on a player&#x27;s head do this many times the damage. (Guns, their damage and falloff live in Weapon resources: styles/weapons/.)</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>

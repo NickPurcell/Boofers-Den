@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>styles/enemies/potato.tres | iCarrot Wiki</title>
+<meta name="description" content="Gameplay and feel numbers for the Potato Bull (scripts/potato.gd). The default instance is styles/enemies/potato.tres; tweak it in the Inspector (or live on a potato in the Remote tree). Enemy HP is in revolver units: a body shot does 10, a headshot 20. A carrot runs at 115 px/s.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">1</span></summary><ul>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+</ul></details>
+<details><summary><a href="../enemies/index.html">Enemies</a><span class="count">1</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">0</span></summary><ul>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html" aria-current="page">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="index.html">Tuning files</a></p><h1><code>styles/enemies/potato.tres</code></h1><p class="lead">Gameplay and feel numbers for the Potato Bull (scripts/potato.gd). The default instance is styles/enemies/potato.tres; tweak it in the Inspector (or live on a potato in the Remote tree). Enemy HP is in revolver units: a body shot does 10, a headshot 20. A carrot runs at 115 px/s.</p><p>Open this file in the Godot Inspector to change these values. While the game runs from the editor, most of them can also be changed live through the Remote scene tree.</p><p>Its fields are defined in <code>scripts/enemy_stats/potato_stats.gd</code>.</p><div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Health</th></tr><tr><td><code>max_hp</code></td><td class="val">300 hp</td><td class="rng">10 to 1500</td><td>Hit points. A zombie has 60, a pepper 80, the corn ogre 500.</td></tr><tr><td><code>hit_push</code></td><td class="val">6 px/s</td><td class="rng">0 to 100</td><td>How far a bullet nudges it (it&#x27;s heavy).</td></tr><tr class="group"><th colspan="4">Movement</th></tr><tr><td><code>trot_speed</code></td><td class="val">30 px/s</td><td class="rng">0 to 120</td><td>Top speed of the heavy waddling trot toward the nearest player.</td></tr><tr><td><code>trot_accel</code></td><td class="val">360 px/s²</td><td class="rng">50 to 3000</td><td>How quickly the trot gets up to speed (and slows down again).</td></tr><tr><td><code>keep_distance</code></td><td class="val">34 px</td><td class="rng">0 to 200</td><td>Stops trotting this close to its target (feet to feet) and waits for a run at them.</td></tr><tr><td><code>turn_time</code></td><td class="val">0.35 s</td><td class="rng">0 to 2</td><td>Time to turn round to face the other way (a slow, heavy turn).</td></tr><tr><td><code>hop_speed</code></td><td class="val">300 px/s</td><td class="rng">0 to 600</td><td>Upward speed of a heavy hop up a low step in its way.</td></tr><tr><td><code>gravity</code></td><td class="val">1200 px/s²</td><td class="rng">200 to 3000</td><td>Gravity on it, and the fastest it falls.</td></tr><tr><td><code>max_fall</code></td><td class="val">480 px/s</td><td class="rng">100 to 1200</td><td></td></tr><tr class="group"><th colspan="4">Charge</th></tr><tr><td><code>charge_range</code></td><td class="val">330 px</td><td class="rng">0 to 800</td><td>Starts a charge at a player at most this far away (horizontally) ...</td></tr><tr><td><code>charge_min_range</code></td><td class="val">26 px</td><td class="rng">0 to 200</td><td>... and at least this far (closer than that it shuffles back a step first).</td></tr><tr><td><code>charge_height</code></td><td class="val">30 px</td><td class="rng">0 to 120</td><td>... and only if they&#x27;re roughly level with it: feet no more than this far apart vertically.</td></tr><tr><td><code>windup_time</code></td><td class="val">1 s</td><td class="rng">0.2 to 3</td><td>The wind-up telegraph (pawing, snorting, head down) before it goes.</td></tr><tr><td><code>charge_speed</code></td><td class="val">270 px/s</td><td class="rng">60 to 700</td><td>Top charging speed and how fast it gets there.</td></tr><tr><td><code>charge_accel</code></td><td class="val">900 px/s²</td><td class="rng">100 to 5000</td><td></td></tr><tr><td><code>overshoot</code></td><td class="val">70 px</td><td class="rng">0 to 300</td><td>It keeps charging this far past where the player was before it brakes (the overshoot).</td></tr><tr><td><code>charge_max_time</code></td><td class="val">2.2 s</td><td class="rng">0.3 to 6</td><td>A charge brakes after this long even if it hasn&#x27;t passed the player.</td></tr><tr><td><code>skid_decel</code></td><td class="val">520 px/s²</td><td class="rng">50 to 3000</td><td>How hard it brakes in the skid after a charge.</td></tr><tr><td><code>stun_speed</code></td><td class="val">110 px/s</td><td class="rng">0 to 600</td><td>Hitting a wall at least this fast stuns it; slower, it just stops.</td></tr><tr><td><code>stun_time</code></td><td class="val">2.2 s</td><td class="rng">0 to 8</td><td>How long it&#x27;s dizzy after a wall slam (the punish window; its weak spot grows meanwhile).</td></tr><tr><td><code>recover_time</code></td><td class="val">0.7 s</td><td class="rng">0 to 3</td><td>Shaking it off and turning round after a skid or a stun.</td></tr><tr><td><code>cooldown_min</code></td><td class="val">1 s</td><td class="rng">0 to 10</td><td>Time between charges (random in this range), and before the first one after it appears.</td></tr><tr><td><code>cooldown_max</code></td><td class="val">2 s</td><td class="rng">0 to 10</td><td></td></tr><tr><td><code>first_charge</code></td><td class="val">1.2 s</td><td class="rng">0 to 10</td><td></td></tr><tr class="group"><th colspan="4">Damage</th></tr><tr><td><code>charge_damage</code></td><td class="val">35 hp</td><td class="rng">0 to 100</td><td>Damage to a player it runs into while charging (players have 100). Once per charge per player.</td></tr><tr><td><code>knock_x</code></td><td class="val">420 px/s</td><td class="rng">0 to 1000</td><td>The launch: sideways along the charge, and upwards.</td></tr><tr><td><code>knock_y</code></td><td class="val">330 px/s</td><td class="rng">0 to 1000</td><td></td></tr><tr><td><code>stun_weak_spot</code></td><td class="val">2.6x</td><td class="rng">1 to 4</td><td>While stunned, its weak spot (head box, headshots x2) grows to this many times its normal height.</td></tr><tr class="group"><th colspan="4">Feel</th></tr><tr><td><code>footfall_shake</code></td><td class="val">0.2</td><td class="rng">0 to 1</td><td>Screen shake per charging footfall (scaled down with distance) and for a wall slam.</td></tr><tr><td><code>slam_shake</code></td><td class="val">0.9</td><td class="rng">0 to 1</td><td></td></tr><tr><td><code>flash_gap</code></td><td class="val">0.25 s</td><td class="rng">0.05 to 1</td><td>Least time between white hit flashes, so the SMG doesn&#x27;t strobe it.</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>

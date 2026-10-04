@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zombie | iCarrot Wiki</title>
+<meta name="description" content="A rotten carrot that shambles toward the nearest player with its arms out and slaps them.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">1</span></summary><ul>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+</ul></details>
+<details open><summary><a href="../enemies/index.html">Enemies</a><span class="count">1</span></summary><ul>
+<li><a href="../enemies/zombie.html" aria-current="page">Zombie</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">0</span></summary><ul>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../enemies/index.html">Enemies</a></p><h1>Zombie</h1><aside class="infobox"><div class="infobox-title">Zombie</div><dl><div><dt>Kind</dt><dd><code>zombie</code></dd></div><div><dt>Type</dt><dd>Regular enemy</dd></div><div><dt>Health</dt><dd>60 hp</dd></div><div><dt>Slap damage</dt><dd>15 hp</dd></div><div><dt>Walk speed</dt><dd>14 px/s</dd></div></dl></aside><p class="lead">A rotten carrot that shambles toward the nearest player with its arms out and slaps them.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#behaviour">Behaviour</a></li><li><a href="#attacks">Attacks</a><ol><li><a href="#slap">Slap</a></li></ol></li><li><a href="#strategy">Strategy</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#stats">Stats</a></li><li><a href="#movement-feel">Movement feel</a></li><li><a href="#colours">Colours</a></li></ol></li></ol></nav><h2 id="behaviour">Behaviour</h2>
+<p>The zombie goes after the nearest standing player. On the same surface it simply walks at them with
+a lurching gait, top speed 14 px/s, dragging a foot between steps. Otherwise it follows the
+level's route map: it jumps up through planks from below, lunges across gaps at 140 px/s, and drops
+through planks to get down. After a jump or lunge it waits 0.8 s before another.</p>
+<p>If it shuffles for 2 s without getting anywhere, it hops to free itself. In a crowd, each
+zombie stops a little further back than the last, so they bunch up around a player instead of
+stacking on one spot.</p>
+<h2 id="attacks">Attacks</h2>
+<h3 id="slap">Slap</h3>
+<p>When a standing player is within 36 px sideways and 24 px vertically, the zombie
+plants its feet and slaps.</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Lasts</th>
+<th>What you see</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Wind-up</td>
+<td>0.5 s</td>
+<td>It rears back with its arm raised. This is the telegraph.</td>
+</tr>
+<tr>
+<td>Swing</td>
+<td>0.1 s</td>
+<td>The hand sweeps out 34 px in front of it. The hand hurts only now.</td>
+</tr>
+<tr>
+<td>Recover</td>
+<td>0.45 s</td>
+<td>It stays put in the follow-through.</td>
+</tr>
+</tbody>
+</table>
+<p>A slap deals 15 hp (players have 100) and kicks the carrot
+away and upward. It can start another slap 0.9 s after the last one ends.</p>
+<h2 id="strategy">Strategy</h2>
+<ul>
+<li>Dashing through the swing dodges it: dash i-frames beat every attack in the game.</li>
+<li>The wind-up is long. Back off or jump when the arm goes up.</li>
+<li>Each hit shoves a zombie back a little, so steady fire holds one at arm's length.</li>
+</ul>
+<h2 id="co-op">Co-op</h2>
+<p>The host runs the zombie's AI and physics; everyone else follows its streamed state. When a slap
+starts, the host announces it and every machine plays the same timeline. Each machine checks its own
+carrot against the hand, once per slap, so a hit always matches what that player saw.</p>
+<h2 id="tunable-parameters">Tunable parameters</h2>
+<p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
+
+<h3 id="stats">Stats</h3>
+<p class="params-src">Edit <a href="../tuning/enemies-zombie.html"><code>styles/enemies/zombie.tres</code></a> &middot; fields defined in <code>scripts/enemy_stats/zombie_stats.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Health</th></tr><tr><td><code>hp</code></td><td class="val">60 hp</td><td class="rng">1 to 2000</td><td>Hit points. A revolver body shot does 10.</td></tr><tr><td><code>shot_knock</code></td><td class="val">45 px/s</td><td class="rng">0 to 200</td><td>How hard each hit shoves it back.</td></tr><tr class="group"><th colspan="4">Movement</th></tr><tr><td><code>speed</code></td><td class="val">14 px/s</td><td class="rng">0 to 100</td><td>Top shambling speed (at the push of each lurching step; it drags its foot in between).</td></tr><tr><td><code>gait</code></td><td class="val">1.6 steps/s</td><td class="rng">0.1 to 6</td><td>Steps per second of the lurching gait (also sets the sway and bob of its walk).</td></tr><tr><td><code>lunge</code></td><td class="val">140 px/s</td><td class="rng">0 to 500</td><td>Horizontal speed of a lunge across a gap or onto a block.</td></tr><tr><td><code>jump_cooldown</code></td><td class="val">0.8 s</td><td class="rng">0 to 4</td><td>Seconds before it can jump or lunge again.</td></tr><tr><td><code>reach</code></td><td class="val">10 px</td><td class="rng">0 to 60</td><td>Stops shuffling and just reaches for a player this close.</td></tr><tr><td><code>reach_spread</code></td><td class="val">10 px</td><td class="rng">0 to 40</td><td>Extra stopping distance per zombie (0, 1 or 2 times this), so a crowd bunches up instead of stacking.</td></tr><tr><td><code>stuck_dist</code></td><td class="val">3 px</td><td class="rng">0 to 20</td><td>Moving less than this over stuck_time while trying to walk means something&#x27;s in the way: hop.</td></tr><tr><td><code>stuck_time</code></td><td class="val">2 s</td><td class="rng">0.1 to 8</td><td>How long it shuffles without getting anywhere before it hops.</td></tr><tr class="group"><th colspan="4">Slap</th></tr><tr><td><code>slap_damage</code></td><td class="val">15 hp</td><td class="rng">0 to 100</td><td>Damage of one slap (players have 100 health). Dashing through it dodges it.</td></tr><tr><td><code>slap_range</code></td><td class="val">36 px</td><td class="rng">0 to 120</td><td>Starts a slap when a standing player is this close sideways (feet to feet)...</td></tr><tr><td><code>slap_height</code></td><td class="val">24 px</td><td class="rng">0 to 80</td><td>...and no more than this far above or below it.</td></tr><tr><td><code>slap_reach</code></td><td class="val">34 px</td><td class="rng">0 to 120</td><td>How far in front of its middle the swinging hand hits.</td></tr><tr><td><code>slap_windup</code></td><td class="val">0.5 s</td><td class="rng">0.05 to 2</td><td>The telegraph: it rears back with its arm raised for this long before swinging.</td></tr><tr><td><code>slap_swing</code></td><td class="val">0.1 s</td><td class="rng">0.02 to 0.5</td><td>The swing itself; the hand hurts for this long.</td></tr><tr><td><code>slap_recover</code></td><td class="val">0.45 s</td><td class="rng">0 to 2</td><td>Follow-through: it stays put this long after the swing before shambling on.</td></tr><tr><td><code>slap_cooldown</code></td><td class="val">0.9 s</td><td class="rng">0 to 6</td><td>Seconds after a slap ends before it can start another.</td></tr><tr><td><code>slap_knock_x</code></td><td class="val">240 px/s</td><td class="rng">0 to 800</td><td>The kick a slapped carrot gets: sideways (away from the zombie) and upward.</td></tr><tr><td><code>slap_knock_y</code></td><td class="val">150 px/s</td><td class="rng">0 to 800</td><td></td></tr></tbody></table></div>
+
+<h3 id="movement-feel">Movement feel</h3>
+<p class="params-src">Edit <a href="../tuning/zombie-tuning.html"><code>styles/zombie_tuning.tres</code></a> &middot; fields defined in <code>scripts/tuning.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Movement</th></tr><tr><td><code>run_speed</code></td><td class="val">115</td><td class="rng"></td><td></td></tr><tr><td><code>accel</code></td><td class="val">900 <span class="default">script default 1300</span></td><td class="rng"></td><td></td></tr><tr><td><code>decel</code></td><td class="val">900 <span class="default">script default 1700</span></td><td class="rng"></td><td></td></tr><tr><td><code>air_accel</code></td><td class="val">600 <span class="default">script default 800</span></td><td class="rng"></td><td></td></tr><tr><td><code>gravity</code></td><td class="val">1050</td><td class="rng"></td><td></td></tr><tr><td><code>fall_mult</code></td><td class="val">1.45</td><td class="rng"></td><td>Falling is snappier than rising.</td></tr><tr><td><code>max_fall</code></td><td class="val">440</td><td class="rng"></td><td></td></tr><tr><td><code>jump_speed</code></td><td class="val">390</td><td class="rng"></td><td>About 72px high.</td></tr><tr><td><code>jump_cut</code></td><td class="val">0.45</td><td class="rng"></td><td>Releasing jump early multiplies upward speed by this.</td></tr><tr><td><code>coyote</code></td><td class="val">0.09</td><td class="rng"></td><td>Grace period to jump after walking off a ledge.</td></tr><tr><td><code>jump_buffer</code></td><td class="val">0.12</td><td class="rng"></td><td>A jump pressed slightly before landing still counts.</td></tr><tr class="group"><th colspan="4">Double jump and dash</th></tr><tr><td><code>air_jumps</code></td><td class="val">0</td><td class="rng"></td><td>Extra jumps in mid-air before landing (0 = no double jump; enemies use 0).</td></tr><tr><td><code>air_jump_speed</code></td><td class="val">340</td><td class="rng"></td><td>A touch weaker than the ground jump (about 55px).</td></tr><tr><td><code>dash_speed</code></td><td class="val">360</td><td class="rng"></td><td></td></tr><tr><td><code>dash_time</code></td><td class="val">0.15</td><td class="rng"></td><td>How long a dash lasts; distance is dash_speed * dash_time (about 54px).</td></tr><tr><td><code>dash_cooldown</code></td><td class="val">0.45</td><td class="rng"></td><td></td></tr><tr><td><code>air_dashes</code></td><td class="val">1</td><td class="rng"></td><td>Dashes allowed per trip through the air (ground dashes are only limited by the cooldown).</td></tr><tr><td><code>dash_iframes</code></td><td class="val">0.2</td><td class="rng"></td><td>Invincible for this long from the start of a dash: the whole dash plus a little grace, so a dash *through* a shot never gets you hit on the way out. Bullets pass through you meanwhile.</td></tr><tr class="group"><th colspan="4">Health</th></tr><tr><td><code>max_health</code></td><td class="val">100</td><td class="rng"></td><td></td></tr><tr><td><code>regen_delay</code></td><td class="val">3</td><td class="rng"></td><td>Seconds without being hit before health starts to recharge...</td></tr><tr><td><code>regen_rate</code></td><td class="val">18</td><td class="rng"></td><td>...and how fast it then refills, per second (100 in about 5.5 s).</td></tr><tr class="group"><th colspan="4">Getting hit</th></tr><tr><td><code>headshot_mult</code></td><td class="val">2</td><td class="rng"></td><td>Enemy shots that land on a player&#x27;s head do this many times the damage. (Guns, their damage and falloff live in Weapon resources: styles/weapons/.)</td></tr></tbody></table></div>
+
+<h3 id="colours">Colours</h3>
+<p class="params-src">Edit <a href="../tuning/zombie.html"><code>styles/zombie.tres</code></a> &middot; fields defined in <code>scripts/carrot_style.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>body</code></td><td class="val"><span class="palette"><span class="swatch" style="background:#2e1612" title="#2e1612"></span><span class="swatch" style="background:#4e2416" title="#4e2416"></span><span class="swatch" style="background:#76381c" title="#76381c"></span><span class="swatch" style="background:#985226" title="#985226"></span><span class="swatch" style="background:#b06e34" title="#b06e34"></span><span class="swatch" style="background:#c89050" title="#c89050"></span></span> <span class="default">script default <code>[]</code></span></td><td class="rng"></td><td>Six body tones, darkest to lightest.</td></tr><tr><td><code>spec</code></td><td class="val"><span class="swatch" style="background:#dcc088"></span><code>#dcc088</code> <span class="default">script default <span class="swatch" style="background:#ffe6a8"></span><code>#ffe6a8</code></span></td><td class="rng"></td><td></td></tr><tr><td><code>line</code></td><td class="val"><span class="swatch" style="background:#1a0c0c"></span><code>#1a0c0c</code> <span class="default">script default <span class="swatch" style="background:#2b0d10"></span><code>#2b0d10</code></span></td><td class="rng"></td><td></td></tr><tr><td><code>line_lit</code></td><td class="val"><span class="swatch" style="background:#4e2a16"></span><code>#4e2a16</code> <span class="default">script default <span class="swatch" style="background:#7a2717"></span><code>#7a2717</code></span></td><td class="rng"></td><td>Outline next to the brightest body tones.</td></tr><tr><td><code>leaf</code></td><td class="val"><span class="palette"><span class="swatch" style="background:#1a180c" title="#1a180c"></span><span class="swatch" style="background:#34301a" title="#34301a"></span><span class="swatch" style="background:#524c26" title="#524c26"></span><span class="swatch" style="background:#6e6a32" title="#6e6a32"></span><span class="swatch" style="background:#8c8a44" title="#8c8a44"></span></span> <span class="default">script default <code>[]</code></span></td><td class="rng"></td><td>Five leaf tones, darkest to lightest.</td></tr><tr><td><code>leaf_line</code></td><td class="val"><span class="swatch" style="background:#14120a"></span><code>#14120a</code> <span class="default">script default <span class="swatch" style="background:#0d2414"></span><code>#0d2414</code></span></td><td class="rng"></td><td></td></tr><tr><td><code>blush</code></td><td class="val"><span class="swatch" style="background:#663326"></span><code>#663326</code> <span class="default">script default <span class="swatch" style="background:#f5503f"></span><code>#f5503f</code></span></td><td class="rng"></td><td></td></tr><tr><td><code>face_line</code></td><td class="val"><span class="swatch" style="background:#2b0d10"></span><code>#2b0d10</code> <span class="default">script default <span class="swatch" style="background:#2b0d10"></span><code>#2b0d10</code></span></td><td class="rng"></td><td></td></tr><tr><td><code>hand</code></td><td class="val"><span class="palette"><span class="swatch" style="background:#b4ac68" title="#b4ac68"></span><span class="swatch" style="background:#8e8644" title="#8e8644"></span><span class="swatch" style="background:#6a6430" title="#6a6430"></span><span class="swatch" style="background:#4a4420" title="#4a4420"></span></span> <span class="default">script default <code>[]</code></span></td><td class="rng"></td><td>The floating mitts: highlight, base, shade, dark, and their outline.</td></tr><tr><td><code>hand_line</code></td><td class="val"><span class="swatch" style="background:#1a1408"></span><code>#1a1408</code> <span class="default">script default <span class="swatch" style="background:#2b0d10"></span><code>#2b0d10</code></span></td><td class="rng"></td><td></td></tr><tr><td><code>accent</code></td><td class="val"><span class="swatch" style="background:#a8ff3b"></span><code>#a8ff3b</code> <span class="default">script default <span class="swatch" style="background:#ffbd5c"></span><code>#ffbd5c</code></span></td><td class="rng"></td><td>Name tags and other UI accents for this player.</td></tr><tr><td><code>zombie</code></td><td class="val">Yes <span class="default">script default No</span></td><td class="rng"></td><td>Zombie look: wilted leaves, a goggling eye and a squint, and rot blotches in these six tones.</td></tr><tr><td><code>rot</code></td><td class="val"><span class="palette"><span class="swatch" style="background:#1e2e10" title="#1e2e10"></span><span class="swatch" style="background:#2e4a18" title="#2e4a18"></span><span class="swatch" style="background:#46701e" title="#46701e"></span><span class="swatch" style="background:#5e902a" title="#5e902a"></span><span class="swatch" style="background:#7aae3a" title="#7aae3a"></span><span class="swatch" style="background:#9ac852" title="#9ac852"></span></span> <span class="default">script default <code>[]</code></span></td><td class="rng"></td><td></td></tr><tr class="group"><th colspan="4">Hero gear</th></tr><tr><td><code>gear</code></td><td class="val">No</td><td class="rng"></td><td>Cape, epaulettes, belt and boots (players). Zombies leave this off.</td></tr><tr><td><code>cape</code></td><td class="val"><code>[]</code></td><td class="rng"></td><td>Four cape tones, darkest to lightest, and the lining&#x27;s shade and light.</td></tr><tr><td><code>lining</code></td><td class="val"><code>[]</code></td><td class="rng"></td><td></td></tr><tr><td><code>gold</code></td><td class="val"><code>[]</code></td><td class="rng"></td><td>Epaulettes, buckle, tassels and the cape&#x27;s hem: four golds, darkest to lightest.</td></tr><tr><td><code>leather</code></td><td class="val"><code>[]</code></td><td class="rng"></td><td>Belt and boot leather, darkest to lightest.</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>

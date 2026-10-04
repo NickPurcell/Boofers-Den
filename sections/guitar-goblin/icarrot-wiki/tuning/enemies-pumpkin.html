@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>styles/enemies/pumpkin.tres | iCarrot Wiki</title>
+<meta name="description" content="Gameplay numbers for the pumpkin (the jack-o&#x27;-lantern that runs at players and blows up).">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">1</span></summary><ul>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+</ul></details>
+<details><summary><a href="../enemies/index.html">Enemies</a><span class="count">1</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">0</span></summary><ul>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html" aria-current="page">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="index.html">Tuning files</a></p><h1><code>styles/enemies/pumpkin.tres</code></h1><p class="lead">Gameplay numbers for the pumpkin (the jack-o&#x27;-lantern that runs at players and blows up).</p><p>Open this file in the Godot Inspector to change these values. While the game runs from the editor, most of them can also be changed live through the Remote scene tree.</p><p>Its fields are defined in <code>scripts/enemy_stats/pumpkin_stats.gd</code>.</p><div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Health</th></tr><tr><td><code>hp</code></td><td class="val">30 hp</td><td class="rng">1 to 2000</td><td>Hit points. A revolver body shot does 10.</td></tr><tr><td><code>shot_knock</code></td><td class="val">30 px/s</td><td class="rng">0 to 200</td><td>How hard a bullet shoves it sideways.</td></tr><tr class="group"><th colspan="4">Movement</th></tr><tr><td><code>speed</code></td><td class="val">98 px/s</td><td class="rng">0 to 300</td><td>Sprinting speed (a carrot runs at 115).</td></tr><tr><td><code>creep</code></td><td class="val">14 px/s</td><td class="rng">0 to 100</td><td>Creeping speed toward the target while the fuse burns.</td></tr><tr><td><code>lunge</code></td><td class="val">150 px/s</td><td class="rng">0 to 500</td><td>Horizontal speed of a lunge across a gap or onto a block.</td></tr><tr><td><code>jump_cooldown</code></td><td class="val">0.6 s</td><td class="rng">0 to 4</td><td>Seconds before it can jump or lunge again.</td></tr><tr><td><code>stuck_dist</code></td><td class="val">3 px</td><td class="rng">0 to 20</td><td>Moving less than this over stuck_time while trying to run means something&#x27;s in the way: hop.</td></tr><tr><td><code>stuck_time</code></td><td class="val">1.2 s</td><td class="rng">0.1 to 8</td><td>How long it runs without getting anywhere before it hops.</td></tr><tr class="group"><th colspan="4">Fuse</th></tr><tr><td><code>arm_dist</code></td><td class="val">30 px</td><td class="rng">0 to 150</td><td>Lights its fuse when a player is this close (vertical distance counts a bit less).</td></tr><tr><td><code>arm_spread</code></td><td class="val">6 px</td><td class="rng">0 to 40</td><td>Extra lighting distance per pumpkin (0, 1 or 2 times this), so a pack doesn&#x27;t all go off at once.</td></tr><tr><td><code>fuse_time</code></td><td class="val">1.05 s</td><td class="rng">0.1 to 5</td><td>Seconds from lighting the fuse to the boom.</td></tr><tr><td><code>chain_fuse</code></td><td class="val">0.3 s</td><td class="rng">0 to 2</td><td>Fuse for a pumpkin lit by another pumpkin&#x27;s blast (chain reactions).</td></tr><tr class="group"><th colspan="4">Blast</th></tr><tr><td><code>blast_radius</code></td><td class="val">46 px</td><td class="rng">0 to 200</td><td>Blast radius, measured to the nearest point of a carrot or enemy.</td></tr><tr><td><code>blast_knock</code></td><td class="val">320 px/s</td><td class="rng">0 to 1000</td><td>How fast the blast flings carrots away.</td></tr><tr class="group"><th colspan="4">Damage</th></tr><tr><td><code>blast_damage</code></td><td class="val">45 hp</td><td class="rng">0 to 200</td><td>Damage to each player caught in the blast (players have 100 health).</td></tr><tr><td><code>blast_enemy_damage</code></td><td class="val">30 hp</td><td class="rng">0 to 200</td><td>Damage to each other (non-pumpkin) enemy caught in the blast. Pumpkins get lit instead.</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>

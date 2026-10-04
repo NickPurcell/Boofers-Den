@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>styles/enemies/zombie.tres | iCarrot Wiki</title>
+<meta name="description" content="Gameplay numbers for the zombie (the rotten carrot that shambles after players).">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">1</span></summary><ul>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+</ul></details>
+<details><summary><a href="../enemies/index.html">Enemies</a><span class="count">1</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">0</span></summary><ul>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html" aria-current="page">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="index.html">Tuning files</a></p><h1><code>styles/enemies/zombie.tres</code></h1><p class="lead">Gameplay numbers for the zombie (the rotten carrot that shambles after players).</p><p class="used-by">Described on: <a href="../enemies/zombie.html">Zombie</a></p><p>Open this file in the Godot Inspector to change these values. While the game runs from the editor, most of them can also be changed live through the Remote scene tree.</p><p>Its fields are defined in <code>scripts/enemy_stats/zombie_stats.gd</code>.</p><div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Health</th></tr><tr><td><code>hp</code></td><td class="val">60 hp</td><td class="rng">1 to 2000</td><td>Hit points. A revolver body shot does 10.</td></tr><tr><td><code>shot_knock</code></td><td class="val">45 px/s</td><td class="rng">0 to 200</td><td>How hard each hit shoves it back.</td></tr><tr class="group"><th colspan="4">Movement</th></tr><tr><td><code>speed</code></td><td class="val">14 px/s</td><td class="rng">0 to 100</td><td>Top shambling speed (at the push of each lurching step; it drags its foot in between).</td></tr><tr><td><code>gait</code></td><td class="val">1.6 steps/s</td><td class="rng">0.1 to 6</td><td>Steps per second of the lurching gait (also sets the sway and bob of its walk).</td></tr><tr><td><code>lunge</code></td><td class="val">140 px/s</td><td class="rng">0 to 500</td><td>Horizontal speed of a lunge across a gap or onto a block.</td></tr><tr><td><code>jump_cooldown</code></td><td class="val">0.8 s</td><td class="rng">0 to 4</td><td>Seconds before it can jump or lunge again.</td></tr><tr><td><code>reach</code></td><td class="val">10 px</td><td class="rng">0 to 60</td><td>Stops shuffling and just reaches for a player this close.</td></tr><tr><td><code>reach_spread</code></td><td class="val">10 px</td><td class="rng">0 to 40</td><td>Extra stopping distance per zombie (0, 1 or 2 times this), so a crowd bunches up instead of stacking.</td></tr><tr><td><code>stuck_dist</code></td><td class="val">3 px</td><td class="rng">0 to 20</td><td>Moving less than this over stuck_time while trying to walk means something&#x27;s in the way: hop.</td></tr><tr><td><code>stuck_time</code></td><td class="val">2 s</td><td class="rng">0.1 to 8</td><td>How long it shuffles without getting anywhere before it hops.</td></tr><tr class="group"><th colspan="4">Slap</th></tr><tr><td><code>slap_damage</code></td><td class="val">15 hp</td><td class="rng">0 to 100</td><td>Damage of one slap (players have 100 health). Dashing through it dodges it.</td></tr><tr><td><code>slap_range</code></td><td class="val">36 px</td><td class="rng">0 to 120</td><td>Starts a slap when a standing player is this close sideways (feet to feet)...</td></tr><tr><td><code>slap_height</code></td><td class="val">24 px</td><td class="rng">0 to 80</td><td>...and no more than this far above or below it.</td></tr><tr><td><code>slap_reach</code></td><td class="val">34 px</td><td class="rng">0 to 120</td><td>How far in front of its middle the swinging hand hits.</td></tr><tr><td><code>slap_windup</code></td><td class="val">0.5 s</td><td class="rng">0.05 to 2</td><td>The telegraph: it rears back with its arm raised for this long before swinging.</td></tr><tr><td><code>slap_swing</code></td><td class="val">0.1 s</td><td class="rng">0.02 to 0.5</td><td>The swing itself; the hand hurts for this long.</td></tr><tr><td><code>slap_recover</code></td><td class="val">0.45 s</td><td class="rng">0 to 2</td><td>Follow-through: it stays put this long after the swing before shambling on.</td></tr><tr><td><code>slap_cooldown</code></td><td class="val">0.9 s</td><td class="rng">0 to 6</td><td>Seconds after a slap ends before it can start another.</td></tr><tr><td><code>slap_knock_x</code></td><td class="val">240 px/s</td><td class="rng">0 to 800</td><td>The kick a slapped carrot gets: sideways (away from the zombie) and upward.</td></tr><tr><td><code>slap_knock_y</code></td><td class="val">150 px/s</td><td class="rng">0 to 800</td><td></td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>
