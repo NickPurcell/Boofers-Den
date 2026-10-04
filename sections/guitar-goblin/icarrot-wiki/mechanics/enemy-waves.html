@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Enemy waves | iCarrot Wiki</title>
+<meta name="description" content="Outside raid encounters, a level keeps a set roster of enemies about. Each arrives in turn from the edges, and each one killed is replaced by another of its kind.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">5</span></summary><ul>
+<li><a href="../weapons/revolver.html">Revolver</a></li>
+<li><a href="../weapons/smg.html">SMG</a></li>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/grenade.html">Energy ball</a></li>
+<li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
+</ul></details>
+<details><summary><a href="../enemies/index.html">Enemies</a><span class="count">1</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details open><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/co-op.html">Co-op</a></li>
+<li><a href="../mechanics/reloading.html">Reloading</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
+<li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
+<li><a href="../mechanics/enemy-waves.html" aria-current="page">Enemy waves</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../mechanics/index.html">Mechanics</a></p><h1>Enemy waves</h1><aside class="infobox"><div class="infobox-title">Enemy waves</div><dl><div><dt>First arrival</dt><dd>1.5 s</dd></div><div><dt>Replacement after a kill</dt><dd>2.5 s</dd></div></dl></aside><p class="lead">Outside raid encounters, a level keeps a set roster of enemies about. Each arrives in turn from the edges, and each one killed is replaced by another of its kind.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#how-it-works">How it works</a></li><li><a href="#levels-without-waves">Levels without waves</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#for-level-makers">For level makers</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#level">Level</a></li></ol></li></ol></nav><h2 id="how-it-works">How it works</h2>
+<p>A level with enemy waves on keeps a <strong>roster</strong> of enemies about, one of each entry in its list (a
+kind listed twice means two of them). The first one arrives 1.5 s after the level
+starts and the rest follow 0.8 s apart, alternating between the right and left edges.</p>
+<p>When an enemy dies, another of the same kind arrives 2.5 s later. It comes in from whichever
+side is away from the players, so it doesn't drop in on top of anyone. The pressure never lets up:
+the roster is always back to full strength soon after a kill.</p>
+<p>Where enemies come in is set by the level's ENEMY spawn markers (the outermost one on each side).
+Snipers like <span class="redlink" title="This page doesn't exist yet">Spear-Gus</span> start on PERCH markers instead.</p>
+<h2 id="levels-without-waves">Levels without waves</h2>
+<p>Turning <code>enemy_waves</code> off on a level's root node gives a level with no roster at all. Calm levels
+like the <span class="redlink" title="This page doesn't exist yet">Garden</span> intro use this. So do <a href="../encounters/index.html">Encounters</a>, which bring in their own enemies room by
+room.</p>
+<h2 id="co-op">Co-op</h2>
+<p>The host runs all the timers and decides where each enemy arrives; everyone else sees the enemies
+appear. See <a href="../mechanics/co-op.html">Co-op</a>.</p>
+<h2 id="for-level-makers">For level makers</h2>
+<p>Each level scene has its own roster and timings: select the level's root node and look under
+<strong>Enemy waves</strong> in the Inspector. The default roster has two <a href="../enemies/zombie.html">zombies</a> and one of each
+other regular enemy.</p>
+<h2 id="tunable-parameters">Tunable parameters</h2>
+<p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
+
+<h3 id="level">Level</h3>
+<p class="params-src">Edit <a href="../tuning/scripts-level.html"><code>scripts/level.gd</code></a></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>size</code></td><td class="val"><code>Vector2(480, 270)</code></td><td class="rng"></td><td>The level&#x27;s size in game pixels (y down from the top-left). The camera never shows past it and bullets and goo stop at it. The arena is exactly one 480x270 screen.</td></tr><tr><td><code>view_size</code></td><td class="val"><code>Vector2i(960, 540)</code></td><td class="rng"></td><td>How many game pixels the screen shows (Main reads this when the level loads). At 1080p, 960x540 makes every game pixel 2x2 screen pixels. A level smaller than the view is zoomed in to fill it.</td></tr><tr><td><code>clouds</code></td><td class="val">Yes</td><td class="rng"></td><td>The arena&#x27;s drifting clouds (baked from the prototype). Off for levels without a sky.</td></tr><tr><td><code>follow_speed</code></td><td class="val">7 /s</td><td class="rng">0.5 to 30</td><td>How quickly the camera catches up with your carrot (per second; higher is snappier).</td></tr><tr><td><code>follow_offset</code></td><td class="val"><code>Vector2(0, -24)</code></td><td class="rng"></td><td>The camera aims this far above your carrot&#x27;s feet, so you see more of what&#x27;s ahead and above.</td></tr><tr><td><code>fall_lead</code></td><td class="val">140 px</td><td class="rng">0 to 400</td><td>While you fall faster than <code>fall_lead_from</code> (px/s), the camera leads below you, up to <code>fall_lead</code> px at full fall speed, so you can see where you&#x27;ll land (down a shaft, say).</td></tr><tr><td><code>fall_lead_from</code></td><td class="val">300 px/s</td><td class="rng">0 to 1000</td><td></td></tr><tr><td><code>zone_exit_margin</code></td><td class="val">12 px</td><td class="rng">0 to 64</td><td>Once the camera has switched to a CameraZone&#x27;s shot, it keeps it until your carrot is this far outside the zone, so hopping or bobbing on a zone&#x27;s edge doesn&#x27;t flick the camera back and forth.</td></tr><tr><td><code>wipe_restart</code></td><td class="val">3.5 s</td><td class="rng">0.5 to 15</td><td>After the whole squad is down: how long the &quot;wiped&quot; banner shows before the level restarts.</td></tr><tr class="group"><th colspan="4">Enemy waves</th></tr><tr><td><code>enemy_waves</code></td><td class="val">Yes</td><td class="rng"></td><td>Enemy waves arrive (the <code>roster</code>, or --enemies=) and killed enemies are replaced. Off for calm levels like the garden intro, and for encounters, which bring in their own enemies.</td></tr><tr><td><code>roster</code></td><td class="val"><code>[&quot;zombie&quot;, &quot;zombie&quot;, &quot;pumpkin&quot;, &quot;asparagus&quot;, &quot;mushroom&quot;, &quot;pepper&quot;, &quot;corn&quot;, &quot;potato&quot;]</code></td><td class="rng"></td><td>Who&#x27;s about at once: one enemy per entry (kinds from Level.KINDS; list one twice for two). Each is replaced by the same kind when it dies. --enemies= overrides it for testing.</td></tr><tr><td><code>first_enemy_at</code></td><td class="val">1.5 s</td><td class="rng">0 to 30</td><td>Seconds after the level starts before the first enemy arrives...</td></tr><tr><td><code>enemy_stagger</code></td><td class="val">0.8 s</td><td class="rng">0 to 10</td><td>...and between each of the rest of the roster arriving after it.</td></tr><tr><td><code>respawn</code></td><td class="val">2.5 s</td><td class="rng">0 to 60</td><td>Seconds after an enemy dies before its replacement arrives.</td></tr><tr><td><code>grenade</code></td><td class="val"><code>preload(&quot;res://styles/grenade.tres&quot;)</code></td><td class="rng"></td><td>The grenade everyone carries (styles/grenade.tres), how many are ready (fractions are the one recharging), and the gap before the next throw.</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>

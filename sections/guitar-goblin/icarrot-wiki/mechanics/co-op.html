@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Co-op | iCarrot Wiki</title>
+<meta name="description" content="One to three players fight together online, and the game also runs in a browser. Each player runs their own carrot; the host runs the enemies.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">5</span></summary><ul>
+<li><a href="../weapons/revolver.html">Revolver</a></li>
+<li><a href="../weapons/smg.html">SMG</a></li>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/grenade.html">Energy ball</a></li>
+<li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
+</ul></details>
+<details><summary><a href="../enemies/index.html">Enemies</a><span class="count">1</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">0</span></summary><ul>
+</ul></details>
+<details open><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/co-op.html" aria-current="page">Co-op</a></li>
+<li><a href="../mechanics/reloading.html">Reloading</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
+<li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
+<li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../mechanics/index.html">Mechanics</a></p><h1>Co-op</h1><aside class="infobox"><div class="infobox-title">Co-op</div><dl><div><dt>Players</dt><dd>1 to 3</dd></div><div><dt>Connection</dt><dd>WebSockets (browser builds can join)</dd></div><div><dt>Restart after a wipe</dt><dd>3.5 s</dd></div></dl></aside><p class="lead">One to three players fight together online, and the game also runs in a browser. Each player runs their own carrot; the host runs the enemies.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#playing-together">Playing together</a></li><li><a href="#joining">Joining</a></li><li><a href="#who-runs-what">Who runs what</a></li><li><a href="#wiping-and-restarting">Wiping and restarting</a></li><li><a href="#pausing">Pausing</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#level">Level</a></li></ol></li></ol></nav><h2 id="playing-together">Playing together</h2>
+<p>iCarrot is built for a squad of three. One player hosts; the others join them. The host plays too:
+their copy of the game is the server. Builds that run in a web browser can join a desktop host.</p>
+<p>Each player gets their own carrot colour: orange for the first, purple for the second, and so on.</p>
+<h2 id="joining">Joining</h2>
+<p>Players join on the title screen, while the stars are out. Each one who joins drops onto the cliff
+next to the others. When the host starts, the whole squad walks out and leaps into the level
+together. Once the walkout has started the door is shut: anyone joining later is turned away for
+now.</p>
+<p>If the host leaves, everyone else keeps playing on their own.</p>
+<h2 id="who-runs-what">Who runs what</h2>
+<p>Co-op games have to decide which machine is in charge of each thing. iCarrot splits it so that
+your own actions always feel instant:</p>
+<table>
+<thead>
+<tr>
+<th>What</th>
+<th>Run by</th>
+<th>Everyone else</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Your carrot (moving, jumping, dashing, aiming)</td>
+<td>You</td>
+<td>Follows your streamed position</td>
+</tr>
+<tr>
+<td>Your bullets hitting enemies</td>
+<td>You (you report the hit)</td>
+<td>Sees the hit and its number</td>
+</tr>
+<tr>
+<td>Enemy attacks hitting you</td>
+<td>You</td>
+<td>Sees your damage number</td>
+</tr>
+<tr>
+<td>Enemies: their AI, movement, health and deaths</td>
+<td>The host</td>
+<td>Follows the host's stream</td>
+</tr>
+<tr>
+<td>Player slots, the title sequence, restarts</td>
+<td>The host</td>
+<td></td>
+</tr>
+<tr>
+<td>Goo, sparks, casings, flinches, sounds</td>
+<td>Every machine</td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>Big enemy moments (a zombie starting a slap, a potato slamming a wall) are announced by the host
+and played on every machine at once. Each machine then checks its own carrot against them.</p>
+<p>Enemies chase the nearest standing carrot, whoever's it is. Every player's camera follows their
+own carrot (see <a href="../mechanics/camera.html">Camera</a>).</p>
+<h2 id="wiping-and-restarting">Wiping and restarting</h2>
+<p>When every carrot in the squad is knocked out (see <span class="redlink" title="This page doesn't exist yet">Health</span>), "SQUAD WIPED" comes up. After
+3.5 s the host restarts the level for everyone.</p>
+<h2 id="pausing">Pausing</h2>
+<p>Any player can pause, and it freezes the game for the whole squad. See <a href="../mechanics/pause.html">Pause</a>.</p>
+<h2 id="tunable-parameters">Tunable parameters</h2>
+<p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
+
+<h3 id="level">Level</h3>
+<p class="params-src">Edit <a href="../tuning/scripts-level.html"><code>scripts/level.gd</code></a></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>size</code></td><td class="val"><code>Vector2(480, 270)</code></td><td class="rng"></td><td>The level&#x27;s size in game pixels (y down from the top-left). The camera never shows past it and bullets and goo stop at it. The arena is exactly one 480x270 screen.</td></tr><tr><td><code>view_size</code></td><td class="val"><code>Vector2i(960, 540)</code></td><td class="rng"></td><td>How many game pixels the screen shows (Main reads this when the level loads). At 1080p, 960x540 makes every game pixel 2x2 screen pixels. A level smaller than the view is zoomed in to fill it.</td></tr><tr><td><code>clouds</code></td><td class="val">Yes</td><td class="rng"></td><td>The arena&#x27;s drifting clouds (baked from the prototype). Off for levels without a sky.</td></tr><tr><td><code>follow_speed</code></td><td class="val">7 /s</td><td class="rng">0.5 to 30</td><td>How quickly the camera catches up with your carrot (per second; higher is snappier).</td></tr><tr><td><code>follow_offset</code></td><td class="val"><code>Vector2(0, -24)</code></td><td class="rng"></td><td>The camera aims this far above your carrot&#x27;s feet, so you see more of what&#x27;s ahead and above.</td></tr><tr><td><code>fall_lead</code></td><td class="val">140 px</td><td class="rng">0 to 400</td><td>While you fall faster than <code>fall_lead_from</code> (px/s), the camera leads below you, up to <code>fall_lead</code> px at full fall speed, so you can see where you&#x27;ll land (down a shaft, say).</td></tr><tr><td><code>fall_lead_from</code></td><td class="val">300 px/s</td><td class="rng">0 to 1000</td><td></td></tr><tr><td><code>zone_exit_margin</code></td><td class="val">12 px</td><td class="rng">0 to 64</td><td>Once the camera has switched to a CameraZone&#x27;s shot, it keeps it until your carrot is this far outside the zone, so hopping or bobbing on a zone&#x27;s edge doesn&#x27;t flick the camera back and forth.</td></tr><tr><td><code>wipe_restart</code></td><td class="val">3.5 s</td><td class="rng">0.5 to 15</td><td>After the whole squad is down: how long the &quot;wiped&quot; banner shows before the level restarts.</td></tr><tr class="group"><th colspan="4">Enemy waves</th></tr><tr><td><code>enemy_waves</code></td><td class="val">Yes</td><td class="rng"></td><td>Enemy waves arrive (the <code>roster</code>, or --enemies=) and killed enemies are replaced. Off for calm levels like the garden intro, and for encounters, which bring in their own enemies.</td></tr><tr><td><code>roster</code></td><td class="val"><code>[&quot;zombie&quot;, &quot;zombie&quot;, &quot;pumpkin&quot;, &quot;asparagus&quot;, &quot;mushroom&quot;, &quot;pepper&quot;, &quot;corn&quot;, &quot;potato&quot;]</code></td><td class="rng"></td><td>Who&#x27;s about at once: one enemy per entry (kinds from Level.KINDS; list one twice for two). Each is replaced by the same kind when it dies. --enemies= overrides it for testing.</td></tr><tr><td><code>first_enemy_at</code></td><td class="val">1.5 s</td><td class="rng">0 to 30</td><td>Seconds after the level starts before the first enemy arrives...</td></tr><tr><td><code>enemy_stagger</code></td><td class="val">0.8 s</td><td class="rng">0 to 10</td><td>...and between each of the rest of the roster arriving after it.</td></tr><tr><td><code>respawn</code></td><td class="val">2.5 s</td><td class="rng">0 to 60</td><td>Seconds after an enemy dies before its replacement arrives.</td></tr><tr><td><code>grenade</code></td><td class="val"><code>preload(&quot;res://styles/grenade.tres&quot;)</code></td><td class="rng"></td><td>The grenade everyone carries (styles/grenade.tres), how many are ready (fractions are the one recharging), and the gap before the next throw.</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>
