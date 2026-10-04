@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Damage | iCarrot Wiki</title>
-<meta name="description" content="How much hits hurt, on both sides. Every carrot has a 100-point health scale, guns get weaker with range, and dashes dodge everything.">
+<title>Movement | iCarrot Wiki</title>
+<meta name="description" content="How the carrot runs, jumps, double jumps and drops through planks, on fixed-step platformer physics.">
 <link rel="stylesheet" href="../wiki.css">
 </head>
 <body>
@@ -15,8 +15,8 @@
 <a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
 <div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
 <nav>
-<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">4</span></summary><ul>
-<li><a href="../carrot/movement.html">Movement</a></li>
+<details open><summary><a href="../carrot/index.html">The Carrot</a><span class="count">4</span></summary><ul>
+<li><a href="../carrot/movement.html" aria-current="page">Movement</a></li>
 <li><a href="../carrot/dash.html">Dash</a></li>
 <li><a href="../carrot/health.html">Health</a></li>
 <li><a href="../carrot/appearance.html">Appearance</a></li>
@@ -48,8 +48,8 @@
 <li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
 <li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
 </ul></details>
-<details open><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
-<li><a href="../mechanics/damage.html" aria-current="page">Damage</a></li>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
 <li><a href="../mechanics/co-op.html">Co-op</a></li>
 <li><a href="../mechanics/reloading.html">Reloading</a></li>
 <li><a href="../mechanics/camera.html">Camera</a></li>
@@ -60,62 +60,49 @@
 <p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
 </aside>
 <main>
-<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../mechanics/index.html">Mechanics</a></p><h1>Damage</h1><aside class="infobox"><div class="infobox-title">Damage</div><dl><div><dt>Player health</dt><dd>100 hp</dd></div><div><dt>Headshots on players</dt><dd>2x times</dd></div><div><dt>Dash i-frames</dt><dd>0.2 s</dd></div></dl></aside><p class="lead">How much hits hurt, on both sides. Every carrot has a 100-point health scale, guns get weaker with range, and dashes dodge everything.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#the-health-scale">The health scale</a></li><li><a href="#hurting-enemies">Hurting enemies</a><ol><li><a href="#immune-enemies">Immune enemies</a></li></ol></li><li><a href="#getting-hurt">Getting hurt</a></li><li><a href="#dodging-i-frames">Dodging: i-frames</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#player-health-getting-hit-i-frames">Player (health, getting hit, i-frames)</a></li></ol></li></ol></nav><h2 id="the-health-scale">The health scale</h2>
-<p>Every carrot has 100 hp health. Enemy attack damage is written against
-that scale, so a 15 hp slap from a <a href="../enemies/zombie.html">Zombie</a> costs you that
-many points. Health refills on its own a few seconds after the last hit, and at zero you're knocked
-out. <a href="../carrot/health.html">Health</a> covers recharging and being downed.</p>
-<p>Enemies have their own health, from a few dozen for a regular enemy to thousands for a boss. Each
-enemy's page lists it.</p>
-<h2 id="hurting-enemies">Hurting enemies</h2>
-<p>Every gun has a body damage per bullet (per pellet for the <a href="../weapons/shotgun.html">Shotgun</a>). Two things change it:</p>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../carrot/index.html">The Carrot</a></p><h1>Movement</h1><aside class="infobox"><div class="infobox-title">Movement</div><dl><div><dt>Run speed</dt><dd>115 px/s</dd></div><div><dt>Jump</dt><dd>390 px/s</dd></div><div><dt>Double jumps</dt><dd>1</dd></div><div><dt>Fastest fall</dt><dd>440 px/s</dd></div></dl></aside><p class="lead">How the carrot runs, jumps, double jumps and drops through planks, on fixed-step platformer physics.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#running">Running</a></li><li><a href="#jumping">Jumping</a></li><li><a href="#double-jump">Double jump</a></li><li><a href="#planks-and-dropping">Planks and dropping</a></li><li><a href="#fixed-step-physics">Fixed-step physics</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#player-movement">Player movement</a></li></ol></li></ol></nav><h2 id="running">Running</h2>
+<p>A and D run left and right. On the ground the carrot speeds up at 1300 px/s² to a top speed of
+115 px/s, and when you let go it stops at 1700 px/s², so it starts quickly and stops almost dead
+without sliding. In mid-air you can still steer, but more gently: speed changes at 800 px/s².</p>
+<p>The carrot always faces where you aim, not where it runs, so you can back away from an enemy while
+shooting it. Its boots step in the direction it's actually moving either way (see <a href="../carrot/appearance.html">Appearance</a>).</p>
+<h2 id="jumping">Jumping</h2>
+<p>Space (or W) jumps, launching at 390 px/s. Gravity pulls at 1050 px/s² on the way up and
+1.45x as hard on the way down, so a jump floats at the top and drops back snappily. Falls
+top out at 440 px/s.</p>
 <ul>
-<li><strong>Range.</strong> Bullets do full damage out to the gun's full range, then fade toward a smaller
-  fraction, and on down to a far fraction past that. Close-range guns like the <a href="../weapons/smg.html">SMG</a> fall off
-  hard; the <a href="../weapons/revolver.html">Revolver</a> barely does. Each gun's page has its numbers.</li>
-<li><strong>Headshots.</strong> Every enemy has a head hitbox (usually the top of its body; some enemies have a
-  weak spot instead). A bullet that lands there does the gun's headshot multiplier times the damage,
-  shows a gold number, and kicks the screen a little harder.</li>
+<li><strong>Short hops:</strong> let go of jump early and the upward speed is cut to 0.45x of what it was,
+  so a tap is a small hop and a held press is a full jump.</li>
+<li><strong>Coyote time:</strong> you can still jump for 0.09 s after running off a ledge.</li>
+<li><strong>Jump buffer:</strong> a jump pressed up to 0.12 s before you land fires on landing.</li>
 </ul>
-<p>The number that pops up is the damage that hit landed. Shotgun pellets that hit the same enemy in
-one blast add up into a single number.</p>
-<p>Hits also shove the enemy back. How far depends on the enemy (each has its own shot knockback) and
-on the gun (its knockback multiplier). Pellets shove separately, so a point-blank shotgun blast
-knocks hardest. The <a href="../weapons/grenade.html">Grenade</a>'s blast damages everything in its radius.</p>
-<h3 id="immune-enemies">Immune enemies</h3>
-<p>Some enemies can't be hurt at times: a <span class="redlink" title="This page doesn't exist yet">Ginger Shade</span> never can, and <span class="redlink" title="This page doesn't exist yet">The Ginger</span> is shielded
-until the squad unlocks it. A bullet that hits one shows <strong>IMMUNE</strong> instead of a number and does
-nothing. A boss's health bar shows when it's immune; see
-<a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a>.</p>
-<h2 id="getting-hurt">Getting hurt</h2>
-<p>Enemy attacks come in three kinds:</p>
-<ul>
-<li><strong>Contact and melee</strong> (a <a href="../enemies/zombie.html">Zombie</a> slap, a <span class="redlink" title="This page doesn't exist yet">Potato Bull</span> charge): fixed damage, plus a kick
-  away from the enemy.</li>
-<li><strong>Shots</strong> (kernels, spores, fireballs): if one strikes your carrot's head, it does
-  2x times its damage and the screen shakes harder. Keep your head
-  down.</li>
-<li><strong>Blasts</strong> hurt you if any part of your carrot is inside the blast radius, and throw you away from
-  the centre.</li>
-</ul>
-<p>Every hit shows a red damage number over your carrot, which your squad sees too.</p>
-<h2 id="dodging-i-frames">Dodging: i-frames</h2>
-<p>For the first 0.2 s of a <a href="../carrot/dash.html">Dash</a> your carrot can't be hurt. Shots,
-blasts, slaps and charges all pass straight through, with a sparkle and a whiff to show the dodge.
-Your carrot's rim glows in its accent colour while it's untouchable. Learning each enemy's
-telegraph and dashing through the attack is the core defensive skill.</p>
-<h2 id="co-op">Co-op</h2>
-<p>Each player's machine decides its own hits, so what you see is what counts:</p>
-<ul>
-<li><strong>Your bullets:</strong> your machine checks what they hit and tells the host, which takes the health
-  off the enemy and announces deaths.</li>
-<li><strong>Enemy attacks on you:</strong> your machine checks your carrot against them and takes the damage.</li>
-</ul>
-<p>Everyone sees everyone's damage numbers. See <a href="../mechanics/co-op.html">Co-op</a>.</p>
+<p>Landing hard squashes the carrot flat; a big drop also thumps, throws up dust and shakes your
+screen.</p>
+<h2 id="double-jump">Double jump</h2>
+<p>Press jump again in mid-air for a second jump at 340 px/s, a little weaker than the ground
+jump. You get 1 before you have to land, and landing gives them back. It kicks a ring of
+dust and sparks off your boots.</p>
+<h2 id="planks-and-dropping">Planks and dropping</h2>
+<p>Wooden planks and mushroom caps are one-way: jump up through them from below and land on top. Press
+S while standing on one to drop through it. Solid ground and walls can't be passed in either
+direction.</p>
+<h2 id="fixed-step-physics">Fixed-step physics</h2>
+<p>Movement runs in fixed steps of 1/120 s, separate from the frame rate. A jump always reaches the same
+height and a dash always covers the same distance, whether the game is running at 30 or 240 frames a
+second, on desktop or in a browser.</p>
+<div class="admonition note">
+<p class="admonition-title">Co-op</p>
+<p>Your own machine moves your carrot, so it responds instantly. Other players see it from
+streamed position and velocity, smoothed and nudged slightly ahead to hide the delay.</p>
+</div>
+<h2 id="design-notes">Design notes</h2>
+<p>The numbers are tuned for a snappy, readable platformer: fast starts and stops, a jump with a soft
+top and a quick fall, and generous coyote time and jump buffering so that jumps you meant to make
+happen. Enemies share the same physics with their own tuning files (for example the <a href="../enemies/zombie.html">Zombie</a>).</p>
 <h2 id="tunable-parameters">Tunable parameters</h2>
 <p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
 
-<h3 id="player-health-getting-hit-i-frames">Player (health, getting hit, i-frames)</h3>
+<h3 id="player-movement">Player movement</h3>
 <p class="params-src">Edit <a href="../tuning/tuning.html"><code>styles/tuning.tres</code></a> &middot; fields defined in <code>scripts/tuning.gd</code></p>
 
 <div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Movement</th></tr><tr><td><code>run_speed</code></td><td class="val">115 px/s</td><td class="rng">0 to 400 or more</td><td>Players only: top running speed (enemies take their walk speed from their stats).</td></tr><tr><td><code>accel</code></td><td class="val">1300 px/s²</td><td class="rng">0 to 3000 or more</td><td>How quickly it speeds up to full speed on the ground.</td></tr><tr><td><code>decel</code></td><td class="val">1700 px/s²</td><td class="rng">0 to 3000 or more</td><td>How quickly it slows to a stop on the ground once it lets go (lower = more slide).</td></tr><tr><td><code>air_accel</code></td><td class="val">800 px/s²</td><td class="rng">0 to 3000 or more</td><td>How quickly it can change speed in mid-air (lower = less air control).</td></tr><tr><td><code>gravity</code></td><td class="val">1050 px/s²</td><td class="rng">0 to 3000 or more</td><td>Downward pull while rising (falling multiplies this by fall_mult).</td></tr><tr><td><code>fall_mult</code></td><td class="val">1.45x</td><td class="rng">0.5 to 4 or more</td><td>Gravity is this many times stronger while falling, so falls are snappier than rises.</td></tr><tr><td><code>max_fall</code></td><td class="val">440 px/s</td><td class="rng">0 to 1500 or more</td><td>Fastest it can fall.</td></tr><tr><td><code>jump_speed</code></td><td class="val">390 px/s</td><td class="rng">0 to 1000 or more</td><td>Launch speed of a jump (the carrot&#x27;s default reaches about 72px high).</td></tr><tr><td><code>jump_cut</code></td><td class="val">0.45x</td><td class="rng">0 to 1</td><td>Letting go of jump early multiplies the upward speed by this, for short hops (1 = no cut).</td></tr><tr><td><code>coyote</code></td><td class="val">0.09 s</td><td class="rng">0 to 0.5 or more</td><td>Grace period to still jump after walking off a ledge.</td></tr><tr><td><code>jump_buffer</code></td><td class="val">0.12 s</td><td class="rng">0 to 0.5 or more</td><td>A jump pressed this long before landing still counts.</td></tr><tr class="group"><th colspan="4">Double jump and dash</th></tr><tr><td><code>air_jumps</code></td><td class="val">1 <span class="default">script default 0</span></td><td class="rng">0 to 5 or more</td><td>Extra jumps in mid-air before landing (0 = no double jump; enemies use 0).</td></tr><tr><td><code>air_jump_speed</code></td><td class="val">340 px/s</td><td class="rng">0 to 1200 or more</td><td>Launch speed of a mid-air jump (a touch weaker than the ground jump: about 55px).</td></tr><tr><td><code>dash_speed</code></td><td class="val">360 px/s</td><td class="rng">0 to 1200 or more</td><td>Speed during a dash.</td></tr><tr><td><code>dash_time</code></td><td class="val">0.15 s</td><td class="rng">0 to 1 or more</td><td>How long a dash lasts; distance is dash_speed * dash_time (about 54px).</td></tr><tr><td><code>dash_cooldown</code></td><td class="val">0.45 s</td><td class="rng">0 to 3 or more</td><td>Wait from the start of one dash until the next one is allowed.</td></tr><tr><td><code>air_dashes</code></td><td class="val">1</td><td class="rng">0 to 5 or more</td><td>Dashes allowed per trip through the air (ground dashes are only limited by the cooldown).</td></tr><tr><td><code>dash_iframes</code></td><td class="val">0.2 s</td><td class="rng">0 to 1 or more</td><td>Invincible for this long from the start of a dash: the whole dash plus a little grace, so a dash *through* a shot never gets you hit on the way out. Bullets pass through you meanwhile.</td></tr><tr class="group"><th colspan="4">Health</th></tr><tr><td><code>max_health</code></td><td class="val">100 hp</td><td class="rng">1 to 1000 or more</td><td>Players only: every carrot&#x27;s full health. Enemy damage is balanced against it. (Enemies&#x27; own health is in their stats.)</td></tr><tr><td><code>regen_delay</code></td><td class="val">3 s</td><td class="rng">0 to 30 or more</td><td>Players only: time without being hit before health starts to recharge...</td></tr><tr><td><code>regen_rate</code></td><td class="val">18 hp/s</td><td class="rng">0 to 200 or more</td><td>...and how fast it then refills.</td></tr><tr class="group"><th colspan="4">Getting hit</th></tr><tr><td><code>headshot_mult</code></td><td class="val">2x</td><td class="rng">1 to 5 or more</td><td>Players only: enemy shots that land on a player&#x27;s head do this many times the damage. (Guns, their damage and falloff live in Weapon resources: styles/weapons/.)</td></tr><tr><td><code>hurt_grace</code></td><td class="val">1 s</td><td class="rng">0 to 5 or more</td><td>Players only: after a hit the carrot flashes white, then blinks and can&#x27;t be hurt again for this long.</td></tr></tbody></table></div></article>
