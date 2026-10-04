@@ -360,3 +360,15 @@ body {
 .door.eldenblock .door-title { color: #f3d27a; font-family: Georgia, "Times New Roman", serif; }
 .door.eldenblock .door-go { color: #a3b764; }
 .eb-art { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* The iCarrot wiki door: a pixel carrot with a gun, between two rotten ones. */
+.door.icarrot:hover {
+  border-color: rgba(240,122,30,.6);
+  box-shadow: 0 28px 70px -30px rgba(240,122,30,.4);
+}
+.door.icarrot .door-art { background: linear-gradient(#152233, #24180f 88%); }
+.door.icarrot .door-title, .door.icarrot .door-go { color: #ff8a3c; }
+.ic-art { position: absolute; inset: 0; width: 100%; height: 100%; }
+.ic-art .ic-hop { animation: ic-hop 1.6s steps(4) infinite; }
+@keyframes ic-hop { 50% { translate: 0 -8px; } }
+@media (prefers-reduced-motion: reduce) { .ic-art .ic-hop { animation: none; } }
