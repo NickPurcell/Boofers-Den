@@ -71,7 +71,7 @@
 <p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
 </aside>
 <main>
-<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../mechanics/index.html">Mechanics</a></p><h1>Reloading</h1><aside class="infobox"><div class="infobox-title">Reloading</div><dl><div><dt>Key</dt><dd>R (or automatic when empty)</dd></div><div><dt>Revolver</dt><dd>0.5 s, a round at a time</dd></div><div><dt>SMG</dt><dd>1.1 s, one magazine</dd></div><div><dt>Shotgun</dt><dd>1.4 s, a shell at a time, then a pump</dd></div><div><dt>Seen by</dt><dd>Everyone in the game</dd></div></dl></aside><p class="lead">How the guns reload, what each reload looks and sounds like, the reload bar under the crosshair, and what your co-op partners see.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#starting-and-stopping-a-reload">Starting and stopping a reload</a></li><li><a href="#each-guns-reload">Each gun's reload</a><ol><li><a href="#revolver">Revolver</a></li><li><a href="#smg">SMG</a></li><li><a href="#shotgun">Shotgun</a></li></ol></li><li><a href="#sounds">Sounds</a></li><li><a href="#the-reload-bar">The reload bar</a></li><li><a href="#tuning">Tuning</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#reload-bar-scenesreload_hudtscn">Reload bar (scenes/reload_hud.tscn)</a></li></ol></li></ol></nav><p>Every gun reloads with its own little animation and its own sound: the <a href="../weapons/revolver.html">Revolver</a> ticks rounds
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../mechanics/index.html">Mechanics</a></p><h1>Reloading</h1><aside class="infobox"><div class="infobox-title">Reloading</div><figure><img src="../media/revolver-reload.gif" alt="Reloading"><figcaption>The revolver reload</figcaption></figure><dl><div><dt>Key</dt><dd>R (or automatic when empty)</dd></div><div><dt>Revolver</dt><dd>0.5 s, a round at a time</dd></div><div><dt>SMG</dt><dd>1.1 s, one magazine</dd></div><div><dt>Shotgun</dt><dd>1.4 s, a shell at a time, then a pump</dd></div><div><dt>Seen by</dt><dd>Everyone in the game</dd></div></dl></aside><p class="lead">How the guns reload, what each reload looks and sounds like, the reload bar under the crosshair, and what your co-op partners see.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#starting-and-stopping-a-reload">Starting and stopping a reload</a></li><li><a href="#each-guns-reload">Each gun's reload</a><ol><li><a href="#revolver">Revolver</a></li><li><a href="#smg">SMG</a></li><li><a href="#shotgun">Shotgun</a></li></ol></li><li><a href="#sounds">Sounds</a></li><li><a href="#the-reload-bar">The reload bar</a></li><li><a href="#tuning">Tuning</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#reload-bar-scenesreload_hudtscn">Reload bar (scenes/reload_hud.tscn)</a></li></ol></li></ol></nav><p>Every gun reloads with its own little animation and its own sound: the <a href="../weapons/revolver.html">Revolver</a> ticks rounds
 into its cylinder, the <a href="../weapons/smg.html">SMG</a> swaps a magazine, and the <a href="../weapons/shotgun.html">Shotgun</a> takes shells one at a time and
 racks its pump. While a reload runs you can't shoot, and a bar under your crosshair fills as the gun
 loads.</p>
@@ -91,16 +91,19 @@ revolver, 1.1 s for the SMG and
 <p>The animation and the sound follow one shared list of beats (each round, the magazine slap, the
 pump), so every click you hear lands on a move you see.</p>
 <h3 id="revolver">Revolver</h3>
+<p><img alt="The revolver reload: lowered muzzle-up, a tick per round, then back to aim" src="../media/revolver-reload.gif" /></p>
 <p>The carrot drops the revolver into a lowered, muzzle-up pose and the spent brass tumbles out of the
 cylinder onto the floor. The free hand cups the open cylinder, and each round going in ticks the gun
 up with a tiny high click. The cylinder snaps shut with a ratchet, the biggest tick, and the gun
 pops back up to aim with a little overshoot. Only the rounds you fired go in, so a top-up after two
 shots is two ticks spread over the same reload time.</p>
 <h3 id="smg">SMG</h3>
+<p><img alt="The SMG reload: the mag drops, a fresh one slaps in, the bolt racks" src="../media/smg-reload.gif" /></p>
 <p>The empty magazine drops out and falls to the floor as a real object: it bounces, clatters and lies
 there for a while. The gun is drawn with an empty well while the off hand fetches a fresh magazine
 and slaps it in with a thump (the gun jolts up), then racks the bolt back and lets it slam home.</p>
 <h3 id="shotgun">Shotgun</h3>
+<p><img alt="A shotgun blast and its pump, then a reload: a shell pushed in and the pump racked" src="../media/shotgun-reload.gif" /></p>
 <p>The shotgun cants up and the off hand reaches down for a red shell, brings it up and pushes it into
 the loading port, once for each shell fired. Each shell is a plastic thup, a little higher in pitch
 than the last. Then the hand grabs the pump and racks it: the wooden pump slides back and slams home.</p>
