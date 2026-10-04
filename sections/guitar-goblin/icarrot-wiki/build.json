@@ -1,1 +1,1 @@
-{"commit": "e6a64e9", "date": "2026-10-04", "subject": "Merge gameplay/shields: 130 shield over 70 health, shield break/zap/recharge, low-health jelly, player bars on top, boss bars at the bottom"}
+{"commit": "fc4743e", "date": "2026-10-04", "subject": "Merge characters/bar-cleanup: drop the unused boss_bar_bottom hook; Ginger wiki"}
