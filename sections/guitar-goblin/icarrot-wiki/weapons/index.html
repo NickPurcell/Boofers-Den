@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Weapons | iCarrot Wiki</title>
-<meta name="description" content="The three guns every carrot carries, and the energy ball they throw.">
+<meta name="description" content="The four guns every carrot carries, and the energy ball they throw.">
 <link rel="stylesheet" href="../wiki.css">
 </head>
 <body>
@@ -21,10 +21,11 @@
 <li><a href="../carrot/health.html">Health</a></li>
 <li><a href="../carrot/appearance.html">Appearance</a></li>
 </ul></details>
-<details open><summary><a href="../weapons/index.html" aria-current="page">Weapons</a><span class="count">5</span></summary><ul>
+<details open><summary><a href="../weapons/index.html" aria-current="page">Weapons</a><span class="count">6</span></summary><ul>
 <li><a href="../weapons/revolver.html">Revolver</a></li>
 <li><a href="../weapons/smg.html">SMG</a></li>
 <li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/rocket-launcher.html">Rocket Launcher</a></li>
 <li><a href="../weapons/grenade.html">Energy ball</a></li>
 <li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
 </ul></details>
@@ -73,10 +74,10 @@
 <p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
 </aside>
 <main>
-<article><p class="crumbs"><a href="../index.html">Home</a></p><h1>Weapons</h1><p>Every carrot carries the same kit: three guns and a recharging <a href="../weapons/grenade.html">Energy ball</a>. There are no
+<article><p class="crumbs"><a href="../index.html">Home</a></p><h1>Weapons</h1><p>Every carrot carries the same kit: four guns and a recharging <a href="../weapons/grenade.html">Energy ball</a>. There are no
 pickups or ammo drops. Each gun has its own magazine and reloads itself when it runs dry, so the
-choice is always which tool fits the fight: the precise <a href="../weapons/revolver.html">Revolver</a>, the <a href="../weapons/smg.html">SMG</a> hose or the
-point-blank <a href="../weapons/shotgun.html">Shotgun</a>.</p>
+choice is always which tool fits the fight: the precise <a href="../weapons/revolver.html">Revolver</a>, the <a href="../weapons/smg.html">SMG</a> hose, the
+point-blank <a href="../weapons/shotgun.html">Shotgun</a> or the one-shot <a href="../weapons/rocket-launcher.html">Rocket Launcher</a>.</p>
 <p><img alt="A carrot holding the shotgun" src="../media/carrot-shotgun.png" /></p>
 <h2 id="the-guns-at-a-glance">The guns at a glance</h2>
 <table>
@@ -86,6 +87,7 @@ point-blank <a href="../weapons/shotgun.html">Shotgun</a>.</p>
 <th><a href="../weapons/revolver.html">Revolver</a></th>
 <th><a href="../weapons/smg.html">SMG</a></th>
 <th><a href="../weapons/shotgun.html">Shotgun</a></th>
+<th><a href="../weapons/rocket-launcher.html">Rocket Launcher</a></th>
 </tr>
 </thead>
 <tbody>
@@ -94,29 +96,34 @@ point-blank <a href="../weapons/shotgun.html">Shotgun</a>.</p>
 <td>1</td>
 <td>2</td>
 <td>3</td>
+<td>4</td>
 </tr>
 <tr>
 <td>Fires</td>
 <td>One shot per click</td>
 <td>Full auto while held</td>
 <td>A fan of pellets per click, pumped after each</td>
+<td>One rocket, then a reload</td>
 </tr>
 <tr>
 <td>Bullets per shot</td>
 <td>1</td>
 <td>1</td>
 <td>8</td>
+<td>1</td>
 </tr>
 <tr>
 <td>Damage per bullet</td>
 <td>11 hp</td>
 <td>5 hp</td>
 <td>7 hp</td>
+<td>60 hp</td>
 </tr>
 <tr>
 <td>Headshot multiplier</td>
 <td>2</td>
 <td>1.6</td>
+<td>1.5</td>
 <td>1.5</td>
 </tr>
 <tr>
@@ -124,42 +131,63 @@ point-blank <a href="../weapons/shotgun.html">Shotgun</a>.</p>
 <td>0.14 s</td>
 <td>0.068 s</td>
 <td>0.75 s</td>
+<td>0.5 s</td>
 </tr>
 <tr>
 <td>Rounds</td>
 <td>6 rounds</td>
 <td>32 rounds</td>
 <td>6 rounds</td>
+<td>1 rounds</td>
 </tr>
 <tr>
 <td>Reload</td>
 <td>0.5 s</td>
 <td>1.1 s</td>
 <td>1.4 s</td>
+<td>2 s</td>
 </tr>
 <tr>
 <td>Full damage out to</td>
 <td>450 px</td>
 <td>110 px</td>
 <td>60 px</td>
+<td>100000 px</td>
 </tr>
 <tr>
 <td>Damage at long range</td>
 <td>0.7 of full</td>
 <td>0.12 of full</td>
 <td>0.15 of full</td>
+<td>1 of full</td>
 </tr>
 <tr>
 <td>Knockback per bullet</td>
 <td>1.45x</td>
 <td>0.4x</td>
 <td>0.7x</td>
+<td>2x</td>
 </tr>
 <tr>
 <td>Pushes you back</td>
 <td>0 px/s</td>
 <td>0 px/s</td>
 <td>170 px/s</td>
+<td>140 px/s</td>
+</tr>
+<tr>
+<td>Blast damage (centre)</td>
+<td>–</td>
+<td>–</td>
+<td>–</td>
+<td>90 hp</td>
+</tr>
+<tr>
+<td>Blast radius</td>
+<td>–</td>
+<td>–</td>
+<td>–</td>
+<td>56 px</td>
 </tr>
 </tbody>
 </table>
@@ -169,7 +197,7 @@ boss. Shotgun pellets each carry it, so a point-blank blast shoves hardest.</p>
 <ul>
 <li><strong>Click</strong> fires. The <a href="../weapons/smg.html">SMG</a> keeps firing while the button is held.</li>
 <li><strong>R</strong> reloads early. Every gun also reloads by itself the moment it runs dry (see <a href="../mechanics/reloading.html">Reloading</a>).</li>
-<li><strong>1, 2, 3</strong> pick a gun; <strong>Q</strong> cycles to the next one.</li>
+<li><strong>1, 2, 3, 4</strong> pick a gun; <strong>Q</strong> cycles to the next one.</li>
 <li><strong>G</strong> or <strong>right mouse</strong> throws the <a href="../weapons/grenade.html">Energy ball</a>.</li>
 </ul>
 <h2 id="swapping">Swapping</h2>
@@ -187,7 +215,7 @@ which applies it, so hits feel instant in co-op.</p>
 <h2 id="co-op">Co-op</h2>
 <p>Everyone sees everyone's shots, casings and impacts. Shots, shotgun blasts and energy-ball throws
 each travel as a single network message; every machine draws the same pellet fan and the same ball
-flight from it. Only the shooter's machine reports the damage.</p><ul class="cards"><li><a href="../weapons/revolver.html"><img src="../media/weapon-revolver.png" alt=""><strong>Revolver</strong><span>A six-shooter sidearm, precise and hard-hitting, with almost no damage falloff.</span></a></li><li><a href="../weapons/smg.html"><img src="../media/weapon-smg.png" alt=""><strong>SMG</strong><span>A full-auto hose with a big magazine, deadly up close and nearly harmless at range.</span></a></li><li><a href="../weapons/shotgun.html"><img src="../media/weapon-shotgun.png" alt=""><strong>Shotgun</strong><span>A pump-action that fans out a blast of pellets, strongest point-blank and weak at range.</span></a></li><li><a href="../weapons/grenade.html"><img src="../media/energy-ball.gif" alt=""><strong>Energy ball</strong><span>The carrot&#x27;s grenade, a crackling plasma orb that&#x27;s lobbed, bounces, and bursts in an electric shockwave.</span></a></li><li><a href="../weapons/weapon-hud.html"><span class="no-thumb" aria-hidden="true"></span><strong>Weapon HUD</strong><span>The bottom-left readout of your energy ball&#x27;s recharge, the rounds in your gun and its name.</span></a></li></ul></article>
+flight from it. Only the shooter's machine reports the damage.</p><ul class="cards"><li><a href="../weapons/revolver.html"><img src="../media/weapon-revolver.png" alt=""><strong>Revolver</strong><span>A six-shooter sidearm, precise and hard-hitting, with almost no damage falloff.</span></a></li><li><a href="../weapons/smg.html"><img src="../media/weapon-smg.png" alt=""><strong>SMG</strong><span>A full-auto hose with a big magazine, deadly up close and nearly harmless at range.</span></a></li><li><a href="../weapons/shotgun.html"><img src="../media/weapon-shotgun.png" alt=""><strong>Shotgun</strong><span>A pump-action that fans out a blast of pellets, strongest point-blank and weak at range.</span></a></li><li><a href="../weapons/rocket-launcher.html"><img src="../media/weapon-rocket-launcher.png" alt=""><strong>Rocket Launcher</strong><span>One rocket, one huge explosion, then the slowest reload in the game.</span></a></li><li><a href="../weapons/grenade.html"><img src="../media/energy-ball.gif" alt=""><strong>Energy ball</strong><span>The carrot&#x27;s grenade, a crackling plasma orb that&#x27;s lobbed, bounces, and bursts in an electric shockwave.</span></a></li><li><a href="../weapons/weapon-hud.html"><span class="no-thumb" aria-hidden="true"></span><strong>Weapon HUD</strong><span>The bottom-left readout of your energy ball&#x27;s recharge, the rounds in your gun and its name.</span></a></li></ul></article>
 <footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
 </main>
 </div>
