@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rot Runner | iCarrot Wiki</title>
+<meta name="description" content="A starved, stringy rotten carrot that sprints at the nearest player in packs and claws them.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">4</span></summary><ul>
+<li><a href="../carrot/movement.html">Movement</a></li>
+<li><a href="../carrot/dash.html">Dash</a></li>
+<li><a href="../carrot/health.html">Health</a></li>
+<li><a href="../carrot/appearance.html">Appearance</a></li>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">6</span></summary><ul>
+<li><a href="../weapons/revolver.html">Revolver</a></li>
+<li><a href="../weapons/smg.html">SMG</a></li>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/rocket-launcher.html">Rocket Launcher</a></li>
+<li><a href="../weapons/grenade.html">Energy ball</a></li>
+<li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
+</ul></details>
+<details open><summary><a href="../enemies/index.html">Enemies</a><span class="count">8</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+<li><a href="../enemies/runner.html" aria-current="page">Rot Runner</a></li>
+<li><a href="../enemies/pumpkin.html">Jacko</a></li>
+<li><a href="../enemies/asparagus.html">Spear-Gus</a></li>
+<li><a href="../enemies/mushroom.html">Shroom</a></li>
+<li><a href="../enemies/pepper.html">Hot Pepper</a></li>
+<li><a href="../enemies/corn.html">Big Cobber</a></li>
+<li><a href="../enemies/potato.html">Potato Bull</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">5</span></summary><ul>
+<li><a href="../bosses/ginger.html">The Ginger</a></li>
+<li><a href="../bosses/sweet-potato.html">Sweet Potato</a></li>
+<li><a href="../bosses/red-corn.html">Red Corn</a></li>
+<li><a href="../bosses/ghost-pepper.html">Ghost Pepper</a></li>
+<li><a href="../bosses/ginger-shade.html">Ginger Shade</a></li>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">1</span></summary><ul>
+<li><a href="../encounters/burrow-encounter.html">Burrow Encounter</a></li>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">5</span></summary><ul>
+<li><a href="../levels/title-sequence.html">Title Sequence</a></li>
+<li><a href="../levels/arena.html">Arena</a></li>
+<li><a href="../levels/garden-intro.html">Garden Intro</a></li>
+<li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+<li><a href="../levels/level-parts.html">Level Parts</a></li>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
+<li><a href="../biomes/warm-burrow.html">Warm Burrow</a></li>
+<li><a href="../biomes/overgrown-vault.html">Overgrown Vault</a></li>
+<li><a href="../biomes/glowshroom-grotto.html">Glowshroom Grotto</a></li>
+<li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
+<li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">9</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/ammo.html">Ammo</a></li>
+<li><a href="../mechanics/co-op.html">Co-op</a></li>
+<li><a href="../mechanics/reloading.html">Reloading</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
+<li><a href="../mechanics/fight-pacing.html">Fight Pacing</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
+<li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
+<li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../enemies/index.html">Enemies</a></p><h1>Rot Runner</h1><aside class="infobox"><div class="infobox-title">Rot Runner</div><figure><img src="../media/runner.png" alt="Rot Runner"><figcaption>A Rot Runner mid-sprint</figcaption></figure><dl><div><dt>Kind</dt><dd><code>runner</code></dd></div><div><dt>Type</dt><dd>Regular enemy</dd></div><div><dt>Health</dt><dd>20 hp</dd></div><div><dt>Threat cost</dt><dd>0.6 (a zombie is 1; see <a href="../mechanics/fight-pacing.html">Fight Pacing</a>)</dd></div><div><dt>Swipe damage</dt><dd>10 hp</dd></div><div><dt>Run speed</dt><dd>106 px/s</dd></div></dl></aside><p class="lead">A starved, stringy rotten carrot that sprints at the nearest player in packs and claws them.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#behaviour">Behaviour</a></li><li><a href="#attacks">Attacks</a><ol><li><a href="#claw-swipe">Claw swipe</a></li></ol></li><li><a href="#taking-hits">Taking hits</a></li><li><a href="#strategy">Strategy</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#stats">Stats</a></li><li><a href="#movement-feel">Movement feel</a></li></ol></li></ol></nav><p>The Rot Runner is filler: cheap, plentiful and fast. It looks like a <a href="../enemies/zombie.html">Zombie</a> that hasn't eaten
+in weeks: a big gaunt head with sunken, glinting eye sockets and a hungry gaping jaw, a stringy
+ribbed body, wilted leaf hair and long spindly root arms that flail behind it as it sprints. It
+comes in numbers, it dies in a couple of revolver shots, and its job is to keep players moving and
+shooting.</p>
+<p><img alt="A Rot Runner sprints in and claws the carrot" src="../media/runner.gif" /></p>
+<h2 id="behaviour">Behaviour</h2>
+<p>It sprints at the nearest standing player at about 106 px/s, nearly as fast as a running carrot, so
+you can only open distance with a sprint or a dash. Each runner's top speed varies by up to
+0.08 either way, so a pack strings out instead of arriving as one block.</p>
+<p>Like the zombie, it follows the level's route map to reach you on another surface: it jumps up
+through planks from below, lunges across gaps at 160 px/s, hops onto solid blocks and drops through
+planks to get down. After a jump or lunge it waits 0.45 s before another. If it runs for
+0.9 s without getting anywhere, it hops to free itself.</p>
+<p>In a pack, each runner aims at a spot up to 14 px to one side of you while it's still far
+off, stops at its own distance (8 px plus up to 10 px), and eases off when another
+runner is right ahead of it, so a pack fans out around you rather than stacking on one pixel.</p>
+<p>If every carrot is knocked out, it runs over to them but doesn't attack.</p>
+<h2 id="attacks">Attacks</h2>
+<h3 id="claw-swipe">Claw swipe</h3>
+<p>When a standing player is within 26 px sideways and 22 px vertically, it stops
+and goes for you.</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Lasts</th>
+<th>What you see</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Wind-up</td>
+<td>0.3 s</td>
+<td>It shrieks, rears back with its claws up behind its head and trembles, glaring. This is the telegraph.</td>
+</tr>
+<tr>
+<td>Strike</td>
+<td>0.1 s</td>
+<td>It throws itself forward at 140 px/s with its claws raking out 26 px in front and its jaws snapping. The claws hurt only now.</td>
+</tr>
+<tr>
+<td>Recover</td>
+<td>0.28 s</td>
+<td>It stays bent over, panting.</td>
+</tr>
+</tbody>
+</table>
+<p>A swipe deals 10 hp (players have 130 pts shield and
+70 hp health) and knocks the carrot back a little. It can start another
+swipe 0.5 s after the last one ends.</p>
+<h2 id="taking-hits">Taking hits</h2>
+<p>Every hit staggers it for 0.14 s, stopping it in its tracks, and shoves it back. It flashes
+white at most once every 0.25 s, so a pack under SMG fire doesn't strobe. When it dies it
+shoots up stiff, then folds into a heap and blinks out over 0.45 s in a spray of goo and
+leaf bits.</p>
+<h2 id="strategy">Strategy</h2>
+<ul>
+<li>One alone is easy: a couple of revolver body shots, or a single headshot. The danger is several arriving
+  from both sides while you're busy with something bigger.</li>
+<li>Keep moving. You can outrun a runner with a sprint or a dash, then turn and shoot.</li>
+<li>The wind-up is short but clear: when the claws go up, dash through it or jump. Dash i-frames dodge
+  the swipe.</li>
+<li>Its stagger means steady fire holds the front runner of a pack back.</li>
+</ul>
+<h2 id="co-op">Co-op</h2>
+<p>The host runs the runner's AI and physics; everyone else follows its streamed state. When a swipe
+starts, the host announces it and every machine plays the same timeline. Each machine checks its own
+carrot against the claws, once per swipe, so a hit always matches what that player saw.</p>
+<h2 id="design-notes">Design notes</h2>
+<p>The runner is the pressure enemy. The <a href="../enemies/zombie.html">Zombie</a> is slow and tanky and the <a href="../enemies/pumpkin.html">pumpkin</a> punishes
+standing still with a blast; the runner simply makes standing still uncomfortable, a lot of the time,
+for little damage each. It's priced low on the threat scale so fights can bring them in numbers.</p>
+<h2 id="tunable-parameters">Tunable parameters</h2>
+<p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
+
+<h3 id="stats">Stats</h3>
+<p class="params-src">Edit <a href="../tuning/enemies-runner.html"><code>styles/enemies/runner.tres</code></a> &middot; fields defined in <code>scripts/enemy_stats/runner_stats.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Health</th></tr><tr><td><code>hp</code></td><td class="val">20 hp</td><td class="rng">1 to 500</td><td>Hit points. A revolver body shot does 10, a headshot 20.</td></tr><tr><td><code>shot_knock</code></td><td class="val">40 px/s</td><td class="rng">0 to 200</td><td>How hard each hit shoves it back.</td></tr><tr class="group"><th colspan="4">Hits and death</th></tr><tr><td><code>stagger_time</code></td><td class="val">0.14 s</td><td class="rng">0 to 1</td><td>A hit stops it in its tracks for this long (host), so steady fire buys a little room.</td></tr><tr><td><code>flash_time</code></td><td class="val">0.05 s</td><td class="rng">0 to 0.3</td><td>How long the white hit flash lasts.</td></tr><tr><td><code>flash_interval</code></td><td class="val">0.25 s</td><td class="rng">0 to 1</td><td>At least this long between two hit flashes, so a pack under SMG fire doesn&#x27;t strobe.</td></tr><tr><td><code>flash_strength</code></td><td class="val">1.6x</td><td class="rng">1 to 4</td><td>Brightness of the hit flash (1 = none; above about 1.5 it starts to bloom).</td></tr><tr><td><code>hurt_time</code></td><td class="val">0.2 s</td><td class="rng">0 to 1</td><td>How long the &quot;oh!&quot; face and backward lean last after a hit.</td></tr><tr><td><code>death_shake</code></td><td class="val">0.25</td><td class="rng">0 to 1</td><td>Screen shake when one dies (0..1). Kept small: lots of them die.</td></tr><tr><td><code>corpse_time</code></td><td class="val">0.45 s</td><td class="rng">0.1 to 2</td><td>How long the comic pop-and-collapse lasts after it dies.</td></tr><tr><td><code>death_goo</code></td><td class="val">1.6</td><td class="rng">0 to 5</td><td>Amount of goo it bursts into when it dies (1 = a bullet splat).</td></tr><tr class="group"><th colspan="4">Movement</th></tr><tr><td><code>speed</code></td><td class="val">106 px/s</td><td class="rng">0 to 300</td><td>Top sprinting speed (players run at about 115, so a dash or sprint still escapes it).</td></tr><tr><td><code>speed_jitter</code></td><td class="val">0.08</td><td class="rng">0 to 0.5</td><td>Each runner&#x27;s top speed is speed times a random factor within this much of 1, so a pack strings out.</td></tr><tr><td><code>stride_rate</code></td><td class="val">16 fps</td><td class="rng">1 to 40</td><td>Run-cycle frames per second at top speed (slower runs animate slower).</td></tr><tr><td><code>lunge</code></td><td class="val">160 px/s</td><td class="rng">0 to 500</td><td>Horizontal speed of a lunge across a gap or onto a block.</td></tr><tr><td><code>jump_cooldown</code></td><td class="val">0.45 s</td><td class="rng">0 to 4</td><td>Seconds before it can jump or lunge again.</td></tr><tr><td><code>reach</code></td><td class="val">8 px</td><td class="rng">0 to 60</td><td>Stops running at a player this close (feet to feet)...</td></tr><tr><td><code>reach_spread</code></td><td class="val">10 px</td><td class="rng">0 to 40</td><td>...plus a random extra up to this much per runner, so a pack fans out around a player.</td></tr><tr><td><code>spread</code></td><td class="val">14 px</td><td class="rng">0 to 80</td><td>While still far off, each runner aims at a spot up to this far to either side of the player, so a pack spreads out instead of running in single file.</td></tr><tr><td><code>separation</code></td><td class="val">9 px</td><td class="rng">0 to 40</td><td>Another runner closer than this ahead of it (same height) makes it ease off, so they don&#x27;t stack.</td></tr><tr><td><code>separation_slow</code></td><td class="val">0.75x</td><td class="rng">0 to 1</td><td>Speed factor while easing off behind another runner.</td></tr><tr><td><code>stuck_dist</code></td><td class="val">3 px</td><td class="rng">0 to 20</td><td>Moving less than this over stuck_time while trying to run means something&#x27;s in the way: hop.</td></tr><tr><td><code>stuck_time</code></td><td class="val">0.9 s</td><td class="rng">0.1 to 8</td><td>How long it runs without getting anywhere before it hops.</td></tr><tr><td><code>dust_interval</code></td><td class="val">0.12 s</td><td class="rng">0 to 1</td><td>Seconds between dust kicks while sprinting (each footfall at most).</td></tr><tr class="group"><th colspan="4">Swipe</th></tr><tr><td><code>swipe_damage</code></td><td class="val">10 hp</td><td class="rng">0 to 100</td><td>Damage of one claw swipe (players have 130 shield over 70 health). Dashing through it dodges it.</td></tr><tr><td><code>swipe_range</code></td><td class="val">26 px</td><td class="rng">0 to 120</td><td>Starts a swipe when a standing player is this close sideways (feet to feet)...</td></tr><tr><td><code>swipe_height</code></td><td class="val">22 px</td><td class="rng">0 to 80</td><td>...and no more than this far above or below it.</td></tr><tr><td><code>swipe_reach</code></td><td class="val">26 px</td><td class="rng">0 to 120</td><td>How far in front of its middle the claws hurt.</td></tr><tr><td><code>swipe_windup</code></td><td class="val">0.3 s</td><td class="rng">0.05 to 2</td><td>The telegraph: it rears back with its claws up, trembling, for this long.</td></tr><tr><td><code>swipe_strike</code></td><td class="val">0.1 s</td><td class="rng">0.02 to 0.5</td><td>The lunge itself; the claws hurt for this long.</td></tr><tr><td><code>swipe_lunge</code></td><td class="val">140 px/s</td><td class="rng">0 to 400</td><td>It throws itself forward at this speed during the strike.</td></tr><tr><td><code>swipe_recover</code></td><td class="val">0.28 s</td><td class="rng">0 to 2</td><td>Follow-through: it stays put, panting, this long after the strike.</td></tr><tr><td><code>swipe_cooldown</code></td><td class="val">0.5 s</td><td class="rng">0 to 6</td><td>Seconds after a swipe ends before it can start another.</td></tr><tr><td><code>swipe_knock_x</code></td><td class="val">150 px/s</td><td class="rng">0 to 800</td><td>The kick a clawed carrot gets: sideways (away from the runner) and upward.</td></tr><tr><td><code>swipe_knock_y</code></td><td class="val">90 px/s</td><td class="rng">0 to 800</td><td></td></tr></tbody></table></div>
+
+<h3 id="movement-feel">Movement feel</h3>
+<p class="params-src">Edit <a href="../tuning/runner-tuning.html"><code>styles/runner_tuning.tres</code></a> &middot; fields defined in <code>scripts/tuning.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Movement</th></tr><tr><td><code>run_speed</code></td><td class="val">115 px/s</td><td class="rng">0 to 400 or more</td><td>Players only: top running speed (enemies take their walk speed from their stats).</td></tr><tr><td><code>accel</code></td><td class="val">1500 px/s² <span class="default">script default 1300 px/s²</span></td><td class="rng">0 to 3000 or more</td><td>How quickly it speeds up to full speed on the ground.</td></tr><tr><td><code>decel</code></td><td class="val">1100 px/s² <span class="default">script default 1700 px/s²</span></td><td class="rng">0 to 3000 or more</td><td>How quickly it slows to a stop on the ground once it lets go (lower = more slide).</td></tr><tr><td><code>air_accel</code></td><td class="val">750 px/s² <span class="default">script default 800 px/s²</span></td><td class="rng">0 to 3000 or more</td><td>How quickly it can change speed in mid-air (lower = less air control).</td></tr><tr><td><code>gravity</code></td><td class="val">1050 px/s²</td><td class="rng">0 to 3000 or more</td><td>Downward pull while rising (falling multiplies this by fall_mult).</td></tr><tr><td><code>fall_mult</code></td><td class="val">1.45x</td><td class="rng">0.5 to 4 or more</td><td>Gravity is this many times stronger while falling, so falls are snappier than rises.</td></tr><tr><td><code>max_fall</code></td><td class="val">440 px/s</td><td class="rng">0 to 1500 or more</td><td>Fastest it can fall.</td></tr><tr><td><code>jump_speed</code></td><td class="val">390 px/s</td><td class="rng">0 to 1000 or more</td><td>Launch speed of a jump (the carrot&#x27;s default reaches about 72px high).</td></tr><tr><td><code>jump_cut</code></td><td class="val">0.45x</td><td class="rng">0 to 1</td><td>Letting go of jump early multiplies the upward speed by this, for short hops (1 = no cut).</td></tr><tr><td><code>coyote</code></td><td class="val">0.09 s</td><td class="rng">0 to 0.5 or more</td><td>Grace period to still jump after walking off a ledge.</td></tr><tr><td><code>jump_buffer</code></td><td class="val">0.12 s</td><td class="rng">0 to 0.5 or more</td><td>A jump pressed this long before landing still counts.</td></tr><tr class="group"><th colspan="4">Sprint</th></tr><tr><td><code>sprint_mult</code></td><td class="val">2x</td><td class="rng">1 to 4 or more</td><td>Players only: Shift dashes, and holding it on (with a direction) sprints, raising the top running speed to run_speed times this (1 = no sprint). Enemies never sprint.</td></tr><tr><td><code>sprint_accel</code></td><td class="val">500 px/s²</td><td class="rng">10 to 3000 or more</td><td>How quickly the top speed ramps up to sprint speed and back down after letting go, so a sprint winds up and down instead of switching.</td></tr><tr><td><code>sprint_in_air</code></td><td class="val">Yes</td><td class="rng"></td><td>Keep sprint speed through a jump that started at a sprint (while Shift stays held). Off, a jump drifts back to running speed in the air.</td></tr><tr><td><code>dash_into_sprint</code></td><td class="val">Yes</td><td class="rng"></td><td>Players only: a dash taken with Shift held comes out at full sprint speed, so the dash runs straight into the sprint. Off, the sprint winds up from running speed after the dash (sprint_accel).</td></tr><tr class="group"><th colspan="4">Double jump and dash</th></tr><tr><td><code>air_jumps</code></td><td class="val">0</td><td class="rng">0 to 5 or more</td><td>Extra jumps in mid-air before landing (0 = no double jump; enemies use 0).</td></tr><tr><td><code>air_jump_speed</code></td><td class="val">340 px/s</td><td class="rng">0 to 1200 or more</td><td>Launch speed of a mid-air jump (a touch weaker than the ground jump: about 55px).</td></tr><tr><td><code>dash_speed</code></td><td class="val">360 px/s</td><td class="rng">0 to 1200 or more</td><td>Speed during a dash.</td></tr><tr><td><code>dash_time</code></td><td class="val">0.15 s</td><td class="rng">0 to 1 or more</td><td>How long a dash lasts; distance is dash_speed * dash_time (about 54px).</td></tr><tr><td><code>dash_cooldown</code></td><td class="val">0.45 s</td><td class="rng">0 to 3 or more</td><td>Wait from the start of one dash until the next one is allowed.</td></tr><tr><td><code>air_dashes</code></td><td class="val">1</td><td class="rng">0 to 5 or more</td><td>Dashes allowed per trip through the air (ground dashes are only limited by the cooldown).</td></tr><tr><td><code>dash_iframes</code></td><td class="val">0.2 s</td><td class="rng">0 to 1 or more</td><td>Invincible for this long from the start of a dash: the whole dash plus a little grace, so a dash *through* a shot never gets you hit on the way out. Bullets pass through you meanwhile.</td></tr><tr class="group"><th colspan="4">Shield and health</th></tr><tr><td><code>max_shield</code></td><td class="val">130 pts</td><td class="rng">0 to 1000 or more</td><td>Players only: the full shield. A carrot&#x27;s life is a shield on top of its health. Hits drain the shield first; health only goes down once the shield is at 0, and the carrot is knocked out when health reaches 0. Both recharge on their own a while after the last hit (any hit restarts both waits).</td></tr><tr><td><code>max_health</code></td><td class="val">70 hp</td><td class="rng">1 to 1000 or more</td><td>The full health. (Enemies&#x27; own health is in their stats.)</td></tr><tr><td><code>shield_overflow</code></td><td class="val">Yes</td><td class="rng"></td><td>A hit bigger than what&#x27;s left of the shield: on, the rest spills into health; off, the shield soaks up the whole breaking hit and health is only hurt from the next one.</td></tr><tr><td><code>shield_regen_delay</code></td><td class="val">4.5 s</td><td class="rng">0 to 30 or more</td><td>Time after the last hit before the shield starts to recharge...</td></tr><tr><td><code>shield_regen_rate</code></td><td class="val">36 pts/s</td><td class="rng">0 to 400 or more</td><td>...and how fast it then refills.</td></tr><tr><td><code>health_regen_delay</code></td><td class="val">2.5 s</td><td class="rng">0 to 30 or more</td><td>Time after the last hit before health starts to recharge (it can refill while the shield is still down)...</td></tr><tr><td><code>health_regen_rate</code></td><td class="val">18 hp/s</td><td class="rng">0 to 200 or more</td><td>...and how fast it then refills.</td></tr><tr class="group"><th colspan="4">Getting hit</th></tr><tr><td><code>headshot_mult</code></td><td class="val">2x</td><td class="rng">1 to 5 or more</td><td>Players only: enemy shots that land on a player&#x27;s head do this many times the damage. (Guns, their damage and falloff live in Weapon resources: styles/weapons/.)</td></tr><tr><td><code>hurt_grace</code></td><td class="val">1 s</td><td class="rng">0 to 5 or more</td><td>Players only: after a hit the carrot flashes white, then blinks and can&#x27;t be hurt again for this long.</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>
