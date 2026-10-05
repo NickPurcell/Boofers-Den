@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fight Pacing | iCarrot Wiki</title>
+<meta name="description" content="How a boss room&#x27;s fight is paced in beats. Each beat brings a hand-picked squad of enemies in at one of the room&#x27;s spawn groups when its trigger fires, so a fight rises and falls the way it was drawn.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">4</span></summary><ul>
+<li><a href="../carrot/movement.html">Movement</a></li>
+<li><a href="../carrot/dash.html">Dash</a></li>
+<li><a href="../carrot/health.html">Health</a></li>
+<li><a href="../carrot/appearance.html">Appearance</a></li>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">6</span></summary><ul>
+<li><a href="../weapons/revolver.html">Revolver</a></li>
+<li><a href="../weapons/smg.html">SMG</a></li>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/rocket-launcher.html">Rocket Launcher</a></li>
+<li><a href="../weapons/grenade.html">Energy ball</a></li>
+<li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
+</ul></details>
+<details><summary><a href="../enemies/index.html">Enemies</a><span class="count">7</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+<li><a href="../enemies/pumpkin.html">Jacko</a></li>
+<li><a href="../enemies/asparagus.html">Spear-Gus</a></li>
+<li><a href="../enemies/mushroom.html">Shroom</a></li>
+<li><a href="../enemies/pepper.html">Hot Pepper</a></li>
+<li><a href="../enemies/corn.html">Big Cobber</a></li>
+<li><a href="../enemies/potato.html">Potato Bull</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">5</span></summary><ul>
+<li><a href="../bosses/ginger.html">The Ginger</a></li>
+<li><a href="../bosses/sweet-potato.html">Sweet Potato</a></li>
+<li><a href="../bosses/red-corn.html">Red Corn</a></li>
+<li><a href="../bosses/ghost-pepper.html">Ghost Pepper</a></li>
+<li><a href="../bosses/ginger-shade.html">Ginger Shade</a></li>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">1</span></summary><ul>
+<li><a href="../encounters/burrow-encounter.html">Burrow Encounter</a></li>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">5</span></summary><ul>
+<li><a href="../levels/title-sequence.html">Title Sequence</a></li>
+<li><a href="../levels/arena.html">Arena</a></li>
+<li><a href="../levels/garden-intro.html">Garden Intro</a></li>
+<li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+<li><a href="../levels/level-parts.html">Level Parts</a></li>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
+<li><a href="../biomes/warm-burrow.html">Warm Burrow</a></li>
+<li><a href="../biomes/overgrown-vault.html">Overgrown Vault</a></li>
+<li><a href="../biomes/glowshroom-grotto.html">Glowshroom Grotto</a></li>
+<li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
+<li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
+</ul></details>
+<details open><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">9</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/ammo.html">Ammo</a></li>
+<li><a href="../mechanics/co-op.html">Co-op</a></li>
+<li><a href="../mechanics/reloading.html">Reloading</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
+<li><a href="../mechanics/fight-pacing.html" aria-current="page">Fight Pacing</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
+<li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
+<li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../mechanics/index.html">Mechanics</a></p><h1>Fight Pacing</h1><aside class="infobox"><div class="infobox-title">Fight Pacing</div><figure><img src="../media/burrow-beat-spike.gif" alt="Fight Pacing"><figcaption>A spike beat in the Red Corn&#x27;s room. Warning rings pulse on the floor, then a potato bull and zombies arrive.</figcaption></figure><dl><div><dt>Used in</dt><dd><a href="../encounters/burrow-encounter.html">Burrow Encounter</a></dd></div><div><dt>Runs on</dt><dd>The host; every machine sees the warnings</dd></div><div><dt>Dev switch</dt><dd><code>--beat=N</code></dd></div></dl></aside><p class="lead">How a boss room&#x27;s fight is paced in beats. Each beat brings a hand-picked squad of enemies in at one of the room&#x27;s spawn groups when its trigger fires, so a fight rises and falls the way it was drawn.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#the-idea">The idea</a></li><li><a href="#spawn-groups">Spawn groups</a></li><li><a href="#squads">Squads</a><ol><li><a href="#threat">Threat</a></li></ol></li><li><a href="#beats">Beats</a><ol><li><a href="#triggers">Triggers</a></li><li><a href="#options">Options</a></li><li><a href="#the-warning">The warning</a></li></ol></li><li><a href="#the-difficulty-curve">The difficulty curve</a></li><li><a href="#the-knobs">The knobs</a><ol><li><a href="#seeing-the-curve-without-playing">Seeing the curve without playing</a></li></ol></li><li><a href="#co-op">Co-op</a></li><li><a href="#testing-and-tuning">Testing and tuning</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#beat">Beat</a></li><li><a href="#squad">Squad</a></li><li><a href="#squad-line">Squad line</a></li><li><a href="#threat-costs">Threat costs</a></li><li><a href="#boss-room-pacing-the-red-corns-room">Boss room pacing (the Red Corn's room)</a></li><li><a href="#encounter-warnings">Encounter (warnings)</a></li></ol></li></ol></nav><h2 id="the-idea">The idea</h2>
+<p>A boss fight shouldn't be one long, even wall of enemies. Each boss room's fight is a short list of
+<strong>beats</strong>: an opening that shows what the fight is about, a breather, a spike, a valley where you
+feel powerful, and a climax as the boss dies. Every beat brings in a <strong>squad</strong> that was picked by
+hand to suit that boss, at a <strong>spawn group</strong> placed by hand in the room. Nothing is random or
+generated, so the fight plays the way it was designed.</p>
+<p>It's built in three layers, all edited in Godot:</p>
+<table>
+<thead>
+<tr>
+<th>Layer</th>
+<th>What it answers</th>
+<th>Where it lives</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Spawn groups</td>
+<td><strong>Where</strong> enemies come in</td>
+<td>Spawn markers in the room, each with a group name</td>
+</tr>
+<tr>
+<td>Squads</td>
+<td><strong>What</strong> comes in, and how</td>
+<td>Small files in <code>styles/squads/</code></td>
+</tr>
+<tr>
+<td>Beats</td>
+<td><strong>When</strong> it comes in</td>
+<td>Beat nodes under the boss room, in fight order</td>
+</tr>
+</tbody>
+</table>
+<h2 id="spawn-groups">Spawn groups</h2>
+<p>A boss room's spawn markers (<code>RoomSpawn</code>, role ADD) are placed in the 2D editor, each with a
+<code>group</code> name such as "floor", "ledges", "perches" or "high". A beat names the group its squad
+comes in at. Squad members are shared out across the group's markers in turn, and several at one
+marker spread out to either side. A marker set to <code>emerge</code> makes enemies burst up out of the ground
+there.</p>
+<h2 id="squads">Squads</h2>
+<p>A squad is a reusable file listing which enemy kinds come in and how many of each. Each line can
+name a spawn group of its own, so snipers go to the perches while the rest come in on the floor.
+<code>stagger</code> is the time between one arrival and the next (0 means all at once), and arrivals are
+mixed (zombie, pumpkin, zombie, pumpkin) rather than one kind at a time.</p>
+<h3 id="threat">Threat</h3>
+<p>Every enemy kind has a <strong>threat cost</strong> in <code>styles/threat_costs.tres</code>. It's roughly the damage the
+enemy threatens per second, times how long it lives under fire, times how hard it is to ignore. A
+zombie is the unit. A squad's threat is the sum over its members, and it's how a fight's difficulty
+curve is designed and checked. Bosses aren't counted: their own health bar tells that story.</p>
+<h2 id="beats">Beats</h2>
+<p>Beats are nodes under their boss room. <strong>Tree order is fight order</strong>: drag a beat up or down in the
+scene tree to reorder the fight, and click one to edit it in the Inspector. Beats always fire one at
+a time, in order.</p>
+<h3 id="triggers">Triggers</h3>
+<table>
+<thead>
+<tr>
+<th>Trigger</th>
+<th>Fires when</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>FIGHT_START</td>
+<td>the room's doors shut</td>
+</tr>
+<tr>
+<td>BOSS_HEALTH</td>
+<td>this much of the boss's health has been taken (<code>boss_health_removed</code>, 0 to 1)</td>
+</tr>
+<tr>
+<td>CLEARED</td>
+<td>the previous beat's squad is down to <code>remaining</code> or fewer</td>
+</tr>
+<tr>
+<td>TIMER</td>
+<td><code>seconds</code> after the previous beat began</td>
+</tr>
+<tr>
+<td>EVENT</td>
+<td>an encounter event of that name happens (a boss's own moment, say)</td>
+</tr>
+</tbody>
+</table>
+<p>The Inspector only shows the setting the chosen trigger uses. More triggers can be added to the
+list later.</p>
+<h3 id="options">Options</h3>
+<ul>
+<li><strong>Squad and group:</strong> who comes in, and at which spawn group. No squad makes the beat a rest.</li>
+<li><strong>Leftovers:</strong> enemies from earlier beats still standing when this one starts either STAY (the
+  default, so a valley is the players mopping up) or are REMOVEd.</li>
+<li><strong>Boss immune:</strong> the boss can't be hurt until this beat's squad is cleared. Its bar shows
+  IMMUNE, and hits show IMMUNE instead of numbers. Off by default.</li>
+<li><strong>Min time:</strong> the least time this beat lasts before the next can start. A burst of damage (a
+  rocket over two thresholds at once) then can't skip or stack beats.</li>
+<li><strong>Warning:</strong> the time between the warning and the squad arriving.</li>
+<li><strong>Drop:</strong> an ammo brick (special or heavy) for every player as the beat starts. The valleys use
+  this.</li>
+</ul>
+<h3 id="the-warning">The warning</h3>
+<p>Before a squad arrives, every machine hears a low horn swell, the screen gives a small shudder, and
+orange rings with a "!" pulse at each spawn marker the squad will use. A spike reads as an event,
+and players can see where the next wave is coming from.</p>
+<h2 id="the-difficulty-curve">The difficulty curve</h2>
+<p>The owner drew the curve for the first boss rooms against the fight's progress, from the boss at
+full health to the boss dying. The thresholds below are the Red Corn room's, and the other rooms use
+the same shape:</p>
+<table>
+<thead>
+<tr>
+<th>Beat</th>
+<th>Boss health taken (0 to 1)</th>
+<th>Intensity (of the climax)</th>
+<th>Feel</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Opening</td>
+<td>from the start</td>
+<td>about 30%</td>
+<td>a real opening, showing what the fight is</td>
+</tr>
+<tr>
+<td>Breather</td>
+<td>0.2</td>
+<td>about 15%</td>
+<td>easier, a few stragglers</td>
+</tr>
+<tr>
+<td>Spike</td>
+<td>0.4</td>
+<td>about 65%</td>
+<td>the first big spike</td>
+</tr>
+<tr>
+<td>Valley</td>
+<td>0.6</td>
+<td>under 10%</td>
+<td>a rest, with an ammo drop</td>
+</tr>
+<tr>
+<td>Climax</td>
+<td>0.8</td>
+<td>100%</td>
+<td>the hardest it has been</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Reading the sketch</p>
+<p>The sketch's axis is read as how much of the boss's health has been taken, because the curve
+ends on its highest point as the boss dies. If it meant health remaining, the beats reverse.</p>
+</div>
+<h2 id="the-knobs">The knobs</h2>
+<ul>
+<li><strong>Per boss room</strong> (the <code>BossRoom</code> node, Pacing group):</li>
+<li><code>intensity</code> scales every squad in that fight.</li>
+<li><code>players_scale</code> multiplies squad sizes for 1, 2 and 3 players. More players face <strong>more
+    enemies, not tougher ones</strong>: extra bodies split the squad's fire, where extra health would only
+    make the fight longer.</li>
+<li><strong>Per beat:</strong> the trigger and its setting, the squad, the group, and the options above.</li>
+<li><strong>Per squad:</strong> its members and stagger.</li>
+<li><strong>Shared:</strong> the threat costs.</li>
+<li><strong>Warnings</strong> (the <code>Encounter</code> node, Beats group): the shake, ring colour and glow, and how far
+  apart arrivals at one marker spread.</li>
+</ul>
+<h3 id="seeing-the-curve-without-playing">Seeing the curve without playing</h3>
+<p>In the 2D editor, each boss room draws a bar per beat above itself: as tall as the beat's threat,
+labelled with its threat number, name and trigger. <code>readout_players</code> picks which player count the
+bars show. Change a squad or the room's intensity and the bars update.</p>
+<h2 id="co-op">Co-op</h2>
+<p>The host runs the beats and owns every enemy. When a beat starts, it tells every machine, so
+everyone hears and sees the same warning. A player who joins mid-fight is told which beat each
+room is on and whether its boss is immune. A squad wipe restarts the level, and the fight from its
+first beat. Squad sizes follow the number of players in the game when each beat starts.</p>
+<h2 id="testing-and-tuning">Testing and tuning</h2>
+<ul>
+<li><code>--beat=N</code> starts every boss room's fight at beat N, with the boss's health set to where that beat
+  begins, so the climax can be tuned without replaying the opening.</li>
+<li>Every enemy kind a squad can bring in is prepared while the level loads (see
+  <code>Encounter.kinds()</code>), so no squad stutters as it arrives.</li>
+<li><code>python tools/perf/run.py burrow-mid-fight</code> (also <code>burrow-top-fight</code> and <code>burrow-bot-fight</code>)
+  plays a room's whole fight with a bot. Its report's <strong>Fight pacing</strong> section has a row per beat
+  (trigger, length, health taken, designed and actual threat) and charts of the threat alive
+  against the design.</li>
+</ul>
+<h2 id="tunable-parameters">Tunable parameters</h2>
+<p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
+
+<h3 id="beat">Beat</h3>
+<p class="params-src">Edit <code>scripts/encounter/beat.gd</code> (script defaults; a scene or resource may override them)</p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>trigger</code></td><td class="val"><code>Trigger.BOSS_HEALTH</code></td><td class="rng"></td><td>What starts this beat.</td></tr><tr><td><code>boss_health_removed</code></td><td class="val">0.2</td><td class="rng">0 to 1</td><td>BOSS_HEALTH: the fraction of the boss&#x27;s health taken (0 = untouched, 1 = dead) that starts it.</td></tr><tr><td><code>remaining</code></td><td class="val">0</td><td class="rng">0 to 20</td><td>CLEARED: how many of the previous beat&#x27;s squad may still be standing.</td></tr><tr><td><code>seconds</code></td><td class="val">20 s</td><td class="rng">0 to 300</td><td>TIMER: seconds after the previous beat began.</td></tr><tr><td><code>event_name</code></td><td class="val"><em>(empty)</em></td><td class="rng"></td><td>EVENT: the encounter event&#x27;s name.</td></tr><tr><td><code>squad</code></td><td class="val"><code></code></td><td class="rng"></td><td>Who comes in (empty for a rest).</td></tr><tr><td><code>group</code></td><td class="val"><em>(empty)</em></td><td class="rng"></td><td>Which of the room&#x27;s spawn groups they come in at (RoomSpawn <code>group</code>); empty = every ADD spawn.</td></tr><tr class="group"><th colspan="4">Options</th></tr><tr><td><code>leftovers</code></td><td class="val"><code>Leftovers.STAY</code></td><td class="rng"></td><td>Enemies from earlier beats still standing when this starts.</td></tr><tr><td><code>boss_immune</code></td><td class="val">No</td><td class="rng"></td><td>The boss can&#x27;t be hurt until this beat&#x27;s squad is cleared (shows IMMUNE on its bar).</td></tr><tr><td><code>min_time</code></td><td class="val">4 s</td><td class="rng">0 to 30</td><td>Seconds this beat lasts at least before the next can start, so a burst of damage (a rocket over two thresholds) doesn&#x27;t skip or stack beats.</td></tr><tr><td><code>warning</code></td><td class="val">1.2 s</td><td class="rng">0 to 5</td><td>Seconds between the telegraph (a sound and a cue at the spawn group) and the squad arriving.</td></tr><tr><td><code>drop</code></td><td class="val"><code>Drop.NONE</code></td><td class="rng"></td><td>An ammo brick for each player when this beat starts (good in the valley after a spike).</td></tr></tbody></table></div>
+
+<h3 id="squad">Squad</h3>
+<p class="params-src">Edit <code>scripts/encounter/squad.gd</code> (script defaults; a scene or resource may override them)</p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>members</code></td><td class="val"><code>[]</code></td><td class="rng"></td><td>Who comes in.</td></tr><tr><td><code>stagger</code></td><td class="val">0.4 s</td><td class="rng">0 to 10</td><td>Seconds between one arrival and the next (0 = all at once).</td></tr></tbody></table></div>
+
+<h3 id="squad-line">Squad line</h3>
+<p class="params-src">Edit <code>scripts/encounter/squad_entry.gd</code> (script defaults; a scene or resource may override them)</p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>kind</code></td><td class="val">zombie</td><td class="rng"></td><td>Which enemy (a key of Level.KINDS).</td></tr><tr><td><code>count</code></td><td class="val">1</td><td class="rng">1 to 20</td><td>How many come in (before the fight&#x27;s intensity and player-count scaling).</td></tr><tr><td><code>group</code></td><td class="val"><em>(empty)</em></td><td class="rng"></td><td>The spawn group these come in at; empty = the beat&#x27;s group.</td></tr></tbody></table></div>
+
+<h3 id="threat-costs">Threat costs</h3>
+<p class="params-src">Edit <a href="../tuning/threat-costs.html"><code>styles/threat_costs.tres</code></a> &middot; fields defined in <code>scripts/encounter/threat_table.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>costs</code></td><td class="val"><code>Dictionary[String, float]({ &quot;asparagus&quot;: 1.5, &quot;corn&quot;: 5.0, &quot;mushroom&quot;: 2.0, &quot;pepper&quot;: 3.0, &quot;potato&quot;: 3.5, &quot;pumpkin&quot;: 1.5, &quot;zombie&quot;: 1.0 })</code> <span class="default">script default <code>{}</code></span></td><td class="rng"></td><td>Enemy kind (a key of Level.KINDS) -&gt; its threat: roughly the damage it threatens per second, times how long it lives under fire, times how hard it is to ignore. A kind missing here counts as 1. The reasoning behind the current numbers (zombie = 1): - zombie: slow melee that rarely reaches a moving player; dead in under a second. - pumpkin: dies fast, but sprints at you and its blast must be killed or dodged first. - asparagus: fragile, but perched out of reach chipping away; someone has to go and hunt it. - mushroom: the most damage of the small adds, and it backs off, so it takes chasing. - pepper: lobs that deny ground plus a breath, and it lasts twice as long as a zombie. - potato: a tank whose charge forces a dodge every few seconds; it splits the squad&#x27;s attention. - corn: a mini-boss with volleys of kernels; a squad on its own.</td></tr></tbody></table></div>
+
+<h3 id="boss-room-pacing-the-red-corns-room">Boss room pacing (the Red Corn's room)</h3>
+<p class="params-src">Edit <code>scenes/burrow_encounter.tscn (CornRoom node)</code> &middot; fields defined in <code>scripts/encounter/boss_room.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>size</code></td><td class="val">(1120, 630)</td><td class="rng"></td><td>The room&#x27;s box (pixels from the node), used to tell who&#x27;s inside it.</td></tr><tr><td><code>trigger</code></td><td class="val">920 x 630 at (200, 0)</td><td class="rng"></td><td>Crossing into this box (room-local) shuts the doors. Keep it clear of the doorway.</td></tr><tr><td><code>entry</code></td><td class="val">(110, 629) <span class="default">script default (120, 600)</span></td><td class="rng"></td><td>Where stragglers are pulled in to when the doors shut (room-local, feet).</td></tr><tr><td><code>key</code></td><td class="val"><code>KeyPalette.Key.RED</code></td><td class="rng"></td><td>Which key&#x27;s buff the boss drops (match the room&#x27;s torches and a hub Pedestal).</td></tr><tr><td><code>doors</code></td><td class="val"><code>Array[NodePath]([NodePath(&quot;../../Geometry/MidDoor&quot;)])</code> <span class="default">script default <code>[]</code></span></td><td class="rng"></td><td>The doors that shut while the fight&#x27;s on.</td></tr><tr class="group"><th colspan="4">Pacing</th></tr><tr><td><code>intensity</code></td><td class="val">1</td><td class="rng">0.1 to 4</td><td>Scales every beat&#x27;s squad sizes in this fight (1 = as the squads are written).</td></tr><tr><td><code>players_scale</code></td><td class="val">(1, 1.5, 2)</td><td class="rng"></td><td>Squad sizes times this for 1, 2 and 3 players (x, y, z). More players face more enemies, not tougher ones: extra bodies split the squad&#x27;s fire, where extra health only makes a fight longer.</td></tr><tr><td><code>threat_table</code></td><td class="val"><code>preload(&quot;res://styles/threat_costs.tres&quot;)</code></td><td class="rng"></td><td>The threat costs the readout and the beats use.</td></tr><tr><td><code>readout_players</code></td><td class="val">1</td><td class="rng">1 to 3</td><td>Which player count the readout above the room shows (1 to 3).</td></tr></tbody></table></div>
+
+<h3 id="encounter-warnings">Encounter (warnings)</h3>
+<p class="params-src">Edit <code>scenes/burrow_encounter.tscn (Encounter node)</code> &middot; fields defined in <code>scripts/encounter/encounter.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>gate</code></td><td class="val"><code>NodePath(&quot;../Geometry/Gate&quot;)</code></td><td class="rng"></td><td>The floor gate that opens when every pedestal is lit (or, with a main_boss, when it dies).</td></tr><tr><td><code>hub</code></td><td class="val">1460 x 400 at (40, 1250) <span class="default">script default 0 x 0 at (0, 0)</span></td><td class="rng"></td><td>The hub, where the pedestals are and the main boss lives (world pixels). Players start in it.</td></tr><tr><td><code>main_boss</code></td><td class="val">ginger <span class="default">script default <em>(empty)</em></span></td><td class="rng"></td><td>The encounter&#x27;s main boss (a key of Level.KINDS), or &quot;&quot; for none. It&#x27;s spawned once, the first time a player is in the hub, and the gate then waits for it to die instead of for the third pedestal.</td></tr><tr><td><code>main_boss_at</code></td><td class="val">(760, 1430) <span class="default">script default <code>Vector2.ZERO</code></span></td><td class="rng"></td><td>Where the main boss appears (world pixels).</td></tr><tr><td><code>palette</code></td><td class="val"><code>preload(&quot;res://styles/burrow_keys.tres&quot;)</code></td><td class="rng"></td><td>The key colours, shared with the torches and pedestals.</td></tr><tr><td><code>pickup_radius</code></td><td class="val">18</td><td class="rng">4 to 80</td><td>How close (pixels) a player has to get to a buff on the ground to pick it up.</td></tr><tr><td><code>hud_lift</code></td><td class="val">24</td><td class="rng">0 to 120</td><td>Where the carried buff shows on the HUD: this many game pixels above the bottom-left weapon HUD.</td></tr><tr><td><code>carry_height</code></td><td class="val">58</td><td class="rng">0 to 120</td><td>How high over its carrier&#x27;s feet a carried buff floats (pixels).</td></tr><tr><td><code>bob</code></td><td class="val">2</td><td class="rng">0 to 10</td><td>How far a buff on the ground bobs up and down (pixels).</td></tr><tr><td><code>slam_shake</code></td><td class="val">0.45</td><td class="rng">0 to 1</td><td>Screen shake when a room&#x27;s doors slam shut (0..1).</td></tr><tr><td><code>gate_shake</code></td><td class="val">0.8</td><td class="rng">0 to 1</td><td>Screen shake when the gate opens (0..1).</td></tr><tr class="group"><th colspan="4">Beats</th></tr><tr><td><code>beat_shake</code></td><td class="val">0.2</td><td class="rng">0 to 1</td><td>Screen shake as a beat&#x27;s squad is announced (0..1).</td></tr><tr><td><code>beat_cue_color</code></td><td class="val"><span class="swatch" style="background:#ff7a3a"></span><code>#ff7a3a</code></td><td class="rng"></td><td>The telegraph&#x27;s colour at the spawn group: a pulsing ring per spawn point.</td></tr><tr><td><code>beat_cue_glow</code></td><td class="val">2</td><td class="rng">0 to 4</td><td>How bright the telegraph rings glow (linear; above 1 blooms).</td></tr><tr><td><code>spawn_spread</code></td><td class="val">14</td><td class="rng">0 to 40</td><td>How far apart (pixels) enemies arriving at the same spawn point are spread.</td></tr><tr class="group"><th colspan="4">Stand-in boss label</th></tr><tr><td><code>wip_label_color</code></td><td class="val"><span class="swatch" style="background:#ff8a6a"></span><code>#ff8a6a</code></td><td class="rng"></td><td>The label over a stand-in boss (&quot;WIP&quot; until the real boss exists; see WIP.md).</td></tr><tr><td><code>wip_label_height</code></td><td class="val">18</td><td class="rng">0 to 60</td><td>How far above the boss&#x27;s head the label sits (pixels).</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>

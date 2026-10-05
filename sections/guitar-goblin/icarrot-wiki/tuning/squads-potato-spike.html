@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>styles/squads/potato_spike.tres | iCarrot Wiki</title>
+<meta name="description" content="A hand-picked group of enemies a fight&#x27;s Beat brings in together: which kinds, how many of each, and how they arrive. Squads are small reusable files (styles/squads/*.tres), so the same squad can open one fight and pad another. Its threat (ThreatTable) is what the BossRoom readout shows.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">4</span></summary><ul>
+<li><a href="../carrot/movement.html">Movement</a></li>
+<li><a href="../carrot/dash.html">Dash</a></li>
+<li><a href="../carrot/health.html">Health</a></li>
+<li><a href="../carrot/appearance.html">Appearance</a></li>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">6</span></summary><ul>
+<li><a href="../weapons/revolver.html">Revolver</a></li>
+<li><a href="../weapons/smg.html">SMG</a></li>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/rocket-launcher.html">Rocket Launcher</a></li>
+<li><a href="../weapons/grenade.html">Energy ball</a></li>
+<li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
+</ul></details>
+<details><summary><a href="../enemies/index.html">Enemies</a><span class="count">7</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+<li><a href="../enemies/pumpkin.html">Jacko</a></li>
+<li><a href="../enemies/asparagus.html">Spear-Gus</a></li>
+<li><a href="../enemies/mushroom.html">Shroom</a></li>
+<li><a href="../enemies/pepper.html">Hot Pepper</a></li>
+<li><a href="../enemies/corn.html">Big Cobber</a></li>
+<li><a href="../enemies/potato.html">Potato Bull</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">5</span></summary><ul>
+<li><a href="../bosses/ginger.html">The Ginger</a></li>
+<li><a href="../bosses/sweet-potato.html">Sweet Potato</a></li>
+<li><a href="../bosses/red-corn.html">Red Corn</a></li>
+<li><a href="../bosses/ghost-pepper.html">Ghost Pepper</a></li>
+<li><a href="../bosses/ginger-shade.html">Ginger Shade</a></li>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">1</span></summary><ul>
+<li><a href="../encounters/burrow-encounter.html">Burrow Encounter</a></li>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">5</span></summary><ul>
+<li><a href="../levels/title-sequence.html">Title Sequence</a></li>
+<li><a href="../levels/arena.html">Arena</a></li>
+<li><a href="../levels/garden-intro.html">Garden Intro</a></li>
+<li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+<li><a href="../levels/level-parts.html">Level Parts</a></li>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
+<li><a href="../biomes/warm-burrow.html">Warm Burrow</a></li>
+<li><a href="../biomes/overgrown-vault.html">Overgrown Vault</a></li>
+<li><a href="../biomes/glowshroom-grotto.html">Glowshroom Grotto</a></li>
+<li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
+<li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
+</ul></details>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">9</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/ammo.html">Ammo</a></li>
+<li><a href="../mechanics/co-op.html">Co-op</a></li>
+<li><a href="../mechanics/reloading.html">Reloading</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
+<li><a href="../mechanics/fight-pacing.html">Fight Pacing</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
+<li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
+<li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html" aria-current="page">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="index.html">Tuning files</a></p><h1><code>styles/squads/potato_spike.tres</code></h1><p class="lead">A hand-picked group of enemies a fight&#x27;s Beat brings in together: which kinds, how many of each, and how they arrive. Squads are small reusable files (styles/squads/*.tres), so the same squad can open one fight and pad another. Its threat (ThreatTable) is what the BossRoom readout shows.</p><p>Open this file in the Godot Inspector to change these values. While the game runs from the editor, most of them can also be changed live through the Remote scene tree.</p><p>Its fields are defined in <code>scripts/encounter/squad.gd</code>.</p><div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>members</code></td><td class="val"><code>Array[ExtResource(&quot;2&quot;)]([SubResource(&quot;e0&quot;), SubResource(&quot;e1&quot;)])</code> <span class="default">script default <code>[]</code></span></td><td class="rng"></td><td>Who comes in.</td></tr><tr><td><code>stagger</code></td><td class="val">0.35 s <span class="default">script default 0.4 s</span></td><td class="rng">0 to 10</td><td>Seconds between one arrival and the next (0 = all at once).</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>
