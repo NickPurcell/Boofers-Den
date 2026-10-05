@@ -175,7 +175,8 @@ silhouettes and a fallen carved block, and a broken column standing up from the 
   <code>_side</code>, <code>_lip</code> and <code>_column</code>, each with a <code>_blur</code> version for the game.</li>
 <li>Put the door behind the level geometry with its foot tucked behind the floor, and the glow image on
   top with a modulate brighter than white so it blooms. <code>scenes/vault_test.tscn</code> shows the whole setup, including
-  where the hanging foreground pieces go: along the ceiling, or they drift mid-screen.</li>
+  where the foreground pieces go: each is a <code>ForegroundPiece</code> hung from a real ceiling or set on a real
+  floor or wall, since it sits exactly where it's placed.</li>
 <li>To re-bake, run <code>tools/underground/overgrown_vault/bake.gd</code> as a headless Godot script.</li>
 </ul>
 <h2 id="design-notes">Design notes</h2>

@@ -177,8 +177,8 @@ silhouettes.</p>
   <code>burrow_bg_mid</code>, <code>burrow_bg_near</code>, and the foreground pieces <code>burrow_fg_hang</code>, <code>_taproot</code>,
   <code>_curtain</code>, <code>_hang_worm</code>, <code>_side</code> and <code>_bottom</code>, each with a <code>_blur</code> version. Use the blurred ones in
   game; the sharp ones are for reference. <code>scenes/burrow_test.tscn</code> shows the full setup: each
-  backdrop layer in its own Parallax2D under <code>Backdrop</code>, and the foreground pieces in one Parallax2D
-  above everything.</li>
+  backdrop layer in its own Parallax2D under <code>Backdrop</code>, and each foreground piece as a
+  <code>ForegroundPiece</code> under <code>Foreground</code>, placed right where it hangs or stands (see <a href="../levels/level-parts.html">Level Parts</a>).</li>
 <li>To re-bake after changing the art, run <code>tools/underground/warm_burrow/bake.gd</code> as a headless Godot
   script (the command is at the top of the file).</li>
 </ul>
