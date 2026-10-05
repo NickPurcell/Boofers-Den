@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pause | iCarrot Wiki</title>
-<meta name="description" content="Esc or P freezes the game for everyone in the squad. Press either again to carry on.">
+<title>styles/loadout.tres | iCarrot Wiki</title>
+<meta name="description" content="The guns every carrot carries into a level, in the order the number keys pick them (1, 2, 3...) and Q cycles them. Lives in styles/loadout.tres; drag a Weapon from styles/weapons/ in or out to change it. (Weapon.all() is still every gun the game knows, in network order; the loadout only picks which of them you hold.)">
 <link rel="stylesheet" href="../wiki.css">
 </head>
 <body>
@@ -62,39 +62,20 @@
 <li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
 <li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
 </ul></details>
-<details open><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">8</span></summary><ul>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">8</span></summary><ul>
 <li><a href="../mechanics/damage.html">Damage</a></li>
 <li><a href="../mechanics/ammo.html">Ammo</a></li>
 <li><a href="../mechanics/co-op.html">Co-op</a></li>
 <li><a href="../mechanics/reloading.html">Reloading</a></li>
 <li><a href="../mechanics/camera.html">Camera</a></li>
-<li><a href="../mechanics/pause.html" aria-current="page">Pause</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
 <li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
 <li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
 </ul></details>
-<p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
+<p class="nav-extra"><a href="../tuning/index.html" aria-current="page">Tuning files</a></p></nav>
 </aside>
 <main>
-<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../mechanics/index.html">Mechanics</a></p><h1>Pause</h1><aside class="infobox"><div class="infobox-title">Pause</div><dl><div><dt>Keys</dt><dd>Esc or P</dd></div><div><dt>Who it pauses</dt><dd>Everyone in the session</dd></div></dl></aside><p class="lead">Esc or P freezes the game for everyone in the squad. Press either again to carry on.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#what-it-does">What it does</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#design-notes">Design notes</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#pause-card">Pause card</a></li></ol></li></ol></nav><h2 id="what-it-does">What it does</h2>
-<p>Press <strong>Esc</strong> or <strong>P</strong> during a level and the game freezes: carrots, enemies, bullets, effects and
-sounds all stop where they are, under a dimmed screen with a "PAUSED" card. Press either key again
-to pick up exactly where you left off. For now that's all it does: there's no menu yet.</p>
-<p><img alt="The arena freezing under the pause card" src="../media/pause.gif" /></p>
-<p>The global keys still work while paused: V toggles the CRT look, B the bloom, and M mutes.</p>
-<h2 id="co-op">Co-op</h2>
-<p>Pausing freezes the game for the whole squad, not just you, and anyone can resume it. Someone who
-joins while the game is paused sees the level fade in, then freezes with everyone else.</p>
-<h2 id="design-notes">Design notes</h2>
-<p>A raid game would normally never pause online. iCarrot pauses everyone for now because the squad
-is usually friends playing together, and it makes testing and tuning easier. The pause card's look
-is tunable on <code>scenes/pause_overlay.tscn</code>.</p>
-<h2 id="tunable-parameters">Tunable parameters</h2>
-<p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
-
-<h3 id="pause-card">Pause card</h3>
-<p class="params-src">Edit <code>scripts/pause_overlay.gd</code> (script defaults; a scene or resource may override them)</p>
-
-<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Look</th></tr><tr><td><code>dim</code></td><td class="val">0.45</td><td class="rng">0 to 1</td><td>How dark the frozen game goes behind the card (0 = not at all).</td></tr><tr><td><code>dim_color</code></td><td class="val"><span class="swatch" style="background:#140a1c"></span><code>#140a1c</code></td><td class="rng"></td><td></td></tr><tr><td><code>text_color</code></td><td class="val"><span class="swatch" style="background:#fffaf0"></span><code>#fffaf0</code></td><td class="rng"></td><td></td></tr><tr><td><code>text_top</code></td><td class="val"><span class="swatch" style="background:#ffd0a0"></span><code>#ffd0a0</code></td><td class="rng"></td><td>The top rows of the letters (a gradient from here down to text_color).</td></tr><tr><td><code>text_scale</code></td><td class="val">3</td><td class="rng">1 to 8</td><td>Size of the &quot;PAUSED&quot; lettering, in multiples of the pixel font.</td></tr><tr><td><code>hint</code></td><td class="val">ESC / P TO RESUME</td><td class="rng"></td><td>The hint under it.</td></tr><tr><td><code>hint_color</code></td><td class="val"><span class="swatch" style="background:#c8c0e0"></span><code>#c8c0e0</code></td><td class="rng"></td><td></td></tr></tbody></table></div></article>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="index.html">Tuning files</a></p><h1><code>styles/loadout.tres</code></h1><p class="lead">The guns every carrot carries into a level, in the order the number keys pick them (1, 2, 3...) and Q cycles them. Lives in styles/loadout.tres; drag a Weapon from styles/weapons/ in or out to change it. (Weapon.all() is still every gun the game knows, in network order; the loadout only picks which of them you hold.)</p><p>Open this file in the Godot Inspector to change these values. While the game runs from the editor, most of them can also be changed live through the Remote scene tree.</p><p>Its fields are defined in <code>scripts/loadout.gd</code>.</p><div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr><td><code>weapons</code></td><td class="val"><code>Array[Resource]([ExtResource(&quot;2&quot;), ExtResource(&quot;3&quot;), ExtResource(&quot;4&quot;)])</code> <span class="default">script default <code>[]</code></span></td><td class="rng"></td><td>The equipped guns, in number-key order.</td></tr></tbody></table></div></article>
 <footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
 </main>
 </div>

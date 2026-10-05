@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en" data-root="../">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ammo | iCarrot Wiki</title>
+<meta name="description" content="Destiny-style ammo: normal never runs out, special and heavy come from bricks dropped by dead enemies.">
+<link rel="stylesheet" href="../wiki.css">
+</head>
+<body>
+<header class="topbar"><button id="menu" aria-label="Open the page list" aria-expanded="false">&#9776;</button>
+<a href="../index.html">iCarrot Wiki</a><a class="den" href="/sections/guitar-goblin/">Guitar Goblin&rsquo;s den</a></header>
+<div class="layout">
+<aside class="sidebar" id="sidebar">
+<a class="brand" href="../index.html"><span class="brand-mark" aria-hidden="true"></span>iCarrot Wiki</a>
+<div class="search"><input id="search" type="search" placeholder="Search the wiki" autocomplete="off" aria-label="Search the wiki"><ul id="results" hidden></ul></div>
+<nav>
+<details><summary><a href="../carrot/index.html">The Carrot</a><span class="count">4</span></summary><ul>
+<li><a href="../carrot/movement.html">Movement</a></li>
+<li><a href="../carrot/dash.html">Dash</a></li>
+<li><a href="../carrot/health.html">Health</a></li>
+<li><a href="../carrot/appearance.html">Appearance</a></li>
+</ul></details>
+<details><summary><a href="../weapons/index.html">Weapons</a><span class="count">6</span></summary><ul>
+<li><a href="../weapons/revolver.html">Revolver</a></li>
+<li><a href="../weapons/smg.html">SMG</a></li>
+<li><a href="../weapons/shotgun.html">Shotgun</a></li>
+<li><a href="../weapons/rocket-launcher.html">Rocket Launcher</a></li>
+<li><a href="../weapons/grenade.html">Energy ball</a></li>
+<li><a href="../weapons/weapon-hud.html">Weapon HUD</a></li>
+</ul></details>
+<details><summary><a href="../enemies/index.html">Enemies</a><span class="count">7</span></summary><ul>
+<li><a href="../enemies/zombie.html">Zombie</a></li>
+<li><a href="../enemies/pumpkin.html">Jacko</a></li>
+<li><a href="../enemies/asparagus.html">Spear-Gus</a></li>
+<li><a href="../enemies/mushroom.html">Shroom</a></li>
+<li><a href="../enemies/pepper.html">Hot Pepper</a></li>
+<li><a href="../enemies/corn.html">Big Cobber</a></li>
+<li><a href="../enemies/potato.html">Potato Bull</a></li>
+</ul></details>
+<details><summary><a href="../bosses/index.html">Bosses</a><span class="count">5</span></summary><ul>
+<li><a href="../bosses/ginger.html">The Ginger</a></li>
+<li><a href="../bosses/sweet-potato.html">Sweet Potato</a></li>
+<li><a href="../bosses/red-corn.html">Red Corn</a></li>
+<li><a href="../bosses/ghost-pepper.html">Ghost Pepper</a></li>
+<li><a href="../bosses/ginger-shade.html">Ginger Shade</a></li>
+</ul></details>
+<details><summary><a href="../encounters/index.html">Encounters</a><span class="count">1</span></summary><ul>
+<li><a href="../encounters/burrow-encounter.html">Burrow Encounter</a></li>
+</ul></details>
+<details><summary><a href="../levels/index.html">Levels</a><span class="count">5</span></summary><ul>
+<li><a href="../levels/title-sequence.html">Title Sequence</a></li>
+<li><a href="../levels/arena.html">Arena</a></li>
+<li><a href="../levels/garden-intro.html">Garden Intro</a></li>
+<li><a href="../levels/burrow-test.html">Burrow Test</a></li>
+<li><a href="../levels/level-parts.html">Level Parts</a></li>
+</ul></details>
+<details><summary><a href="../biomes/index.html">Biomes</a><span class="count">5</span></summary><ul>
+<li><a href="../biomes/warm-burrow.html">Warm Burrow</a></li>
+<li><a href="../biomes/overgrown-vault.html">Overgrown Vault</a></li>
+<li><a href="../biomes/glowshroom-grotto.html">Glowshroom Grotto</a></li>
+<li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
+<li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
+</ul></details>
+<details open><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">8</span></summary><ul>
+<li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/ammo.html" aria-current="page">Ammo</a></li>
+<li><a href="../mechanics/co-op.html">Co-op</a></li>
+<li><a href="../mechanics/reloading.html">Reloading</a></li>
+<li><a href="../mechanics/camera.html">Camera</a></li>
+<li><a href="../mechanics/pause.html">Pause</a></li>
+<li><a href="../mechanics/enemy-names-and-boss-bars.html">Enemy names and boss bars</a></li>
+<li><a href="../mechanics/enemy-waves.html">Enemy waves</a></li>
+</ul></details>
+<p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
+</aside>
+<main>
+<article><p class="crumbs"><a href="../index.html">Home</a> &rsaquo; <a href="../mechanics/index.html">Mechanics</a></p><h1>Ammo</h1><aside class="infobox"><div class="infobox-title">Ammo</div><figure><img src="../media/ammo-bricks.gif" alt="Ammo"><figcaption>A special brick pops out of a dead zombie and is picked up</figcaption></figure><dl><div><dt>Types</dt><dd>Normal, special, heavy</dd></div><div><dt>Special brick</dt><dd>6 rounds</dd></div><div><dt>Heavy brick</dt><dd>2 rounds</dd></div><div><dt>Special drop chance</dt><dd>0.14 per kill</dd></div><div><dt>Heavy drop chance</dt><dd>0.04 per kill</dd></div><div><dt>Brick lasts</dt><dd>30 s</dd></div></dl></aside><p class="lead">Destiny-style ammo: normal never runs out, special and heavy come from bricks dropped by dead enemies.</p><nav class="toc" aria-label="Contents"><p>Contents</p><ol><li><a href="#reserves-and-reloading">Reserves and reloading</a></li><li><a href="#bricks">Bricks</a></li><li><a href="#co-op">Co-op</a></li><li><a href="#loadout">Loadout</a></li><li><a href="#testing">Testing</a></li><li><a href="#tunable-parameters">Tunable parameters</a><ol><li><a href="#ammo-bricks">Ammo bricks</a></li></ol></li></ol></nav><p>Every carrot carries three guns (see <a href="../weapons/index.html">Weapons</a>), and each uses one of three kinds of ammo,
+the way Destiny does it:</p>
+<table>
+<thead>
+<tr>
+<th>Ammo</th>
+<th>Gun</th>
+<th>Most you can carry</th>
+<th>You start with</th>
+<th>Brick</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Normal (brass)</td>
+<td><a href="../weapons/smg.html">SMG</a></td>
+<td>Never runs out</td>
+<td>–</td>
+<td>–</td>
+</tr>
+<tr>
+<td>Special (green)</td>
+<td><a href="../weapons/shotgun.html">Shotgun</a></td>
+<td>20 rounds</td>
+<td>10 rounds</td>
+<td>6 rounds</td>
+</tr>
+<tr>
+<td>Heavy (purple)</td>
+<td><a href="../weapons/rocket-launcher.html">Rocket Launcher</a></td>
+<td>5 rounds</td>
+<td>2 rounds</td>
+<td>2 rounds</td>
+</tr>
+</tbody>
+</table>
+<p>"Most you can carry" counts what's loaded in the gun: a shotgun at its maximum has its tube full
+and the rest in reserve. You start a level with some special and heavy ammo but not a full load,
+so the first bricks matter.</p>
+<h2 id="reserves-and-reloading">Reserves and reloading</h2>
+<p>A gun is loaded from its reserve. The SMG's reserve never runs out, so it can always reload. The
+shotgun and rocket launcher reload only what their reserve still holds: a shotgun with three shells
+left in reserve thumbs in three and stops. With nothing in reserve the gun can't reload at all;
+pulling the trigger gives a dry click and the ammo on the <a href="../weapons/weapon-hud.html">Weapon HUD</a> blinks red. The gun stays
+selectable, so you can swap back to it once you've picked up a brick. See <a href="../mechanics/reloading.html">Reloading</a>.</p>
+<h2 id="bricks">Bricks</h2>
+<p>Every enemy that dies may drop an ammo brick: a glowing crate in the ammo's colour that pops out of
+the body, bounces, and sits on the ground bobbing under a beacon of light you can spot across the
+screen. At most one brick drops per kill.</p>
+<ul>
+<li><strong>Chances:</strong> each kill has a 0.04 chance of a heavy brick, and otherwise a
+  0.14 chance of a special one. Each kind can have its own chances per enemy.</li>
+<li><strong>Bad-luck protection:</strong> every kill that doesn't drop a brick of a kind raises that kind's chance
+  by 0.02 (special) or 0.008 (heavy), until one drops.</li>
+<li><strong>Bosses</strong> always drop a heavy brick.</li>
+<li><strong>Picking up:</strong> walk over it. It gives its rounds to the gun that uses that ammo, never past the
+  maximum, with a thunk, a burst of sparks, a little bob and a "+N" on the HUD. A brick for a gun
+  that's already full stays where it is for later.</li>
+<li><strong>Disappearing:</strong> a brick lies there for 30 s, blinking faster over its last 5 s.</li>
+</ul>
+<h2 id="co-op">Co-op</h2>
+<p>Bricks are per player, as in Destiny. The host rolls each drop when it applies the kill and tells
+every machine; each machine then shows its own copy of the brick, which only its own player can
+pick up. Partners never fight over ammo, and nothing about a pickup needs to be sent. Each player
+keeps their own ammo counts. A player who joins late doesn't see bricks dropped before they came.</p>
+<h2 id="loadout">Loadout</h2>
+<p>Which guns you carry is the loadout, <code>styles/loadout.tres</code>: the <a href="../weapons/smg.html">SMG</a>, <a href="../weapons/shotgun.html">Shotgun</a> and
+<a href="../weapons/rocket-launcher.html">Rocket Launcher</a>, on keys 1, 2 and 3 (Q cycles them). The <a href="../weapons/revolver.html">Revolver</a> is still in the game but
+not in the current loadout; drag it into the loadout in the Inspector to carry it again.</p>
+<h2 id="testing">Testing</h2>
+<p><code>--drops=1</code> makes every kill drop a brick, and <code>--ammo=special:N,heavy:N</code> (or <code>--ammo=inf</code>) sets
+the starting ammo. The test bot never runs out unless <code>--ammo</code> is given.</p>
+<h2 id="tunable-parameters">Tunable parameters</h2>
+<p class="params-intro">These are read straight from the game's files, so they are always the current values. Open the file in the Godot Inspector to change them.</p>
+
+<h3 id="ammo-bricks">Ammo bricks</h3>
+<p class="params-src">Edit <a href="../tuning/ammo-drops.html"><code>styles/ammo_drops.tres</code></a> &middot; fields defined in <code>scripts/ammo_drops.gd</code></p>
+
+<div class="table-wrap"><table class="param-table"><thead><tr><th>Parameter</th><th>Value</th><th>Range</th><th>What it does</th></tr></thead><tbody><tr class="group"><th colspan="4">Drop chances</th></tr><tr><td><code>special_chance</code></td><td class="val">0.14</td><td class="rng">0 to 1</td><td>Chance per kill of a special brick, and of a heavy one (heavy is the rarer). At most one brick per kill: heavy is rolled first.</td></tr><tr><td><code>heavy_chance</code></td><td class="val">0.04</td><td class="rng">0 to 1</td><td></td></tr><tr><td><code>special_pity</code></td><td class="val">0.02</td><td class="rng">0 to 0.2</td><td>Bad-luck protection: each kill that doesn&#x27;t drop a brick of a type raises that type&#x27;s chance by this much, until one drops (then it resets). 0 turns it off.</td></tr><tr><td><code>heavy_pity</code></td><td class="val">0.008</td><td class="rng">0 to 0.2</td><td></td></tr><tr><td><code>chance_by_kind</code></td><td class="val"><code>{}</code></td><td class="rng"></td><td>Per-kind chances instead of the ones above: enemy kind -&gt; (special chance, heavy chance).</td></tr><tr><td><code>boss_drops_heavy</code></td><td class="val">Yes</td><td class="rng"></td><td>Bosses always drop a heavy brick.</td></tr><tr class="group"><th colspan="4">Bricks</th></tr><tr><td><code>special_amount</code></td><td class="val">6 rounds</td><td class="rng">1 to 50</td><td>Rounds a brick gives the gun that uses its ammo (never past that gun&#x27;s ammo_max).</td></tr><tr><td><code>heavy_amount</code></td><td class="val">2 rounds</td><td class="rng">1 to 20</td><td></td></tr><tr><td><code>life</code></td><td class="val">30 s</td><td class="rng">3 to 120</td><td>Seconds a brick lies on the ground before it disappears, blinking for the last <code>blink_time</code>.</td></tr><tr><td><code>blink_time</code></td><td class="val">5 s</td><td class="rng">0 to 10</td><td></td></tr><tr><td><code>pickup_reach</code></td><td class="val">4 px</td><td class="rng">0 to 24</td><td>How far you can be from a brick and still pick it up (around your body).</td></tr><tr><td><code>pop_speed</code></td><td class="val">170 px/s</td><td class="rng">0 to 400</td><td>How hard a brick pops out of the enemy (up, and up to this far sideways), and its fall.</td></tr><tr><td><code>pop_spread</code></td><td class="val">70 px/s</td><td class="rng">0 to 200</td><td></td></tr><tr><td><code>gravity</code></td><td class="val">700 px/s²</td><td class="rng">100 to 2000</td><td></td></tr><tr><td><code>bounce</code></td><td class="val">0.35</td><td class="rng">0 to 0.9</td><td>Speed kept after bouncing off the ground.</td></tr><tr class="group"><th colspan="4">Look</th></tr><tr><td><code>special_color</code></td><td class="val"><span class="swatch" style="background:#5ae86a"></span><code>#5ae86a</code></td><td class="rng"></td><td>The ammo colours: a special brick, its glow and HUD reserve are green, heavy are purple, normal is brass. The brick&#x27;s light colour is its glow.</td></tr><tr><td><code>special_light</code></td><td class="val"><span class="swatch" style="background:#c8ffb0"></span><code>#c8ffb0</code></td><td class="rng"></td><td></td></tr><tr><td><code>heavy_color</code></td><td class="val"><span class="swatch" style="background:#b05aff"></span><code>#b05aff</code></td><td class="rng"></td><td></td></tr><tr><td><code>heavy_light</code></td><td class="val"><span class="swatch" style="background:#e8c8ff"></span><code>#e8c8ff</code></td><td class="rng"></td><td></td></tr><tr><td><code>normal_color</code></td><td class="val"><span class="swatch" style="background:#ffe2b0"></span><code>#ffe2b0</code></td><td class="rng"></td><td></td></tr><tr><td><code>glow</code></td><td class="val">1.8</td><td class="rng">0.5 to 5</td><td>How brightly a brick glows (above 1 blooms), and how tall its beacon of light rises.</td></tr><tr><td><code>beacon_height</code></td><td class="val">46 px</td><td class="rng">0 to 120</td><td></td></tr><tr><td><code>bob</code></td><td class="val">2 px</td><td class="rng">0 to 6</td><td>How far a brick bobs up and down on the ground, and how fast.</td></tr><tr><td><code>bob_speed</code></td><td class="val">1.6 Hz</td><td class="rng">0.5 to 8</td><td></td></tr><tr><td><code>pickup_sparks</code></td><td class="val">22</td><td class="rng">0 to 60</td><td>Sparks thrown up when you pick one up.</td></tr></tbody></table></div></article>
+<footer class="page-foot"><span id="build-stamp">Generated from the iCarrot game files.</span></footer>
+</main>
+</div>
+<script src="../wiki.js"></script>
+</body>
+</html>

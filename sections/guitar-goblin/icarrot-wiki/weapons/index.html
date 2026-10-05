@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Weapons | iCarrot Wiki</title>
-<meta name="description" content="The four guns every carrot carries, and the energy ball they throw.">
+<meta name="description" content="The guns a carrot carries, their ammo, and the energy ball they throw.">
 <link rel="stylesheet" href="../wiki.css">
 </head>
 <body>
@@ -62,8 +62,9 @@
 <li><a href="../biomes/compost-depths.html">Compost Depths</a></li>
 <li><a href="../biomes/taproot-heart.html">Taproot Heart</a></li>
 </ul></details>
-<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">7</span></summary><ul>
+<details><summary><a href="../mechanics/index.html">Mechanics</a><span class="count">8</span></summary><ul>
 <li><a href="../mechanics/damage.html">Damage</a></li>
+<li><a href="../mechanics/ammo.html">Ammo</a></li>
 <li><a href="../mechanics/co-op.html">Co-op</a></li>
 <li><a href="../mechanics/reloading.html">Reloading</a></li>
 <li><a href="../mechanics/camera.html">Camera</a></li>
@@ -74,10 +75,12 @@
 <p class="nav-extra"><a href="../tuning/index.html">Tuning files</a></p></nav>
 </aside>
 <main>
-<article><p class="crumbs"><a href="../index.html">Home</a></p><h1>Weapons</h1><p>Every carrot carries the same kit: four guns and a recharging <a href="../weapons/grenade.html">Energy ball</a>. There are no
-pickups or ammo drops. Each gun has its own magazine and reloads itself when it runs dry, so the
-choice is always which tool fits the fight: the precise <a href="../weapons/revolver.html">Revolver</a>, the <a href="../weapons/smg.html">SMG</a> hose, the
-point-blank <a href="../weapons/shotgun.html">Shotgun</a> or the one-shot <a href="../weapons/rocket-launcher.html">Rocket Launcher</a>.</p>
+<article><p class="crumbs"><a href="../index.html">Home</a></p><h1>Weapons</h1><p>Every carrot carries the same loadout: the <a href="../weapons/smg.html">SMG</a>, the point-blank <a href="../weapons/shotgun.html">Shotgun</a> and the one-shot
+<a href="../weapons/rocket-launcher.html">Rocket Launcher</a>, plus a recharging <a href="../weapons/grenade.html">Energy ball</a>. The SMG's normal ammo never runs out; the
+shotgun's special ammo and the launcher's heavy ammo are limited and come back from bricks that
+dead enemies drop (see <a href="../mechanics/ammo.html">Ammo</a>). Each gun reloads itself when it runs dry, so the choice is which
+tool fits the fight, and when to spend the limited ones. The <a href="../weapons/revolver.html">Revolver</a> is still in the game but
+not in the current loadout.</p>
 <p><img alt="A carrot holding the shotgun" src="../media/carrot-shotgun.png" /></p>
 <h2 id="the-guns-at-a-glance">The guns at a glance</h2>
 <table>
@@ -93,10 +96,24 @@ point-blank <a href="../weapons/shotgun.html">Shotgun</a> or the one-shot <a hre
 <tbody>
 <tr>
 <td>Key</td>
+<td>Not equipped</td>
 <td>1</td>
 <td>2</td>
 <td>3</td>
-<td>4</td>
+</tr>
+<tr>
+<td>Ammo</td>
+<td>Normal</td>
+<td>Normal</td>
+<td>Special</td>
+<td>Heavy</td>
+</tr>
+<tr>
+<td>Most you can carry</td>
+<td>Never runs out</td>
+<td>Never runs out</td>
+<td>20 rounds</td>
+<td>5 rounds</td>
 </tr>
 <tr>
 <td>Fires</td>
@@ -197,7 +214,7 @@ boss. Shotgun pellets each carry it, so a point-blank blast shoves hardest.</p>
 <ul>
 <li><strong>Click</strong> fires. The <a href="../weapons/smg.html">SMG</a> keeps firing while the button is held.</li>
 <li><strong>R</strong> reloads early. Every gun also reloads by itself the moment it runs dry (see <a href="../mechanics/reloading.html">Reloading</a>).</li>
-<li><strong>1, 2, 3, 4</strong> pick a gun; <strong>Q</strong> cycles to the next one.</li>
+<li><strong>1, 2, 3</strong> pick a gun from the loadout; <strong>Q</strong> cycles through it.</li>
 <li><strong>G</strong> or <strong>right mouse</strong> throws the <a href="../weapons/grenade.html">Energy ball</a>.</li>
 </ul>
 <h2 id="swapping">Swapping</h2>
@@ -205,8 +222,11 @@ boss. Shotgun pellets each carry it, so a point-blank blast shoves hardest.</p>
 later. Swapping takes a brief moment before the new gun can fire, and it cancels a reload in
 progress, so swapping to a loaded gun is often faster than finishing a reload. You can't swap
 while downed.</p>
-<p>All of this is shown in the bottom-left <a href="../weapons/weapon-hud.html">Weapon HUD</a>: the energy ball's recharge, the rounds left
-in the gun in hand, and its name.</p>
+<p>All of this is shown in the bottom-left <a href="../weapons/weapon-hud.html">Weapon HUD</a>: the energy ball's recharge, the rounds in
+the gun in hand, its reserve and its name.</p>
+<h2 id="loadout">Loadout</h2>
+<p>The guns you carry are set in <code>styles/loadout.tres</code>, in number-key order. Drag a gun from
+<code>styles/weapons/</code> in or out in the Inspector to change it.</p>
 <h2 id="damage-falloff-and-headshots">Damage, falloff and headshots</h2>
 <p>Each gun deals full damage out to a set distance, then falls off in two steps to a floor (see each
 gun's page for its curve). A hit on an enemy's head multiplies the damage. Gold numbers mark
