@@ -1,0 +1,91 @@
+/* openai/math rated: night-block's layout in a cooler, paper-and-ink palette, plus the families table. */
+:root { --yellow: #ffd36e; --cyan: #7fb2ff; --pink: #ff7a90; --grass: #79e2a6; }
+
+.om-hero { min-height: 400px; }
+.glyphs { position: absolute; inset: 0; overflow: hidden; pointer-events: none; font: 700 clamp(1.4rem, 4vw, 2.6rem)/1 Georgia, "Times New Roman", serif; color: rgba(127, 178, 255, .16); }
+.glyphs span { position: absolute; white-space: nowrap; }
+.glyphs span:nth-child(1) { left: 6%; top: 12%; font-size: 1.8em; }
+.glyphs span:nth-child(2) { right: 8%; top: 9%; color: rgba(255, 211, 110, .2); }
+.glyphs span:nth-child(3) { left: 44%; top: 22%; }
+.glyphs span:nth-child(4) { right: 22%; top: 34%; font-size: .8em; }
+.glyphs span:nth-child(5) { left: 22%; top: 40%; font-size: 1.4em; color: rgba(255, 122, 144, .16); }
+.glyphs span:nth-child(6) { right: 4%; top: 52%; font-size: .9em; }
+.glyphs span:nth-child(7) { left: 70%; top: 6%; font-size: 1.2em; }
+.kicker a { color: inherit; }
+.snapshot { margin-top: 1.1rem; border: 2px solid var(--yellow); background: rgba(255, 211, 110, .08); padding: .75rem .9rem .8rem; max-width: 70ch; }
+.snapshot p { margin: 0; color: var(--text); font-size: .95rem; }
+.snap-tag { display: inline-block; margin: 0 0 .5rem !important; font: 700 .72rem/1 var(--pixel); letter-spacing: .06em; color: #000 !important; background: var(--yellow); padding: .32rem .45rem .26rem; }
+
+.coord .coord-tag { font: 700 .72rem/1 var(--pixel); letter-spacing: .08em; text-transform: uppercase; color: var(--yellow); margin: 0 0 .5rem; }
+.coord p:last-child { font-size: 1.05rem; }
+.coord .stamp { background: var(--yellow); box-shadow: 4px 4px 0 #7a5d14; }
+
+p.lead { margin-bottom: .3rem; }
+p.rank { position: relative; background: var(--panel); border: 1px solid var(--line); border-left: 3px solid var(--cyan); padding: .75rem .9rem; max-width: none; }
+p.rank > strong:first-child { color: var(--yellow); }
+.doc ol, .doc ul { padding-left: 1.3rem; }
+.doc li { margin-bottom: .35rem; }
+
+.tbl-wrap { overflow-x: auto; margin: .6rem 0 1rem; }
+.dist { border-collapse: collapse; font-size: .88rem; min-width: 560px; }
+.dist th, .dist td { padding: .45rem .6rem; border-bottom: 1px solid var(--line); text-align: right; font-variant-numeric: tabular-nums; }
+.dist th:first-child, .dist td:first-child { text-align: left; }
+.dist thead th { font: 700 .66rem/1.25 var(--pixel); letter-spacing: .04em; text-transform: uppercase; color: var(--dim); vertical-align: bottom; }
+.dist tbody tr:last-child td { border-top: 2px solid var(--cyan); }
+
+/* families table */
+.tbl-note { color: var(--dim); font-size: .92rem; }
+.filters { display: grid; grid-template-columns: 2fr 2fr 1fr 1.4fr; gap: .6rem; margin: .8rem 0 .6rem; }
+.filters label span { display: block; font: 700 .62rem/1 var(--pixel); letter-spacing: .06em; text-transform: uppercase; color: var(--dim); margin-bottom: .3rem; }
+.filters input, .filters select {
+  width: 100%; font: inherit; font-size: .9rem; color: var(--text); background: var(--panel); border: 1px solid var(--line); padding: .5rem .55rem; border-radius: 0;
+}
+.filters input:focus-visible, .filters select:focus-visible { outline: 2px solid var(--cyan); outline-offset: 1px; }
+.count { margin: .2rem 0 .5rem; font: .82rem/1.3 var(--mono); color: var(--dim); }
+.fam { width: 100%; border-collapse: collapse; font-size: .88rem; line-height: 1.45; }
+.fam thead th { position: sticky; top: 2.9rem; background: #0b0b13; z-index: 2; text-align: left; border-bottom: 2px solid var(--cyan); padding: 0; }
+.fam thead th:last-child { padding: .5rem .55rem; font: 700 .64rem/1 var(--pixel); letter-spacing: .05em; text-transform: uppercase; color: var(--dim); }
+.fam th button {
+  width: 100%; text-align: left; font: 700 .64rem/1 var(--pixel); letter-spacing: .05em; text-transform: uppercase; color: var(--dim);
+  background: none; border: 0; padding: .5rem .55rem; cursor: pointer;
+}
+.fam th button[aria-sort] { color: var(--yellow); }
+.fam th button[aria-sort=ascending]::after { content: " \25B2"; }
+.fam th button[aria-sort=descending]::after { content: " \25BC"; }
+.fam td { padding: .55rem .55rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+.fam td.fid { font: .8rem/1.4 var(--mono); color: var(--dim); white-space: nowrap; }
+.fam td.ftitle { font-weight: 600; color: #fff; min-width: 12rem; }
+.fam td.fdisc { color: var(--dim); font-size: .82rem; min-width: 8rem; }
+.imp { display: inline-grid; place-items: center; min-width: 2rem; height: 1.7rem; font: 700 .85rem/1 var(--pixel); color: #000; background: var(--dim); }
+.imp.i10, .imp.i9 { background: var(--yellow); }
+.imp.i8 { background: #f2b88a; }
+.imp.i7 { background: #c7b9ff; }
+.vb { display: inline-block; font: 700 .58rem/1.2 var(--pixel); letter-spacing: .04em; text-transform: uppercase; padding: .22rem .3rem .18rem; color: #000; }
+.vb.Lean-headline { background: var(--grass); }
+.vb.Lean-core-claim { background: #b6e3a0; }
+.vb.Lean-partial { background: #ffb547; }
+.vb.Unformalized { background: var(--pink); }
+.vfull { display: block; margin-top: .3rem; font-size: .76rem; color: var(--dim); }
+.fam td.fclaim { min-width: 18rem; }
+.fam td.fclaim .why { display: block; margin-top: .3rem; color: var(--dim); font-size: .82rem; }
+.fam tr:hover td { background: rgba(127, 178, 255, .04); }
+
+@media (max-width: 720px) {
+  .om-hero { min-height: 0; }
+  .filters { grid-template-columns: 1fr 1fr; }
+  .filters label:first-child { grid-column: 1 / -1; }
+  .fam thead { position: static; display: block; }
+  .fam thead tr { display: flex; flex-wrap: wrap; gap: .3rem; border-bottom: 2px solid var(--cyan); padding: 0 0 .4rem; }
+  .fam thead th { position: static; border: 0; background: none; }
+  .fam thead th:last-child { display: none; }
+  .fam th button { border: 1px solid var(--line); padding: .45rem .5rem; width: auto; }
+  .fam, .fam tbody, .fam tr, .fam td { display: block; }
+  .fam tr { position: relative; padding: .7rem .2rem .8rem 3.1rem; border-bottom: 1px solid var(--line); }
+  .fam td { border: 0; padding: 0; min-width: 0 !important; }
+  .fam td.imp-cell { position: absolute; left: .1rem; top: .75rem; }
+  .fam td.fid { display: inline; margin-right: .4rem; }
+  .fam td.ftitle { display: inline; }
+  .fam td.fdisc { margin: .2rem 0 .35rem; }
+  .fam td.fver { margin-bottom: .4rem; }
+}
+.doc code { white-space: normal; overflow-wrap: anywhere; }
