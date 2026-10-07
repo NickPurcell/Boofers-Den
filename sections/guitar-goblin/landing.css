@@ -372,3 +372,24 @@ body {
 .ic-art .ic-hop { animation: ic-hop 1.6s steps(4) infinite; }
 @keyframes ic-hop { 50% { translate: 0 -8px; } }
 @media (prefers-reduced-motion: reduce) { .ic-art .ic-hop { animation: none; } }
+
+/* openai/math rated: a few famous symbols over the rating histogram (2, 36, 118, 100, 74, 35, 7 families from 10 down to 4). */
+.door.openaimath:hover { border-color: rgba(127,178,255,.6); box-shadow: 0 28px 70px -30px rgba(127,178,255,.4); }
+.door.openaimath .door-art { background: radial-gradient(120% 90% at 50% 110%, #16213a, #0b0f1a 60%, #07080d); }
+.door.openaimath .door-title { color: #ffd36e; }
+.door.openaimath .door-go { color: #7fb2ff; }
+.om-glyphs { position: absolute; inset: 0; font: 700 1.6rem/1 Georgia, "Times New Roman", serif; color: rgba(127,178,255,.55); }
+.om-glyphs i { position: absolute; font-style: normal; }
+.om-glyphs i:nth-child(1) { left: 10%; top: 16%; font-size: 2.6rem; color: rgba(255,211,110,.7); }
+.om-glyphs i:nth-child(2) { right: 9%; top: 14%; font-size: 1.2rem; }
+.om-glyphs i:nth-child(3) { left: 42%; top: 10%; font-size: 1.4rem; color: rgba(255,122,144,.6); }
+.om-glyphs i:nth-child(4) { right: 30%; top: 40%; font-size: 1.1rem; }
+.om-bars { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: flex-end; gap: 6px; height: 90px; }
+.om-bars i { display: block; width: 16px; background: rgba(127,178,255,.55); border-top: 2px solid #7fb2ff; }
+.om-bars i:nth-child(1) { height: 2%; background: #ffd36e; border-color: #ffd36e; }
+.om-bars i:nth-child(2) { height: 30%; background: rgba(255,211,110,.7); border-color: #ffd36e; }
+.om-bars i:nth-child(3) { height: 100%; }
+.om-bars i:nth-child(4) { height: 85%; }
+.om-bars i:nth-child(5) { height: 63%; }
+.om-bars i:nth-child(6) { height: 30%; }
+.om-bars i:nth-child(7) { height: 6%; }
