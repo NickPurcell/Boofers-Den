@@ -17,7 +17,7 @@
 .snap-tag { display: inline-block; margin: 0 0 .5rem !important; font: 700 .72rem/1 var(--pixel); letter-spacing: .06em; color: #000 !important; background: var(--yellow); padding: .32rem .45rem .26rem; }
 
 .coord .coord-tag { font: 700 .72rem/1 var(--pixel); letter-spacing: .08em; text-transform: uppercase; color: var(--yellow); margin: 0 0 .5rem; }
-.coord p:last-child { font-size: 1.05rem; }
+.coord .coord-tag + p { font-size: 1.05rem; }
 .coord .stamp { background: var(--yellow); box-shadow: 4px 4px 0 #7a5d14; }
 
 p.lead { margin-bottom: .3rem; }
@@ -89,3 +89,4 @@ p.rank > strong:first-child { color: var(--yellow); }
   .fam td.fver { margin-bottom: .4rem; }
 }
 .doc code { white-space: normal; overflow-wrap: anywhere; }
+.coord .second-pass { margin-top: .8rem; padding-top: .7rem; border-top: 1px dashed rgba(255, 211, 110, .4); font-size: .95rem !important; color: var(--dim); }
