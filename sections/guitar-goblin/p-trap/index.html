@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#11151b" />
+  <title>How to take off your P-trap · 3D</title>
+  <meta name="description" content="An interactive 3D walk-through of removing the P-trap under Nick's kitchen sink: which two nuts, which way, and putting it back." />
+  <link rel="stylesheet" href="ptrap.css" />
+  <script type="importmap">
+    { "imports": { "three": "../vendor/three/three.module.min.js", "three/addons/": "../vendor/three/jsm/" } }
+  </script>
+</head>
+<body>
+  <canvas id="scene" aria-label="3D view of the pipes under the sink. Drag to turn, pinch to zoom."></canvas>
+
+  <header class="top">
+    <a class="back" href="../">&larr;</a>
+    <div>
+      <h1>Take off the P-trap</h1>
+      <p class="hint">Drag to turn &middot; pinch to zoom &middot; tap a part for its name</p>
+    </div>
+    <button type="button" id="names" class="chip" aria-pressed="false">Names</button>
+  </header>
+
+  <div id="labels" aria-hidden="true"></div>
+
+  <section class="panel" aria-live="polite">
+    <div class="legend"><span class="sw n1"></span>Nut 1 <span class="sw n2"></span>Nut 2 <span class="legend-note">these two hold the J-bend</span></div>
+    <p class="stepno" id="stepno">Overview</p>
+    <p class="cap" id="cap"></p>
+    <p class="tip" id="tip" hidden></p>
+    <div class="dots" id="dots"></div>
+    <div class="btns">
+      <button type="button" id="back" class="btn">Back</button>
+      <button type="button" id="replay" class="btn ghost" aria-label="Replay this step">&#x21bb;</button>
+      <button type="button" id="next" class="btn primary">Start</button>
+    </div>
+  </section>
+
+  <p class="nogl" id="nogl" hidden>This needs WebGL, which this browser has turned off.</p>
+  <script type="module" src="ptrap.js"></script>
+</body>
+</html>
