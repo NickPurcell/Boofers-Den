@@ -400,3 +400,12 @@ body {
 .door.ptrap .door-title { color: #ff8a1f; }
 .door.ptrap .door-go { color: #29b6ff; }
 .pt-art { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* R for Pythonistas door */
+.door.rprimer:hover { border-color: rgba(79,163,255,.6); box-shadow: 0 28px 70px -30px rgba(79,163,255,.4); }
+.door.rprimer .door-art { background: radial-gradient(120% 90% at 50% 110%, #16233a, #0d1422 60%, #080b12); display: flex; align-items: center; justify-content: center; }
+.door.rprimer .rp-art { font: 600 15px/1.7 ui-monospace, "SF Mono", Menlo, Consolas, monospace; color: #c9d6ea; text-align: center; padding: 0 12px; }
+.door.rprimer .rp-art b { color: #7ee0b5; }
+.door.rprimer .rp-art i { font-style: normal; color: #4fa3ff; }
+.door.rprimer .door-title { color: #4fa3ff; }
+.door.rprimer .door-go { color: #7ee0b5; }

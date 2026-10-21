@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="theme-color" content="#0f1420" />
+  <title>R for Pythonistas: a pre-read for a tidyverse lab</title>
+  <meta name="description" content="Python to R in one sitting: the pipe, dplyr verbs next to their pandas twins, NA, grouping, Quarto, and a walk through a week-4 R-DAVIS lab." />
+  <link rel="stylesheet" href="pyg.css" />
+  <link rel="stylesheet" href="r.css" />
+</head>
+<body>
+  <a class="back" href="../">&larr; Guitar Goblin</a>
+
+  <header class="hero">
+    <p class="kicker">PRE-READ &middot; R-DAVIS lab, week 4</p>
+    <h1>R for <span>Pythonistas</span></h1>
+    <p class="sub">You already know pandas. This is the 20-minute bridge to helping with a tidyverse lab: what's different, the dplyr verbs next to their pandas twins, the NA traps, and the lab question by question, with the student's file at the bottom.</p>
+    <p class="verified">Every snippet below was run on R 4.4.3 with dplyr 1.1.4 on 21 Oct 2026, and the output shown is the real output. The examples use dplyr's built-in <code>starwars</code> data so they show the moves without doing the homework.</p>
+  </header>
+
+  <nav class="toc" aria-label="Sections">
+    <a href="#traps">5 traps</a><a href="#crib">Crib</a><a href="#quarto">Quarto</a><a href="#pipe">Pipe</a><a href="#verbs">Verbs</a><a href="#na">NA</a><a href="#groups">Grouping</a><a href="#lab">The lab</a><a href="#file">The file</a><a href="#more">More</a>
+  </nav>
+
+  <main>
+    <section id="traps">
+      <h2><span class="n">01</span>The five things that will trip a Python person</h2>
+      <ol class="traps">
+        <li><b><code>&lt;-</code> is assignment.</b> <code>x &lt;- 5</code> means <code>x = 5</code>. (<code>=</code> also works at the top level, but the tidyverse world uses <code>&lt;-</code>, and inside a function call <code>=</code> names an argument.)</li>
+        <li><b>Nothing changes in place.</b> <code>df %&gt;% filter(...)</code> returns a new table and prints it. If you don't assign it with <code>&lt;-</code>, it's gone. This is the single most common lab bug, and it's in this lab (Q2).</li>
+        <li><b>Everything is a vector, and it's 1-indexed.</b> There are no scalars: <code>5</code> is a vector of length 1. <code>x[1]</code> is the first element. Comparisons work element-wise, like numpy.</li>
+        <li><b><code>NA</code> is contagious.</b> Any calculation touching an <code>NA</code> returns <code>NA</code>: <code>max()</code>, <code>mean()</code>, <code>sum()</code>. You opt out with <code>na.rm = TRUE</code> or by filtering first (Q3).</li>
+        <li><b>Bare column names.</b> Inside dplyr verbs you write <code>filter(year_signed &gt; 1972)</code>, not <code>df["year_signed"]</code>. dplyr looks the names up in the table for you ("data masking").</li>
+      </ol>
+    </section>
+
+    <section id="crib">
+      <h2><span class="n">02</span>Syntax crib</h2>
+      <div class="tbl"><table>
+        <thead><tr><th>Python</th><th>R</th></tr></thead>
+        <tbody>
+          <tr><td><code>x = 5</code></td><td><code>x &lt;- 5</code></td></tr>
+          <tr><td><code>[3, 1, 7]</code></td><td><code>c(3, 1, 7)</code></td></tr>
+          <tr><td><code>xs[0]</code></td><td><code>x[1]</code></td></tr>
+          <tr><td><code>None</code> / <code>np.nan</code></td><td><code>NA</code></td></tr>
+          <tr><td><code>True</code>, <code>False</code></td><td><code>TRUE</code>, <code>FALSE</code></td></tr>
+          <tr><td><code>a and b</code> on a Series: <code>&amp;</code></td><td><code>&amp;</code> (vector), <code>&amp;&amp;</code> (single value)</td></tr>
+          <tr><td><code>|</code>, <code>~</code></td><td><code>|</code>, <code>!</code></td></tr>
+          <tr><td><code>s.isin([...])</code></td><td><code>x %in% c(...)</code></td></tr>
+          <tr><td><code>import pandas as pd</code></td><td><code>library(tidyverse)</code></td></tr>
+          <tr><td><code>help(f)</code></td><td><code>?f</code></td></tr>
+          <tr><td><code>len(x)</code></td><td><code>length(x)</code>, <code>nrow(df)</code></td></tr>
+          <tr><td><code>f(x, skipna=True)</code></td><td><code>f(x, na.rm = TRUE)</code></td></tr>
+          <tr><td><code>pd.read_csv(url)</code></td><td><code>read_csv(url)</code> (readr)</td></tr>
+          <tr><td><code>df.head()</code> (5 rows)</td><td><code>head(df)</code> (6 rows)</td></tr>
+          <tr><td><code># comment</code></td><td><code># comment</code> (same, and the only kind)</td></tr>
+        </tbody>
+      </table></div>
+      <figure class="snip"><pre class="code"><code><span class="n">x</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="nf">c</span><span class="p">(</span><span class="m">3</span><span class="p">,</span><span class="w"> </span><span class="m">1</span><span class="p">,</span><span class="w"> </span><span class="kc">NA</span><span class="p">,</span><span class="w"> </span><span class="m">7</span><span class="p">)</span><span class="w">    </span><span class="c1"># c() combines values into a vector</span>
+<span class="n">x</span><span class="p">[</span><span class="m">1</span><span class="p">]</span><span class="w">                   </span><span class="c1"># 1-indexed: this is the FIRST element</span>
+<span class="n">x</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="m">2</span><span class="w">                  </span><span class="c1"># vectorised: one TRUE/FALSE per element</span>
+<span class="nf">mean</span><span class="p">(</span><span class="n">x</span><span class="p">)</span><span class="w">                </span><span class="c1"># NA is contagious...</span>
+<span class="nf">mean</span><span class="p">(</span><span class="n">x</span><span class="p">,</span><span class="w"> </span><span class="n">na.rm</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">TRUE</span><span class="p">)</span><span class="w">  </span><span class="c1"># ...unless you say to drop it</span>
+<span class="nf">is.na</span><span class="p">(</span><span class="n">x</span><span class="p">)</span></code></pre><pre class="out" aria-label="output"><code>[1] 3
+[1]  TRUE FALSE    NA  TRUE
+[1] NA
+[1] 3.666667
+[1] FALSE FALSE  TRUE FALSE</code></pre></figure>
+    </section>
+
+    <section id="quarto">
+      <h2><span class="n">03</span>Quarto: the <code>.qmd</code> file</h2>
+      <p>A <code>.qmd</code> file is a Jupyter notebook written as plain text. Prose is Markdown, and code lives in chunks that open with <code>```{r}</code> and close with <code>```</code>. <b>Render</b> runs every chunk top to bottom in a fresh R session and produces the HTML file the student uploads.</p>
+      <ul>
+        <li><b>Only what's inside a chunk runs.</b> Code outside a chunk is just text in the HTML. (Q4 has a pipeline sitting outside its chunk.)</li>
+        <li><b>Fresh session, in order.</b> If a chunk uses a name defined in a later chunk, or a name that was only ever typed in the console, Render fails even though it "worked" interactively. When Render breaks, restart R and run all chunks in order to reproduce it.</li>
+        <li><b>The last value of a chunk prints.</b> Like a notebook cell, the last expression's value prints. So does any un-assigned expression in the middle of a chunk.</li>
+      </ul>
+    </section>
+
+    <section id="pipe">
+      <h2><span class="n">04</span>Tibbles and the pipe</h2>
+      <p>A <b>tibble</b> is the tidyverse's DataFrame. Printing one shows its size and each column's type under its name: <code>&lt;chr&gt;</code> string, <code>&lt;dbl&gt;</code> float, <code>&lt;int&gt;</code> integer, <code>&lt;lgl&gt;</code> boolean. It shows only the first rows, and only as many columns as fit, then says how many it skipped.</p>
+      <figure class="snip"><pre class="code"><code><span class="nf">library</span><span class="p">(</span><span class="n">tidyverse</span><span class="p">)</span>
+<span class="n">sw</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="n">starwars</span><span class="w"> </span><span class="o">%&gt;%</span><span class="w"> </span><span class="nf">select</span><span class="p">(</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">species</span><span class="p">,</span><span class="w"> </span><span class="n">height</span><span class="p">,</span><span class="w"> </span><span class="n">mass</span><span class="p">)</span>
+<span class="n">sw</span></code></pre><pre class="out" aria-label="output"><code># A tibble: 87 × 4
+  name           species height  mass
+  &lt;chr&gt;          &lt;chr&gt;    &lt;int&gt; &lt;dbl&gt;
+1 Luke Skywalker Human      172    77
+2 C-3PO          Droid      167    75
+3 R2-D2          Droid       96    32
+4 Darth Vader    Human      202   136
+5 Leia Organa    Human      150    49
+6 Owen Lars      Human      178   120
+# ℹ 81 more rows</code></pre></figure>
+      <p>The <b>pipe</b> <code>%&gt;%</code> feeds the thing on its left in as the first argument of the function on its right. Read it as "and then". It's pandas method-chaining, with functions instead of methods. Newer R also has a built-in <code>|&gt;</code> that does the same job for this lab.</p>
+      <figure class="snip"><pre class="code"><code><span class="nf">head</span><span class="p">(</span><span class="n">sw</span><span class="p">,</span><span class="w"> </span><span class="m">3</span><span class="p">)</span>
+<span class="n">sw</span><span class="w"> </span><span class="o">%&gt;%</span><span class="w"> </span><span class="nf">head</span><span class="p">(</span><span class="m">3</span><span class="p">)</span><span class="w">   </span><span class="c1"># identical: the pipe feeds the left side in as the first argument</span></code></pre><pre class="out" aria-label="output"><code># A tibble: 3 × 4
+  name           species height  mass
+  &lt;chr&gt;          &lt;chr&gt;    &lt;int&gt; &lt;dbl&gt;
+1 Luke Skywalker Human      172    77
+2 C-3PO          Droid      167    75
+3 R2-D2          Droid       96    32
+# A tibble: 3 × 4
+  name           species height  mass
+  &lt;chr&gt;          &lt;chr&gt;    &lt;int&gt; &lt;dbl&gt;
+1 Luke Skywalker Human      172    77
+2 C-3PO          Droid      167    75
+3 R2-D2          Droid       96    32</code></pre></figure>
+      <p><b>Nothing is modified in place.</b> A pipeline returns a new tibble and prints it if you don't assign it. To keep it, assign it.</p>
+      <figure class="snip"><pre class="code"><code><span class="n">sw</span><span class="w"> </span><span class="o">%&gt;%</span><span class="w"> </span><span class="nf">filter</span><span class="p">(</span><span class="n">height</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="m">200</span><span class="p">)</span><span class="w">   </span><span class="c1"># prints a filtered copy...</span>
+<span class="nf">nrow</span><span class="p">(</span><span class="n">sw</span><span class="p">)</span><span class="w">                      </span><span class="c1"># ...but sw itself is untouched</span>
+<span class="n">tall</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="n">sw</span><span class="w"> </span><span class="o">%&gt;%</span><span class="w"> </span><span class="nf">filter</span><span class="p">(</span><span class="n">height</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="m">200</span><span class="p">)</span><span class="w">   </span><span class="c1"># keep the result by assigning it</span>
+<span class="nf">nrow</span><span class="p">(</span><span class="n">tall</span><span class="p">)</span></code></pre><pre class="out" aria-label="output"><code># A tibble: 10 × 4
+  name         species  height  mass
+  &lt;chr&gt;        &lt;chr&gt;     &lt;int&gt; &lt;dbl&gt;
+1 Darth Vader  Human       202   136
+2 Chewbacca    Wookiee     228   112
+3 Roos Tarpals Gungan      224    82
+4 Rugor Nass   Gungan      206    NA
+5 Yarael Poof  Quermian    264    NA
+6 Lama Su      Kaminoan    229    88
+# ℹ 4 more rows
+[1] 87
+[1] 10</code></pre></figure>
+    </section>
+
+    <section id="verbs">
+      <h2><span class="n">05</span>The dplyr verbs, next to pandas</h2>
+      <div class="tbl"><table>
+        <thead><tr><th>dplyr</th><th>pandas</th><th>Does</th></tr></thead>
+        <tbody>
+          <tr><td><code>filter(cond)</code></td><td><code>df[mask]</code>, <code>.query()</code></td><td>keep rows</td></tr>
+          <tr><td><code>select(a, b)</code></td><td><code>df[["a", "b"]]</code></td><td>keep columns</td></tr>
+          <tr><td><code>mutate(new = ...)</code></td><td><code>.assign(new=...)</code></td><td>add/replace a column</td></tr>
+          <tr><td><code>arrange(x)</code> / <code>arrange(desc(x))</code></td><td><code>.sort_values("x", ascending=...)</code></td><td>sort rows</td></tr>
+          <tr><td><code>group_by(g) %&gt;% summarise(...)</code></td><td><code>.groupby("g").agg(...)</code></td><td>one row per group</td></tr>
+          <tr><td><code>group_by(g) %&gt;% mutate(...)</code></td><td><code>.groupby("g")["x"].transform(...)</code></td><td>per-group value on every row</td></tr>
+          <tr><td><code>count(g, sort = TRUE)</code></td><td><code>.value_counts()</code></td><td>rows per group</td></tr>
+          <tr><td><code>n()</code></td><td><code>size</code></td><td>rows in this group</td></tr>
+          <tr><td><code>is.na(x)</code></td><td><code>.isna()</code></td><td>TRUE where missing</td></tr>
+          <tr><td><code>ungroup()</code></td><td><code>.reset_index()</code> (roughly)</td><td>drop grouping</td></tr>
+        </tbody>
+      </table></div>
+      <p><b>filter</b> keeps rows where the condition is <code>TRUE</code>. Combine conditions with <code>&amp;</code> and <code>|</code>, the same as pandas masks. Rows where the condition comes out <code>NA</code> are dropped silently.</p>
+      <figure class="snip"><pre class="code"><code><span class="n">sw</span><span class="w"> </span><span class="o">%&gt;%</span><span class="w"> </span><span class="nf">filter</span><span class="p">(</span><span class="n">height</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="m">150</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">height</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="m">170</span><span class="p">)</span></code></pre><pre class="out" aria-label="output"><code># A tibble: 16 × 4
+  name               species height  mass
+  &lt;chr&gt;              &lt;chr&gt;    &lt;int&gt; &lt;dbl&gt;
+1 C-3PO              Droid      167    75
+2 Leia Organa        Human      150    49
+3 Beru Whitesun Lars Human      165    75
+4 Wedge Antilles     Human      170    77
+5 Palpatine          Human      170    75
+6 Mon Mothma         Human      150    NA
+# ℹ 10 more rows</code></pre></figure>
+      <p><b>count</b> is <code>value_counts()</code>, and it counts <code>NA</code> as its own group:</p>
+      <figure class="snip"><pre class="code"><code><span class="n">sw</span><span class="w"> </span><span class="o">%&gt;%</span><span class="w"> </span><span class="nf">count</span><span class="p">(</span><span class="n">species</span><span class="p">,</span><span class="w"> </span><span class="n">sort</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">TRUE</span><span class="p">)</span></code></pre><pre class="out" aria-label="output"><code># A tibble: 38 × 2
+  species      n
+  &lt;chr&gt;    &lt;int&gt;
+1 Human       35
+2 Droid        6
+3 &lt;NA&gt;         4
+4 Gungan       3
+5 Kaminoan     2
+6 Mirialan     2
+# ℹ 32 more rows</code></pre></figure>
+      <p><b>arrange</b> sorts ascending. Wrap the column in <code>desc()</code> for descending. <code>NA</code>s always go last.</p>
+      <figure class="snip"><pre class="code"><code><span class="n">sw</span><span class="w"> </span><span class="o">%&gt;%</span><span class="w"> </span><span class="nf">arrange</span><span class="p">(</span><span class="nf">desc</span><span class="p">(</span><span class="n">height</span><span class="p">))</span></code></pre><pre class="out" aria-label="output"><code># A tibble: 87 × 4
+  name         species  height  mass
+  &lt;chr&gt;        &lt;chr&gt;     &lt;int&gt; &lt;dbl&gt;
+1 Yarael Poof  Quermian    264    NA
+2 Tarfful      Wookiee     234   136
+3 Lama Su      Kaminoan    229    88
+4 Chewbacca    Wookiee     228   112
+5 Roos Tarpals Gungan      224    82
+6 Grievous     Kaleesh     216   159
+# ℹ 81 more rows</code></pre></figure>
+    </section>
+
+    <section id="na">
+      <h2><span class="n">06</span>NA, the contagious value</h2>
+      <p>R's <code>NA</code> covers pandas' <code>NaN</code>, <code>None</code> and <code>pd.NA</code> all at once, and it spreads through calculations unless you say otherwise:</p>
+      <figure class="snip"><pre class="code"><code><span class="nf">max</span><span class="p">(</span><span class="nf">c</span><span class="p">(</span><span class="m">80</span><span class="p">,</span><span class="w"> </span><span class="kc">NA</span><span class="p">,</span><span class="w"> </span><span class="m">120</span><span class="p">))</span>
+<span class="nf">max</span><span class="p">(</span><span class="nf">c</span><span class="p">(</span><span class="m">80</span><span class="p">,</span><span class="w"> </span><span class="kc">NA</span><span class="p">,</span><span class="w"> </span><span class="m">120</span><span class="p">),</span><span class="w"> </span><span class="n">na.rm</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">TRUE</span><span class="p">)</span></code></pre><pre class="out" aria-label="output"><code>[1] NA
+[1] 120</code></pre></figure>
+      <p>Two idioms do most of the NA work in this lab. The first is <code>filter(!is.na(x))</code>, which drops the missing rows before calculating. The second relies on <code>TRUE</code> counting as 1, so <code>sum(is.na(x))</code> counts the missing values and <code>mean(is.na(x))</code> gives the share that's missing. Put them in a <code>summarise</code> and you get a per-group missingness report:</p>
+      <figure class="snip"><pre class="code"><code><span class="n">sw</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">group_by</span><span class="p">(</span><span class="n">species</span><span class="p">)</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">summarise</span><span class="p">(</span><span class="n">n</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">n</span><span class="p">(),</span>
+<span class="w">            </span><span class="n">n_missing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">sum</span><span class="p">(</span><span class="nf">is.na</span><span class="p">(</span><span class="n">mass</span><span class="p">)),</span>
+<span class="w">            </span><span class="n">prop_missing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">mean</span><span class="p">(</span><span class="nf">is.na</span><span class="p">(</span><span class="n">mass</span><span class="p">)))</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">arrange</span><span class="p">(</span><span class="nf">desc</span><span class="p">(</span><span class="n">n_missing</span><span class="p">))</span></code></pre><pre class="out" aria-label="output"><code># A tibble: 38 × 4
+  species      n n_missing prop_missing
+  &lt;chr&gt;    &lt;int&gt;     &lt;int&gt;        &lt;dbl&gt;
+1 Human       35        15        0.429
+2 Droid        6         2        0.333
+3 Chagrian     1         1        1    
+4 Gungan       3         1        0.333
+5 Iktotchi     1         1        1    
+6 Kaminoan     2         1        0.5  
+# ℹ 32 more rows</code></pre></figure>
+    </section>
+
+    <section id="groups">
+      <h2><span class="n">07</span>Grouping: summarise collapses, mutate keeps every row</h2>
+      <p>This is the idea the second half of the lab turns on. <code>group_by()</code> doesn't change anything you can see; it marks the table so the <i>next</i> verb works one group at a time. What happens next depends on the verb:</p>
+      <ul>
+        <li><b><code>summarise()</code> collapses</b> each group to one row, like pandas <code>.agg()</code>.</li>
+        <li><b><code>mutate()</code> keeps every row</b> and writes the group's value onto each one, like pandas <code>.transform()</code>.</li>
+      </ul>
+      <figure class="snip"><pre class="code"><code><span class="n">sw</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">filter</span><span class="p">(</span><span class="o">!</span><span class="nf">is.na</span><span class="p">(</span><span class="n">mass</span><span class="p">))</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">group_by</span><span class="p">(</span><span class="n">species</span><span class="p">)</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">summarise</span><span class="p">(</span><span class="n">heaviest</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">max</span><span class="p">(</span><span class="n">mass</span><span class="p">),</span><span class="w"> </span><span class="n">n</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">n</span><span class="p">())</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">arrange</span><span class="p">(</span><span class="nf">desc</span><span class="p">(</span><span class="n">heaviest</span><span class="p">))</span></code></pre><pre class="out" aria-label="output"><code># A tibble: 32 × 3
+  species    heaviest     n
+  &lt;chr&gt;         &lt;dbl&gt; &lt;int&gt;
+1 Hutt           1358     1
+2 Kaleesh         159     1
+3 Droid           140     4
+4 Human           136    20
+5 Wookiee         136     2
+6 Trandoshan      113     1
+# ℹ 26 more rows</code></pre></figure>
+      <p>Group by <b>two</b> columns and <code>summarise</code> peels off only the last one. The result is still grouped by the first, and dplyr prints a message to say so. It's a message, not an error. If the leftover grouping gets in the way later, add <code>%&gt;% ungroup()</code> or pass <code>.groups = "drop"</code>. Note the <code># Groups:</code> line in this output:</p>
+      <figure class="snip"><pre class="code"><code><span class="n">sw2</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="n">starwars</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">filter</span><span class="p">(</span><span class="o">!</span><span class="nf">is.na</span><span class="p">(</span><span class="n">mass</span><span class="p">))</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">group_by</span><span class="p">(</span><span class="n">species</span><span class="p">,</span><span class="w"> </span><span class="n">sex</span><span class="p">)</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">summarise</span><span class="p">(</span><span class="n">heaviest</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">max</span><span class="p">(</span><span class="n">mass</span><span class="p">))</span>
+<span class="n">sw2</span><span class="w"> </span><span class="o">%&gt;%</span><span class="w"> </span><span class="nf">arrange</span><span class="p">(</span><span class="n">heaviest</span><span class="p">)</span><span class="w">   </span><span class="c1"># smallest first; desc() for largest</span></code></pre><pre class="out" aria-label="output"><code>`summarise()` has grouped output by &#x27;species&#x27;. You can
+override using the `.groups` argument.&gt; sw2 %&gt;% arrange(heaviest)
+# A tibble: 33 × 3
+# Groups:   species [32]
+  species        sex   heaviest
+  &lt;chr&gt;          &lt;chr&gt;    &lt;dbl&gt;
+1 Aleena         male        15
+2 Yoda&#x27;s species male        17
+3 Ewok           male        20
+4 Dug            male        40
+5 Vulptereen     male        45
+6 Skakoan        male        48
+# ℹ 27 more rows</code></pre></figure>
+      <p>Now <code>mutate</code> after <code>group_by</code>. Every row stays, and each gets its own group's mean. Then <code>ungroup()</code>, and <code>select()</code> trims to the columns you want:</p>
+      <figure class="snip"><pre class="code"><code><span class="n">sw_avg</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="n">sw</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">filter</span><span class="p">(</span><span class="o">!</span><span class="nf">is.na</span><span class="p">(</span><span class="n">mass</span><span class="p">))</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">group_by</span><span class="p">(</span><span class="n">species</span><span class="p">)</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">mutate</span><span class="p">(</span><span class="n">species_avg</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">mean</span><span class="p">(</span><span class="n">mass</span><span class="p">))</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">ungroup</span><span class="p">()</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">select</span><span class="p">(</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">species</span><span class="p">,</span><span class="w"> </span><span class="n">mass</span><span class="p">,</span><span class="w"> </span><span class="n">species_avg</span><span class="p">)</span>
+<span class="n">sw_avg</span></code></pre><pre class="out" aria-label="output"><code># A tibble: 59 × 4
+  name           species  mass species_avg
+  &lt;chr&gt;          &lt;chr&gt;   &lt;dbl&gt;       &lt;dbl&gt;
+1 Luke Skywalker Human      77        81.3
+2 C-3PO          Droid      75        69.8
+3 R2-D2          Droid      32        69.8
+4 Darth Vader    Human     136        81.3
+5 Leia Organa    Human      49        81.3
+6 Owen Lars      Human     120        81.3
+# ℹ 53 more rows</code></pre></figure>
+      <p>A comparison inside <code>mutate</code> gives a logical (<code>&lt;lgl&gt;</code>) column, which is how to flag rows above their group's average:</p>
+      <figure class="snip"><pre class="code"><code><span class="n">sw_avg</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">mutate</span><span class="p">(</span><span class="n">heavier_than_avg</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">mass</span><span class="w"> </span><span class="o">&gt;</span><span class="w"> </span><span class="n">species_avg</span><span class="p">)</span></code></pre><pre class="out" aria-label="output"><code># A tibble: 59 × 5
+  name        species  mass species_avg heavier_than_avg
+  &lt;chr&gt;       &lt;chr&gt;   &lt;dbl&gt;       &lt;dbl&gt; &lt;lgl&gt;           
+1 Luke Skywa… Human      77        81.3 FALSE           
+2 C-3PO       Droid      75        69.8 TRUE            
+3 R2-D2       Droid      32        69.8 FALSE           
+4 Darth Vader Human     136        81.3 TRUE            
+5 Leia Organa Human      49        81.3 FALSE           
+6 Owen Lars   Human     120        81.3 TRUE            
+# ℹ 53 more rows</code></pre></figure>
+    </section>
+
+    <section id="lab">
+      <h2><span class="n">08</span>The lab, question by question</h2>
+      <p class="note-lead">The data: <code>iea_agreements.csv</code> has 5,016 international environmental agreements, one per row. The columns that matter are <code>year_signed</code>, <code>subject</code> (11 issue areas), <code>scope</code> (<code>Bilateral</code>, <code>Multilateral</code> or <code>Other</code>), <code>year_in_force</code> and <code>n_members</code>. <code>n_members</code> is <code>NA</code> for 1,556 agreements, those with no entry-into-force record, and <code>year_in_force</code> is <code>NA</code> for 1,495, mostly bilateral (<a href="https://ucd-rdavis.github.io/R-DAVIS/data/iea_codebook.md" rel="noopener">codebook</a>). Those two NA counts are nearly the same size, which is the clue for Q4.</p>
+
+      <div class="q"><h3>Q1 &middot; Read the CSV <span class="ok">done</span></h3>
+        <p><code>read_csv(url)</code> straight from the web works. It prints a column-spec message every time, which is harmless; <code>show_col_types = FALSE</code> silences it.</p></div>
+
+      <div class="q"><h3>Q2 &middot; Keep 1972&ndash;1992 and show 6 rows <span class="fix">one bug</span></h3>
+        <p>The filter is right, but its result is never kept, and <code>head(agreements)</code> then looks at the original data. Run as written, the pipeline prints 1,325 filtered rows, then <code>head()</code> shows agreements from 1858 and 1859:</p>
+        <figure class="snip"><pre class="code"><code><span class="n">agreements</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="nf">read_csv</span><span class="p">(</span><span class="s">&quot;https://ucd-rdavis.github.io/R-DAVIS/data/iea_agreements.csv&quot;</span><span class="p">,</span>
+<span class="w">                       </span><span class="n">show_col_types</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="kc">FALSE</span><span class="p">)</span>
+<span class="n">agreements</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">filter</span><span class="p">(</span><span class="n">year_signed</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="m">1972</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">year_signed</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="m">1992</span><span class="p">)</span>
+<span class="nf">head</span><span class="p">(</span><span class="n">agreements</span><span class="p">)</span></code></pre><pre class="out" aria-label="output"><code># A tibble: 1,325 × 10
+  iea_id agreement_name scope instrument subject lineage
+   &lt;dbl&gt; &lt;chr&gt;          &lt;chr&gt; &lt;chr&gt;      &lt;chr&gt;   &lt;chr&gt;  
+1    360 Agreement Bet… Bila… Agreement  Energy  Not Ye…
+2    361 Convention Be… Bila… Agreement  Conser… Japan-…
+3    362 Agreement Sup… Bila… Agreement  Conser… Mexico…
+4    363 Exchange Of N… Bila… Agreement  Fish a… USA-US…
+5    364 Agreement Bet… Bila… Agreement  Fish a… Not Ye…
+6    365 Exchange Of N… Bila… Agreement  Fish a… Not Ye…
+# ℹ 1,319 more rows
+# ℹ 4 more variables: year_signed &lt;dbl&gt;,
+#   year_in_force &lt;dbl&gt;, terminated &lt;lgl&gt;,
+#   n_members &lt;dbl&gt;
+# A tibble: 6 × 10
+  iea_id agreement_name scope instrument subject lineage
+   &lt;dbl&gt; &lt;chr&gt;          &lt;chr&gt; &lt;chr&gt;      &lt;chr&gt;   &lt;chr&gt;  
+1      1 Agreement Bet… Bila… Agreement  Freshw… Danube 
+2      2 Fishing Regul… Bila… Agreement  Fish a… Bidass…
+3      3 Treaty To Reg… Bila… Agreement  Freshw… Meuse  
+4      4 Convention Be… Bila… Agreement  Fish a… Not Ye…
+5      5 Convention Be… Bila… Agreement  Fish a… Rhine-…
+6      6 Convention Am… Bila… Agreement  Freshw… Meuse  
+# ℹ 4 more variables: year_signed &lt;dbl&gt;,
+#   year_in_force &lt;dbl&gt;, terminated &lt;lgl&gt;,
+#   n_members &lt;dbl&gt;</code></pre></figure>
+        <p><b>Nudge:</b> make <code>head()</code> part of the same pipe (<code>... %&gt;% head()</code>), or assign the filtered result first. Either fixes it. <code>between(year_signed, 1972, 1992)</code> is a tidier way to write the condition.</p></div>
+
+      <div class="q"><h3>Q3 &middot; Biggest agreement per subject + scope <span class="fix">a name typo</span></h3>
+        <p>This is the <code>filter(!is.na()) %&gt;% group_by() %&gt;% summarise(max()) %&gt;% arrange(desc())</code> pattern from &sect;07, and the logic is right. Two small things. The task asks for <code>biggest_agreements</code> with an <b>s</b>, and the draft names it <code>biggest_agreement</code>. And the task says to look at the largest <i>and</i> smallest, so also view it with <code>arrange(max_members)</code>, or <code>tail()</code>. The "grouped output" message is expected.</p>
+        <figure class="snip"><pre class="code"><code><span class="n">biggest_agreement</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="n">agreements</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">filter</span><span class="p">(</span><span class="o">!</span><span class="nf">is.na</span><span class="p">(</span><span class="n">n_members</span><span class="p">))</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">group_by</span><span class="p">(</span><span class="n">subject</span><span class="p">,</span><span class="w"> </span><span class="n">scope</span><span class="p">)</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">summarise</span><span class="p">(</span><span class="n">max_members</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">max</span><span class="p">((</span><span class="n">n_members</span><span class="p">)))</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">arrange</span><span class="p">(</span><span class="nf">desc</span><span class="p">(</span><span class="n">max_members</span><span class="p">))</span>
+<span class="nf">exists</span><span class="p">(</span><span class="s">&quot;biggest_agreements&quot;</span><span class="p">)</span></code></pre><pre class="out" aria-label="output"><code>`summarise()` has grouped output by &#x27;subject&#x27;. You can
+override using the `.groups` argument.&gt; exists(&quot;biggest_agreements&quot;)
+[1] FALSE</code></pre></figure></div>
+
+      <div class="q"><h3>Q4 &middot; Where are the NAs? <span class="fix">open-ended</span></h3>
+        <p>The chunk's <code>group_by(scope) %&gt;% summarise(n(), sum(is.na()), mean(is.na()))</code> is exactly the &sect;06 idiom. The second attempt, <code>filter(is.na(n_members)) %&gt;% count(scope, sort = TRUE)</code>, is also a good move, but it sits <b>outside</b> the chunk, with its notes written as <code>-keeps rows…</code>. R comments start with <code>#</code>. Pasted into a chunk as-is, it fails before running:</p>
+        <figure class="snip"><pre class="code"><code><span class="n">agreements</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="nf">filter</span><span class="p">(</span><span class="nf">is.na</span><span class="p">(</span><span class="n">n_members</span><span class="p">))</span><span class="w"> </span><span class="o">%&gt;%</span>
+<span class="w">  </span><span class="o">-</span><span class="n">keeps</span><span class="w"> </span><span class="n">rows</span><span class="w"> </span><span class="n">where</span><span class="w"> </span><span class="n">n_members</span><span class="w"> </span><span class="n">is</span><span class="w"> </span><span class="n">missing</span></code></pre><pre class="out" aria-label="output"><code>PARSE ERROR: &lt;text&gt;:3:10: unexpected symbol
+2:   filter(is.na(n_members)) %&gt;%
+3:   -keeps rows
+            ^</code></pre></figure>
+        <p><b>Ideas to explore:</b> repeat the summary by <code>subject</code>, <code>instrument</code> and decade (<code>mutate(decade = year_signed %/% 10 * 10)</code>). Then run the same breakdown on <code>year_in_force</code> and compare. Why might they match? In the codebook, <code>n_members</code> counts countries for which the agreement entered into force, so an agreement with no entry-into-force record has neither.</p></div>
+
+      <div class="q"><h3>Q5 &middot; Average members per subject + scope, on every row <span class="todo">to do</span></h3>
+        <p>This is the <b>mutate-after-group_by</b> pattern from &sect;07, not <code>summarise</code>. The task wants the average written onto every row, so the table keeps its rows. In pandas terms it's <code>transform</code>, not <code>agg</code>. The shape is: drop the NA rows, group by both columns, <code>mutate</code> a mean column, <code>ungroup()</code>, then <code>select()</code> the five columns, and assign it to <code>agreements_avg_members</code>. The <code>starwars</code> example in &sect;07 is the same shape with one grouping column instead of two.</p></div>
+
+      <div class="q"><h3>Q6 &middot; Flag above-average rows <span class="todo">to do</span></h3>
+        <p>One more <code>mutate</code>: compare the row's <code>n_members</code> with the average column from Q5. The comparison itself is the <code>TRUE</code>/<code>FALSE</code> column, so no <code>if</code> or <code>ifelse</code> is needed. See the last example in &sect;07.</p></div>
+    </section>
+
+    <section id="file">
+      <h2><span class="n">09</span>The student's file</h2>
+      <p>The lab as it stands, highlighted for a phone, with the issues from &sect;08 marked. Scroll sideways inside the box, or tap <b>Wrap lines</b>.</p>
+      <div class="filebar"><span>lab_week_04.qmd</span><button id="wrap" type="button" aria-pressed="false">Wrap lines</button></div>
+      <pre class="qmd" id="qmd"><code><span class="ln"><span class="no">1</span><span class="src"><span class="prose">This is the Lab Week 4 document for R-DAVIS. Complete the tasks below in this file, then click **Render** and upload the resulting HTML file to Canvas.</span></span></span><span class="ln"><span class="no">2</span><span class="src"><span class="prose"></span></span></span><span class="ln"><span class="no">3</span><span class="src"><span class="prose"></span></span></span><span class="ln"><span class="no">4</span><span class="src"><span class="prose">This week the lab will review data manipulation in the tidyverse, using the international environmental agreements data from lecture. The codebook at https://ucd-rdavis.github.io/R-DAVIS/data/iea_codebook.md describes every column. The data are a simplified subset of the International Environmental Agreements Database Project (https://www.iea.ulaval.ca; Mitchell et al. 2020, *Global Environmental Politics* 20(1): 103–121), prepared for this course.</span></span></span><span class="ln"><span class="no">5</span><span class="src"><span class="prose"></span></span></span><span class="ln"><span class="no">6</span><span class="src"><span class="prose">1. Create a tibble named `agreements` from the iea_agreements.csv file, found at https://ucd-rdavis.github.io/R-DAVIS/data/iea_agreements.csv.</span></span></span><span class="ln"><span class="no">7</span><span class="src"><span class="fence">```{r}</span></span></span><span class="ln"><span class="no">8</span><span class="src"><span class="nf">library</span><span class="p">(</span><span class="s">&#39;tidyverse&#39;</span><span class="p">)</span></span></span><span class="ln"><span class="no">9</span><span class="src"><span class="n">agreements</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="nf">read_csv</span><span class="p">(</span><span class="s">&quot;https://ucd-rdavis.github.io/R-DAVIS/data/iea_agreements.csv&quot;</span><span class="p">)</span></span></span><span class="ln"><span class="no">10</span><span class="src"><span class="n">agreements</span></span></span><span class="ln"><span class="no">11</span><span class="src">&#8203;</span></span><span class="ln"><span class="no">12</span><span class="src"><span class="fence">```</span></span></span><span class="ln"><span class="no">13</span><span class="src"><span class="prose"></span></span></span><span class="ln"><span class="no">14</span><span class="src"><span class="prose">2. Subset `agreements` using Tidyverse methods to keep agreements signed between 1972 and 1992 (the years of the Stockholm and Rio environmental summits), and print out the first 6 rows.</span></span></span><span class="ln"><span class="no">15</span><span class="src"><span class="fence">```{r}</span></span></span><span class="ln q2"><span class="no">16</span><span class="src"><span class="n">agreements</span><span class="w"> </span><span class="o">%&gt;%</span></span><span class="note">Q2: this pipeline prints a filtered copy, but nothing keeps it.</span></span><span class="ln q2"><span class="no">17</span><span class="src"><span class="w">  </span><span class="nf">filter</span><span class="p">(</span><span class="n">year_signed</span><span class="w"> </span><span class="o">&gt;=</span><span class="w"> </span><span class="m">1972</span><span class="w"> </span><span class="o">&amp;</span><span class="w"> </span><span class="n">year_signed</span><span class="w"> </span><span class="o">&lt;=</span><span class="w"> </span><span class="m">1992</span><span class="p">)</span><span class="w"> </span></span></span><span class="ln q2"><span class="no">18</span><span class="src"><span class="nf">head</span><span class="p">(</span><span class="n">agreements</span><span class="p">)</span></span><span class="note">Q2: so head() shows the first 6 rows of the UNfiltered data (1858, 1859, …).</span></span><span class="ln"><span class="no">19</span><span class="src"><span class="fence">```</span></span></span><span class="ln"><span class="no">20</span><span class="src"><span class="prose"></span></span></span><span class="ln"><span class="no">21</span><span class="src"><span class="prose"></span></span></span><span class="ln"><span class="no">22</span><span class="src"><span class="prose">3. Create a new tibble showing the largest number of members (`n_members`) for each subject + scope combination and name it `biggest_agreements`. Sort the tibble to take a look at the largest and smallest subject + scope combinations. HINT: it&#x27;s easier to calculate max if there are no NAs in the dataframe...</span></span></span><span class="ln"><span class="no">23</span><span class="src"><span class="fence">```{r}</span></span></span><span class="ln q3"><span class="no">24</span><span class="src"><span class="n">biggest_agreement</span><span class="w"> </span><span class="o">&lt;-</span><span class="w"> </span><span class="n">agreements</span><span class="w"> </span><span class="o">%&gt;%</span></span><span class="note">Q3: the task names it biggest_agreements (with an s).</span></span><span class="ln"><span class="no">25</span><span class="src"><span class="w">  </span><span class="nf">filter</span><span class="p">(</span><span class="o">!</span><span class="nf">is.na</span><span class="p">(</span><span class="n">n_members</span><span class="p">))</span><span class="w"> </span><span class="o">%&gt;%</span></span></span><span class="ln"><span class="no">26</span><span class="src"><span class="w">  </span><span class="nf">group_by</span><span class="p">(</span><span class="n">subject</span><span class="p">,</span><span class="w"> </span><span class="n">scope</span><span class="p">)</span><span class="w"> </span><span class="o">%&gt;%</span></span></span><span class="ln"><span class="no">27</span><span class="src"><span class="w">  </span><span class="nf">summarise</span><span class="p">(</span><span class="n">max_members</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">max</span><span class="p">((</span><span class="n">n_members</span><span class="p">)))</span><span class="w"> </span><span class="o">%&gt;%</span></span></span><span class="ln"><span class="no">28</span><span class="src"><span class="w">  </span><span class="nf">arrange</span><span class="p">(</span><span class="nf">desc</span><span class="p">(</span><span class="n">max_members</span><span class="p">))</span></span></span><span class="ln"><span class="no">29</span><span class="src"><span class="fence">```</span></span></span><span class="ln"><span class="no">30</span><span class="src"><span class="prose"></span></span></span><span class="ln"><span class="no">31</span><span class="src"><span class="prose">4. Try to figure out where the NA values of `n_members` are concentrated in the data- is there a particular scope, subject, instrument, time period, or whatever, where there are lots of NA values? There isn&#x27;t necessarily a right or wrong answer here, but manipulate `agreements` a few different ways to explore this. Maybe use `count` and `arrange` here. Does `year_in_force` have its NAs in the same places? Why might that be?</span></span></span><span class="ln"><span class="no">32</span><span class="src"><span class="prose"></span></span></span><span class="ln"><span class="no">33</span><span class="src"><span class="fence">```{r}</span></span></span><span class="ln"><span class="no">34</span><span class="src"><span class="n">agreements</span><span class="w"> </span><span class="o">%&gt;%</span></span></span><span class="ln"><span class="no">35</span><span class="src"><span class="w"> </span><span class="nf">group_by</span><span class="p">(</span><span class="n">scope</span><span class="p">)</span><span class="w"> </span><span class="o">%&gt;%</span></span></span><span class="ln"><span class="no">36</span><span class="src"><span class="w">  </span><span class="nf">summarise</span><span class="p">(</span><span class="n">total</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">n</span><span class="p">(),</span><span class="w"> </span><span class="n">n_missing</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">sum</span><span class="p">(</span><span class="nf">is.na</span><span class="p">(</span><span class="n">n_members</span><span class="p">)),</span><span class="w"> </span><span class="n">prop_miss</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="nf">mean</span><span class="p">(</span><span class="nf">is.na</span><span class="p">(</span><span class="n">n_members</span><span class="p">)))</span><span class="w"> </span><span class="o">%&gt;%</span></span></span><span class="ln"><span class="no">37</span><span class="src"><span class="w">  </span><span class="nf">arrange</span><span class="p">(</span><span class="nf">desc</span><span class="p">(</span><span class="n">prop_miss</span><span class="p">))</span></span></span><span class="ln"><span class="no">38</span><span class="src">&#8203;</span></span><span class="ln"><span class="no">39</span><span class="src"><span class="fence">```</span></span></span><span class="ln q4"><span class="no">40</span><span class="src"><span class="prose">agreements %&gt;%</span></span><span class="note">Q4: these lines sit outside the ```{r} chunk, so they are prose, not code. Notes in R start with #, not -.</span></span><span class="ln q4"><span class="no">41</span><span class="src"><span class="prose">  filter(is.na(n_members)) %&gt;%</span></span></span><span class="ln q4"><span class="no">42</span><span class="src"><span class="prose">  -keeps rows where n_members is missing</span></span></span><span class="ln q4"><span class="no">43</span><span class="src"><span class="prose">  count(scope, sort = T)</span></span></span><span class="ln q4"><span class="no">44</span><span class="src"><span class="prose">  -counts each row for each scope, biggest 1st</span></span></span><span class="ln"><span class="no">45</span><span class="src"><span class="prose"></span></span></span><span class="ln"><span class="no">46</span><span class="src"><span class="prose">5. Take `agreements`, remove the rows where `n_members` is NA and add a column that contains the average number of members of each subject + scope combination to the **full** `agreements` dataframe. Then get rid of all the columns except for agreement_name, subject, scope, n_members, and your new average members column. Save this tibble as `agreements_avg_members`.</span></span></span><span class="ln"><span class="no">47</span><span class="src"><span class="prose"></span></span></span><span class="ln"><span class="no">48</span><span class="src"><span class="prose">6. Take `agreements_avg_members` and add a new column called `above_average` that contains logical values stating whether or not a row&#x27;s `n_members` is above average for its subject + scope combination (recall the new column we made for this tibble).</span></span></span></code></pre>
+    </section>
+
+    <section id="more">
+      <h2><span class="n">10</span>If you want more</h2>
+      <ul>
+        <li><a href="https://r4ds.hadley.nz/data-transform.html" rel="noopener">R for Data Science, ch. 3: Data transformation</a>. The canonical, free chapter on exactly these verbs.</li>
+        <li><a href="https://dplyr.tidyverse.org/reference/index.html" rel="noopener">dplyr reference</a>, every verb with examples.</li>
+        <li><a href="https://ucd-rdavis.github.io/R-DAVIS/" rel="noopener">R-DAVIS course site</a>, the lectures this lab follows.</li>
+        <li>In R itself: <code>?filter</code>, or <code>vignette("dplyr")</code>.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>Made for Nick by Hamachi, 21 Oct 2026. Snippets verified on R 4.4.3 / dplyr 1.1.4.</footer>
+  <script>
+    document.getElementById('wrap').addEventListener('click', function () {
+      var q = document.getElementById('qmd'), on = q.classList.toggle('wrap');
+      this.setAttribute('aria-pressed', on); this.textContent = on ? 'Unwrap' : 'Wrap lines';
+    });
+  </script>
+</body>
+</html>
