@@ -1,0 +1,147 @@
+game,vendor,function,people_named_in_credits
+me1,Tikiman Productions,VO casting,0
+me1,Technicolor Interactive Services,VO recording,0
+me1,Blackman Productions,VO recording,0
+me1,Giant Studios,motion capture,0
+me1,3D Eyetronics,3D scanning,0
+me1,Keywords International,localization testing,21
+me1,ExeQuo,localized VO,1
+dao,Big Sandwich Games,animation,0
+dao,Iron Claw,animation,0
+dao,Liquid Development,art,0
+dao,Shadows in Darkness,art,0
+dao,Hermitworks Entertainment,art,0
+dao,Giant Studios,motion capture,0
+dao,Englobe,dialogue editing,0
+dao,Albion,translation,0
+dao,CEET,translation,0
+dao,ExeQuo,translation/VO,0
+dao,ITI,translation,0
+dao,Synthesis Iberia,translation,0
+dao,Tikiman Productions,VO production,0
+dao,Side UK,VO recording,0
+dao,Technicolor Interactive Services,VO recording,0
+dao,Wolf Willow Sound,VO recording,0
+dao,ArcTV,localized VO,0
+dao,Start International Polska,localized VO,0
+dao,toneworx,localized VO,0
+dao,Draftfcb,advertising,0
+me2,Axis Animation,animation,0
+me2,Liquid Development,art/animation,0
+me2,Eyetronics-3D,3D scanning,0
+me2,Faction Creative Effects,compositing,0
+me2,Giant Studios,motion capture,0
+me2,Englobe,geopolitical review,0
+me2,Tikiman Productions,VO production,0
+me2,Technicolor,VO recording,0
+me2,Wolf Willow Sound,VO recording/editing,0
+me2,Wave Generating,dialogue editing,0
+me2,Wall of Sound,music,7
+me3,Eyetronics-3D,3D scanning,0
+me3,The Mill,cinematics,0
+me3,Faction Creative Effects,compositing,0
+me3,Original Force 3D,matte painting,0
+me3,Liquid Development,art,9
+me3,Sperasoft,art/animation,13
+me3,Englobe,geopolitical review,0
+me3,BT Hex,translation,0
+me3,Böck,translation,0
+me3,ExeQuo,translation/VO,0
+me3,Levsha Games,translation,0
+me3,Synthesis International,translation/VO,0
+me3,Anakan,localized VO,0
+me3,POP Sound,VO recording,0
+me3,Side UK,VO recording,0
+me3,Technicolor Creative Services,VO recording,0
+me3,Toneworx,localized VO,0
+me3,Wolf Willow Sound,VO post,0
+me3,GameSim,matchmaking code,0
+me3,Psyonix,network programming,0
+me3,Babel Media,compliance testing,0
+dai,Chroms Studio,art/animation,0
+dai,Original Force (OF3D),art/animation,0
+dai,Sperasoft,art/animation/online,0
+dai,The Third Floor,previs,0
+dai,Geogrify,geopolitical review,0
+dai,Failbetter Games,online content,0
+dai,gskinner.com,online,0
+dai,Lone Shark Games,online content,0
+dai,Metaverse Modsquad,online/community,0
+dai,Pulp Studios,online,0
+dai,RED The Agency,online,0
+dai,Seven Tales,online,0
+dai,Work at Play Media Labs,online,0
+dai,GameSim,programming,0
+dai,Babel Game Services,QA,0
+dai,Albion Localisations,translation,0
+dai,Entalize,translation,0
+dai,ExeQuo,translation,0
+dai,ITI,translation,0
+dai,Synthesis International,translation,0
+dai,Quoted,translation,0
+dai,Formosa Interactive,VO recording,0
+dai,Johnny Blerot Sound,VO recording,0
+dai,Side UK,VO recording,0
+dai,Studio Center,VO recording,0
+dai,Wolf Willow Sound,VO recording,0
+mea,One Pixel Brush,art,0
+mea,Behaviour Interactive,art/animation,0
+mea,Goldtooth Creative,art,0
+mea,Sperasoft,art/animation,0
+mea,Volta Creations,art,0
+mea,Another World Studios,art,0
+mea,Daniel Simon LLC,design/art,0
+mea,CVD VFX,VFX,0
+mea,Original Force,art/animation,0
+mea,Atlantic Post Production,audio,0
+mea,Geogrify,geopolitical review,0
+mea,Babel Games Services,QA,0
+mea,Immersyve,user experience,0
+mea,Formosa Interactive,VO recording,0
+mea,Johnny Blerot Sound,VO recording,0
+mea,Side UK,VO recording,0
+mea,Studio Center,VO recording,0
+mea,Toneworx,localized VO,0
+mea,ExeQuo,localized VO,0
+mea,Phoenix Mastering,VO post,0
+dav,Airship Interactive Ltd,art_other,16
+dav,Alchemy,other,2
+dav,Anomaly Productions LLC,other,4
+dav,Balisti Studios,art_other,9
+dav,Beholder,art_other,2
+dav,Big Planet,art_other,2
+dav,Brazen Animation,anim_animation,5
+dav,Codefly Software Inc,eng_general,1
+dav,Counterpunch Studios,art_character,12
+dav,House of Cool,art_other,6
+dav,KWM, A Keywords Studio,art_other,12
+dav,Lakshya Digital,art_other,23
+dav,Meridian Studios by Apex,art_other,10
+dav,Mindwalk, a Keywords Studio,art_other,58
+dav,Niche VFX,art_vfx,7
+dav,Phoenix Mastering,audio,2
+dav,Pixel Audio,audio,4
+dav,Platygobian, S.L. T/A Elite3D,art_other,9
+dav,Roarty Digital,art_other,20
+dav,Rouge Mocap,anim_mocap,36
+dav,Shanghai Arts United Software Co., Ltd,art_other,14
+dav,Side LA,audio,9
+dav,Side London,audio,7
+dav,Sperasoft,other,9
+dav,Sweet Justice Sound Group,audio,17
+dav,Team Audio,audio,9
+dav,Technicolor Games,art_other,55
+dav,Teksystems Canada Inc,other,16
+dav,Trayner Creative,other,1
+dav,Videolabs,other,4
+dav,Volta,art_concept,24
+dav,"Adecco",QA staffing,16
+dav,"Keywords",QA,27
+dav,"Manpower",QA staffing,7
+dav,"Smartemp",QA staffing,164
+dav,"Test Tropic",QA,19
+dav,"Keywords Studios France SAS",localized VO,41
+dav,"Toneworx GmbH",localized VO,13
+dav,"Transperfect Gaming",localization,16
+dav,EC Innovations,translation,0
+dav,PTW Japan,localization testing,0
