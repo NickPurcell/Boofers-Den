@@ -409,3 +409,15 @@ body {
 .door.rprimer .rp-art i { font-style: normal; color: #4fa3ff; }
 .door.rprimer .door-title { color: #4fa3ff; }
 .door.rprimer .door-go { color: #7ee0b5; }
+
+/* BioWare credits: everyone credited per game (tall, pale) behind BioWare's own team (short, blue). */
+.door.bioware:hover { border-color: rgba(57,135,229,.6); box-shadow: 0 28px 70px -30px rgba(57,135,229,.4); }
+.door.bioware .door-art { background: radial-gradient(120% 90% at 50% 110%, #1d2430, #121418 60%, #0b0c0e); }
+.door.bioware .door-title { color: #f4f3ee; }
+.door.bioware .door-go { color: #3987e5; }
+.bw-bars, .bw-core { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); display: flex; align-items: flex-end; gap: 10px; }
+.bw-bars { height: 130px; }
+.bw-core { height: 34px; }
+.bw-bars i, .bw-core i { display: block; width: 22px; border-radius: 3px 3px 0 0; }
+.bw-bars i { background: rgba(230,103,103,.45); }
+.bw-core i { background: #3987e5; }

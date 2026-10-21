@@ -1,0 +1,297 @@
+game,game_title,team,is_core_bioware,discipline_group,bucket,count
+me1,Mass Effect (2007),core,yes,Engineering,eng_engine_tools,19
+me1,Mass Effect (2007),core,yes,Engineering,eng_general,38
+me1,Mass Effect (2007),core,yes,Art,art_environment,14
+me1,Mass Effect (2007),core,yes,Art,art_character,8
+me1,Mass Effect (2007),core,yes,Art,art_vfx,6
+me1,Mass Effect (2007),core,yes,Art,art_tech,3
+me1,Mass Effect (2007),core,yes,Art,art_ui,1
+me1,Mass Effect (2007),core,yes,Art,art_concept,3
+me1,Mass Effect (2007),core,yes,Art,art_other,10
+me1,Mass Effect (2007),core,yes,Animation & cinematics,anim_animation,9
+me1,Mass Effect (2007),core,yes,Animation & cinematics,anim_cine,20
+me1,Mass Effect (2007),core,yes,Design,design_systems,3
+me1,Mass Effect (2007),core,yes,Design,design_technical,7
+me1,Mass Effect (2007),core,yes,Design,design_other,13
+me1,Mass Effect (2007),core,yes,Writing & editing,writing,6
+me1,Mass Effect (2007),core,yes,Audio & music,audio,11
+me1,Mass Effect (2007),core,yes,Production & management,production,11
+me1,Mass Effect (2007),core,yes,QA,qa,45
+me1,Mass Effect (2007),core,yes,Localization,localization,1
+me1,Mass Effect (2007),core,yes,Marketing & community,marketing,13
+me1,Mass Effect (2007),core,yes,Studio/corporate ops & exec,ops_exec,35
+me1,Mass Effect (2007),publisher,no,Engineering,eng_engine_tools,7
+me1,Mass Effect (2007),publisher,no,Engineering,eng_general,4
+me1,Mass Effect (2007),publisher,no,Art,art_other,8
+me1,Mass Effect (2007),publisher,no,Design,design_ux,4
+me1,Mass Effect (2007),publisher,no,Design,design_other,7
+me1,Mass Effect (2007),publisher,no,Writing & editing,writing,2
+me1,Mass Effect (2007),publisher,no,Audio & music,audio,5
+me1,Mass Effect (2007),publisher,no,Production & management,production,18
+me1,Mass Effect (2007),publisher,no,QA,qa,92
+me1,Mass Effect (2007),publisher,no,Localization,localization,3
+me1,Mass Effect (2007),publisher,no,User research & analytics,research_analytics,5
+me1,Mass Effect (2007),publisher,no,Marketing & community,marketing,15
+me1,Mass Effect (2007),publisher,no,Studio/corporate ops & exec,ops_exec,16
+me1,Mass Effect (2007),publisher,no,Thanks,thanks,42
+me1,Mass Effect (2007),external,no,Audio & music,audio,4
+me1,Mass Effect (2007),external,no,Production & management,production,1
+me1,Mass Effect (2007),external,no,QA,qa,1
+me1,Mass Effect (2007),external,no,Localization,localization,21
+me1,Mass Effect (2007),cast,no,Voice cast (English),voice_cast,70
+dao,Dragon Age: Origins (2009),core,yes,Engineering,eng_engine_tools,38
+dao,Dragon Age: Origins (2009),core,yes,Engineering,eng_general,30
+dao,Dragon Age: Origins (2009),core,yes,Art,art_environment,16
+dao,Dragon Age: Origins (2009),core,yes,Art,art_character,10
+dao,Dragon Age: Origins (2009),core,yes,Art,art_vfx,4
+dao,Dragon Age: Origins (2009),core,yes,Art,art_tech,5
+dao,Dragon Age: Origins (2009),core,yes,Art,art_ui,2
+dao,Dragon Age: Origins (2009),core,yes,Art,art_concept,2
+dao,Dragon Age: Origins (2009),core,yes,Art,art_other,27
+dao,Dragon Age: Origins (2009),core,yes,Animation & cinematics,anim_animation,28
+dao,Dragon Age: Origins (2009),core,yes,Animation & cinematics,anim_cine,21
+dao,Dragon Age: Origins (2009),core,yes,Design,design_systems,6
+dao,Dragon Age: Origins (2009),core,yes,Design,design_technical,12
+dao,Dragon Age: Origins (2009),core,yes,Design,design_other,18
+dao,Dragon Age: Origins (2009),core,yes,Writing & editing,writing,12
+dao,Dragon Age: Origins (2009),core,yes,Audio & music,audio,13
+dao,Dragon Age: Origins (2009),core,yes,Production & management,production,20
+dao,Dragon Age: Origins (2009),core,yes,QA,qa,54
+dao,Dragon Age: Origins (2009),core,yes,Localization,localization,3
+dao,Dragon Age: Origins (2009),core,yes,Marketing & community,marketing,17
+dao,Dragon Age: Origins (2009),core,yes,Studio/corporate ops & exec,ops_exec,38
+dao,Dragon Age: Origins (2009),core,yes,Thanks,thanks,15
+dao,Dragon Age: Origins (2009),publisher,no,Engineering,eng_engine_tools,9
+dao,Dragon Age: Origins (2009),publisher,no,Engineering,eng_online,14
+dao,Dragon Age: Origins (2009),publisher,no,Production & management,production,2
+dao,Dragon Age: Origins (2009),publisher,no,QA,qa,23
+dao,Dragon Age: Origins (2009),publisher,no,Localization,localization,56
+dao,Dragon Age: Origins (2009),publisher,no,User research & analytics,research_analytics,21
+dao,Dragon Age: Origins (2009),publisher,no,Marketing & community,marketing,65
+dao,Dragon Age: Origins (2009),publisher,no,Studio/corporate ops & exec,ops_exec,16
+dao,Dragon Age: Origins (2009),external,no,Art,art_other,1
+dao,Dragon Age: Origins (2009),external,no,Audio & music,audio,3
+dao,Dragon Age: Origins (2009),external,no,Localization,localization,4
+dao,Dragon Age: Origins (2009),cast,no,Voice cast (English),voice_cast,141
+dao,Dragon Age: Origins (2009),cast,no,Localization,localization,270
+me2,Mass Effect 2 (2010),core,yes,Engineering,eng_engine_tools,3
+me2,Mass Effect 2 (2010),core,yes,Engineering,eng_general,36
+me2,Mass Effect 2 (2010),core,yes,Art,art_environment,16
+me2,Mass Effect 2 (2010),core,yes,Art,art_character,7
+me2,Mass Effect 2 (2010),core,yes,Art,art_vfx,2
+me2,Mass Effect 2 (2010),core,yes,Art,art_tech,1
+me2,Mass Effect 2 (2010),core,yes,Art,art_ui,1
+me2,Mass Effect 2 (2010),core,yes,Art,art_concept,4
+me2,Mass Effect 2 (2010),core,yes,Art,art_other,4
+me2,Mass Effect 2 (2010),core,yes,Animation & cinematics,anim_animation,9
+me2,Mass Effect 2 (2010),core,yes,Animation & cinematics,anim_cine,26
+me2,Mass Effect 2 (2010),core,yes,Design,design_systems,5
+me2,Mass Effect 2 (2010),core,yes,Design,design_level,21
+me2,Mass Effect 2 (2010),core,yes,Design,design_other,7
+me2,Mass Effect 2 (2010),core,yes,Writing & editing,writing,13
+me2,Mass Effect 2 (2010),core,yes,Audio & music,audio,13
+me2,Mass Effect 2 (2010),core,yes,Production & management,production,17
+me2,Mass Effect 2 (2010),core,yes,QA,qa,49
+me2,Mass Effect 2 (2010),core,yes,Localization,localization,2
+me2,Mass Effect 2 (2010),core,yes,Marketing & community,marketing,13
+me2,Mass Effect 2 (2010),core,yes,Studio/corporate ops & exec,ops_exec,30
+me2,Mass Effect 2 (2010),core,yes,Thanks,thanks,14
+me2,Mass Effect 2 (2010),publisher,no,Engineering,eng_engine_tools,11
+me2,Mass Effect 2 (2010),publisher,no,Engineering,eng_online,2
+me2,Mass Effect 2 (2010),publisher,no,Production & management,production,4
+me2,Mass Effect 2 (2010),publisher,no,QA,qa,51
+me2,Mass Effect 2 (2010),publisher,no,Localization,localization,36
+me2,Mass Effect 2 (2010),publisher,no,Marketing & community,marketing,1
+me2,Mass Effect 2 (2010),publisher,no,Studio/corporate ops & exec,ops_exec,15
+me2,Mass Effect 2 (2010),external,no,Audio & music,audio,9
+me2,Mass Effect 2 (2010),cast,no,Voice cast (English),voice_cast,88
+me2,Mass Effect 2 (2010),cast,no,Localization,localization,22
+me3,Mass Effect 3 (2012),core,yes,Engineering,eng_engine_tools,4
+me3,Mass Effect 3 (2012),core,yes,Engineering,eng_online,5
+me3,Mass Effect 3 (2012),core,yes,Engineering,eng_general,50
+me3,Mass Effect 3 (2012),core,yes,Art,art_environment,22
+me3,Mass Effect 3 (2012),core,yes,Art,art_character,7
+me3,Mass Effect 3 (2012),core,yes,Art,art_vfx,2
+me3,Mass Effect 3 (2012),core,yes,Art,art_tech,3
+me3,Mass Effect 3 (2012),core,yes,Art,art_ui,2
+me3,Mass Effect 3 (2012),core,yes,Art,art_concept,4
+me3,Mass Effect 3 (2012),core,yes,Art,art_other,2
+me3,Mass Effect 3 (2012),core,yes,Animation & cinematics,anim_animation,8
+me3,Mass Effect 3 (2012),core,yes,Animation & cinematics,anim_cine,30
+me3,Mass Effect 3 (2012),core,yes,Design,design_systems,9
+me3,Mass Effect 3 (2012),core,yes,Design,design_level,19
+me3,Mass Effect 3 (2012),core,yes,Design,design_other,4
+me3,Mass Effect 3 (2012),core,yes,Writing & editing,writing,14
+me3,Mass Effect 3 (2012),core,yes,Audio & music,audio,16
+me3,Mass Effect 3 (2012),core,yes,Production & management,production,23
+me3,Mass Effect 3 (2012),core,yes,QA,qa,77
+me3,Mass Effect 3 (2012),core,yes,Localization,localization,5
+me3,Mass Effect 3 (2012),core,yes,Marketing & community,marketing,33
+me3,Mass Effect 3 (2012),core,yes,Studio/corporate ops & exec,ops_exec,42
+me3,Mass Effect 3 (2012),publisher,no,Engineering,eng_general,2
+me3,Mass Effect 3 (2012),publisher,no,Art,art_other,5
+me3,Mass Effect 3 (2012),publisher,no,Animation & cinematics,anim_mocap,22
+me3,Mass Effect 3 (2012),publisher,no,Production & management,production,7
+me3,Mass Effect 3 (2012),publisher,no,QA,qa,70
+me3,Mass Effect 3 (2012),publisher,no,Localization,localization,68
+me3,Mass Effect 3 (2012),publisher,no,Studio/corporate ops & exec,ops_exec,30
+me3,Mass Effect 3 (2012),publisher,no,Thanks,thanks,50
+me3,Mass Effect 3 (2012),external,no,Engineering,eng_engine_tools,1
+me3,Mass Effect 3 (2012),external,no,Art,art_other,11
+me3,Mass Effect 3 (2012),external,no,Animation & cinematics,anim_animation,3
+me3,Mass Effect 3 (2012),external,no,Design,design_other,1
+me3,Mass Effect 3 (2012),external,no,Audio & music,audio,12
+me3,Mass Effect 3 (2012),external,no,Production & management,production,2
+me3,Mass Effect 3 (2012),external,no,Localization,localization,1
+me3,Mass Effect 3 (2012),external,no,Studio/corporate ops & exec,ops_exec,4
+me3,Mass Effect 3 (2012),cast,no,Voice cast (English),voice_cast,117
+me3,Mass Effect 3 (2012),cast,no,Localization,localization,86
+me3,Mass Effect 3 (2012),n/a,no,Licenses (excluded),licenses,4
+dai,Dragon Age: Inquisition (2014),core,yes,Engineering,eng_gameplay,41
+dai,Dragon Age: Inquisition (2014),core,yes,Engineering,eng_engine_tools,38
+dai,Dragon Age: Inquisition (2014),core,yes,Engineering,eng_online,30
+dai,Dragon Age: Inquisition (2014),core,yes,Engineering,eng_general,21
+dai,Dragon Age: Inquisition (2014),core,yes,Art,art_environment,22
+dai,Dragon Age: Inquisition (2014),core,yes,Art,art_character,8
+dai,Dragon Age: Inquisition (2014),core,yes,Art,art_vfx,6
+dai,Dragon Age: Inquisition (2014),core,yes,Art,art_tech,5
+dai,Dragon Age: Inquisition (2014),core,yes,Art,art_ui,4
+dai,Dragon Age: Inquisition (2014),core,yes,Art,art_concept,6
+dai,Dragon Age: Inquisition (2014),core,yes,Art,art_other,17
+dai,Dragon Age: Inquisition (2014),core,yes,Animation & cinematics,anim_animation,12
+dai,Dragon Age: Inquisition (2014),core,yes,Animation & cinematics,anim_cine,24
+dai,Dragon Age: Inquisition (2014),core,yes,Design,design_systems,18
+dai,Dragon Age: Inquisition (2014),core,yes,Design,design_level,17
+dai,Dragon Age: Inquisition (2014),core,yes,Design,design_other,12
+dai,Dragon Age: Inquisition (2014),core,yes,Writing & editing,writing,12
+dai,Dragon Age: Inquisition (2014),core,yes,Audio & music,audio,18
+dai,Dragon Age: Inquisition (2014),core,yes,Production & management,production,37
+dai,Dragon Age: Inquisition (2014),core,yes,QA,qa,120
+dai,Dragon Age: Inquisition (2014),core,yes,Localization,localization,3
+dai,Dragon Age: Inquisition (2014),core,yes,User research & analytics,research_analytics,4
+dai,Dragon Age: Inquisition (2014),core,yes,Marketing & community,marketing,9
+dai,Dragon Age: Inquisition (2014),core,yes,Studio/corporate ops & exec,ops_exec,35
+dai,Dragon Age: Inquisition (2014),publisher,no,Engineering,eng_engine_tools,69
+dai,Dragon Age: Inquisition (2014),publisher,no,Engineering,eng_online,49
+dai,Dragon Age: Inquisition (2014),publisher,no,Engineering,eng_general,1
+dai,Dragon Age: Inquisition (2014),publisher,no,Animation & cinematics,anim_mocap,24
+dai,Dragon Age: Inquisition (2014),publisher,no,Audio & music,audio,2
+dai,Dragon Age: Inquisition (2014),publisher,no,Production & management,production,15
+dai,Dragon Age: Inquisition (2014),publisher,no,QA,qa,78
+dai,Dragon Age: Inquisition (2014),publisher,no,Localization,localization,72
+dai,Dragon Age: Inquisition (2014),publisher,no,User research & analytics,research_analytics,4
+dai,Dragon Age: Inquisition (2014),publisher,no,Marketing & community,marketing,24
+dai,Dragon Age: Inquisition (2014),publisher,no,Studio/corporate ops & exec,ops_exec,55
+dai,Dragon Age: Inquisition (2014),publisher,no,Other,other,14
+dai,Dragon Age: Inquisition (2014),publisher,no,Thanks,thanks,57
+dai,Dragon Age: Inquisition (2014),external,no,Engineering,eng_engine_tools,5
+dai,Dragon Age: Inquisition (2014),external,no,Animation & cinematics,anim_animation,2
+dai,Dragon Age: Inquisition (2014),external,no,Audio & music,audio,20
+dai,Dragon Age: Inquisition (2014),external,no,Localization,localization,2
+dai,Dragon Age: Inquisition (2014),cast,no,Voice cast (English),voice_cast,126
+dai,Dragon Age: Inquisition (2014),n/a,no,Licenses (excluded),licenses,119
+mea,Mass Effect: Andromeda (2017),core,yes,Engineering,eng_gameplay,42
+mea,Mass Effect: Andromeda (2017),core,yes,Engineering,eng_engine_tools,37
+mea,Mass Effect: Andromeda (2017),core,yes,Engineering,eng_online,38
+mea,Mass Effect: Andromeda (2017),core,yes,Engineering,eng_general,14
+mea,Mass Effect: Andromeda (2017),core,yes,Art,art_environment,26
+mea,Mass Effect: Andromeda (2017),core,yes,Art,art_character,10
+mea,Mass Effect: Andromeda (2017),core,yes,Art,art_vfx,11
+mea,Mass Effect: Andromeda (2017),core,yes,Art,art_tech,6
+mea,Mass Effect: Andromeda (2017),core,yes,Art,art_ui,6
+mea,Mass Effect: Andromeda (2017),core,yes,Art,art_concept,7
+mea,Mass Effect: Andromeda (2017),core,yes,Art,art_other,13
+mea,Mass Effect: Andromeda (2017),core,yes,Animation & cinematics,anim_animation,30
+mea,Mass Effect: Andromeda (2017),core,yes,Animation & cinematics,anim_cine,17
+mea,Mass Effect: Andromeda (2017),core,yes,Animation & cinematics,anim_mocap,1
+mea,Mass Effect: Andromeda (2017),core,yes,Design,design_systems,22
+mea,Mass Effect: Andromeda (2017),core,yes,Design,design_level,26
+mea,Mass Effect: Andromeda (2017),core,yes,Design,design_technical,4
+mea,Mass Effect: Andromeda (2017),core,yes,Design,design_other,22
+mea,Mass Effect: Andromeda (2017),core,yes,Writing & editing,writing,17
+mea,Mass Effect: Andromeda (2017),core,yes,Audio & music,audio,23
+mea,Mass Effect: Andromeda (2017),core,yes,Production & management,production,41
+mea,Mass Effect: Andromeda (2017),core,yes,QA,qa,68
+mea,Mass Effect: Andromeda (2017),core,yes,Localization,localization,4
+mea,Mass Effect: Andromeda (2017),core,yes,User research & analytics,research_analytics,1
+mea,Mass Effect: Andromeda (2017),core,yes,Marketing & community,marketing,3
+mea,Mass Effect: Andromeda (2017),core,yes,Studio/corporate ops & exec,ops_exec,42
+mea,Mass Effect: Andromeda (2017),core,yes,Other,other,28
+mea,Mass Effect: Andromeda (2017),publisher,no,Engineering,eng_engine_tools,238
+mea,Mass Effect: Andromeda (2017),publisher,no,Engineering,eng_online,116
+mea,Mass Effect: Andromeda (2017),publisher,no,Art,art_other,7
+mea,Mass Effect: Andromeda (2017),publisher,no,Animation & cinematics,anim_mocap,21
+mea,Mass Effect: Andromeda (2017),publisher,no,Audio & music,audio,3
+mea,Mass Effect: Andromeda (2017),publisher,no,Production & management,production,43
+mea,Mass Effect: Andromeda (2017),publisher,no,QA,qa,204
+mea,Mass Effect: Andromeda (2017),publisher,no,Localization,localization,67
+mea,Mass Effect: Andromeda (2017),publisher,no,User research & analytics,research_analytics,22
+mea,Mass Effect: Andromeda (2017),publisher,no,Marketing & community,marketing,47
+mea,Mass Effect: Andromeda (2017),publisher,no,Studio/corporate ops & exec,ops_exec,50
+mea,Mass Effect: Andromeda (2017),publisher,no,Other,other,6
+mea,Mass Effect: Andromeda (2017),publisher,no,Thanks,thanks,93
+mea,Mass Effect: Andromeda (2017),external,no,Animation & cinematics,anim_animation,1
+mea,Mass Effect: Andromeda (2017),external,no,Audio & music,audio,25
+mea,Mass Effect: Andromeda (2017),cast,no,Voice cast (English),voice_cast,139
+mea,Mass Effect: Andromeda (2017),cast,no,Localization,localization,350
+mea,Mass Effect: Andromeda (2017),n/a,no,Licenses (excluded),licenses,25
+dav,Dragon Age: The Veilguard (2024),core,yes,Engineering,eng_gameplay,49
+dav,Dragon Age: The Veilguard (2024),core,yes,Engineering,eng_engine_tools,54
+dav,Dragon Age: The Veilguard (2024),core,yes,Engineering,eng_online,4
+dav,Dragon Age: The Veilguard (2024),core,yes,Engineering,eng_general,4
+dav,Dragon Age: The Veilguard (2024),core,yes,Art,art_environment,39
+dav,Dragon Age: The Veilguard (2024),core,yes,Art,art_character,22
+dav,Dragon Age: The Veilguard (2024),core,yes,Art,art_vfx,16
+dav,Dragon Age: The Veilguard (2024),core,yes,Art,art_tech,7
+dav,Dragon Age: The Veilguard (2024),core,yes,Art,art_ui,7
+dav,Dragon Age: The Veilguard (2024),core,yes,Art,art_concept,5
+dav,Dragon Age: The Veilguard (2024),core,yes,Art,art_other,2
+dav,Dragon Age: The Veilguard (2024),core,yes,Animation & cinematics,anim_animation,40
+dav,Dragon Age: The Veilguard (2024),core,yes,Animation & cinematics,anim_cine,37
+dav,Dragon Age: The Veilguard (2024),core,yes,Design,design_systems,33
+dav,Dragon Age: The Veilguard (2024),core,yes,Design,design_level,35
+dav,Dragon Age: The Veilguard (2024),core,yes,Design,design_technical,22
+dav,Dragon Age: The Veilguard (2024),core,yes,Design,design_ux,4
+dav,Dragon Age: The Veilguard (2024),core,yes,Design,design_other,11
+dav,Dragon Age: The Veilguard (2024),core,yes,Writing & editing,writing,13
+dav,Dragon Age: The Veilguard (2024),core,yes,Audio & music,audio,18
+dav,Dragon Age: The Veilguard (2024),core,yes,Production & management,production,58
+dav,Dragon Age: The Veilguard (2024),core,yes,QA,qa,45
+dav,Dragon Age: The Veilguard (2024),core,yes,Marketing & community,marketing,3
+dav,Dragon Age: The Veilguard (2024),core,yes,Studio/corporate ops & exec,ops_exec,48
+dav,Dragon Age: The Veilguard (2024),core,yes,Thanks,thanks,127
+dav,Dragon Age: The Veilguard (2024),publisher,no,Engineering,eng_engine_tools,763
+dav,Dragon Age: The Veilguard (2024),publisher,no,Engineering,eng_online,19
+dav,Dragon Age: The Veilguard (2024),publisher,no,Engineering,eng_general,3
+dav,Dragon Age: The Veilguard (2024),publisher,no,Art,art_character,3
+dav,Dragon Age: The Veilguard (2024),publisher,no,Art,art_vfx,2
+dav,Dragon Age: The Veilguard (2024),publisher,no,Art,art_tech,6
+dav,Dragon Age: The Veilguard (2024),publisher,no,Art,art_other,11
+dav,Dragon Age: The Veilguard (2024),publisher,no,Animation & cinematics,anim_animation,26
+dav,Dragon Age: The Veilguard (2024),publisher,no,Animation & cinematics,anim_mocap,57
+dav,Dragon Age: The Veilguard (2024),publisher,no,Design,design_ux,7
+dav,Dragon Age: The Veilguard (2024),publisher,no,Audio & music,audio,3
+dav,Dragon Age: The Veilguard (2024),publisher,no,Production & management,production,19
+dav,Dragon Age: The Veilguard (2024),publisher,no,QA,qa,240
+dav,Dragon Age: The Veilguard (2024),publisher,no,Localization,localization,247
+dav,Dragon Age: The Veilguard (2024),publisher,no,User research & analytics,research_analytics,108
+dav,Dragon Age: The Veilguard (2024),publisher,no,Marketing & community,marketing,202
+dav,Dragon Age: The Veilguard (2024),publisher,no,Studio/corporate ops & exec,ops_exec,80
+dav,Dragon Age: The Veilguard (2024),publisher,no,Other,other,6
+dav,Dragon Age: The Veilguard (2024),publisher,no,Thanks,thanks,26
+dav,Dragon Age: The Veilguard (2024),publisher,no,UNCLASSIFIED,UNCLASSIFIED,1
+dav,Dragon Age: The Veilguard (2024),external,no,Engineering,eng_general,1
+dav,Dragon Age: The Veilguard (2024),external,no,Art,art_character,12
+dav,Dragon Age: The Veilguard (2024),external,no,Art,art_vfx,7
+dav,Dragon Age: The Veilguard (2024),external,no,Art,art_concept,24
+dav,Dragon Age: The Veilguard (2024),external,no,Art,art_other,231
+dav,Dragon Age: The Veilguard (2024),external,no,Animation & cinematics,anim_animation,5
+dav,Dragon Age: The Veilguard (2024),external,no,Animation & cinematics,anim_mocap,35
+dav,Dragon Age: The Veilguard (2024),external,no,Writing & editing,writing,9
+dav,Dragon Age: The Veilguard (2024),external,no,Audio & music,audio,118
+dav,Dragon Age: The Veilguard (2024),external,no,QA,qa,233
+dav,Dragon Age: The Veilguard (2024),external,no,Localization,localization,70
+dav,Dragon Age: The Veilguard (2024),external,no,Studio/corporate ops & exec,ops_exec,8
+dav,Dragon Age: The Veilguard (2024),external,no,Other,other,37
+dav,Dragon Age: The Veilguard (2024),cast,no,Voice cast (English),voice_cast,159
+dav,Dragon Age: The Veilguard (2024),cast,no,Localization,localization,291
