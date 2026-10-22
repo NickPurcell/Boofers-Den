@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/hang/:id([a-z0-9]{7})", "destination": "/hang/index.html" }
+  ]
+}
