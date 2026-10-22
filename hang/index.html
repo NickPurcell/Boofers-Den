@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d0b14" />
+  <title>Find time to hang · Boofer's Den</title>
+  <meta name="description" content="A shared calendar for finding time to hang: everyone paints when they're good or can't, and the best times float to the top." />
+  <link rel="stylesheet" href="/hang/hang.css" />
+</head>
+<body>
+  <header class="bar">
+    <a class="home" href="/">&larr; Den</a>
+    <span class="ico" aria-hidden="true">&#x1F5D3;&#xFE0F;</span><span class="brand">Find time to hang</span>
+  </header>
+
+  <main id="landing" class="wrap" hidden>
+    <section class="card hero">
+      <h1>Find time to hang</h1>
+      <p class="lede">Make a calendar, send the link to your friends, and everyone paints when they&rsquo;re <b class="g">good</b> or a hard <b class="n">no-go</b>. The best times float to the top. No logins.</p>
+      <form id="create" class="form">
+        <label>What&rsquo;s the plan?<input id="c-title" maxlength="60" placeholder="Game night, dinner, raid&hellip;" value="Let&rsquo;s hang" /></label>
+        <div class="row2">
+          <label>Starting<input id="c-start" type="date" required /></label>
+          <label>For<select id="c-days"><option value="7">1 week</option><option value="14">2 weeks</option><option value="21" selected>3 weeks</option><option value="28">4 weeks</option><option value="42">6 weeks</option></select></label>
+        </div>
+        <button class="btn primary" type="submit">New hangout &rarr;</button>
+        <p class="err" id="c-err" role="alert"></p>
+      </form>
+    </section>
+  </main>
+
+  <main id="app" class="wrap" hidden>
+    <section class="card head">
+      <h1 id="title">&hellip;</h1>
+      <p class="tz" id="tz"></p>
+      <div class="share">
+        <button class="btn" id="copy" type="button">Copy link</button>
+        <span class="link" id="link"></span>
+      </div>
+    </section>
+
+    <section class="card me">
+      <form id="who" class="who">
+        <label for="name">Your name</label>
+        <div class="who-row"><input id="name" maxlength="30" autocomplete="nickname" placeholder="Type your name" /><button class="btn primary" type="submit">That&rsquo;s me</button></div>
+      </form>
+      <div class="people" id="people"></div>
+    </section>
+
+    <section class="card cal">
+      <div class="tabs" role="tablist">
+        <button type="button" role="tab" id="tab-mine" aria-selected="true">My times</button>
+        <button type="button" role="tab" id="tab-all" aria-selected="false">Everyone</button>
+      </div>
+      <div class="paint" id="paint">
+        <span class="paint-lbl">Paint:</span>
+        <button type="button" class="pm g" data-mode="g" aria-pressed="true">Good</button>
+        <button type="button" class="pm n" data-mode="n" aria-pressed="false">No-go</button>
+        <button type="button" class="pm e" data-mode="." aria-pressed="false">Erase</button>
+        <span class="status" id="status" aria-live="polite"></span>
+      </div>
+      <p class="hint" id="hint">Tap or drag across the grid. Scroll by dragging the time column.</p>
+      <div class="weeknav">
+        <button type="button" class="btn sm" id="prev" aria-label="Previous week">&lsaquo;</button>
+        <span id="weeklbl"></span>
+        <button type="button" class="btn sm" id="next" aria-label="Next week">&rsaquo;</button>
+      </div>
+      <div class="grid" id="grid"></div>
+      <label class="early"><input type="checkbox" id="early" /> Show early hours (midnight&ndash;8am)</label>
+      <div class="detail" id="detail" hidden></div>
+    </section>
+
+    <section class="card best">
+      <h2>Best times</h2>
+      <p class="sub">Most people good, nobody no-go.</p>
+      <ol id="best"></ol>
+    </section>
+    <p class="foot">Calendars disappear 90 days after the last change. Anyone with the link can edit, so keep it among friends.</p>
+  </main>
+
+  <main id="missing" class="wrap" hidden>
+    <section class="card"><h1>That calendar&rsquo;s gone</h1><p>It may have expired (90 days after the last change) or the link is off. <a href="/hang/">Make a new one</a>.</p></section>
+  </main>
+
+  <script src="/hang/hang.js"></script>
+</body>
+</html>

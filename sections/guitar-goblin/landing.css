@@ -421,3 +421,13 @@ body {
 .bw-bars i, .bw-core i { display: block; width: 22px; border-radius: 3px 3px 0 0; }
 .bw-bars i { background: rgba(230,103,103,.45); }
 .bw-core i { background: #3987e5; }
+
+/* Find time to hang: a little week grid, good and no-go. */
+.door.hang:hover { border-color: rgba(61,220,132,.55); box-shadow: 0 28px 70px -30px rgba(61,220,132,.35); }
+.door.hang .door-art { background: radial-gradient(120% 90% at 50% 110%, #251a3a, #120f1c 60%, #0b0a12); }
+.door.hang .door-title { color: #3ddc84; }
+.door.hang .door-go { color: #b06cf0; }
+.hg-grid { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); display: grid; grid-template-columns: repeat(7, 26px); gap: 5px; }
+.hg-grid i { display: block; height: 26px; border-radius: 5px; background: #201a33; border: 1px solid #2c2640; }
+.hg-grid i.g { background: #3ddc84; border-color: #2fb36a; }
+.hg-grid i.n { background: repeating-linear-gradient(135deg, rgba(255,92,108,.85) 0 4px, rgba(255,92,108,.4) 4px 8px); border-color: #d9434f; }
