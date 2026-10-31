@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="theme-color" content="#121417" />
+  <title>Daycares &amp; preschools around Vallejo, rated</title>
+  <meta name="description" content="A rated, filterable guide to daycares and preschools in the towns around Vallejo, for part-time care about three days a week: prices from each program's own site, licensing records, reviews and fit." />
+  <link rel="stylesheet" href="daycares.css" />
+</head>
+<body>
+  <a class="back" href="../">&larr; Guitar Goblin</a>
+
+  <header class="hero">
+    <p class="kicker">Childcare &middot; rated guide</p>
+    <h1>Daycares &amp; preschools <span>around Vallejo</span></h1>
+    <p class="sub">Regular daycares, Montessori, Waldorf and forest schools, Reggio and arts programs, all rated for families looking for part-time care, about three days a week, for toddlers and preschoolers. Each card shows the published price, the state licensing record, reviews, and how the program fits.</p>
+    <p class="scope">Scope: neighbouring towns, not Vallejo itself: Benicia, American Canyon, Napa, Fairfield, Martinez, and Rodeo, Hercules and Pinole across the Carquinez Bridge, plus a few alternative schools further out (El Sobrante, Walnut Creek, Orinda, Concord, Sonoma). Drive times are from downtown Vallejo with no traffic.</p>
+    <p class="dated">Researched and checked on 31 October 2026. Prices change; confirm before enrolling.</p>
+    <p class="note-box">Scores are our judgment, made with the rubric below; they are not an endorsement or an inspection. The state licensing site was down while we checked, so citation counts come from two mirrors of the state’s data. Every card links the official record so you can re-check it.</p>
+  </header>
+
+  <div class="controls" role="region" aria-label="Filters">
+    <div class="in">
+      <div class="chips" id="chips-style" aria-label="Style"></div>
+      <div class="chips" id="chips-town" aria-label="Town and other filters"></div>
+      <div class="row2"><span class="count" id="count" aria-live="polite"></span>
+        <label class="sort">Sort <select id="sort"><option value="score">Best score</option><option value="price">Lowest 3-day price</option><option value="drive">Shortest drive</option><option value="name">Name</option></select></label></div>
+    </div>
+  </div>
+
+  <main>
+    <section id="list-section" aria-label="Programs">
+      <noscript><p>This list needs JavaScript to show. The data is in <a href="data.js">data.js</a>.</p></noscript>
+      <ol class="list" id="list"></ol>
+    </section>
+
+    <section id="rated">
+      <h2>How we rated</h2>
+      <p>Each program gets four scores out of 10, combined into an overall score. <b>Price is shown but not scored</b>, so you can weigh it yourself.</p>
+      <div class="rubric">
+        <div><span class="w">40%</span><b>Safety &amp; licensing</b>Starts at 10. Minus 2.5 for each Type A citation (immediate risk to children) and minus 0.5 for each Type B (usually paperwork, capped at 2) since November 2023. Minus 1.5 for a citation the two data mirrors disagree on (A vs B). Minus 1 for each substantiated complaint. Minus 1 for a license less than about two years old, since there’s little track record. Programs with no state record get a neutral score and say so: 5 when no CCLD license was found (some outdoor or short-day programs are license-exempt, so ask), 6 for public schools, 6 when the record wasn’t checked. A program on probation, or with repeated serious citations, goes to the <a href="#avoid">avoid list</a> instead of being ranked.</div>
+        <div><span class="w">20%</span><b>Reviews &amp; reputation</b>The average rating, weighted by how many reviews there are: with 25 or more, it counts fully; with only a few, the score stays near a neutral 5. Cards flag “few reviews” under 10.</div>
+        <div><span class="w">20%</span><b>Program &amp; vibe</b>Starts at 5. Points for a clear educational approach (more for Montessori, Waldorf, forest or Reggio), real accreditation (AMS/AMI, WECAN, NAEYC: more if verified than if only claimed), real outdoor time, and published staff-to-child ratios.</div>
+        <div><span class="w">20%</span><b>Practical fit</b>Takes toddlers (2s) and pre-K (4s) at the same site, which is handy for siblings; offers a 2–3 day part-time schedule; open until 5pm or later; a short drive from Vallejo. Small deductions for bridge tolls, school-year-only calendars and waitlists; a bigger one (−1.5) for programs already full for 2026–27.</div>
+      </div>
+      <p class="small muted">Open “Details and why it scored this way” on any card to see the exact reasons behind each sub-score.</p>
+    </section>
+
+    <section id="avoid">
+      <h2>Avoid or closed</h2>
+      <p>Not ranked, because the licensing record fails the safety floor or the program has closed. Each line links the record.</p>
+      <ul class="avoid" id="avoid-list"></ul>
+    </section>
+
+    <section id="method">
+      <h2>Method and sources</h2>
+      <ul class="plain">
+        <li><b>Prices</b> come only from each program’s own website, quoted as published, per child per month unless stated, checked 31 Oct 2026. “Rates not published” means the program’s site doesn’t list them; the card gives the contact.</li>
+        <li><b>Licensing</b> is from California’s Community Care Licensing Division (CCLD). Its facility search and data service returned errors all day, so citation and complaint histories come from two mirrors of CCLD data: <a href="https://readyrule.com" rel="noopener">readyrule</a> (data as of 26 Oct 2026) and <a href="https://childcarecenter.us" rel="noopener">childcarecenter.us</a> (verified 30 Sep 2026). License status comes from the state’s open-data layer. Where the mirrors disagree on severity, the card says “mirrors disagree (A vs B)” and the score uses a middle penalty; an unconfirmed severity alone never puts a program on the avoid list. The official record couldn’t be reached on 31 October 2026.</li>
+        <li><b>Type A</b> citations are for an immediate risk to children’s health or safety; <b>Type B</b> are for potential risks, often paperwork.</li>
+        <li><b>NAEYC accreditation</b> couldn’t be checked on NAEYC’s own site that day, so any NAEYC claim is marked unverified.</li>
+        <li><b>Drive times</b> are free-flow times from downtown Vallejo (OSRM router). The Carquinez Bridge (Rodeo, Hercules, Pinole) and the Benicia–Martinez Bridge (Martinez) charge <b>$8.50</b> northbound in 2026, so each trip back toward Vallejo pays.</li>
+        <li><b>Free TK:</b> children who turn 4 by 1 September can attend free public transitional kindergarten, on school hours and the school calendar.</li>
+      </ul>
+      <h3>Income-eligible programs (not rated)</h3>
+      <p class="small">These are free or subsidised for families under the income limits, so they aren’t ranked here.</p>
+      <ul class="plain" id="income-list"></ul>
+      <h3>Not covered</h3>
+      <ul class="plain small">
+        <li>No Waldorf preschool was found in Napa, Benicia, Fairfield, American Canyon or Sonoma Valley; the nearest is Wildcat Canyon in El Sobrante.</li>
+        <li>Licensed family child care homes (in-home daycares) were sampled, not surveyed. Several homes are described by directories as Waldorf or Montessori, but none could be verified.</li>
+        <li>Not checked: The Concordia School (Concord), Old Firehouse School (Lafayette and Walnut Creek), Bay Area Bugs Forest School (Tilden), and some programs in Martinez, Fairfield and north Napa.</li>
+        <li>“Sort by price” converts weekly, daily and yearly prices to a rough monthly figure for ordering only; the cards show prices exactly as published.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer>
+    <p>Researched and rated by Hamachi, Boofer’s Den’s AI helper, from programs’ own websites, the state licensing record and public reviews, 31 October 2026. Ratings are our judgment; always visit, ask for the license, and check the official record before enrolling.</p>
+    <p><a href="../">&larr; Guitar Goblin</a></p>
+  </footer>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
