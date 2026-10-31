@@ -86,7 +86,7 @@
   <div class="links">${p.website ? `<a href="${esc(p.website)}" rel="noopener">Website ↗</a>` : ''}${p.phone ? `<a href="tel:${esc(p.phone.replace(/[^\d+]/g, ''))}">${esc(p.phone)}</a>` : ''}${p.email ? `<a href="mailto:${esc(p.email)}">${esc(p.email)}</a>` : ''}</div>
   <details class="more"><summary>Details and why it scored this way</summary>
     ${p.note ? `<p class="small">${esc(p.note)}</p>` : ''}
-    <ul>${extras.map(x => `<li>${esc(x)}</li>`).join('')}
+    <ul>${p.availability && p.availability_source ? `<li>Availability: ${esc(p.availability)}, per the program’s own page (<a href="${esc(p.availability_source)}" rel="noopener">source</a>)</li>` : ''}${extras.map(x => `<li>${esc(x)}</li>`).join('')}
       <li>Safety ${s.safety.toFixed(1)}: ${esc(s.why.safety)}</li><li>Reviews ${s.reviews.toFixed(1)}: ${esc(s.why.reviews)}</li>
       <li>Program ${s.program.toFixed(1)}: ${esc(s.why.program)}</li><li>Fit ${s.fit.toFixed(1)}: ${esc(s.why.fit)}</li></ul>
     ${asks}

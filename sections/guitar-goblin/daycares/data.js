@@ -71,8 +71,9 @@ window.PROGRAMS = [
   "avoid_reason": null,
   "income_only": false,
   "note": "RIE/Montessori licensed home 10 min away, any days, clean record; 2024 rates, waitlist only, mixed Yelp reviews.",
-  "availability": "Waitlist only (Sanborn home page)",
+  "availability": "Waitlist only",
   "setting": "home",
+  "availability_source": "https://www.babymacbean.com/405-sanborn-court",
   "scores": {
    "safety": 10.0,
    "reviews": 7.7,
