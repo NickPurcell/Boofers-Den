@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#070a12" />
+  <title>The seafloor, seen through gravity · SWOT explorer</title>
+  <meta name="description" content="Spin a globe of the ocean floor and flip between the satellite gravity map before and after NASA/CNES's SWOT mission: seamounts, trenches, ridges and abyssal hills." />
+  <link rel="stylesheet" href="../vendor/maplibre/maplibre-gl.css" />
+  <link rel="stylesheet" href="seafloor.css" />
+</head>
+<body>
+  <div id="map" aria-label="Map of the ocean floor. Drag to move, pinch to zoom, tap for depth."></div>
+
+  <header class="top">
+    <a class="back" href="../" aria-label="Back to Guitar Goblin">&larr;</a>
+    <div class="ttl">
+      <h1>The seafloor, seen through gravity</h1>
+      <p>Drag, pinch, tap anywhere for depth</p>
+    </div>
+    <button type="button" class="chip" data-info aria-haspopup="dialog">How it works</button>
+  </header>
+
+  <section class="panel" id="panel">
+    <div class="seg" role="group" aria-label="Layer">
+      <button type="button" data-mode="depth" aria-pressed="false">Depth</button>
+      <button type="button" data-mode="gravity" aria-pressed="true">Gravity</button>
+    </div>
+
+    <div class="compare" id="compare">
+      <div class="cmp-row">
+        <span class="cmp-l">Before SWOT</span>
+        <input type="range" id="mix" min="0" max="100" value="100" aria-label="Blend between gravity before SWOT and with SWOT" />
+        <span class="cmp-r">With SWOT</span>
+      </div>
+      <button type="button" class="btn sm" id="flip">Flip</button>
+    </div>
+    <div class="legend" id="legend"></div>
+
+    <div class="row">
+      <button type="button" class="btn sm" id="tilt" aria-pressed="false">3D</button>
+      <div class="spots" id="spots" role="group" aria-label="Fly to"></div>
+    </div>
+    <p class="caption" id="caption"></p>
+    <p class="credit">Data: D. Sandwell, Scripps (SRTM15+, gravity V34 and SWOT_06) · SWOT: NASA/CNES · <button type="button" class="linkish" data-info>Sources</button></p>
+  </section>
+
+  <div class="pop" id="pop" hidden></div>
+
+  <dialog id="info" class="info">
+    <form method="dialog"><button class="x" aria-label="Close">&times;</button></form>
+    <h2>How gravity reveals the seafloor</h2>
+    <p>Most of the ocean floor has never been touched by a ship&rsquo;s sonar. But mountains, ridges and trenches on the bottom change the pull of gravity a tiny bit, and the ocean surface follows gravity: water heaps up slightly over a seamount and sags over a trench. Satellites that measure the height of the sea surface very precisely can see those bumps, and from their shape work out what&rsquo;s on the bottom thousands of metres down.</p>
+    <p>Older radar altimeters measured a single line straight below the satellite. <strong>SWOT</strong> (Surface Water and Ocean Topography, NASA and CNES, launched December 2022) maps a wide swath on both sides of its track, so it sees the sea surface in two dimensions. Scripps researchers (Yao Yu, David Sandwell and colleagues) used it to map seamounts, continental margins and the abyssal hills that cover much of the ocean floor. They report it can pick out seamounts under 500&nbsp;m tall, where earlier satellites needed about a kilometre, which roughly doubles the number that can be detected.</p>
+    <h3>What the layers are</h3>
+    <ul>
+      <li><strong>Gravity</strong> is the <em>vertical gravity gradient</em>: how sharply gravity changes, which brings out small, sharp features. Amber is positive (ridge crests, seamount tops), blue is negative (troughs, trenches, fracture zones). The slider blends between two versions made the same way:
+        <ul>
+          <li><em>Before SWOT</em>: version V34, from conventional altimeters only (CryoSat-2, Jason, SARAL/AltiKa, Sentinel-3 and others), September 2026.</li>
+          <li><em>With SWOT</em>: version SWOT_06, the same data plus three years of SWOT, September 2026.</li>
+        </ul>
+      </li>
+      <li><strong>Depth</strong> is SRTM15+ V2.7 (Scripps, 2025) at 1 arc-minute: ship soundings where they exist, and depth predicted from satellite gravity, including SWOT, everywhere else. It also drives the 3D view and the depth you get when you tap. GEBCO&rsquo;s global grid is built on SRTM15+.</li>
+    </ul>
+    <p class="fine">Zoomed out, every layer is averaged to about 5 arc-minutes. The five spots below the map have full 1-arc-minute detail (about 1.8&nbsp;km); elsewhere zooming in just enlarges the overview.</p>
+    <h3>Sources</h3>
+    <ul class="src">
+      <li>Gravity grids: D. Sandwell, Scripps Institution of Oceanography, <a href="https://topex.ucsd.edu/pub/global_grav_1min_SWOT/" rel="noopener">topex.ucsd.edu/pub/global_grav_1min_SWOT</a> and <a href="https://topex.ucsd.edu/pub/global_grav_1min/" rel="noopener">global_grav_1min</a>.</li>
+      <li>Yu, Y., Sandwell, D. T., &amp; Dibarboure, G. (2024). Abyssal marine tectonics from the SWOT mission. <em>Science</em>, 386(6727), 1251&ndash;1256.</li>
+      <li>Sandwell, D. T., Harper, H., Tozer, B., &amp; Smith, W. H. (2021). Gravity field recovery from geodetic altimeter missions. <em>Advances in Space Research</em>, 68(2), 1059&ndash;1072.</li>
+      <li>Depth: SRTM15+ V2.7, <a href="https://topex.ucsd.edu/pub/srtm15_plus/" rel="noopener">topex.ucsd.edu/pub/srtm15_plus</a> (1-arc-minute grid topo_27.1); Tozer et al. (2019), <em>Earth and Space Science</em>.</li>
+      <li>SWOT is a NASA and CNES mission, with contributions from the UK and Canadian space agencies. <a href="https://swot.jpl.nasa.gov/" rel="noopener">swot.jpl.nasa.gov</a></li>
+      <li><a href="https://www.gebco.net/" rel="noopener">GEBCO</a>, the General Bathymetric Chart of the Oceans.</li>
+    </ul>
+    <p class="fine">Map drawn with <a href="https://maplibre.org" rel="noopener">MapLibre</a>. The tiles were cut from the grids by <a href="build_tiles.py">build_tiles.py</a>.</p>
+  </dialog>
+
+  <script src="../vendor/maplibre/maplibre-gl.js"></script>
+  <script src="seafloor.js"></script>
+</body>
+</html>

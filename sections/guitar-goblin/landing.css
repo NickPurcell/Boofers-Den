@@ -431,3 +431,10 @@ body {
 .hg-grid i { display: block; height: 26px; border-radius: 5px; background: #201a33; border: 1px solid #2c2640; }
 .hg-grid i.g { background: #3ddc84; border-color: #2fb36a; }
 .hg-grid i.n { background: repeating-linear-gradient(135deg, rgba(255,92,108,.85) 0 4px, rgba(255,92,108,.4) 4px 8px); border-color: #d9434f; }
+
+/* Seafloor: a globe of gravity stripes (amber crests, blue troughs) and a few seamounts. */
+.door.seafloor:hover { border-color: rgba(255,178,64,.55); box-shadow: 0 28px 70px -30px rgba(46,110,230,.45); }
+.door.seafloor .door-art { background: radial-gradient(120% 90% at 50% 110%, #0d1830, #070a12 70%); }
+.door.seafloor .door-title { color: #ffb240; }
+.door.seafloor .door-go { color: #6fa0f0; }
+.sf-art { position: absolute; inset: 0; width: 100%; height: 100%; }
