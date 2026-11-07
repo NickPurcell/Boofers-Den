@@ -1,15 +1,17 @@
-/* Clawd crab robot, walking in 3D. The legs play the joint-angle tables from gait.js through forward kinematics,
-   and the body goes wherever the planted feet push it (Walker), so feet on the ground stay on their footprints.
+/* Clawd crab robot (v2), walking in 3D. Every servo is inside the shell: the legs play the joint-angle tables from
+   gait.js (swing servo + Scotch-yoke lift per leg), and the body goes wherever the planted feet push it (Walker),
+   so feet on the ground stay on their footprints.
    Units are millimetres. Robot frame: x to its right, y up, z forward (three.js rotation.y = heading). */
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { GEOM, LEGS, Player, Walker, servoAngle, buildGait } from './gait.js';
+import { GEOM, LEGS, JOINTS, Player, Walker, servoAngle, buildGait, carriageY, rowFootDown } from './gait.js';
 
 const $ = (s) => document.querySelector(s);
 const canvas = $('#scene');
 const box3 = $('.viewport');
 const CORAL = '#e8735a';
 const BG = '#11151b';
+const SLOT = [20, 44];
 
 let renderer = null;
 try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true }); }
@@ -23,13 +25,13 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(BG);
 scene.fog = new THREE.Fog(BG, 700, 1500);
 const camera = new THREE.PerspectiveCamera(38, 1, 5, 4000);
-camera.position.set(250, 210, 300);
+camera.position.set(260, 220, 320);
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true;
 controls.minDistance = 160;
 controls.maxDistance = 900;
 controls.maxPolarAngle = Math.PI * 0.49;
-controls.target.set(0, 70, 0);
+controls.target.set(0, 62, 0);
 
 scene.add(new THREE.HemisphereLight('#f4f1ff', '#2a2622', 1.7));
 const sun = new THREE.DirectionalLight('#ffffff', 2.0); sun.position.set(300, 600, 400); scene.add(sun);
@@ -51,6 +53,9 @@ const M = {
   shellBack: new THREE.MeshStandardMaterial({ color: CORAL, roughness: 0.5, transparent: true, depthWrite: false, side: THREE.BackSide }),
   shellFront: new THREE.MeshStandardMaterial({ color: CORAL, roughness: 0.4, transparent: true, depthWrite: false, side: THREE.FrontSide }),
   edge: new THREE.LineBasicMaterial({ color: '#ffb7a3', transparent: true, opacity: 0.55 }),
+  car: new THREE.MeshStandardMaterial({ color: '#a9b2bf', roughness: 0.55 }),
+  rod: new THREE.MeshStandardMaterial({ color: '#dfe4ea', roughness: 0.25, metalness: 0.9 }),
+  slot: new THREE.MeshStandardMaterial({ color: '#0b0d10', roughness: 0.9 }),
 };
 
 function box(w, h, d, mat, x, y, z, parent) {
@@ -65,50 +70,53 @@ function cyl(r, len, mat, parent, axis = 'y') {
 }
 
 /* ---------- the robot ---------- */
-const { hipY, coxa, tibia, bodyW, bodyD, shellH } = GEOM;
+const { legX, legZ, leg, legW, crank, yokeY, bodyW, bodyD, shellH, shellBottom } = GEOM;
 const robot = new THREE.Group(); scene.add(robot);
 
-// Frame: two decks of 6 mm printed bars on four standoffs. Hip servos hang in the corners of the lower deck.
-const lowY = hipY + 22, upY = hipY + 52;
-for (const [y, w, d] of [[lowY, 124, 90], [upY, 112, 80]]) {
-  box(w, 3, 6, M.frame, 0, y, d / 2 - 3, robot); box(w, 3, 6, M.frame, 0, y, -d / 2 + 3, robot);
-  box(6, 3, d, M.frame, w / 2 - 3, y, 0, robot); box(6, 3, d, M.frame, -w / 2 + 3, y, 0, robot);
-}
-box(124, 3, 6, M.frame, 0, lowY, 14, robot); box(124, 3, 6, M.frame, 0, lowY, -14, robot);
-box(6, 3, 80, M.frame, 0, upY, 0, robot);
-for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-  const s = cyl(2.5, upY - lowY, M.frame, robot); s.position.set(sx * 50, (lowY + upY) / 2, sz * 37);
-}
-// Electronics: 2x18650 on the lower deck, PCA9685 and ESP32 on the upper deck, buck converter beside the cells.
-box(72, 3, 42, M.holder, 0, lowY + 3, 0, robot);
-for (const z of [-10, 10]) { const c = cyl(9.2, 65, M.cell, robot, 'x'); c.position.set(0, lowY + 13.7, z); }
-box(22, 7, 34, M.buck, -54 + 13, upY - 6, 0, robot);
-box(62, 2, 25, M.pca, 0, upY + 3, 22, robot);
-for (let c = 0; c < 8; c++) box(2.5, 9, 7.5, M.esp, -27 + c * 2.54 * 1.5, upY + 8, 22 + 9, robot);
-box(51, 2, 28, M.esp, 0, upY + 3, -20, robot);
-box(18, 3.5, 25, M.can, 8, upY + 5.5, -20, robot);
+// Frame: a base deck just inside the shell's underside and a top deck on the 3 mm guide rods.
+const baseY = shellBottom + 3, deckY = 90;
+box(6, 3, bodyD - 8, M.frame, -bodyW / 2 + 8, baseY, 0, robot); box(6, 3, bodyD - 8, M.frame, bodyW / 2 - 8, baseY, 0, robot);
+box(bodyW - 16, 3, 4, M.frame, 0, baseY, bodyD / 2 - 4, robot); box(bodyW - 16, 3, 4, M.frame, 0, baseY, -bodyD / 2 + 4, robot);
+box(44, 2, 84, M.frame, 0, baseY, 0, robot);
+box(bodyW - 26, 3, 6, M.frame, 0, deckY, bodyD / 2 - 14, robot); box(bodyW - 26, 3, 6, M.frame, 0, deckY, -bodyD / 2 + 14, robot);
+box(6, 3, bodyD - 22, M.frame, bodyW / 2 - 16, deckY, 0, robot); box(6, 3, bodyD - 22, M.frame, -bodyW / 2 + 16, deckY, 0, robot);
+box(bodyW - 26, 3, 6, M.frame, 0, deckY, 0, robot);
+// Electronics: 2S LiPo low in the middle, ESP32 / PCA9685 / buck converters on the top deck.
+box(33, 18, 70, M.cell, 0, baseY + 10, 0, robot);
+box(51, 2, 28, M.esp, -6, deckY + 3, -24, robot); box(18, 3.5, 25, M.can, 2, deckY + 5.5, -24, robot);
+box(62, 2, 25, M.pca, -6, deckY + 3, 24, robot);
+for (let c = 0; c < 8; c++) box(2.5, 8, 7.5, M.esp, -33 + c * 3.8, deckY + 8, 33, robot);
+box(21, 7, 43, M.buck, 46, deckY + 5, 0, robot);
+box(17, 4, 22, M.buck, -46, deckY + 4, 0, robot);
 
-// Servos, legs. Leg group origin = hip axis at hip height; local +x points out along the coxa, so
-// rotation.y = yaw from fk(); the knee group rotates about local z (knee angle, + = foot outward).
-const legs = LEGS.map((L, i) => {
-  const hs = box(12.2, 23, 22.8, M.servo, L.hip[0], hipY + 17.5, L.hip[1] - Math.sign(L.hip[1]) * 5.4, robot);
-  hs.name = 'hip servo';
-  const g = new THREE.Group(); g.position.set(L.hip[0], hipY, L.hip[1]); robot.add(g);
-  const horn = cyl(7, 2.5, M.horn, g); horn.position.set(0, 5.5, 0);
-  box(coxa - 4, 9, 12, M.leg, (coxa - 4) / 2, 0, 0, g);                         // coxa bracket
-  box(12.2, 22.8, 23, M.servo, coxa, 0, 0, g);                                  // knee servo, shaft along local z
-  const knee = new THREE.Group(); knee.position.set(coxa, 0, 0); g.add(knee);
-  const kh = cyl(6, 2, M.horn, knee, 'z'); kh.position.set(0, 0, 13);
-  for (const z of [-13.5, 13.5]) box(9, 22, 2.5, M.leg, 0, -6, z, knee);         // U-bracket round the servo
-  box(9, 3, 29.5, M.leg, 0, -17.5, 0, knee);
-  box(9, tibia - 24, 9, M.leg, 0, -19 - (tibia - 24) / 2 + 2, 0, knee);          // tibia
-  box(12, 6, 12, M.foot, 0, -tibia + 3, 0, knee);                                // rubber foot; its sole is the foot point
-  return { g, knee, side: L.side };
+// Leg modules, one per corner, all inside the shell. X() and Z() mirror a module-local position to its corner.
+// Fixed: two guide rods and the lift servo. Moving: the carriage (bushings, the swing servo, the yoke tab with its
+// slot) and, hung from the swing servo's horn, the rigid leg.
+const legs = LEGS.map((L) => {
+  const X = (v) => L.side * v, Z = (v) => L.end * v;
+  for (const dz of [-12, 12]) { const r = cyl(1.5, deckY - baseY, M.rod, robot); r.position.set(X(30), (baseY + deckY) / 2, Z(legZ + dz)); }
+  box(22.5, 22.8, 12.2, M.servo, X(33.75), yokeY + 5.4, Z(legZ - 26), robot);             // lift servo, shaft inboard
+  const horn = new THREE.Group(); horn.position.set(X(21.5), yokeY, Z(legZ - 26)); robot.add(horn);
+  box(2, 5, crank + 4, M.horn, 0, 0, Z(crank / 2), horn);
+  const pin = cyl(1.5, 6, M.can, horn, 'x'); pin.position.set(X(-3), 0, Z(crank));
+
+  const car = new THREE.Group(); robot.add(car);                                            // the carriage
+  box(22.5, 22.8, 12.2, M.servo, X(33.75), 5.4, Z(legZ), car);                              // swing servo, shaft outboard
+  box(26, 2.5, 30, M.car, X(32), -7.6, Z(legZ), car);
+  for (const dz of [-12, 12]) box(8, 16, 8, M.car, X(30), 0, Z(legZ + dz), car);            // bushings on the rods
+  box(2.5, 14, 13, M.car, X(18.25), 0, Z(legZ - 15), car);                                  // yoke tab...
+  box(2.7, 3.4, 9, M.slot, X(18.25), 0, Z(legZ - 15), car);                                 // ...and its slot
+
+  const g = new THREE.Group(); g.position.set(X(legX), 0, Z(legZ)); car.add(g);             // the leg, about the swing axis
+  const lh = cyl(7, 2, M.horn, g, 'x'); lh.position.set(X(-legW / 2 - 1), 0, 0);
+  box(legW, leg + 6, legW, M.leg, 0, (6 - leg) / 2, 0, g);
+  box(legW + 0.6, 3, legW + 0.6, M.foot, 0, -leg + 1.5, 0, g);
+  return { car, g, horn, end: L.end };
 });
 
 // Shell: Clawd. Semi-transparent coral box with square eyes and two stubby side claws (on TPU flexures, so they jiggle).
 const shell = new THREE.Group(); robot.add(shell);
-const shellY = hipY + 7;
+const shellY = shellBottom;
 function shellBox(w, h, d, x, y, z, parent = shell) {
   const geo = new THREE.BoxGeometry(w, h, d);
   const b = new THREE.Mesh(geo, M.shellBack); b.renderOrder = 1;
@@ -118,12 +126,18 @@ function shellBox(w, h, d, x, y, z, parent = shell) {
 }
 shellBox(bodyW, shellH, bodyD, 0, shellY + shellH / 2, 0);
 const claws = [-1, 1].map((s) => {
-  const pivot = new THREE.Group(); pivot.position.set(s * bodyW / 2, shellY + shellH * 0.48, 4); shell.add(pivot);
-  shellBox(20, 22, 26, s * 10, 0, 0, pivot);
+  const pivot = new THREE.Group(); pivot.position.set(s * bodyW / 2, shellY + shellH * 0.5, 6); shell.add(pivot);
+  shellBox(22, 24, 30, s * 11, 0, 0, pivot);
   return pivot;
 });
-for (const x of [-27, 27]) box(10, 18, 2, M.eye, x, shellY + shellH - 24, bodyD / 2 + 1, shell);
-box(7, 4, 2, M.eye, 26, shellY + 8, -bodyD / 2 - 1, shell);   // power switch at the back
+for (const x of [-30, 30]) box(11, 22, 2, M.eye, x, shellY + shellH - 28, bodyD / 2 + 1, shell);
+box(7, 4, 2, M.eye, 30, shellY + 10, -bodyD / 2 - 1, shell);   // power switch at the back
+// The leg slots in the underside: 20 x 44 mm, room for the leg's swing and a little play.
+for (const L of LEGS) {
+  const [x, z] = L.hip, w = SLOT[0] / 2, d = SLOT[1] / 2;
+  const pts = [[x - w, z - d], [x + w, z - d], [x + w, z + d], [x - w, z + d], [x - w, z - d]].map(([a, b]) => new THREE.Vector3(a, shellY - 0.3, b));
+  const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), M.edge); l.renderOrder = 3; shell.add(l);
+}
 
 function setShellOpacity(o) {
   M.shellFront.opacity = o; M.shellBack.opacity = o * 0.55;
@@ -141,7 +155,7 @@ const ground = new THREE.Group(); scene.add(ground);
 const floor = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshBasicMaterial({ color: '#1a2029' }));
 floor.rotation.x = -Math.PI / 2; ground.add(floor);
 const grid = new THREE.GridHelper(3000, 60, '#5d6b80', '#3a4556'); grid.position.y = 0.2; ground.add(grid);
-const shadow = new THREE.Mesh(new THREE.PlaneGeometry(bodyW + 20, bodyD + 20), new THREE.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.2, depthWrite: false }));
+const shadow = new THREE.Mesh(new THREE.PlaneGeometry(bodyW + 10, bodyD + 10), new THREE.MeshBasicMaterial({ color: '#000', transparent: true, opacity: 0.2, depthWrite: false }));
 shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.4; robot.add(shadow);
 
 const PRINTS = 28;
@@ -173,9 +187,10 @@ walker.update(angles);
 
 function placeLegs() {
   for (let i = 0; i < 4; i++) {
-    const h = angles[2 * i], k = angles[2 * i + 1], L = legs[i];
-    L.g.rotation.y = (L.side > 0 ? 0 : Math.PI) + (L.side > 0 ? -h : h) * Math.PI / 180;
-    L.knee.rotation.z = k * Math.PI / 180;
+    const s = angles[2 * i] * Math.PI / 180, l = angles[2 * i + 1], L = legs[i];
+    L.car.position.y = carriageY(l);            // the Scotch yoke: carriage height = yokeY + crank * sin(lift)
+    L.horn.rotation.x = -L.end * l * Math.PI / 180;
+    L.g.rotation.x = -s;                        // swing: + = foot forward
   }
   robot.position.set(walker.x, 0, walker.z);
   robot.rotation.y = walker.th;
@@ -227,8 +242,8 @@ function tick(ms) {
 const servoEls = [];
 const servoBox = $('#servos');
 for (let i = 0; i < 4; i++) {
-  for (const joint of ['hip', 'knee']) {
-    const j = 2 * i + (joint === 'knee' ? 1 : 0);
+  for (const joint of JOINTS) {
+    const j = 2 * i + (joint === 'lift' ? 1 : 0);
     const el = document.createElement('div');
     el.className = 'srv ' + joint;
     el.innerHTML = `<span class="ch">ch${j}</span><span class="nm">${LEGS[i].id} ${joint}</span><b>90°</b><i class="dial"><u></u></i>`;
@@ -278,7 +293,7 @@ $('#gait-blurb').textContent = player.gait.blurb;
 /* ---------- charts: footfall pattern and servo angles over one cycle (canvas 2D) ---------- */
 const chart = $('#timeline');
 const chartTip = $('#timeline-tip');
-const C = { hip: '#3987e5', knee: '#d95926', stance: '#c9d1dc', ink: '#eef2f6', dim: '#a7b1bd', grid: '#2b3440' };
+const C = { swing: '#3987e5', lift: '#d95926', stance: '#c9d1dc', ink: '#eef2f6', dim: '#a7b1bd', grid: '#2b3440' };
 let hoverF = null;
 function chartGait() { return player.next ? buildGait(player.next) : player.gait; }
 function drawCharts() {
@@ -299,8 +314,8 @@ function drawCharts() {
     const y0 = top + i * rowH;
     ctx.fillStyle = C.ink; ctx.textAlign = 'left';
     ctx.fillText(LEGS[i].id, 4, y0 + foot / 2 + 1);
-    // Footfall: one bar per stretch of keyframes where the foot is on the ground (knee at its stance angle).
-    const isDown = (k) => g.table[k % n][2 * i + 1] === GEOM.stanceKnee && g.table[(k + 1) % n][2 * i + 1] === GEOM.stanceKnee;
+    // Footfall: one bar per stretch of keyframes where the foot is on the ground (foot height from FK).
+    const isDown = (k) => rowFootDown(g.table[k % n], i) && rowFootDown(g.table[(k + 1) % n], i);
     ctx.fillStyle = C.stance;
     for (let k = 0; k < n; k++) {
       if (!isDown(k) || (k > 0 && isDown(k - 1))) continue;
@@ -309,12 +324,12 @@ function drawCharts() {
       if (ctx.roundRect) ctx.roundRect(X(k), y0, X(e) - X(k), foot, 4); else ctx.rect(X(k), y0, X(e) - X(k), foot);
       ctx.fill();
     }
-    // Hip and knee servo angles for this leg, 45..135°, as two 2 px lines.
+    // Swing and lift servo angles for this leg, 40..140°, as two 2 px lines.
     const a0 = y0 + foot + 4, ah = rowH - foot - 10;
-    const Y = (deg) => a0 + ah * (1 - (deg - 45) / 90);
+    const Y = (deg) => a0 + ah * (1 - (deg - 40) / 100);
     ctx.strokeStyle = C.grid; ctx.lineWidth = 1;
     ctx.beginPath(); ctx.moveTo(padL, Y(90)); ctx.lineTo(W - padR, Y(90)); ctx.stroke();
-    for (const [j, col] of [[2 * i, C.hip], [2 * i + 1, C.knee]]) {
+    for (const [j, col] of [[2 * i, C.swing], [2 * i + 1, C.lift]]) {
       ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.lineJoin = ctx.lineCap = 'round';
       ctx.beginPath();
       for (let k = 0; k <= n; k++) {
@@ -325,7 +340,7 @@ function drawCharts() {
     }
     // direct labels with a short line key, text in ink
     ctx.font = '11px system-ui, sans-serif';
-    for (const [lbl, col, yy] of [['hip', C.hip, a0 + 5], ['knee', C.knee, a0 + ah - 3]]) {
+    for (const [lbl, col, yy] of [['swing', C.swing, a0 + 5], ['lift', C.lift, a0 + ah - 3]]) {
       ctx.strokeStyle = col; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.moveTo(6, yy); ctx.lineTo(16, yy); ctx.stroke();
       ctx.fillStyle = C.dim; ctx.fillText(lbl, 20, yy);
@@ -356,7 +371,7 @@ function hover(e) {
   hoverF = k;
   const row = g.table[k];
   chartTip.innerHTML = `<b>Frame ${k}</b>` + LEGS.map((L, i) =>
-    `<span><i class="k hip"></i>${L.id} hip ${servoAngle(2 * i, row[2 * i])}° <i class="k knee"></i>knee ${servoAngle(2 * i + 1, row[2 * i + 1])}°${row[2 * i + 1] === GEOM.stanceKnee ? '' : ' (up)'}</span>`).join('');
+    `<span><i class="k swing"></i>${L.id} swing ${servoAngle(2 * i, row[2 * i])}° <i class="k lift"></i>lift ${servoAngle(2 * i + 1, row[2 * i + 1])}°${rowFootDown(row, i) ? '' : ' (up)'}</span>`).join('');
   chartTip.hidden = false;
   const tx = Math.min(Math.max(x + 12, 0), r.width - chartTip.offsetWidth);
   chartTip.style.left = tx + 'px';
@@ -375,7 +390,7 @@ function resize() {
   camera.aspect = w / h; camera.updateProjectionMatrix();
   if (!framed && w > 0) {   // first fit: back off on narrow (phone) screens so the whole robot is in view
     framed = true;
-    const d = 440 * Math.max(1, Math.pow(1.25 / camera.aspect, 0.85));
+    const d = 420 * Math.max(1, Math.pow(1.25 / camera.aspect, 0.7));
     camera.position.copy(controls.target).add(new THREE.Vector3(0.52, 0.42, 0.74).normalize().multiplyScalar(d));
   }
   drawCharts();

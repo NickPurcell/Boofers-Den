@@ -33,7 +33,7 @@ h1 span { color: var(--coral); }
 .legend3d { position: absolute; left: 8px; bottom: 6px; margin: 0; font-size: 11.5px; color: var(--dim); pointer-events: none; background: rgba(17, 21, 27, .7); border-radius: 8px; padding: 2px 7px; }
 .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 4px 0 8px; vertical-align: -1px; }
 .sw:first-child { margin-left: 0; }
-.sw.servo { background: var(--servo); } .sw.frame { background: var(--frame); }
+.sw.servo { background: var(--servo); } .sw.frame { background: var(--frame); } .sw.car { background: #a9b2bf; }
 .sw.poly { background: none; border: 1.5px solid #f1f4f8; border-radius: 50%; }
 .nogl { position: absolute; inset: auto 16px 40% 16px; text-align: center; color: var(--dim); }
 
@@ -62,7 +62,7 @@ input[type=range] { width: 100%; accent-color: var(--coral); height: 28px; }
 .srv b { grid-column: 1; grid-row: 3; font: 650 17px/1.15 var(--mono); color: var(--text); font-variant-numeric: tabular-nums; }
 .srv .dial { grid-column: 2; grid-row: 1 / span 3; align-self: end; width: 22px; height: 12px; border-radius: 22px 22px 0 0; border: 1.5px solid var(--line); border-bottom: 0; position: relative; overflow: hidden; }
 .srv .dial u { position: absolute; left: 50%; bottom: 0; width: 2px; height: 10px; margin-left: -1px; background: var(--servo); transform-origin: 50% 100%; border-radius: 1px; }
-.srv.knee .dial u { background: var(--coral); }
+.srv.lift .dial u { background: var(--coral); }
 
 .chartfig { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px 6px; }
 .chartfig figcaption { font-size: 13.5px; color: var(--dim); margin-bottom: 6px; }
@@ -70,7 +70,7 @@ input[type=range] { width: 100%; accent-color: var(--coral); height: 28px; }
 .keys { display: block; margin-top: 4px; }
 .keys > span { display: inline-block; margin-right: 14px; white-space: nowrap; }
 .k { display: inline-block; width: 14px; height: 0; border-top: 2px solid; vertical-align: 3px; margin-right: 5px; }
-.k.hip { border-color: var(--hip); } .k.knee { border-color: var(--knee); }
+.k.swing { border-color: var(--hip); } .k.lift { border-color: var(--knee); }
 .k.foot { height: 9px; border: 0; background: var(--stance); border-radius: 3px; vertical-align: -1px; }
 .chartbox { position: relative; }
 #timeline { display: block; width: 100%; touch-action: pan-y; }
@@ -143,3 +143,24 @@ table.gait tr.now th { color: var(--text); font-weight: 700; }
 pre.code { margin: 0; max-height: 70vh; overflow: auto; background: #0c0f14; border: 1px solid var(--line); border-radius: 12px; padding: 12px; font: 12.5px/1.5 var(--mono); color: #d8dee6; }
 pre.code code { background: none; padding: 0; font-size: inherit; }
 .foot { margin-top: 28px; font-size: 13.5px; color: var(--dim); border-top: 1px solid var(--line); padding-top: 14px; }
+
+.dg .shellb { stroke: var(--coral); stroke-width: 3; }
+.dg .shellb.thin { stroke-width: 1.5; stroke-dasharray: 4 3; }
+.dg .rod { stroke: #dfe4ea; stroke-width: 3; }
+.dg .deck { stroke: var(--frame); stroke-width: 2; stroke-dasharray: 2 3; }
+.dg .car { fill: #a9b2bf; }
+.dg .car.back { fill: #6f7783; }
+.dg .slot { fill: #0b0d10; }
+.dg .srvbox { fill: var(--servo); }
+.dg .horn { stroke: #f2f2ee; stroke-width: 4; stroke-linecap: round; }
+.dg .hub { fill: #f2f2ee; }
+.dg .pin { fill: #11151b; stroke: #f2f2ee; stroke-width: 1.5; }
+.dg .legr { fill: rgba(232, 115, 90, .9); stroke: var(--coral-soft); stroke-width: 1; }
+.dg .sole { fill: #2a2b2e; }
+.dg .arrow { fill: none; stroke: var(--text); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.dg .slotr { fill: none; stroke: var(--dim); stroke-width: 1.2; stroke-dasharray: 3 2; }
+.dg .num text { fill: var(--text); font-weight: 700; font-size: 13px; text-anchor: middle; }
+.diagram.mech { max-width: 520px; margin: .4em 0; }
+ol.parts { padding-left: 1.3em; margin: .5em 0; }
+ol.parts li { margin: .35em 0; }
+ol.parts li::marker { color: var(--coral); font-weight: 700; }
