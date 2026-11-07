@@ -1,0 +1,165 @@
+{
+ "parts": {
+  "base": {
+   "watertight": true,
+   "winding": true,
+   "volume_ok": true,
+   "volume_cm3": 54.0,
+   "size_mm": [
+    100.0,
+    110.0,
+    5.0
+   ],
+   "on_bed": 0.0,
+   "fits_220": true,
+   "admesh_parts": "1        Volume",
+   "admesh_degenerate": "0",
+   "admesh_edges_fixed": "0",
+   "admesh_backwards": "0"
+  },
+  "column": {
+   "watertight": true,
+   "winding": true,
+   "volume_ok": true,
+   "volume_cm3": 60.6,
+   "size_mm": [
+    72.0,
+    96.0,
+    64.0
+   ],
+   "on_bed": 0.0,
+   "fits_220": true,
+   "admesh_parts": "1        Volume",
+   "admesh_degenerate": "0",
+   "admesh_edges_fixed": "0",
+   "admesh_backwards": "0"
+  },
+  "carriage": {
+   "watertight": true,
+   "winding": true,
+   "volume_ok": true,
+   "volume_cm3": 5.8,
+   "size_mm": [
+    22.0,
+    37.0,
+    37.0
+   ],
+   "on_bed": 0.0,
+   "fits_220": true,
+   "admesh_parts": "1        Volume",
+   "admesh_degenerate": "0",
+   "admesh_edges_fixed": "0",
+   "admesh_backwards": "0"
+  },
+  "leg": {
+   "watertight": true,
+   "winding": true,
+   "volume_ok": true,
+   "volume_cm3": 14.9,
+   "size_mm": [
+    16.0,
+    62.0,
+    16.0
+   ],
+   "on_bed": 0.0,
+   "fits_220": true,
+   "admesh_parts": "1        Volume",
+   "admesh_degenerate": "0",
+   "admesh_edges_fixed": "0",
+   "admesh_backwards": "0"
+  },
+  "crank": {
+   "watertight": true,
+   "winding": true,
+   "volume_ok": true,
+   "volume_cm3": 0.4,
+   "size_mm": [
+    24.0,
+    10.0,
+    4.0
+   ],
+   "on_bed": 0.0,
+   "fits_220": true,
+   "admesh_parts": "1        Volume",
+   "admesh_degenerate": "0",
+   "admesh_edges_fixed": "0",
+   "admesh_backwards": "0"
+  }
+ },
+ "pairs": {
+  "frame+lift servo+rods vs carriage+swing servo+bushings": {
+   "max_overlap_mm3": 0.0,
+   "at_lift": -37,
+   "at_swing": -24
+  },
+  "frame+lift servo+rods vs crank+pin": {
+   "max_overlap_mm3": 0.0,
+   "at_lift": -37,
+   "at_swing": -24
+  },
+  "carriage+swing servo+bushings vs leg": {
+   "max_overlap_mm3": 0.0,
+   "at_lift": -37,
+   "at_swing": -24
+  },
+  "carriage+swing servo+bushings vs crank+pin": {
+   "max_overlap_mm3": 0.0,
+   "at_lift": -37,
+   "at_swing": -24
+  },
+  "leg vs crank+pin": {
+   "max_overlap_mm3": 0.0,
+   "at_lift": -37,
+   "at_swing": -24
+  }
+ },
+ "floor": {
+  "poses": 324,
+  "lowest_foot_mm": -0.51,
+  "at_swing": 20.8,
+  "at_lift": -33.8,
+  "base_overlap_at_lowest_mm3": 21.56
+ },
+ "pairs_poses": "9 lift x 9 swing angles, every pair",
+ "leg_vs_frame": {
+  "poses_checked": 324,
+  "poses_hitting": [
+   [
+    -23,
+    0
+   ],
+   [
+    -22,
+    0
+   ],
+   [
+    -21,
+    0
+   ],
+   [
+    21,
+    0
+   ],
+   [
+    22,
+    0
+   ],
+   [
+    23,
+    0
+   ]
+  ],
+  "hits": 6,
+  "max_clear_swing_by_lift": {
+   "-37": 26,
+   "-27": 24,
+   "-18": 23,
+   "-9": 21,
+   "0": 20,
+   "9": 19,
+   "18": 18,
+   "27": 17,
+   "34": 16
+  }
+ }
+}

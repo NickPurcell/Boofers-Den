@@ -247,3 +247,145 @@ $('#copy').addEventListener('click', async (e) => {
 const dl = $('#download');
 dl.href = URL.createObjectURL(new Blob([sketch], { type: 'text/plain' }));
 dl.download = 'clawd_bot.ino';
+
+/* ---------- the single-leg test rig sketch ---------- */
+const RL = 1;   // the rig is a front-right module: leg 1 of the robot
+const col = (g) => g.table.map((r) => `  { ${String(r[2 * RL]).padStart(3)}, ${String(r[2 * RL + 1]).padStart(3)} },`).join('\n');
+const rigSketch = `// Clawd crab robot: single-leg test rig.
+// Drives one leg module on the printed rig: a front-right leg, so it plays column ${2 * RL} and ${2 * RL + 1} (swing, lift) of the
+// robot's gait tables, the same tables as the 3D sim at https://boofers-den.vercel.app/sections/guitar-goblin/clawd-bot/
+//
+// Serial monitor at 115200 baud, one letter at a time:
+//   h = home (both servos at 90: leg straight down, carriage mid-travel)
+//   s = sweep the swing servo alone      l = sweep the lift servo alone
+//   c = run the creep cycle              t = run the trot cycle          x = stop where it is
+//   [ ] = swing trim -/+ 1 degree        - = = lift trim -/+ 1 degree     < > = slower / faster   p = print state
+// Each keyframe prints the commanded angles and the foot position the kinematics expect: hold a ruler against the foot.
+
+#define USE_PCA9685 1   // 1: PCA9685 channels 0 (swing) and 1 (lift). 0: straight from ESP32 pins (ESP32Servo library)
+
+#if USE_PCA9685
+#include <Wire.h>
+#include <Adafruit_PWMServoDriver.h>
+Adafruit_PWMServoDriver pca(0x40);
+const uint8_t CH_SWING = 0, CH_LIFT = 1;
+#else
+#include <ESP32Servo.h>
+Servo swingServo, liftServo;
+const uint8_t PIN_SWING = 18, PIN_LIFT = 19;
+#endif
+
+const int8_t SWING_DIR = ${SWING_DIR[RL]}, LIFT_DIR = ${LIFT_DIR[RL]};  // front-right module; flip if a joint runs backwards
+int8_t trimSwing = 0, trimLift = 0;          // calibration, degrees: set with [ ] - =, then copy into the robot's TRIM
+const uint16_t US_MIN = 500, US_MAX = 2500;  // pulse for 0 and 180 degrees
+const float LEG = ${GEOM.leg}, CRANK = ${GEOM.crank}, YOKE_Y = ${GEOM.yokeY};   // mm, the rig's geometry
+
+// This leg's (swing, lift) joint angles from the robot's tables, one row per keyframe.
+const int8_t CREEP[${creep.frames}][2] = {
+${col(creep)}
+};
+const int8_t TROT[${trot.frames}][2] = {
+${col(trot)}
+};
+const uint16_t CREEP_MS = ${creep.frameMs}, TROT_MS = ${trot.frameMs};
+
+char mode = 'h';
+float f = 0, speed = 1, curS = 0, curL = 0, t = 0;
+int lastRow = -1;
+uint32_t last = 0;
+
+void writeServo(bool isLift, float deg) {
+  float a = constrain(90 + (isLift ? LIFT_DIR : SWING_DIR) * deg + (isLift ? trimLift : trimSwing), 0.0f, 180.0f);
+  uint16_t us = US_MIN + (uint16_t)(a * (US_MAX - US_MIN) / 180.0f);
+#if USE_PCA9685
+  pca.writeMicroseconds(isLift ? CH_LIFT : CH_SWING, us);
+#else
+  (isLift ? liftServo : swingServo).writeMicroseconds(us);
+#endif
+}
+
+void pose(float s, float l) { curS = s; curL = l; writeServo(false, s); writeServo(true, l); }
+float footFwd(float s) { return LEG * sinf(s * DEG_TO_RAD); }
+float footUp(float s, float l) { return YOKE_Y + CRANK * sinf(l * DEG_TO_RAD) - LEG * cosf(s * DEG_TO_RAD); }
+
+void report(const char *what) {
+  Serial.printf("%-8s swing %+5.1f  lift %+5.1f | servos %3d %3d | foot %+5.1f mm forward, %5.1f mm up\\n", what, curS, curL,
+    (int)(90 + SWING_DIR * curS + trimSwing), (int)(90 + LIFT_DIR * curL + trimLift), footFwd(curS), footUp(curS, curL));
+}
+
+// Stride and step height of a gait for this leg, from the table, to compare with what you measure.
+void describe(const int8_t (*tb)[2], uint8_t n, const char *name) {
+  float zMin = 999, zMax = -999, up = 0;
+  for (uint8_t k = 0; k < n; k++) {
+    float y = footUp(tb[k][0], tb[k][1]);
+    if (y < 0.5f) { zMin = min(zMin, footFwd(tb[k][0])); zMax = max(zMax, footFwd(tb[k][0])); }
+    up = max(up, y);
+  }
+  Serial.printf("%s: the foot slides %.1f mm along the floor and lifts %.1f mm\\n", name, zMax - zMin, up);
+}
+
+void setup() {
+  Serial.begin(115200);
+#if USE_PCA9685
+  Wire.begin(21, 22);
+  pca.begin();
+  pca.setOscillatorFrequency(27000000);
+  pca.setPWMFreq(50);
+#else
+  swingServo.attach(PIN_SWING, US_MIN, US_MAX);
+  liftServo.attach(PIN_LIFT, US_MIN, US_MAX);
+#endif
+  delay(10);
+  writeServo(true, 0); delay(300); writeServo(false, 0);   // lift first, then swing: one stall current at a time
+  Serial.println(F("Clawd leg rig. h home, s swing sweep, l lift sweep, c creep, t trot, x stop, [ ] - = trims, < > speed, p print"));
+  describe(CREEP, ${creep.frames}, "creep");
+  describe(TROT, ${trot.frames}, "trot");
+  report("home");
+  last = millis();
+}
+
+void loop() {
+  while (Serial.available()) {
+    char c = Serial.read();
+    switch (c) {
+      case 'h': case 's': case 'l': case 'c': case 't': case 'x': mode = c; f = 0; t = 0; lastRow = -1; break;
+      case '[': trimSwing--; break;
+      case ']': trimSwing++; break;
+      case '-': trimLift--; break;
+      case '=': trimLift++; break;
+      case '<': speed = max(0.25f, speed - 0.25f); break;
+      case '>': speed = min(2.0f, speed + 0.25f); break;
+      case 'p': Serial.printf("trims: swing %d, lift %d; speed %.2fx\\n", trimSwing, trimLift, speed); report("now"); break;
+      default: continue;
+    }
+    if (c != 'p') { Serial.printf("mode %c, trims %d / %d\\n", mode, trimSwing, trimLift); if (mode == 'h') { pose(0, 0); report("home"); } }
+  }
+  uint32_t now = millis();
+  if (now - last < 20) return;  // 50 updates a second, the servo pulse rate
+  float ms = (now - last) * speed;
+  last = now;
+  t += ms;
+  if (mode == 's') pose(20 * sinf(t * 2 * PI / 3000), -9);           // +-20 deg at lift -9: clear of the shell slot
+  else if (mode == 'l') pose(0, 8 + 26 * sinf(t * 2 * PI / 3000));  // lift -18..34 deg: foot 0..14 mm up
+  else if (mode == 'c' || mode == 't') {
+    const int8_t (*tb)[2] = (mode == 'c') ? CREEP : TROT;
+    uint8_t n = (mode == 'c') ? ${creep.frames} : ${trot.frames};
+    f = fmodf(f + ms / ((mode == 'c') ? CREEP_MS : TROT_MS), n);
+    uint8_t k0 = (uint8_t)f, k1 = (k0 + 1) % n;
+    float a = f - k0;
+    pose(tb[k0][0] * (1 - a) + tb[k1][0] * a, tb[k0][1] * (1 - a) + tb[k1][1] * a);
+    if (k0 != lastRow) { lastRow = k0; char buf[12]; snprintf(buf, sizeof buf, "frame %d", k0); report(buf); }
+  }
+}
+`;
+const rigCode = $('#rig-sketch');
+rigCode.textContent = rigSketch;
+$('#rig-copy').addEventListener('click', async (e) => {
+  const b = e.currentTarget;
+  try { await navigator.clipboard.writeText(rigSketch); b.textContent = 'Copied'; }
+  catch { const r = document.createRange(); r.selectNodeContents(rigCode); getSelection().removeAllRanges(); getSelection().addRange(r); b.textContent = 'Selected: copy it'; }
+  setTimeout(() => { b.textContent = 'Copy'; }, 1800);
+});
+const rdl = $('#rig-download');
+rdl.href = URL.createObjectURL(new Blob([rigSketch], { type: 'text/plain' }));
+rdl.download = 'clawd_leg_rig.ino';

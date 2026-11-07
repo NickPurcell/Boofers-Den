@@ -94,23 +94,24 @@ box(17, 4, 22, M.buck, -46, deckY + 4, 0, robot);
 // slot) and, hung from the swing servo's horn, the rigid leg.
 const legs = LEGS.map((L) => {
   const X = (v) => L.side * v, Z = (v) => L.end * v;
-  for (const dz of [-12, 12]) { const r = cyl(1.5, deckY - baseY, M.rod, robot); r.position.set(X(30), (baseY + deckY) / 2, Z(legZ + dz)); }
-  box(22.5, 22.8, 12.2, M.servo, X(33.75), yokeY + 5.4, Z(legZ - 26), robot);             // lift servo, shaft inboard
-  const horn = new THREE.Group(); horn.position.set(X(21.5), yokeY, Z(legZ - 26)); robot.add(horn);
-  box(2, 5, crank + 4, M.horn, 0, 0, Z(crank / 2), horn);
-  const pin = cyl(1.5, 6, M.can, horn, 'x'); pin.position.set(X(-3), 0, Z(crank));
+  // Same layout as the printed test rig (rig/clawd_leg_rig.scad), mirrored to each corner.
+  for (const dz of [-13, 13]) { const r = cyl(1.5, 65, M.rod, robot); r.position.set(X(25.5), 60.5, Z(legZ + dz)); }
+  box(28, 22.8, 12.2, M.servo, X(28), yokeY + 5.5, Z(legZ - 28), robot);                  // lift servo, shaft outboard
+  const horn = new THREE.Group(); horn.position.set(X(44.5), yokeY, Z(legZ - 28)); robot.add(horn);
+  box(4, 6, crank + 6, M.horn, 0, 0, Z(crank / 2), horn);                                    // the printed crank
+  const pin = cyl(1, 10, M.can, horn, 'x'); pin.position.set(X(-3), 0, Z(crank));           // M2 screw as the pin
 
   const car = new THREE.Group(); robot.add(car);                                            // the carriage
-  box(22.5, 22.8, 12.2, M.servo, X(33.75), 5.4, Z(legZ), car);                              // swing servo, shaft outboard
-  box(26, 2.5, 30, M.car, X(32), -7.6, Z(legZ), car);
-  for (const dz of [-12, 12]) box(8, 16, 8, M.car, X(30), 0, Z(legZ + dz), car);            // bushings on the rods
-  box(2.5, 14, 13, M.car, X(18.25), 0, Z(legZ - 15), car);                                  // yoke tab...
-  box(2.7, 3.4, 9, M.slot, X(18.25), 0, Z(legZ - 15), car);                                 // ...and its slot
+  box(28, 22.8, 12.2, M.servo, X(32.5), 5.5, Z(legZ), car);                                 // swing servo, shaft outboard
+  box(3, 37, 37, M.car, X(33), 5.5, Z(legZ), car);
+  for (const dz of [-13, 13]) { const h = cyl(5.5, 12, M.car, car); h.position.set(X(25.5), -7, Z(legZ + dz)); }   // LM3UU housings
+  box(10.5, 12, 10, M.car, X(36.75), 0, Z(legZ - 13.5), car);                               // yoke block...
+  box(6.2, 2.3, 5.75, M.slot, X(39.2), 0, Z(legZ - 13.6), car);                             // ...and its slot
 
   const g = new THREE.Group(); g.position.set(X(legX), 0, Z(legZ)); car.add(g);             // the leg, about the swing axis
   const lh = cyl(7, 2, M.horn, g, 'x'); lh.position.set(X(-legW / 2 - 1), 0, 0);
-  box(legW, leg + 6, legW, M.leg, 0, (6 - leg) / 2, 0, g);
-  box(legW + 0.6, 3, legW + 0.6, M.foot, 0, -leg + 1.5, 0, g);
+  box(legW, leg - 4 + 6, legW, M.leg, 0, (6 - leg + 4) / 2, 0, g);
+  const toe = cyl(4, legW, M.leg, g, 'x'); toe.position.set(0, -leg + 4, 0);                // rounded toe
   return { car, g, horn, end: L.end };
 });
 
