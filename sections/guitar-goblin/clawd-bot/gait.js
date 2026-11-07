@@ -10,10 +10,10 @@
 export const GEOM = {
   bodyW: 150, bodyD: 124, shellH: 84,  // shell outside size (x, z, y)
   shellBottom: 28,                     // underside of the shell above the floor, standing
-  legX: 55, legZ: 34,                  // swing axes, one per corner, at (±legX, ±legZ)
+  legX: 55, legZ: 36,                  // swing axes, one per corner, at (±legX, ±legZ)
   leg: 56,                             // swing axis to the sole of the foot
   legW: 16,                            // square leg section
-  crank: 13,                           // lift-servo horn radius: pin to shaft
+  crank: 16,                           // lift crank: shaft to pin
   yokeY: 61,                           // lift-servo shaft height: the middle of the carriage's travel
   stride: 30,                          // foot travel per step, along z
   lift: 14,                            // foot clearance at the top of a step
