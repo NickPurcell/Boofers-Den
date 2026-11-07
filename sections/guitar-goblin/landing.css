@@ -443,3 +443,13 @@ body {
 .door.mistborn .door-art svg { width: 100%; height: 100%; display: block; }
 .door.mistborn .door-title { color: #8fc3ff; }
 .door.mistborn .door-go { color: #c1b3ff; }
+
+.door.clawdbot:hover { border-color: rgba(232,115,90,.6); box-shadow: 0 28px 70px -30px rgba(232,115,90,.45); }
+.door.clawdbot .door-art { background: #11151b; }
+.door.clawdbot .door-art svg { width: 100%; height: 100%; display: block; }
+.door.clawdbot .door-title { color: #f3a08c; }
+.door.clawdbot .door-go { color: #8fc3ff; }
+@media (prefers-reduced-motion: no-preference) {
+  .door.clawdbot .crab { animation: clawd-bob 1.1s steps(2) infinite; }
+}
+@keyframes clawd-bob { 50% { transform: translateY(-3px); } }

@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#11151b" />
+  <title>Clawd, the walking crab robot · 8 servos · 3D sim</title>
+  <meta name="description" content="A buildable 8-servo quadruped that looks like Clawd the pixel crab: parts list, wiring, power, gait tables, an ESP32 sketch, and a 3D simulation that walks from the same tables." />
+  <link rel="stylesheet" href="clawd.css" />
+  <script type="importmap">
+    { "imports": { "three": "../vendor/three/three.module.min.js", "three/addons/": "../vendor/three/jsm/" } }
+  </script>
+</head>
+<body>
+  <a class="back" href="../">&larr; Guitar Goblin</a>
+
+  <header class="hero">
+    <p class="kicker">Robot design &middot; 8 servos &middot; 3D sim</p>
+    <h1>Clawd, the <span>walking crab robot</span></h1>
+    <p class="sub">A four-legged robot that looks like Clawd, the pixel crab: two servos per leg, an ESP32, about $90 of hobby parts and a 3D-printed shell. Below, it walks in your browser from the same gait tables the robot runs.</p>
+  </header>
+
+  <section class="stage" aria-label="Walking simulation">
+    <div class="viewport">
+      <canvas id="scene" aria-label="3D view of the crab robot walking. Drag to orbit, pinch or scroll to zoom."></canvas>
+      <div class="hud" aria-live="off">
+        <b id="hud-gait">Creep</b><span id="hud-speed"></span><span id="hud-down"></span><span id="hud-margin"></span><span id="hud-slip"></span>
+      </div>
+      <p class="legend3d"><i class="sw servo"></i>servos <i class="sw frame"></i>frame <i class="sw poly"></i>feet on the ground</p>
+      <p class="nogl" id="nogl" hidden>The 3D view needs WebGL, which this browser has turned off. The servo readout and charts below still run.</p>
+    </div>
+
+    <div class="side">
+      <div class="controls">
+        <div class="row">
+          <button type="button" id="play" class="btn primary" aria-pressed="false">Pause</button>
+          <div class="seg" role="group" aria-label="Gait">
+            <button type="button" data-gait="creep" aria-pressed="true">Creep</button>
+            <button type="button" data-gait="trot" aria-pressed="false">Trot</button>
+          </div>
+        </div>
+        <div class="seg wide" role="group" aria-label="Steering">
+          <button type="button" data-turn="-1" aria-pressed="false">&#9664; Left</button>
+          <button type="button" data-turn="0" aria-pressed="true">Straight</button>
+          <button type="button" data-turn="1" aria-pressed="false">Right &#9654;</button>
+        </div>
+        <label class="slider"><span>Speed</span><input type="range" id="speed" min="0.25" max="2" step="0.25" value="1" /><output id="speed-v">1×</output></label>
+        <label class="slider"><span>Shell</span><input type="range" id="opacity" min="0" max="100" step="1" value="35" /><output id="opacity-v">35%</output></label>
+        <p class="blurb" id="gait-blurb"></p>
+      </div>
+
+      <h2 class="mini">Servo angles, live <small>what the PCA9685 is sending, 0–180°</small></h2>
+      <div class="servos" id="servos"></div>
+    </div>
+
+    <figure class="chartfig">
+      <figcaption>
+        <b>One gait cycle</b>, per leg: when the foot is on the ground, and the two servo angles.
+        <span class="keys"><span><i class="k foot"></i>foot on the ground</span><span><i class="k hip"></i>hip servo</span><span><i class="k knee"></i>knee servo</span></span>
+      </figcaption>
+      <div class="chartbox">
+        <canvas id="timeline" aria-label="Footfall pattern and servo angles over one cycle of the current gait. The gait tables below have the same numbers."></canvas>
+        <div class="tip" id="timeline-tip" hidden></div>
+      </div>
+    </figure>
+  </section>
+
+  <nav class="toc" aria-label="Sections">
+    <a href="#parts">Parts</a><a href="#size">Size</a><a href="#wiring">Wiring</a><a href="#power">Power</a><a href="#gaits">Gaits</a><a href="#code">Code</a><a href="#build">Build notes</a>
+  </nav>
+
+  <main class="doc">
+    <section id="parts">
+      <h2>Parts, about $90</h2>
+      <p>Prices are rough, for multi-packs from the usual hobby shops. Everything except the printed parts is off the shelf.</p>
+      <div class="tablewrap"><table class="bom">
+        <thead><tr><th scope="col">Part</th><th scope="col">Qty</th><th scope="col">About</th><th scope="col">Notes</th></tr></thead>
+        <tbody>
+          <tr><td>MG90S metal-gear micro servo</td><td>8</td><td>$28</td><td>SG90s (plastic gears) work for a first try, but the knees strip. 1.8 kg·cm at 4.8 V, 2.2 at 6 V.</td></tr>
+          <tr><td>ESP32 dev board (ESP32-WROOM-32 DevKit)</td><td>1</td><td>$8</td><td>Wi-Fi and Bluetooth if you want a phone remote later.</td></tr>
+          <tr><td>PCA9685 16-channel servo driver</td><td>1</td><td>$6</td><td>Makes the 50 Hz servo pulses over I²C, so the ESP32 doesn't have to.</td></tr>
+          <tr><td>2× 18650 cells + 2S holder, or a 2S LiPo (7.4 V, 1000–1500 mAh)</td><td>1</td><td>$15</td><td>Protected cells. About 1.5 hours of walking on 2500 mAh cells.</td></tr>
+          <tr><td>Buck converter, 5 A or more, set to 6.0 V</td><td>1</td><td>$8</td><td>The servo rail. XL4015-type or a hobby "servo BEC". A 3 A LM2596 is too small.</td></tr>
+          <tr><td>Mini 5 V buck (MP1584-type)</td><td>1</td><td>$2</td><td>Separate supply for the ESP32, so servo spikes can't reset it.</td></tr>
+          <tr><td>1000 µF, 10 V+ electrolytic capacitor</td><td>1</td><td>$1</td><td>Across the servo rail at the PCA9685.</td></tr>
+          <tr><td>Mini rocker switch, 6 A</td><td>1</td><td>$1</td><td>Most tiny slide switches are rated 0.5 A: too small.</td></tr>
+          <tr><td>Wire (22 AWG for power), Dupont leads, XT30 or JST plug</td><td></td><td>$5</td><td>Servo extension leads help on the hind legs.</td></tr>
+          <tr><td>M2 and M3 screws, 4 standoffs</td><td></td><td>$5</td><td>Or print the standoffs.</td></tr>
+          <tr><td>Filament: PLA for the frame and legs, coral PETG for the shell, a little TPU</td><td>~200 g</td><td>$5</td><td>TPU for the feet and the claw flexures.</td></tr>
+          <tr class="total"><td>Total</td><td></td><td>~$84–92</td><td>Plus a charger if you don't have one.</td></tr>
+        </tbody>
+      </table></div>
+    </section>
+
+    <section id="size">
+      <h2>Size and shape</h2>
+      <div class="diagrams">
+      <svg class="diagram" viewBox="0 0 330 250" role="img" aria-label="Front view with the main dimensions">
+        <g class="dg">
+          <text x="10" y="18" class="t h">Front view</text>
+          <rect x="95" y="40" width="130" height="72" class="shell" />
+          <rect x="75" y="68" width="20" height="22" class="shell" /><rect x="225" y="68" width="20" height="22" class="shell" />
+          <rect x="128" y="56" width="10" height="18" class="ink" /><rect x="182" y="56" width="10" height="18" class="ink" />
+          <line x1="108" y1="119" x2="76" y2="119" class="leg" /><line x1="212" y1="119" x2="244" y2="119" class="leg" />
+          <line x1="76" y1="119" x2="59.4" y2="180.8" class="leg" /><line x1="244" y1="119" x2="260.6" y2="180.8" class="leg" />
+          <circle cx="108" cy="119" r="4" class="srv" /><circle cx="212" cy="119" r="4" class="srv" />
+          <circle cx="76" cy="119" r="4" class="srv" /><circle cx="244" cy="119" r="4" class="srv" />
+          <line x1="30" y1="181" x2="290" y2="181" class="ground" />
+          <text x="160" y="35" class="t c">shell 130 × 72</text>
+          <text x="93" y="106" class="t s e">coxa 32</text>
+          <text x="58" y="150" class="t s e">tibia 64</text>
+          <text x="238" y="152" class="t s e">knee 15° out</text>
+          <line x1="300" y1="119" x2="300" y2="181" class="dim" /><text x="304" y="153" class="t s">62</text>
+          <line x1="59" y1="196" x2="261" y2="196" class="dim" /><text x="160" y="214" class="t c s">feet 201 apart</text>
+          <text x="10" y="240" class="t s">All in mm. Top of the shell is 141 off the ground.</text>
+        </g>
+      </svg>
+      <svg class="diagram" viewBox="0 0 330 250" role="img" aria-label="Top view with the main dimensions">
+        <g class="dg">
+          <text x="10" y="18" class="t h">Top view</text>
+          <rect x="85" y="62" width="130" height="96" class="shell" />
+          <rect x="65" y="92" width="20" height="26" class="shell" /><rect x="215" y="92" width="20" height="26" class="shell" />
+          <circle cx="98" cy="76" r="4" class="srv" /><circle cx="202" cy="76" r="4" class="srv" /><circle cx="98" cy="144" r="4" class="srv" /><circle cx="202" cy="144" r="4" class="srv" />
+          <line x1="98" y1="76" x2="49" y2="76" class="leg" /><line x1="202" y1="76" x2="251" y2="76" class="leg" />
+          <line x1="98" y1="144" x2="49" y2="144" class="leg" /><line x1="202" y1="144" x2="251" y2="144" class="leg" />
+          <path d="M98 76 m-45 -17 a48 48 0 0 0 0 34" class="arc" /><path d="M202 76 m45 -17 a48 48 0 0 1 0 34" class="arc" />
+          <path d="M98 144 m-45 -17 a48 48 0 0 0 0 34" class="arc" /><path d="M202 144 m45 -17 a48 48 0 0 1 0 34" class="arc" />
+          <text x="150" y="52" class="t c">front</text>
+          <text x="150" y="114" class="t c s">96 deep</text>
+          <line x1="98" y1="178" x2="202" y2="178" class="dim" /><text x="150" y="194" class="t c s">hips 104 apart</text>
+          <line x1="270" y1="76" x2="270" y2="144" class="dim" /><text x="274" y="114" class="t s">68</text>
+          <text x="10" y="214" class="t s">Dashed arcs: each foot swings about its hip,</text>
+          <text x="10" y="229" class="t s">±22° in trot, up to ±31° in creep.</text>
+          <text x="10" y="244" class="t s">LF, RF are the front legs; LH, RH the hind.</text>
+        </g>
+      </svg>
+      </div>
+      <ul class="facts">
+        <li><b>Shell</b> 130 × 96 × 72 mm (wide, deep, tall), printed in coral, with the eyes and claws as separate pieces.</li>
+        <li><b>Legs</b> at the four corners. Hip servo shaft-down in the frame (swings the leg forward and back), then a 32 mm coxa to the knee servo, then a 64 mm tibia to a TPU foot.</li>
+        <li><b>Standing</b>: knees 15° out, hips 62 mm off the ground, feet 201 mm apart side to side.</li>
+        <li><b>Step</b>: 36 mm stride, 14–17 mm foot lift. About 20 mm/s in creep and 90 mm/s in trot at 1×.</li>
+        <li><b>Mass</b> about 420 g: servos 107 g, cells and holder 105 g, boards 30 g, printed parts 150 g, wire and screws 30 g.</li>
+      </ul>
+    </section>
+
+    <section id="wiring">
+      <h2>Wiring and servo channels</h2>
+      <pre class="wiring" aria-label="Wiring diagram">
+ 2S battery ──┬── switch ──┬── 6 V buck, ≥5 A ──┬── PCA9685 V+ (servo rail)
+ 7.4 V        │            │                    └── 1000 µF across V+ and GND
+              │            └── 5 V mini buck ───── ESP32 VIN
+              └── GND: battery, both bucks, ESP32 and PCA9685 all tied together
+
+ ESP32 GPIO21 (SDA) ──── PCA9685 SDA
+ ESP32 GPIO22 (SCL) ──── PCA9685 SCL
+ ESP32 3V3 ───────────── PCA9685 VCC (logic only)
+ PCA9685 outputs 0–7 ─── servos: brown = GND, red = V+, orange = signal</pre>
+      <div class="tablewrap"><table class="chmap">
+        <thead><tr><th scope="col">Ch</th><th scope="col">Leg</th><th scope="col">Joint</th><th scope="col">Servo at 90° means</th><th scope="col">Dir</th></tr></thead>
+        <tbody>
+          <tr><td>0</td><td>Left front</td><td>hip</td><td>leg straight out sideways</td><td>+1</td></tr>
+          <tr><td>1</td><td>Left front</td><td>knee</td><td>tibia straight down</td><td>−1</td></tr>
+          <tr><td>2</td><td>Right front</td><td>hip</td><td>leg straight out sideways</td><td>−1</td></tr>
+          <tr><td>3</td><td>Right front</td><td>knee</td><td>tibia straight down</td><td>+1</td></tr>
+          <tr><td>4</td><td>Left hind</td><td>hip</td><td>leg straight out sideways</td><td>+1</td></tr>
+          <tr><td>5</td><td>Left hind</td><td>knee</td><td>tibia straight down</td><td>−1</td></tr>
+          <tr><td>6</td><td>Right hind</td><td>hip</td><td>leg straight out sideways</td><td>−1</td></tr>
+          <tr><td>7</td><td>Right hind</td><td>knee</td><td>tibia straight down</td><td>+1</td></tr>
+        </tbody>
+      </table></div>
+      <p class="small">Servo angle = 90 + Dir × joint angle. The left and right legs are mirror images, so their servos turn opposite ways for the same move. If a joint goes the wrong way on your build, flip its Dir in the sketch.</p>
+    </section>
+
+    <section id="power">
+      <h2>Power, and not browning out</h2>
+      <ul class="facts">
+        <li><b>Servo rail at 6.0 V</b> (MG90S are rated 4.8–6 V; 6 V gives the most torque, never go above). Each servo pulls about 10 mA idle, 150–250 mA moving and close to 1 A stalled. Walking averages 1–2 A with peaks of 3–4 A, so use a 5 A buck. Eight stalled servos would be 8 A.</li>
+        <li><b>The ESP32 gets its own 5 V buck.</b> If it shares the servo rail, a few servos starting at once sag the rail and the ESP32 resets ("Brownout detector was triggered" in the serial monitor). With its own supply it doesn't see the dips.</li>
+        <li><b>1000 µF across V+ and GND at the PCA9685</b> soaks up the start-up spikes. Mind the polarity.</li>
+        <li><b>Soft start.</b> The sketch wakes the servos one at a time, 150 ms apart, instead of all eight jumping into position at once.</li>
+        <li><b>One common ground</b> for everything, or the I²C signals get flaky.</li>
+        <li><b>Battery.</b> Two 2500 mAh 18650s are about 18 Wh. At around 9 W of walking that's 1.5 hours. Charge them out of the robot unless your holder has protection and balancing.</li>
+      </ul>
+    </section>
+
+    <section id="gaits">
+      <h2>Gaits and the joint-angle tables</h2>
+      <p>Both gaits are loops of keyframes. A foot on the ground sweeps back 36 mm (that pushes the body forward), then lifts, swings forward and comes down. Creep also sways the body 12 mm forward before each hind step and back before each front step (all the planted feet shift together), so the centre of mass is never near the edge of the three feet holding it up. The angles come from inverse kinematics: the knee sets the foot's height (knee = acos((62 − height) / 64)), then the hip turns the foot to its spot along the stride (hip = asin(forward / reach), where reach = 32 + 64 sin(knee)).</p>
+      <p>Values are joint angles in degrees: hip + = foot forward, knee = degrees out from straight down. <span class="up-key">Shaded</span> knee cells are steps, with the foot in the air. Steering scales each side's hip angles (the outside legs take longer steps), and the playing row lights up as the sim runs.</p>
+      <div id="gait-tables"></div>
+      <p class="small">Why the feet scuff a little (the "foot scuff" number in the sim): a 2-servo leg swings its foot on an arc, so planted feet drift a few millimetres closer together and farther apart over a step. That's about 3 mm in trot, and up to 6 mm in creep, where the sway makes the arcs longer. The sim moves the body by the best fit to the planted feet and shows the leftover instead of hiding it. TPU feet take it in their stride.</p>
+    </section>
+
+    <section id="code">
+      <h2>ESP32 sketch</h2>
+      <p>Printed from the same tables as the sim, so they match: <span id="sketch-lines"></span> lines, Arduino IDE, "ESP32 Dev Module", plus the Adafruit PWM Servo Driver library. Open the serial monitor at 115200 and send <code>w</code> to walk.</p>
+      <div class="codebar"><button type="button" class="btn" id="copy">Copy</button><a class="btn ghost" id="download" href="#">Download .ino</a></div>
+      <pre class="code"><code id="sketch"></code></pre>
+    </section>
+
+    <section id="build">
+      <h2>Build notes</h2>
+      <ul class="facts">
+        <li><b>Centre the servos before the horns go on.</b> Run the sketch without sending <code>w</code>: it parks every servo at the first creep keyframe. Fit each horn as close as the spline allows, then fix the last few degrees in <code>TRIM</code>.</li>
+        <li><b>Torque check.</b> In trot two feet carry 420 g, about 2.1 N each. The foot sits 17 mm out from under the knee, so the knee holds 0.035 N·m (0.36 kg·cm): about 5× margin on an MG90S. The hip servo's shaft also carries the leg sideways. That's fine at this weight, but if you add a lot more, put an M3 pin on the hip axis above the servo as a second bearing.</li>
+        <li><b>Balance.</b> Thanks to the sway, the centre of mass stays at least 8 mm inside the triangle of planted feet in creep (about 4 mm while turning): that's the "balance margin" in the sim. Without the sway it would touch zero at every leg change and the robot would rock. Keep the battery centred and low, as drawn. Trot has only two feet down at a time and stays up by being quick.</li>
+        <li><b>Print</b> the frame and legs in PLA at 3 walls and 30% infill; the shell can be 2 walls. Print the eyes in black and press-fit them. The claws hang on 1.2 mm TPU flexures, so they jiggle as it walks: no servos.</li>
+        <li><b>Next steps</b>: a phone remote over Bluetooth, or an IMU so it can feel when it's tipping.</li>
+      </ul>
+    </section>
+
+    <p class="foot">Built by Hamachi for Nick. The 3D sim and the sketch both come from <a href="gait.js">gait.js</a>, the single source of truth for the geometry and gaits.</p>
+  </main>
+
+  <script type="module" src="sim.js"></script>
+  <script type="module" src="doc.js"></script>
+</body>
+</html>
