@@ -372,9 +372,14 @@ const overlay = $('#overlay');
 const locked = () => document.pointerLockElement === canvas;
 $('#play').addEventListener('click', () => { stopDemo(); canvas.requestPointerLock(); });
 canvas.addEventListener('click', () => { if (!locked() && !demo) canvas.requestPointerLock(); });
-document.addEventListener('pointerlockchange', () => { overlay.hidden = locked() || !!demo; if (!locked()) { active = null; keys.clear(); } });
+let lockedAt = 0;
+document.addEventListener('pointerlockchange', () => {
+  overlay.hidden = locked() || !!demo; lockedAt = performance.now();
+  if (!locked()) { active = null; keys.clear(); }
+});
 document.addEventListener('mousemove', (e) => {
-  if (!locked()) return;
+  // Chrome can report one huge jump as the lock engages; it would spin you off the knight.
+  if (!locked() || performance.now() - lockedAt < 120 || Math.abs(e.movementX) > 250 || Math.abs(e.movementY) > 250) return;
   yaw -= e.movementX * 0.0022; pitch = Math.max(-1.5, Math.min(1.5, pitch - e.movementY * 0.0022));
 });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -446,5 +451,6 @@ window.__mb = {
     let top = y0; for (let s = 0; s < 60; s++) { stepPhysics(); top = Math.max(top, player.translation().y); }
     active = null; return { rise: top - y0, coinPinned: pinned(c) };
   },
+  state() { const p = player.translation(), k = knightBody.translation(); return { player: [p.x, p.y, p.z], knight: [k.x, k.y, k.z] }; },
   ready: true,
 };
