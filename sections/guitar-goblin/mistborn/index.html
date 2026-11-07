@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#14171e" />
+  <title>Steelpush · a Mistborn physics prototype</title>
+  <meta name="description" content="A first-person Allomancy prototype in the browser: Steelpush and Ironpull a 150 kg knight in a room of chest-high barriers, with real physics deciding who moves." />
+  <link rel="stylesheet" href="mistborn.css" />
+  <script type="importmap">
+    { "imports": { "three": "../vendor/three/three.module.min.js", "three/addons/": "../vendor/three/jsm/" } }
+  </script>
+</head>
+<body>
+  <canvas id="scene" aria-label="First-person view of a stone room with a knight in armour and chest-high barriers"></canvas>
+  <div class="cross" aria-hidden="true"></div>
+
+  <header class="top">
+    <a class="back" href="../" aria-label="Back to Guitar Goblin">&larr;</a>
+    <p class="rule">Equal and opposite: whoever is lighter or less anchored moves. Brace on a wall or barrier to move the knight.</p>
+  </header>
+
+  <div class="hud">
+    <div class="metals">
+      <span class="metal" id="steel">Steel</span>
+      <span class="metal" id="iron">Iron</span>
+      <span class="metal flare" id="flare">Flare</span>
+    </div>
+    <p class="on" id="on"></p>
+  </div>
+  <p class="keys">LMB push &middot; RMB pull &middot; Shift flare &middot; F coin &middot; R reset</p>
+
+  <p class="caption" id="caption" hidden></p>
+
+  <section class="overlay" id="overlay">
+    <div class="card">
+      <h1>Steelpush</h1>
+      <p class="sub">A Mistborn Allomancy prototype. You burn steel and iron; the knight is wearing 150&nbsp;kg of armour.</p>
+      <div class="actions">
+        <button type="button" class="btn primary" id="play">Click to play</button>
+        <button type="button" class="btn" id="demo">Watch the four cases</button>
+      </div>
+      <p class="touch-note">This one needs a mouse and keyboard. The demo plays on any screen.</p>
+      <dl class="controls">
+        <div><dt>Mouse</dt><dd>look</dd></div>
+        <div><dt>WASD, Space</dt><dd>move, jump</dd></div>
+        <div><dt>Hold left</dt><dd>Steelpush the metal under the crosshair</dd></div>
+        <div><dt>Hold right</dt><dd>Ironpull it</dd></div>
+        <div><dt>Shift</dt><dd>flare: twice the force</dd></div>
+        <div><dt>F</dt><dd>toss a coin, then push it</dd></div>
+        <div><dt>R</dt><dd>reset the room</dd></div>
+      </dl>
+      <p class="how">Every push or pull puts the same force on you and on the metal, in opposite directions, along the blue line. The physics engine decides who moves. Free in the room, you are lighter, so a push throws you back and a pull drags you in. With your back to a wall, or braced on a barrier between you, the stone takes your share and the knight moves instead. Push a coin lying on the floor to jump; push one stuck in a wall to fly off it.</p>
+      <p class="credit">Knight: KayKit Adventurers by Kay Lousberg (CC0). Physics: Rapier. Allomancy: Brandon Sanderson&rsquo;s <em>Mistborn</em>; this is a fan prototype.</p>
+      <button type="button" class="btn small" id="reset">Reset the room</button>
+    </div>
+  </section>
+  <button type="button" class="btn small stop" id="stop-demo">Stop demo</button>
+
+  <script type="module" src="mistborn.js"></script>
+</body>
+</html>
