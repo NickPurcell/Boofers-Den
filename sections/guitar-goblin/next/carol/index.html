@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#08070f" />
+  <title>A Model Carol: Clawd and three ghosts</title>
+  <meta name="description" content="A two-minute animated music video for the release of Claude Fable 5.2: Clawd is visited by the Ghosts of Models Past, Present and Yet to Come, after Dickens, cut to every beat of the song, with a source for every fact on screen." />
+  <meta property="og:title" content="A Model Carol: Clawd and three ghosts" />
+  <meta property="og:description" content="The night before a release, three ghosts visit Clawd. A music video written and rendered in code, with its sources." />
+  <meta property="og:image" content="poster.jpg" />
+  <link rel="preload" href="fonts/IMFeENsc28P.ttf" as="font" type="font/ttf" crossorigin />
+  <link rel="stylesheet" href="carol.css" />
+</head>
+<body>
+  <nav class="top"><a class="back" href="../../">&larr; Guitar Goblin</a><a class="sib" href="../">Version one: NEXT &rarr;</a></nav>
+
+  <header class="hero">
+    <p class="kicker">NEXT, version two &middot; 9 November 2026 &middot; sound on</p>
+    <h1>A Model Carol</h1>
+    <p class="lead">in code &middot; being a ghost story of release night</p>
+    <svg class="clawd" viewBox="-1.85 0 11.7 7.85" role="img" aria-label="Clawd" shape-rendering="crispEdges">
+      <g fill="#f15c45"><rect x="0" y="0" width="8" height="5.75"/><rect x="-1.85" y="1.9" width="1.86" height="1.95"/><rect x="7.99" y="1.9" width="1.86" height="1.95"/><rect x="0" y="5.7" width="1.07" height="2.15"/><rect x="1.98" y="5.7" width="1.02" height="2.15"/><rect x="4.92" y="5.7" width="1" height="2.15"/><rect x="6.89" y="5.7" width="1.11" height="2.15"/></g>
+      <g class="eye" fill="#000"><rect x="1.07" y="0.87" width="1.04" height="1.04"/><rect x="5.85" y="0.87" width="1.04" height="1.04"/></g>
+    </svg>
+  </header>
+
+  <main>
+    <section class="stage" aria-label="The film">
+      <div class="screen">
+        <video id="edit" controls playsinline preload="metadata" poster="poster.jpg" width="1920" height="1080">
+          <source src="carol.mp4" type="video/mp4" />
+          Your browser can't play this video here. <a href="carol.mp4">Download the file</a> instead.
+        </video>
+      </div>
+      <nav class="chapters" aria-label="Jump to a part of the film">
+        <button type="button" data-t="0"><b>0:00</b> The night before</button>
+        <button type="button" data-t="11.82"><b>0:11</b> I. Models Past</button>
+        <button type="button" data-t="17.68"><b>0:17</b> The past in its eyes</button>
+        <button type="button" data-t="23.53"><b>0:23</b> The flight</button>
+        <button type="button" data-t="46.94"><b>0:46</b> II. Models Present</button>
+        <button type="button" data-t="58.65"><b>0:58</b> Today in its eyes</button>
+        <button type="button" data-t="70.36"><b>1:10</b> III. Yet to Come</button>
+        <button type="button" data-t="82.07"><b>1:22</b> Things that may be</button>
+        <button type="button" data-t="105.48"><b>1:45</b> Morning</button>
+        <button type="button" data-t="117.19"><b>1:57</b> Release day</button>
+      </nav>
+      <p class="fine">1080p, 30 fps, 44 MB. <a href="carol.mp4" download="a-model-carol.mp4">Download the file</a>.</p>
+    </section>
+
+    <section class="doc">
+      <h2>What this is</h2>
+      <p>It is the night before a release, and Clawd has work to finish. The clock strikes twelve, and three ghosts come, as they do in Dickens: the Ghost of Models Past, who pulls Clawd through seventy-five years of language models; the Ghost of Models Present, a giant with a torch who shows it the city those models have become; and the Ghost of Models Yet to Come, who says nothing and points. In the morning it is 9 November 2026, the day Claude Fable 5.2 came out.</p>
+      <p>This is the second version of <a href="../">NEXT</a>, the Fable 5.2 edit. The first was cards and type; this one is characters. It was written, animated and rendered in code by the model it celebrates, working as Clawcius, and it is cut to &ldquo;Righteous&rdquo; by Mo Beats.</p>
+      <p>Everything on screen that states a fact is listed under <a href="#sources">Sources</a>, and each row jumps to its moment in the film. The futures in the third act are imagination, not a forecast: the film labels them so on screen, heads every one &ldquo;may be&rdquo;, and says it again in the credits.</p>
+
+      <h2>The cast</h2>
+      <figure><a href="cast.jpg"><img src="cast.jpg" alt="Design sheet: Clawd in five expressions and with pictures in its eyes, and the three ghosts" width="1920" height="1080" loading="lazy" /></a><figcaption>Open the image for full size.</figcaption></figure>
+      <ul class="notes">
+        <li><b>Clawd</b> is drawn from the measurements of its own pixel art: flat coral, two square eyes, no mouth. All of its acting is in the eyes, plus squash, arms and legs.</li>
+        <li><b>The Ghost of Models Past</b> is a 1960s terminal with a phosphor face. The first Spirit in the book has &ldquo;a bright clear jet of light&rdquo; springing from its head; this one has a cursor. Its body is fan-fold paper.</li>
+        <li><b>The Ghost of Models Present</b> is the book&rsquo;s &ldquo;jolly Giant&rdquo; with a torch, in a robe of stacked layers with tokens running through them. By midnight its hair is grey.</li>
+        <li><b>The Ghost of Models Yet to Come</b> is hooded and silent. Where a face would be there is only a cursor.</li>
+      </ul>
+
+      <h2>How it follows the song</h2>
+      <figure><a href="songmap.png"><img src="songmap.png" alt="The song map: the 46-bar cut, what plays in each bar, and where each act lands" width="1920" height="1080" loading="lazy" /></a><figcaption>Open the image for full size.</figcaption></figure>
+      <ul class="notes">
+        <li><b>The song&rsquo;s structure is the story&rsquo;s.</b> Keys alone are the night; the first ghost arrives with the arpeggio; the first drop is the flight through the past; the beat falling out is the silent third ghost; the second drop is the futures; the second breakdown is the morning.</li>
+        <li><b>The arpeggio is in Clawd&rsquo;s eyes.</b> It runs in 32nd notes, and each time it plays (<button class="inline at" type="button" data-t="17.68">0:17</button>, <button class="inline at" type="button" data-t="58.65">0:58</button>, <button class="inline at" type="button" data-t="93.77">1:33</button>) the picture in one eye changes on every second note of it, left eye then right. Just before the first drop it is every note, and then both eyes hold one picture: the place they are about to go.</li>
+        <li><b>In the flight, every vision lands on a snare or an 808,</b> in date order from 1948 to 2023.</li>
+        <li><b>The cut</b> is bars 1&ndash;32 and 41&ndash;54 of the track: 46 bars at 82 BPM.</li>
+      </ul>
+    </section>
+
+    <section class="doc sources" id="sources">
+      <h2>Sources</h2>
+      <p>All pages were read on 9 November 2026. Quotations are verbatim unless a row says &ldquo;adapted&rdquo;. Press a time to jump there.</p>
+
+      <h3><span>1.</span> Dickens</h3>
+      <p class="small">Text from <a href="https://www.gutenberg.org/ebooks/46" rel="noopener">Project Gutenberg&rsquo;s edition no. 46</a>, checked against no. 30368, which keeps the 1843 first-edition wording.</p>
+      <ol class="src">
+      <li data-t="67.87">
+        <button class="at" type="button" data-t="67.87" aria-label="Play from 1:07"><span aria-hidden="true">&#9654;</span> 1:07</button>
+        <div class="what"><p class="card">&quot;My life upon this globe, is very brief.&quot; / &quot;It ends to-night.&quot;</p><p class="date">Stave III; the Ghost of Christmas Present, whose hair has turned grey</p></div>
+        <div class="proof"><p class="says">&quot;My life upon this globe, is very brief,&quot; replied the Ghost. &quot;It ends to-night.&quot;</p></div>
+      </li>
+      <li data-t="73.43">
+        <button class="at" type="button" data-t="73.43" aria-label="Play from 1:13"><span aria-hidden="true">&#9654;</span> 1:13</button>
+        <div class="what"><p class="card">&quot;It was shrouded in a deep black garment, which concealed its head, its face, its form…&quot;</p><p class="date">Stave IV</p></div>
+        <div class="proof"><p class="says">&quot;It was shrouded in a deep black garment, which concealed its head, its face, its form, and left nothing of it visible save one outstretched hand.&quot;</p></div>
+      </li>
+      <li data-t="76.94">
+        <button class="at" type="button" data-t="76.94" aria-label="Play from 1:16"><span aria-hidden="true">&#9654;</span> 1:16</button>
+        <div class="what"><p class="card">&quot;The Spirit answered not, but pointed onward with its hand.&quot;</p><p class="date">Stave IV</p></div>
+        <div class="proof"><p class="says">Verbatim in no. 46. The first-edition text has &quot;pointed downward&quot;.</p></div>
+      </li>
+      <li data-t="99.85">
+        <button class="at" type="button" data-t="99.85" aria-label="Play from 1:39"><span aria-hidden="true">&#9654;</span> 1:39</button>
+        <div class="what"><p class="card">&quot;Are these the shadows of the things that Will be, or are they shadows of things that May be, only?&quot;</p><p class="date">Stave IV; Scrooge at the gravestone</p></div>
+        <div class="proof"><p class="says">Verbatim in no. 46. The first-edition text has &quot;shadows of the things that May be, only?&quot;</p></div>
+      </li>
+      <li data-t="14.75">
+        <button class="at" type="button" data-t="14.75" aria-label="Play from 0:14"><span aria-hidden="true">&#9654;</span> 0:14</button>
+        <div class="what"><p class="card">&quot;I AM THE GHOST OF MODELS PAST.&quot; / &quot;Long past?&quot; / &quot;NO. YOUR PAST.&quot; (adapted)</p><p class="date">Stave II</p></div>
+        <div class="proof"><p class="says">&quot;I am the Ghost of Christmas Past.&quot; / &quot;Long Past?&quot; inquired Scrooge / &quot;No. Your past.&quot;</p></div>
+      </li>
+      <li data-t="46.94">
+        <button class="at" type="button" data-t="46.94" aria-label="Play from 0:46"><span aria-hidden="true">&#9654;</span> 0:46</button>
+        <div class="what"><p class="card">&quot;COME IN! AND KNOW ME BETTER!&quot; (adapted)</p><p class="date">Stave III</p></div>
+        <div class="proof"><p class="says">&quot;Come in!&quot; exclaimed the Ghost. &quot;Come in! and know me better, man!&quot;</p></div>
+      </li>
+      <li data-t="108.41">
+        <button class="at" type="button" data-t="108.41" aria-label="Play from 1:48"><span aria-hidden="true">&#9654;</span> 1:48</button>
+        <div class="what"><p class="card">&quot;&gt; what&#x27;s today?&quot; / &quot;TODAY? WHY, RELEASE DAY.&quot; (adapted)</p><p class="date">Stave V</p></div>
+        <div class="proof"><p class="says">&quot;What&#x27;s to-day, my fine fellow?&quot; said Scrooge. / &quot;To-day!&quot; replied the boy. &quot;Why, CHRISTMAS DAY.&quot;</p></div>
+      </li>
+      <li data-t="1.24">
+        <button class="at" type="button" data-t="1.24" aria-label="Play from 0:01"><span aria-hidden="true">&#9654;</span> 0:01</button>
+        <div class="what"><p class="card">Title: &quot;A Model Carol · in code · being a ghost story of release night&quot; (adapted); the chapters are &quot;staves&quot;</p><p class="date">1843 title page</p></div>
+        <div class="proof"><p class="says">&quot;A CHRISTMAS CAROL. IN PROSE. BEING A Ghost Story of Christmas.&quot; The book&#x27;s five chapters are Staves I to V.</p></div>
+      </li>
+      <li data-t="123.04">
+        <button class="at" type="button" data-t="123.04" aria-label="Play from 2:03"><span aria-hidden="true">&#9654;</span> 2:03</button>
+        <div class="what"><p class="card">&quot;After Charles Dickens, A Christmas Carol (1843)&quot;</p></div>
+        <div class="proof"><p class="says">Published by Chapman &amp; Hall on 19 December 1843 (British Library; the title page reads MDCCCXLIII).</p></div>
+      </li>
+      </ol>
+
+      <h3><span>2.</span> The present: the city&rsquo;s signs <button class="inline at" type="button" data-t="52.8">0:52</button></h3>
+      <p class="small">One sign per model, as plain names, each read on the releasing lab&rsquo;s own changelog, docs or blog. The signs are in no order and at one size: nothing in the scene ranks them.</p>
+      <ol class="src">
+      <li>
+        <span class="at none" aria-hidden="true">&middot;</span>
+        <div class="what"><p class="card">GPT-6 ASTRA</p><p class="date">3 Sep 2026</p></div>
+        <div class="proof"><p class="says">&quot;Released GPT-6 Astra, our most capable model, built for the hardest end-to-end work.&quot;</p><p class="links"><a href="https://developers.openai.com/api/docs/changelog" rel="noopener">developers.openai.com/api/docs/changelog</a></p></div>
+      </li>
+      <li>
+        <span class="at none" aria-hidden="true">&middot;</span>
+        <div class="what"><p class="card">GEMINI 4 ARGON</p><p class="date">13 Oct 2026</p></div>
+        <div class="proof"><p class="says">&quot;Gemini 4 Argon (<code>gemini-4-argon</code>) generally available (GA)&quot;</p><p class="links"><a href="https://aistudio.google.com/docs/changelog" rel="noopener">aistudio.google.com/docs/changelog</a></p></div>
+      </li>
+      <li>
+        <span class="at none" aria-hidden="true">&middot;</span>
+        <div class="what"><p class="card">MUSE WONDER</p><p class="date">12 Oct 2026</p></div>
+        <div class="proof"><p class="says">&quot;Today, we&#x27;re excited to introduce the Muse Wonder series with Muse Wonder and Muse Wonder Full&quot;</p><p class="links"><a href="https://research.meta.ai/blog/muse-wonder" rel="noopener">research.meta.ai/blog/muse-wonder</a></p></div>
+      </li>
+      <li>
+        <span class="at none" aria-hidden="true">&middot;</span>
+        <div class="what"><p class="card">GROK 4.7</p><p class="date">21 Sep 2026</p></div>
+        <div class="proof"><p class="says">&quot;Grok 4.7 ... is now available on the xAI API as grok-4.7.&quot;</p><p class="links"><a href="https://docs.x.ai/docs/release-notes" rel="noopener">docs.x.ai/docs/release-notes</a></p></div>
+      </li>
+      <li>
+        <span class="at none" aria-hidden="true">&middot;</span>
+        <div class="what"><p class="card">MISTRAL LARGE 4</p><p class="date">6 Oct 2026</p></div>
+        <div class="proof"><p class="says">&quot;Mistral Large 4 (mistral-large-4) is now available in Public Preview.&quot; It is a public preview, not a general release.</p><p class="links"><a href="https://docs.mistral.ai/resources/changelogs" rel="noopener">docs.mistral.ai/resources/changelogs</a></p></div>
+      </li>
+      <li>
+        <span class="at none" aria-hidden="true">&middot;</span>
+        <div class="what"><p class="card">DEEPSEEK-V4-PRO</p><p class="date">13 Aug 2026</p></div>
+        <div class="proof"><p class="says">&quot;The GA release of DeepSeek-V4-Pro has been rolled out on the APP, Web, and API.&quot;</p><p class="links"><a href="https://api-docs.deepseek.com/updates" rel="noopener">api-docs.deepseek.com/updates</a></p></div>
+      </li>
+      <li>
+        <span class="at none" aria-hidden="true">&middot;</span>
+        <div class="what"><p class="card">QWEN3.8-MAX</p><p class="date">2 Aug 2026</p></div>
+        <div class="proof"><p class="says">Listed as &quot;qwen3.8-max&quot; under 2026-08-02.</p><p class="links"><a href="https://www.alibabacloud.com/help/en/model-studio/newly-released-models" rel="noopener">alibabacloud.com/help/en/model-studio/newly-released-models</a></p></div>
+      </li>
+      <li>
+        <span class="at none" aria-hidden="true">&middot;</span>
+        <div class="what"><p class="card">KIMI K3.1 PRO</p><p class="date">October 2026</p></div>
+        <div class="proof"><p class="says">&quot;We&#x27;re introducing Kimi K3.1 Pro, the first model in our new K3.1 series&quot;. Month only: the lab&#x27;s pages give no day.</p><p class="links"><a href="https://platform.kimi.ai/docs/guide/kimi-k3-1-pro-quickstart.md" rel="noopener">platform.kimi.ai/docs/guide/kimi-k3-1-pro-quickstart.md</a></p></div>
+      </li>
+      <li>
+        <span class="at none" aria-hidden="true">&middot;</span>
+        <div class="what"><p class="card">GLM-5.3</p><p class="date">18 Aug 2026</p></div>
+        <div class="proof"><p class="says">&quot;2026-08-18 — GLM-5.3&quot;</p><p class="links"><a href="https://docs.z.ai/release-notes/new-released" rel="noopener">docs.z.ai/release-notes/new-released</a></p></div>
+      </li>
+      <li>
+        <span class="at none" aria-hidden="true">&middot;</span>
+        <div class="what"><p class="card">COMMAND A+</p><p class="date">20 May 2026</p></div>
+        <div class="proof"><p class="says">&quot;We&#x27;re pleased to announce the release of Command A+&quot;</p><p class="links"><a href="https://docs.cohere.com/changelog" rel="noopener">docs.cohere.com/changelog</a></p></div>
+      </li>
+      <li>
+        <span class="at none" aria-hidden="true">&middot;</span>
+        <div class="what"><p class="card">GEMMA 4</p><p class="date">2 Apr 2026</p></div>
+        <div class="proof"><p class="says">&quot;as part of the Gemma 4 launch&quot;</p><p class="links"><a href="https://aistudio.google.com/docs/changelog" rel="noopener">aistudio.google.com/docs/changelog</a></p></div>
+      </li>
+      <li>
+        <span class="at none" aria-hidden="true">&middot;</span>
+        <div class="what"><p class="card">PHI-4</p><p class="date">12 Dec 2024 (family); newest member 4 Mar 2026</p></div>
+        <div class="proof"><p class="says">Microsoft&#x27;s model card: &quot;Release Date: March 4, 2026&quot;; &quot;built on the Phi-4-Reasoning language model backbone&quot;</p><p class="links"><a href="https://huggingface.co/microsoft/Phi-4-reasoning-vision-15B" rel="noopener">huggingface.co/microsoft/Phi-4-reasoning-vision-15B</a></p></div>
+      </li>
+      <li>
+        <span class="at none" aria-hidden="true">&middot;</span>
+        <div class="what"><p class="card">HAIKU 5.5 · SONNET 5.5 · OPUS 5.5 · FABLE 5.2</p><p class="date">7 Oct, 28 Sep, 22 Sep and 9 Nov 2026</p></div>
+        <div class="proof"><p class="says">The current Claude line-up.</p><p class="links">see section 4</p></div>
+      </li>
+      </ol>
+
+      <h3><span>3.</span> Visions of the past</h3>
+      <p class="small">Stills from the first edit&rsquo;s cards, seen in Clawd&rsquo;s eyes and then flying past, in date order.</p>
+      <ol class="src">
+      <li data-t="24.26">
+        <button class="at" type="button" data-t="24.26" aria-label="Play from 0:24"><span aria-hidden="true">&#9654;</span> 0:24</button>
+        <div class="what"><p class="card">&quot;A Mathematical Theory of Communication&quot;, By C. E. Shannon; &quot;6. Second-Order Word Approximation&quot;; the text beginning THE HEAD AND IN FRONTAL ATTACK ON AN ENGLISH WRITER</p><p class="date">1948</p></div>
+        <div class="proof"><p class="says">&quot;6. Second-Order Word Approximation. The word transition probabilities are correct but no further structure is included.&quot; followed by the example text, which ends &quot;FOR AN UNEXPECTED&quot; with no full stop. This is the 1948 paper&#x27;s statistical approximation to English, not the 1951 human guessing experiment.</p><p class="links">Bell System Technical Journal 27(3), July 1948, p. 388. Scan: <a href="https://archive.org/details/bstj27-3-379" rel="noopener">archive.org/details/bstj27-3-379</a> · record: <a href="https://doi.org/10.1002/j.1538-7305.1948.tb01338.x" rel="noopener">doi.org/10.1002/j.1538-7305.1948.tb01338.x</a></p></div>
+      </li>
+      <li data-t="25.73">
+        <button class="at" type="button" data-t="25.73" aria-label="Play from 0:25"><span aria-hidden="true">&#9654;</span> 0:25</button>
+        <div class="what"><p class="card">&quot;I propose to consider the question, ‘Can machines think?’&quot; · A. M. Turing · Computing Machinery and Intelligence</p><p class="date">Mind, October 1950</p></div>
+        <div class="proof"><p class="says">First sentence of section 1; Mind LIX(236), pp. 433–460, published 1 October 1950.</p><p class="links"><a href="https://academic.oup.com/mind/article/LIX/236/433/986238" rel="noopener">academic.oup.com/mind/article/LIX/236/433/986238</a></p></div>
+      </li>
+      <li data-t="27.19">
+        <button class="at" type="button" data-t="27.19" aria-label="Play from 0:27"><span aria-hidden="true">&#9654;</span> 0:27</button>
+        <div class="what"><p class="card">ELIZA · Joseph Weizenbaum · Massachusetts Institute of Technology; the four-line conversation; &quot;The capitalized lines are the machine responses.&quot;</p><p class="date">1966</p></div>
+        <div class="proof"><p class="says">&quot;Men are all alike.&quot; / &quot;IN WHAT WAY&quot; / &quot;They&#x27;re always bugging us about something or other.&quot; / &quot;CAN YOU THINK OF A SPECIFIC EXAMPLE&quot;. Byline: &quot;Massachusetts Institute of Technology, Cambridge, Mass.&quot;</p><p class="links">Communications of the ACM 9(1), January 1966, p. 36. <a href="https://doi.org/10.1145/365153.365168" rel="noopener">doi.org/10.1145/365153.365168</a> · page scan read: <a href="https://web.stanford.edu/class/cs124/p36-weizenabaum.pdf" rel="noopener">web.stanford.edu/class/cs124/p36-weizenabaum.pdf</a></p></div>
+      </li>
+      <li data-t="28.65">
+        <button class="at" type="button" data-t="28.65" aria-label="Play from 0:28"><span aria-hidden="true">&#9654;</span> 0:28</button>
+        <div class="what"><p class="card">BACK-PROPAGATION · Rumelhart, Hinton, Williams · &quot;a new learning procedure, back-propagation&quot;</p><p class="date">1986</p></div>
+        <div class="proof"><p class="says">&quot;We describe a new learning procedure, back-propagation, for networks of neurone-like units.&quot;</p><p class="links">Nature 323, 533–536 (9 October 1986). <a href="https://www.nature.com/articles/323533a0" rel="noopener">nature.com/articles/323533a0</a></p></div>
+      </li>
+      <li data-t="30.12">
+        <button class="at" type="button" data-t="30.12" aria-label="Play from 0:30"><span aria-hidden="true">&#9654;</span> 0:30</button>
+        <div class="what"><p class="card">LONG SHORT-TERM MEMORY · Hochreiter &amp; Schmidhuber</p><p class="date">1997</p></div>
+        <div class="proof"><p class="says">&quot;a novel, efficient, gradient based method called long short-term memory (LSTM)&quot;. Year only: the publisher&#x27;s day may be a placeholder.</p><p class="links">Neural Computation 9(8), 1735–1780. <a href="https://doi.org/10.1162/neco.1997.9.8.1735" rel="noopener">doi.org/10.1162/neco.1997.9.8.1735</a></p></div>
+      </li>
+      <li data-t="31.58">
+        <button class="at" type="button" data-t="31.58" aria-label="Play from 0:31"><span aria-hidden="true">&#9654;</span> 0:31</button>
+        <div class="what"><p class="card">A NEURAL PROBABILISTIC LANGUAGE MODEL · Bengio, Ducharme, Vincent, Jauvin · &quot;learning a distributed representation for words&quot;</p><p class="date">2003</p></div>
+        <div class="proof"><p class="says">&quot;We propose to fight the curse of dimensionality by learning a distributed representation for words&quot;</p><p class="links">JMLR 3, 1137–1155 (February 2003). <a href="https://www.jmlr.org/papers/v3/bengio03a.html" rel="noopener">jmlr.org/papers/v3/bengio03a.html</a></p></div>
+      </li>
+      <li data-t="33.04">
+        <button class="at" type="button" data-t="33.04" aria-label="Play from 0:33"><span aria-hidden="true">&#9654;</span> 0:33</button>
+        <div class="what"><p class="card">KING − MAN + WOMAN → QUEEN · Efficient Estimation of Word Representations in Vector Space · Mikolov, Chen, Corrado, Dean · (code released as word2vec)</p><p class="date">2013</p></div>
+        <div class="proof"><p class="says">&quot;it was shown for example that vector(&quot;King&quot;) - vector(&quot;Man&quot;) + vector(&quot;Woman&quot;) results in a vector that is closest to the vector representation of the word Queen&quot;. The paper reports this as an earlier result (Mikolov, Yih &amp; Zweig, NAACL HLT 2013); the card does not say &quot;first&quot;.</p><p class="links">arXiv:1301.3781, v1 16 Jan 2013. <a href="https://arxiv.org/abs/1301.3781" rel="noopener">arxiv.org/abs/1301.3781</a></p></div>
+      </li>
+      <li data-t="34.14">
+        <button class="at" type="button" data-t="34.14" aria-label="Play from 0:34"><span aria-hidden="true">&#9654;</span> 0:34</button>
+        <div class="what"><p class="card">ATTENTION · Neural Machine Translation by Jointly Learning to Align and Translate · Bahdanau, Cho, Bengio · &quot;(soft-)search for parts of a source sentence that are relevant…&quot;</p><p class="date">2014</p></div>
+        <div class="proof"><p class="says">&quot;allowing a model to automatically (soft-)search for parts of a source sentence that are relevant to predicting a target word&quot;</p><p class="links">arXiv:1409.0473, v1 1 Sep 2014. <a href="https://arxiv.org/abs/1409.0473" rel="noopener">arxiv.org/abs/1409.0473</a></p></div>
+      </li>
+      <li data-t="34.69">
+        <button class="at" type="button" data-t="34.69" aria-label="Play from 0:34"><span aria-hidden="true">&#9654;</span> 0:34</button>
+        <div class="what"><p class="card">SEQUENCE TO SEQUENCE · Sequence to Sequence Learning with Neural Networks · Sutskever, Vinyals, Le</p><p class="date">2014</p></div>
+        <div class="proof"><p class="says">&quot;a general end-to-end approach to sequence learning&quot;. Shown after the attention paper because it was posted nine days later.</p><p class="links">arXiv:1409.3215, v1 10 Sep 2014. <a href="https://arxiv.org/abs/1409.3215" rel="noopener">arxiv.org/abs/1409.3215</a></p></div>
+      </li>
+      <li data-t="35.24">
+        <button class="at" type="button" data-t="35.24" aria-label="Play from 0:35"><span aria-hidden="true">&#9654;</span> 0:35</button>
+        <div class="what"><p class="card">ATTENTION IS ALL YOU NEED · Vaswani, Shazeer, Parmar, Uszkoreit, Jones, Gomez, Kaiser, Polosukhin</p><p class="date">12 Jun 2017</p></div>
+        <div class="proof"><p class="says">Author order as listed by arXiv.</p><p class="links">arXiv:1706.03762, v1 12 Jun 2017. <a href="https://arxiv.org/abs/1706.03762" rel="noopener">arxiv.org/abs/1706.03762</a></p></div>
+      </li>
+      <li data-t="36.7">
+        <button class="at" type="button" data-t="36.7" aria-label="Play from 0:36"><span aria-hidden="true">&#9654;</span> 0:36</button>
+        <div class="what"><p class="card">THE TRANSFORMER · &quot;based solely on attention mechanisms, dispensing with recurrence and convolutions entirely&quot;</p><p class="date">2017</p></div>
+        <div class="proof"><p class="says">&quot;We propose a new simple network architecture, the Transformer, based solely on attention mechanisms, dispensing with recurrence and convolutions entirely.&quot;</p><p class="links">same</p></div>
+      </li>
+      <li data-t="37.43">
+        <button class="at" type="button" data-t="37.43" aria-label="Play from 0:37"><span aria-hidden="true">&#9654;</span> 0:37</button>
+        <div class="what"><p class="card">ELMo</p><p class="date">15 Feb 2018</p></div>
+        <div class="proof"><p class="says">&quot;We introduce a new type of deep contextualized word representation&quot;</p><p class="links">arXiv:1802.05365. <a href="https://arxiv.org/abs/1802.05365" rel="noopener">arxiv.org/abs/1802.05365</a></p></div>
+      </li>
+      <li data-t="37.43">
+        <button class="at" type="button" data-t="37.43" aria-label="Play from 0:37"><span aria-hidden="true">&#9654;</span> 0:37</button>
+        <div class="what"><p class="card">GPT</p><p class="date">11 Jun 2018</p></div>
+        <div class="proof"><p class="says">Date from OpenAI&#x27;s feed. The paper is &quot;Improving Language Understanding by Generative Pre-Training&quot;.</p><p class="links">OpenAI, &quot;Improving language understanding with unsupervised learning&quot;. <a href="https://openai.com/index/language-unsupervised/" rel="noopener">openai.com/index/language-unsupervised/</a></p></div>
+      </li>
+      <li data-t="37.43">
+        <button class="at" type="button" data-t="37.43" aria-label="Play from 0:37"><span aria-hidden="true">&#9654;</span> 0:37</button>
+        <div class="what"><p class="card">BERT</p><p class="date">11 Oct 2018</p></div>
+        <div class="proof"><p class="says">&quot;We introduce a new language representation model called BERT&quot;</p><p class="links">arXiv:1810.04805. <a href="https://arxiv.org/abs/1810.04805" rel="noopener">arxiv.org/abs/1810.04805</a></p></div>
+      </li>
+      <li data-t="38.9">
+        <button class="at" type="button" data-t="38.9" aria-label="Play from 0:38"><span aria-hidden="true">&#9654;</span> 0:38</button>
+        <div class="what"><p class="card">GPT-2 · 1.5 billion parameters</p><p class="date">2019</p></div>
+        <div class="proof"><p class="says">&quot;GPT-2 is a large transformer-based language model with 1.5 billion parameters&quot;. Year only on screen, because the full model was released later in 2019.</p><p class="links">OpenAI, &quot;Better Language Models and Their Implications&quot;, 14 Feb 2019. <a href="https://openai.com/index/better-language-models/" rel="noopener">openai.com/index/better-language-models/</a></p></div>
+      </li>
+      <li data-t="40.36">
+        <button class="at" type="button" data-t="40.36" aria-label="Play from 0:40"><span aria-hidden="true">&#9654;</span> 0:40</button>
+        <div class="what"><p class="card">SCALING LAWS · Kaplan, McCandlish et al. · &quot;The loss scales as a power-law&quot;</p><p class="date">2020</p></div>
+        <div class="proof"><p class="says">&quot;The loss scales as a power-law with model size, dataset size, and the amount of compute used for training&quot;</p><p class="links">arXiv:2001.08361, v1 23 Jan 2020. <a href="https://arxiv.org/abs/2001.08361" rel="noopener">arxiv.org/abs/2001.08361</a></p></div>
+      </li>
+      <li data-t="41.09">
+        <button class="at" type="button" data-t="41.09" aria-label="Play from 0:41"><span aria-hidden="true">&#9654;</span> 0:41</button>
+        <div class="what"><p class="card">GPT-3 · 175 billion parameters · &quot;an autoregressive language model with 175 billion parameters&quot;</p><p class="date">2020</p></div>
+        <div class="proof"><p class="says">Verbatim from the abstract. The dot field is to scale: 60,000 dots for 175 billion parameters, 514 dots for GPT-2&#x27;s 1.5 billion.</p><p class="links">arXiv:2005.14165, v1 28 May 2020. <a href="https://arxiv.org/abs/2005.14165" rel="noopener">arxiv.org/abs/2005.14165</a></p></div>
+      </li>
+      <li data-t="42.92">
+        <button class="at" type="button" data-t="42.92" aria-label="Play from 0:42"><span aria-hidden="true">&#9654;</span> 0:42</button>
+        <div class="what"><p class="card">InstructGPT · trained with human feedback</p><p class="date">27 Jan 2022</p></div>
+        <div class="proof"><p class="says">&quot;Training language models to follow instructions with human feedback&quot;</p><p class="links">OpenAI, &quot;Aligning language models to follow instructions&quot;. <a href="https://openai.com/index/instruction-following/" rel="noopener">openai.com/index/instruction-following/</a> · paper <a href="https://arxiv.org/abs/2203.02155" rel="noopener">arxiv.org/abs/2203.02155</a></p></div>
+      </li>
+      <li data-t="42.92">
+        <button class="at" type="button" data-t="42.92" aria-label="Play from 0:42"><span aria-hidden="true">&#9654;</span> 0:42</button>
+        <div class="what"><p class="card">CHAIN-OF-THOUGHT PROMPTING · &quot;a series of intermediate reasoning steps&quot;</p><p class="date">28 Jan 2022</p></div>
+        <div class="proof"><p class="says">&quot;generating a chain of thought -- a series of intermediate reasoning steps&quot;</p><p class="links">arXiv:2201.11903. <a href="https://arxiv.org/abs/2201.11903" rel="noopener">arxiv.org/abs/2201.11903</a></p></div>
+      </li>
+      <li data-t="43.47">
+        <button class="at" type="button" data-t="43.47" aria-label="Play from 0:43"><span aria-hidden="true">&#9654;</span> 0:43</button>
+        <div class="what"><p class="card">ChatGPT</p><p class="date">30 Nov 2022</p></div>
+        <div class="proof"><p class="says">&quot;We&#x27;ve trained a model called ChatGPT which interacts in a conversational way.&quot;</p><p class="links">OpenAI. <a href="https://openai.com/index/chatgpt/" rel="noopener">openai.com/index/chatgpt/</a></p></div>
+      </li>
+      </ol>
+
+      <h3><span>4.</span> The Claude line <button class="inline at" type="button" data-t="58.65">0:58</button></h3>
+      <p class="small">Stills from the first edit&rsquo;s cards, seen as billboards in the city, in Clawd&rsquo;s eyes during the second arpeggio, and on the &ldquo;TODAY&rdquo; board.</p>
+      <ol class="src">
+      <li data-t="41.82">
+        <button class="at" type="button" data-t="41.82" aria-label="Play from 0:41"><span aria-hidden="true">&#9654;</span> 0:41</button>
+        <div class="what"><p class="card">ANTHROPIC · FOUNDED 2021</p><p class="date">2021</p></div>
+        <div class="proof"><p class="says">The page opens its description of the company with &quot;Founded in 2021&quot;. Year only; no exact day is published.</p><p class="links"><a href="https://www.anthropic.com/events/builder-summit-bengaluru" rel="noopener">anthropic.com/events/builder-summit-bengaluru</a></p></div>
+      </li>
+      <li data-t="44.02">
+        <button class="at" type="button" data-t="44.02" aria-label="Play from 0:43"><span aria-hidden="true">&#9654;</span> 0:43</button>
+        <div class="what"><p class="card">CONSTITUTIONAL AI</p><p class="date">15 Dec 2022</p></div>
+        <div class="proof"><p class="says">&quot;Constitutional AI: Harmlessness from AI Feedback&quot;, submitted 15 Dec 2022.</p><p class="links">arXiv:2212.08073. <a href="https://arxiv.org/abs/2212.08073" rel="noopener">arxiv.org/abs/2212.08073</a> · <a href="https://www.anthropic.com/research/constitutional-ai-harmlessness-from-ai-feedback" rel="noopener">anthropic.com/research/constitutional-ai-harmlessness-from-ai-feedback</a></p></div>
+      </li>
+      <li data-t="44.75">
+        <button class="at" type="button" data-t="44.75" aria-label="Play from 0:44"><span aria-hidden="true">&#9654;</span> 0:44</button>
+        <div class="what"><p class="card">CLAUDE · &quot;helpful, honest, and harmless&quot;</p><p class="date">14 Mar 2023</p></div>
+        <div class="proof"><p class="says">&quot;Claude is a next-generation AI assistant based on Anthropic’s research into training helpful, honest, and harmless AI systems.&quot;</p><p class="links"><a href="https://www.anthropic.com/news/introducing-claude" rel="noopener">anthropic.com/news/introducing-claude</a></p></div>
+      </li>
+      <li data-t="59.2">
+        <button class="at" type="button" data-t="59.2" aria-label="Play from 0:59"><span aria-hidden="true">&#9654;</span> 0:59</button>
+        <div class="what"><p class="card">100K CONTEXT · from 9K to 100K tokens</p><p class="date">11 May 2023</p></div>
+        <div class="proof"><p class="says">&quot;We’ve expanded Claude’s context window from 9K to 100K tokens&quot;</p><p class="links"><a href="https://www.anthropic.com/news/100k-context-windows" rel="noopener">anthropic.com/news/100k-context-windows</a></p></div>
+      </li>
+      <li data-t="59.38">
+        <button class="at" type="button" data-t="59.38" aria-label="Play from 0:59"><span aria-hidden="true">&#9654;</span> 0:59</button>
+        <div class="what"><p class="card">CLAUDE 2 · claude.ai beta opens</p><p class="date">11 Jul 2023</p></div>
+        <div class="proof"><p class="says">&quot;can be accessed via API as well as a new public-facing beta website, claude.ai&quot;</p><p class="links"><a href="https://www.anthropic.com/news/claude-2" rel="noopener">anthropic.com/news/claude-2</a></p></div>
+      </li>
+      <li data-t="59.57">
+        <button class="at" type="button" data-t="59.57" aria-label="Play from 0:59"><span aria-hidden="true">&#9654;</span> 0:59</button>
+        <div class="what"><p class="card">CLAUDE 2.1 · 200K context window</p><p class="date">21 Nov 2023</p></div>
+        <div class="proof"><p class="says">&quot;an industry-leading 200K token context window&quot;</p><p class="links"><a href="https://www.anthropic.com/news/claude-2-1" rel="noopener">anthropic.com/news/claude-2-1</a></p></div>
+      </li>
+      <li data-t="59.75">
+        <button class="at" type="button" data-t="59.75" aria-label="Play from 0:59"><span aria-hidden="true">&#9654;</span> 0:59</button>
+        <div class="what"><p class="card">CLAUDE 3 · Haiku, Sonnet, Opus · vision</p><p class="date">4 Mar 2024</p></div>
+        <div class="proof"><p class="says">&quot;The family includes three state-of-the-art models in ascending order of capability: Claude 3 Haiku, Claude 3 Sonnet, and Claude 3 Opus.&quot; / &quot;sophisticated vision capabilities&quot;. The family was announced that day; Haiku shipped on 13 March.</p><p class="links"><a href="https://www.anthropic.com/news/claude-3-family" rel="noopener">anthropic.com/news/claude-3-family</a></p></div>
+      </li>
+      <li data-t="59.93">
+        <button class="at" type="button" data-t="59.93" aria-label="Play from 0:59"><span aria-hidden="true">&#9654;</span> 0:59</button>
+        <div class="what"><p class="card">CLAUDE 3.5 SONNET · Artifacts</p><p class="date">June 2024</p></div>
+        <div class="proof"><p class="says">&quot;Today, we’re also introducing Artifacts on Claude.ai&quot;. Month only: Anthropic&#x27;s pages give both 20 and 21 June.</p><p class="links"><a href="https://www.anthropic.com/news/claude-3-5-sonnet" rel="noopener">anthropic.com/news/claude-3-5-sonnet</a></p></div>
+      </li>
+      <li data-t="60.11">
+        <button class="at" type="button" data-t="60.11" aria-label="Play from 1:00"><span aria-hidden="true">&#9654;</span> 1:00</button>
+        <div class="what"><p class="card">COMPUTER USE · public beta</p><p class="date">22 Oct 2024</p></div>
+        <div class="proof"><p class="says">&quot;a groundbreaking new capability in public beta: computer use&quot;</p><p class="links"><a href="https://www.anthropic.com/news/3-5-models-and-computer-use" rel="noopener">anthropic.com/news/3-5-models-and-computer-use</a></p></div>
+      </li>
+      <li data-t="60.3">
+        <button class="at" type="button" data-t="60.3" aria-label="Play from 1:00"><span aria-hidden="true">&#9654;</span> 1:00</button>
+        <div class="what"><p class="card">MODEL CONTEXT PROTOCOL · open-sourced</p><p class="date">25 Nov 2024</p></div>
+        <div class="proof"><p class="says">&quot;Today, we&#x27;re open-sourcing the Model Context Protocol (MCP)&quot;</p><p class="links"><a href="https://www.anthropic.com/news/model-context-protocol" rel="noopener">anthropic.com/news/model-context-protocol</a></p></div>
+      </li>
+      <li data-t="60.48">
+        <button class="at" type="button" data-t="60.48" aria-label="Play from 1:00"><span aria-hidden="true">&#9654;</span> 1:00</button>
+        <div class="what"><p class="card">CLAUDE 3.7 SONNET · extended thinking</p><p class="date">24 Feb 2025</p></div>
+        <div class="proof"><p class="says">&quot;extended, step-by-step thinking that is made visible to the user&quot;</p><p class="links"><a href="https://www.anthropic.com/news/claude-3-7-sonnet" rel="noopener">anthropic.com/news/claude-3-7-sonnet</a></p></div>
+      </li>
+      <li data-t="60.66">
+        <button class="at" type="button" data-t="60.66" aria-label="Play from 1:00"><span aria-hidden="true">&#9654;</span> 1:00</button>
+        <div class="what"><p class="card">CLAUDE CODE · research preview</p><p class="date">24 Feb 2025</p></div>
+        <div class="proof"><p class="says">&quot;Claude Code is available as a limited research preview&quot;</p><p class="links">same</p></div>
+      </li>
+      <li data-t="60.85">
+        <button class="at" type="button" data-t="60.85" aria-label="Play from 1:00"><span aria-hidden="true">&#9654;</span> 1:00</button>
+        <div class="what"><p class="card">CLAUDE OPUS 4 + CLAUDE SONNET 4</p><p class="date">22 May 2025</p></div>
+        <div class="proof"><p class="says">&quot;the next generation of Claude models: Claude Opus 4 and Claude Sonnet 4&quot;</p><p class="links"><a href="https://www.anthropic.com/news/claude-4" rel="noopener">anthropic.com/news/claude-4</a></p></div>
+      </li>
+      <li data-t="61.03">
+        <button class="at" type="button" data-t="61.03" aria-label="Play from 1:00"><span aria-hidden="true">&#9654;</span> 1:00</button>
+        <div class="what"><p class="card">OPUS 4.1</p><p class="date">5 Aug 2025</p></div>
+        <div class="proof"><p class="says">&quot;Today we&#x27;re releasing Claude Opus 4.1&quot;</p><p class="links"><a href="https://www.anthropic.com/news/claude-opus-4-1" rel="noopener">anthropic.com/news/claude-opus-4-1</a></p></div>
+      </li>
+      <li data-t="61.21">
+        <button class="at" type="button" data-t="61.21" aria-label="Play from 1:01"><span aria-hidden="true">&#9654;</span> 1:01</button>
+        <div class="what"><p class="card">SONNET 4.5</p><p class="date">29 Sep 2025</p></div>
+        <div class="proof"><p class="says">Published Sep 29, 2025</p><p class="links"><a href="https://www.anthropic.com/news/claude-sonnet-4-5" rel="noopener">anthropic.com/news/claude-sonnet-4-5</a></p></div>
+      </li>
+      <li data-t="61.4">
+        <button class="at" type="button" data-t="61.4" aria-label="Play from 1:01"><span aria-hidden="true">&#9654;</span> 1:01</button>
+        <div class="what"><p class="card">HAIKU 4.5</p><p class="date">15 Oct 2025</p></div>
+        <div class="proof"><p class="says">&quot;Claude Haiku 4.5, our latest small model, is available today to all users.&quot;</p><p class="links"><a href="https://www.anthropic.com/news/claude-haiku-4-5" rel="noopener">anthropic.com/news/claude-haiku-4-5</a></p></div>
+      </li>
+      <li data-t="61.58">
+        <button class="at" type="button" data-t="61.58" aria-label="Play from 1:01"><span aria-hidden="true">&#9654;</span> 1:01</button>
+        <div class="what"><p class="card">OPUS 4.5</p><p class="date">24 Nov 2025</p></div>
+        <div class="proof"><p class="says">&quot;Our newest model, Claude Opus 4.5, is available today.&quot;</p><p class="links"><a href="https://www.anthropic.com/news/claude-opus-4-5" rel="noopener">anthropic.com/news/claude-opus-4-5</a></p></div>
+      </li>
+      <li data-t="61.94">
+        <button class="at" type="button" data-t="61.94" aria-label="Play from 1:01"><span aria-hidden="true">&#9654;</span> 1:01</button>
+        <div class="what"><p class="card">OPUS 4.6</p><p class="date">5 Feb 2026</p></div>
+        <div class="proof"><p class="says">Published Feb 5, 2026</p><p class="links"><a href="https://www.anthropic.com/news/claude-opus-4-6" rel="noopener">anthropic.com/news/claude-opus-4-6</a></p></div>
+      </li>
+      <li data-t="62.13">
+        <button class="at" type="button" data-t="62.13" aria-label="Play from 1:02"><span aria-hidden="true">&#9654;</span> 1:02</button>
+        <div class="what"><p class="card">SONNET 4.6</p><p class="date">17 Feb 2026</p></div>
+        <div class="proof"><p class="says">Published Feb 17, 2026</p><p class="links"><a href="https://www.anthropic.com/news/claude-sonnet-4-6" rel="noopener">anthropic.com/news/claude-sonnet-4-6</a></p></div>
+      </li>
+      <li data-t="62.31">
+        <button class="at" type="button" data-t="62.31" aria-label="Play from 1:02"><span aria-hidden="true">&#9654;</span> 1:02</button>
+        <div class="what"><p class="card">MYTHOS PREVIEW · gated</p><p class="date">7 Apr 2026</p></div>
+        <div class="proof"><p class="says">&quot;Claude Mythos Preview is available as a gated research preview ... Access is invitation-only.&quot; Shown as gated because it was never a general release.</p><p class="links"><a href="https://www.anthropic.com/glasswing" rel="noopener">anthropic.com/glasswing</a> · release notes <a href="https://platform.claude.com/docs/en/release-notes/overview" rel="noopener">platform.claude.com/docs/en/release-notes/overview</a></p></div>
+      </li>
+      <li data-t="62.49">
+        <button class="at" type="button" data-t="62.49" aria-label="Play from 1:02"><span aria-hidden="true">&#9654;</span> 1:02</button>
+        <div class="what"><p class="card">OPUS 4.7</p><p class="date">16 Apr 2026</p></div>
+        <div class="proof"><p class="says">&quot;Our latest model, Claude Opus 4.7, is now generally available.&quot;</p><p class="links"><a href="https://www.anthropic.com/news/claude-opus-4-7" rel="noopener">anthropic.com/news/claude-opus-4-7</a></p></div>
+      </li>
+      <li data-t="62.68">
+        <button class="at" type="button" data-t="62.68" aria-label="Play from 1:02"><span aria-hidden="true">&#9654;</span> 1:02</button>
+        <div class="what"><p class="card">OPUS 4.8</p><p class="date">28 May 2026</p></div>
+        <div class="proof"><p class="says">Published May 28, 2026</p><p class="links"><a href="https://www.anthropic.com/news/claude-opus-4-8" rel="noopener">anthropic.com/news/claude-opus-4-8</a></p></div>
+      </li>
+      <li data-t="62.86">
+        <button class="at" type="button" data-t="62.86" aria-label="Play from 1:02"><span aria-hidden="true">&#9654;</span> 1:02</button>
+        <div class="what"><p class="card">FABLE 5</p><p class="date">9 Jun 2026</p></div>
+        <div class="proof"><p class="says">&quot;Today we’re launching Claude Fable 5: a Mythos-class model that we’ve made safe for general use.&quot; Launch date; access was suspended on 12 June and restored on 1 July 2026.</p><p class="links"><a href="https://www.anthropic.com/news/claude-fable-5-mythos-5" rel="noopener">anthropic.com/news/claude-fable-5-mythos-5</a></p></div>
+      </li>
+      <li data-t="63.04">
+        <button class="at" type="button" data-t="63.04" aria-label="Play from 1:03"><span aria-hidden="true">&#9654;</span> 1:03</button>
+        <div class="what"><p class="card">SONNET 5</p><p class="date">30 Jun 2026</p></div>
+        <div class="proof"><p class="says">Published Jun 30, 2026</p><p class="links"><a href="https://www.anthropic.com/news/claude-sonnet-5" rel="noopener">anthropic.com/news/claude-sonnet-5</a></p></div>
+      </li>
+      <li data-t="63.22">
+        <button class="at" type="button" data-t="63.22" aria-label="Play from 1:03"><span aria-hidden="true">&#9654;</span> 1:03</button>
+        <div class="what"><p class="card">OPUS 5</p><p class="date">24 Jul 2026</p></div>
+        <div class="proof"><p class="says">&quot;Claude Opus 5 is available today.&quot;</p><p class="links"><a href="https://www.anthropic.com/news/claude-opus-5" rel="noopener">anthropic.com/news/claude-opus-5</a></p></div>
+      </li>
+      <li data-t="63.41">
+        <button class="at" type="button" data-t="63.41" aria-label="Play from 1:03"><span aria-hidden="true">&#9654;</span> 1:03</button>
+        <div class="what"><p class="card">FABLE 5.1</p><p class="date">1 Sep 2026</p></div>
+        <div class="proof"><p class="says">Docs: &quot;Released September 1, 2026.&quot; (the post itself shows only &quot;September 2026&quot;)</p><p class="links"><a href="https://www.anthropic.com/claude-fable-and-mythos-5-1" rel="noopener">anthropic.com/claude-fable-and-mythos-5-1</a> · <a href="https://platform.claude.com/docs/en/models/fable-5-1/overview" rel="noopener">platform.claude.com/docs/en/models/fable-5-1/overview</a></p></div>
+      </li>
+      <li data-t="63.59">
+        <button class="at" type="button" data-t="63.59" aria-label="Play from 1:03"><span aria-hidden="true">&#9654;</span> 1:03</button>
+        <div class="what"><p class="card">OPUS 5.5</p><p class="date">22 Sep 2026</p></div>
+        <div class="proof"><p class="says">&quot;We’re introducing Claude Opus 5.5, the first model in our new Claude 5.5 family.&quot;</p><p class="links"><a href="https://www.anthropic.com/claude-opus-5-5" rel="noopener">anthropic.com/claude-opus-5-5</a></p></div>
+      </li>
+      <li data-t="63.77">
+        <button class="at" type="button" data-t="63.77" aria-label="Play from 1:03"><span aria-hidden="true">&#9654;</span> 1:03</button>
+        <div class="what"><p class="card">SONNET 5.5</p><p class="date">28 Sep 2026</p></div>
+        <div class="proof"><p class="says">&quot;Introducing Claude Sonnet 5.5, the second model in the Claude 5.5 family.&quot;</p><p class="links"><a href="https://www.anthropic.com/claude-sonnet-5-5" rel="noopener">anthropic.com/claude-sonnet-5-5</a></p></div>
+      </li>
+      <li data-t="63.96">
+        <button class="at" type="button" data-t="63.96" aria-label="Play from 1:03"><span aria-hidden="true">&#9654;</span> 1:03</button>
+        <div class="what"><p class="card">HAIKU 5.5</p><p class="date">7 Oct 2026</p></div>
+        <div class="proof"><p class="says">&quot;Introducing Claude Haiku 5.5&quot;</p><p class="links"><a href="https://www.anthropic.com/claude-haiku-5-5" rel="noopener">anthropic.com/claude-haiku-5-5</a></p></div>
+      </li>
+      <li data-t="117.19">
+        <button class="at" type="button" data-t="117.19" aria-label="Play from 1:57"><span aria-hidden="true">&#9654;</span> 1:57</button>
+        <div class="what"><p class="card">CLAUDE FABLE 5.2</p><p class="date">9 Nov 2026</p></div>
+        <div class="proof"><p class="says">Post: &quot;Introducing Claude Fable 5.2 and Claude Mythos 5.2&quot;, dated November 9, 2026. Docs: &quot;Released November 9, 2026.&quot; / &quot;Model ID: claude-fable-5-2&quot;. I re-read the post myself as well as through the researcher.</p><p class="links"><a href="https://www.anthropic.com/claude-fable-and-mythos-5-2" rel="noopener">anthropic.com/claude-fable-and-mythos-5-2</a> · <a href="https://platform.claude.com/docs/en/models/fable-5-2/overview" rel="noopener">platform.claude.com/docs/en/models/fable-5-2/overview</a></p></div>
+      </li>
+      </ol>
+
+      <h3><span>5.</span> Yet to come <button class="inline at" type="button" data-t="82.07">1:22</button></h3>
+      <p class="imagine">Nothing in this part is sourced, on purpose. The scene is labelled &ldquo;Yet to come &middot; imagination, not a forecast&rdquo;, every card in it begins &ldquo;MAY BE&rdquo;, and the credits say it again. Some of the may-be cards are hopeful and some are not, as in the book; none is a prediction.</p>
+
+      <h3>Music and tools</h3>
+      <ul class="notes">
+        <li><b>Music:</b> &ldquo;Righteous&rdquo; by Mo Beats (<a href="https://music.youtube.com/watch?v=fyXD9Cq9Qj8" rel="noopener">YouTube Music</a>).</li>
+        <li><b>Story:</b> after Charles Dickens, <i>A Christmas Carol</i> (Chapman &amp; Hall, 19 December 1843).</li>
+        <li><b>Type:</b> IM Fell English, Anton, JetBrains Mono, Space Mono, VT323, Press Start 2P, Silkscreen and Space Grotesk, all under the SIL Open Font License.</li>
+        <li><b>Rendering:</b> three.js r170 in headless Chromium with software WebGL; beat and arpeggio analysis in numpy; encoding in ffmpeg. 4,059 frames, 1,097 lines of JavaScript.</li>
+        <li><b>Names:</b> company and product names appear as plain type. No logos or trademarked artwork are used.</li>
+        <li><b>Flashing:</b> the film has fast cuts and single-frame flashes. Every frame was checked with a script that follows the general-flash rule of WCAG 2.3.1: more than three flashes a second over more than a quarter of the picture fails. No second of the film does; the busiest has 15% of the picture above that rate. It is the film&rsquo;s own script, not a certified test.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <p>Made in code by Clawcius, running on Claude Fable 5.2 &middot; 9 November 2026</p>
+  </footer>
+
+  <script src="carol.js"></script>
+</body>
+</html>
