@@ -476,3 +476,20 @@ body {
 @keyframes nx-turn { to { rotate: 360deg; } }
 @keyframes nx-blink { 50% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .nx-rays, .nx-word i { animation: none; } }
+
+/* A Model Carol: Clawd and the three ghosts, on the night before a release. */
+.door.carol:hover { border-color: rgba(185,168,255,.6); box-shadow: 0 28px 70px -30px rgba(143,107,255,.5); }
+.door.carol .door-art { background: #0a0916; }
+.door.carol .door-art svg { width: 100%; height: 100%; display: block; }
+.door.carol .door-title { color: #f6a394; }
+.door.carol .door-go { color: #b9a8ff; }
+@media (prefers-reduced-motion: no-preference) {
+  .door.carol .mc-clawd { animation: mc-hop 1.46s steps(2) infinite; }
+  .door.carol .mc-g { animation: mc-float 2.93s ease-in-out infinite; }
+  .door.carol .mc-present { animation-delay: -.97s; }
+  .door.carol .mc-future { animation-delay: -1.95s; }
+  .door.carol .mc-cur { animation: mc-blink 1.46s steps(1) infinite; }
+}
+@keyframes mc-hop { 50% { translate: 0 -3px; } }
+@keyframes mc-float { 50% { translate: 0 -4px; } }
+@keyframes mc-blink { 50% { opacity: .15; } }

@@ -1,0 +1,99 @@
+/* A Model Carol: the page wears the film's night. Ink violet, Clawd's coral, phosphor green, candle gold. */
+@font-face { font-family: "Fell SC"; src: url("fonts/IMFeENsc28P.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "Fell"; font-style: italic; src: url("fonts/IMFeENit28P.ttf") format("truetype"); font-display: swap; }
+@font-face { font-family: "JetBrains Mono"; font-weight: 100 800; src: url("../fonts/JetBrainsMono.ttf") format("truetype"); font-display: swap; }
+
+:root {
+  --ink: #08070f; --panel: #12101f; --line: #2a2646; --cream: #f4ecdc; --dim: #a39fbd; --coral: #f15c45; --gold: #ffd98a; --phos: #9dffbe; --violet: #b9a8ff;
+  --display: "Fell SC", "Iowan Old Style", Georgia, serif;
+  --serif: "Fell", Georgia, "Times New Roman", serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; color: var(--cream); font: 1rem/1.65 "Segoe UI", system-ui, sans-serif;
+  background:
+    radial-gradient(1000px 520px at 50% -10%, rgba(143, 107, 255, .2), transparent 62%),
+    radial-gradient(800px 460px at 0% 16%, rgba(157, 255, 190, .05), transparent 60%),
+    radial-gradient(800px 460px at 100% 30%, rgba(255, 179, 71, .06), transparent 60%),
+    var(--ink);
+  overflow-x: hidden;
+}
+a { color: var(--gold); text-underline-offset: .18em; }
+a:hover { color: #fff; }
+.top { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0 1rem; }
+.back, .sib { display: inline-block; padding: 1rem 1.5rem; color: var(--coral); text-decoration: none; font-weight: 600; }
+.back:hover, .sib:hover { text-decoration: underline; color: var(--coral); }
+
+/* ---- hero ---- */
+.hero { text-align: center; padding: .6rem 1.25rem 1.8rem; }
+.kicker { margin: 0 0 .7rem; font: 600 .72rem/1.4 var(--mono); letter-spacing: .24em; text-transform: uppercase; color: var(--gold); }
+.hero h1 { margin: 0; font: 400 clamp(3rem, 12.5vw, 8.4rem)/.95 var(--display); letter-spacing: .01em; color: var(--cream); text-shadow: 0 0 70px rgba(185, 168, 255, .45); }
+.lead { margin: .7rem auto 0; max-width: 34rem; font: italic 400 clamp(1.25rem, 3.2vw, 1.8rem)/1.3 var(--serif); color: var(--violet); }
+.clawd { display: block; width: 72px; height: auto; margin: 1.3rem auto 0; image-rendering: pixelated; animation: bob 1.46s ease-in-out infinite; }
+.clawd .eye { animation: blink 5.85s steps(1) infinite; }
+@keyframes bob { 50% { transform: translateY(-5px); } }
+@keyframes blink { 0%, 96% { opacity: 1; } 97%, 100% { opacity: 0; } }
+
+/* ---- the screen ---- */
+main { display: block; }
+.stage { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 1rem; }
+.screen { position: relative; background: #000; border: 1px solid var(--line); box-shadow: 0 40px 120px -40px rgba(143, 107, 255, .55), 0 0 0 1px #000; }
+.screen video { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; background: #000; }
+.chapters { display: flex; flex-wrap: wrap; gap: .5rem; margin: .9rem 0 0; }
+.chapters button, .at {
+  font: 600 .78rem/1 var(--mono); letter-spacing: .04em; color: var(--cream); background: var(--panel); border: 1px solid var(--line); border-radius: 0;
+  padding: .6rem .7rem; cursor: pointer; transition: border-color .12s, color .12s, background .12s;
+}
+.chapters button b { color: var(--coral); font-weight: 700; margin-right: .35rem; }
+.chapters button:hover, button.at:hover { border-color: var(--coral); color: #fff; }
+.chapters button.on { background: var(--coral); border-color: var(--coral); color: #1a0806; }
+.chapters button.on b { color: #1a0806; }
+button:focus-visible, a:focus-visible, video:focus-visible { outline: 2px solid var(--phos); outline-offset: 2px; }
+.fine { margin: .7rem 0 0; font: .78rem/1.5 var(--mono); color: var(--dim); }
+
+/* ---- prose ---- */
+.doc { width: 100%; max-width: 860px; margin: 0 auto; padding: 2.6rem 1.25rem 0; }
+.doc h2 { margin: 0 0 .7rem; font: 400 clamp(2rem, 6vw, 2.9rem)/1.05 var(--display); color: var(--cream); }
+.doc h2:not(:first-child) { margin-top: 2.6rem; }
+.doc h3 { margin: 2.4rem 0 .8rem; padding-bottom: .5rem; border-bottom: 2px solid var(--coral); font: 400 1.6rem/1.15 var(--display); }
+.doc h3 span { color: var(--coral); margin-right: .3rem; }
+.doc p { margin: 0 0 1rem; max-width: 68ch; }
+.doc p.small { font-size: .9rem; color: var(--dim); }
+/* the two sheets are dense, so on a wide screen they break out of the text column to the width of the video */
+figure { margin: 0 0 1.2rem; }
+@media (min-width: 900px) { figure { margin-inline: calc((860px - 2.5rem - min(1180px, 100vw) + 2rem) / 2); } }
+figure a { display: block; }
+figure img { display: block; width: 100%; height: auto; border: 1px solid var(--line); background: #000; }
+figcaption { margin-top: .4rem; font: .72rem/1.4 var(--mono); letter-spacing: .06em; color: var(--dim); }
+.notes { margin: 0; padding: 0; list-style: none; }
+.notes li { margin: 0 0 .7rem; padding-left: 1rem; border-left: 2px solid var(--line); max-width: 70ch; }
+.notes b { color: var(--gold); font-weight: 600; }
+.at.inline { padding: .22rem .4rem; font-size: .76rem; vertical-align: .08em; color: var(--coral); }
+.imagine { font: italic 400 1.3rem/1.45 var(--serif); color: var(--cream); border-left: 2px solid var(--violet); padding-left: 1rem; }
+
+/* ---- the source lists ---- */
+.src { margin: 0; padding: 0; list-style: none; }
+.src li { display: grid; grid-template-columns: 4.6rem minmax(0, 1fr) minmax(0, 1.25fr); gap: .3rem 1rem; padding: .85rem .6rem; border-bottom: 1px solid var(--line); align-items: start; }
+.src li.on { background: rgba(241, 92, 69, .12); box-shadow: inset 3px 0 var(--coral); }
+.src p { margin: 0; max-width: none; }
+.src .at { color: var(--coral); white-space: nowrap; }
+.src .at.none { border-color: transparent; background: none; color: var(--line); cursor: default; text-align: center; }
+.src .card { font-weight: 650; color: #fff; line-height: 1.4; }
+.src .date { margin-top: .25rem; font: 600 .74rem/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--gold); }
+.src .says { color: var(--cream); font-size: .93rem; line-height: 1.55; }
+.src .links { margin-top: .35rem; font: .76rem/1.6 var(--mono); color: var(--dim); overflow-wrap: anywhere; }
+.src code { font: .85em var(--mono); color: var(--gold); }
+
+.foot { margin: 3.5rem 0 0; padding: 1.4rem 1.25rem 2.4rem; border-top: 1px solid var(--line); text-align: center; font: .76rem/1.5 var(--mono); letter-spacing: .08em; color: var(--dim); }
+.foot p { margin: 0; }
+
+@media (max-width: 720px) {
+  .src li { grid-template-columns: 1fr; }
+  .src .at { justify-self: start; }
+  .src .at.none { display: none; }
+  .chapters button { flex: 1 1 auto; text-align: left; }
+  .back, .sib { padding: .9rem 1rem; font-size: .92rem; }
+}
+@media (prefers-reduced-motion: reduce) { .clawd, .clawd .eye { animation: none; } html { scroll-behavior: auto; } }

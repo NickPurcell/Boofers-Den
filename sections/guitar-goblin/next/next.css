@@ -23,6 +23,7 @@ a { color: var(--gold); text-underline-offset: .18em; }
 a:hover { color: #fff; }
 .back { display: inline-block; padding: 1rem 1.5rem; color: var(--orange); text-decoration: none; font-weight: 600; }
 .back:hover { text-decoration: underline; }
+.top { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0 1rem; }
 
 /* ---- hero ---- */
 .hero { text-align: center; padding: 1.2rem 1.25rem 1.8rem; }
