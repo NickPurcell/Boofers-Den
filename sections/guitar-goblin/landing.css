@@ -493,3 +493,10 @@ body {
 @keyframes mc-hop { 50% { translate: 0 -3px; } }
 @keyframes mc-float { 50% { translate: 0 -4px; } }
 @keyframes mc-blink { 50% { opacity: .15; } }
+
+/* 14 days in Japan: paper, a torii, the route as eight dots under a red sun. */
+.door.japan14:hover { border-color: rgba(200,52,31,.65); box-shadow: 0 28px 70px -30px rgba(200,52,31,.5); }
+.door.japan14 .door-art { background: #f6f1e7; }
+.door.japan14 .door-art svg { width: 100%; height: 100%; display: block; }
+.door.japan14 .door-title { color: #f3a08c; }
+.door.japan14 .door-go { color: #ffd98a; }
