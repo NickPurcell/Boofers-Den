@@ -13,6 +13,7 @@ a { color: var(--indigo); text-underline-offset: .16em; }
 a:hover { color: var(--red); }
 .back { display: inline-block; padding: 1rem 1.25rem; color: var(--red); text-decoration: none; font-weight: 600; }
 .back:hover { text-decoration: underline; }
+.top { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0 1rem; }
 .wrap { width: 100%; max-width: 940px; margin: 0 auto; padding: 0 1.25rem; }
 
 /* ---- hero ---- */
