@@ -248,6 +248,9 @@ with sync_playwright() as p:
     b.locator("#not-me").tap()
     b.locator('.names button[data-name="Blake"]').tap()
     close_sheet(b)
+    b.locator("details.changes summary").tap()
+    check("recent changes show the undo, with a redo", "A change to Avery was undone" in b.locator("details.changes").inner_text() and b.locator("details.changes li", has_text="was undone").locator("button", has_text="Redo").count() == 1)
+    shot(b, "12b-changes")
 
     # ---- waiting and the nudge ----
     check("Cam is shown as waiting", "Waiting on Cam" in b.locator(".who .waiting").inner_text())

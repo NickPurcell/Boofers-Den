@@ -7,6 +7,7 @@
 //                    saving at once never clobber each other
 //   hang2:log:<id>   recent changes, newest first, each with what it replaced, for undo
 //   hang2:n:<id>     counter numbering the changes
+//   hang2:gone:<id>  people removed (or undone away), kept aside so they can be restored
 // Everything expires 90 days after the last write.
 //
 // Version-one calendars (hang:cal:<7 chars>, hang:people:<7 chars>) are copied into a v2 event
@@ -38,6 +39,7 @@ const K = {
   pp: (id) => `${NS}:pp:${id}`,
   log: (id) => `${NS}:log:${id}`,
   n: (id) => `${NS}:n:${id}`,
+  gone: (id) => `${NS}:gone:${id}`,
   rl: (bucket) => `${NS}:rl:${bucket}`,
   oldCal: (id) => `hang:cal:${id}`,
   oldPeople: (id) => `hang:people:${id}`,

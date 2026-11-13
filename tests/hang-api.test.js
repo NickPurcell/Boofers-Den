@@ -131,7 +131,7 @@ test('writes are rate-limited per address', async () => {
   assert.equal(last.code, 429);
 });
 
-test('undo: someone edits the wrong name, and it comes back', async () => {
+test('undo: someone edits the wrong name, and it comes back; undo is logged and can be redone', async () => {
   fresh();
   const { id } = (await post({ action: 'create', name: 'Undo' })).data;
   await post({ action: 'me', id, name: 'Avery', tz: 'UTC', rules });
@@ -143,20 +143,113 @@ test('undo: someone edits the wrong name, and it comes back', async () => {
   const u = await post({ action: 'undo', id, n: change.n });
   assert.equal(u.code, 200);
   assert.deepEqual(u.data.people.find((p) => p.name === 'Avery').rules, rules.map((r) => ({ ...r })));
-  // the first save can be undone too: Avery disappears
-  const first = u.data.log.find((x) => x.name === 'Avery');
-  const u2 = await post({ action: 'undo', id, n: first.n });
-  assert.deepEqual(u2.data.people.map((p) => p.name), ['Blake']);
+  assert.deepEqual([u.data.log[0].what, u.data.log[0].undid, u.data.log[0].name], ['undo', 'times', 'Avery'], 'the undo is in the log');
+  // redo: undo the undo
+  const re = await post({ action: 'undo', id, n: u.data.log[0].n });
+  assert.deepEqual(re.data.people.find((p) => p.name === 'Avery').rules, [{ wd: [6], from: null, to: null, lvl: 'yes' }]);
+  // undo it again, then the first save: Avery is removed, but kept aside and can be restored
+  const u2 = await post({ action: 'undo', id, n: re.data.log.find((x) => x.name === 'Avery' && x.what === 'times').n });
+  const first = u2.data.log.filter((x) => x.name === 'Avery' && x.what === 'times').pop();
+  const u3 = await post({ action: 'undo', id, n: first.n });
+  assert.deepEqual(u3.data.people.map((p) => p.name), ['Blake']);
+  assert.deepEqual(u3.data.removed.map((x) => x.name), ['Avery']);
+  const back = await post({ action: 'restore', id, name: 'Avery' });
+  assert.deepEqual(back.data.people.map((p) => p.name), ['Avery', 'Blake']);
+  assert.deepEqual(back.data.removed, []);
+  assert.deepEqual(back.data.people[0].rules, rules.map((r) => ({ ...r })));
   // an older change cannot jump the queue
   await post({ action: 'me', id, name: 'Blake', tz: 'UTC', rules: [{ wd: [0] }] });
-  const log = (await get(id)).data.log.filter((x) => x.name === 'Blake');
+  const log = (await get(id)).data.log.filter((x) => x.name === 'Blake' && x.what === 'times');
   assert.equal((await post({ action: 'undo', id, n: log[1].n })).code, 409);
   assert.equal((await post({ action: 'undo', id, n: 9999 })).code, 404);
   // removing someone can be undone
   const f = await post({ action: 'forget', id, name: 'Blake' });
-  assert.deepEqual(f.data.people, []);
-  const back = await post({ action: 'undo', id, n: f.data.log[0].n });
-  assert.deepEqual(back.data.people.map((p) => p.name), ['Blake']);
+  assert.deepEqual(f.data.people.map((p) => p.name), ['Avery']);
+  const back2 = await post({ action: 'undo', id, n: f.data.log[0].n });
+  assert.deepEqual(back2.data.people.map((p) => p.name), ['Avery', 'Blake']);
+  assert.equal((await post({ action: 'restore', id, name: 'Nobody' })).code, 404);
+});
+
+test('a flood of changes cannot lose the people it removed', async () => {
+  fresh();
+  const { id } = (await post({ action: 'create', name: 'Flood' })).data;
+  for (const n of ['Avery', 'Blake', 'Cam']) await post({ action: 'me', id, name: n, tz: 'UTC', rules }, '10.20.0.1');
+  for (const n of ['Avery', 'Blake', 'Cam']) await post({ action: 'forget', id, name: n }, '10.20.0.2');
+  for (let i = 0; i < 120; i++) await post({ action: 'me', id, name: 'Troll', tz: 'UTC', rules: [{ wd: [i % 7] }] }, `10.21.${i}.1`);
+  const g = (await get(id)).data;
+  assert.equal(g.log.length, 100);
+  assert.ok(!g.log.some((x) => x.what === 'removed'), 'the removals have been pushed out of the log');
+  assert.deepEqual(g.removed.map((x) => x.name).sort(), ['Avery', 'Blake', 'Cam']);
+  for (const n of ['Avery', 'Blake', 'Cam']) assert.equal((await post({ action: 'restore', id, name: n }, '10.22.0.1')).code, 200);
+  const after = (await get(id)).data.people.map((p) => p.name);
+  assert.deepEqual(after, ['Avery', 'Blake', 'Cam', 'Troll']);
+});
+
+test('one event takes at most 300 writes an hour, from any number of addresses', async () => {
+  fresh();
+  const { id } = (await post({ action: 'create', name: 'Busy event' })).data;
+  let last;
+  for (let i = 0; i < 301; i++) last = await post({ action: 'me', id, name: 'P' + (i % 30), tz: 'UTC', rules: [{ wd: [i % 7] }] }, `10.30.${i}.1`);
+  assert.equal(last.code, 429);
+  const other = (await post({ action: 'create', name: 'Quiet event' }, '10.31.0.1')).data.id;
+  assert.equal((await post({ action: 'me', id: other, name: 'A', tz: 'UTC', rules }, '10.31.0.1')).code, 200);
+});
+
+test('a byte budget per address per day', async () => {
+  fresh();
+  const { CAP } = handler._test;
+  const keep = CAP.bytesPerDay;
+  CAP.bytesPerDay = 5000;
+  try {
+    const { id } = (await post({ action: 'create', name: 'Bytes' }, '10.40.0.1')).data;
+    let code = 200, i = 0;
+    while (code === 200 && i < 50) code = (await post({ action: 'me', id, name: 'A', tz: 'UTC', rules: [{ wd: [i++ % 7] }], pad: 'x'.repeat(900) }, '10.40.0.1')).code;
+    assert.equal(code, 429);
+    assert.ok(i < 10);
+    // IPv6 neighbours in one /64 share it
+    assert.equal((await post({ action: 'me', id, name: 'B', tz: 'UTC', rules, pad: 'x'.repeat(4000) }, '2001:db8:1:2::5')).code, 200);
+    assert.equal((await post({ action: 'me', id, name: 'B', tz: 'UTC', rules, pad: 'x'.repeat(4000) }, '2001:db8:1:2::6')).code, 429);
+  } finally { CAP.bytesPerDay = keep; }
+});
+
+test('review fixes: old dates, odd settings, midnight, emoji, names', async () => {
+  fresh();
+  const { id } = (await post({ action: 'create', name: 'Edge' })).data;
+  // a stretch that started 100 days ago and is still going saves
+  assert.equal((await post({ action: 'me', id, name: 'Avery', tz: 'UTC', rules, days: [{ d1: E_today(-100), d2: E_today(10), kind: 'away' }] })).code, 200);
+  // three long stretches are too many days in all
+  assert.equal((await post({ action: 'me', id, name: 'Avery', tz: 'UTC', rules, days: [0, 1, 2].map((j) => ({ d1: E_today(j * 121), d2: E_today(j * 121 + 120), kind: 'away' })) })).code, 400);
+  // an event that started long ago can still be renamed (its unchanged dates are not re-checked)
+  const ev = JSON.parse(await db.get(S.K.ev(id)));
+  ev.from = E_today(-200); ev.to = E_today(30);
+  await db.set(S.K.ev(id), JSON.stringify(ev));
+  const ren = await post({ action: 'settings', id, set: { name: 'Edge, renamed', from: ev.from, to: ev.to } });
+  assert.equal(ren.code, 200);
+  assert.equal(ren.data.event.name, 'Edge, renamed');
+  assert.equal((await post({ action: 'settings', id, set: 'x' })).code, 400);
+  assert.equal((await post({ action: 'settings', id, set: [1] })).code, 400);
+  // "before midnight" is no time at all
+  assert.equal((await post({ action: 'me', id, name: 'Avery', tz: 'UTC', rules: [{ wd: [1], from: null, to: '00:00' }] })).code, 400);
+  assert.equal((await post({ action: 'me', id, name: 'Avery', tz: 'UTC', rules: [{ wd: [1], from: '18:00', to: '00:00' }] })).code, 200, 'six to midnight is fine');
+  // zones are stored by their canonical name
+  const z = await post({ action: 'me', id, name: 'Avery', tz: 'america/chicago', rules });
+  assert.equal(z.data.people.find((p) => p.name === 'Avery').tz, 'America/Chicago');
+  // emoji in names and labels: never half an emoji, and the calendar file still works
+  const e = (await post({ action: 'create', name: 'a' + '🎲'.repeat(80), tz: 'UTC' })).data.id;
+  const ename = (await get(e)).data.event.name;
+  assert.equal(Array.from(ename).length, 60);
+  assert.ok(!/[\ud800-\udbff]$/.test(ename));
+  const start = Math.ceil(Date.now() / 3600000) * 3600000 + 86400000;
+  const l = await post({ action: 'lock', id: e, start, end: start + 3600000, label: 'Week 3 🎉 '.repeat(8) });
+  const ics = await get(e, { ics: l.data.event.sessions[0].sid });
+  assert.equal(ics.code, 200);
+  assert.ok(ics.data.split('\r\n').every((x) => Buffer.byteLength(x) <= 75));
+  assert.ok(!ics.data.includes('\ufffd'));
+  // names are cleaned the same way on both sides
+  const sam = await post({ action: 'me', id, name: 'Sam <3', tz: 'UTC', rules });
+  assert.ok(sam.data.people.some((p) => p.name === 'Sam 3'));
+  const E = require('../hang/engine.js');
+  assert.equal(E.cleanText('Sam <3', 30), 'Sam 3');
 });
 
 test('settings, required people and quorum, with undo', async () => {

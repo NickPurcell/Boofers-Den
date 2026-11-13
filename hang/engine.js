@@ -31,7 +31,16 @@
   }
   function parseKey(k) { const [y, m, d] = k.split('-').map(Number); return { y, m, d }; }
   function isKey(k) { if (typeof k !== 'string' || !KEY_RE.test(k)) return false; const { y, m, d } = parseKey(k); return keyOf(y, m, d) === k; }
-  function addDays(k, n) { const { y, m, d } = parseKey(k); return keyOf(y, m, d + n); }
+  const dayCache = new Map();
+  function addDays(k, n) {
+    if (n === 1 || n === -1) {
+      const ck = k + n;
+      let v = dayCache.get(ck);
+      if (v === undefined) { const { y, m, d } = parseKey(k); v = keyOf(y, m, d + n); if (dayCache.size > 20000) dayCache.clear(); dayCache.set(ck, v); }
+      return v;
+    }
+    const { y, m, d } = parseKey(k); return keyOf(y, m, d + n);
+  }
   function weekday(k) { const { y, m, d } = parseKey(k); return new Date(Date.UTC(y, m - 1, d)).getUTCDay(); }
   function daysBetween(a, b) { const A = parseKey(a), B = parseKey(b); return Math.round((Date.UTC(B.y, B.m - 1, B.d) - Date.UTC(A.y, A.m - 1, A.d)) / DAY); }
   function keyUtc(k) { const { y, m, d } = parseKey(k); return Date.UTC(y, m - 1, d); }
@@ -46,10 +55,13 @@
     }
     return f;
   }
-  function validZone(tz) {
-    if (typeof tz !== 'string' || !tz || tz.length > 64) return false;
-    try { fmt(tz); return true; } catch { return false; }
+  // the zone's canonical name, or null. Not cached, so junk input cannot grow the cache.
+  function canonZone(tz) {
+    if (typeof tz !== 'string' || !tz || tz.length > 64) return null;
+    try { return new Intl.DateTimeFormat('en-US', { timeZone: tz }).resolvedOptions().timeZone || null; } catch { return null; }
   }
+  // any name Intl accepts (aliases too: browsers and servers disagree on which name is canonical)
+  function validZone(tz) { return fmts.has(tz) || canonZone(tz) != null; }
   function parts(t, tz) {
     const o = {};
     for (const p of fmt(tz).formatToParts(new Date(t))) o[p.type] = p.value;
@@ -86,7 +98,15 @@
 
   /* ---------- one person's free time ---------- */
   // [start, end) of a run of hours on a date, or null if empty. No hours = the whole day.
+  // Cached: the same few times recur on every day for every person in a zone.
+  const hourCache = new Map();
   function hoursOn(key, from, to, tz) {
+    const ck = tz + '|' + key + '|' + from + '|' + to;
+    let v = hourCache.get(ck);
+    if (v === undefined) { v = hoursOnRaw(key, from, to, tz); if (hourCache.size > 50000) hourCache.clear(); hourCache.set(ck, v); }
+    return v;
+  }
+  function hoursOnRaw(key, from, to, tz) {
     const s = toUtc(key, from || '00:00', tz);
     let e;
     if (to == null) e = toUtc(addDays(key, 1), '00:00', tz);
@@ -113,13 +133,15 @@
     }
     return out;
   }
+  // a minus b, both sorted and non-overlapping (union() output): one pass over each
   function minus(a, b) {
     const out = [];
+    let j = 0;
     for (let [s, e] of a) {
-      for (const [bs, be] of b) {
-        if (be <= s || bs >= e) continue;
-        if (bs > s) out.push([s, bs]);
-        s = Math.max(s, be);
+      while (j < b.length && b[j][1] <= s) j++;
+      for (let k = j; k < b.length && b[k][0] < e; k++) {
+        if (b[k][0] > s) out.push([s, b[k][0]]);
+        if (b[k][1] > s) s = b[k][1];
         if (s >= e) break;
       }
       if (s < e) out.push([s, e]);
@@ -127,17 +149,22 @@
     return out;
   }
 
-  // free spans for a person between instants t0 and t1: [{ s, e, lvl }] sorted, yes winning over maybe
+
+  // free spans for a person between instants t0 and t1: [{ s, e, lvl }] sorted, yes winning over maybe.
+  // Items are kept per day they came from, and an entry only ever touches its own day and the days
+  // either side (nothing runs more than a day), so the work is linear in the entries' days.
   function personSpans(person, t0, t1) {
     const tz = validZone(person && person.tz) ? person.tz : 'UTC';
     const k0 = addDays(localKey(t0, tz), -1), k1 = addDays(localKey(t1, tz), 1);
-    let items = [];
+    const byDay = new Map();
+    const list = (k) => { let l = byDay.get(k); if (!l) { l = []; byDay.set(k, l); } return l; };
+    const cutDays = (ks, a, b, seq) => { for (const k of ks) if (byDay.has(k)) byDay.set(k, cut(byDay.get(k), a, b, seq)); };
     for (let k = k0; k <= k1; k = addDays(k, 1)) {
       const wd = weekday(k);
       for (const r of person.rules || []) {
         if (!r || !Array.isArray(r.wd) || !r.wd.includes(wd)) continue;
         const iv = hoursOn(k, r.from, r.to, tz);
-        if (iv) items.push({ s: iv[0], e: iv[1], lvl: lvlOf(r.lvl), day: k, seq: -1 });
+        if (iv) list(k).push({ s: iv[0], e: iv[1], lvl: lvlOf(r.lvl), seq: -1 });
       }
     }
     (person.days || []).forEach((x, seq) => {
@@ -146,24 +173,37 @@
       if (b < k0 || a > k1) return;
       if (a < k0) a = k0;
       if (b > k1) b = k1;
+      const whole = x.from == null && x.to == null;
       for (let k = a; k <= b; k = addDays(k, 1)) {
-        const whole = x.from == null && x.to == null;
         const iv = hoursOn(k, x.from, x.to, tz);
+        const prev = addDays(k, -1), next = addDays(k, 1);
         if (x.kind === 'away') {
-          if (whole) items = items.filter((it) => !(it.day === k && it.seq < seq));
-          if (iv) items = cut(items, iv[0], iv[1], seq);
+          if (whole && byDay.has(k)) byDay.set(k, byDay.get(k).filter((it) => it.seq >= seq));
+          if (iv) cutDays(whole ? [prev, k] : [prev, k, next], iv[0], iv[1], seq);
         } else if (x.kind === 'only') {
-          items = items.filter((it) => !(it.day === k && it.seq < seq));
-          if (iv) items.push({ s: iv[0], e: iv[1], lvl: lvlOf(x.lvl), day: k, seq });
+          if (byDay.has(k)) byDay.set(k, byDay.get(k).filter((it) => it.seq >= seq));
+          if (iv) list(k).push({ s: iv[0], e: iv[1], lvl: lvlOf(x.lvl), seq });
         } else if (x.kind === 'add') {
-          if (iv) items.push({ s: iv[0], e: iv[1], lvl: lvlOf(x.lvl), day: k, seq });
+          if (iv) list(k).push({ s: iv[0], e: iv[1], lvl: lvlOf(x.lvl), seq });
         }
       }
     });
+    const items = [];
+    for (const l of byDay.values()) for (const it of l) if (it.e > t0 && it.s < t1) items.push(it);
     const clip = (it) => [Math.max(t0, it.s), Math.min(t1, it.e)];
-    const yes = union(items.filter((it) => it.lvl === YES && it.e > t0 && it.s < t1).map(clip));
-    const maybe = minus(union(items.filter((it) => it.lvl === MAYBE && it.e > t0 && it.s < t1).map(clip)), yes);
+    const yes = union(items.filter((it) => it.lvl === YES).map(clip));
+    const maybe = minus(union(items.filter((it) => it.lvl === MAYBE).map(clip)), yes);
     return yes.map(([s, e]) => ({ s, e, lvl: YES })).concat(maybe.map(([s, e]) => ({ s, e, lvl: MAYBE }))).sort((p, q) => p.s - q.s);
+  }
+
+  // plain text: no control or bidi-override characters, no angle brackets, no half emoji,
+  // collapsed spaces, at most `max` characters (counted as code points)
+  function cleanText(s, max) {
+    const t = String(s == null ? '' : s).normalize('NFC')
+      .replace(/[\u0000-\u001f\u007f-\u009f<>\u202a-\u202e\u2066-\u2069]/g, '')
+      .replace(/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/g, '')
+      .replace(/\s+/g, ' ').trim();
+    return Array.from(t).slice(0, max).join('').trim();
   }
 
   // has this person said anything at all?
@@ -275,29 +315,35 @@
   // that works, the closest: the most people free at once.
   function bestTimes(A, opts = {}) {
     const limit = opts.limit || 6, perDay = opts.perDay || 2, tz = opts.tz || 'UTC';
-    const lo = Math.max(0, A.first);
+    // from / until: instants bounding the start times considered (defaults: all of the analysis)
+    const lo = Math.max(0, A.first, opts.from != null ? Math.ceil((opts.from - A.t0) / STEP) : 0);
     let pick = (i) => A.tier[i] > 0, fallback = false, any = false;
-    for (let i = lo; i <= A.last; i++) if (A.tier[i]) { any = true; break; }
+    const end = opts.until != null ? Math.min(A.last, Math.ceil((opts.until - A.t0) / STEP) - 1) : A.last;
+    for (let i = lo; i <= end; i++) if (A.tier[i]) { any = true; break; }
     if (!any) {
       let max = 0;
-      for (let i = lo; i <= A.last; i++) max = Math.max(max, A.sure[i] + A.maybe[i]);
+      for (let i = lo; i <= end; i++) max = Math.max(max, A.sure[i] + A.maybe[i]);
       if (!max) return { windows: [], fallback: true };
       fallback = true;
       pick = (i) => A.sure[i] + A.maybe[i] === max;
     }
     const freeAt = (i) => A.counted.filter((p) => A.status(p, i) > 0);
-    const sets = new Map();
-    for (let i = lo; i <= A.last; i++) {
+    const hi = opts.until != null ? Math.min(A.last, Math.ceil((opts.until - A.t0) / STEP) - 1) : A.last;
+    let found = new Map();
+    for (let i = lo; i <= hi; i++) {
       if (!pick(i)) continue;
       const mem = freeAt(i), key = mem.join(',');
-      if (!sets.has(key)) sets.set(key, mem);
-      if (sets.size > 400) break;
+      const f = found.get(key);
+      if (!f) found.set(key, { mem, tier: A.tier[i] }); else if (A.tier[i] > f.tier) f.tier = A.tier[i];
     }
+    // many different groups (a big event): look at the best 300 by tier and size, not the first 300
+    const sets = [...found.entries()].sort((p, q) => q[1].tier - p[1].tier || q[1].mem.length - p[1].mem.length).slice(0, 300);
+    found = null;
     const wins = [];
-    for (const [key, mem] of sets) {
+    for (const [key, { mem }] of sets) {
       let a = -1, exact = false;
-      for (let i = lo; i <= A.last + 1; i++) {
-        const inSet = i <= A.last && mem.every((p) => A.status(p, i) > 0);
+      for (let i = lo; i <= hi + 1; i++) {
+        const inSet = i <= hi && mem.every((p) => A.status(p, i) > 0);
         if (inSet) {
           if (a < 0) { a = i; exact = false; }
           if (!exact && pick(i) && freeAt(i).join(',') === key) exact = true;
@@ -440,9 +486,21 @@
     if (url) { lines.push(`URL:${url}`); lines.push(`DESCRIPTION:${icsEscape(url)}`); }
     lines.push('END:VEVENT', 'END:VCALENDAR');
     // fold lines longer than 75 octets
-    return lines.map((l) => { let out = '', s = l; while (octets(s) > 75) { let n = 75; while (octets(s.slice(0, n)) > 75) n--; out += s.slice(0, n) + '\r\n '; s = s.slice(n); } return out + s; }).join('\r\n') + '\r\n';
+    return lines.map(fold).join('\r\n') + '\r\n';
   }
-  function octets(s) { return unescape(encodeURIComponent(s)).length; }
+  // fold at 75 octets without splitting a character
+  const enc = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
+  const octets = (ch) => (enc ? enc.encode(ch).length : unescape(encodeURIComponent(ch)).length);
+  function fold(line) {
+    const out = [];
+    let cur = '', n = 0;
+    for (const ch of line) {
+      const b = octets(ch);
+      if (n + b > 75) { out.push(cur); cur = ' ' + ch; n = 1 + b; } else { cur += ch; n += b; }
+    }
+    out.push(cur);
+    return out.join('\r\n');
+  }
   function googleLink({ name, start, end, url }) {
     const q = new URLSearchParams({ action: 'TEMPLATE', text: name, dates: `${icsTime(start)}/${icsTime(end)}` });
     if (url) q.set('details', url);
@@ -452,7 +510,7 @@
   return {
     MIN, HOUR, DAY, STEP, YES, MAYBE,
     keyOf, parseKey, isKey, addDays, weekday, daysBetween, keyUtc, HM_RE,
-    validZone, offset, toUtc, localKey, localHM, dayStart,
+    validZone, canonZone, cleanText, offset, toUtc, localKey, localHM, dayStart,
     personSpans, answered, clearDays, setDays, pruneDays,
     analyze, dayStats, bestTimes,
     setLocale, weekStart, daysText, timeText, rangeText, ruleText, dateText, datesText, dayText, clock, spanText, zoneName,

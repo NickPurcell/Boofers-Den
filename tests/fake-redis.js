@@ -11,7 +11,8 @@ class FakeRedis {
   }
   async del(...ks) { let n = 0; for (const k of ks) if (this.kv.delete(k)) n++; return n; }
   async expire(k, s) { if (this.kv.has(k)) { this.ttl.set(k, s); return 1; } return 0; }
-  async incr(k) { const n = (+(this.kv.get(k) || 0)) + 1; this.kv.set(k, String(n)); return n; }
+  async incr(k) { return this.incrby(k, 1); }
+  async incrby(k, by) { const n = (+(this.kv.get(k) || 0)) + by; this.kv.set(k, String(n)); return n; }
   h(k) { if (!this.kv.has(k)) this.kv.set(k, new Map()); return this.kv.get(k); }
   async hget(k, f) { const h = this.kv.get(k); return h && h.has(f) ? h.get(f) : null; }
   async hset(k, f, v) { this.h(k).set(f, String(v)); return 1; }

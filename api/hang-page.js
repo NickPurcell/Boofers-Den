@@ -51,7 +51,7 @@ module.exports = async function handler(req, res) {
           `<meta property="og:type" content="website" />`,
           `<meta name="twitter:card" content="summary" />`,
         ].join("\n  ");
-        html = html.replace(/<!--meta-->[\s\S]*?<!--\/meta-->/, meta);
+        html = html.replace(/<!--meta-->[\s\S]*?<!--\/meta-->/, () => meta); // a function, so "$&" in a name stays text
       } else status = 404;
     } catch { /* serve the plain page; the app reports what is wrong */ }
   } else status = 404;

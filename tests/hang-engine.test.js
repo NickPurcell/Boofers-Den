@@ -346,3 +346,18 @@ test('a bad zone falls back to UTC instead of throwing', () => {
   const s = E.personSpans(p, Date.UTC(2026, 10, 16), Date.UTC(2026, 10, 17));
   assert.equal(iso(s[0].s), '2026-11-16T10:00Z');
 });
+
+test('cost stays near-linear: forty people at the API caps', () => {
+  // 12 weekly times and 60 changed days covering 300 days in all, every entry on the same week
+  const today = E.localKey(Date.now(), 'UTC');
+  const mk = (i) => ({ name: 'P' + i, tz: [CHI, NY, LON][i % 3],
+    rules: Array.from({ length: 12 }, (_, j) => ({ wd: [0, 1, 2, 3, 4, 5, 6], from: `${String(j).padStart(2, '0')}:00`, to: `${String(j + 1).padStart(2, '0')}:30`, lvl: j % 2 ? 'maybe' : 'yes' })),
+    days: Array.from({ length: 60 }, (_, j) => ({ d1: E.addDays(today, j % 3), d2: E.addDays(today, (j % 3) + 4), kind: ['away', 'only', 'add'][j % 3], from: j % 2 ? '10:00' : undefined, to: j % 2 ? '14:00' : undefined })) });
+  const P = Array.from({ length: 40 }, (_, i) => mk(i));
+  const t0 = Date.now() - (Date.now() % E.STEP), t1 = t0 + 70 * E.DAY;
+  const s = Date.now();
+  const A = E.analyze(P, { t0, t1, len: 180, now: t0, quorum: 4 });
+  E.bestTimes(A, { tz: CHI });
+  // a few hundred milliseconds here; the quadratic version took over six seconds
+  assert.ok(Date.now() - s < 4000, `took ${Date.now() - s} ms`);
+});

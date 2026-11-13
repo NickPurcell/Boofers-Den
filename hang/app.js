@@ -82,18 +82,20 @@
 
   /* ---------------- sheets: one at a time, with a back stack ---------------- */
   const sheetEl = $('#sheet'), sheetCard = $('.sheet-card');
-  let stack = [];
+  let stack = []; // [{ render, scroll }]: each sheet keeps its own scroll position
   function openSheet(render, { replace = false } = {}) {
+    if (stack.length) stack[stack.length - 1].scroll = sheetCard.scrollTop;
     if (replace) stack.pop();
-    stack.push(render);
+    stack.push({ render, scroll: 0 });
     drawSheet();
   }
+  // keep: a redraw of the same sheet, so stay where the reader is
   function drawSheet(keep = false) {
-    const render = stack[stack.length - 1];
-    if (!render) { sheetEl.hidden = true; document.body.classList.remove('locked'); return; }
-    const scroll = sheetCard.scrollTop;
+    const top = stack[stack.length - 1];
+    if (!top) { sheetEl.hidden = true; document.body.classList.remove('locked'); return; }
+    const scroll = keep ? sheetCard.scrollTop : top.scroll;
     sheetCard.textContent = '';
-    const { title, body, foot, keepScroll } = render();
+    const { title, body, foot } = top.render();
     sheetCard.append(...[
       h('div', { class: 'sheet-head' },
         stack.length > 1 ? h('button', { type: 'button', class: 'icon', 'aria-label': 'Back', text: '‹', onclick: backSheet }) : h('span'),
@@ -103,7 +105,7 @@
       foot ? h('div', { class: 'sheet-foot' }, foot) : null].filter(Boolean));
     sheetEl.hidden = false;
     document.body.classList.add('locked');
-    sheetCard.scrollTop = keep && keepScroll ? scroll : 0;
+    sheetCard.scrollTop = scroll;
   }
   const redrawSheet = () => { if (stack.length) drawSheet(true); };
   function backSheet() { stack.pop(); drawSheet(); }
@@ -128,7 +130,7 @@
     const quorum = h('select', { id: 'c-quorum' });
     const from = h('input', { id: 'c-from', type: 'date' }), to = h('input', { id: 'c-to', type: 'date' });
     const err = h('p', { class: 'err', role: 'alert' });
-    const names = () => [...new Set(roster.value.split(/[,\n]/).map((s) => s.trim()).filter(Boolean))].slice(0, 30);
+    const names = () => [...new Set(roster.value.split(/[,\n]/).map((x) => E.cleanText(x, 30)).filter(Boolean))].slice(0, 30);
     const required = new Set();
     function syncRoster() {
       const ns = names();
@@ -183,6 +185,8 @@
   /* ================= the event ================= */
   let ev = null, people = [], log = [];
   let dispTz = viewTz;
+  let changesOpen = false;
+  let renderA = null; // the one analysis behind the month and the best times, made once per render
   let excluded = new Set();
   let me = store.get('hang2:me:' + id, null);
   let mine = null;              // my record while editing
@@ -197,7 +201,8 @@
     take(res.data);
     return true;
   }
-  function take(d) { ev = d.event; people = d.people || []; log = d.log || []; }
+  let removed = [];
+  function take(d) { ev = d.event; people = d.people || []; log = d.log || []; removed = d.removed || []; }
   const person = (name) => people.find((p) => low(p.name) === low(name)) || null;
   const answered = () => people.filter(E.answered);
   function members() {
@@ -286,19 +291,31 @@
     if (info.locked.has(k)) b.append(h('span', { class: 'lock', 'aria-hidden': 'true', text: '🔒' }));
   }
   function eventCellPrep(keys) {
-    const t0 = Math.max(Date.now() - (Date.now() % (15 * MIN)), E.dayStart(keys[0], dispTz));
-    const t1 = E.dayStart(E.addDays(keys[keys.length - 1], 1), dispTz) + ev.len * MIN;
-    const stats = t1 > t0 && answered().length ? E.dayStats(analysis(t0, t1), keys.filter((k) => k >= todayKey()), dispTz) : {};
+    const stats = renderA ? E.dayStats(renderA, keys.filter((k) => k >= todayKey()), dispTz) : {};
     const locked = new Set((ev.sessions || []).map((s) => E.localKey(s.start, dispTz)));
     return { stats, locked };
   }
   eventCell.prepare = eventCellPrep;
 
   /* ---------- the event page ---------- */
+  // the month on screen as day keys, first to last cell
+  function gridKeys(ym) {
+    const first = E.keyOf(ym.y, ym.m, 1);
+    const start = E.addDays(first, -((E.weekday(first) - WEEK0 + 7) % 7));
+    const n = Math.ceil((E.daysBetween(start, E.keyOf(ym.y, ym.m + 1, 1))) / 7) * 7;
+    return [start, E.addDays(start, n - 1)];
+  }
   function renderEvent() {
     if (!ev) return;
     const root = $('#event-view');
     root.textContent = '';
+    // one analysis covering both the month on screen and the best-times horizon
+    if (!shown) shown = ymOf(ev.from && ev.from > todayKey() ? ev.from : todayKey());
+    const [g0, g1] = gridKeys(shown), [h0, h1] = horizon();
+    const nowQ = Date.now() - (Date.now() % (15 * MIN));
+    const a0 = Math.max(nowQ, Math.min(h0, E.dayStart(g0, dispTz)));
+    const a1 = Math.max(h1, E.dayStart(E.addDays(g1, 1), dispTz)) + ev.len * MIN;
+    renderA = answered().length && a1 > a0 ? analysis(a0, a1) : null;
     document.title = `${ev.name} · Find time to hang`;
     const mem = members(), wait = waiting();
     const ahead = sessionsAhead();
@@ -341,7 +358,6 @@
       c.required.some((r) => !E.answered(person(r))) ? h('p', { class: 'warn', text: `${andList(c.required.filter((r) => !E.answered(person(r))))} must be there and ${c.required.filter((r) => !E.answered(person(r))).length > 1 ? 'haven’t' : 'hasn’t'} filled in yet, so nothing can work until then.` }) : null));
 
     // the month
-    if (!shown) shown = ymOf(ev.from && ev.from > todayKey() ? ev.from : todayKey());
     const minYm = ymOf(todayKey());
     root.append(h('section', { class: 'card cal' },
       monthNav(shown, (ym) => { shown = ym; renderEvent(); }, minYm),
@@ -354,17 +370,21 @@
     // best times
     root.append(bestCard());
 
-    // recent changes
-    if (log.length) {
-      const newest = new Set(), rows = [];
-      for (const x of log.slice(0, 12)) {
-        const canUndo = !newest.has(x.who);
-        newest.add(x.who);
-        const what = x.who === '@' ? { settings: 'Settings changed', locked: 'A session was locked in', unlocked: 'A session was removed' }[x.what] || 'Event changed'
-          : x.what === 'removed' ? `${x.name} was removed` : `${x.name}’s times changed`;
-        rows.push(h('li', null, h('span', { text: `${what} · ${ago(x.at)}` }), canUndo ? h('button', { type: 'button', class: 'btn sm', text: 'Undo', onclick: () => undo(x.n) }) : null));
+    // recent changes, and people who were removed (they can come back)
+    if (log.length || removed.length) {
+      const seen = new Set(), rows = [];
+      for (const x of log.slice(0, 15)) {
+        // only the newest change to someone can be undone; undos already done do not block older ones
+        const canUndo = !seen.has(x.who);
+        if (x.what !== 'undo') seen.add(x.who);
+        const evWhat = { settings: 'Settings changed', locked: 'A session was locked in', unlocked: 'A session was removed' };
+        const what = x.what === 'undo' ? `${x.who === '@' ? 'An event change' : `A change to ${x.name}`} was undone`
+          : x.who === '@' ? evWhat[x.what] || 'Event changed'
+            : x.what === 'removed' ? `${x.name} was removed` : x.what === 'restored' ? `${x.name} was brought back` : `${x.name}’s times changed`;
+        rows.push(h('li', null, h('span', { text: `${what} · ${ago(x.at)}` }), canUndo ? h('button', { type: 'button', class: 'btn sm', text: x.what === 'undo' ? 'Redo' : 'Undo', onclick: () => undo(x.n) }) : null));
       }
-      root.append(h('details', { class: 'card changes' }, h('summary', { text: 'Recent changes' }), h('ul', null, rows)));
+      for (const g of removed) rows.push(h('li', { class: 'gone' }, h('span', { text: `Removed: ${g.name}` }), h('button', { type: 'button', class: 'btn sm', text: 'Bring back', onclick: () => restore(g.name) })));
+      root.append(h('details', { class: 'card changes', open: changesOpen, ontoggle: (e) => { changesOpen = e.target.open; } }, h('summary', { text: 'Recent changes' }), h('ul', null, rows)));
     }
     root.append(h('p', { class: 'foot', text: 'Schedulers disappear 90 days after the last change. Anyone with the link can edit, so keep it among friends.' }));
     $('#dock-me').textContent = me ? `My times (${me})` : 'Fill in my times';
@@ -373,9 +393,9 @@
   function bestCard() {
     const card = h('section', { class: 'card best', id: 'best' }, h('h2', { text: 'Best times' }));
     const c = counting();
-    if (!c.ans.length) { card.append(h('p', { class: 'hint', text: 'Nobody has filled in yet. Once two people have, the best times show up here.' })); return card; }
+    if (!c.ans.length || !renderA) { card.append(h('p', { class: 'hint', text: 'Nobody has filled in yet. Once two people have, the best times show up here.' })); return card; }
     const [t0, t1] = horizon();
-    const B = E.bestTimes(analysis(t0, t1 + ev.len * MIN), { tz: dispTz, limit: 6 });
+    const B = E.bestTimes(renderA, { tz: dispTz, limit: 6, from: t0, until: t1 });
     const span = ev.to ? `until ${E.dateText(ev.to)}` : 'in the next 8 weeks';
     card.append(h('p', { class: 'sub', text: B.fallback ? (B.windows.length ? `Nothing works yet ${span}. Closest:` : `Nothing yet ${span}.`) : `For a ${lenAdj(ev.len)} session ${span}, best first.` }));
     const ol = h('ol');
@@ -548,7 +568,7 @@
         title: 'Who are you?',
         body: [
           mem.length ? h('div', { class: 'names' }, mem.map((x) => h('button', { type: 'button', class: 'btn name' + (x.done ? ' done' : ''), 'data-name': x.name, onclick: () => pick(x.name) }, x.name, x.done ? h('small', { text: ' ✓' }) : null))) : null,
-          h('form', { class: 'who-new', onsubmit: (e) => { e.preventDefault(); const v = input.value.replace(/\s+/g, ' ').trim().slice(0, 30); if (v) pick(v); } },
+          h('form', { class: 'who-new', onsubmit: (e) => { e.preventDefault(); const v = E.cleanText(input.value, 30); if (v) pick(v); } },
             h('label', null, mem.length ? 'Not on the list?' : 'Your name', h('div', { class: 'row' }, input, h('button', { type: 'submit', class: 'btn primary', id: 'who-go', text: 'That’s me' })))),
           h('p', { class: 'hint', text: 'No password: anyone with the link can pick any name, and every change can be undone.' }),
         ],
@@ -579,10 +599,11 @@
   }
   async function saveMine() {
     saveTimer = null;
-    if (!mine) return;
+    const m = mine;
+    if (!m) return;
     if (saving) { pendingSave = true; return; }
     saving = true;
-    const body = { action: 'me', id, name: mine.name, tz: mine.tz, rules: mine.rules, days: E.pruneDays(mine.days, E.addDays(E.localKey(Date.now(), mine.tz), -1)) };
+    const body = { action: 'me', id, name: m.name, tz: m.tz, rules: m.rules, days: E.pruneDays(m.days, E.addDays(E.localKey(Date.now(), m.tz), -1)) };
     const res = await api('POST', body);
     saving = false;
     if (!res.ok) {
@@ -591,12 +612,15 @@
       return;
     }
     take(res.data);
-    if (mine.rules.length) store.set('hang2:usual', { tz: mine.tz, rules: mine.rules });
+    // the server's spelling of the name wins (it cleans names the same way, but be sure)
+    const stored = person(m.name);
+    if (stored && stored.name !== m.name) { m.name = stored.name; if (mine === m) { me = stored.name; store.set('hang2:me:' + id, me); } }
+    if (m.rules.length) store.set('hang2:usual', { tz: m.tz, rules: m.rules });
     remember(id, ev.name);
     if (pendingSave) { pendingSave = false; return saveMine(); }
     renderEvent();
     if (stack.length) redrawSheet();
-    undoToast('Saved', low(mine.name));
+    undoToast('Saved', low(m.name));
   }
   // offer to undo the newest change to this person (or to the event, '@'): never somebody else's
   function undoToast(msg, who) {
@@ -605,13 +629,22 @@
     toast(`${msg} ✓`, { label: 'Undo', fn: () => undo(newest.n) });
   }
   async function undo(n) {
+    const was = log.find((x) => x.n === n);
     const res = await api('POST', { action: 'undo', id, n });
     if (!res.ok) { toast(res.data.error ? res.data.error[0].toUpperCase() + res.data.error.slice(1) : 'Could not undo'); return; }
     take(res.data);
     if (me) startMine();
     renderEvent();
     if (stack.length) redrawSheet();
-    toast('Undone ✓');
+    const redo = was && was.what !== 'undo' ? log.find((x) => x.who === was.who && x.what === 'undo') : null;
+    if (redo) toast('Undone ✓', { label: 'Redo', fn: () => undo(redo.n) }); else toast(was && was.what === 'undo' ? 'Redone ✓' : 'Undone ✓');
+  }
+  async function restore(name) {
+    const res = await api('POST', { action: 'restore', id, name });
+    if (!res.ok) { toast(res.data.error ? res.data.error[0].toUpperCase() + res.data.error.slice(1) : 'Could not restore'); return; }
+    take(res.data);
+    renderEvent();
+    undoToast(`${name} is back`, low(name));
   }
 
   function myTimesSheet() {
@@ -683,7 +716,7 @@
       const re = () => redrawSheet();
       const order = [0, 1, 2, 3, 4, 5, 6].map((x) => (WEEK0 + x) % 7);
       const time = (key) => h('input', { type: 'time', step: 900, id: 'rule-' + key, value: st[key], onchange: (e) => { if (E.HM_RE.test(e.target.value)) { st[key] = e.target.value; re(); } } });
-      const ok = st.wd.size > 0 && !(st.mode === 'between' && st.from === st.to);
+      const ok = st.wd.size > 0 && !(st.mode === 'between' && st.from === st.to) && !(st.mode === 'before' && st.to === '00:00');
       const body = [
         h('p', { class: 'readback', id: 'rule-text', text: st.wd.size ? E.ruleText(rule()) : 'Pick at least one day' }),
         h('div', { class: 'wdays', role: 'group', 'aria-label': 'Days' }, order.map((d) => h('button', { type: 'button', 'aria-pressed': String(st.wd.has(d)), 'data-wd': d,
@@ -723,7 +756,7 @@
       const a = st.d1, b = st.d2 && st.d2 >= st.d1 ? st.d2 : st.d1;
       const usual = mine.rules.filter((r) => r.wd.includes(E.weekday(a)));
       const now = mine.days.filter((x) => a <= (x.d2 || x.d1) && b >= x.d1);
-      const apply = (entry, msg) => { mine.days = E.setDays(mine.days, a, b, entry); stack.pop(); changed(); toast(msg); };
+      const apply = (entry, msg) => { mine.days = E.setDays(mine.days, a, b, entry); backSheet(); changed(); toast(msg); };
       const time = (key) => h('input', { type: 'time', step: 900, id: 'day-' + key, value: st[key], onchange: (e) => { if (E.HM_RE.test(e.target.value)) st[key] = e.target.value; } });
       const body = [
         h('div', { class: 'row2' },
@@ -744,10 +777,10 @@
           h('button', { type: 'button', class: 'btn primary', id: 'day-hours-save', text: st.panel === 'only' ? 'Only these hours' : 'Add these hours', onclick: () => {
             if (st.from === st.to) { toast('The start and end are the same'); return; }
             const entry = { kind: st.panel, from: st.from, to: st.to, lvl: st.lvl };
-            if (st.panel === 'add') { const e2 = { ...entry, d1: a }; if (b > a) e2.d2 = b; mine.days.push(e2); stack.pop(); changed(); toast('Hours added'); }
+            if (st.panel === 'add') { const e2 = { ...entry, d1: a }; if (b > a) e2.d2 = b; mine.days.push(e2); backSheet(); changed(); toast('Hours added'); }
             else apply(entry, 'Hours set');
           } })) : null,
-        now.length ? h('button', { type: 'button', class: 'btn', id: 'day-reset', text: 'Back to my usual times', onclick: () => { mine.days = E.clearDays(mine.days, a, b); stack.pop(); changed(); toast('Back to usual'); } }) : null,
+        now.length ? h('button', { type: 'button', class: 'btn', id: 'day-reset', text: 'Back to my usual times', onclick: () => { mine.days = E.clearDays(mine.days, a, b); backSheet(); changed(); toast('Back to usual'); } }) : null,
       ];
       return { title: b > a ? 'A stretch of days' : E.dateText(a, { weekday: 'long' }), body, keepScroll: true };
     };
@@ -760,7 +793,7 @@
     return () => {
       const re = () => redrawSheet();
       const lens = [...new Set([...lenOptions, st.len])].sort((a, b) => a - b);
-      const addName = () => { const v = st.add.replace(/\s+/g, ' ').trim().slice(0, 30); if (v && !st.roster.some((r) => low(r.name) === low(v)) && st.roster.length < 30) st.roster.push({ name: v, req: false }); st.add = ''; re(); };
+      const addName = () => { const v = E.cleanText(st.add, 30); if (v && !st.roster.some((r) => low(r.name) === low(v)) && st.roster.length < 30) st.roster.push({ name: v, req: false }); st.add = ''; re(); };
       const key = store.get('hang2:key:' + id, null);
       const body = [
         h('label', null, 'Name', h('input', { id: 's-name', maxlength: 60, value: st.name, oninput: (e) => { st.name = e.target.value; } })),
@@ -806,10 +839,16 @@
     if (saveTimer && mine) { clearTimeout(saveTimer); navigator.sendBeacon?.(API, new Blob([JSON.stringify({ action: 'me', id, name: mine.name, tz: mine.tz, rules: mine.rules, days: mine.days })], { type: 'application/json' })); }
   });
   // see other people's changes; never while a form is open or a save is waiting
+  // redraw only when something changed
+  let seenSig = '';
+  const sig = (d) => JSON.stringify([d.event, d.people, d.log, d.removed]);
   setInterval(async () => {
     if (document.hidden || saving || saveTimer || stack.length) return;
     const res = await api('GET', null, '?id=' + encodeURIComponent(id));
     if (!res.ok) return;
+    const now = sig(res.data);
+    if (now === seenSig) return;
+    seenSig = now;
     take(res.data);
     if (!stack.length) renderEvent();
   }, 30000);
