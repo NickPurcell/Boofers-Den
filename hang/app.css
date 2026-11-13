@@ -88,6 +88,7 @@ details.more[open] summary { margin-bottom: .5rem; }
 .day.t1 { background: rgba(61, 220, 132, .16); border: 2px dashed var(--good); }
 .day.y { background: rgba(61, 220, 132, .55); border-color: var(--good); }
 .day.m { background: repeating-linear-gradient(135deg, rgba(245, 192, 74, .45) 0 5px, rgba(245, 192, 74, .2) 5px 10px); border-color: var(--maybe); }
+@media (min-width: 600px) { .day { aspect-ratio: auto; height: 62px; } }
 .day .lock { position: absolute; top: 1px; right: 3px; font-size: .7rem; }
 .day .dot { position: absolute; bottom: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent2); }
 .legend { display: flex; flex-wrap: wrap; gap: .4rem .9rem; margin-top: .6rem; font-size: .78rem; color: var(--muted); }

@@ -304,7 +304,8 @@
     const ahead = sessionsAhead();
     const tzLine = h('p', { class: 'meta' },
       `${lenAdj(ev.len)} sessions · times in ${zoneLabel(dispTz)}`,
-      ev.tz !== viewTz ? h('button', { type: 'button', class: 'link', text: dispTz === viewTz ? ` · show ${zoneLabel(ev.tz)}` : ` · show my time`, onclick: () => { dispTz = dispTz === viewTz ? ev.tz : viewTz; renderEvent(); } }) : null);
+      ev.tz !== viewTz ? ' · ' : null,
+      ev.tz !== viewTz ? h('button', { type: 'button', class: 'link', id: 'zone-toggle', text: dispTz === viewTz ? `show ${zoneLabel(ev.tz)}` : 'show my time', onclick: () => { dispTz = dispTz === viewTz ? ev.tz : viewTz; renderEvent(); } }) : null);
     root.append(h('section', { class: 'card head' },
       h('div', { class: 'title-row' }, h('h1', { text: ev.name }), h('button', { type: 'button', class: 'icon', id: 'settings', 'aria-label': 'Settings', text: '⚙', onclick: () => openSheet(settingsSheet()) })),
       tzLine));
