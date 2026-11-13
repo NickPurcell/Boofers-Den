@@ -61,6 +61,22 @@ module.exports = async function handler(req, res) {
   try {
     const r = getClient();
 
+    if (req.method === "GET" && req.query && req.query.stats === "count") {
+      // temporary, for planning the v2 migration: counts only, no ids or names
+      let cursor = "0", cals = 0, withPeople = 0, people = 0, newest = 0;
+      do {
+        const [next, keys] = await r.scan(cursor, "MATCH", "hang:cal:*", "COUNT", 500);
+        cursor = next;
+        for (const k of keys) {
+          cals++;
+          const n = await r.hlen(k.replace("hang:cal:", "hang:people:"));
+          if (n) { withPeople++; people += n; }
+          try { newest = Math.max(newest, JSON.parse(await r.get(k)).created || 0); } catch {}
+        }
+      } while (cursor !== "0");
+      res.status(200).json({ cals, withPeople, people, newest });
+      return;
+    }
     if (req.method === "GET") {
       const id = String((req.query && req.query.id) || "");
       if (!ID_RE.test(id)) { res.status(400).json({ error: "bad id" }); return; }
