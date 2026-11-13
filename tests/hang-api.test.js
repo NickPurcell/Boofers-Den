@@ -1,0 +1,357 @@
+// API tests for Find time to hang v2, against an in-memory stand-in for Redis. Run: node --test tests/
+// Every person here is invented.
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const Module = require('module');
+
+const FakeRedis = require('./fake-redis.js');
+const orig = Module._resolveFilename;
+Module._resolveFilename = function (req, ...rest) { return req === 'ioredis' ? 'ioredis-stub' : orig.call(this, req, ...rest); };
+require.cache['ioredis-stub'] = { id: 'ioredis-stub', filename: 'ioredis-stub', loaded: true, exports: FakeRedis };
+process.env.REDIS_URL = 'redis://stub';
+
+const S = require('../api/_hang-store.js');
+const handler = require('../api/hangout.js');
+let db = new FakeRedis();
+S.getClient = () => db;
+
+let ip = 1;
+async function call(method, body, query = {}, from) {
+  const req = { method, body, query, headers: { 'x-forwarded-for': from || `10.0.0.${ip}`, host: 'den.test' } };
+  const res = { code: 0, headers: {}, data: null,
+    setHeader(k, v) { this.headers[k.toLowerCase()] = v; }, status(c) { this.code = c; return this; },
+    json(d) { this.data = d; return this; }, send(d) { this.data = d; return this; } };
+  await handler(req, res);
+  return res;
+}
+const post = (body, from) => call('POST', body, {}, from);
+const get = (id, extra = {}) => call('GET', null, Object.assign({ id }, extra));
+function fresh() { db = new FakeRedis(); ip++; }
+
+test('create: a readable, unguessable id, the name, and sensible defaults', async () => {
+  fresh();
+  const r = await post({ action: 'create', name: 'Space Opera RPG: Session Zero!', tz: 'America/Chicago', roster: ['Avery', 'Blake', 'avery', ' ', 'Cam'] });
+  assert.equal(r.code, 200);
+  assert.match(r.data.id, /^space-opera-rpg-session-zero-[a-z2-9]{6}$/);
+  assert.equal(r.data.key.length, 24);
+  const g = await get(r.data.id);
+  assert.equal(g.code, 200);
+  assert.equal(g.data.event.name, 'Space Opera RPG: Session Zero!');
+  assert.equal(g.data.event.len, 120);
+  assert.equal(g.data.event.tz, 'America/Chicago');
+  assert.deepEqual(g.data.event.roster.map((x) => x.name), ['Avery', 'Blake', 'Cam']);
+  assert.equal(g.data.event.key, undefined, 'the delete key never leaves the server');
+  assert.deepEqual(g.data.people, []);
+  assert.equal(db.ttl.get(S.K.ev(r.data.id)), 90 * 24 * 3600);
+});
+
+test('create: validation', async () => {
+  fresh();
+  assert.equal((await post({ action: 'create', name: '   ' })).code, 400);
+  assert.equal((await post({ action: 'create', name: 'x', len: 7 })).code, 400);
+  assert.equal((await post({ action: 'create', name: 'x', len: 13 * 60 })).code, 400);
+  assert.equal((await post({ action: 'create', name: 'x', quorum: -1 })).code, 400);
+  assert.equal((await post({ action: 'create', name: 'x', from: '2026-02-30' })).code, 400);
+  const odd = await post({ action: 'create', name: '<b>Game</b> night', tz: 'Nowhere/Land' });
+  const ev = (await get(odd.data.id)).data.event;
+  assert.equal(ev.name, 'bGame/b night');
+  assert.equal(ev.tz, 'UTC');
+  const emoji = await post({ action: 'create', name: '🎲🎲🎲' });
+  assert.match(emoji.data.id, /^hang-[a-z2-9]{6}$/);
+  const big = await post({ action: 'create', name: 'x', roster: Array.from({ length: 80 }, (_, i) => 'Person ' + i) });
+  assert.equal((await get(big.data.id)).data.event.roster.length, 30);
+});
+
+test('create is rate-limited per address', async () => {
+  fresh();
+  for (let i = 0; i < 12; i++) assert.equal((await post({ action: 'create', name: 'n' + i }, '10.9.9.9')).code, 200);
+  assert.equal((await post({ action: 'create', name: 'one too many' }, '10.9.9.9')).code, 429);
+  assert.equal((await post({ action: 'create', name: 'someone else' }, '10.9.9.8')).code, 200);
+});
+
+const rules = [{ wd: [1, 2, 3, 4, 5], from: '20:30', to: null, lvl: 'yes' }];
+
+test('people save their own rules and days; each is one field', async () => {
+  fresh();
+  const { id } = (await post({ action: 'create', name: 'Game night' })).data;
+  const a = await post({ action: 'me', id, name: 'Avery', tz: 'America/Chicago', rules, days: [{ d1: E_today(3), d2: E_today(6), kind: 'away' }] });
+  assert.equal(a.code, 200);
+  await post({ action: 'me', id, name: 'Blake', tz: 'America/New_York', rules: [{ wd: [0, 6], lvl: 'maybe' }] });
+  const g = (await get(id)).data;
+  assert.deepEqual(g.people.map((p) => p.name), ['Avery', 'Blake']);
+  assert.deepEqual(g.people[0].rules, [{ wd: [1, 2, 3, 4, 5], from: '20:30', to: null, lvl: 'yes' }]);
+  assert.deepEqual(g.people[0].days, [{ d1: E_today(3), d2: E_today(6), kind: 'away' }]);
+  assert.deepEqual(g.people[1].rules, [{ wd: [0, 6], from: null, to: null, lvl: 'maybe' }]);
+  assert.equal(g.log.length, 2);
+  assert.equal(g.log[0].before, undefined, 'what a change replaced stays on the server');
+  // saving the same thing again is not a change
+  await post({ action: 'me', id, name: 'blake', tz: 'America/New_York', rules: [{ wd: [0, 6], lvl: 'maybe' }] });
+  assert.equal((await get(id)).data.log.length, 3, 'a different spelling of the name is a change (the display name)');
+  await post({ action: 'me', id, name: 'blake', tz: 'America/New_York', rules: [{ wd: [0, 6], lvl: 'maybe' }] });
+  assert.equal((await get(id)).data.log.length, 3);
+});
+
+function E_today(n) { const E = require('../hang/engine.js'); return E.addDays(E.localKey(Date.now(), 'UTC'), n); }
+
+test('people: validation and caps', async () => {
+  fresh();
+  const { id } = (await post({ action: 'create', name: 'Caps' })).data;
+  const bad = async (b) => (await post(Object.assign({ action: 'me', id, name: 'Avery', tz: 'UTC', rules: [], days: [] }, b))).code;
+  assert.equal(await bad({ name: '' }), 400);
+  assert.equal(await bad({ rules: [{ wd: [], from: '20:00' }] }), 400);
+  assert.equal(await bad({ rules: [{ wd: [9] }] }), 400);
+  assert.equal(await bad({ rules: [{ wd: [1], from: '25:00' }] }), 400);
+  assert.equal(await bad({ rules: [{ wd: [1], from: '20:00', to: '20:00' }] }), 400);
+  assert.equal(await bad({ rules: Array.from({ length: 13 }, () => ({ wd: [1] })) }), 400);
+  assert.equal(await bad({ days: [{ d1: E_today(1), kind: 'party' }] }), 400);
+  assert.equal(await bad({ days: [{ d1: E_today(5), d2: E_today(1), kind: 'away' }] }), 400);
+  assert.equal(await bad({ days: [{ d1: E_today(1), d2: E_today(300), kind: 'away' }] }), 400);
+  assert.equal(await bad({ days: [{ d1: E_today(900), kind: 'away' }] }), 400);
+  assert.equal(await bad({ days: Array.from({ length: 81 }, (_, i) => ({ d1: E_today(i), kind: 'away' })) }), 400);
+  assert.equal(await bad({ rules: 'lots' }), 400);
+  // long-finished stretches are dropped, not refused
+  const ok = await post({ action: 'me', id, name: 'Avery', tz: 'UTC', rules: [], days: [{ d1: E_today(-100), kind: 'away' }, { d1: E_today(2), kind: 'away' }] });
+  assert.equal(ok.code, 200);
+  assert.deepEqual(ok.data.people[0].days, [{ d1: E_today(2), kind: 'away' }]);
+  // names are plain text and capped
+  const n = await post({ action: 'me', id, name: '  Blake\u0000 <script>  the   great and powerful of the north ', tz: 'UTC', rules: [] });
+  assert.equal(n.data.people.find((p) => p.name.startsWith('Blake')).name, 'Blake script the great and pow');
+  // forty people at most
+  for (let i = 0; i < 38; i++) assert.equal((await post({ action: 'me', id, name: 'P' + i, tz: 'UTC', rules }, '10.1.' + i + '.1')).code, 200);
+  assert.equal((await post({ action: 'me', id, name: 'P99', tz: 'UTC', rules }, '10.2.0.1')).code, 409);
+  // an oversized body is refused before anything else
+  assert.equal((await post({ action: 'me', id, name: 'Avery', tz: 'UTC', rules: [], pad: 'x'.repeat(30000) })).code, 413);
+});
+
+test('writes are rate-limited per address', async () => {
+  fresh();
+  const { id } = (await post({ action: 'create', name: 'Busy' })).data;
+  let last;
+  for (let i = 0; i < 91; i++) last = await post({ action: 'me', id, name: 'Avery', tz: 'UTC', rules: [{ wd: [i % 7] }] }, '10.7.7.7');
+  assert.equal(last.code, 429);
+});
+
+test('undo: someone edits the wrong name, and it comes back; undo is logged and can be redone', async () => {
+  fresh();
+  const { id } = (await post({ action: 'create', name: 'Undo' })).data;
+  await post({ action: 'me', id, name: 'Avery', tz: 'UTC', rules });
+  await post({ action: 'me', id, name: 'Blake', tz: 'UTC', rules });
+  // Blake taps Avery's name by mistake and replaces Avery's times
+  const wrong = await post({ action: 'me', id, name: 'Avery', tz: 'UTC', rules: [{ wd: [6] }] });
+  const change = wrong.data.log[0];
+  assert.equal(change.name, 'Avery');
+  const u = await post({ action: 'undo', id, n: change.n });
+  assert.equal(u.code, 200);
+  assert.deepEqual(u.data.people.find((p) => p.name === 'Avery').rules, rules.map((r) => ({ ...r })));
+  assert.deepEqual([u.data.log[0].what, u.data.log[0].undid, u.data.log[0].name], ['undo', 'times', 'Avery'], 'the undo is in the log');
+  // redo: undo the undo
+  const re = await post({ action: 'undo', id, n: u.data.log[0].n });
+  assert.deepEqual(re.data.people.find((p) => p.name === 'Avery').rules, [{ wd: [6], from: null, to: null, lvl: 'yes' }]);
+  // undo it again, then the first save: Avery is removed, but kept aside and can be restored
+  const u2 = await post({ action: 'undo', id, n: re.data.log.find((x) => x.name === 'Avery' && x.what === 'times').n });
+  const first = u2.data.log.filter((x) => x.name === 'Avery' && x.what === 'times').pop();
+  const u3 = await post({ action: 'undo', id, n: first.n });
+  assert.deepEqual(u3.data.people.map((p) => p.name), ['Blake']);
+  assert.deepEqual(u3.data.removed.map((x) => x.name), ['Avery']);
+  const back = await post({ action: 'restore', id, name: 'Avery' });
+  assert.deepEqual(back.data.people.map((p) => p.name), ['Avery', 'Blake']);
+  assert.deepEqual(back.data.removed, []);
+  assert.deepEqual(back.data.people[0].rules, rules.map((r) => ({ ...r })));
+  // an older change cannot jump the queue
+  await post({ action: 'me', id, name: 'Blake', tz: 'UTC', rules: [{ wd: [0] }] });
+  const log = (await get(id)).data.log.filter((x) => x.name === 'Blake' && x.what === 'times');
+  assert.equal((await post({ action: 'undo', id, n: log[1].n })).code, 409);
+  assert.equal((await post({ action: 'undo', id, n: 9999 })).code, 404);
+  // removing someone can be undone
+  const f = await post({ action: 'forget', id, name: 'Blake' });
+  assert.deepEqual(f.data.people.map((p) => p.name), ['Avery']);
+  const back2 = await post({ action: 'undo', id, n: f.data.log[0].n });
+  assert.deepEqual(back2.data.people.map((p) => p.name), ['Avery', 'Blake']);
+  assert.equal((await post({ action: 'restore', id, name: 'Nobody' })).code, 404);
+});
+
+test('a flood of changes cannot lose the people it removed', async () => {
+  fresh();
+  const { id } = (await post({ action: 'create', name: 'Flood' })).data;
+  for (const n of ['Avery', 'Blake', 'Cam']) await post({ action: 'me', id, name: n, tz: 'UTC', rules }, '10.20.0.1');
+  for (const n of ['Avery', 'Blake', 'Cam']) await post({ action: 'forget', id, name: n }, '10.20.0.2');
+  for (let i = 0; i < 120; i++) await post({ action: 'me', id, name: 'Troll', tz: 'UTC', rules: [{ wd: [i % 7] }] }, `10.21.${i}.1`);
+  const g = (await get(id)).data;
+  assert.equal(g.log.length, 100);
+  assert.ok(!g.log.some((x) => x.what === 'removed'), 'the removals have been pushed out of the log');
+  assert.deepEqual(g.removed.map((x) => x.name).sort(), ['Avery', 'Blake', 'Cam']);
+  for (const n of ['Avery', 'Blake', 'Cam']) assert.equal((await post({ action: 'restore', id, name: n }, '10.22.0.1')).code, 200);
+  const after = (await get(id)).data.people.map((p) => p.name);
+  assert.deepEqual(after, ['Avery', 'Blake', 'Cam', 'Troll']);
+});
+
+test('one event takes at most 300 writes an hour, from any number of addresses', async () => {
+  fresh();
+  const { id } = (await post({ action: 'create', name: 'Busy event' })).data;
+  let last;
+  for (let i = 0; i < 301; i++) last = await post({ action: 'me', id, name: 'P' + (i % 30), tz: 'UTC', rules: [{ wd: [i % 7] }] }, `10.30.${i}.1`);
+  assert.equal(last.code, 429);
+  const other = (await post({ action: 'create', name: 'Quiet event' }, '10.31.0.1')).data.id;
+  assert.equal((await post({ action: 'me', id: other, name: 'A', tz: 'UTC', rules }, '10.31.0.1')).code, 200);
+});
+
+test('a byte budget per address per day', async () => {
+  fresh();
+  const { CAP } = handler._test;
+  const keep = CAP.bytesPerDay;
+  CAP.bytesPerDay = 5000;
+  try {
+    const { id } = (await post({ action: 'create', name: 'Bytes' }, '10.40.0.1')).data;
+    let code = 200, i = 0;
+    while (code === 200 && i < 50) code = (await post({ action: 'me', id, name: 'A', tz: 'UTC', rules: [{ wd: [i++ % 7] }], pad: 'x'.repeat(900) }, '10.40.0.1')).code;
+    assert.equal(code, 429);
+    assert.ok(i < 10);
+    // IPv6 neighbours in one /64 share it
+    assert.equal((await post({ action: 'me', id, name: 'B', tz: 'UTC', rules, pad: 'x'.repeat(4000) }, '2001:db8:1:2::5')).code, 200);
+    assert.equal((await post({ action: 'me', id, name: 'B', tz: 'UTC', rules, pad: 'x'.repeat(4000) }, '2001:db8:1:2::6')).code, 429);
+  } finally { CAP.bytesPerDay = keep; }
+});
+
+test('review fixes: old dates, odd settings, midnight, emoji, names', async () => {
+  fresh();
+  const { id } = (await post({ action: 'create', name: 'Edge' })).data;
+  // a stretch that started 100 days ago and is still going saves
+  assert.equal((await post({ action: 'me', id, name: 'Avery', tz: 'UTC', rules, days: [{ d1: E_today(-100), d2: E_today(10), kind: 'away' }] })).code, 200);
+  // three long stretches are too many days in all
+  assert.equal((await post({ action: 'me', id, name: 'Avery', tz: 'UTC', rules, days: [0, 1, 2].map((j) => ({ d1: E_today(j * 121), d2: E_today(j * 121 + 120), kind: 'away' })) })).code, 400);
+  // an event that started long ago can still be renamed (its unchanged dates are not re-checked)
+  const ev = JSON.parse(await db.get(S.K.ev(id)));
+  ev.from = E_today(-200); ev.to = E_today(30);
+  await db.set(S.K.ev(id), JSON.stringify(ev));
+  const ren = await post({ action: 'settings', id, set: { name: 'Edge, renamed', from: ev.from, to: ev.to } });
+  assert.equal(ren.code, 200);
+  assert.equal(ren.data.event.name, 'Edge, renamed');
+  assert.equal((await post({ action: 'settings', id, set: 'x' })).code, 400);
+  assert.equal((await post({ action: 'settings', id, set: [1] })).code, 400);
+  // "before midnight" is no time at all
+  assert.equal((await post({ action: 'me', id, name: 'Avery', tz: 'UTC', rules: [{ wd: [1], from: null, to: '00:00' }] })).code, 400);
+  assert.equal((await post({ action: 'me', id, name: 'Avery', tz: 'UTC', rules: [{ wd: [1], from: '18:00', to: '00:00' }] })).code, 200, 'six to midnight is fine');
+  // zones are stored by their canonical name
+  const z = await post({ action: 'me', id, name: 'Avery', tz: 'america/chicago', rules });
+  assert.equal(z.data.people.find((p) => p.name === 'Avery').tz, 'America/Chicago');
+  // emoji in names and labels: never half an emoji, and the calendar file still works
+  const e = (await post({ action: 'create', name: 'a' + '🎲'.repeat(80), tz: 'UTC' })).data.id;
+  const ename = (await get(e)).data.event.name;
+  assert.equal(Array.from(ename).length, 60);
+  assert.ok(!/[\ud800-\udbff]$/.test(ename));
+  const start = Math.ceil(Date.now() / 3600000) * 3600000 + 86400000;
+  const l = await post({ action: 'lock', id: e, start, end: start + 3600000, label: 'Week 3 🎉 '.repeat(8) });
+  const ics = await get(e, { ics: l.data.event.sessions[0].sid });
+  assert.equal(ics.code, 200);
+  assert.ok(ics.data.split('\r\n').every((x) => Buffer.byteLength(x) <= 75));
+  assert.ok(!ics.data.includes('\ufffd'));
+  // names are cleaned the same way on both sides
+  const sam = await post({ action: 'me', id, name: 'Sam <3', tz: 'UTC', rules });
+  assert.ok(sam.data.people.some((p) => p.name === 'Sam 3'));
+  const E = require('../hang/engine.js');
+  assert.equal(E.cleanText('Sam <3', 30), 'Sam 3');
+});
+
+test('settings, required people and quorum, with undo', async () => {
+  fresh();
+  const { id } = (await post({ action: 'create', name: 'Settings', roster: ['Avery', 'Blake'] })).data;
+  const s = await post({ action: 'settings', id, set: { name: 'Renamed', len: 180, roster: [{ name: 'Avery', req: true }, 'Blake', 'Cam'], quorum: 2 } });
+  assert.equal(s.code, 200);
+  assert.equal(s.data.event.name, 'Renamed');
+  assert.equal(s.data.event.len, 180);
+  assert.deepEqual(s.data.event.roster, [{ name: 'Avery', req: true }, { name: 'Blake', req: false }, { name: 'Cam', req: false }]);
+  assert.equal(s.data.event.quorum, 2);
+  assert.equal(s.data.event.tz, 'UTC', 'fields not sent stay as they were');
+  assert.equal((await post({ action: 'settings', id, set: { name: '' } })).code, 400);
+  const u = await post({ action: 'undo', id, n: s.data.log[0].n });
+  assert.equal(u.data.event.name, 'Settings');
+  assert.equal(u.data.event.quorum, 0);
+});
+
+test('lock it in: several sessions, each with its own calendar file; removing one is undoable', async () => {
+  fresh();
+  const { id } = (await post({ action: 'create', name: 'Space game; one, two', tz: 'America/Chicago' })).data;
+  assert.equal((await get(id, { ics: 'nothing' })).code, 404);
+  const start = Math.ceil(Date.now() / 3600000) * 3600000 + 2 * 86400000, end = start + 3 * 3600000;
+  assert.equal((await post({ action: 'lock', id, start, end: start })).code, 400);
+  assert.equal((await post({ action: 'lock', id, start, end: start + 2 * 86400000 })).code, 400);
+  assert.equal((await post({ action: 'lock', id, start: start + 1, end })).code, 400);
+  assert.equal((await post({ action: 'lock', id, start: start + 900 * 86400000, end: start + 900 * 86400000 + 3600000 })).code, 400);
+  const l0 = await post({ action: 'lock', id, start, end, label: 'Session <0>' });
+  assert.equal(l0.code, 200);
+  const l1 = await post({ action: 'lock', id, start: start + 14 * 86400000, end: end + 14 * 86400000, label: 'Session 1' });
+  assert.equal((await post({ action: 'lock', id, start, end })).code, 409, 'the same slot twice');
+  const ses = l1.data.event.sessions;
+  assert.deepEqual(ses.map((x) => [x.label, x.start]), [['Session 0', start], ['Session 1', start + 14 * 86400000]]);
+  assert.match(ses[0].sid, /^[a-z2-9]{6}$/);
+  const ics = await get(id, { ics: ses[1].sid });
+  assert.equal(ics.code, 200);
+  assert.match(ics.headers['content-type'], /^text\/calendar/);
+  assert.match(ics.data, /SUMMARY:Space game\\; one\\, two: Session 1/);
+  assert.match(ics.data, new RegExp(`URL:https://den.test/hang/${id}`));
+  // remove session 0, then undo it
+  const un = await post({ action: 'unlock', id, sid: ses[0].sid });
+  assert.deepEqual(un.data.event.sessions.map((x) => x.label), ['Session 1']);
+  assert.equal((await post({ action: 'unlock', id, sid: 'zzzzzz' })).code, 404);
+  const back = await post({ action: 'undo', id, n: un.data.log[0].n });
+  assert.deepEqual(back.data.event.sessions.map((x) => x.label), ['Session 0', 'Session 1']);
+  // twenty at most
+  for (let i = 2; i < 20; i++) assert.equal((await post({ action: 'lock', id, start: start + i * 86400000 + 3600000, end: end + i * 86400000 + 3600000 }, '10.3.' + i + '.1')).code, 200);
+  assert.equal((await post({ action: 'lock', id, start: start + 30 * 86400000, end: end + 30 * 86400000 }, '10.4.0.1')).code, 409);
+});
+
+test('delete needs the key the creating device holds', async () => {
+  fresh();
+  const { id, key } = (await post({ action: 'create', name: 'Gone soon' })).data;
+  await post({ action: 'me', id, name: 'Avery', tz: 'UTC', rules });
+  assert.equal((await post({ action: 'delete', id, key: 'nope' })).code, 403);
+  assert.equal((await post({ action: 'delete', id })).code, 403);
+  assert.equal((await post({ action: 'delete', id, key })).code, 200);
+  assert.equal((await get(id)).code, 404);
+  assert.equal(await db.hlen(S.K.pp(id)), 0);
+});
+
+test('bad ids and unknown actions', async () => {
+  fresh();
+  assert.equal((await get('../../etc')).code, 400);
+  assert.equal((await get('UPPER-abcdef')).code, 400);
+  assert.equal((await get('missing-abcdef')).code, 404);
+  assert.equal((await post({ action: 'me', id: 'missing-abcdef', name: 'A', rules })).code, 404);
+  const { id } = (await post({ action: 'create', name: 'x' })).data;
+  assert.equal((await post({ action: 'explode', id })).code, 400);
+  assert.equal((await call('PUT', {})).code, 405);
+  assert.equal((await post('not json')).code, 400);
+  assert.equal((await post([1, 2])).code, 400);
+});
+
+test('an old calendar opens as a v2 event, painted hours carried over', async () => {
+  fresh();
+  // created at Pacific midnight on 22 Oct 2026, three weeks of hour slots; one invented person painted 7–10 PM Pacific on the 24th
+  const start = Date.UTC(2026, 9, 22, 7);
+  await db.set('hang:cal:abc2def', JSON.stringify({ id: 'abc2def', title: 'Hang with Avery', start, slots: 504, created: start }));
+  const cells = '.'.repeat(504).split('');
+  for (let h = 2 * 24 + 19; h < 2 * 24 + 22; h++) cells[h] = 'g';
+  cells[100] = 'n';
+  await db.hset('hang:people:abc2def', 'blake', JSON.stringify({ name: 'Blake', cells: cells.join(''), token: 'x', updated: start }));
+  const g = await get('abc2def');
+  assert.equal(g.code, 200);
+  assert.equal(g.data.event.name, 'Hang with Avery');
+  assert.equal(g.data.event.tz, 'America/Los_Angeles');
+  assert.equal(g.data.event.from, null, 'rolling, so the old link is usable going forward');
+  assert.deepEqual(g.data.event.sessions, []);
+  // 7–10 PM PDT on the 24th is 02:00–05:00 UTC on the 25th
+  assert.deepEqual(g.data.people, [{ name: 'Blake', tz: 'UTC', rules: [], days: [{ d1: '2026-10-25', kind: 'add', from: '02:00', to: '05:00', lvl: 'yes' }], updated: start }]);
+  // the old keys are untouched, and a second open does not migrate twice
+  assert.ok(await db.get('hang:cal:abc2def'));
+  await post({ action: 'me', id: 'abc2def', name: 'Cam', tz: 'UTC', rules });
+  assert.deepEqual((await get('abc2def')).data.people.map((p) => p.name), ['Blake', 'Cam']);
+  assert.equal((await get('zzz9zzz')).code, 404);
+});
+
+test('slugs', () => {
+  const { slug } = handler._test;
+  assert.equal(slug('Star Wars RPG Availability'), 'star-wars-rpg-availability');
+  assert.equal(slug('Café night — à la carte'), 'cafe-night-a-la-carte');
+  assert.equal(slug('A very long event name that goes on and on and on'), 'a-very-long-event-name-that-goes');
+  assert.equal(slug('!!!'), 'hang');
+});

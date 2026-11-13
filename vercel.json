@@ -1,5 +1,8 @@
 {
   "rewrites": [
-    { "source": "/hang/:id([a-z0-9]{7})", "destination": "/hang/index.html" }
-  ]
+    { "source": "/hang/:id([a-z0-9-]{7,48})", "destination": "/api/hang-page?id=:id" }
+  ],
+  "functions": {
+    "api/hang-page.js": { "includeFiles": "hang/index.html" }
+  }
 }
