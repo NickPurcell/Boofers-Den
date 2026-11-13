@@ -380,7 +380,7 @@
     const ol = h('ol');
     for (const w of B.windows) {
       const k = E.localKey(w.best, dispTz);
-      const tag = w.tier === 2 ? 'Works' : w.tier === 1 ? 'If the maybes come' : 'Closest';
+      const tag = (w.tier === 2 ? 'Works' : w.tier === 1 ? 'If the maybes come' : 'Closest') + (w.soonest ? ' · soonest' : '');
       const sure = w.who.length - w.maybe.length;
       ol.append(h('li', { class: 'tier' + w.tier },
         h('button', { type: 'button', class: 'win', onclick: () => openSheet(daySheet(k)) },

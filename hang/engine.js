@@ -271,7 +271,8 @@
 
   // ranked windows: a set of people and a run of start times where all of them are free for a
   // whole session. Ranked: works before works-if-the-maybes-come, then more people, then fewer
-  // maybes, then sooner. With nothing that works, the closest: the most people free at once.
+  // maybes, then sooner; the soonest that works is always kept (marked `soonest`). With nothing
+  // that works, the closest: the most people free at once.
   function bestTimes(A, opts = {}) {
     const limit = opts.limit || 6, perDay = opts.perDay || 2, tz = opts.tz || 'UTC';
     const lo = Math.max(0, A.first);
@@ -328,6 +329,15 @@
       perKey[dk] = (perKey[dk] || 0) + 1;
       out.push(w);
       if (out.length >= limit) break;
+    }
+    // with a quorum, a bigger group later can crowd out the soonest time that works: keep it, marked
+    if (!fallback && wins.length) {
+      const top = wins[0].tier;
+      const soonest = wins.filter((w) => w.tier === top).sort((p, q) => p.best - q.best || q.who.length - p.who.length)[0];
+      if (!out.includes(soonest)) {
+        if (out.length >= limit) out.pop();
+        out.push(Object.assign(soonest, { soonest: true }));
+      }
     }
     return { windows: out, fallback };
   }

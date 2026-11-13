@@ -284,6 +284,14 @@ test('ranking: works before works-if-maybes, then more people, then fewer maybes
   ];
   const QB = E.bestTimes(E.analyze(Q, opts({ quorum: 2, t1: at('2026-11-22', '00:00', CHI) })), { tz: CHI });
   assert.deepEqual(QB.windows.map((w) => [E.localKey(w.start, CHI), w.who.length, w.maybe.length]), [['2026-11-21', 3, 0], ['2026-11-20', 3, 1]]);
+  // a bigger group later must not crowd out the soonest time that works
+  const R = [
+    { name: 'A', tz: CHI, rules: [{ wd: [6], from: '18:00', to: null }] },
+    { name: 'B', tz: CHI, rules: [{ wd: [6], from: '18:00', to: null }] },
+    { name: 'C', tz: CHI, rules: [{ wd: [6], from: '18:00', to: null }], days: [{ d1: '2026-11-21', kind: 'away' }] },
+  ];
+  const RB = E.bestTimes(E.analyze(R, opts({ quorum: 2, t1: at('2026-12-27', '00:00', CHI) })), { tz: CHI, limit: 3 });
+  assert.deepEqual(RB.windows.map((w) => [E.localKey(w.start, CHI), w.who.length, !!w.soonest]), [['2026-11-28', 3, false], ['2026-12-05', 3, false], ['2026-11-21', 2, true]]);
   // three windows on one day are capped at two
   const busy = [{ name: 'Cam', tz: CHI, rules: [{ wd: [6], from: '08:00', to: '10:00' }, { wd: [6], from: '12:00', to: '14:00' }, { wd: [6], from: '16:00', to: '18:00' }] }];
   const C = E.bestTimes(E.analyze(busy, opts({ t1: at('2026-11-22', '00:00', CHI) })), { tz: CHI });
