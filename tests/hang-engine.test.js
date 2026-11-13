@@ -176,10 +176,10 @@ test('everyone who filled in: nothing fits all six, closest is five', () => {
   const P = party();
   const A = E.analyze(P, opts({}));
   const ds = E.dayStats(A, ['2026-11-20', '2026-11-21', '2026-11-22', '2026-11-23'], CHI);
-  // Saturday 21 Nov: Avery 18–24, Blake 19–24, Cam 19–23 CHI (20–24 NY), Dana 17–23, Emery 14–24 CHI (12–22 LA)
-  assert.deepEqual(ds['2026-11-21'], { best: 5, all: false, ok: false, open: true, of: 6 });
-  // Friday: Avery, Blake, Dana, Cam maybe = 4
-  assert.equal(ds['2026-11-20'].best, 4);
+  // Saturday 21 Nov: Avery 18–24, Blake 19–24, Cam 19–23 CHI (20–24 NY), Dana 17–23, Emery 14–24 CHI (12–22 LA); Gray only weeknights
+  assert.deepEqual(ds['2026-11-21'], { tier: 0, sure: 5, maybe: 0, of: 6, open: true, at: at('2026-11-21', '19:00', CHI) });
+  // Friday: Avery, Blake and Dana sure, Cam maybe: the cell reads "3 +1?" of 6
+  assert.deepEqual([ds['2026-11-20'].sure, ds['2026-11-20'].maybe, ds['2026-11-20'].tier], [3, 1, 0]);
   const B = E.bestTimes(A, { tz: CHI });
   assert.equal(B.fallback, true);
   const top = B.windows[0];
@@ -194,13 +194,37 @@ test('everyone who filled in: nothing fits all six, closest is five', () => {
 test('everyone except Gray: Saturday works for all who are counted', () => {
   const P = party();
   const A = E.analyze(P, opts({ count: ['Avery', 'Blake', 'Cam', 'Dana', 'Emery'] }));
-  const ds = E.dayStats(A, ['2026-11-21', '2026-11-28'], CHI);
-  assert.equal(ds['2026-11-21'].all, true);
-  assert.equal(ds['2026-11-21'].ok, true);
+  const ds = E.dayStats(A, ['2026-11-20', '2026-11-21', '2026-11-28'], CHI);
+  assert.equal(ds['2026-11-21'].tier, 2);
   assert.equal(ds['2026-11-21'].of, 5);
+  assert.equal(ds['2026-11-20'].tier, 0, 'Emery is not free on Friday');
   const B = E.bestTimes(A, { tz: CHI });
   assert.equal(B.fallback, false);
   assert.deepEqual(B.windows.map((w) => E.localKey(w.start, CHI)), ['2026-11-21', '2026-11-28']);
+});
+
+test('maybe: a day works only on sure answers; "works if the maybes come" is its own state', () => {
+  const P = [
+    { name: 'Avery', tz: CHI, rules: [{ wd: [5], from: '18:00', to: null }] },
+    { name: 'Blake', tz: CHI, rules: [{ wd: [5], from: '18:00', to: null, lvl: 'maybe' }, { wd: [6], from: '18:00', to: null }] },
+    { name: 'Cam', tz: CHI, rules: [{ wd: [5, 6], from: '18:00', to: null }] },
+  ];
+  const ds = E.dayStats(E.analyze(P, opts({})), ['2026-11-20', '2026-11-21'], CHI);
+  assert.deepEqual([ds['2026-11-20'].tier, ds['2026-11-20'].sure, ds['2026-11-20'].maybe], [1, 2, 1]);
+  assert.equal(ds['2026-11-21'].tier, 0, 'Avery is not free on Saturday');
+  // a required person who is only a maybe makes it "if the maybes come", even when the quorum is met by sure answers
+  const q = E.dayStats(E.analyze(P, opts({ required: ['Blake'], quorum: 2 })), ['2026-11-20'], CHI)['2026-11-20'];
+  assert.equal(q.tier, 1);
+  const q2 = E.dayStats(E.analyze(P, opts({ required: ['Cam'], quorum: 2 })), ['2026-11-20'], CHI)['2026-11-20'];
+  assert.equal(q2.tier, 2, 'Avery and Cam sure is two sure');
+  // the day cell reports the start it is highlighted for, not a bigger crowd that only works with maybes
+  const R = [
+    { name: 'X', tz: CHI, rules: [{ wd: [6], from: '18:00', to: '22:00' }] },
+    { name: 'Y', tz: CHI, rules: [{ wd: [6], from: '18:00', to: '20:00' }, { wd: [6], from: '20:00', to: '22:00', lvl: 'maybe' }] },
+    { name: 'Z', tz: CHI, rules: [{ wd: [6], from: '20:00', to: '22:00', lvl: 'maybe' }] },
+  ];
+  const r = E.dayStats(E.analyze(R, opts({ quorum: 2 })), ['2026-11-21'], CHI)['2026-11-21'];
+  assert.deepEqual([r.tier, r.sure, r.maybe, E.localHM(r.at, CHI)], [2, 2, 0, '18:00']);
 });
 
 test('required people and a quorum', () => {
@@ -208,41 +232,37 @@ test('required people and a quorum', () => {
   // Dana runs the game and must be there; four is enough
   const A = E.analyze(P, opts({ required: ['Dana'], quorum: 4 }));
   const ds = E.dayStats(A, ['2026-11-19', '2026-11-20', '2026-11-21', '2026-11-22'], CHI);
-  assert.equal(ds['2026-11-19'].ok, false); // a weeknight: Blake and Gray only
-  assert.equal(ds['2026-11-20'].ok, true);  // Friday: Avery, Blake, Cam (maybe), Dana
-  assert.equal(ds['2026-11-21'].ok, true);
-  assert.equal(ds['2026-11-22'].ok, false); // Sunday: Dana is not free
+  assert.equal(ds['2026-11-19'].tier, 0); // a weeknight: Blake and Gray only
+  assert.equal(ds['2026-11-20'].tier, 1); // Friday: Avery, Blake, Dana sure and Cam maybe: four only if the maybe comes
+  assert.equal(ds['2026-11-21'].tier, 2);
+  assert.equal(ds['2026-11-22'].tier, 0); // Sunday: Dana is not free
   const B = E.bestTimes(A, { tz: CHI, limit: 10 });
   assert.equal(B.fallback, false);
-  // Saturday's five beat Friday's four; every window includes Dana
   assert.ok(B.windows.every((w) => w.who.includes('Dana')));
-  assert.equal(B.windows[0].who.length, 5);
-  const fri = B.windows.find((w) => E.localKey(w.start, CHI) === '2026-11-20');
-  assert.deepEqual(fri.maybe, ['Cam']);
+  assert.deepEqual(B.windows.map((w) => [E.localKey(w.start, CHI), w.tier]), [['2026-11-21', 2], ['2026-11-28', 2], ['2026-11-20', 1], ['2026-11-27', 1]]);
+  assert.deepEqual(B.windows[2].maybe, ['Cam']);
   // if the GM has not answered, nothing can be said to work
   const A2 = E.analyze(P.filter((p) => p.name !== 'Dana'), opts({ required: ['Dana'], quorum: 4 }));
   assert.deepEqual(A2.missing, ['Dana']);
-  assert.equal(E.dayStats(A2, ['2026-11-21'], CHI)['2026-11-21'].ok, false);
-  // leaving the GM out with the filter drops the requirement only if they answered; quorum still applies
+  assert.equal(E.dayStats(A2, ['2026-11-21'], CHI)['2026-11-21'].tier, 0);
+  // leaving the GM out with the filter drops the requirement; the quorum still applies
   const A3 = E.analyze(P, opts({ required: ['Dana'], quorum: 4, count: ['Avery', 'Blake', 'Cam', 'Emery', 'Gray'] }));
-  assert.equal(E.dayStats(A3, ['2026-11-21'], CHI)['2026-11-21'].ok, true);
+  assert.equal(E.dayStats(A3, ['2026-11-21'], CHI)['2026-11-21'].tier, 2);
 });
 
 test('session length: a three-hour game needs three free hours', () => {
   const P = party().slice(0, 4); // Avery, Blake, Cam, Dana
-  const two = E.analyze(P, opts({ len: 120 }));
-  const four = E.analyze(P, opts({ len: 240 }));
+  const tierFor = (len) => E.dayStats(E.analyze(P, opts({ len })), ['2026-11-21'], CHI)['2026-11-21'].tier;
   // Saturday: all four free 7–11 PM (Cam from 7 PM Chicago), exactly four hours
-  assert.equal(E.dayStats(two, ['2026-11-21'], CHI)['2026-11-21'].all, true);
-  assert.equal(E.dayStats(four, ['2026-11-21'], CHI)['2026-11-21'].all, true);
-  const five = E.analyze(P, opts({ len: 300 }));
-  assert.equal(E.dayStats(five, ['2026-11-21'], CHI)['2026-11-21'].all, false);
-  const w = E.bestTimes(four, { tz: CHI }).windows[0];
+  assert.equal(tierFor(120), 2);
+  assert.equal(tierFor(240), 2);
+  assert.equal(tierFor(300), 0);
+  const w = E.bestTimes(E.analyze(P, opts({ len: 240 })), { tz: CHI }).windows[0];
   assert.equal(E.localHM(w.start, CHI), '19:00');
   assert.equal(w.start, w.lastStart);
 });
 
-test('ranking: more people first, then sure over maybe, then sooner; two per day at most', () => {
+test('ranking: works before works-if-maybes, then more people, then fewer maybes, then sooner; two per day at most', () => {
   const P = [
     { name: 'Avery', tz: CHI, rules: [{ wd: [5, 6], from: '18:00', to: null, lvl: 'yes' }] },
     { name: 'Blake', tz: CHI, rules: [{ wd: [5], from: '18:00', to: null, lvl: 'maybe' }, { wd: [6], from: '18:00', to: null, lvl: 'yes' }] },
@@ -250,10 +270,20 @@ test('ranking: more people first, then sure over maybe, then sooner; two per day
   const B = E.bestTimes(E.analyze(P, opts({})), { tz: CHI, limit: 4 });
   // Saturdays (both sure) before Fridays (Blake maybe), sooner first within each
   assert.deepEqual(B.windows.map((w) => E.localKey(w.start, CHI)), ['2026-11-21', '2026-11-28', '2026-11-20', '2026-11-27']);
+  assert.deepEqual(B.windows.map((w) => w.tier), [2, 2, 1, 1]);
   assert.deepEqual(B.windows[2].maybe, ['Blake']);
   // past starts are ignored
   const later = E.bestTimes(E.analyze(P, opts({ now: at('2026-11-22', '00:00', CHI) })), { tz: CHI, limit: 4 });
   assert.deepEqual(later.windows.map((w) => E.localKey(w.start, CHI)), ['2026-11-28', '2026-11-27']);
+  // with a quorum, a bigger group beats a smaller one at the same tier, and fewer maybes break ties
+  const Q = [
+    { name: 'A', tz: CHI, rules: [{ wd: [5, 6], from: '18:00', to: null }] },
+    { name: 'B', tz: CHI, rules: [{ wd: [5, 6], from: '18:00', to: null }] },
+    { name: 'C', tz: CHI, rules: [{ wd: [6], from: '18:00', to: null }] },
+    { name: 'D', tz: CHI, rules: [{ wd: [5], from: '18:00', to: null, lvl: 'maybe' }] },
+  ];
+  const QB = E.bestTimes(E.analyze(Q, opts({ quorum: 2, t1: at('2026-11-22', '00:00', CHI) })), { tz: CHI });
+  assert.deepEqual(QB.windows.map((w) => [E.localKey(w.start, CHI), w.who.length, w.maybe.length]), [['2026-11-21', 3, 0], ['2026-11-20', 3, 1]]);
   // three windows on one day are capped at two
   const busy = [{ name: 'Cam', tz: CHI, rules: [{ wd: [6], from: '08:00', to: '10:00' }, { wd: [6], from: '12:00', to: '14:00' }, { wd: [6], from: '16:00', to: '18:00' }] }];
   const C = E.bestTimes(E.analyze(busy, opts({ t1: at('2026-11-22', '00:00', CHI) })), { tz: CHI });
@@ -277,6 +307,17 @@ test('words: rules and day entries read back as sentences', () => {
   assert.equal(E.spanText(at('2026-11-21', '19:00', CHI), at('2026-11-21', '23:00', CHI), CHI), '7–11 PM');
   assert.equal(E.spanText(at('2026-11-21', '21:00', CHI), at('2026-11-22', '01:00', CHI), CHI), '9 PM–1 AM');
   assert.equal(E.zoneName(CHI), 'Central Time');
+});
+
+test('words follow the viewer locale: 24-hour clock and Monday weeks outside the US', () => {
+  assert.equal(E.weekStart('en-US'), 0);
+  assert.equal(E.weekStart('en-GB'), 1);
+  E.setLocale('en-GB');
+  try {
+    assert.equal(E.ruleText({ wd: [1, 2, 3, 4, 5], from: '20:30', to: null }), 'Mon–Fri after 20:30');
+    assert.equal(E.spanText(at('2026-11-21', '19:00', CHI), at('2026-11-21', '23:00', CHI), CHI), '19:00–23:00');
+  } finally { E.setLocale('en-US'); }
+  assert.equal(E.ruleText({ wd: [1, 2, 3, 4, 5], from: '20:30', to: null }), 'Mon–Fri after 8:30 PM');
 });
 
 test('calendar invite and Google link', () => {

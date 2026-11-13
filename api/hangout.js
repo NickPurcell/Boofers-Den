@@ -8,7 +8,7 @@ const crypto = require("crypto");
 const E = require("../hang/engine.js");
 const S = require("./_hang-store.js");
 
-const CAP = { name: 60, person: 30, roster: 30, people: 40, rules: 12, days: 80, entrySpan: 180, log: 60, body: 24000 };
+const CAP = { name: 60, person: 30, roster: 30, people: 40, rules: 12, days: 80, entrySpan: 180, log: 60, sessions: 20, body: 24000 };
 const DAY = 86400000;
 const ALPHA = "abcdefghijkmnpqrstuvwxyz23456789";
 
@@ -167,7 +167,7 @@ async function create(r, req, b) {
   const base = slug(ev.name);
   for (let tries = 0; tries < 5; tries++) {
     const id = `${base}-${randomChars(6)}`;
-    const rec = Object.assign({ id }, ev, { locked: null, created: now, updated: now, key: hash(key) });
+    const rec = Object.assign({ id }, ev, { sessions: [], created: now, updated: now, key: hash(key) });
     if (await r.set(S.K.ev(id), JSON.stringify(rec), "EX", S.TTL, "NX")) return { id, key };
   }
   bad("could not allocate an id", 500);
@@ -235,20 +235,26 @@ async function handlePost(r, req, res, b) {
       break;
     }
     case "lock": {
+      // a locked-in session; an event can hold several (session 0, session 1, the next one...)
       const start = Number(b.start), end = Number(b.end), now = Date.now();
       if (!Number.isInteger(start) || !Number.isInteger(end) || start % 60000 || end % 60000 || end <= start || end - start > DAY) bad("bad time");
       if (start < now - 7 * DAY || start > now + 420 * DAY) bad("that time is out of range");
+      const kept = (ev.sessions || []).filter((x) => x.end > now - 30 * DAY);
+      if (kept.length >= CAP.sessions) bad(`at most ${CAP.sessions} sessions`, 409);
+      if (kept.some((x) => x.start === start && x.end === end)) bad("that session is already locked in", 409);
       await logChange(r, id, "@", ev.name, "locked", JSON.stringify(ev));
-      ev.locked = { start, end, at: now };
+      kept.push({ sid: randomChars(6), start, end, label: clean(b.label, 40) });
+      ev.sessions = kept.sort((x, y) => x.start - y.start);
       await saveEvent(r, ev);
       break;
     }
     case "unlock": {
-      if (ev.locked) {
-        await logChange(r, id, "@", ev.name, "unlocked", JSON.stringify(ev));
-        ev.locked = null;
-        await saveEvent(r, ev);
-      }
+      const sid = String(b.sid || "");
+      const hit = (ev.sessions || []).find((x) => x.sid === sid);
+      if (!hit) bad("no such session", 404);
+      await logChange(r, id, "@", ev.name, "unlocked", JSON.stringify(ev));
+      ev.sessions = ev.sessions.filter((x) => x.sid !== sid);
+      await saveEvent(r, ev);
       break;
     }
     case "undo": {
@@ -280,11 +286,12 @@ module.exports = async function handler(req, res) {
       if (!S.validId(id)) bad("bad id");
       if (req.query.ics != null) {
         const ev = await S.readEvent(r, id);
-        if (!ev || !ev.locked) bad("not locked in", 404);
+        const ses = ev && (ev.sessions || []).find((x) => x.sid === String(req.query.ics));
+        if (!ses) bad("no such session", 404);
         const host = String(req.headers["x-forwarded-host"] || req.headers.host || "boofers-den.vercel.app").replace(/[^a-z0-9.:-]/gi, "");
-        const body = E.ics({ uid: `${id}-${ev.locked.start}@boofers-den`, name: ev.name, start: ev.locked.start, end: ev.locked.end, url: `https://${host}/hang/${id}` });
+        const body = E.ics({ uid: `${id}-${ses.sid}@boofers-den`, name: ses.label ? `${ev.name}: ${ses.label}` : ev.name, start: ses.start, end: ses.end, url: `https://${host}/hang/${id}` });
         res.setHeader("Content-Type", "text/calendar; charset=utf-8");
-        res.setHeader("Content-Disposition", `inline; filename="${id}.ics"`);
+        res.setHeader("Content-Disposition", `inline; filename="${id}-${ses.sid}.ics"`);
         res.status(200).send(body);
         return;
       }

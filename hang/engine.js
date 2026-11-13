@@ -191,11 +191,18 @@
   function pruneDays(days, key) { return (days || []).filter((x) => (x.d2 || x.d1) >= key); }
 
   /* ---------- everyone together ---------- */
+  // How a start time counts. For each counted person, a session starting then is
+  //   sure   – free for the whole session, all of it marked yes
+  //   maybe  – free for the whole session, some of it marked maybe
+  //   no     – not free for all of it.
+  // A start WORKS when the event's rule is met by sure answers alone: every required person sure,
+  // and at least `quorum` sure (quorum 0 = everyone counted). It works IF THE MAYBES COME when the
+  // rule is met only by counting maybes as yes. Nothing else is highlighted.
+  //
   // people: [{ name, tz, rules, days }] (only those who answered); opts:
-  //   t0, t1   instants (t0 on a quarter hour) bounding the search
-  //   len      session length in minutes
-  //   count    names counted (who filled in, minus anyone left out by the filter)
-  //   required names that must be free; quorum: at least this many counted people free (0 = all)
+  //   t0, t1   instants bounding the search; len: session minutes
+  //   count    names counted (who filled in, minus anyone the filter leaves out)
+  //   required names that must be there; quorum: at least this many (0 = all counted)
   //   now      starts before this are ignored
   function analyze(people, opts) {
     const t0 = Math.floor(opts.t0 / STEP) * STEP;
@@ -227,94 +234,96 @@
     }
     const last = n - k; // last possible start tick
     const first = Math.max(0, Math.ceil(((opts.now == null ? -Infinity : opts.now) - t0) / STEP));
-    // 0 not free for the whole session, 1 free but maybe for some of it, 2 yes for all of it
     function status(p, i) {
       if (i < 0 || i > last) return 0;
       if (F[p][i + k] - F[p][i] !== k) return 0;
       return Y[p][i + k] - Y[p][i] === k ? YES : MAYBE;
     }
-    const free = new Int16Array(Math.max(0, last + 1));
-    const yes = new Int16Array(Math.max(0, last + 1));
-    const all = new Uint8Array(Math.max(0, last + 1));
-    const ok = new Uint8Array(Math.max(0, last + 1));
-    for (let i = Math.max(0, first); i <= last; i++) {
-      let c = 0, y = 0;
-      for (const p of counted) { const s = status(p, i); if (s) { c++; if (s === YES) y++; } }
-      free[i] = c; yes[i] = y;
-      all[i] = counted.length > 0 && c === counted.length ? 1 : 0;
-      ok[i] = counted.length > 0 && !missing.length && c >= quorum && required.every((p) => status(p, i) > 0) ? 1 : 0;
+    const size = Math.max(0, last + 1);
+    const sure = new Int16Array(size), maybe = new Int16Array(size), tier = new Uint8Array(size); // tier 2 works, 1 if the maybes come
+    const can = counted.length > 0 && !missing.length;
+    for (let i = first; i <= last; i++) {
+      let c = 0, m = 0;
+      for (const p of counted) { const s = status(p, i); if (s === YES) c++; else if (s === MAYBE) m++; }
+      sure[i] = c; maybe[i] = m;
+      if (!can) continue;
+      if (c >= quorum && required.every((p) => status(p, i) === YES)) tier[i] = 2;
+      else if (c + m >= quorum && required.every((p) => status(p, i) > 0)) tier[i] = 1;
     }
-    return { t0, n, k, len: k * 15, step: STEP, first, last, people, names, spans, counted, required, missing, quorum, status, free, yes, all, ok };
+    return { t0, n, k, len: k * 15, step: STEP, first, last, people, names, spans, counted, required, missing, quorum, status, sure, maybe, tier };
   }
 
-  // per local date in zone tz: the most counted people free for a whole session starting that day,
-  // and whether everyone counted / the event's rule can be met that day
+  // per local date in zone tz: whether a session can start that day that works (2) or works if
+  // the maybes come (1), and the sure and maybe counts at that day's best start
   function dayStats(A, keys, tz) {
     const out = {};
     for (const key of keys) {
       const a = Math.max(A.first, Math.ceil((dayStart(key, tz) - A.t0) / STEP));
       const b = Math.min(A.last, Math.ceil((dayStart(addDays(key, 1), tz) - A.t0) / STEP) - 1);
-      let best = 0, all = false, ok = false, any = false;
-      for (let i = a; i <= b; i++) {
-        any = true;
-        if (A.free[i] > best) best = A.free[i];
-        if (A.all[i]) all = true;
-        if (A.ok[i]) ok = true;
-      }
-      out[key] = { best, all, ok, open: any, of: A.counted.length };
+      let best = -1, open = false;
+      const better = (i, j) => A.tier[i] - A.tier[j] || (A.sure[i] + A.maybe[i]) - (A.sure[j] + A.maybe[j]) || A.sure[i] - A.sure[j];
+      for (let i = a; i <= b; i++) { open = true; if (best < 0 || better(i, best) > 0) best = i; }
+      out[key] = best < 0 ? { tier: 0, sure: 0, maybe: 0, of: A.counted.length, open }
+        : { tier: A.tier[best], sure: A.sure[best], maybe: A.maybe[best], of: A.counted.length, open, at: A.t0 + best * STEP };
     }
     return out;
   }
 
   // ranked windows: a set of people and a run of start times where all of them are free for a
-  // whole session. Bigger sets first, then more of them sure rather than maybe, then sooner.
+  // whole session. Ranked: works before works-if-the-maybes-come, then more people, then fewer
+  // maybes, then sooner. With nothing that works, the closest: the most people free at once.
   function bestTimes(A, opts = {}) {
     const limit = opts.limit || 6, perDay = opts.perDay || 2, tz = opts.tz || 'UTC';
-    let pick = (i) => A.ok[i];
-    let fallback = false;
-    let anyOk = false;
-    for (let i = A.first; i <= A.last; i++) if (A.ok[i]) { anyOk = true; break; }
-    if (!anyOk) {
+    const lo = Math.max(0, A.first);
+    let pick = (i) => A.tier[i] > 0, fallback = false, any = false;
+    for (let i = lo; i <= A.last; i++) if (A.tier[i]) { any = true; break; }
+    if (!any) {
       let max = 0;
-      for (let i = A.first; i <= A.last; i++) if (A.free[i] > max) max = A.free[i];
+      for (let i = lo; i <= A.last; i++) max = Math.max(max, A.sure[i] + A.maybe[i]);
       if (!max) return { windows: [], fallback: true };
       fallback = true;
-      pick = (i) => A.free[i] === max;
+      pick = (i) => A.sure[i] + A.maybe[i] === max;
     }
+    const freeAt = (i) => A.counted.filter((p) => A.status(p, i) > 0);
     const sets = new Map();
-    for (let i = Math.max(0, A.first); i <= A.last; i++) {
+    for (let i = lo; i <= A.last; i++) {
       if (!pick(i)) continue;
-      const mem = A.counted.filter((p) => A.status(p, i) > 0);
-      const key = mem.join(',');
+      const mem = freeAt(i), key = mem.join(',');
       if (!sets.has(key)) sets.set(key, mem);
       if (sets.size > 400) break;
     }
     const wins = [];
     for (const [key, mem] of sets) {
       let a = -1, exact = false;
-      for (let i = Math.max(0, A.first); i <= A.last + 1; i++) {
+      for (let i = lo; i <= A.last + 1; i++) {
         const inSet = i <= A.last && mem.every((p) => A.status(p, i) > 0);
         if (inSet) {
           if (a < 0) { a = i; exact = false; }
-          if (!exact && pick(i) && A.counted.filter((p) => A.status(p, i) > 0).join(',') === key) exact = true;
-        } else if (a >= 0) {
-          if (exact) {
-            let bi = a, by = -1;
-            for (let j = a; j < i; j++) {
-              const y = mem.reduce((c, p) => c + (A.status(p, j) === YES), 0);
-              if (y > by) { by = y; bi = j; }
-            }
-            const sure = mem.filter((p) => { for (let j = a; j < i; j++) if (A.status(p, j) === YES) return true; return false; });
-            wins.push({ who: mem.map((p) => A.names[p]), maybe: mem.filter((p) => !sure.includes(p)).map((p) => A.names[p]), yesAtBest: by, start: A.t0 + a * STEP, lastStart: A.t0 + (i - 1) * STEP, end: A.t0 + (i - 1 + A.k) * STEP, best: A.t0 + bi * STEP });
-          }
-          a = -1;
+          if (!exact && pick(i) && freeAt(i).join(',') === key) exact = true;
+          continue;
         }
+        if (a < 0) continue;
+        if (exact) {
+          // the best start in the run: the best tier, then the fewest maybes among these people, then the earliest
+          let bi = -1, bm = Infinity;
+          for (let j = a; j < i; j++) {
+            const m = mem.reduce((c, p) => c + (A.status(p, j) === MAYBE), 0);
+            if (bi < 0 || A.tier[j] > A.tier[bi] || (A.tier[j] === A.tier[bi] && m < bm)) { bi = j; bm = m; }
+          }
+          wins.push({
+            who: mem.map((p) => A.names[p]),
+            maybe: mem.filter((p) => A.status(p, bi) === MAYBE).map((p) => A.names[p]),
+            tier: A.tier[bi],
+            start: A.t0 + a * STEP, lastStart: A.t0 + (i - 1) * STEP, end: A.t0 + (i - 1 + A.k) * STEP, best: A.t0 + bi * STEP,
+          });
+        }
+        a = -1;
       }
     }
-    wins.sort((p, q) => q.who.length - p.who.length || q.yesAtBest - p.yesAtBest || p.start - q.start);
+    wins.sort((p, q) => q.tier - p.tier || q.who.length - p.who.length || p.maybe.length - q.maybe.length || p.start - q.start);
     const perKey = {}, out = [];
     for (const w of wins) {
-      const dk = localKey(w.start, tz);
+      const dk = localKey(w.best, tz);
       if ((perKey[dk] || 0) >= perDay) continue;
       perKey[dk] = (perKey[dk] || 0) + 1;
       out.push(w);
@@ -323,7 +332,27 @@
     return { windows: out, fallback };
   }
 
-  /* ---------- words ---------- */
+  /* ---------- words, in the viewer's locale (12-hour clock and English words for en-US) ---------- */
+  let LOC = 'en-US', H12 = true;
+  function setLocale(loc) {
+    try {
+      const o = new Intl.DateTimeFormat(loc || undefined, { hour: 'numeric' }).resolvedOptions();
+      LOC = o.locale;
+      H12 = o.hourCycle ? /h1[12]/.test(o.hourCycle) : !!o.hour12;
+    } catch { LOC = 'en-US'; H12 = true; }
+    return LOC;
+  }
+  // 0 = Sunday, 1 = Monday
+  function weekStart(loc) {
+    const l = loc || LOC;
+    try {
+      const L = new Intl.Locale(l);
+      const w = (typeof L.getWeekInfo === 'function' && L.getWeekInfo()) || L.weekInfo;
+      if (w && w.firstDay) return w.firstDay % 7;
+    } catch { /* older browsers */ }
+    return /^en(-US|-CA)?$|-(US|CA|MX|BR|JP|IL|PH|KR|TW)$/i.test(l) ? 0 : 1;
+  }
+  const wdName = (d) => (LOC === 'en-US' ? WD[d] : new Date(Date.UTC(2026, 10, 15 + d)).toLocaleDateString(LOC, { weekday: 'short', timeZone: 'UTC' }));
   const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   function daysText(wd) {
     const s = [...new Set(wd)].filter((d) => d >= 0 && d <= 6);
@@ -335,12 +364,14 @@
       const last = runs[runs.length - 1];
       if (last && last.end === pos - 1) { last.end = pos; last.days.push(d); } else runs.push({ end: pos, days: [d] });
     }
-    return runs.map((r) => (r.days.length >= 3 ? `${WD[r.days[0]]}–${WD[r.days[r.days.length - 1]]}` : r.days.map((d) => WD[d]).join(', '))).join(', ');
+    return runs.map((r) => (r.days.length >= 3 ? `${wdName(r.days[0])}–${wdName(r.days[r.days.length - 1])}` : r.days.map(wdName).join(', '))).join(', ');
   }
   function timeText(hm) {
-    if (hm == null || hm === '00:00') return 'midnight';
-    if (hm === '12:00') return 'noon';
+    if (hm == null) hm = '00:00';
     const [h, m] = hm.split(':').map(Number);
+    if (!H12) return `${pad(h)}:${pad(m)}`;
+    if (hm === '00:00') return 'midnight';
+    if (hm === '12:00') return 'noon';
     return `${h % 12 || 12}${m ? ':' + pad(m) : ''} ${h < 12 ? 'AM' : 'PM'}`;
   }
   function rangeText(from, to) {
@@ -348,19 +379,22 @@
     if (from == null) return `before ${timeText(to)}`;
     if (to == null) return `after ${timeText(from)}`;
     const a = timeText(from), b = timeText(to);
-    const am = (x) => x.endsWith(' AM'), pm = (x) => x.endsWith(' PM');
-    if ((am(a) && am(b) && from < to) || (pm(a) && pm(b) && from < to)) return `${a.slice(0, -3)}–${b}`;
+    if (H12 && from < to && a.slice(-3) === b.slice(-3) && / [AP]M$/.test(a)) return `${a.slice(0, -3)}–${b}`;
     return `${a}–${b}`;
   }
   function ruleText(r) {
     return `${daysText(r.wd)} ${rangeText(r.from, r.to)}${r.lvl === 'maybe' ? ' (maybe)' : ''}`;
   }
   function dateText(key, opt) {
-    return new Date(keyUtc(key)).toLocaleDateString('en-US', Object.assign({ timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }, opt || {}));
+    return new Date(keyUtc(key)).toLocaleDateString(LOC, Object.assign({ timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' }, opt || {}));
   }
   function datesText(a, b) {
     if (!b || b === a) return dateText(a);
     const A = parseKey(a), B = parseKey(b);
+    if (LOC !== 'en-US') {
+      const f = new Intl.DateTimeFormat(LOC, { timeZone: 'UTC', month: 'short', day: 'numeric' });
+      return f.formatRange ? f.formatRange(new Date(keyUtc(a)), new Date(keyUtc(b))) : `${f.format(new Date(keyUtc(a)))}–${f.format(new Date(keyUtc(b)))}`;
+    }
     const mon = (k) => new Date(keyUtc(k)).toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short' });
     if (A.y === B.y && A.m === B.m) return `${mon(a)} ${A.d}–${B.d}`;
     return `${mon(a)} ${A.d}–${mon(b)} ${B.d}`;
@@ -373,11 +407,11 @@
     if (x.kind === 'only') return hours ? `Only ${hours}, ${when}${maybe}` : `Free all day ${when}${maybe}`;
     return hours ? `Also ${hours}, ${when}${maybe}` : `Free all day ${when}${maybe}`;
   }
-  // an instant as a time of day in a zone: '8:30 PM'
-  function clock(t, tz) { return timeText(localHM(t, tz)).replace('midnight', '12 AM').replace('noon', '12 PM'); }
+  // an instant as a time of day in a zone: '8:30 PM' (or '20:30')
+  function clock(t, tz) { return H12 ? timeText(localHM(t, tz)).replace('midnight', '12 AM').replace('noon', '12 PM') : localHM(t, tz); }
   function spanText(s, e, tz) {
     const a = clock(s, tz), b = clock(e, tz);
-    if (a.slice(-2) === b.slice(-2) && localKey(s, tz) === localKey(e - 1, tz) && e - s < 12 * HOUR) return `${a.slice(0, -3)}–${b}`;
+    if (H12 && a.slice(-2) === b.slice(-2) && localKey(s, tz) === localKey(e - 1, tz) && e - s < 12 * HOUR) return `${a.slice(0, -3)}–${b}`;
     return `${a}–${b}`;
   }
   function zoneName(tz, style = 'long') {
@@ -411,7 +445,7 @@
     validZone, offset, toUtc, localKey, localHM, dayStart,
     personSpans, answered, clearDays, setDays, pruneDays,
     analyze, dayStats, bestTimes,
-    daysText, timeText, rangeText, ruleText, dateText, datesText, dayText, clock, spanText, zoneName,
+    setLocale, weekStart, daysText, timeText, rangeText, ruleText, dateText, datesText, dayText, clock, spanText, zoneName,
     ics, googleLink,
   };
 });

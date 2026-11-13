@@ -201,23 +201,36 @@ test('settings, required people and quorum, with undo', async () => {
   assert.equal(u.data.event.quorum, 0);
 });
 
-test('lock it in: a calendar file and unlock', async () => {
+test('lock it in: several sessions, each with its own calendar file; removing one is undoable', async () => {
   fresh();
   const { id } = (await post({ action: 'create', name: 'Space game; one, two', tz: 'America/Chicago' })).data;
-  assert.equal((await get(id, { ics: '1' })).code, 404);
+  assert.equal((await get(id, { ics: 'nothing' })).code, 404);
   const start = Math.ceil(Date.now() / 3600000) * 3600000 + 2 * 86400000, end = start + 3 * 3600000;
   assert.equal((await post({ action: 'lock', id, start, end: start })).code, 400);
   assert.equal((await post({ action: 'lock', id, start, end: start + 2 * 86400000 })).code, 400);
   assert.equal((await post({ action: 'lock', id, start: start + 1, end })).code, 400);
-  const l = await post({ action: 'lock', id, start, end });
-  assert.deepEqual([l.data.event.locked.start, l.data.event.locked.end], [start, end]);
-  const ics = await get(id, { ics: '1' });
+  assert.equal((await post({ action: 'lock', id, start: start + 900 * 86400000, end: start + 900 * 86400000 + 3600000 })).code, 400);
+  const l0 = await post({ action: 'lock', id, start, end, label: 'Session <0>' });
+  assert.equal(l0.code, 200);
+  const l1 = await post({ action: 'lock', id, start: start + 14 * 86400000, end: end + 14 * 86400000, label: 'Session 1' });
+  assert.equal((await post({ action: 'lock', id, start, end })).code, 409, 'the same slot twice');
+  const ses = l1.data.event.sessions;
+  assert.deepEqual(ses.map((x) => [x.label, x.start]), [['Session 0', start], ['Session 1', start + 14 * 86400000]]);
+  assert.match(ses[0].sid, /^[a-z2-9]{6}$/);
+  const ics = await get(id, { ics: ses[1].sid });
   assert.equal(ics.code, 200);
   assert.match(ics.headers['content-type'], /^text\/calendar/);
-  assert.match(ics.data, /SUMMARY:Space game\\; one\\, two/);
+  assert.match(ics.data, /SUMMARY:Space game\\; one\\, two: Session 1/);
   assert.match(ics.data, new RegExp(`URL:https://den.test/hang/${id}`));
-  const un = await post({ action: 'unlock', id });
-  assert.equal(un.data.event.locked, null);
+  // remove session 0, then undo it
+  const un = await post({ action: 'unlock', id, sid: ses[0].sid });
+  assert.deepEqual(un.data.event.sessions.map((x) => x.label), ['Session 1']);
+  assert.equal((await post({ action: 'unlock', id, sid: 'zzzzzz' })).code, 404);
+  const back = await post({ action: 'undo', id, n: un.data.log[0].n });
+  assert.deepEqual(back.data.event.sessions.map((x) => x.label), ['Session 0', 'Session 1']);
+  // twenty at most
+  for (let i = 2; i < 20; i++) assert.equal((await post({ action: 'lock', id, start: start + i * 86400000 + 3600000, end: end + i * 86400000 + 3600000 }, '10.3.' + i + '.1')).code, 200);
+  assert.equal((await post({ action: 'lock', id, start: start + 30 * 86400000, end: end + 30 * 86400000 }, '10.4.0.1')).code, 409);
 });
 
 test('delete needs the key the creating device holds', async () => {
@@ -258,6 +271,7 @@ test('an old calendar opens as a v2 event, painted hours carried over', async ()
   assert.equal(g.data.event.name, 'Hang with Avery');
   assert.equal(g.data.event.tz, 'America/Los_Angeles');
   assert.equal(g.data.event.from, null, 'rolling, so the old link is usable going forward');
+  assert.deepEqual(g.data.event.sessions, []);
   // 7–10 PM PDT on the 24th is 02:00–05:00 UTC on the 25th
   assert.deepEqual(g.data.people, [{ name: 'Blake', tz: 'UTC', rules: [], days: [{ d1: '2026-10-25', kind: 'add', from: '02:00', to: '05:00', lvl: 'yes' }], updated: start }]);
   // the old keys are untouched, and a second open does not migrate twice

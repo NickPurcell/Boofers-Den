@@ -56,7 +56,7 @@ async function migrate(r, id) {
   const now = Date.now();
   const ev = {
     id, name: String(cal.title || "Let's hang").slice(0, 60), tz: zoneForOffset(Number(cal.start) || 0), len: 120,
-    roster: [], quorum: 0, from: null, to: null, locked: null, created: cal.created || now, updated: now, v1: true,
+    roster: [], quorum: 0, from: null, to: null, sessions: [], created: cal.created || now, updated: now, v1: true,
   };
   if (!(await r.set(K.ev(id), JSON.stringify(ev), "EX", TTL, "NX"))) return JSON.parse(await r.get(K.ev(id)));
   // painted hours become one-day "add" entries in UTC; '.' and no-go both mean not free now
