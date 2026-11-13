@@ -2,7 +2,7 @@
 // (the page, with the event's name in its link preview). Not a route: the underscore keeps
 // Vercel from serving it.
 //
-//   hang2:ev:<id>    the event, JSON
+//   hang2:ev:<id>    the event, JSON (hang2pv:... on preview deployments, see NS below)
 //   hang2:pp:<id>    a hash, one field per person (lowercased name -> JSON), so two people
 //                    saving at once never clobber each other
 //   hang2:log:<id>   recent changes, newest first, each with what it replaced, for undo
@@ -30,11 +30,15 @@ function getClient() {
   return client;
 }
 
+// Preview deployments share production's Redis, so they write under their own prefix: a test
+// run on a preview never touches a real event. Old v1 keys are only ever read.
+const NS = process.env.VERCEL_ENV && process.env.VERCEL_ENV !== "production" ? "hang2pv" : "hang2";
 const K = {
-  ev: (id) => `hang2:ev:${id}`,
-  pp: (id) => `hang2:pp:${id}`,
-  log: (id) => `hang2:log:${id}`,
-  n: (id) => `hang2:n:${id}`,
+  ev: (id) => `${NS}:ev:${id}`,
+  pp: (id) => `${NS}:pp:${id}`,
+  log: (id) => `${NS}:log:${id}`,
+  n: (id) => `${NS}:n:${id}`,
+  rl: (bucket) => `${NS}:rl:${bucket}`,
   oldCal: (id) => `hang:cal:${id}`,
   oldPeople: (id) => `hang:people:${id}`,
 };

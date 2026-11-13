@@ -25,6 +25,7 @@ PHONE = dict(viewport={"width": 390, "height": 844}, device_scale_factor=2, is_m
 CHI = ZoneInfo("America/Chicago")
 
 report = {"base": BASE, "paths": {}, "checks": []}
+atexit_cleanup = []
 
 
 class Path:
@@ -49,6 +50,8 @@ class Path:
 def check(what, ok):
     report["checks"].append({"check": what, "ok": bool(ok)})
     if not ok:
+        for f in atexit_cleanup:
+            f()
         print(json.dumps(report, indent=1))
         raise SystemExit(f"FAILED: {what}")
 
@@ -68,6 +71,14 @@ def close_sheet(page):
 
 def next_weekday(d, wd):  # wd: Monday 0 .. Sunday 6
     return d + dt.timedelta(days=(wd - d.weekday()) % 7)
+
+
+def fetch(page, path, method="GET", body=None):
+    """A request from inside the page (same origin, through the browser's own network path)."""
+    return page.evaluate("""async ([p, m, b]) => {
+        const r = await fetch(p, { method: m, headers: b ? { 'Content-Type': 'application/json' } : {}, body: b ? JSON.stringify(b) : undefined });
+        return { status: r.status, type: r.headers.get('content-type') || '', text: await r.text() };
+    }""", [path, method, body])
 
 
 with sync_playwright() as p:
@@ -96,6 +107,14 @@ with sync_playwright() as p:
     P.done("name and roster typed; the share sheet opens by itself")
     check("slug carries the name", ev_id.startswith("space-game"))
     key = a.evaluate(f"JSON.parse(localStorage.getItem('hang2:key:{ev_id}'))")
+    open(f"{OUT}/event.json", "w").write(json.dumps({"id": ev_id, "key": key, "url": url}))
+
+    def cleanup():
+        if KEEP:
+            return
+        r = fetch(a, "/api/hangout", "POST", {"action": "delete", "id": ev_id, "key": key})
+        report["checks"].append({"check": "cleanup: the test event is deleted", "ok": r["status"] == 200})
+    atexit_cleanup.append(cleanup)
 
     # ---- the first minute: tap your name, pick usual times from chips ----
     P = Path("first_minute_avery")
@@ -192,8 +211,8 @@ with sync_playwright() as p:
     expect(a.locator("#ics")).to_be_visible()
     shot(a, "11-locked")
     ics_href = a.locator("#ics").get_attribute("href")
-    r = a.request.get(BASE + ics_href)
-    check("the .ics downloads as a calendar", r.status == 200 and r.headers.get("content-type", "").startswith("text/calendar") and "SUMMARY:" in r.text())
+    r = fetch(a, ics_href)
+    check("the .ics downloads as a calendar", r["status"] == 200 and r["type"].startswith("text/calendar") and "SUMMARY:" in r["text"])
     check("the Google link is a template link", "calendar.google.com/calendar/render?action=TEMPLATE" in a.locator("#gcal").get_attribute("href"))
     P.tap(a.locator("#copy-discord"))
     line = a.evaluate("navigator.clipboard.readText()")
@@ -213,7 +232,7 @@ with sync_playwright() as p:
 
     # ---- undo: Blake taps Avery's name by mistake ----
     P = Path("undo_wrong_name")
-    before = a.request.get(f"{BASE}/api/hangout?id={ev_id}").json()
+    before = json.loads(fetch(a, f"/api/hangout?id={ev_id}")["text"])
     avery_before = next(x for x in before["people"] if x["name"] == "Avery")
     b.locator("#dock-me").tap()
     b.locator("#not-me").tap()
@@ -222,7 +241,7 @@ with sync_playwright() as p:
     saved(b)
     P.tap(b.locator("#toast .toast-act"))
     expect(b.locator("#toast")).to_contain_text("Undone")
-    after = a.request.get(f"{BASE}/api/hangout?id={ev_id}").json()
+    after = json.loads(fetch(a, f"/api/hangout?id={ev_id}")["text"])
     avery_after = next(x for x in after["people"] if x["name"] == "Avery")
     check("undo puts Avery's times back", avery_after["rules"] == avery_before["rules"] and avery_after["days"] == avery_before["days"])
     P.done("one tap on Undo in the toast")
@@ -243,7 +262,7 @@ with sync_playwright() as p:
     shot(b, "13-new-york")
 
     # ---- the link preview ----
-    html = a.request.get(url).text()
+    html = fetch(a, f"/hang/{ev_id}")["text"]
     check("the link preview carries the event name", f'<meta property="og:title" content="{NAME}"' in html)
 
     # ---- en-GB: 24-hour times, weeks from Monday ----
@@ -256,11 +275,9 @@ with sync_playwright() as p:
     G.close()
 
     report["event"] = url
-    if KEEP:
-        report["kept"] = True
-    else:
-        r = a.request.post(f"{BASE}/api/hangout", data=json.dumps({"action": "delete", "id": ev_id, "key": key}), headers={"Content-Type": "application/json"})
-        check("cleanup: the test event is deleted", r.status == 200)
+    report["kept"] = KEEP
+    for f in atexit_cleanup:
+        f()
     browser.close()
 
 print(json.dumps(report, indent=1))

@@ -29,7 +29,7 @@ const bad = (msg, status) => { throw new Bad(msg, status); };
 
 async function limited(r, req, bucket, max, windowSec) {
   const ip = String(req.headers["x-forwarded-for"] || req.socket?.remoteAddress || "unknown").split(",")[0].trim().slice(0, 64);
-  const key = `hang2:rl:${bucket}:${ip}:${Math.floor(Date.now() / 1000 / windowSec)}`;
+  const key = `${S.K.rl(bucket)}:${ip}:${Math.floor(Date.now() / 1000 / windowSec)}`;
   const n = await r.incr(key);
   if (n === 1) await r.expire(key, windowSec + 5);
   return n > max;
