@@ -219,6 +219,19 @@
     if (mine && u && f.active) html += '<button class="btn small amber" data-ct="end">End turn ⏭</button>';
     if (gm()) html += `<button class="btn small ghost" data-ct="undo" ${f.undo && f.undo.n ? '' : 'disabled'} title="${esc(f.undo && f.undo.last ? 'Undo: ' + f.undo.last : 'Nothing to undo')}">↶ Undo</button><button class="btn small ghost" data-ct="off" title="Turn the combat view off for everyone">Combat view off</button>`;
     html += '</div>';
+    // the order of play, as this viewer's tracker has it (hidden creatures aren't in a player's), and the log
+    const order = (s.initiative.entries || []).filter((e) => f.active);
+    if (order.length) {
+      html += `<div class="ct-row ct-order" aria-label="Order of play">${order.map((e) => {
+        const down = e.hp != null && +e.hp <= 0, cur = e.id === f.turn, n = (e.conditions || []).length;
+        return `<span class="ct-ord ${cur ? 'cur' : ''} ${down ? 'down' : ''}" title="${esc(e.name)}${n ? ': ' + esc(e.conditions.join(', ')) : ''}">${esc(e.name)}${n ? ` <b>${n}</b>` : ''}</span>`;
+      }).join('<span class="ct-sep" aria-hidden="true">›</span>')}<span class="spacer"></span>
+        <button class="btn tiny ghost ${UI.log ? 'primary' : ''}" data-ct="log" aria-pressed="${!!UI.log}" title="The last combat lines">📜 Log</button></div>`;
+      if (UI.log) {
+        const lines = (s.chat || []).filter((m) => m.fight).slice(-8);
+        html += `<div class="ct-row ct-log">${lines.length ? lines.map((m) => `<div>${m.roll ? `${esc(m.roll.label)} <b>${esc(String(m.roll.total))}</b>` : esc(m.text)}</div>`).join('') : '<div class="muted">Nothing yet.</div>'}</div>`;
+      }
+    }
     // reactions waiting: the one who may react answers (or the GM for anyone); everyone else sees that the turn waits
     for (const pr of f.pending || []) {
       const re = w.units[pr.reactor], ag = w.units[pr.against];
@@ -332,6 +345,7 @@
     if (k === 'stand') return send('fight.stand', {});
     if (k === 'douse') return send('fight.douse', { target: el.dataset.id });
     if (k === 'common') return send('fight.common', { key: el.dataset.key });
+    if (k === 'log') { UI.log = !UI.log; return render(); }
     if (k === 'letgo') return send('fight.react', { id: el.dataset.id, take: false });
     if (k === 'react') {
       const re = world().units[el.dataset.unit], a = re && meleeOf(re).find((x) => x.key === el.dataset.key);
@@ -566,6 +580,9 @@
     ctx.restore();
   }
   // over the tokens: who you can hit, the target you're pointing at, and what just happened
+  // two letters for a condition on a token's badge (the chip in the bar and the token's tooltip have the full name)
+  const ABBR = { Incapacitated: 'Ic', Invisible: 'Iv', Petrified: 'Pe', Paralyzed: 'Pa', Poisoned: 'Po', Deafened: 'De', Diseased: 'Di', Stunned: 'St', Slowed: 'Sl', Shocked: 'Sh' };
+  const abbr = (c) => ABBR[c] || String(c).slice(0, 2);
   function over(ctx, g, z) {
     const f = F();
     if (!f.on) return;
@@ -603,6 +620,28 @@
       ctx.strokeStyle = cssVar('--amber', '#ffb74d'); ctx.lineWidth = 3 / z; ctx.setLineDash([8 / z, 6 / z]);
       ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.setLineDash([]);
       label(ctx, `${E.ruler(R0.a, b)} ft`, (ax + bx) / 2, (ay + by) / 2, z, g);
+    }
+    // status on the tokens (audit 8.10): conditions as badges, concentration as an amber ring, and a creature's hit
+    // points as a bar for the GM only (players never get a creature's hit points)
+    for (const u of Object.values(w.units)) {
+      const s = (u.size || 1) * g, x0 = u.x * g, y0 = u.y * g;
+      if (gm() && !u.charId && u.hp != null && u.maxHp) {
+        const pct = Math.max(0, Math.min(1, u.hp / u.maxHp));
+        ctx.fillStyle = '#300'; ctx.fillRect(x0 + 4, y0 + s - 6, s - 8, 4);
+        ctx.fillStyle = pct < 0.3 ? '#ef5350' : pct < 0.6 ? '#ffb74d' : '#66bb6a'; ctx.fillRect(x0 + 4, y0 + s - 6, (s - 8) * pct, 4);
+      }
+      if ((f.conc || {})[u.id]) ring(u, alpha(cssVar('--amber', '#ffb74d'), 0.9), 2, true);
+      const marks = (u.conditions || []).map(abbr).concat(E.spentOf(w, u.id).dodge ? ['Dg'] : []);
+      if (!marks.length) continue;
+      const r = Math.max(7 / z, g * 0.14), shown = marks.length > 3 ? marks.slice(0, 2).concat(`+${marks.length - 2}`) : marks;
+      ctx.font = `700 ${r * 1.05}px "Exo 2", "Segoe UI", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      shown.forEach((m, i) => {
+        const cx = x0 + s - r * 0.6 - i * (2 * r + 1 / z), cy = y0 + r * 0.6;
+        ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
+        ctx.fillStyle = m === 'Dg' ? alpha(cssVar('--holo', '#4fc3f7'), 0.95) : alpha(cssVar('--red', '#ef5350'), 0.95); ctx.fill();
+        ctx.lineWidth = 1.5 / z; ctx.strokeStyle = 'rgba(0,0,0,.7)'; ctx.stroke();
+        ctx.fillStyle = '#fff'; ctx.fillText(m, cx, cy + r * 0.05);
+      });
     }
     // floating results over tokens, for 1.6 s
     const tnow = performance.now();
