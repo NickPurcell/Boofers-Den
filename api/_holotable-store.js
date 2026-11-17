@@ -44,6 +44,7 @@ const K = {
   ch: (c) => `${NS}:ch:${c}`,
   on: (c) => `${NS}:on:${c}`,
   bk: (c) => `${NS}:bk:${c}`,
+  imgWait: () => `${NS}:imgwait`,                   // set of image URLs the game no longer shows but a kept backup still does
   lock: (c) => `${NS}:lock:${c}`,
   img: (id) => `${NS}:img:${id}`,
   packs: () => `${NS}:packs`,
@@ -185,6 +186,7 @@ async function saveCampaign(camp) {
   if (backup) {
     await r.lpush(K.bk(camp.code), json);
     await r.ltrim(K.bk(camp.code), 0, BACKUP_KEEP - 1);
+    await sweepWaitingImages(camp.code, json);   // a backup may have rolled off: images only it still used can go
   }
   return bump(camp.code);
 }
@@ -309,6 +311,35 @@ async function imageExists(id) {
   return !!(await fileInfo(P.img(id))) || !!(await module.exports.getClient().exists(K.img(id)));
 }
 const imgIdFromUrl = (u) => { const m = /^\/api\/holotable\?img=([a-f0-9]{16,40})$/.exec(String(u || "")); return m && m[1]; };
+// Images the game stops using (a new map, a replaced photo, a deleted handout) can still be in the automatic backups,
+// and restoring one of those must not show a broken image (#118). So an image is deleted only when neither the game
+// (liveJson) nor any kept backup refers to it; one a backup still uses waits in ht:imgwait until the backup that
+// last refers to it rolls off the list (sweepWaitingImages, run whenever the list changes).
+async function dropUnusedImages(urls, liveJson, code) {
+  const r = module.exports.getClient();
+  const cand = [...new Set((urls || []).filter((u) => imgIdFromUrl(u) && !String(liveJson || "").includes(u)))];
+  if (!cand.length) return;
+  const backups = await r.lrange(K.bk(code), 0, BACKUP_KEEP - 1);   // read only when there is something to drop
+  const kept = cand.filter((u) => backups.some((b) => b.includes(u)));
+  if (kept.length) await r.sadd(K.imgWait(), ...kept);
+  const now = cand.filter((u) => !kept.includes(u));
+  if (now.length) await dropImages(now);
+}
+// Look again at the images waiting on a backup: one the game uses again (after a restore) stops waiting; one that
+// neither the game nor any kept backup refers to any more is deleted and its bytes given back.
+async function sweepWaitingImages(code, liveJson) {
+  const r = module.exports.getClient();
+  const waiting = await r.smembers(K.imgWait());
+  if (!waiting.length) return;
+  const backups = await r.lrange(K.bk(code), 0, BACKUP_KEEP - 1);
+  const live = String(liveJson || ""), done = [], gone = [];
+  for (const u of waiting) {
+    if (live.includes(u)) done.push(u);
+    else if (!backups.some((b) => b.includes(u))) { done.push(u); gone.push(u); }
+  }
+  if (done.length) await r.srem(K.imgWait(), ...done);
+  if (gone.length) await dropImages(gone);
+}
 async function dropImages(urls) {
   const r = module.exports.getClient();
   const ids = [...new Set((urls || []).map(imgIdFromUrl).filter(Boolean))];
@@ -323,6 +354,6 @@ async function dropImages(urls) {
 
 module.exports = {
   getClient, getSub, K, P, NS, URL, waitForChange, withLock, getCampaign, saveCampaign, bump, Busy, Full, NoStore,
-  sniff, sniffAudio, decodeDataUrl, putImage, readImage, imageExists, dropImages, imgIdFromUrl, BACKUP_KEEP, reserve, release, used, STORAGE_CAP,
+  sniff, sniffAudio, decodeDataUrl, putImage, readImage, imageExists, dropImages, dropUnusedImages, sweepWaitingImages, imgIdFromUrl, BACKUP_KEEP, reserve, release, used, STORAGE_CAP,
   getBlob, blobReady, noStore, fileInfo, putFile, readFile, dropFiles, isBlobError, isNotFound,
 };
