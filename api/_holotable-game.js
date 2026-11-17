@@ -175,7 +175,8 @@ function viewFor(camp, cid, gm, online) {
   }
   const map = Object.assign({}, camp.map);
   if (!gm) map.tokens = map.tokens.filter((t) => !t.hidden).map((t) => (t.moves ? Object.assign({}, t, { moves: undefined }) : t));
-  const shown = new Set(map.tokens.map((t) => t.id));
+  if (!gm) map.props = (map.props || []).map((x) => (x.moves ? Object.assign({}, x, { moves: undefined }) : x));
+  const shown = new Set([...map.tokens.map((t) => t.id), ...(map.props || []).map((x) => x.id)]);
   const fxView = camp.sceneFx ? Object.assign({}, camp.sceneFx, { moves: (camp.sceneFx.moves || []).filter((m) => shown.has(m.id)) }) : null;
   return {
     name: camp.name, you: cid, isGM: !!gm, updated: camp.updated,
@@ -216,7 +217,7 @@ const hitDieFor = (name, fallback) => HIT_DIE[String(name || "").toLowerCase()] 
 const SCENE_WIPES = 8;
 const sceneWipe = (camp) => { camp.sceneFx = { n: rid(), k: crypto.randomInt(SCENE_WIPES) }; };
 
-// Scene movements: the GM gives a token a scripted path (grid waypoints, like keyframes), an optional exit off
+// Scene movements: the GM gives a token (or an asset piece, like a speeder) a scripted path (grid waypoints, like keyframes), an optional exit off
 // one edge of the board, and a start delay. They play once, right after that scene is loaded (or when the GM
 // presses Play): the server moves the tokens to where they end up and tells every screen the path to animate.
 const EXITS = ["n", "s", "e", "w"];
@@ -226,7 +227,9 @@ function cleanMoves(m) {
     .map((q) => ({ x: clamp(int(q.x), -500, 1000), y: clamp(int(q.y), -500, 1000) }));
   const exit = EXITS.includes(m.exit) ? m.exit : "";
   if (!path.length && !exit) return undefined;
-  return { path, exit, delay: clamp(Math.round(num(m.delay) * 2) / 2, 0, 20) };
+  const out = { path, exit, delay: clamp(Math.round(num(m.delay) * 2) / 2, 0, 20) };
+  if (m.face) out.face = true;   // asset pieces: turn to face the way they're going
+  return out;
 }
 function playMoves(camp) {
   const mp = camp.map, out = [];
@@ -241,6 +244,26 @@ function playMoves(camp) {
     if (!pts.length) continue;
     out.push({ id: t.id, from: { x: t.x, y: t.y }, path: pts, delay: m.delay || 0 });
     t.x = pts[pts.length - 1].x; t.y = pts[pts.length - 1].y;
+  }
+  const r3 = (v) => Math.round(v * 1000) / 1000;
+  const heading = (a, b) => Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+  for (const pr of mp.props || []) {
+    const m = pr.moves;
+    if (!m) continue;
+    delete pr.moves;
+    const pw = num(pr.w, 1), ph = num(pr.h, 1);
+    const pts = (m.path || []).map((q) => ({ x: r3(q.x + 0.5 - pw / 2), y: r3(q.y + 0.5 - ph / 2) }));
+    const last = pts.length ? pts[pts.length - 1] : { x: pr.x, y: pr.y };
+    const off = { n: { x: last.x, y: -ph - 1 }, s: { x: last.x, y: (mp.rows || 16) + 1 }, w: { x: -pw - 1, y: last.y }, e: { x: (mp.cols || 24) + 1, y: last.y } }[m.exit];
+    if (off) pts.push(off);
+    if (!pts.length) continue;
+    const from = { x: pr.x, y: pr.y }, rot0 = num(pr.rot, 0);
+    out.push({ id: pr.id, prop: true, from, path: pts, delay: m.delay || 0, face: !!m.face, rot0 });
+    if (m.face) {   // keep the turn it made between its first and last legs
+      const all = [from, ...pts].filter((q, i, a) => !i || q.x !== a[i - 1].x || q.y !== a[i - 1].y);
+      if (all.length > 2) pr.rot = r3((((rot0 + heading(all[all.length - 2], all[all.length - 1]) - heading(all[0], all[1])) % 360) + 360) % 360);
+    }
+    pr.x = pts[pts.length - 1].x; pr.y = pts[pts.length - 1].y;
   }
   return out;
 }
@@ -546,10 +569,18 @@ function applyAction(camp, cid, gm, type, p) {
       if (m) t.moves = m; else delete t.moves;
       return {};
     }
+    case "prop.script": {    // the GM sets (or clears) an asset piece's scene movement
+      need(gm);
+      const pr = (mp.props || []).find((x) => x.id === p.id);
+      if (!pr) throw new Invalid("No such piece.");
+      const m = cleanMoves(p.moves);
+      if (m) pr.moves = m; else delete pr.moves;
+      return {};
+    }
     case "scene.play": {     // play the current board's scene movements now, without a wipe
       need(gm);
       const moves = playMoves(camp);
-      if (!moves.length) throw new Invalid("No pieces on this board have scene movements.");
+      if (!moves.length) throw new Invalid("Nothing on this board has a scene movement.");
       camp.sceneFx = { n: rid(), k: -1, moves };
       return { moved: moves.length };
     }
@@ -768,7 +799,7 @@ function cleanMap(g, raw) {
       id: /^[a-z0-9]{6,20}$/.test(t.id || "") ? t.id : rid(), name: str(t.name, 40), color: validColor(t.color), x: clamp(int(t.x), -500, 1000), y: clamp(int(t.y), -500, 1000),
       size: clamp(int(t.size, 1), 1, 4), charId: g.characters[t.charId] ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, img: validImg(t.img), moves: cleanMoves(t.moves) })),
     props: (Array.isArray(m.props) ? m.props : []).slice(0, 1500).filter((p) => p && validImg(p.src)).map((p) => ({
-      id: /^[a-z0-9]{6,20}$/.test(p.id || "") ? p.id : rid(), src: p.src, name: str(p.name, 60), x: n(p.x, 0), y: n(p.y, 0), w: n(p.w, 1), h: n(p.h, 1), rot: n(p.rot, 0) })),
+      id: /^[a-z0-9]{6,20}$/.test(p.id || "") ? p.id : rid(), src: p.src, name: str(p.name, 60), x: n(p.x, 0), y: n(p.y, 0), w: n(p.w, 1), h: n(p.h, 1), rot: n(p.rot, 0), moves: cleanMoves(p.moves) })),
     sceneId: /^[a-z0-9]{6,20}$/.test(m.sceneId || "") ? m.sceneId : undefined,
   };
 }

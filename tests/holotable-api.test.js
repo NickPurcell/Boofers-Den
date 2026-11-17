@@ -903,3 +903,23 @@ test("scene movements: the GM scripts tokens; they play once after the scene loa
   assert.equal(fx.k, -1, "no wipe for Play");
   assert.equal(fx.moves[0].from.x, 21);
 });
+
+test("scene movements work for asset pieces too, and a speeder can turn to face its path", async () => {
+  const { gm, p1 } = await table();
+  await gm.act("map.settings", { cols: 20, rows: 12 });
+  const src = "/api/holotable?a=packone.1";
+  await gm.act("prop.add", { src, name: "Speeder", x: 2, y: 4, w: 2, h: 1, rot: 0 });
+  await gm.act("prop.add", { src, name: "Crate", x: 10, y: 10, w: 1, h: 1 });
+  const sp = (await gm.poll()).data.state.map.props.find((x) => x.name === "Speeder");
+  assert.ok(sp, "the test prop was placed");
+  assert.equal((await p1.act("prop.script", { id: sp.id, moves: { path: [{ x: 6, y: 4 }] } })).code, 403, "GM only");
+  await gm.act("prop.script", { id: sp.id, moves: { path: [{ x: 8, y: 4 }, { x: 8, y: 8 }], exit: "s", face: true } });
+  assert.equal((await gm.poll()).data.state.map.props.find((x) => x.id === sp.id).moves.face, true);
+  assert.equal((await p1.poll()).data.state.map.props.find((x) => x.id === sp.id).moves, undefined, "hidden from players");
+  assert.equal((await gm.act("scene.play", {})).data.moved, 1);
+  const st = (await p1.poll()).data.state, mv = st.sceneFx.moves[0];
+  // its centre lands on each waypoint square's centre: x = 8 + 0.5 - 2/2
+  assert.deepEqual([mv.prop, mv.from, mv.path], [true, { x: 2, y: 4 }, [{ x: 7.5, y: 4 }, { x: 7.5, y: 8 }, { x: 7.5, y: 13 }]]);
+  const after = st.map.props.find((x) => x.id === sp.id);
+  assert.deepEqual([after.x, after.y, after.rot], [7.5, 13, 90], "it ends off the bottom edge, turned to face down");
+});

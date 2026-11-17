@@ -1108,7 +1108,7 @@
         <label class="mini">rows <input type="number" value="${n0(mp.rows)}" data-mset="rows"></label>
         <label class="toggle"><input type="checkbox" data-mset="showGrid" ${mp.showGrid ? 'checked' : ''}> grid</label>
         <button class="btn small" data-mact="npc">＋ Token</button>
-        ${mp.tokens.some(t => t.moves) ? '<button class="btn small amber" data-mact="play-moves" title="Play the scene movements on this board now, for everyone">▶ Play movements</button>' : ''}
+        ${mp.tokens.some(t => t.moves) || (mp.props || []).some(x => x.moves) ? '<button class="btn small amber" data-mact="play-moves" title="Play the scene movements on this board now, for everyone">▶ Play movements</button>' : ''}
         <input type="file" id="bgFile" accept="image/*" hidden>` : '<span class="muted">Drag your token to move it · drag empty space to pan · scroll to zoom</span>'}`;
   }
   $('#mapTools').addEventListener('click', async e => {
@@ -1232,7 +1232,12 @@
       const pts = [m.from, ...m.path].map(q => ({ x: n0(q.x), y: n0(q.y) })), segs = [];
       let total = 0;
       for (let i = 1; i < pts.length; i++) { const d = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y); segs.push(d); total += d; }
-      return { id: m.id, pts, segs, total, start: Math.min(20, n0(m.delay)) * 1000, dur: Math.max(300, total / MOVE_SPEED * 1000) };
+      // asset pieces that "face their path" turn by however much each leg's heading differs from the first leg's
+      const heads = segs.map((d, i) => Math.atan2(pts[i + 1].y - pts[i].y, pts[i + 1].x - pts[i].x) * 180 / Math.PI);
+      const first = heads.find((h, i) => segs[i] > 0);
+      const rots = m.face && first !== undefined ? heads.map((h, i) => (segs[i] > 0 ? n0(m.rot0) + h - first : null)) : null;
+      if (rots) for (let i = 0; i < rots.length; i++) if (rots[i] === null) rots[i] = i ? rots[i - 1] : n0(m.rot0);
+      return { id: m.id, pts, segs, total, rots, rot0: n0(m.rot0), start: Math.min(20, n0(m.delay)) * 1000, dur: Math.max(300, total / MOVE_SPEED * 1000) };
     });
     const end = Math.max(...plans.map(q => q.start + q.dur)), t0 = performance.now();
     const stop = () => { if (id !== ANIM.id) return; ANIM.id++; ANIM.pos = {}; drawMap(); };
@@ -1244,7 +1249,13 @@
         let d = f * q.total, i = 0;
         while (i < q.segs.length - 1 && d > q.segs[i]) { d -= q.segs[i]; i++; }
         const a = q.pts[i], b = q.pts[i + 1] || a, k = q.segs[i] ? Math.min(1, d / q.segs[i]) : 1;
-        ANIM.pos[q.id] = { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
+        const at = { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
+        if (q.rots) {   // ease into each new heading over the first part of the leg
+          const prev = i ? q.rots[i - 1] : q.rots[0], next = q.rots[i];
+          const turn = ((next - prev + 540) % 360) - 180, ease = Math.min(1, k / 0.35);
+          at.rot = prev + turn * (f >= 1 ? 1 : ease);
+        }
+        ANIM.pos[q.id] = at;
       }
       drawMap();
       if (el < end) requestAnimationFrame(frame); else stop();
@@ -1258,9 +1269,10 @@
   scriptBar.className = 'script-bar hidden';
   $('#mapWrap').appendChild(scriptBar);
   const EXIT_NAMES = { '': 'stays on the board', n: '↑ off the top', s: '↓ off the bottom', e: '→ off the right', w: '← off the left' };
-  function startScript(t) {
+  function startScript(t, kind = 'token') {
     const m = t.moves || {};
-    M.script = { id: t.id, name: t.name, path: (m.path || []).map(q => ({ x: q.x, y: q.y })), exit: m.exit || '', delay: n0(m.delay) };
+    M.script = { kind, id: t.id, name: t.name || (kind === 'prop' ? 'Asset' : 'Token'), path: (m.path || []).map(q => ({ x: q.x, y: q.y })),
+      exit: m.exit || '', delay: n0(m.delay), face: !!m.face };
     renderScriptBar(); drawMap();
   }
   function renderScriptBar() {
@@ -1270,6 +1282,7 @@
     scriptBar.innerHTML = `<b>🎬 ${esc(sc.name || 'Token')}</b><span class="muted">Click squares to add waypoints (${sc.path.length}/12).</span>
       <label class="mini">Then <select data-sb="exit">${Object.entries(EXIT_NAMES).map(([k, v]) => `<option value="${k}" ${k === sc.exit ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
       <label class="mini">Wait <input type="number" min="0" max="20" step="0.5" value="${n0(sc.delay)}" data-sb="delay"> s</label>
+      ${sc.kind === 'prop' ? `<label class="toggle" title="Point the piece along its first leg; it turns at each waypoint as it goes"><input type="checkbox" data-sb="face" ${sc.face ? 'checked' : ''}> Turn to face its path</label>` : ''}
       <button class="btn tiny" data-sb="undo" ${sc.path.length ? '' : 'disabled'}>Undo</button><button class="btn tiny ghost" data-sb="clear">Clear</button>
       <button class="btn tiny primary" data-sb="save">Save</button><button class="btn tiny ghost" data-sb="cancel">Cancel</button>`;
   }
@@ -1280,7 +1293,7 @@
     if (a === 'cancel') M.script = null;
     if (a === 'save') {
       const has = sc.path.length || sc.exit;
-      if (await act('token.script', { id: sc.id, moves: has ? { path: sc.path, exit: sc.exit, delay: sc.delay } : null })) {
+      if (await act(sc.kind === 'prop' ? 'prop.script' : 'token.script', { id: sc.id, moves: has ? { path: sc.path, exit: sc.exit, delay: sc.delay, face: sc.face } : null })) {
         toast(has ? `${sc.name}'s movement saved. It plays when this scene is next loaded, or with ▶ Play movements.` : `${sc.name}'s movement cleared`);
         M.script = null;
       }
@@ -1291,18 +1304,21 @@
     const a = e.target.dataset.sb, sc = M.script; if (!sc) return;
     if (a === 'exit') sc.exit = e.target.value;
     if (a === 'delay') sc.delay = Math.max(0, Math.min(20, n0(e.target.value)));
+    if (a === 'face') sc.face = e.target.checked;
     drawMap();
   });
   // GM only: dashed paths for every scripted token (and the one being recorded)
   function drawScripts(g, z) {
     const mp = S.st.map, list = [];
-    for (const t of mp.tokens) {
+    for (const t of [...mp.tokens, ...(mp.props || [])]) {
       const sc = M.script && M.script.id === t.id ? M.script : t.moves;
       if (sc && (sc.path.length || sc.exit)) list.push([t, sc, M.script && M.script.id === t.id]);
     }
     for (const [t, sc, live] of list) {
-      const sz = t.size || 1, c = q => ({ x: (q.x + sz / 2) * g, y: (q.y + sz / 2) * g });
-      const pts = [c(t), ...sc.path.map(c)];
+      const prop = t.w !== undefined, sz = t.size || 1;
+      const start = prop ? { x: (t.x + t.w / 2) * g, y: (t.y + t.h / 2) * g } : { x: (t.x + sz / 2) * g, y: (t.y + sz / 2) * g };
+      const c = q => (prop ? { x: (q.x + 0.5) * g, y: (q.y + 0.5) * g } : { x: (q.x + sz / 2) * g, y: (q.y + sz / 2) * g });
+      const pts = [start, ...sc.path.map(c)];
       const last = pts[pts.length - 1], amber = themeHex('amber', '#ffb74d');
       ctx.save();
       ctx.strokeStyle = live ? amber : rgba(amber, 0.55); ctx.lineWidth = 3 / z; ctx.setLineDash([8 / z, 6 / z]);
@@ -1323,7 +1339,7 @@
         ctx.beginPath(); ctx.arc(q.x, q.y, 10 / z, 0, Math.PI * 2); ctx.fillStyle = live ? amber : rgba(amber, 0.55); ctx.fill();
         ctx.fillStyle = '#111'; ctx.font = `bold ${11 / z}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(i + 1), q.x, q.y + 0.5 / z);
       });
-      if (n0(sc.delay)) { ctx.fillStyle = amber; ctx.font = `600 ${11 / z}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.fillText(`🎬 after ${n0(sc.delay)} s`, pts[0].x, pts[0].y - (sz * g) / 2 - 8 / z); }
+      if (n0(sc.delay)) { ctx.fillStyle = amber; ctx.font = `600 ${11 / z}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.fillText(`🎬 after ${n0(sc.delay)} s`, pts[0].x, pts[0].y - ((prop ? t.h : sz) * g) / 2 - 8 / z); }
       ctx.restore();
     }
   }
@@ -1428,9 +1444,10 @@
     // props
     for (const p of mp.props || []) {
       const drag = M.drag && M.drag.prop === p.id;
-      const px = drag ? M.drag.px : p.x * g, py = drag ? M.drag.py : p.y * g, w = p.w * g, h = p.h * g;
+      const ap = ANIM.pos[p.id];   // mid scene-movement
+      const px = drag ? M.drag.px : (ap ? ap.x : p.x) * g, py = drag ? M.drag.py : (ap ? ap.y : p.y) * g, w = p.w * g, h = p.h * g;
       const im = img(p.src);
-      ctx.save(); ctx.translate(px + w / 2, py + h / 2); ctx.rotate((p.rot || 0) * Math.PI / 180);
+      ctx.save(); ctx.translate(px + w / 2, py + h / 2); ctx.rotate(((ap && ap.rot !== undefined ? ap.rot : p.rot) || 0) * Math.PI / 180);
       if (im) ctx.drawImage(im, -w / 2, -h / 2, w, h); else { ctx.fillStyle = MC.ghost; ctx.fillRect(-w / 2, -h / 2, w, h); }
       if (M.selProp === p.id) { ctx.strokeStyle = themeHex('amber', '#ffb74d'); ctx.lineWidth = 2 / z; ctx.setLineDash([6 / z, 4 / z]); ctx.strokeRect(-w / 2, -h / 2, w, h); }
       ctx.restore();
@@ -1596,6 +1613,7 @@
       <div class="row"><button class="btn small" data-pp="smaller">− smaller</button><button class="btn small" data-pp="bigger">＋ bigger</button></div>
       <div class="row"><button class="btn small" data-pp="front">To front</button><button class="btn small" data-pp="back">To back</button></div>
       <button class="btn small" data-pp="dup">Duplicate</button>
+      <button class="btn small" data-pp="script" title="Waypoints this piece follows after the next scene change">🎬 Scene movement${p.moves ? ' ✓' : ''}…</button>
       <button class="btn small danger" data-pp="remove">Remove</button>
       <span class="muted" style="font-size:11px">Drag to move · hold Alt to place freely</span>`;
     pop.addEventListener('click', ev => {
@@ -1605,7 +1623,8 @@
       if (a === 'smaller' || a === 'bigger') { const k = a === 'bigger' ? 1.25 : 0.8; f.w = p.w * k; f.h = p.h * k; f.x = p.x + (p.w - f.w) / 2; f.y = p.y + (p.h - f.h) / 2; }
       if (Object.keys(f).length) { Object.assign(p, f); act('prop.update', { id: p.id, fields: f }); drawMap(); return; }
       if (a === 'front' || a === 'back') act('prop.order', { id: p.id, dir: a });
-      if (a === 'dup') act('prop.add', { ...p, x: p.x + 0.5, y: p.y + 0.5 });
+      if (a === 'dup') act('prop.add', { ...p, moves: undefined, x: p.x + 0.5, y: p.y + 0.5 });
+      if (a === 'script') { M.selProp = null; startScript(p, 'prop'); }
       if (a === 'remove') { act('prop.remove', { id: p.id }); M.selProp = null; }
       closeTokenPop();
     });
