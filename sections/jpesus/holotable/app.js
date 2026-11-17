@@ -477,7 +477,7 @@
           <span class="muted">used</span>${inp(k + '.used', +used || 0, { ro, type: 'number' })}
           <span class="muted">max override</span>${inp(k + '.max', ch[k].max ?? '', { ro, type: 'number', ph: String(k === 'force' ? ci.forceMax : ci.techMax) })}</div>
         <div class="muted" style="margin-top:6px;font-size:12px">${extra}</div></div>`;
-      html += `<div class="box"><h4>Attacks <span class="spacer"></span>${!ro ? `<select data-act-change="add-weapon"><option value="">＋ add from list…</option>${R.WEAPONS.map((w, i) => `<option value="${i}">${esc(w.name)} (${w.damage} ${w.type})</option>`).join('')}</select><button class="btn tiny" data-act="add-attack">＋ custom</button>` : ''}</h4>
+      html += `<div class="box"><h4>Attacks <span class="spacer"></span>${!ro ? `<button class="btn tiny" data-act="pick-weapon">＋ weapon from SW5e</button><button class="btn tiny ghost" data-act="add-attack">custom</button>` : ''}</h4>
         <table class="t"><thead><tr><th>Name</th><th>Ability</th><th>Hit</th><th>Damage die</th><th>Type</th><th>Properties</th><th></th></tr></thead><tbody>
         ${(ch.attacks || []).map((a, i) => {
           const hit = R.attackBonus(ch, a), dmg = R.damageExpr(ch, a);
@@ -511,7 +511,7 @@
 
     if (sub === 'gear') {
       html += `<div class="grid g2">
-        <div class="box"><h4>Equipment <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="add-item">＋ item</button>' : ''}</h4>
+        <div class="box"><h4>Equipment <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-equip">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-item" title="Add an item by hand">custom</button>' : ''}</h4>
           <div class="row" style="margin-bottom:8px"><span class="muted">Credits</span>${inp('credits', +ch.credits || 0, { ro, type: 'number', w: '120px' })}</div>
           <table class="t"><thead><tr><th>Qty</th><th>Item</th><th>Notes</th><th>Eq.</th><th></th></tr></thead><tbody>
           ${(ch.equipment || []).map((e, i) => `<tr><td class="n">${inp(`equipment.${i}.qty`, +e.qty || 1, { ro, type: 'number' })}</td>
@@ -644,6 +644,8 @@
         });
         break;
       case 'pick-power': openPowerPicker(ch.id, b.dataset.kind); break;
+      case 'pick-equip': openEquipPicker(ch.id); break;
+      case 'pick-weapon': openEquipPicker(ch.id, { weapons: true }); break;
       case 'del': mutate(c => c[b.dataset.list].splice(i, 1)); break;
       case 'atk': { const at = ch.attacks[i]; roll(d20(R.attackBonus(ch, at)), `${at.name} — attack`, { d20: true, mode: rollModeFromEvent(e), charId: ch.id, kind: 'attack' }); break; }
       case 'dmg': { const at = ch.attacks[i]; roll(R.damageExpr(ch, at), `${at.name} — ${at.type || ''} damage`, { charId: ch.id, kind: 'damage' }); break; }
@@ -694,6 +696,130 @@
         break;
     }
   });
+
+  // --------------------------------------------------------------------------- equipment picker
+  // "+ from SW5e" on Equipment (and Attacks): all SW5e standard gear (PHB, Expanded Content, Wretched Hives)
+  // and enhanced items, served by our API and cached. Filters are checkbox dropdowns plus a name search.
+  // Adding a weapon also adds an attack with SW5e's damage and properties.
+  const EQUIP = {};
+  async function equipList(set) {
+    if (EQUIP[set]) return EQUIP[set];
+    const r = await fetch(`${API}?op=equipment&set=${set}`, { credentials: 'same-origin' });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !Array.isArray(j)) throw new Error((j && j.error) || "Couldn't load the SW5e equipment list.");
+    return (EQUIP[set] = j);
+  }
+  const SRC = { PHB: "Player's Handbook", EC: 'Expanded Content', WH: 'Wretched Hives' };
+  // a dropdown of checkboxes; `sel` is a Set of the ticked values
+  function checkDrop(key, label, values, sel, names = {}) {
+    const summary = sel.size === values.length ? `All ${label}` : sel.size === 0 ? `No ${label}` : sel.size <= 2 ? [...sel].map(v => names[v] || v).join(', ') : `${sel.size} ${label}`;
+    return `<details class="pp-align" data-drop="${esc(key)}"><summary>${esc(summary)}</summary><div class="pp-align-menu">
+      <div class="row" style="gap:4px"><button class="btn tiny" data-eq="all" data-key="${esc(key)}">All</button><button class="btn tiny ghost" data-eq="none" data-key="${esc(key)}">None</button></div>
+      ${values.map(v => `<label class="toggle"><input type="checkbox" data-eq="check" data-key="${esc(key)}" value="${esc(v)}" ${sel.has(v) ? 'checked' : ''}> ${esc(names[v] || v)}</label>`).join('')}</div></details>`;
+  }
+  function weaponAttack(it) {
+    const props = (it.props || []).join(', ');
+    const ab = /blaster/i.test(it.wc) ? 'dex' : /finesse/i.test(props) ? 'finesse' : 'str';
+    return { name: it.n, ab, damage: it.dmg || '1', type: it.dt || 'kinetic', props: props.slice(0, 200), proficient: true };
+  }
+  function itemNotes(it, enhanced) {
+    if (enhanced) return [it.rar && `${it.rar} ${it.cat.toLowerCase()}`, it.sub, it.att && 'requires attunement'].filter(Boolean).join(' · ');
+    if (it.cat === 'Weapon') return [it.dmg && `${it.dmg} ${it.dt}`, (it.props || []).join(', ')].filter(Boolean).join(' · ');
+    if (it.cat === 'Armor') return [it.ac && `AC ${it.ac}`, it.accl, it.stealth && 'stealth disadvantage', it.str && `needs ${it.str}`].filter(Boolean).join(' · ');
+    return it.cat;
+  }
+  function openEquipPicker(charId, opts = {}) {
+    const F = { set: 'standard', q: '', limit: 120, sel: {} };
+    modal(`<div id="eqp" class="power-picker"><h3>＋ Add equipment from SW5e</h3><p class="muted">Loading…</p></div>`, async box => {
+      const ep = $('#eqp', box);
+      const ch = () => S.st.characters[charId];
+      let list = [];
+      const facets = () => F.set === 'standard'
+        ? [['cat', 'categories', it => it.cat], ['wc', 'weapon classes', it => it.wc || null], ['src', 'books', it => it.src]]
+        : [['cat', 'types', it => it.cat], ['rar', 'rarities', it => it.rar || null], ['src', 'books', it => it.src]];
+      const values = (fn) => [...new Set(list.map(fn).filter(Boolean))].sort((a, b) => {
+        const order = ['Standard', 'Premium', 'Prototype', 'Advanced', 'Legendary', 'Artifact'];
+        return order.indexOf(a) - order.indexOf(b) || a.localeCompare(b);
+      });
+      const load = async (set) => {
+        F.set = set; F.limit = 120; F.q = '';   // a fresh search for each tab
+        ep.querySelector('.pp-list').innerHTML = '<p class="muted">Loading the SW5e list…</p>';
+        try { list = await equipList(set); } catch (err) { ep.querySelector('.pp-list').innerHTML = `<p class="error">${esc(err.message)}</p>`; return; }
+        F.sel = {};
+        for (const [key, , fn] of facets()) F.sel[key] = new Set(values(fn));
+        if (set === 'standard' && opts.weapons) F.sel.cat = new Set(['Weapon']);
+        renderFilters(); render();
+      };
+      const renderFilters = () => {
+        ep.querySelector('.pp-filters').innerHTML = facets().map(([key, label, fn]) => checkDrop(key, label, values(fn), F.sel[key], key === 'src' ? SRC : {})).join('')
+          + `<input data-eq="q" placeholder="Search by name…" value="${esc(F.q)}" style="flex:1;min-width:140px">`;
+      };
+      const shown = () => list.filter(it => facets().every(([key, , fn]) => { const v = fn(it); return v === null || F.sel[key].has(v); })
+        && (!F.q || it.n.toLowerCase().includes(F.q)));
+      const render = () => {
+        const rows = shown(), have = new Map((ch() ? ch().equipment : []).map(e => [String(e.name).toLowerCase(), n0(e.qty) || 1]));
+        const enh = F.set === 'enhanced';
+        ep.querySelector('.pp-list').innerHTML = rows.slice(0, F.limit).map((it, i) => {
+          const qty = have.get(it.n.toLowerCase());
+          return `<div class="pp-row" data-i="${i}">
+            <div class="pp-main"><b>${esc(it.n)}</b><span class="pp-lvl">${esc(it.cat)}</span>
+              ${enh && it.rar ? `<span class="pp-tag pp-rar-${esc(it.rar.toLowerCase())}">${esc(it.rar)}</span>` : ''}${enh && it.att ? '<span class="pp-tag">Attunement</span>' : ''}
+              ${it.src ? `<span class="pp-tag" title="${esc(SRC[it.src] || it.src)}">${esc(it.src)}</span>` : ''}
+              <div class="pp-meta">${esc([!enh && it.wc, itemNotes(it, enh) !== it.cat && itemNotes(it, enh), !enh && it.cost != null && `${it.cost.toLocaleString()} cr`, !enh && it.wt && `${it.wt} lb`, enh && it.pre && `Requires ${it.pre}`].filter(Boolean).join(' · '))}</div>
+              ${it.desc ? `<details class="pp-desc"><summary>Description</summary><div>${md(it.desc)}</div></details>` : ''}</div>
+            <button class="btn small ${qty ? '' : 'primary'}" data-eq="add" data-i="${i}">${qty ? `Add another (${qty})` : 'Add'}</button></div>`;
+        }).join('') + (rows.length > F.limit ? `<button class="btn small" data-eq="more" style="width:100%">Show ${rows.length - F.limit} more</button>` : '')
+          + (!rows.length ? '<p class="muted">Nothing matches these filters.</p>' : '');
+        ep.querySelector('.pp-count').textContent = `${rows.length} of ${list.length} ${enh ? 'enhanced items' : 'items'}`;
+        ep._rows = rows;
+      };
+      ep.innerHTML = `<h3>＋ Add equipment from SW5e</h3>
+        <div class="subtabs" style="margin:0"><button data-eq="set" data-set="standard" class="on">Standard gear</button><button data-eq="set" data-set="enhanced">Enhanced items</button></div>
+        <div class="pp-filters"></div><div class="pp-count muted"></div><div class="pp-list"></div>
+        <p class="muted" style="font-size:11px;margin:0">Equipment data from SW5e (sw5e.com): Player's Handbook, Expanded Content and Wretched Hives.</p>
+        <div class="row"><span class="spacer"></span><button class="btn primary" data-eq="close">Done</button></div>`;
+      ep.addEventListener('change', e => {
+        const t = e.target;
+        if (t.dataset.eq === 'check') { t.checked ? F.sel[t.dataset.key].add(t.value) : F.sel[t.dataset.key].delete(t.value); F.limit = 120; render(); updateSummaries(); }
+      });
+      const updateSummaries = () => {   // refresh the dropdown labels without closing the one that's open
+        for (const [key, label, fn] of facets()) {
+          const sum = ep.querySelector(`[data-drop="${key}"] summary`); if (!sum) continue;
+          const vals = values(fn), sel = F.sel[key], names = key === 'src' ? SRC : {};
+          sum.textContent = sel.size === vals.length ? `All ${label}` : sel.size === 0 ? `No ${label}` : sel.size <= 2 ? [...sel].map(v => names[v] || v).join(', ') : `${sel.size} ${label}`;
+        }
+      };
+      ep.addEventListener('input', e => { if (e.target.dataset.eq === 'q') { F.q = e.target.value.trim().toLowerCase(); F.limit = 120; render(); } });
+      ep.addEventListener('click', e => {
+        const b = e.target.closest('[data-eq]'); if (!b) return;
+        const a = b.dataset.eq;
+        if (a === 'close') return closeModal();
+        if (a === 'set') { ep.querySelectorAll('[data-eq="set"]').forEach(x => x.classList.toggle('on', x === b)); load(b.dataset.set); return; }
+        if (a === 'more') { F.limit += 200; return render(); }
+        if (a === 'all' || a === 'none') {
+          e.preventDefault();
+          const fn = facets().find(f => f[0] === b.dataset.key)[2];
+          F.sel[b.dataset.key] = new Set(a === 'all' ? values(fn) : []);
+          ep.querySelectorAll(`[data-eq="check"][data-key="${b.dataset.key}"]`).forEach(cb => { cb.checked = a === 'all'; });
+          render(); updateSummaries(); return;
+        }
+        if (a === 'add') {
+          const it = ep._rows[+b.dataset.i]; if (!it) return;
+          const enh = F.set === 'enhanced';
+          mutate(c => {
+            const ex = c.equipment.find(x => String(x.name).toLowerCase() === it.n.toLowerCase());
+            if (ex) ex.qty = (n0(ex.qty) || 1) + 1;
+            else c.equipment.push({ name: it.n, qty: 1, equipped: false, notes: itemNotes(it, enh).slice(0, 200) });
+            if (!enh && it.cat === 'Weapon' && !c.attacks.some(x => String(x.name).toLowerCase() === it.n.toLowerCase())) c.attacks.push(weaponAttack(it));
+          });
+          toast(!enh && it.cat === 'Weapon' ? `Added ${it.n} (and its attack)` : `Added ${it.n}`);
+          setTimeout(render, 50);
+        }
+      });
+      await load('standard');
+      ep.querySelector('[data-eq="q"]')?.focus();
+    });
+  }
 
   // --------------------------------------------------------------------------- power picker
   // "+ force power" / "+ tech power": the whole SW5e list (served by our API, cached), filtered by level

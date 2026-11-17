@@ -127,6 +127,41 @@ async function fetchSw5ePowers() {
   })).sort((a, b) => a.l - b.l || a.n.localeCompare(b.n));
 }
 
+// SW5e equipment, from the same public API: standard gear (PHB, Expanded Content, Wretched Hives)
+// and enhanced items. Starship parts are left out; they belong to the separate starship rules.
+const sw5eText = (v, n) => (v == null || v === "None" || v === "Unknown" ? "" : String(v).split(String.fromCharCode(13)).join("").slice(0, n));
+const spaced = (v) => sw5eText(v, 60).replace(/([a-z])([A-Z])/g, "$1 $2");
+async function sw5eGet(path) {
+  const r = await fetch("https://sw5eapi.azurewebsites.net/api/" + path, { signal: AbortSignal.timeout(9000), headers: { Accept: "application/json" } });
+  if (!r.ok) throw new Error("SW5e API " + r.status);
+  const data = await r.json();
+  if (!Array.isArray(data)) throw new Error("unexpected SW5e data");
+  return data;
+}
+async function fetchSw5eEquipment() {
+  const list = (x) => { try { const v = typeof x === "string" ? JSON.parse(x.replace(/'/g, '"')) : x; return Array.isArray(v) ? v.map((p) => sw5eText(p, 60)).filter(Boolean) : []; } catch { return []; } };
+  return (await sw5eGet("equipment")).filter((e) => e && e.name).map((e) => {
+    const isWeapon = e.equipmentCategory === "Weapon", isArmor = e.equipmentCategory === "Armor";
+    const dice = +e.damageNumberOfDice || 0, die = +e.damageDieType || 0, mod = +e.damageDieModifier || 0;
+    return {
+      n: sw5eText(e.name, 80), cat: spaced(e.equipmentCategory) || "Gear", src: sw5eText(e.contentSource, 10),
+      cost: Number.isFinite(+e.cost) ? +e.cost : null, wt: sw5eText(e.weight, 12),
+      dmg: isWeapon && dice && die ? `${dice}d${die}${mod ? (mod > 0 ? "+" : "") + mod : ""}` : isWeapon && mod ? String(mod) : "",
+      dt: isWeapon ? sw5eText(e.damageType, 20).toLowerCase() : "", wc: isWeapon ? spaced(e.weaponClassification) : "",
+      props: list(e.properties), ac: isArmor ? sw5eText(e.ac, 40) : "", accl: isArmor ? sw5eText(e.armorClassification, 20) : "",
+      stealth: isArmor && String(e.stealthDisadvantage) === "true" || e.stealthDisadvantage === true, str: isArmor ? sw5eText(e.strengthRequirement, 20) : "",
+      desc: sw5eText(e.description, 1500),
+    };
+  }).sort((a, b) => a.cat.localeCompare(b.cat) || a.n.localeCompare(b.n));
+}
+async function fetchSw5eEnhanced() {
+  return (await sw5eGet("enhancedItem")).filter((e) => e && e.name && !/^Ship/.test(e.type || "")).map((e) => ({
+    n: sw5eText(e.name, 80), cat: spaced(e.type) || "Enhanced item", sub: sw5eText(e.subtype, 40), src: sw5eText(e.contentSource, 10),
+    rar: sw5eText(e.searchableRarity, 20), att: !!e.requiresAttunement, pre: e.hasPrerequisite ? sw5eText(e.prerequisite, 120) : "",
+    desc: sw5eText(e.text, 2200),
+  })).sort((a, b) => a.cat.localeCompare(b.cat) || a.n.localeCompare(b.n));
+}
+
 // every uploaded image the table refers to (live map, saved scenes, sheets, handouts)
 const imageRefs = (camp) => new Set(JSON.stringify(camp).match(/\/api\/holotable\?img=[a-f0-9]{16,40}/g) || []);
 
@@ -204,6 +239,22 @@ async function handleGet(req, res, q, ses) {
       }
       raw = JSON.stringify(list);
       await r.set(S.K.powers(), raw, "EX", 7 * 24 * 3600);
+    }
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    return res.status(200).send(raw);
+  }
+
+  if (op === "equipment") { // SW5e gear for the "+ from SW5e" picker: ?set=standard (507 items) or ?set=enhanced (~1,900)
+    const set = q.set === "enhanced" ? "enhanced" : "standard";
+    let raw = await r.get(S.K.equipment(set));
+    if (!raw) {
+      let list;
+      try { list = set === "enhanced" ? await fetchSw5eEnhanced() : await fetchSw5eEquipment(); } catch (e) {
+        return fail(res, 503, "Couldn't reach the SW5e equipment list right now. Try again in a minute, or add the item by hand.");
+      }
+      raw = JSON.stringify(list);
+      await r.set(S.K.equipment(set), raw, "EX", 7 * 24 * 3600);
     }
     res.setHeader("Content-Type", "application/json");
     res.setHeader("Cache-Control", "private, max-age=3600");

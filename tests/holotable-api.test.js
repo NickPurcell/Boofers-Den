@@ -597,3 +597,33 @@ test("chat: nobody can post as someone else; the real sender is always on the me
   // a short cooldown between yells
   assert.equal((await p1.act("chat", { text: "/yell again!" })).code, 400);
 });
+
+test("SW5e equipment: standard gear and enhanced items, trimmed, cached, behind sign-in", async () => {
+  const { p1 } = await table();
+  const realFetch = global.fetch;
+  const calls = [];
+  global.fetch = async (url) => {
+    calls.push(String(url));
+    const enhanced = /enhancedItem$/.test(String(url));
+    return { ok: true, json: async () => enhanced ? [
+      { name: "AB-75 Bo-Rifle", type: "Weapon", subtype: "bo-rifle", contentSource: "WH", searchableRarity: "Prototype", requiresAttunement: false, text: "+2 to attack." },
+      { name: "Turbolaser", type: "ShipWeapon", contentSource: "WH", searchableRarity: "Standard", text: "Starship part." },
+    ] : [
+      { name: "Blaster pistol", equipmentCategory: "Weapon", contentSource: "PHB", cost: 175, weight: "2.5", damageNumberOfDice: 1, damageDieType: 6, damageDieModifier: 0, damageType: "Energy", weaponClassification: "SimpleBlaster", properties: ["Power cell (range 50/200)", "reload 16"], description: "None" },
+      { name: "Combat suit", equipmentCategory: "Armor", contentSource: "PHB", cost: 100, weight: "10", armorClassification: "Light", ac: "11 + Dex modifier", stealthDisadvantage: false, description: "Light armor." },
+      { name: "Medpac", equipmentCategory: "Medical", contentSource: "PHB", cost: 300, weight: "0.5", description: "Heals." },
+    ] };
+  };
+  try {
+    assert.equal((await browser().call("GET", { op: "equipment" })).code, 401);
+    const std = JSON.parse((await p1.call("GET", { op: "equipment", set: "standard" })).data);
+    const pistol = std.find((x) => x.n === "Blaster pistol");
+    assert.deepEqual([pistol.cat, pistol.dmg, pistol.dt, pistol.wc, pistol.cost, pistol.desc], ["Weapon", "1d6", "energy", "Simple Blaster", 175, ""]);
+    assert.deepEqual(pistol.props, ["Power cell (range 50/200)", "reload 16"]);
+    assert.equal(std.find((x) => x.n === "Combat suit").ac, "11 + Dex modifier");
+    const enh = JSON.parse((await p1.call("GET", { op: "equipment", set: "enhanced" })).data);
+    assert.deepEqual(enh.map((x) => `${x.cat}:${x.n}:${x.rar}`), ["Weapon:AB-75 Bo-Rifle:Prototype"], "starship parts are left out");
+    await p1.call("GET", { op: "equipment", set: "standard" });
+    assert.equal(calls.length, 2, "each list is fetched once, then served from the cache");
+  } finally { global.fetch = realFetch; }
+});
