@@ -1699,4 +1699,43 @@ test("sheets made before #129 get their species' senses once; never over senses 
   await gm.act("char.save", { char: Object.assign({}, ch, { senses: [] }) });
   await gm.act("notes.save", { notes: "a third action" });
   assert.equal(await senses(vel), undefined, "the fill ran once; the GM's clearing stands");
+  // a backup restored later keeps the mark, so the GM's deliberate "none" survives it (review of #132)
+  const back = JSON.parse((await gm.call("GET", { op: "export" })).data);
+  assert.equal(back.sensesFilled, true);
+  assert.equal((await gm.post("restore", { campaign: back })).code, 200);
+  handler.resetSpeciesSenses();
+  await gm.act("notes.save", { notes: "after the restore" });
+  assert.equal(await senses(vel), undefined, "not filled again: the restore didn't forget it was done");
+  // a crafted mark is only ever true or false
+  const crafted = JSON.parse((await gm.call("GET", { op: "export" })).data);
+  crafted.sensesFilled = { not: "a boolean" };
+  await gm.post("restore", { campaign: crafted });
+  assert.equal(JSON.parse((await gm.call("GET", { op: "export" })).data).sensesFilled, false);
+});
+
+test("the one-time senses fill never reads SW5e inside the game lock, and only reads it when a sheet needs filling (review of #132)", async () => {
+  const { gm } = await table();
+  await gm.act("char.save", { char: { name: "Vel", species: "Sith Pureblood" } });   // a sheet from before #129: a species, no senses
+  const file = JSON.parse((await gm.call("GET", { op: "export" })).data);
+  delete file.sensesFilled;
+  assert.equal((await gm.post("restore", { campaign: file })).code, 200);
+  await db.del(S.K.sw5e("species"));
+  await db.del(S.K.sw5eFail("species"));
+  handler.resetSpeciesSenses();
+  const realFetch = global.fetch;
+  let inLock = 0, calls = 0, askedInLock = false;
+  const realWith = S.withLock;
+  S.withLock = async (k, fn) => realWith.call(S, k, async () => { inLock++; try { return await fn(); } finally { inLock--; } });
+  global.fetch = async () => { calls++; if (inLock) askedInLock = true; throw new Error("offline"); };
+  try {
+    assert.equal((await gm.act("notes.save", { notes: "an action while SW5e is slow or out" })).code, 200);
+    assert.equal(askedInLock, false, "SW5e is never asked while the table is locked");
+    assert.ok(calls >= 1, "the list was asked for, before the lock");
+  } finally { global.fetch = realFetch; S.withLock = realWith; }
+  // a table with nothing to fill never asks SW5e: it's marked done at once
+  const t2 = await table(); handler.resetSpeciesSenses();
+  let asked = 0; global.fetch = async () => { asked++; throw new Error("offline"); };
+  try { await t2.gm.act("notes.save", { notes: "nothing to fill" }); } finally { global.fetch = realFetch; }
+  assert.equal(asked, 0);
+  assert.equal(JSON.parse((await t2.gm.call("GET", { op: "export" })).data).sensesFilled, true);
 });
