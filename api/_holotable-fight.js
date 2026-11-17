@@ -427,7 +427,10 @@ function apply(camp, cid, gm, type, p, G) {
         if (!w) throw new G.Invalid("No such door.");
         w.open = !!p.open;
       } else if (p.op === "clear") list = [];
-      else throw new G.Invalid("Unknown wall action.");
+      else if (p.op === "set") {   // a whole map's walls at once (an import from Dungeondraft's Universal VTT export)
+        if (!Array.isArray(p.walls)) throw new G.Invalid("No walls to set.");
+        list = E.cleanWalls(p.walls.slice(0, 2000).map((w) => Object.assign({}, w, { id: require("crypto").randomBytes(5).toString("hex") })));
+      } else throw new G.Invalid("Unknown wall action.");
       if (list.length) camp.map.walls = list; else delete camp.map.walls;
       return {};
     }

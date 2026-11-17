@@ -1520,3 +1520,19 @@ test("areas stopped by walls (issue #93, step 3): no clear line from the origin,
   const save = r.log.find((l) => l.kind === "save");
   assert.match(save.text, /one-quarter cover, \+2\)/, save.text);
 });
+
+test("walls through the API: a whole map's walls set at once (an import), checked and capped", async () => {
+  const { gm, sam } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.wall", { op: "set", walls: [] })).code, 403);
+  assert.equal((await gm.act("fight.wall", { op: "set" })).code, 400);
+  const many = Array.from({ length: 2100 }, (_, i) => ({ a: [i % 50, 1], b: [i % 50, 2], kind: i % 7 ? "wall" : "door", open: i % 2 === 0 }));
+  many.push({ a: [1, 1], b: [1, 1] }, { a: [0, 0], b: [3, 0], kind: "lava" });
+  assert.equal((await gm.act("fight.wall", { op: "set", walls: many })).code, 200);
+  const w = (await gm.state()).map.walls;
+  assert.equal(w.length, 2000, "capped");
+  assert.ok(w.every((x) => /^[a-f0-9]{10}$/.test(x.id) && ["wall", "door"].includes(x.kind)), "fresh ids, known kinds");
+  assert.equal("walls" in (await sam.state()).map, false);
+  assert.equal((await gm.act("fight.wall", { op: "set", walls: [] })).code, 200);
+  assert.equal("walls" in (await gm.state()).map, false, "an empty set leaves no walls key");
+});

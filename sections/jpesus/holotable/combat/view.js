@@ -522,6 +522,45 @@
 
   /* ---------------- on the map (app.js calls these) ---------------- */
   // pointer down: claims the click only when it's an attack on a target, or a player's own token on their turn
+  // Import a Universal VTT file (Dungeondraft's "export for other tabletops", .dd2vtt): its picture becomes the map's
+  // background (shrunk under HoloTable's image limit, through its own upload), the board takes its size in squares, and
+  // its line-of-sight polylines become walls and its portals doors (open or closed as exported). Lights are ignored.
+  async function importUvtt(file) {
+    const toast = H.toast;
+    try {
+      const d = JSON.parse(await file.text());
+      const res = d && d.resolution, size = res && res.map_size, o = (res && res.map_origin) || { x: 0, y: 0 };
+      if (!size || !(+size.x > 0) || !(+size.y > 0)) throw new Error("That isn't a Universal VTT file (no map size).");
+      const pt = (q) => [(+q.x || 0) - (+o.x || 0), (+q.y || 0) - (+o.y || 0)];
+      const walls = [];
+      for (const line of [].concat(d.line_of_sight || [], d.objects_line_of_sight || [])) {
+        if (!Array.isArray(line)) continue;
+        for (let i = 0; i + 1 < line.length; i++) walls.push({ a: pt(line[i]), b: pt(line[i + 1]), kind: 'wall' });
+      }
+      for (const door of d.portals || []) {
+        if (door && Array.isArray(door.bounds) && door.bounds.length >= 2) walls.push({ a: pt(door.bounds[0]), b: pt(door.bounds[1]), kind: 'door', open: door.closed === false });
+      }
+      const had = ((st().map || {}).walls || []).length || st().map.bgUrl;
+      if (had && !confirm(`Replace this map's picture, size and walls with ${file.name}?`)) return;
+      toast('Importing the map…');
+      if (d.image) {
+        const img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => bad(new Error("Couldn't read the map's picture.")); i.src = `data:image/png;base64,${String(d.image).replace(/^data:[^,]*,/, '')}`; });
+        let dataUrl = '';
+        for (const [dim, q] of [[4096, 0.85], [4096, 0.7], [3072, 0.7], [2048, 0.7]]) {
+          const sc = Math.min(1, dim / Math.max(img.width, img.height)), c = document.createElement('canvas');
+          c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          dataUrl = c.toDataURL('image/jpeg', q);
+          if (dataUrl.length * 0.75 < 2.9 * 1024 * 1024) break;
+        }
+        const up = await H.post('upload', { purpose: 'bg', dataUrl });
+        await act('map.bg', { url: up.url });
+      }
+      await act('map.settings', { cols: Math.max(5, Math.min(200, Math.round(+size.x))), rows: Math.max(5, Math.min(200, Math.round(+size.y))) });
+      await send('fight.wall', { op: 'set', walls: walls.slice(0, 2000) });
+      toast(`Imported ${file.name}: ${Math.min(2000, walls.length)} walls and doors${walls.length > 2000 ? ' (the first 2000)' : ''}.`);
+    } catch (err) { toast(err.message || "Couldn't import that file.", true); }
+  }
   // The GM's wall tool lives in the map tools beside "＋ Token" (app.js asks for its button) while the combat view is on,
   // with its own small bar over the map, like the 🎬 movement bar.
   function wallsButton() {
@@ -533,6 +572,7 @@
       wallBar = document.createElement('div');
       wallBar.className = 'script-bar ct-wallbar hidden';
       $('#mapWrap').appendChild(wallBar);
+      wallBar.addEventListener('change', (e) => { const f = e.target.matches('[data-wb-file]') && e.target.files[0]; if (f) importUvtt(f).finally(() => { e.target.value = ''; }); });
       wallBar.addEventListener('click', (e) => {
         const b = e.target.closest('[data-wb]'); if (!b) return;
         const a = b.dataset.wb;
@@ -548,7 +588,9 @@
     const n = ((st().map || {}).walls || []).length, T = UI.walls;
     wallBar.innerHTML = `<b>🧱 Walls</b>${[['wall', 'Wall'], ['door', 'Door'], ['window', 'Window'], ['toggle', 'Open / close'], ['erase', 'Erase']].map(([k, l]) => `<button class="btn tiny ${T.mode === k ? 'primary' : 'ghost'}" data-wb="${k}">${l}</button>`).join('')}
       <span class="muted" title="${T.mode === 'wall' ? 'Click corner to corner; Esc or the same corner again ends a run' : T.mode === 'door' || T.mode === 'window' ? 'Click its two ends' : 'Click next to one'}">${n} on this map</span>
-      ${n ? '<button class="btn tiny ghost" data-wb="clear">Clear walls</button>' : ''}<button class="btn tiny" data-wb="done">Done</button>`;
+      ${n ? '<button class="btn tiny ghost" data-wb="clear">Clear walls</button>' : ''}
+      <label class="btn tiny ghost" title="Dungeondraft's export for other tabletops (Universal VTT): the picture, the board size, its walls and doors">Import .dd2vtt<input type="file" accept=".dd2vtt,.uvtt,.df2vtt,application/json" data-wb-file hidden></label>
+      <button class="btn tiny" data-wb="done">Done</button>`;
   }
   document.addEventListener('click', (e) => {
     if (!e.target.closest('[data-ct-walls]')) return;
