@@ -445,3 +445,23 @@ test("a full database says so", async () => {
     assert.match(r.data.error, /database is full/);
   } finally { db.set = realSet; }
 });
+
+// The GM's ▲/▼ beside each initiative number send init.update with the shown value ± 1.
+test("initiative: the GM's step buttons re-order the tracker for everyone; players can't nudge NPCs", async () => {
+  const { gm, p1 } = await table();
+  await gm.act("init.add", { name: "Trooper A", init: 12 });
+  await gm.act("init.add", { name: "Trooper B", init: 12.5 });
+  const order = (st) => st.initiative.entries.map((e) => e.name);
+  let st = (await gm.poll()).data.state;
+  assert.deepEqual(order(st), ["Trooper B", "Trooper A"]);
+  const a = st.initiative.entries.find((e) => e.name === "Trooper A");
+  assert.equal((await gm.act("init.update", { id: a.id, fields: { init: a.init + 1 } })).code, 200);   // ▲
+  st = (await p1.poll()).data.state;
+  assert.deepEqual(order(st), ["Trooper A", "Trooper B"], "the player sees the new order");
+  assert.equal(st.initiative.entries[0].init, 13);
+  assert.equal((await gm.act("init.update", { id: a.id, fields: { init: 13 - 1 } })).code, 200);        // ▼
+  assert.deepEqual(order((await gm.poll()).data.state), ["Trooper B", "Trooper A"]);
+  assert.equal((await p1.act("init.update", { id: a.id, fields: { init: 99 } })).code, 403, "players can't nudge an NPC");
+  assert.equal((await gm.act("init.update", { id: a.id, fields: { init: "<b>14</b>" } })).code, 200);
+  assert.equal(typeof (await gm.poll()).data.state.initiative.entries.find((e) => e.id === a.id).init, "number", "init stays a number");
+});
