@@ -258,7 +258,7 @@ test("turn budget: each unit's own turn refills its movement, action, bonus acti
   const hers = Object.assign({}, w, { turnId: "ava", round: 2 });
   assert.deepEqual([E.budget(hers).reaction, E.budget(hers).moveLeft, E.budget(hers).action], [true, 30, true]);
   const r = E.apply(hers, { type: "move", unit: "ava", x: 2, y: 0 }, dice().roll);
-  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0 });
+  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0 });
 });
 
 // a level-3 Consular with two powers; the table has data for one of them (numbers invented for the test)
@@ -2302,4 +2302,98 @@ test("senses the combat view kept before #92 are dropped once (players could wri
   assert.deepEqual(camp.characters.bbbbbb222222.senses, [{ kind: "truesight", range: 30 }], "a sheet's own senses stand");
   assert.deepEqual([camp.fight.defenses.aaaaaa111111.senses, camp.fight.defenses.bbbbbb222222.senses], [[], []], "the copies are emptied");
   assert.deepEqual(camp.fight.defenses.aaaaaa111111.resist, [{ type: "fire", only: null }], "resistances kept");
+});
+
+/* ---------------------------------------------------------------- bonus damage from class features (audit 5.9) */
+test("class riders from the sheet's class table: Sneak Attack dice and Rage Damage by level", () => {
+  assert.deepEqual(E.ridersOf({ classes: [{ name: "Operative", level: 5 }] }, R), { sneak: "3d6" });
+  assert.deepEqual(E.ridersOf({ classes: [{ name: "Berserker", level: 9 }] }, R), { rage: 3 });
+  assert.deepEqual(E.ridersOf({ classes: [{ name: "Fighter", level: 5 }] }, R), {});
+  assert.deepEqual(E.ridersOf({ classes: [{ name: "Operative", level: 1 }, { name: "Berserker", level: 2 }] }, R), { sneak: "1d6", rage: 2 });
+});
+
+test("Sneak Attack: a finesse or ranged weapon, once a turn, with advantage or another enemy of the target within 5 ft and no disadvantage", () => {
+  const knife = Object.assign({}, blade, { name: "Vibroknife", finesse: true, weapon: true });
+  const club = Object.assign({}, blade, { name: "Club", finesse: false, weapon: true });
+  const gun = Object.assign({}, rifle, { weapon: true });
+  const op = (o) => unit(Object.assign({ id: "op", name: "Ozz", side: "pc", x: 0, y: 0, riders: { sneak: "2d6" } }, o));
+  const r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0 });
+  const pal = unit({ id: "pal", name: "Pell", side: "pc", x: 2, y: 0 });   // another enemy of the Raider, next to it
+  const sneak = (units, atk, opts) => (E.preview(world(units, "op"), "op", "r1", atk, opts).riders || []).map((x) => x.key + ":" + (x.dice || x.flat));
+  assert.deepEqual(sneak([op(), r1], knife), [], "no advantage, nobody beside the Raider");
+  assert.deepEqual(sneak([op(), r1, pal], knife), ["sneak:2d6"], "an ally next to the target");
+  assert.deepEqual(sneak([op(), r1, pal], knife, { dis: true }), [], "not with disadvantage");
+  assert.deepEqual(sneak([op(), r1], knife, { adv: true }), ["sneak:2d6"], "advantage alone");
+  assert.deepEqual(sneak([op(), r1, pal], club), [], "not with a weapon that's neither finesse nor ranged");
+  assert.deepEqual(sneak([op({ x: -5 }), r1, pal], gun), ["sneak:2d6"], "a ranged weapon");
+  assert.deepEqual(sneak([op(), r1, Object.assign({}, pal, { conditions: ["Incapacitated"] })], knife), [], "an incapacitated ally doesn't count");
+  // on a hit: the dice join the damage (doubled on a critical), once a turn; it can be turned down
+  let d = dice({ total: 15, nat: 12 }, { total: 14 });
+  let r = E.apply(world([op(), r1, pal], "op"), { type: "attack", unit: "op", target: "r1", attack: knife }, d.roll);
+  assert.deepEqual(d.asked, ["1d20+5", "1d8+3+2d6"]);
+  assert.match(r.log[1].text, /with Sneak Attack 2d6/);
+  assert.equal(r.world.spent.op.sneak, 1, "used this turn");
+  assert.deepEqual((E.preview(r.world, "op", "r1", knife).riders || []).map((x) => x.key), [], "not again this turn");
+  d = dice({ total: 25, nat: 20 }, { total: 30 });
+  E.apply(world([op(), r1, pal], "op"), { type: "attack", unit: "op", target: "r1", attack: knife }, d.roll);
+  assert.equal(d.asked[1], "2d8+3+4d6", "a critical doubles the Sneak Attack dice");
+  d = dice({ total: 15, nat: 12 }, { total: 6 });
+  r = E.apply(world([op(), r1, pal], "op"), { type: "attack", unit: "op", target: "r1", attack: knife, no: ["sneak"] }, d.roll);
+  assert.equal(d.asked[1], "1d8+3", "turned down");
+  assert.equal(r.world.spent.op.sneak, 0, "and still there for later this turn");
+});
+
+test("Rage: a bonus action and a use of Rages; Rage Damage on Strength melee weapon attacks; resistance; ends when the berserker drops", () => {
+  const axe = Object.assign({}, blade, { name: "Vibroaxe", abil: "str", weapon: true });
+  const gun = Object.assign({}, rifle, { abil: "dex", weapon: true });
+  const bz = unit({ id: "bz", name: "Brak", side: "pc", x: 0, y: 0, riders: { rage: 2 }, pools: { rage: { key: "rage", name: "Rages", max: 2, used: 0, refill: "long" } } });
+  const r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0 });
+  assert.equal(E.apply(world([unit({ id: "x", name: "X", side: "pc", x: 0, y: 0 }), r1], "x"), { type: "common", unit: "x", key: "rage" }, dice().roll).ok, false, "only a berserker rages");
+  let r = E.apply(world([bz, r1], "bz"), { type: "common", unit: "bz", key: "rage" }, dice().roll);
+  assert.equal(r.ok, true, r.why);
+  let me = r.world.units.bz;
+  assert.deepEqual([me.conditions, me.pools.rage.used, r.world.spent.bz.bonus], [["Raging"], 1, 1]);
+  assert.match(r.log[0].text, /Brak rages \(1 of 2 left\)/);
+  assert.equal(E.apply(r.world, { type: "common", unit: "bz", key: "rage" }, dice().roll).ok, false, "the bonus action is spent (and it's already raging)");
+  assert.deepEqual((E.preview(r.world, "bz", "r1", axe).riders || []).map((x) => x.key + ":" + x.flat), ["rage:2"]);
+  assert.deepEqual(E.preview(Object.assign({}, r.world, { units: Object.assign({}, r.world.units, { bz: Object.assign({}, me, { x: -5 }) }) }), "bz", "r1", gun).riders, [], "not a ranged attack");
+  const d = dice({ total: 15, nat: 12 }, { total: 9 });
+  const hit = E.apply(r.world, { type: "attack", unit: "bz", target: "r1", attack: axe }, d.roll);
+  assert.equal(d.asked[1], "1d8+3+2");
+  assert.match(hit.log[1].text, /with Rage \+2/);
+  // resistance to kinetic and energy while raging
+  const w2 = world([Object.assign({}, me), unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0 })], "r1", { effects: r.world.effects });
+  const shot = E.apply(w2, { type: "attack", unit: "r1", target: "bz", attack: Object.assign({}, blade, { weapon: true }) }, dice({ total: 20, nat: 15 }, { total: 10 }).roll);
+  assert.match(shot.log[1].text, /takes 5 kinetic damage \(resisted\)/);
+  // dropping to 0 ends the rage
+  const low = world([Object.assign({}, me, { hp: 3 }), unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0 })], "r1", { effects: r.world.effects });
+  const ko = E.apply(low, { type: "attack", unit: "r1", target: "bz", attack: Object.assign({}, blade, { weapon: true }) }, dice({ total: 20, nat: 15 }, { total: 30 }).roll);
+  assert.ok(!(ko.world.units.bz.conditions || []).includes("Raging"), "no longer raging once unconscious");
+});
+
+test("class riders through the API: an Operative's Sneak Attack and a Berserker's Rage, worked out from the sheet", async () => {
+  const { gm, sam, rae, avery, bolt, ids } = await fight();
+  let st = await sam.state();
+  const knife = { name: "Vibroknife", ab: "finesse", damage: "1d4", type: "kinetic", props: "Finesse, Light" };
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { classes: [{ name: "Operative", level: 3 }], attacks: [knife] }) });
+  await rae.act("char.save", { char: Object.assign({}, st.characters[bolt], { classes: [{ name: "Berserker", level: 9 }] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("token.move", { id: tokenOf(st, "Bolt").id, x: 2, y: 0 });   // Bolt beside the Raider: Avery's Sneak Attack needs no advantage
+  await gm.act("fight.toggle", { on: true });
+  const label = async (kind) => ((await gm.state()).chat.filter((m) => m.fight && m.roll && m.roll.kind === kind).pop() || { roll: {} }).roll.label;
+  // a crafted request can't add riders: only "no" exists, and the server works the bonus out itself
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0", riders: [{ key: "sneak", dice: "99d6" }] })).code, 200);
+  const hit = await label("damage");
+  if (hit) assert.match(hit, /with Sneak Attack (2d6|4d6)/, "Operative 3: 2d6 (4d6 on a critical), from the class table");
+  assert.ok(!/99d6/.test(JSON.stringify((await gm.state()).chat)));
+  // Bolt's turn (Berserker 9): Rage, then +3 on a Strength melee weapon hit
+  await sam.act("fight.end", {}); await gm.act("fight.end", {});
+  assert.equal((await rae.act("fight.common", { key: "rage" })).code, 200);
+  st = await gm.state();
+  assert.ok(st.characters[bolt].conditions.includes("Raging"), "Raging, on the sheet and in the tracker");
+  assert.match(st.chat.filter((m) => m.fight && m.text).pop().text, /rages.*\+3 damage/);
+  assert.equal((await rae.act("fight.common", { key: "rage" })).code, 400, "not twice");
+  assert.equal((await rae.act("fight.attack", { target: ids.raider, attack: "0", no: ["rage"] })).code, 200);
+  const turnedDown = await label("damage");
+  if (turnedDown && /Vibrosword/.test((await label("attack")) || "")) assert.doesNotMatch(turnedDown, /Rage/, "turned down");
 });

@@ -339,7 +339,8 @@
     return (ch.attacks || []).map((a, i) => {
       const damage = rules.damageExpr(ch, a);
       const ab = a.ab === 'finesse' ? (rules.abilityMod(ch, 'dex') > rules.abilityMod(ch, 'str') ? 'dex' : 'str') : ABILS.includes(a.ab) ? a.ab : 'str';
-      return Object.assign({ key: String(i), name: a.name || 'Attack', bonus: rules.attackBonus(ch, a), abil: ab, damage, crit: rules.critExpr(damage), type: a.type || '', enhanced: +a.magic > 0 }, readRange(a.props));
+      return Object.assign({ key: String(i), name: a.name || 'Attack', bonus: rules.attackBonus(ch, a), abil: ab, damage, crit: rules.critExpr(damage), type: a.type || '', enhanced: +a.magic > 0,
+        finesse: a.ab === 'finesse' || /\bfinesse\b/i.test(String(a.props || '')), weapon: true }, readRange(a.props));
     }).filter((a) => a.melee || a.range);
   }
   // a creature's attack from its stat block entry ({ n, atk, dmg, dt, rng, d } as HoloTable's creature list keeps it)
@@ -385,6 +386,9 @@
     Slowed: { levels: 4 },                                   // speed −15 / −25 / −30 ft, then 0
     Corroded: { levels: 3 },                                 // 1 more damage from weapons for each level
     Ignited: { burns: true },                                // fire damage at the end of each of its turns, until put out
+    // a Berserker's rage (audit 5.9): Rage Damage on Strength melee weapon attacks, resistance to kinetic and energy,
+    // advantage on Strength saves; 1 minute (10 of its turns), and it ends if the berserker drops
+    Raging: { rage: true, resist: ['kinetic', 'energy'], saveAdv: ['str'] },
   };
   /* ---------------- senses (audit 5.12): { kind, range } on a unit ---------------- */
   // SW5e's creature data uses blindsight, darkvision, tremorsense and truesight. In our words: blindsight perceives
@@ -523,6 +527,29 @@
   // Crueler Criticals: one set of the dice at their maximum, the other rolled, the modifier once
   const cruel = (expr) => `${expr}+${maxDice(expr)}`;
   // Can `actorId` hit `targetId` with `attack` right now, and what would it take?
+  /* ---------------- bonus damage from class features (audit 5.9) ---------------- */
+  // What a character's classes add to a weapon hit, from HoloTable's class table (#108) at its levels: Sneak Attack dice
+  // (Operative) and Rage Damage (Berserker). Worked out here from the sheet, never taken from a request.
+  function ridersOf(ch, rules) {
+    const out = {};
+    for (const row of (rules && rules.classTableAt ? rules.classTableAt(ch) : [])) for (const [h, v] of row.cols) {
+      if (h === 'Sneak Attack' && /^\d+d\d+$/i.test(String(v))) out.sneak = String(v);
+      if (h === 'Rage Damage' && /^\+?\d+$/.test(String(v))) out.rage = +String(v).replace('+', '');
+    }
+    return out;
+  }
+  // which of them this attack gets. Sneak Attack (SW5e, Operative): once per turn, a finesse or ranged weapon, with
+  // advantage, or with another enemy of the target within 5 ft of it (not incapacitated) and no disadvantage.
+  // Rage Damage: while raging, a melee weapon attack using Strength.
+  function ridersFor(world, a, t, attack, ranged, mode) {
+    const r = a.riders || {}, out = [];
+    if (r.sneak && attack.weapon && (attack.finesse || ranged) && !spentOf(world, a.id).sneak) {
+      const helper = Object.values(world.units).some((o) => o.id !== a.id && o.id !== t.id && !o.down && hostile(o, t) && !INCAPACITATING(o) && feetBetween(o, t) <= FT);
+      if (mode === 'adv' || (helper && mode !== 'dis')) out.push({ key: 'sneak', name: 'Sneak Attack', dice: r.sneak });
+    }
+    if (r.rage && attack.weapon && !ranged && attack.abil === 'str' && effectsOf(a).some(([, e]) => e.rage)) out.push({ key: 'rage', name: 'Rage', flat: r.rage });
+    return out;
+  }
   function preview(world, actorId, targetId, attack, opts = {}) {
     const a = world.units[actorId], t = world.units[targetId];
     if (!a || !t) return { legal: false, why: 'No such target.' };
@@ -548,7 +575,8 @@
     const ac = +t.ac + (cover ? cover.bonus : 0) - flank;
     const need = Math.min(20, Math.max(2, ac - bonus));   // the d20 needed; a 20 always hits, a 1 always misses
     const chance = d20chance(m, (21 - need) / 20);
-    return { legal: true, feet, ranged, mode, k: m.k, tilts, notes, need, chance, weak, bonus, ac, cover, expr: d20expr(m) + sgn(bonus) };
+    const riders = ridersFor(world, a, t, attack, ranged, mode);
+    return { legal: true, feet, ranged, mode, k: m.k, tilts, notes, need, chance, weak, bonus, ac, cover, riders, expr: d20expr(m) + sgn(bonus) };
   }
 
   /* ---------------- resources (audit 3.1) ---------------- */
@@ -797,7 +825,7 @@
   /* ---------------- turns: the turn budget is resources too, refilled at the start of the unit's own turn ---------------- */
   const turnKey = (world) => `${world.round}:${world.turnId}`;
   const TURN = ['move', 'action', 'bonus', 'reaction'];
-  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0 });
+  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0 });
   function spentOf(world, id) {
     const s = (world.spent || {})[id];
     return s && (id !== world.turnId || s.key === turnKey(world)) ? Object.assign(blank(s.key), s) : blank(id === world.turnId ? turnKey(world) : '');
@@ -867,12 +895,24 @@
       }
       case 'attack': {
         if (!b.action) return no(`${me.name} has already used the action this turn.`);
-        const s = strike(w, me, act.target, act.attack, { adv: !!act.adv, dis: !!act.dis }, roll, '');
+        const s = strike(w, me, act.target, act.attack, { adv: !!act.adv, dis: !!act.dis, no: act.no || [] }, roll, '');
         if (!s.ok) return s;
         w.spent[me.id].action += 1;
         return { ok: true, world: w, log: s.log, events: s.events };
       }
-      case 'common': {   // Dash, Disengage, Dodge
+      case 'common': {   // Dash, Disengage, Dodge; and a Berserker's Rage
+        if (act.key === 'rage') {   // a bonus action and one use of its Rages (audit 5.9); 1 minute, ended early by dropping
+          if (!(me.riders || {}).rage) return no(`${me.name} can't rage.`);
+          if (!b.bonus) return no(`${me.name} has already used the bonus action this turn.`);
+          if (effectsOf(me).some(([, e]) => e.rage)) return no(`${me.name} is already raging.`);
+          const pool = (me.pools || {}).rage;
+          if (pool && pool.used >= pool.max) return no(`${me.name} has no rages left until a long rest.`);
+          if (pool) pool.used += 1;
+          w.spent[me.id].bonus += 1;
+          me.conditions = Array.from(new Set((me.conditions || []).concat('Raging')));
+          w.effects.push({ id: `rage-${me.id}-${w.effects.length}`, unit: me.id, condition: 'Raging', ends: 'end', of: me.id, rounds: 10, save: null, source: me.id, conc: false, level: 0, amount: '' });
+          return { ok: true, world: w, log: [{ unit: me.id, text: `${me.name} rages${pool ? ` (${pool.max >= 99 ? 'unlimited' : `${pool.max - pool.used} of ${pool.max} left`})` : ''}: +${me.riders.rage} damage on Strength melee weapon attacks, resistance to kinetic and energy.` }], events: [] };
+        }
         const c = COMMON.find((x) => x.key === act.key);
         if (!c) return no('Unknown action.');
         if (!b[c.use]) return no(`${me.name} has already used the ${c.use === 'bonus' ? 'bonus action' : c.use} this turn.`);
@@ -948,7 +988,7 @@
             const bonus = (t.saves || {})[ab.save.ability];
             const fail = effectsOf(t).find(([, e]) => (e.autoFail || []).includes(ab.save.ability));
             const sdis = effectsOf(t).some(([, e]) => (e.saveDis || []).includes(ab.save.ability));
-            const sadv = ab.save.ability === 'dex' && dodging(w, t);
+            const sadv = (ab.save.ability === 'dex' && dodging(w, t)) || effectsOf(t).some(([, e]) => (e.saveAdv || []).includes(ab.save.ability));
             // cover helps a Dex save: from the caster for a power aimed at the target, from the origin for an area; flanked makes it worse
             const scv = ab.save.ability !== 'dex' || t.id === me.id ? null : ab.area ? coverFrom(w, origin, t) : coverOf(w, me, t);
             const sfl = ab.save.ability === 'dex' && t.id !== me.id ? flankOf(w, t, me) : 0;
@@ -1052,13 +1092,17 @@
     const log = [{ unit: me.id, kind: 'attack', roll: r, expr: pv.expr, text: `${me.name} ${how ? `makes ${how} against` : 'attacks'} ${t.name} with ${attack.name}${tilt}${pv.notes.length ? ` (${pv.notes.join('; ')})` : ''}${pv.weak ? ` (weakened, −${pv.weak})` : ''}: ${r.total} against AC ${pv.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}` }];
     const events = [];
     if (!hit) { events.push({ kind: 'miss', unit: t.id }); return { ok: true, log, events }; }
-    const expr = !crit ? attack.damage : variant(w, 'Crueler Criticals') ? cruel(attack.damage) : attack.crit || attack.damage;
+    const base = !crit ? attack.damage : variant(w, 'Crueler Criticals') ? cruel(attack.damage) : attack.crit || attack.damage;
+    // bonus damage from class features (audit 5.9); a rider the attacker turned down (opts.no) isn't added
+    const riders = (pv.riders || []).filter((x) => !((opts.no || []).includes(x.key)));
+    const expr = base + riders.map((x) => (x.dice ? '+' + (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat)).join('');
+    if (riders.some((x) => x.key === 'sneak')) w.spent[me.id] = Object.assign(spentOf(w, me.id), { sneak: 1 });   // once per turn
     const d = roll(expr);
     const corr = levelOf(w, t, 'Corroded');   // corroded: 1 more damage from weapons for each level
     const df = defended(t, Math.max(0, d.total) + corr, String(attack.type || '').toLowerCase(), attack.enhanced ? 'enhanced' : 'weapon');
     const amount = df.amount;
     const took = takeDamage(t, amount);
-    log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
+    log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${riders.length ? ` (with ${riders.map((x) => `${x.name} ${x.dice ? (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat}`).join(', ')})` : ''}${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
     fallen(t, took, crit, log);
     events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
     concentrationCheck(w, t, amount, roll, log);
@@ -1237,7 +1281,7 @@
     if (!type) return { amount, note: '' };
     if (applies(t.immune)) return { amount: 0, note: 'immune' };
     let n = amount, note = '';
-    if (applies(t.resist)) { n = Math.floor(n / 2); note = 'resisted'; }
+    if (applies(t.resist) || effectsOf(t).some(([, e]) => (e.resist || []).includes(type))) { n = Math.floor(n / 2); note = 'resisted'; }
     if (applies(t.vuln)) { n *= 2; note = note ? '' : 'vulnerable'; }
     return { amount: n, note };
   }
@@ -1265,7 +1309,7 @@
     if (took.before > 0) {
       if (max && took.over >= max) { ds.f = 3; log.push({ unit: t.id, text: `${t.name} is killed outright: the damage left over is at least ${t.name}'s hit point maximum.` }); return; }
       ds.s = 0; ds.f = 0;
-      t.conditions = Array.from(new Set((t.conditions || []).concat('Unconscious', 'Prone')));
+      t.conditions = Array.from(new Set((t.conditions || []).concat('Unconscious', 'Prone'))).filter((c) => c !== 'Raging');   // a rage ends when knocked unconscious
       log.push({ unit: t.id, text: `${t.name} falls unconscious.` });
       return;
     }
@@ -1316,6 +1360,7 @@
         temp: ch ? +hp.temp || 0 : 0,
         speed: ch ? +ch.speed || 30 : +((table.npcSpeed || {})[e.id]) || 30,
         pools: ch ? Object.fromEntries(resourcesOf(ch, rules).map((r) => [r.key, r])) : {},
+        riders: ch ? ridersOf(ch, rules) : {},
         conditions: Array.from(new Set([].concat(e.conditions || [], ch ? ch.conditions || [] : []))),
         exhaustion: ch ? +ch.exhaustion || 0 : 0,
         deathSaves: ch ? { s: +((ch.deathSaves || {}).s) || 0, f: +((ch.deathSaves || {}).f) || 0 } : null,
@@ -1339,5 +1384,5 @@
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
     SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf, d20, flankOf, fixedTotal, cruel, modeName,
-    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable };
+    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, ridersOf, ridersFor };
 });
