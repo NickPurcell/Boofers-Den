@@ -42,7 +42,8 @@
   // { a: [x, y], b: [x, y], kind: 'wall' | 'door' | 'window', open }. A wall blocks sight and movement; a closed door
   // blocks both; a window blocks movement only. A world with no walls behaves exactly as before.
   const WALL_KINDS = ['wall', 'door', 'window'];
-  const blocksSight = (w) => w.kind === 'wall' || (w.kind === 'door' && !w.open);
+  // 'sight' is a map object the GM marked as blocking sight (#110): it blocks sight and gives cover, never movement or an area
+  const blocksSight = (w) => w.kind === 'wall' || w.kind === 'sight' || (w.kind === 'door' && !w.open);
   const blocksMove = (w) => w.kind === 'wall' || w.kind === 'window' || (w.kind === 'door' && !w.open);
   // do segments p1–p2 and q1–q2 meet (touching counts, so nothing slips through where two walls join)?
   function crosses(p1, p2, q1, q2) {
@@ -1229,9 +1230,11 @@
   }
 
   // walls as stored on a map: checked, rounded to 0.01 of a square, at most 2000
-  function cleanWalls(list) {
+  // kinds and max: what may come in. A map stores only WALL_KINDS, at most 2,000; a world also takes 'sight' (objects
+  // that block sight, #110: four edges for each of up to 1,500 props), which the server adds from the map and never stores
+  function cleanWalls(list, kinds = WALL_KINDS, max = 2000) {
     const n = (v) => Math.round(clampN(+v || 0, -500, 1000) * 100) / 100;
-    return (Array.isArray(list) ? list : []).slice(0, 2000).filter((w) => w && Array.isArray(w.a) && Array.isArray(w.b) && WALL_KINDS.includes(w.kind || 'wall'))
+    return (Array.isArray(list) ? list : []).slice(0, max).filter((w) => w && Array.isArray(w.a) && Array.isArray(w.b) && kinds.includes(w.kind || 'wall'))
       .map((w) => ({ id: String(w.id || '').replace(/[^a-z0-9]/g, '').slice(0, 20), a: [n(w.a[0]), n(w.a[1])], b: [n(w.b[0]), n(w.b[1])], kind: w.kind || 'wall', ...(w.kind === 'door' ? { open: !!w.open } : {}) }))
       .filter((w) => w.a[0] !== w.b[0] || w.a[1] !== w.b[1]);
   }
@@ -1270,7 +1273,7 @@
     const cur = table.turnId !== undefined ? (table.entries || []).find((e) => e.id === table.turnId) : (table.entries || [])[table.turn];
     return {
       active: !!table.active && !!cur, round: table.round || 1, turnId: cur ? cur.id : null, units,
-      spent: table.spent || {}, effects: table.effects || [], conc: table.conc || {}, walls: cleanWalls(table.walls), variants: Array.isArray(table.variants) ? table.variants.map(String) : [],
+      spent: table.spent || {}, effects: table.effects || [], conc: table.conc || {}, walls: cleanWalls(table.walls, WALL_KINDS.concat('sight'), 8000), variants: Array.isArray(table.variants) ? table.variants.map(String) : [],
     };
   }
 

@@ -2113,6 +2113,31 @@ test("under fog a player's drag can't cross a wall (#93): refused with 'A wall i
   assert.equal((await sam.act("token.move", { id: avery, x: 5, y: 5 })).code, 200, "a player can climb over the crates");
 });
 
+test("objects that block sight (#110): they hide under fog and give cover like walls, never stop a move; players get no segments", async () => {
+  const { gm, sam, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  // a stack of crates between Avery (0,0) and the Raider (6,0): x 3-4, y -1 to 2
+  await gm.act("prop.add", { src: "/api/holotable?a=packone.1", name: "Crates", x: 3, y: -1, w: 1, h: 3, rot: 0 });
+  const crate = (await gm.state()).map.props[0].id;
+  await gm.act("fight.fog", { on: true });
+  assert.ok(tokenOf(await sam.state(), "Raider"), "not marked: the crates are only a picture");
+  await gm.act("prop.update", { id: crate, fields: { blocksSight: true } });
+  let sv = await sam.state();
+  assert.equal(tokenOf(sv, "Raider"), undefined, "marked: they hide the Raider under fog");
+  assert.ok(!JSON.stringify(sv).includes('"sight"') && !sv.fight.propWalls, "players get no segments, only the effect");
+  assert.equal((await gm.state()).fight.propWalls.length, 4, "the GM's previews get the crates' four edges");
+  // in a fight, without fog: total cover from Avery
+  await gm.act("fight.fog", { on: false });
+  const r = await sam.act("fight.attack", { target: ids.raider, attack: "1" });
+  assert.equal(r.code, 400);
+  assert.match(JSON.stringify(r.data), /total cover/);
+  // the crates don't stop a move (they're for sight; HoloTable doesn't block movement by objects)
+  assert.equal((await sam.act("fight.move", { x: 3, y: 0 })).code, 200);
+  // unmarked again: the Raider is in sight
+  await gm.act("prop.update", { id: crate, fields: { blocksSight: false } });
+  assert.equal((await gm.state()).fight.propWalls.length, 0);
+});
+
 /* ---------------------------------------------------------------- creature casting (audit 9.5) */
 test("creature casting: a stat block's force or tech points and innate N/day powers become the GM's counts", () => {
   const src = require("fs").readFileSync(require("path").join(__dirname, "../sections/jpesus/holotable/combat/view.js"), "utf8");
