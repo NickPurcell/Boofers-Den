@@ -53,8 +53,31 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
   - **The other buttons:** Save, Save as new, New blank, Rename and Delete. A table can keep up to 30 scenes.
   - **Images:** an uploaded image is deleted only once nothing on the table, saved scenes included, uses it.
 - **Level ups:** the GM grants a level to the party or to chosen characters. Each player gets a pop-up and a guided wizard:
-  pick a class or multiclass, roll or take average HP, take an ability score improvement or feat, add new features and powers,
-  then see a before/after summary. The GM can level a character for a player who missed the session.
+  - **Class:** pick a class or multiclass. When an archetype is due, the class's archetypes are offered.
+  - **Hit points:** take the average, roll the die (in chat), or take the die's maximum.
+  - **Ability score improvement:** only at the levels the SW5e class table gives one (4, 8, 12, 16 and 19, plus the
+    Fighter, Monk and Operative extras); otherwise the wizard says the class gets none. +1 to two scores, +2 to one, or a
+    feat (picked from SW5e's list, with its text filled in).
+  - **Features:** the class (and archetype) features SW5e gives at the new level are added to Features & Traits automatically.
+  - **Powers:** "+ force power" / "+ tech power" open the same SW5e pickers as the sheet.
+  - Then a before/after summary. The GM can level a character for a player who missed the session.
+- **Every SW5e book** (the server fetches SW5e's lists and caches them for a week under `ht:sw5e:list:<name>`):
+  - **Player's Handbook and Expanded Content:** ◈ buttons on the sheet choose a species (adds its traits, speed and
+    languages, and can apply a fixed ability increase), a background (adds its feature and proficiencies) and an archetype
+    (adds its features up to your level). "+ from SW5e" in Features & Traits adds feats, class and archetype features,
+    maneuvers, fighting styles and masteries, and lightsaber forms, each with its full text.
+  - **Wretched Hives:** its gear and enhanced items are in the equipment picker, its feats in the feat list, its chapters
+    (downtime, factions, tools and more) in the rulebook library.
+  - **Scum and Villainy:** the GM's "☠ Add an SW5e creature" (Combat tab) adds any of its 271 creatures to initiative,
+    with AC, HP (average or rolled) and a map token. 📜 opens the stat block, and its attacks and damage roll GM-only.
+    Players never see which creature an NPC is.
+  - **Starships of the Galaxy:** a Ships tab with ship sheets (size, tier, AC, hull and shield points, speed, hyperdrive,
+    ship ability scores, saves and the 14 ship skills), crew with deployments and ranks, weapons that roll attack (Wis +
+    the crew member's proficiency) and damage (+ Str), and SotG equipment and modification pickers. Starship ventures are
+    in the feature picker. Anyone can edit the party's ships; the GM can also keep hidden (enemy) ships.
+  - **Variant Rules:** all 40 are in the library, and the GM switches on the ones the table uses (shown to everyone).
+  - **Rulebook library (Rules tab):** every chapter of each book, searchable, plus reference tables and weapon and armor
+    properties.
 - **Look:** an original sci-fi console design, with framed panels, angled tabs and glowing accents. It uses the Orbitron and
   Exo 2 fonts (SIL Open Font License, in `fonts/`), served from this folder.
 - **Colour themes (🎨):** each person picks their own look. Republic Command is the default, and there are 18 more themes in three groups: Light Side, Dark Side and

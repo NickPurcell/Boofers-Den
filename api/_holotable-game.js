@@ -98,6 +98,37 @@ const numOr = (v, d) => (v === "" || v === null || v === undefined ? d : Number.
 const optNum = (v) => numOr(v, "");   // a number, or "" meaning "not set"
 const nullNum = (v) => numOr(v, null);
 
+// ---------------------------------------------------------------- starships (Starships of the Galaxy)
+const SHIP_SIZES = ["Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"];
+const DEPLOYMENTS = ["", "Coordinator", "Gunner", "Mechanic", "Operator", "Pilot", "Technician"];
+const SHIP_SKILLS = ["astrogation", "boost", "data", "hide", "impress", "interfere", "maneuvering", "menace", "patch", "probe", "ram", "regulation", "scan", "swindle"];
+const MAX_SHIPS = 20;
+function cleanShip(sh, chars) {
+  const s = (v, n = 200) => str(v, n);
+  const list = (v, max, fn) => (Array.isArray(v) ? v.slice(0, max).filter((x) => x && typeof x === "object").map(fn) : []);
+  const pts = (o) => ({ current: clamp(int((o || {}).current), 0, 100000), max: clamp(int((o || {}).max), 0, 100000) });
+  return {
+    id: /^[a-z0-9]{6,20}$/.test(sh.id || "") ? sh.id : rid(), name: s(sh.name, 60) || "Unnamed ship", owner: s(sh.owner, 40),
+    hidden: !!sh.hidden, color: validColor(sh.color, "#90a4ae"),
+    size: SHIP_SIZES.includes(sh.size) ? sh.size : "Small", tier: clamp(int(sh.tier), 0, 5), role: s(sh.role, 60), model: s(sh.model, 80),
+    ac: clamp(int(sh.ac, 10), 0, 40), hull: pts(sh.hull), shield: pts(sh.shield),
+    hullDice: s(sh.hullDice, 20), shieldDice: s(sh.shieldDice, 20), shieldRegen: s(sh.shieldRegen, 40),
+    speed: clamp(int(sh.speed, 300), 0, 100000), turn: clamp(int(sh.turn, 0), 0, 10000), hyper: s(sh.hyper, 20),
+    fuel: s(sh.fuel, 40), cargo: s(sh.cargo, 1000), suites: s(sh.suites, 200), slots: s(sh.slots, 40),
+    abilities: Object.fromEntries(ABILS.map((a) => [a, clamp(int((sh.abilities || {})[a], 10), 1, 30)])),
+    saves: Object.fromEntries(ABILS.map((a) => [a, !!(sh.saves || {})[a]])),
+    skills: Object.fromEntries(SHIP_SKILLS.map((k) => [k, [0, 1, 2].includes(+(sh.skills || {})[k]) ? +(sh.skills || {})[k] : 0])),
+    crew: list(sh.crew, 20, (c) => ({ charId: chars[c.charId] ? c.charId : null, name: s(c.name, 60), deployment: DEPLOYMENTS.includes(c.deployment) ? c.deployment : "",
+      rank: clamp(int(c.rank), 0, 5), pb: clamp(int(c.pb, 2), 0, 10) })),
+    weapons: list(sh.weapons, 30, (w) => ({ name: s(w.name, 80), atkMisc: clamp(int(w.atkMisc), -20, 20), dmg: s(w.dmg, 40), type: s(w.type, 30),
+      range: s(w.range, 40), props: s(w.props, 300) })),
+    equipment: list(sh.equipment, 60, (e) => ({ name: s(e.name, 80), notes: s(e.notes, 300) })),
+    mods: list(sh.mods, 80, (e) => ({ name: s(e.name, 80), notes: s(e.notes, 300) })),
+    notes: s(sh.notes, 10000), updated: now(),
+  };
+}
+const cleanVariants = (v) => [...new Set((Array.isArray(v) ? v : []).slice(0, 80).map((x) => str(x, 80).trim()).filter(Boolean))];
+
 // A character sheet as the server keeps it: every number really is a number, every list is a
 // list of plain objects with string fields, images and colours are checked.
 function cleanChar(ch) {
@@ -140,7 +171,7 @@ function viewFor(camp, cid, gm, online) {
   const ini = Object.assign({}, camp.initiative);
   if (!gm) {
     ini.entries = ini.entries.filter((e) => !e.hidden)
-      .map((e) => Object.assign({}, e, e.npc ? { hp: null, maxHp: null } : {}));
+      .map((e) => Object.assign({}, e, e.npc ? { hp: null, maxHp: null, sb: undefined } : {}));
   }
   const map = Object.assign({}, camp.map);
   if (!gm) map.tokens = map.tokens.filter((t) => !t.hidden);
@@ -151,6 +182,8 @@ function viewFor(camp, cid, gm, online) {
     notes: gm ? camp.notes : null,
     handouts: (camp.handouts || []).filter((h) => gm || h.shared),
     levelUps: camp.levelUps || {},
+    variants: camp.variants || [],
+    ships: (camp.ships || []).filter((x) => gm || !x.hidden),
     scene: (camp.scenes || []).filter((x) => x.id === camp.activeScene).map((x) => ({ id: x.id, name: x.name }))[0] || null,
     scenes: gm ? (camp.scenes || []).map((x) => ({ id: x.id, name: x.name, savedAt: x.savedAt })) : null,
   };
@@ -212,13 +245,14 @@ function applyLevelUp(camp, cid, gm, p) {
   }
   const feat = p.feat && str(p.feat.name, 80).trim();
 
-  // hit points: rolled on the server (shown in chat) or the fixed average; Con changes count for every level
+  // hit points: rolled on the server (shown in chat), the fixed average, or the die's maximum (a table's choice);
+  // Con changes count for every level
   const hd = hitDieFor(k.name, p.hitDie);
   if (p.asi) for (const [ab, v] of Object.entries(p.asi)) ch.abilities[ab] = num(ch.abilities[ab], 10) + int(v);
   const newCon = abMod(ch, "con");
   const die = p.hpMode === "roll"
     ? doRoll(camp, cid, `1d${hd}`, `${ch.name}: level ${before + 1} hit points (d${hd})`, ch.id, false, "hp").total
-    : hd / 2 + 1;
+    : p.hpMode === "max" ? hd : hd / 2 + 1;
   const gain = Math.max(1, die + newCon) + (newCon - oldCon) * before;
   ch.hp = ch.hp || {};
   ch.hp.max = num(ch.hp.max) + gain;
@@ -230,12 +264,13 @@ function applyLevelUp(camp, cid, gm, p) {
   ch.powers = Array.isArray(ch.powers) ? ch.powers : [];
   if (feat) ch.features.push({ name: feat, text: `Feat (level ${before + 1})` + (p.feat.text ? "\n" + str(p.feat.text, 4000) : "") });
   for (const f of (Array.isArray(p.features) ? p.features : []).slice(0, 20)) {
-    if (f && str(f.name, 80).trim()) ch.features.push({ name: str(f.name, 80).trim(), text: str(f.text, 4000) });
+    const name = f && str(f.name, 80).trim();
+    if (name && !ch.features.some((x) => String(x.name || "").toLowerCase() === name.toLowerCase())) ch.features.push({ name, text: str(f.text, 4000) });
   }
   for (const pw of (Array.isArray(p.powers) ? p.powers : []).slice(0, 20)) {
     if (!pw || !str(pw.name, 80).trim()) continue;
     ch.powers.push({ name: str(pw.name, 80).trim(), level: clamp(int(pw.level), 0, 9), type: pw.type === "tech" ? "tech" : "force",
-      alignment: ["light", "dark"].includes(pw.alignment) ? pw.alignment : "universal", notes: str(pw.notes, 300) });
+      alignment: ["light", "dark"].includes(pw.alignment) ? pw.alignment : "universal", notes: str(pw.notes, 300), description: str(pw.description, 4000) });
   }
   ch.updated = now();
   pend.count -= 1;
@@ -397,6 +432,7 @@ function applyAction(camp, cid, gm, type, p) {
         name: str(p.name || ch.name || "Combatant", 60), init: num(init), charId, npc: !charId,
         hidden: !!p.hidden && gm, hp: nullNum(charId ? hp.current : p.hp), maxHp: nullNum(charId ? hp.max : p.hp),
         ac: nullNum(charId ? ch.ac : p.ac), dexTie: num(p.bonus) / 100, conditions: entry.conditions || [],
+        sb: !charId && gm && p.sb ? str(p.sb, 80) : undefined,
       });
       sortInit(ini);
       return {};
@@ -632,6 +668,31 @@ function applyAction(camp, cid, gm, type, p) {
       (camp.players[cid] = camp.players[cid] || {}).name = str(p.name, 40) || "Player";
       return {};
     case "chat.clear": need(gm); camp.chat = []; return {};
+
+    // ---- which SW5e variant rules this table uses (the GM decides; everyone sees the list)
+    case "variants.set": need(gm); camp.variants = cleanVariants(p.variants); return {};
+
+    // ---- starships: the party's ships can be edited by anyone at the table; hidden (enemy) ships only by the GM
+    case "ship.save": {
+      if (!p.ship || typeof p.ship !== "object" || Array.isArray(p.ship)) throw new Invalid("bad ship");
+      camp.ships = camp.ships || [];
+      const i = camp.ships.findIndex((x) => x.id === p.ship.id);
+      const old = i >= 0 ? camp.ships[i] : null;
+      if (old) need(gm || !old.hidden, "That ship is the GM's.");
+      else if (camp.ships.length >= MAX_SHIPS) throw new Invalid(`A table can have up to ${MAX_SHIPS} ships.`);
+      const sh = cleanShip(Object.assign({}, p.ship, { id: old ? old.id : rid(), owner: old ? old.owner : cid }), chars);
+      if (!gm) sh.hidden = old ? old.hidden : false;
+      if (old) camp.ships[i] = sh; else camp.ships.push(sh);
+      return { id: sh.id };
+    }
+    case "ship.delete": {
+      camp.ships = camp.ships || [];
+      const sh = camp.ships.find((x) => x.id === p.id);
+      if (!sh) return {};
+      need(gm || (sh.owner === cid && !sh.hidden), "Only the GM or the ship's creator can delete it.");
+      camp.ships = camp.ships.filter((x) => x.id !== p.id);
+      return {};
+    }
   }
   throw new Invalid("unknown action " + str(type, 40));
 }
@@ -659,12 +720,15 @@ function cleanGame(g) {
     entries: (Array.isArray(ini.entries) ? ini.entries : []).slice(0, 300).filter((e) => e && typeof e === "object").map((e) => ({
       id: /^[a-z0-9]{6,20}$/.test(e.id || "") ? e.id : rid(), name: str(e.name, 60), init: n(e.init, 0), charId: g.characters[e.charId] ? e.charId : null,
       npc: !!e.npc, hidden: !!e.hidden, hp: nullNum(e.hp), maxHp: nullNum(e.maxHp), ac: nullNum(e.ac), dexTie: n(e.dexTie, 0),
+      sb: e.npc && e.sb ? str(e.sb, 80) : undefined,
       conditions: (Array.isArray(e.conditions) ? e.conditions : []).slice(0, 20).map((c) => str(c, 30)) })),
   };
   g.handouts = (Array.isArray(g.handouts) ? g.handouts : []).slice(0, 100).filter((h) => h && typeof h === "object").map((h) => ({
     id: /^[a-z0-9]{6,20}$/.test(h.id || "") ? h.id : rid(), title: str(h.title, 200), text: str(h.text, 20000), img: validImg(h.img), shared: !!h.shared }));
   g.chat = (Array.isArray(g.chat) ? g.chat : []).slice(-CHAT_LIMIT).filter((c) => c && typeof c === "object");
   g.notes = str(g.notes, 500000);
+  g.variants = cleanVariants(g.variants);
+  g.ships = (Array.isArray(g.ships) ? g.ships : []).slice(0, MAX_SHIPS).filter((x) => x && typeof x === "object").map((x) => cleanShip(x, g.characters));
   g.scenes = (Array.isArray(g.scenes) ? g.scenes : []).slice(0, 30).filter((x) => x && typeof x === "object")
     .map((x) => ({ id: /^[a-z0-9]{6,20}$/.test(x.id || "") ? x.id : rid(), name: str(x.name, 60) || "Scene", savedAt: num(x.savedAt, now()), map: cleanMap(g, x.map) }));
   if (!g.scenes.some((x) => x.id === g.activeScene)) g.activeScene = null;
@@ -675,6 +739,6 @@ function cleanGame(g) {
 
 module.exports = {
   cleanGame,
-  rollDice, blankCampaign, playerName, addChat, viewFor, applyAction, validImg, validColor, cleanChar, rid,
+  rollDice, blankCampaign, playerName, addChat, viewFor, applyAction, validImg, validColor, cleanChar, cleanShip, rid,
   Forbidden, Invalid, IMG_PREFIX,
 };

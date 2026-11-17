@@ -16,7 +16,6 @@ process.env.HOLOTABLE_GM_PASSWORD = GM_PW;
 const S = require("../api/_holotable-store.js");
 const G = require("../api/_holotable-game.js");
 const handler = require("../api/holotable.js");
-handler.SW5E_HOLD.on = false;   // the SW5e tests below exercise the fetch code under the temporary hold (#55)
 let db = new HoloFake();
 let sub = null;
 S.getClient = () => db;
@@ -694,24 +693,91 @@ test("SW5e lists: a failed fetch isn't retried for a minute, and only one reques
   } finally { global.fetch = realFetch; }
 });
 
-// Temporary hold (#55): while the site owner's OK is pending, the SW5e routes refuse before fetching anything.
-test("SW5e hold: the lists answer 503 and nothing is fetched; adding by hand still works", async () => {
+test("SW5e books: every other list comes through op=sw5e, trimmed, from fixed paths only", async () => {
+  const { p1 } = await table();
   const realFetch = global.fetch;
-  let calls = 0;
-  global.fetch = async () => { calls++; throw new Error("should not be called"); };
-  handler.SW5E_HOLD.on = true;
+  const urls = [];
+  global.fetch = async (url) => {
+    urls.push(String(url));
+    const path = String(url).split("/api/")[1];
+    const data = {
+      species: [{ name: "Bith", contentSource: "PHB", size: "Medium", language: "Bith", traits: [{ name: "Ability Score Increase", description: "+2 Int, +1 Dex" }, { name: "Speed", description: "Your base walking speed is 30 feet." }, { name: "Trance", description: "You meditate." }],
+        abilitiesIncreased: [[{ abilities: ["Intelligence"], amount: 2 }, { abilities: ["Dexterity"], amount: 1 }]] },
+        { name: "Human", contentSource: "PHB", traits: [], abilitiesIncreased: [[{ abilities: ["Any one"], amount: 2 }], [{ abilities: ["Any four"], amount: 1 }]] }],
+      feature: [{ name: "Rage", level: 1, source: "Class", sourceName: "Berserker", text: "Rage.\r\nHard." }, { name: "Keen Senses", level: 1, source: "Species", sourceName: "Bith", text: "x" }],
+      monster: [{ name: "Death Trooper", size: "Medium", types: ["humanoid"], armorClass: 16, hitPoints: 97, hitPointRoll: "15d8 + 30", speeds: "30 ft.", dexterity: 19, challengeRating: "6", contentSource: "SnV",
+        behaviors: [{ name: "Blaster", monsterBehaviorType: "Action", attackType: "RangedWeapon", attackBonus: 7, damageRoll: "2d6 + 4", damageType: "Energy", descriptionWithLinks: "Ranged: [blaster](#blaster) shot." }] }],
+      variantRule: [{ chapterName: "Flanking", chapterNumber: 0, contentMarkdown: "# Flanking\r\nText." }],
+    }[path];
+    return { ok: true, text: async () => JSON.stringify(data || []) };
+  };
   try {
-    const { gm, p1 } = await table();
-    for (const q of [{ op: "powers" }, { op: "equipment", set: "standard" }, { op: "equipment", set: "enhanced" }]) {
-      const r = await p1.call("GET", q);
-      assert.equal(r.code, 503);
-      assert.match(r.data.error, /switched on/);
-    }
-    assert.equal(calls, 0, "no outbound request while held");
-    assert.equal(await db.get(S.K.powers()), null);
-    const id = (await p1.act("char.save", { char: { name: "Kira", powers: [{ name: "Force Push", level: 1, type: "force" }], equipment: [{ name: "Medpac", qty: 2 }] } })).data.id;
-    const ch = (await gm.poll()).data.state.characters[id];
-    assert.equal(ch.powers[0].name, "Force Push");
-    assert.equal(ch.equipment[0].name, "Medpac");
-  } finally { handler.SW5E_HOLD.on = false; global.fetch = realFetch; }
+    assert.equal((await browser().call("GET", { op: "sw5e", list: "species" })).code, 401, "needs a session");
+    assert.equal((await p1.call("GET", { op: "sw5e", list: "../power" })).code, 404, "only the fixed list names");
+    assert.equal((await p1.call("GET", { op: "sw5e", list: "powers" })).code, 404, "the older lists keep their own routes");
+    const sp = JSON.parse((await p1.call("GET", { op: "sw5e", list: "species" })).data);
+    assert.deepEqual(sp.find((x) => x.n === "Bith").asi, { int: 2, dex: 1 }, "a fixed ability increase is recognised");
+    assert.equal(sp.find((x) => x.n === "Human").asi, null, "a player's-choice increase is left to the player");
+    const ft = JSON.parse((await p1.call("GET", { op: "sw5e", list: "features" })).data);
+    assert.deepEqual(ft.map((x) => [x.n, x.lvl, x.k, x.of, x.text]), [["Rage", 1, "class", "Berserker", "Rage.\nHard."]], "class/archetype features only");
+    const mon = JSON.parse((await p1.call("GET", { op: "sw5e", list: "monsters" })).data)[0];
+    assert.deepEqual([mon.n, mon.ac, mon.hp, mon.ab.dex, mon.b[0].atk, mon.b[0].dmg, mon.b[0].d], ["Death Trooper", 16, 97, 19, 7, "2d6 + 4", "Ranged: blaster shot."]);
+    const vr = JSON.parse((await p1.call("GET", { op: "sw5e", list: "rules-variant" })).data);
+    assert.equal(vr[0].n, "Flanking");
+    await p1.call("GET", { op: "sw5e", list: "species" });
+    assert.deepEqual(urls.map((u) => u.replace("https://sw5eapi.azurewebsites.net/api/", "")), ["species", "feature", "monster", "variantRule"], "each fetched once, from SW5e's fixed address");
+  } finally { global.fetch = realFetch; }
+});
+
+test("variant rules and creature stat blocks: GM decides, players see only what they should", async () => {
+  const { gm, p1 } = await table();
+  assert.equal((await p1.act("variants.set", { variants: ["Flanking"] })).code, 403);
+  await gm.act("variants.set", { variants: ["Flanking", "Flanking", "Called Shots", ""] });
+  assert.deepEqual((await p1.poll()).data.state.variants, ["Flanking", "Called Shots"]);
+  await gm.act("init.add", { name: "Trooper 1", bonus: 4, hp: 97, ac: 16, sb: "Death Trooper" });
+  assert.equal((await gm.poll()).data.state.initiative.entries[0].sb, "Death Trooper");
+  const seen = (await p1.poll()).data.state.initiative.entries[0];
+  assert.equal(seen.sb, undefined, "players don't learn which creature it is");
+  assert.equal(seen.hp, null);
+  await p1.act("char.save", { char: { name: "Kira" } });
+  const kira = Object.values((await p1.poll()).data.state.characters)[0];
+  await p1.act("init.add", { charId: kira.id, name: "Kira", bonus: 2, sb: "Death Trooper" });
+  assert.equal((await gm.poll()).data.state.initiative.entries.find((e) => e.charId).sb, undefined, "only GM NPCs carry a stat block");
+});
+
+test("starships: party ships are shared, hidden ships are the GM's, and everything is cleaned", async () => {
+  const { gm, p1, p2 } = await table();
+  const made = await p1.act("ship.save", { ship: { name: "Ebon Hawk", size: "Medium", tier: 9, ac: "15", hull: { current: 40, max: 50 }, hidden: true,
+    abilities: { str: 14, dex: 99 }, skills: { boost: 2, hack: 1 }, crew: [{ charId: "nobody", name: "Kira", deployment: "Pilot", rank: 7 }, { deployment: "Smuggler" }],
+    weapons: [{ name: "Quad laser", dmg: "2d4", type: "energy", atkMisc: 1 }], notes: "x".repeat(20000) } });
+  assert.equal(made.code, 200);
+  let sh = (await p2.poll()).data.state.ships[0];
+  assert.deepEqual([sh.name, sh.size, sh.tier, sh.ac, sh.hull.current, sh.abilities.dex, sh.abilities.con, sh.hidden], ["Ebon Hawk", "Medium", 5, 15, 40, 30, 10, false], "players can't hide ships; numbers are clamped");
+  assert.deepEqual([sh.skills.boost, sh.skills.hack, sh.crew[0].charId, sh.crew[0].rank, sh.crew[1].deployment, sh.notes.length], [2, undefined, null, 5, "", 10000]);
+  sh.hull.current = 12;
+  assert.equal((await p2.act("ship.save", { ship: sh })).code, 200, "anyone at the table can update a party ship");
+  assert.equal((await gm.poll()).data.state.ships[0].hull.current, 12);
+  assert.equal((await p2.act("ship.delete", { id: sh.id })).code, 403, "only the GM or the ship's creator deletes it");
+  await gm.act("ship.save", { ship: { name: "Imperial Interdictor", hidden: true } });
+  assert.equal((await p1.poll()).data.state.ships.length, 1, "hidden ships stay with the GM");
+  const enemy = (await gm.poll()).data.state.ships.find((x) => x.hidden);
+  assert.equal((await p1.act("ship.save", { ship: Object.assign({}, enemy, { name: "mine now" }) })).code, 403);
+  assert.equal((await p1.act("ship.delete", { id: sh.id })).code, 200);
+  assert.deepEqual((await gm.poll()).data.state.ships.map((x) => x.name), ["Imperial Interdictor"]);
+});
+
+test("level-up wizard: maximum hit points, SW5e class features added once, picked powers keep their text", async () => {
+  const { gm, p1 } = await table();
+  const kira = (await p1.act("char.save", { char: { name: "Kira", classes: [{ name: "Fighter", level: 1 }], abilities: { con: 14 }, hp: { max: 12, current: 12 },
+    features: [{ name: "Second Wind", text: "already here" }] } })).data.id;
+  await gm.act("levelup.grant", { charIds: [kira] });
+  const r = await p1.act("levelup.apply", { charId: kira, className: "Fighter", hpMode: "max",
+    features: [{ name: "Action Surge", text: "Class feature (Fighter, level 2)" }, { name: "second wind", text: "duplicate" }],
+    powers: [{ name: "Force Push", level: 1, type: "force", alignment: "universal", description: "Shove." }] });
+  assert.equal(r.code, 200);
+  assert.equal(r.data.hpGain, 10 + 2, "the full d10 plus Con");
+  const ch = (await gm.poll()).data.state.characters[kira];
+  assert.equal(ch.hp.max, 24);
+  assert.deepEqual(ch.features.map((f) => f.name), ["Second Wind", "Action Surge"], "a feature already on the sheet isn't added twice");
+  assert.equal(ch.powers[0].description, "Shove.");
 });

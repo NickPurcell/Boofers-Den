@@ -196,6 +196,11 @@
     guarded('combat', renderCombat);
     guarded('handouts', renderHandouts);
     guarded('gm', renderGM);
+    if (window.HTB) {
+      HTB.renderShipsSafe();
+      const v = JSON.stringify(S.st.variants || []);
+      if (v !== S.variantsSeen) { S.variantsSeen = v; if (!$('#rules .lib') && !($('#rulesSearch') || {}).value) renderRules(); }
+    }
     renderMapTools(); loadMapBg(); drawMap();
     renderChat();
   }
@@ -396,15 +401,15 @@
       <div class="sheet-title">
         ${inp('name', ch.name, { ro, cls: 'name' })}
         <div class="row wrap">
-          ${inp('species', ch.species, { ro, list: 'dlSpecies', ph: 'Species', w: '150px' })}
-          ${inp('background', ch.background, { ro, list: 'dlBg', ph: 'Background', w: '150px' })}
+          <span class="pick-wrap">${inp('species', ch.species, { ro, list: 'dlSpecies', ph: 'Species', w: '150px' })}${!ro ? '<button class="btn tiny ghost" data-act="pick-species" title="Choose a species from SW5e (adds its traits)">◈</button>' : ''}</span>
+          <span class="pick-wrap">${inp('background', ch.background, { ro, list: 'dlBg', ph: 'Background', w: '150px' })}${!ro ? '<button class="btn tiny ghost" data-act="pick-background" title="Choose a background from SW5e (adds its feature)">◈</button>' : ''}</span>
           ${inp('alignment', ch.alignment, { ro, ph: 'Alignment', w: '130px' })}
           <span class="muted">Level ${lvl} · Player: ${esc(owner)}</span>
         </div>
         <div class="row wrap">${(ch.classes || []).map((k, i) => `
           <span class="row">${inp(`classes.${i}.name`, k.name, { ro, list: 'dlClasses', w: '110px' })}
           ${inp(`classes.${i}.level`, +k.level || 1, { ro, type: 'number', w: '58px' })}
-          ${inp(`classes.${i}.archetype`, k.archetype || '', { ro, ph: 'Archetype', w: '130px' })}
+          ${inp(`classes.${i}.archetype`, k.archetype || '', { ro, ph: 'Archetype', w: '130px' })}${!ro ? `<button class="btn tiny ghost" data-act="pick-archetype" data-i="${i}" title="Choose a ${esc(k.name)} archetype from SW5e (adds its features)">◈</button>` : ''}
           ${!ro && ch.classes.length > 1 ? `<button class="btn tiny ghost" data-act="del-class" data-i="${i}">✕</button>` : ''}</span>`).join('')}
           ${!ro ? '<button class="btn tiny" data-act="add-class">＋ multiclass</button>' : ''}
         </div>
@@ -519,7 +524,7 @@
             <td>${inp(`equipment.${i}.equipped`, e.equipped, { ro, type: 'checkbox' })}</td>
             <td>${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">Empty.</td></tr>'}
           </tbody></table></div>
-        <div class="box"><h4>Features & Traits <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="add-feature">＋ feature</button>' : ''}</h4>
+        <div class="box"><h4>Features & Traits <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-feature" title="Feats, class features, maneuvers, fighting styles, lightsaber forms, ventures">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-feature" title="Write a feature by hand">custom</button>' : ''}</h4>
           <div class="feature-list">${(ch.features || []).map((f, i) => `<div class="feature-row">
             <span class="feature-name" data-feature-tip="${i}" tabindex="0">${esc(f.name || 'Feature')}</span>
             <span class="spacer"></span>
@@ -646,6 +651,10 @@
       case 'pick-power': openPowerPicker(ch.id, b.dataset.kind); break;
       case 'pick-equip': openEquipPicker(ch.id); break;
       case 'pick-weapon': openEquipPicker(ch.id, { weapons: true }); break;
+      case 'pick-species': HTB.openSpeciesPicker(ch.id); break;
+      case 'pick-background': HTB.openBackgroundPicker(ch.id); break;
+      case 'pick-archetype': HTB.openArchetypePicker(ch.id, i); break;
+      case 'pick-feature': HTB.openFeaturePicker(ch.id); break;
       case 'del': mutate(c => c[b.dataset.list].splice(i, 1)); break;
       case 'atk': { const at = ch.attacks[i]; roll(d20(R.attackBonus(ch, at)), `${at.name} — attack`, { d20: true, mode: rollModeFromEvent(e), charId: ch.id, kind: 'attack' }); break; }
       case 'dmg': { const at = ch.attacks[i]; roll(R.damageExpr(ch, at), `${at.name} — ${at.type || ''} damage`, { charId: ch.id, kind: 'damage' }); break; }
@@ -833,7 +842,9 @@
     return (POWER_LIST = j);
   }
   const ALIGN = { light: 'Light', dark: 'Dark', universal: 'Universal' };
-  function openPowerPicker(charId, kind) {
+  // opts.onAdd(power): hand the picked power to someone else (the level-up wizard) instead of the sheet;
+  // opts.onDone(): called by Done; opts.taken(): names already picked there
+  function openPowerPicker(charId, kind, opts = {}) {
     const force = kind !== 'tech';
     const F = { level: 'all', align: new Set(['light', 'dark', 'universal']), q: '', limit: 120 };
     modal(`<div id="pp" class="power-picker"><h3>${force ? '＋ Add a force power' : '＋ Add a tech power'}</h3><p class="muted">Loading the SW5e power list…</p></div>`, async box => {
@@ -842,7 +853,7 @@
       try { list = (await powerList()).filter(p => p.t === (force ? 'force' : 'tech')); }
       catch (err) { pp.innerHTML = `<h3>${force ? 'Force' : 'Tech'} powers</h3><p class="error">${esc(err.message)}</p><div class="row"><span class="spacer"></span><button class="btn" data-pp="close">Close</button></div>`; pp.onclick = e => { if (e.target.dataset.pp === 'close') closeModal(); }; return; }
       const ch = () => S.st.characters[charId];
-      const known = () => new Set((ch() ? ch().powers : []).map(p => String(p.name).toLowerCase()));
+      const known = () => new Set([...(ch() ? ch().powers : []).map(p => String(p.name).toLowerCase()), ...(opts.taken ? opts.taken() : [])]);
       const ci = () => R.casterInfo(ch() || {});
       const shown = () => list.filter(p => (F.level === 'all' || p.l === +F.level) && (!force || F.align.has(p.a))
         && (!F.q || p.n.toLowerCase().includes(F.q)));
@@ -883,13 +894,14 @@
       pp.addEventListener('input', e => { if (e.target.dataset.pp === 'q') { F.q = e.target.value.trim().toLowerCase(); F.limit = 120; render(); } });
       pp.addEventListener('click', e => {
         const b = e.target.closest('[data-pp]'); if (!b) return;
-        if (b.dataset.pp === 'close') return closeModal();
+        if (b.dataset.pp === 'close') return opts.onDone ? opts.onDone() : closeModal();
         if (b.dataset.pp === 'more') { F.limit += 200; return render(); }
         if (b.dataset.pp === 'add') {
           const p = list.find(x => x.n === b.closest('.pp-row').dataset.n); if (!p) return;
           const notes = [p.ct, p.r && 'Range ' + p.r, p.d, p.c && !/concentration/i.test(p.d) ? 'Concentration' : ''].filter(Boolean).join(' · ');
           const desc = p.desc + (p.hl ? '\n\nAt higher levels. ' + p.hl : '');
-          mutate(c => c.powers.push({ name: p.n, level: p.l, type: force ? 'force' : 'tech', alignment: force ? p.a : 'universal', notes: notes.slice(0, 300), description: desc.slice(0, 4000) }));
+          const pw = { name: p.n, level: p.l, type: force ? 'force' : 'tech', alignment: force ? p.a : 'universal', notes: notes.slice(0, 300), description: desc.slice(0, 4000) };
+          if (opts.onAdd) opts.onAdd(pw); else mutate(c => c.powers.push(pw));
           b.textContent = '✓ Added'; b.disabled = true; b.classList.replace('primary', 'ghost');
           toast(`Added ${p.n}`);
         }
@@ -914,9 +926,10 @@
       <div class="hc-sub">${lvl ? 'Level ' + lvl : 'At-will'} · ${side} ${tech ? 'power' : 'force power'}</div>
       <div class="hc-stats"><span>Cost <b>${cost ? cost + (tech ? ' TP' : ' FP') : 'free'}</b></span><span>Save DC <b>${n0(dc)}</b></span><span>Attack <b>${R.fmt(n0(atk))}</b></span></div>
       ${pw.notes ? `<div class="hc-notes">${esc(pw.notes)}</div>` : ''}
-      ${desc ? `<div class="hc-desc">${md(desc.length > 900 ? desc.slice(0, 900) + '…' : desc)}</div>`
+      ${desc ? `<div class="hc-desc">${richText(desc.length > 900 ? desc.slice(0, 900) + '…' : desc)}</div>`
         : `<div class="hc-desc muted">No description yet${canEdit(ch) ? '. Click ✎ to add one.' : '.'}</div>`}`;
   }
+  const richText = s => (window.HTB ? HTB.mdBlock(s, { shift: 3, breaks: true }).html : md(s));
   function placeTip(x, y) {
     const r = tip.getBoundingClientRect(), pad = 14;
     let left = x + pad, top = y + pad;
@@ -929,7 +942,7 @@
     if (!f) return;
     const text = String(f.text || '').trim();
     tip.innerHTML = `<div class="hc-title">${esc(f.name || 'Feature')}</div>
-      ${text ? `<div class="hc-desc">${md(text.length > 1500 ? text.slice(0, 1500) + '…' : text)}</div>` : '<div class="hc-desc muted">No description.</div>'}`;
+      ${text ? `<div class="hc-desc">${richText(text.length > 1500 ? text.slice(0, 1500) + '…' : text)}</div>` : '<div class="hc-desc muted">No description.</div>'}`;
     tip.classList.remove('hidden'); placeTip(x, y);
   }
   function showPowerTip(row, x, y) {
@@ -961,7 +974,9 @@
       <label>Count<input id="npcCount" type="number" value="1" min="1" max="20"></label>
       <label class="toggle"><input type="checkbox" id="npcHidden"> hidden</label>
       <button class="btn primary" data-cact="add-npc">Add</button></div>
-      <label class="toggle" style="margin-top:6px"><input type="checkbox" id="npcToken" checked> also place map tokens</label></div>`;
+      <div class="row wrap" style="margin-top:6px"><label class="toggle"><input type="checkbox" id="npcToken" checked> also place map tokens</label>
+        <label class="toggle" title="For SW5e creatures: roll each one's hit dice instead of taking the average"><input type="checkbox" id="npcRollHp"> roll creature HP</label>
+        <span class="spacer"></span><button class="btn small amber" data-cact="add-creature">☠ Add an SW5e creature…</button></div></div>`;
     html += `<div class="init-list">${ini.entries.map((en, i) => {
       const ch = en.charId && S.st.characters[en.charId];
       const canHp = gm || (ch && ch.owner === clientId);
@@ -973,7 +988,7 @@
           ${gm || canHp ? `<select data-cf="add-cond" style="font-size:12px;padding:1px 4px"><option value="">+ condition</option>${Object.keys(R.CONDITIONS).map(c => `<option>${c}</option>`).join('')}</select>` : ''}</div></div>
         <div class="hp">${hp !== '' ? (canHp ? `HP <input data-cf="hp" value="${esc(hp)}" title="Type a number, or -7 / +5">` : `HP ${esc(hp)}`) + (en.maxHp != null ? ` <span class="muted">/ ${n0(en.maxHp)}</span>` : '') : ''}</div>
         <div class="muted">${en.ac != null ? 'AC ' + esc(en.ac) : ''}</div>
-        <div>${gm ? `<button class="btn tiny" data-cact="hide" title="Toggle hidden">${en.hidden ? '👁' : '◌'}</button> <button class="btn tiny ghost" data-cact="remove">✕</button>` : ''}</div></div>`;
+        <div>${gm && en.sb ? `<button class="btn tiny" data-cact="statblock" title="${esc(en.sb)} stat block">📜</button> ` : ''}${gm ? `<button class="btn tiny" data-cact="hide" title="Toggle hidden">${en.hidden ? '👁' : '◌'}</button> <button class="btn tiny ghost" data-cact="remove">✕</button>` : ''}</div></div>`;
     }).join('') || '<p class="muted">No combatants yet. Players: click “Roll initiative” on your sheet. GM: add enemies above.</p>'}</div>`;
     el.innerHTML = html;
   }
@@ -986,6 +1001,8 @@
     if (a === 'prev') act('init.prev');
     if (a === 'clear' && confirm('End combat and clear the initiative order?')) act('init.clear');
     if (a === 'remove') act('init.remove', { id });
+    if (a === 'add-creature') HTB.openMonsterPicker();
+    if (a === 'statblock' && en && en.sb) HTB.openStatBlock(en.sb);
     if (a === 'hide') act('init.update', { id, fields: { hidden: !en.hidden } });
     if (a === 'init-up' || a === 'init-down') { // GM's fixed ▲/▼ beside the number: step by 1 from what the field shows
       const box = row.querySelector('[data-cf="init"]'), v = n0(box.value) + (a === 'init-up' ? 1 : -1);
@@ -1595,7 +1612,7 @@
     const f = filter.toLowerCase();
     const match = (...s) => !f || s.join(' ').toLowerCase().includes(f);
     const sec = (t, b) => match(t, b.replace(/<[^>]+>/g, '')) ? `<div class="box rule"><h4>${t}</h4><div>${b}</div></div>` : '';
-    let html = `<input class="rules-search" id="rulesSearch" placeholder="Search rules, conditions, classes, weapons…" value="${esc(filter)}">`;
+    let html = (window.HTB ? HTB.libraryBar() : '') + `<input class="rules-search" id="rulesSearch" placeholder="Search rules, conditions, classes, weapons…" value="${esc(filter)}">`;
     html += R.REFERENCE.map(r => sec(r.title, r.body)).join('');
     const conds = Object.entries(R.CONDITIONS).filter(([k, v]) => match(k, v, 'condition'));
     if (conds.length) html += `<div class="box rule"><h4>Conditions</h4>${conds.map(([k, v]) => `<div style="margin-bottom:6px"><b>${k}.</b> ${esc(v)}</div>`).join('')}</div>`;
@@ -1607,7 +1624,7 @@
     const wp = R.WEAPONS.filter(w => match(w.name, w.props, w.type, 'weapon'));
     if (wp.length) html += `<div class="box rule"><h4>Starter weapons</h4><table class="t"><thead><tr><th>Weapon</th><th>Damage</th><th>Properties</th></tr></thead><tbody>
       ${wp.map(w => `<tr><td>${esc(w.name)}</td><td>${w.damage} ${w.type}</td><td>${esc(w.props)}</td></tr>`).join('')}</tbody></table></div>`;
-    html += `<p class="muted" style="font-size:12px">Summaries for quick reference. Full rules: the SW5e Player's Handbook at sw5e.com. Values listed as defaults can be overridden on any sheet.</p>`;
+    html += `<p class="muted" style="font-size:12px">Summaries for quick reference; the full books are in the rulebook library above. Values listed as defaults can be overridden on any sheet.</p>`;
     $('#rules').innerHTML = html;
     if (filter) { const inpEl = $('#rulesSearch'); inpEl.focus(); inpEl.setSelectionRange(filter.length, filter.length); }
   }
@@ -2006,14 +2023,33 @@
     });
   }
 
-  function openWizard(charId) {
+  function openWizard(charId, resume) {
     const ch0 = S.st.characters[charId];
     if (!ch0) return;
     if (!pendingFor(charId)) return toast('The GM hasn\'t granted this character a level yet.', true);
-    const W = { cls: ch0.classes[0].name, newCls: '', archetype: '', hpMode: 'average', asiOn: null, asiMode: 'two', a1: 'str', a2: 'dex', featName: '', featText: '', features: [], powers: [] };
+    const W = resume || { cls: ch0.classes[0].name, newCls: '', archetype: '', hpMode: 'average', asiMode: 'two', a1: 'str', a2: 'dex', featName: '', featText: '', powers: [],
+      auto: [], autoKey: '', autoState: '', archList: [], featList: [] };
     modal('<div id="wiz"></div>', box => {
       const wiz = $('#wiz', box);
-      const render = () => { wiz.innerHTML = wizardHtml(charId, W); };
+      // SW5e's class/archetype features for the level being gained (fetched once per class/level/archetype)
+      const suggest = () => {
+        if (!window.HTB) return;
+        const P = wizardPlan(charId, W);
+        const arch = (P.k && P.k.archetype) || W.archetype.trim();
+        const key = `${P.cls}|${P.newClassLevel}|${arch}`;
+        if (!P.cls || key === W.autoKey) return;
+        W.autoKey = key; W.autoState = 'loading'; W.auto = [];
+        HTB.levelFeatures(P.cls, P.newClassLevel, arch).then(list => {
+          if (W.autoKey !== key) return;
+          const have = new Set(S.st.characters[charId].features.map(f => String(f.name).toLowerCase()));
+          W.auto = list.map(f => Object.assign(f, { have: have.has(f.name.toLowerCase()) })); W.autoState = 'ok'; draw();
+        }).catch(err => { if (W.autoKey === key) { W.autoState = err.message; draw(); } });
+        HTB.archetypesOf(P.cls).then(a => { W.archList = a; draw(); }).catch(() => {});
+      };
+      if (window.HTB) HTB.featNames().then(f => { W.featList = f; draw(); }).catch(() => {});
+      const draw = () => { const a = document.activeElement, id = a && a.dataset && a.dataset.w, pos = a && a.selectionStart; wiz.innerHTML = wizardHtml(charId, W);
+        if (id) { const el = wiz.querySelector(`[data-w="${id}"]`); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch { /* not a text box */ } } } };
+      const render = () => { draw(); suggest(); };
       wiz.addEventListener('input', e => {
         const t = e.target, f = t.dataset.w;
         if (!f) return;
@@ -2024,6 +2060,11 @@
           return;
         }
         if (t.type === 'text' || t.tagName === 'TEXTAREA') W[f] = t.value;
+      });
+      wiz.addEventListener('focusout', e => {   // a typed archetype or feat name: look up SW5e's text
+        const f = e.target.dataset && e.target.dataset.w;
+        if (f === 'archetype') suggest();
+        if (f === 'featName' && window.HTB && W.featName.trim() && !W.featText.trim()) HTB.featNamed(W.featName).then(x => { if (x && !W.featText.trim()) { W.featText = x.text; draw(); } }).catch(() => {});
       });
       wiz.addEventListener('change', e => {
         const t = e.target, f = t.dataset.w;
@@ -2038,9 +2079,10 @@
         e.preventDefault();
         const a = b.dataset.wa;
         if (a === 'cancel') return closeModal();
-        if (a === 'add-feature') { W.features.push({ name: '', text: '' }); render(); }
-        if (a === 'add-power') { W.powers.push({ name: '', level: 1, type: 'force' }); render(); }
-        if (a === 'rm-feature') { W.features.splice(+b.dataset.i, 1); render(); }
+        if (a === 'pick-power') {   // the same SW5e picker as on the sheet; Done comes back here
+          return openPowerPicker(charId, b.dataset.kind, { taken: () => W.powers.map(x => x.name.toLowerCase()),
+            onAdd: pw => W.powers.push(pw), onDone: () => openWizard(charId, W) });
+        }
         if (a === 'rm-power') { W.powers.splice(+b.dataset.i, 1); render(); }
         if (a === 'go') {
           const plan = wizardPlan(charId, W);
@@ -2049,7 +2091,7 @@
           const r = await act('levelup.apply', plan.payload);
           if (!r) { b.disabled = false; return; }
           closeModal();
-          toast(`Level ${r.level}! HP +${r.hpGain}${plan.payload.hpMode === 'roll' ? ` (rolled ${r.die})` : ''}`);
+          toast(`Level ${r.level}! HP +${r.hpGain}${plan.payload.hpMode === 'roll' ? ` (rolled ${r.die})` : ''}${plan.payload.features.length ? ` · ${plan.payload.features.length} feature${plan.payload.features.length > 1 ? 's' : ''} added` : ''}`);
         }
       });
       render();
@@ -2064,7 +2106,7 @@
     const newClassLevel = (k ? n0(k.level) : 0) + 1;
     const before = ch.classes.reduce((a, x) => a + n0(x.level), 0);
     const due = asiDue(cls, newClassLevel);
-    const asiOn = W.asiOn === null ? due : W.asiOn;
+    const asiOn = due;
     let asi = null, feat = null, error = null;
     if (!cls) error = 'Pick a class to level up.';
     if (asiOn && W.asiMode === 'feat') { if (W.featName.trim()) feat = { name: W.featName.trim(), text: W.featText }; else error = error || 'Name the feat you picked.'; }
@@ -2081,10 +2123,11 @@
     const oldCon = R.abilityMod(ch, 'con'), newCon = R.abilityMod(after, 'con');
     const retro = (newCon - oldCon) * before;
     const avgGain = Math.max(1, hd / 2 + 1 + newCon) + retro;
+    const maxGain = Math.max(1, hd + newCon) + retro;
     const payload = { charId, className: cls, hpMode: W.hpMode, archetype: W.archetype.trim() || undefined, hitDie: hd,
       asi: asi || undefined, feat: feat || undefined,
-      features: W.features.filter(f => f.name.trim()), powers: W.powers.filter(p => p.name.trim()) };
-    return { ch, after, cls, k, newClassLevel, before, due, asiOn, hd, oldCon, newCon, retro, avgGain, payload, error };
+      features: (W.auto || []).filter(f => !f.have).map(f => ({ name: f.name, text: f.text })).slice(0, 20), powers: W.powers.filter(p => p.name.trim()).slice(0, 20) };
+    return { ch, after, cls, k, newClassLevel, before, due, asiOn, hd, oldCon, newCon, retro, avgGain, maxGain, payload, error };
   }
 
   function wizardHtml(charId, W) {
@@ -2103,40 +2146,44 @@
           <label class="choice ${W.cls === '__new' ? 'on' : ''}"><input type="radio" name="cls" data-w="cls" value="__new" ${W.cls === '__new' ? 'checked' : ''}><b>Multiclass</b><br><span class="muted">start a new class at 1</span></label></div>
         ${W.cls === '__new' ? `<div class="row" style="margin-top:6px"><select data-w="newCls"><option value="">Pick a class…</option>${others.map(c => `<option ${c === W.newCls ? 'selected' : ''}>${c}</option>`).join('')}</select>
           <span class="muted" style="font-size:12px">Multiclassing usually needs 13+ in the new class's key ability; check with your GM.</span></div>` : ''}
-        ${needArch && P.cls ? `<label style="margin-top:6px">Archetype for ${esc(P.cls)}<input data-w="archetype" type="text" value="${esc(W.archetype)}" placeholder="e.g. Way of the Shadow"></label>` : ''}
+        ${needArch && P.cls ? `<label style="margin-top:6px">Archetype for ${esc(P.cls)}<input data-w="archetype" type="text" list="wizArch" value="${esc(W.archetype)}" placeholder="Pick or type an archetype"></label>
+          <datalist id="wizArch">${(W.archList || []).map(a => `<option value="${esc(a)}">`).join('')}</datalist>` : ''}
       </section>
       <section class="wiz-step"><h4><span class="step">2</span> Hit points <span class="muted" style="text-transform:none;letter-spacing:0">(d${P.hd}${P.newCon >= 0 ? ' + ' : ' − '}${Math.abs(P.newCon)} Con)</span></h4>
         <div class="choices">
           <label class="choice ${W.hpMode === 'average' ? 'on' : ''}"><input type="radio" name="hp" data-w="hpMode" value="average" ${W.hpMode === 'average' ? 'checked' : ''}><b>Take the average</b><br><span class="muted">+${P.avgGain} HP</span></label>
           <label class="choice ${W.hpMode === 'roll' ? 'on' : ''}"><input type="radio" name="hp" data-w="hpMode" value="roll" ${W.hpMode === 'roll' ? 'checked' : ''}><b>Roll the die</b><br><span class="muted">+${Math.max(1, 1 + P.newCon) + P.retro} to +${P.hd + P.newCon + P.retro} HP, rolled where everyone sees it</span></label>
+          <label class="choice ${W.hpMode === 'max' ? 'on' : ''}"><input type="radio" name="hp" data-w="hpMode" value="max" ${W.hpMode === 'max' ? 'checked' : ''}><b>Take the maximum</b><br><span class="muted">+${P.maxGain} HP (the full d${P.hd})</span></label>
         </div>
         ${P.retro ? `<p class="muted" style="font-size:12px;margin:4px 0 0">Includes +${P.retro} because your Constitution modifier went up (it counts for every earlier level too).</p>` : ''}
       </section>
       <section class="wiz-step"><h4><span class="step">3</span> Ability score improvement or feat</h4>
-        ${P.due ? `<p class="muted" style="margin:0 0 6px">${esc(P.cls)} ${P.newClassLevel} gives an ability score improvement (or a feat instead).</p>`
-          : `<label class="toggle"><input type="checkbox" data-w="asiOn" ${P.asiOn ? 'checked' : ''}> My class gives one at this level</label>`}
+        ${!P.cls ? '<p class="muted" style="margin:0">Pick a class first.</p>' : P.due ? `<p class="muted" style="margin:0 0 6px">${esc(P.cls)} ${P.newClassLevel} gives an ability score improvement (or a feat instead).</p>`
+          : `<p class="muted" style="margin:0">Your class does not receive an ability score improvement at this level.</p>`}
         ${P.asiOn ? `<div class="choices" style="margin-top:6px">
           ${[['two', '+1 to two scores'], ['one', '+2 to one score'], ['feat', 'Take a feat']].map(([v, t]) => `<label class="choice ${W.asiMode === v ? 'on' : ''}"><input type="radio" name="asi" data-w="asiMode" value="${v}" ${W.asiMode === v ? 'checked' : ''}><b>${t}</b></label>`).join('')}</div>
           <div class="row wrap" style="margin-top:6px">${W.asiMode === 'feat'
-            ? `<input data-w="featName" type="text" value="${esc(W.featName)}" placeholder="Feat name" style="flex:1"><textarea data-w="featText" rows="2" placeholder="What it does (optional)">${esc(W.featText)}</textarea>`
+            ? `<input data-w="featName" type="text" list="wizFeats" value="${esc(W.featName)}" placeholder="Pick or type a feat" style="flex:1"><datalist id="wizFeats">${(W.featList || []).map(f => `<option value="${esc(f)}">`).join('')}</datalist>
+               <textarea data-w="featText" rows="3" placeholder="What it does (filled in from SW5e when you pick one)">${esc(W.featText)}</textarea>`
             : W.asiMode === 'one' ? abilitySelect('a1', W.a1) : abilitySelect('a1', W.a1) + abilitySelect('a2', W.a2)}</div>` : ''}
       </section>
       <section class="wiz-step"><h4><span class="step">4</span> New features &amp; powers</h4>
-        <p class="muted" style="margin:0 0 6px">Check the ${esc(P.cls || 'class')} table for level ${P.newClassLevel}${R.CLASSES[P.cls] ? ` (<a href="https://sw5e.com/characters/classes/${encodeURIComponent(P.cls)}" target="_blank" rel="noopener">open on sw5e.com</a>)` : ''} and add what you gain.
-          ${ciA.forceMaxLevel > ciB.forceMaxLevel || ciA.techMaxLevel > ciB.techMaxLevel ? '<b>You can now cast higher-level powers.</b>' : ''}</p>
-        ${W.features.map((f, i) => `<div class="row" style="margin-bottom:4px"><input data-w="feature.${i}.name" type="text" value="${esc(f.name)}" placeholder="Feature name" style="flex:1">
-          <input data-w="feature.${i}.text" type="text" value="${esc(f.text)}" placeholder="What it does" style="flex:2"><button class="btn tiny ghost" data-wa="rm-feature" data-i="${i}">✕</button></div>`).join('')}
-        ${W.powers.map((p, i) => `<div class="row" style="margin-bottom:4px"><input data-w="power.${i}.name" type="text" value="${esc(p.name)}" placeholder="Power name" style="flex:1">
-          <input data-w="power.${i}.level" type="number" min="0" max="9" value="${n0(p.level)}" style="width:60px" title="Power level (0 = at-will)">
-          <select data-w="power.${i}.type"><option value="force" ${p.type !== 'tech' ? 'selected' : ''}>force</option><option value="tech" ${p.type === 'tech' ? 'selected' : ''}>tech</option></select>
-          <button class="btn tiny ghost" data-wa="rm-power" data-i="${i}">✕</button></div>`).join('')}
-        <div class="row"><button class="btn tiny" data-wa="add-feature">＋ feature</button><button class="btn tiny" data-wa="add-power">＋ power</button></div>
+        ${!P.cls ? '' : W.autoState === 'loading' ? '<p class="muted" style="margin:0 0 6px">Looking up the class features for this level…</p>'
+          : W.auto && W.auto.length ? `<p class="muted" style="margin:0 0 4px">These ${esc(P.cls)} ${P.newClassLevel} features from the Player's Handbook are added to Features &amp; Traits automatically (hover for details):</p>
+            <ul class="wiz-feats">${W.auto.map(f => `<li title="${esc(f.text.slice(0, 500))}"><b>${esc(f.name)}</b>${f.have ? ' <span class="muted">(already on the sheet)</span>' : ''}</li>`).join('')}</ul>`
+          : W.autoState === 'ok' ? `<p class="muted" style="margin:0 0 6px">No new ${esc(P.cls)} features at level ${P.newClassLevel}${P.due ? ' besides the ability score improvement' : ''}.</p>`
+          : W.autoState ? `<p class="muted" style="margin:0 0 6px">Couldn't look up the class features (${esc(W.autoState)}). You can add them afterwards from Features &amp; Traits.</p>` : ''}
+        <h5 class="wiz-sub">Powers learned this level ${ciA.forceMaxLevel > ciB.forceMaxLevel || ciA.techMaxLevel > ciB.techMaxLevel ? '<span class="up">· you can now cast higher-level powers</span>' : ''}</h5>
+        ${W.powers.map((p, i) => `<div class="row wiz-power"><b>${esc(p.name)}</b><span class="pp-lvl">${n0(p.level) ? 'Level ' + n0(p.level) : 'At-will'}</span>
+          <span class="pp-tag">${p.type === 'tech' ? 'Tech' : esc(({ light: 'Light', dark: 'Dark' })[p.alignment] || 'Universal') + ' force'}</span><span class="spacer"></span>
+          <button class="btn tiny ghost" data-wa="rm-power" data-i="${i}" title="Remove">✕</button></div>`).join('') || '<p class="muted" style="margin:0 0 4px">None picked.</p>'}
+        <div class="row"><button class="btn tiny" data-wa="pick-power" data-kind="force">＋ force power</button><button class="btn tiny" data-wa="pick-power" data-kind="tech">＋ tech power</button></div>
       </section>
       <section class="wiz-step"><h4><span class="step">5</span> Summary</h4>
         <table class="t summary">
           ${change('Level', P.before, P.before + 1)}
           ${change('Class', P.k ? `${P.k.name} ${n0(P.k.level)}` : '—', `${P.cls || '?'} ${P.newClassLevel}`)}
-          ${change('Hit points (max)', n0(ch.hp.max), W.hpMode === 'roll' ? `${n0(ch.hp.max)} + roll` : n0(ch.hp.max) + P.avgGain)}
+          ${change('Hit points (max)', n0(ch.hp.max), W.hpMode === 'roll' ? `${n0(ch.hp.max)} + roll` : n0(ch.hp.max) + (W.hpMode === 'max' ? P.maxGain : P.avgGain))}
           ${change('Hit dice', R.hitDiceSummary(ch), R.hitDiceSummary(P.after))}
           ${change('Proficiency bonus', R.fmt(R.profBonus(ch)), R.fmt(R.profBonus(P.after)))}
           ${ciB.forceMax || ciA.forceMax ? change('Force points (max)', ciB.forceMax, ciA.forceMax) : ''}
@@ -2150,6 +2197,9 @@
       </section>
       <div class="row"><span class="spacer"></span><button class="btn" data-wa="cancel">Not yet</button><button class="btn primary" data-wa="go">⬆ Level up!</button></div>`;
   }
+
+  // --------------------------------------------------------------------------- shared with books.js
+  window.HT = { S, $, $$, esc, n0, R, API, modal, closeModal, toast, act, mutate, isGM, chars, roll, rollModeFromEvent, setPath, renderRules, setTab };
 
   // --------------------------------------------------------------------------- boot
   window.addEventListener('resize', () => drawMap());
