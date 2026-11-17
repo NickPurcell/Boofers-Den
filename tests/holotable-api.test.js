@@ -938,3 +938,94 @@ test("restore works when the saved table has people in initiative", async () => 
   assert.equal((await gm.post("restore", { backup: 0 })).code, 200, "restore the latest backup");
 });
 
+
+// #79 follow-up: one round trip on a fully populated table, so the next helper that moves out from under
+// cleanGame() / cleanMap() / cleanChar() / cleanShip() is caught by a test instead of a 500 at the table.
+test("restore round trip: a fully populated table comes back the same, from the file and from backup 0", async () => {
+  const { gm, p1, p2 } = await table();
+  const src = "/api/holotable?a=packone.1";
+  // characters, one with conditions and powers
+  const kira = (await p1.act("char.save", { char: { name: "Kira", classes: [{ name: "Sentinel", level: 3, archetype: "Path of Shadows" }],
+    hp: { max: 24, current: 17, temp: 3 }, conditions: ["Slowed", "Shocked"], exhaustion: 1,
+    powers: [{ name: "Force Push", level: 1, type: "force", alignment: "universal", description: "Shove." }],
+    features: [{ name: "Cloak of Shadows", text: "Archetype feature" }], equipment: [{ name: "Medpac", qty: 2 }] } })).data.id;
+  const rook = (await p2.act("char.save", { char: { name: "Rook", classes: [{ name: "Engineer", level: 2 }], tech: { max: "", used: 3 } } })).data.id;
+  // initiative: a character and a creature with HP, conditions and a stat-block id
+  await p1.act("init.add", { charId: kira, name: "Kira", init: 15 });
+  await gm.act("init.add", { name: "Death Trooper 1", init: 12, hp: 97, ac: 16, sb: "Death Trooper", hidden: true });
+  const trooper = (await gm.poll()).data.state.initiative.entries.find((e) => e.npc).id;
+  await gm.act("init.update", { id: trooper, fields: { hp: 80, conditions: ["Ignited"] } });
+  await gm.act("init.start", {});
+  // map: tokens and props with scene movements, saved as a scene, then a second scene on screen
+  await gm.act("map.settings", { cols: 20, rows: 12, showGrid: true });
+  await gm.act("token.add", { charId: kira, x: 3, y: 4 });
+  await gm.act("token.add", { name: "Vex", color: "#ef5350", x: 5, y: 4, hidden: true });
+  await gm.act("prop.add", { src, name: "Speeder", x: 1, y: 6, w: 2, h: 1, rot: 0 });
+  let mp = (await gm.poll()).data.state.map;
+  await gm.act("token.script", { id: mp.tokens.find((t) => t.name === "Vex").id, moves: { path: [{ x: 8, y: 4 }], exit: "e", delay: 1 } });
+  await gm.act("prop.script", { id: mp.props[0].id, moves: { path: [{ x: 9, y: 6 }], exit: "s", face: true } });
+  await gm.act("scene.saveAs", { name: "Desert base" });
+  await gm.act("scene.new", { name: "Cantina" });
+  await gm.act("token.add", { name: "Bartender", x: 6, y: 3 });
+  // a ship (party) and a hidden enemy ship
+  await p1.act("ship.save", { ship: { name: "Ebon Hawk", size: "Medium", tier: 2, ac: 15, hull: { current: 30, max: 40 }, shield: { current: 10, max: 20 },
+    abilities: { str: 14, wis: 12 }, skills: { boost: 1 }, crew: [{ charId: kira, deployment: "Pilot", rank: 2 }],
+    weapons: [{ name: "Quad laser", dmg: "2d4", type: "energy", atkMisc: 1 }], mods: [{ name: "Hyperdrive" }] } });
+  await gm.act("ship.save", { ship: { name: "Interdictor", hidden: true } });
+  // handouts, notes, variants, the max-HP switch, a level-up grant, chat with a whisper
+  await gm.act("handout.save", { handout: { title: "Holocron", text: "for the table", shared: true } });
+  await gm.act("handout.save", { handout: { title: "Twist", text: "GM eyes only", shared: false } });
+  await gm.act("notes.save", { notes: "the twist" });
+  await gm.act("variants.set", { variants: ["Flanking", "Called Shots"] });
+  await gm.act("settings.hpMax", { on: false });
+  await gm.act("levelup.grant", { charIds: [rook] });
+  await p1.act("chat", { text: "hello table" });
+  await gm.act("chat", { text: "/w Sam a secret for you" });
+  await p1.act("player.prefs", { theme: "jedi-temple", custom: { holo: "#00ffaa" } });
+
+  // what must survive, as the GM sees it (ids, grant tokens and timestamps aside)
+  const snapshot = (st) => ({
+    name: st.name, notes: st.notes, variants: st.variants, hpMax: st.hpMax,
+    characters: Object.values(st.characters).map((c) => ({ id: c.id, owner: c.owner, name: c.name, classes: c.classes, hp: c.hp, conditions: c.conditions,
+      exhaustion: c.exhaustion, powers: c.powers, features: c.features, equipment: c.equipment, tech: c.tech })).sort((a, b) => a.name.localeCompare(b.name)),
+    initiative: { active: st.initiative.active, round: st.initiative.round, turn: st.initiative.turn,
+      entries: st.initiative.entries.map((e) => ({ name: e.name, init: e.init, hp: e.hp, maxHp: e.maxHp, ac: e.ac, hidden: e.hidden, conditions: e.conditions, sb: e.sb, charId: e.charId })) },
+    map: { cols: st.map.cols, rows: st.map.rows, showGrid: st.map.showGrid, tokens: st.map.tokens.map((t) => ({ id: t.id, name: t.name, x: t.x, y: t.y, hidden: t.hidden, charId: t.charId, moves: t.moves })),
+      props: st.map.props.map((p) => ({ id: p.id, name: p.name, x: p.x, y: p.y, w: p.w, h: p.h, rot: p.rot, moves: p.moves })) },
+    scene: st.scene, scenes: st.scenes.map((s) => s.name),
+    ships: st.ships.map((s) => { const { updated, ...rest } = s; return rest; }),
+    handouts: st.handouts.map((h) => ({ title: h.title, text: h.text, shared: h.shared })),
+    levelUps: Object.fromEntries(Object.entries(st.levelUps).map(([id, v]) => [id, v.count])),
+    chat: st.chat.filter((m) => m.text !== "The table was restored from a backup.").map((m) => ({ from: m.from, text: m.text, to: m.to, private: m.private })),
+    players: Object.values(st.players).map((p) => ({ name: p.name, prefs: p.prefs })).sort((a, b) => a.name.localeCompare(b.name)),
+  });
+  const before = snapshot((await gm.poll()).data.state);
+  // the populated table really is populated
+  assert.equal(before.characters.length, 2); assert.equal(before.initiative.entries.length, 2); assert.equal(before.ships.length, 2);
+  assert.equal(before.handouts.length, 2); assert.deepEqual(before.scenes, ["Desert base", "Cantina"]);
+  assert.ok(before.chat.some((m) => m.to && m.text === "a secret for you"), "the whisper is there");
+  assert.ok(before.players.some((p) => p.prefs && p.prefs.theme === "jedi-temple"), "a player's colour theme is set");
+  // the saved scene keeps its scripted movements
+  const file = JSON.parse((await gm.call("GET", { op: "export" })).data);
+  const desert = file.scenes.find((s) => s.name === "Desert base").map;
+  assert.ok(desert.tokens.some((t) => t.moves) && desert.props.some((p) => p.moves && p.moves.face), "scene movements are in the save");
+
+  // 1. restore from the downloaded file, after changing things so we know the restore did something
+  await gm.act("notes.save", { notes: "changed my mind" });
+  await gm.act("variants.set", { variants: [] });
+  assert.equal((await gm.post("restore", { campaign: file })).code, 200, "restore from the file");
+  assert.deepEqual(snapshot((await gm.poll()).data.state), before, "everything is back after restoring the file");
+  // players still see only what they should
+  const pv = (await p1.poll()).data.state;
+  assert.equal(pv.handouts.length, 1); assert.equal(pv.ships.length, 1); assert.equal(pv.notes, null);
+  assert.ok(pv.map.tokens.every((t) => !t.moves && t.name !== "Vex"));
+
+  // 2. restore the latest automatic backup (the restore above kept the table as backup 0 first)
+  await gm.act("notes.save", { notes: "changed my mind again" });
+  assert.equal((await gm.post("restore", { backup: 0 })).code, 200, "restore backup 0");
+  assert.deepEqual(snapshot((await gm.poll()).data.state), before, "everything is back after restoring backup 0");
+  // and the restored table still plays: the saved scene loads and its movements play
+  const desertId = (await gm.poll()).data.state.scenes.find((s) => s.name === "Desert base").id;
+  assert.equal((await gm.act("scene.load", { id: desertId })).code, 200);
+  assert.equal((await gm.poll()).data.state.sceneFx.moves.length, 2);
+});

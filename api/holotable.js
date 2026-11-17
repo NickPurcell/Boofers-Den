@@ -471,14 +471,26 @@ async function handlePost(req, res, q, b, ses) {
       const cur = await S.getCampaign(GAME);
       if (cur) { await r.lpush(S.K.bk(GAME), JSON.stringify(cur)); await r.ltrim(S.K.bk(GAME), 0, S.BACKUP_KEEP - 1); }
       const g = G.blankCampaign(file.name);
-      for (const k of ["name", "players", "chat", "initiative", "map", "notes", "handouts", "levelUps", "created"]) if (file[k] !== undefined) g[k] = file[k];
+      // every part of the game a backup holds (cleanGame checks each one below). sceneFx is left out on purpose:
+      // a restored table shouldn't replay the last scene change's wipe and movements.
+      for (const k of ["name", "players", "chat", "initiative", "map", "notes", "handouts", "levelUps", "created",
+        "scenes", "activeScene", "ships", "variants", "hpMax"]) if (file[k] !== undefined) g[k] = file[k];
       // everything coming back in goes through the same checks as a live edit
       g.characters = {};
       for (const [id, ch] of Object.entries(file.characters).slice(0, 60)) {
         if (!/^[a-z0-9]{6,20}$/.test(id) || !ch || typeof ch !== "object") continue;
         g.characters[id] = Object.assign(G.cleanChar(Object.assign({}, ch, { id })), { owner: String(ch.owner || "").slice(0, 40) });
       }
-      g.players = Object.fromEntries(Object.entries(g.players || {}).slice(0, 100).map(([id, p]) => [String(id).slice(0, 40), { name: String((p && p.name) || "Player").slice(0, 40) }]));
+      // players keep their name and colour theme; the role always comes from each person's signed session
+      const prefs = (p) => {
+        const pr = p && p.prefs;
+        if (!pr || typeof pr !== "object" || !/^[a-z0-9-]{1,40}$/.test(String(pr.theme || ""))) return undefined;
+        const custom = {};
+        for (const k of ["bg", "panel", "text", "holo", "amber"]) { const v = G.validColor((pr.custom || {})[k], null); if (v) custom[k] = v; }
+        return { theme: pr.theme, custom };
+      };
+      g.players = Object.fromEntries(Object.entries(g.players || {}).slice(0, 100).map(([id, p]) => [String(id).slice(0, 40),
+        Object.assign({ name: String((p && p.name) || "Player").slice(0, 40) }, prefs(p) ? { prefs: prefs(p) } : {})]));
       G.cleanGame(g);
       g.lastBackup = 0;
       G.addChat(g, { system: true, text: "The table was restored from a backup." });
