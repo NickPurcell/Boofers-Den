@@ -7,6 +7,7 @@
 // Players never get GM notes, hidden NPCs, NPC hit points or other people's whispers.
 
 const crypto = require("crypto");
+const Fight = require("./_holotable-fight.js");   // experimental branch: the combat view's actions (fight.*)
 
 const CHAT_LIMIT = 400;
 const rid = (n = 10) => crypto.randomBytes(16).toString("hex").slice(0, n);
@@ -189,6 +190,7 @@ function viewFor(camp, cid, gm, online) {
     hpMax: camp.hpMax !== false,
     ships: (camp.ships || []).filter((x) => gm || !x.hidden),
     sceneFx: fxView,
+    fight: Fight.view(camp, cid, gm),
     scene: (camp.scenes || []).filter((x) => x.id === camp.activeScene).map((x) => ({ id: x.id, name: x.name }))[0] || null,
     scenes: gm ? (camp.scenes || []).map((x) => ({ id: x.id, name: x.name, savedAt: x.savedAt })) : null,
   };
@@ -363,6 +365,7 @@ function applyAction(camp, cid, gm, type, p) {
   const chars = camp.characters, ini = camp.initiative, mp = camp.map;
   mp.props = mp.props || [];
   const need = (ok, why = "GM only") => { if (!ok) throw new Forbidden(why); };
+  if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, applyAction, Forbidden, Invalid });
 
   switch (type) {
     // ---- characters

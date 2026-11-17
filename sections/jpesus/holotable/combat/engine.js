@@ -205,7 +205,7 @@
   }
 
   /* ---------------- building a world from the table ---------------- */
-  // table: { characters, entries (initiative, in order), active, turn (index), round, tokens, unitTokens: { entryId: tokenId },
+  // table: { characters, entries (initiative, in order), active, turn (index) or turnId, round, tokens, unitTokens: { entryId: tokenId },
   //          npcSpeed: { entryId: feet }, turnState, reactions }
   function buildWorld(table) {
     const tokens = Object.fromEntries((table.tokens || []).map((t) => [t.id, t]));
@@ -225,7 +225,7 @@
       };
       if (units[e.id].hp != null && units[e.id].hp <= 0) units[e.id].down = true;
     }
-    const cur = (table.entries || [])[table.turn];
+    const cur = table.turnId !== undefined ? (table.entries || []).find((e) => e.id === table.turnId) : (table.entries || [])[table.turn];
     return {
       active: !!table.active && !!cur, round: table.round || 1, turnId: cur ? cur.id : null, units,
       turn: table.turnState || null, reactions: table.reactions || {},
