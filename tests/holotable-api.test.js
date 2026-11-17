@@ -829,3 +829,16 @@ test("maximum hit points is the GM's table rule", async () => {
   assert.equal((await p1.act("levelup.apply", { charId: kira, className: "Scout", hpMode: "average" })).code, 200);
   assert.equal((await p1.poll()).data.state.hpMax, false);
 });
+
+test("archetypes: chosen once per class, on reaching class level 3, never before or after", async () => {
+  const { gm, p1 } = await table();
+  const kira = (await p1.act("char.save", { char: { name: "Kira", classes: [{ name: "Sentinel", level: 1 }] } })).data.id;
+  const up = async (archetype) => { await gm.act("levelup.grant", { charIds: [kira] }); return p1.act("levelup.apply", { charId: kira, className: "Sentinel", hpMode: "average", archetype }); };
+  const arch = async () => (await gm.poll()).data.state.characters[kira].classes[0].archetype;
+  await up("Way of the Shield");
+  assert.equal(await arch(), "", "not at level 2");
+  await up("Way of the Shield");
+  assert.equal(await arch(), "Way of the Shield", "picked at level 3");
+  await up("Way of the Sword");
+  assert.equal(await arch(), "Way of the Shield", "can't be changed by a later level up");
+});

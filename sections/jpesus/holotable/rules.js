@@ -30,17 +30,19 @@
 
   // Checked against SW5e's class data (sw5eapi /api/class): hit die, saves, points per level and max power level.
   // caster: force/tech; pp = power points per class level; prog = full | threeQuarter | half; from = first casting level
+  // arch = what each class page calls its archetype (singular of "Berserker Approaches", "Sentinel Callings"...);
+  // every SW5e class picks its archetype at class level 3.
   const CLASSES = {
-    Berserker: { hd: 12, saves: ['str', 'con'] },
-    Consular:  { hd: 6,  saves: ['wis', 'cha'], caster: 'force', pp: 4, prog: 'full' },
-    Engineer:  { hd: 8,  saves: ['con', 'int'], caster: 'tech',  pp: 2, prog: 'full' },
-    Fighter:   { hd: 10, saves: ['str', 'con'] },
-    Guardian:  { hd: 10, saves: ['con', 'cha'], caster: 'force', pp: 2, prog: 'half' },
-    Monk:      { hd: 8,  saves: ['str', 'dex'] },
-    Operative: { hd: 8,  saves: ['dex', 'int'] },
-    Scholar:   { hd: 8,  saves: ['int', 'wis'] },
-    Scout:     { hd: 10, saves: ['str', 'dex'], caster: 'tech',  pp: 1, prog: 'half', from: 2 },  // tech casting starts at 2nd level
-    Sentinel:  { hd: 8,  saves: ['dex', 'cha'], caster: 'force', pp: 3, prog: 'threeQuarter' },
+    Berserker: { hd: 12, saves: ['str', 'con'], arch: 'Berserker Approach' },
+    Consular:  { hd: 6,  saves: ['wis', 'cha'], arch: 'Consular Tradition', caster: 'force', pp: 4, prog: 'full' },
+    Engineer:  { hd: 8,  saves: ['con', 'int'], arch: 'Engineering Discipline', caster: 'tech',  pp: 2, prog: 'full' },
+    Fighter:   { hd: 10, saves: ['str', 'con'], arch: 'Fighter Specialty' },
+    Guardian:  { hd: 10, saves: ['con', 'cha'], arch: 'Guardian Focus', caster: 'force', pp: 2, prog: 'half' },
+    Monk:      { hd: 8,  saves: ['str', 'dex'], arch: 'Monastic Order' },
+    Operative: { hd: 8,  saves: ['dex', 'int'], arch: 'Operative Practice' },
+    Scholar:   { hd: 8,  saves: ['int', 'wis'], arch: 'Academic Pursuit' },
+    Scout:     { hd: 10, saves: ['str', 'dex'], arch: 'Scout Technique', caster: 'tech',  pp: 1, prog: 'half', from: 2 },  // tech casting starts at 2nd level
+    Sentinel:  { hd: 8,  saves: ['dex', 'cha'], arch: 'Sentinel Calling', caster: 'force', pp: 3, prog: 'threeQuarter' },
   };
 
   const SPECIES = ["Human", "Aqualish", "Arcona", "Barabel", "Bith", "Bothan", "Cathar", "Cerean", "Chiss", "Devaronian",

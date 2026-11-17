@@ -644,3 +644,12 @@ body.no-sw5e-books [data-act="pick-species"], body.no-sw5e-books [data-act="pick
 body.no-sw5e-books [data-act="pick-feature"], body.no-sw5e-books [data-cact="add-creature"], body.no-sw5e-books [data-cact="statblock"],
 body.no-sw5e-books [data-sa="pick-equip"], body.no-sw5e-books [data-sa="pick-mod"], body.no-sw5e-books [data-sa="rules"],
 body.no-sw5e-books [data-sa="deploy-info"], body.no-sw5e-books .lib-bar { display: none !important; }
+/* level-up wizard: picking an archetype at class level 3 */
+.arch-pick { margin-top: 6px; }
+.arch-chosen { color: var(--green); }
+.arch-menu { margin-top: 6px; max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; display: flex; flex-direction: column; }
+.arch-menu button { text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line); color: var(--text); padding: 7px 10px; cursor: pointer; font: inherit; }
+.arch-menu button:last-child { border-bottom: 0; }
+.arch-menu button:hover, .arch-menu button:focus { background: color-mix(in srgb, var(--holo) 15%, transparent); outline: none; }
+.arch-menu button.on { background: color-mix(in srgb, var(--green) 15%, transparent); }
+.class-arch { font-size: 12px; align-self: center; }

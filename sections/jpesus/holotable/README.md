@@ -53,7 +53,10 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
   - **The other buttons:** Save, Save as new, New blank, Rename and Delete. A table can keep up to 30 scenes.
   - **Images:** an uploaded image is deleted only once nothing on the table, saved scenes included, uses it.
 - **Level ups:** the GM grants a level to the party or to chosen characters. Each player gets a pop-up and a guided wizard:
-  - **Class:** pick a class or multiclass. When an archetype is due, the class's archetypes are offered.
+  - **Class:** pick a class or multiclass (multiclassing happens only here, not on the sheet). On reaching level 3 in a
+    class, a "Pick <name>" button (Sentinel Calling, Berserker Approach, Monastic Order..., each class's own word) lists
+    that class's archetypes from the Player's Handbook and Expanded Content, with each description on hover. It's chosen
+    once, shows in the summary, and its features are added at level 3 and at every later level that grants one.
   - **Hit points:** take the average, roll the die (in chat), or take the die's maximum. Maximum is a table rule the GM can
     switch off in the GM tab.
   - **Ability score improvement:** only at the levels the SW5e class table gives one (4, 8, 12, 16 and 19, plus the
@@ -67,8 +70,8 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
   the power and equipment pickers: set `HOLOTABLE_SW5E_BOOKS=off` to turn just them off (their buttons hide).
   Content from [SW5e](https://sw5e.com), a free fan project, credited wherever it's shown:
   - **Player's Handbook and Expanded Content:** ◈ buttons on the sheet choose a species (adds its traits, speed and
-    languages, and can apply a fixed ability increase), a background (adds its feature and proficiencies) and an archetype
-    (adds its features up to your level). "+ from SW5e" in Features & Traits adds feats, class and archetype features,
+    languages, and can apply a fixed ability increase) and a background (adds its feature and proficiencies); archetypes
+    are picked in the level-up wizard. "+ from SW5e" in Features & Traits adds feats, class and archetype features,
     maneuvers, fighting styles and masteries, and lightsaber forms, each with its full text.
   - **Wretched Hives:** its gear and enhanced items are in the equipment picker, its feats in the feat list, its chapters
     (downtime, factions, tools and more) in the rulebook library.
