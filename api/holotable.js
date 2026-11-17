@@ -101,10 +101,137 @@ async function gameWasLost() {
 }
 async function loadGame() {
   const camp = await S.getCampaign(GAME);
-  if (camp) return camp;
+  if (camp) {
+    // tables made before 70 px squares: move the old 50 px default to 70 (saved with the next change)
+    if (camp.map && !camp.map.gridV2) { if (camp.map.gridSize === 50) camp.map.gridSize = 70; camp.map.gridV2 = true; }
+    return camp;
+  }
   if (await gameWasLost()) throw new Missing("The table's save is missing. GM: open the GM tab and restore the latest backup.");
   return G.blankCampaign("HoloTable");
 }
+
+// SW5e lists (force/tech powers, standard gear, enhanced items) come from SW5e's own public API
+// (sw5e.com), trimmed to what the pickers and tooltips use. Only the server fetches them (players'
+// browsers never contact another site), and every list goes through sw5eList() below, which:
+//   - only ever asks one of three fixed addresses; nothing a player sends reaches the URL,
+//   - stops reading a reply past a fixed size and keeps at most a fixed number of entries,
+//   - lets one request at a time fetch a list (a short SET NX marker); others wait for its result,
+//   - remembers a failure for a minute, answering 503 without calling SW5e again,
+//   - caches a good list for a week.
+// A failure here only ever fails the picker (503), never the game.
+const SW5E_API = "https://sw5eapi.azurewebsites.net/api/";
+// TEMPORARY HOLD (Boofers-Den #55): the site owner hasn't yet OK'd the server calling SW5e's API, so the
+// three SW5e lists are switched off: the routes answer 503 before any outbound request is made, and the
+// picker buttons are hidden (style.css). The fetch code below is intact. Reverting this commit turns them on.
+const SW5E_HOLD = { on: true };
+const sw5eText = (v, n) => (v == null || v === "None" || v === "Unknown" ? "" : String(v).split(String.fromCharCode(13)).join("").slice(0, n));
+const spaced = (v) => sw5eText(v, 60).replace(/([a-z])([A-Z])/g, "$1 $2");
+
+function buildPowers(data) {
+  return data.filter((p) => p && p.name && (p.powerType === "Force" || p.powerType === "Tech")).map((p) => ({
+    n: sw5eText(p.name, 80), t: p.powerType === "Tech" ? "tech" : "force", l: Math.max(0, Math.min(9, parseInt(p.level, 10) || 0)),
+    a: p.powerType === "Tech" ? "" : ({ Light: "light", Dark: "dark" })[p.forceAlignment] || "universal",
+    ct: sw5eText(p.castingPeriodText, 160), r: sw5eText(p.range, 80), d: sw5eText(p.duration, 80), c: !!p.concentration,
+    pre: sw5eText(p.prerequisite, 80), src: sw5eText(p.contentSource, 10), desc: sw5eText(p.description, 6000), hl: sw5eText(p.higherLevelDescription, 1500),
+  })).sort((a, b) => a.l - b.l || a.n.localeCompare(b.n));
+}
+function buildEquipment(data) {
+  const list = (x) => { try { const v = typeof x === "string" ? JSON.parse(x.replace(/'/g, '"')) : x; return Array.isArray(v) ? v.slice(0, 20).map((p) => sw5eText(p, 60)).filter(Boolean) : []; } catch { return []; } };
+  return data.filter((e) => e && e.name).map((e) => {
+    const isWeapon = e.equipmentCategory === "Weapon", isArmor = e.equipmentCategory === "Armor";
+    const dice = Math.min(99, +e.damageNumberOfDice || 0), die = Math.min(100, +e.damageDieType || 0), mod = Math.max(-99, Math.min(99, +e.damageDieModifier || 0));
+    return {
+      n: sw5eText(e.name, 80), cat: spaced(e.equipmentCategory) || "Gear", src: sw5eText(e.contentSource, 10),
+      cost: Number.isFinite(+e.cost) ? +e.cost : null, wt: sw5eText(e.weight, 12),
+      dmg: isWeapon && dice && die ? `${dice}d${die}${mod ? (mod > 0 ? "+" : "") + mod : ""}` : isWeapon && mod ? String(mod) : "",
+      dt: isWeapon ? sw5eText(e.damageType, 20).toLowerCase() : "", wc: isWeapon ? spaced(e.weaponClassification) : "",
+      props: list(e.properties), ac: isArmor ? sw5eText(e.ac, 40) : "", accl: isArmor ? sw5eText(e.armorClassification, 20) : "",
+      stealth: isArmor && String(e.stealthDisadvantage) === "true" || e.stealthDisadvantage === true, str: isArmor ? sw5eText(e.strengthRequirement, 20) : "",
+      desc: sw5eText(e.description, 1500),
+    };
+  }).sort((a, b) => a.cat.localeCompare(b.cat) || a.n.localeCompare(b.n));
+}
+function buildEnhanced(data) {
+  return data.filter((e) => e && e.name && !/^Ship/.test(e.type || "")).map((e) => ({
+    n: sw5eText(e.name, 80), cat: spaced(e.type) || "Enhanced item", sub: sw5eText(e.subtype, 40), src: sw5eText(e.contentSource, 10),
+    rar: sw5eText(e.searchableRarity, 20), att: !!e.requiresAttunement, pre: e.hasPrerequisite ? sw5eText(e.prerequisite, 120) : "",
+    desc: sw5eText(e.text, 2200),
+  })).sort((a, b) => a.cat.localeCompare(b.cat) || a.n.localeCompare(b.n));
+}
+
+const MB = 1024 * 1024;
+// Today's sizes: powers ~0.56 MB / 465 entries, standard gear ~0.5 MB / ~700, enhanced items ~2.7 MB / ~1,900.
+const SW5E_LISTS = {
+  powers: { path: "power", maxBytes: 3 * MB, maxItems: 1500, build: buildPowers, key: () => S.K.powers() },
+  standard: { path: "equipment", maxBytes: 3 * MB, maxItems: 2500, build: buildEquipment, key: () => S.K.equipment("standard") },
+  enhanced: { path: "enhancedItem", maxBytes: 8 * MB, maxItems: 6000, build: buildEnhanced, key: () => S.K.equipment("enhanced") },
+};
+const SW5E_TIMEOUT_MS = 8000;
+const SW5E_FAIL_S = 60;          // after a failure, don't call SW5e again for this long
+const SW5E_LOCK_MS = 15000;      // the "someone is fetching" marker outlives the fetch timeout
+
+// Read at most `max` bytes of a reply; anything longer is a failure, and the rest is never read.
+async function readCapped(resp, max) {
+  const declared = +(resp.headers && resp.headers.get && resp.headers.get("content-length"));
+  if (declared > max) throw new Error("SW5e reply too large");
+  if (resp.body && typeof resp.body.getReader === "function") {
+    const reader = resp.body.getReader(), parts = [];
+    let total = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > max) { try { await reader.cancel(); } catch {} throw new Error("SW5e reply too large"); }
+      parts.push(Buffer.from(value));
+    }
+    return Buffer.concat(parts).toString("utf8");
+  }
+  if (typeof resp.text !== "function") throw new Error("unreadable SW5e reply");
+  const t = await resp.text();
+  if (Buffer.byteLength(t) > max) throw new Error("SW5e reply too large");
+  return t;
+}
+
+async function fetchSw5e(cfg) {
+  const resp = await fetch(SW5E_API + cfg.path, { signal: AbortSignal.timeout(SW5E_TIMEOUT_MS), headers: { Accept: "application/json" } });
+  if (!resp.ok) { try { await resp.body?.cancel?.(); } catch {} throw new Error("SW5e API " + resp.status); }
+  const data = JSON.parse(await readCapped(resp, cfg.maxBytes));
+  if (!Array.isArray(data)) throw new Error("unexpected SW5e data");
+  if (data.length > cfg.maxItems) throw new Error("SW5e list too long");
+  const raw = JSON.stringify(cfg.build(data));
+  if (raw.length > cfg.maxBytes) throw new Error("SW5e list too large");
+  return raw;
+}
+
+// The cached list as a JSON string, or null when it isn't available right now (caller answers 503).
+async function sw5eList(r, name) {
+  const cfg = SW5E_LISTS[name], key = cfg.key(), failKey = S.K.sw5eFail(name), lockKey = S.K.sw5eLock(name);
+  let raw = await r.get(key);
+  if (raw) return raw;
+  if (await r.get(failKey)) return null;
+  if (!(await r.set(lockKey, "1", "PX", SW5E_LOCK_MS, "NX"))) {
+    // someone else is fetching it: wait for their result instead of calling SW5e too
+    for (let waited = 0; waited < SW5E_TIMEOUT_MS + 2000; waited += 400) {
+      await new Promise((ok) => setTimeout(ok, 400));
+      if ((raw = await r.get(key))) return raw;
+      if (await r.get(failKey)) return null;
+    }
+    return null;
+  }
+  try {
+    raw = await fetchSw5e(cfg);
+    await r.set(key, raw, "EX", 7 * 24 * 3600);
+    return raw;
+  } catch (e) {
+    await r.set(failKey, "1", "EX", SW5E_FAIL_S);
+    return null;
+  } finally {
+    await r.del(lockKey);
+  }
+}
+
+// every uploaded image the table refers to (live map, saved scenes, sheets, handouts)
+const imageRefs = (camp) => new Set(JSON.stringify(camp).match(/\/api\/holotable\?img=[a-f0-9]{16,40}/g) || []);
 
 async function onlineList(camp) {
   const h = await S.getClient().hgetall(S.K.on(GAME));
@@ -171,6 +298,20 @@ async function handleGet(req, res, q, ses) {
     }
   }
 
+  if (op === "powers" || op === "equipment") {
+    if (SW5E_HOLD.on) return fail(res, 503, "The SW5e lists aren't switched on yet: they're waiting for the site owner's OK. Use “custom” to add it by hand for now.");
+    // "powers": every SW5e force and tech power, for the "+ force power" / "+ tech power" pickers.
+    // "equipment": SW5e gear for the "+ from SW5e" picker, ?set=standard or ?set=enhanced.
+    const name = op === "powers" ? "powers" : q.set === "enhanced" ? "enhanced" : "standard";
+    const raw = await sw5eList(r, name);
+    if (!raw) return fail(res, 503, op === "powers"
+      ? "Couldn't reach the SW5e power list right now. Try again in a minute, or add the power by hand."
+      : "Couldn't reach the SW5e equipment list right now. Try again in a minute, or add the item by hand.");
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    return res.status(200).send(raw);
+  }
+
   if (op === "assets") {
     const h = (await r.hgetall(S.K.packs())) || {};
     const packs = Object.values(h).map((s) => { try { return JSON.parse(s); } catch { return null; } })
@@ -222,9 +363,11 @@ async function handlePost(req, res, q, b, ses) {
       const camp = await loadGame();
       const pl = camp.players[ses.pid] || (camp.players[ses.pid] = { name: ses.name });
       pl.role = ses.role;
+      const before = imageRefs(camp);
       try {
         const out = G.applyAction(camp, ses.pid, gm, String(b.type || ""), b.payload || {});
-        drop = out.dropImages; delete out.dropImages;
+        drop = [...(out.dropImages || []), ...[...before].filter((u) => !imageRefs(camp).has(u))]; // anything no longer shown anywhere
+        delete out.dropImages;
         result = out;
       } catch (e) {
         if (e instanceof G.Forbidden) return [403, e.message];
@@ -232,6 +375,8 @@ async function handlePost(req, res, q, b, ses) {
         throw e;
       }
       await S.saveCampaign(camp);
+      // an image is only deleted when nothing still shows it (another scene, a sheet, a handout, the map)
+      if (drop && drop.length) { const json = JSON.stringify(camp); drop = drop.filter((u) => u && !json.includes(u)); }
       return null;
     });
     if (err) return fail(res, ...err);
@@ -331,25 +476,42 @@ async function handlePost(req, res, q, b, ses) {
 
     if (op === "packadd") {
       return S.withLock("pack-" + id, async () => {
+        // a retried batch (the browser resends after a timeout) is applied only once
+        const seq = Number.isInteger(+b.seq) ? +b.seq : null;
+        summary.seqs = Array.isArray(summary.seqs) ? summary.seqs : [];
         const list = JSON.parse((await r.get(S.K.pack(id))) || "[]");
+        if (seq !== null && summary.seqs.includes(seq)) return res.status(200).json({ ok: true, count: list.length, repeat: true });
         const items = [];
         for (const it of (Array.isArray(b.items) ? b.items : []).slice(0, 400)) {
           const buf = Buffer.from(String(it.data || ""), "base64");
           if (S.sniff(buf) && buf.length <= MAX_IMAGE) items.push({ it, buf });
         }
-        const bytes = items.reduce((s, x) => s + x.buf.length, 0);
+        const room = Math.max(0, MAX_PACK_ITEMS - list.length);
+        const keep = items.slice(0, room);
+        const bytes = keep.reduce((s, x) => s + x.buf.length, 0);
         try { await S.reserve(bytes); } catch (e) {
           if (!(e instanceof S.Full)) throw e;
           await removePack(id, list.length, summary.bytes);
           return fail(res, 413, "The asset library is full, so this pack wasn't added. Delete a pack (or ask the site owner to raise HOLOTABLE_STORAGE_MB) and try again.");
         }
-        for (const { it, buf } of items) {
-          if (list.length >= MAX_PACK_ITEMS) { await S.release(buf.length); continue; }
-          await r.set(S.K.asset(id, list.length), buf);
+        // one round trip for the whole batch: sending images one by one can run past the
+        // function time limit when the database is a few milliseconds away
+        const pl = r.pipeline();
+        keep.forEach(({ buf }, i) => pl.set(S.K.asset(id, list.length + i), buf));
+        const results = (await pl.exec()) || [];
+        const failed = results.find(([err]) => err);
+        if (failed) { // e.g. the database refused writes because it's full: don't leave half a pack behind
+          await S.release(bytes);
+          await r.del(...keep.map((_, i) => S.K.asset(id, list.length + i)));
+          await removePack(id, list.length, summary.bytes);
+          throw failed[0];
+        }
+        for (const { it, buf } of keep) {
           list.push({ n: String(it.n || "asset").slice(0, 80), c: /^[a-z]{1,20}$/.test(it.c) ? it.c : "props",
             w: Number.isFinite(+it.w) && +it.w > 0 ? Math.round(+it.w) : null, h: Number.isFinite(+it.h) && +it.h > 0 ? Math.round(+it.h) : null });
           summary.bytes += buf.length;
         }
+        if (seq !== null) summary.seqs.push(seq);
         await r.set(S.K.pack(id), JSON.stringify(list));
         summary.count = list.length;
         await r.hset(S.K.packs(), id, JSON.stringify(summary));
@@ -450,3 +612,4 @@ module.exports = async function handler(req, res) {
     return fail(res, 500, "Something went wrong on the server.");
   }
 };
+module.exports.SW5E_HOLD = SW5E_HOLD;   // tests turn the hold off to keep exercising the fetch code underneath (#55)

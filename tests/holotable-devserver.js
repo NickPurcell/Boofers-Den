@@ -17,6 +17,19 @@ const ROOT = path.join(__dirname, "..");
 const S = require("../api/_holotable-store.js");
 const db = new HoloFake();
 const sub = db.duplicate();
+// --slow: behave like the real thing, with every database call a little way off (default 40 ms)
+// and Vercel's 10-second limit per request, to catch work that only fails when deployed
+const slowArg = process.argv.find((a) => a.startsWith("--slow"));
+const LATENCY = slowArg ? +(slowArg.split("=")[1] || 40) : 0;
+if (LATENCY) {
+  const delay = () => new Promise((r) => setTimeout(r, LATENCY));
+  for (const name of ["get", "set", "getBuffer", "mget", "exists", "llen", "lindex", "hget", "hset", "hdel", "hgetall", "incr", "incrby", "expire", "del", "lpush", "ltrim", "lrange", "publish"]) {
+    const orig = db[name].bind(db);
+    db[name] = async (...a) => { await delay(); return orig(...a); };
+  }
+  const origPipe = db.pipeline.bind(db);
+  db.pipeline = () => { const p = origPipe(); const exec = p.exec; return new Proxy(p, { get: (t, k) => (k === "exec" ? async () => { await delay(); return exec(); } : t[k]) }); };
+}
 S.getClient = () => db;
 S.getSub = () => sub;
 const api = require("../api/holotable.js");
@@ -46,7 +59,13 @@ http.createServer(async (req, res) => {
       json(d) { res.setHeader("Content-Type", "application/json"); res.end(JSON.stringify(d)); return this; },
       send(d) { res.end(d); return this; },
     };
-    return api(rq, rs);
+    if (!LATENCY) return api(rq, rs);
+    let finished = false;
+    const timer = setTimeout(() => { if (!finished) { finished = true; res.statusCode = 504; res.end("FUNCTION_INVOCATION_TIMEOUT"); } }, 10000);
+    const guard = (fn) => (...a) => { if (finished) return rs; return fn(...a); };
+    rs.json = guard(rs.json.bind(rs)); rs.send = guard(rs.send.bind(rs));
+    try { await api(rq, rs); } finally { finished = true; clearTimeout(timer); }
+    return;
   }
   let f = path.join(ROOT, decodeURIComponent(u.pathname));
   if (!f.startsWith(ROOT)) { res.statusCode = 403; return res.end(); }
@@ -55,4 +74,4 @@ http.createServer(async (req, res) => {
   res.setHeader("Content-Type", TYPES[path.extname(f)] || "application/octet-stream");
   fs.createReadStream(f).pipe(res);
 }).listen(+process.argv[2] || 8788, () => console.log("HoloTable dev server on", +process.argv[2] || 8788,
-  "- dev passwords: player 'dev-player', GM 'dev-gm' (override with HOLOTABLE_PLAYER_PASSWORD / HOLOTABLE_GM_PASSWORD)"));
+  "- dev passwords: player 'dev-player', GM 'dev-gm'" + (LATENCY ? ` - SLOW MODE: ${LATENCY} ms per database call, 10 s request limit` : "")));

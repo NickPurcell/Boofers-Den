@@ -84,9 +84,10 @@
       <aside class="chat">
         <div id="chatLog" class="chat-log"></div>
         <form id="chatForm" class="chat-form">
+          <div id="cmdMenu" class="cmd-menu hidden" role="listbox" aria-label="Chat commands"></div>
           <div class="quick-dice" id="quickDice"></div>
           <div class="row">
-            <input id="chatInput" autocomplete="off" placeholder="Message, or /r 1d20+4 …">
+            <input id="chatInput" autocomplete="off" placeholder="Message, or type / for commands" aria-controls="cmdMenu" aria-autocomplete="list">
             <button class="btn primary small" type="submit">Send</button>
           </div>
         </form>

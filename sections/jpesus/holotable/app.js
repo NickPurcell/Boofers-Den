@@ -209,7 +209,8 @@
          <button class="btn small amber-fill" id="restoreLatest">Restore latest backup</button> <span class="muted">or pick one in the GM tab</span>`
       : `⚠ The table's save is missing. The GM needs to restore a backup before play can continue.`;
     $('#campName').textContent = S.st.name;
-    $('#online').innerHTML = S.st.online.map(o => `<span class="pill ${o.gm ? 'gm' : ''}">${esc(o.name)}${o.gm ? ' (GM)' : ''}</span>`).join('');
+    const gmTag = n => (/^\s*gm\s*$/i.test(n || '') ? '' : ' (GM)');
+    $('#online').innerHTML = S.st.online.map(o => `<span class="pill ${o.gm ? 'gm' : ''}">${esc(o.name)}${o.gm ? gmTag(o.name) : ''}</span>`).join('');
   }
   $('#missingBar').addEventListener('click', async e => {
     if (e.target.id !== 'restoreLatest') return;
@@ -402,7 +403,7 @@
         </div>
         <div class="row wrap">${(ch.classes || []).map((k, i) => `
           <span class="row">${inp(`classes.${i}.name`, k.name, { ro, list: 'dlClasses', w: '110px' })}
-          ${inp(`classes.${i}.level`, +k.level || 1, { ro, type: 'number', w: '52px' })}
+          ${inp(`classes.${i}.level`, +k.level || 1, { ro, type: 'number', w: '58px' })}
           ${inp(`classes.${i}.archetype`, k.archetype || '', { ro, ph: 'Archetype', w: '130px' })}
           ${!ro && ch.classes.length > 1 ? `<button class="btn tiny ghost" data-act="del-class" data-i="${i}">✕</button>` : ''}</span>`).join('')}
           ${!ro ? '<button class="btn tiny" data-act="add-class">＋ multiclass</button>' : ''}
@@ -424,7 +425,7 @@
       <div class="stat"><div class="lbl">Proficiency</div><div class="val">${R.fmt(pb)}</div></div>
       <div class="stat"><div class="lbl">Passive Perc.</div><div class="val">${R.passive(ch, 'perception')}</div></div>
       <div class="stat"><div class="lbl">Hit Dice</div><div class="val" style="font-size:15px;padding-top:6px">${esc(R.hitDiceSummary(ch))}</div>
-        <div class="muted" style="font-size:11px">used ${inp('hitDiceUsed', +ch.hitDiceUsed || 0, { ro, type: 'number', w: '44px' })}</div></div>
+        <div class="muted" style="font-size:11px">used ${inp('hitDiceUsed', +ch.hitDiceUsed || 0, { ro, type: 'number', w: '58px' })}</div></div>
       <div class="stat"><div class="lbl">Inspiration</div><div style="padding-top:6px">${inp('inspiration', ch.inspiration, { ro, type: 'checkbox' })}</div></div>
     </div>
     <div class="subtabs">${[['main', 'Abilities & Skills'], ['actions', 'Attacks & Powers'], ['gear', 'Features & Gear'], ['bio', 'Bio & Notes']]
@@ -476,13 +477,13 @@
           <span class="muted">used</span>${inp(k + '.used', +used || 0, { ro, type: 'number' })}
           <span class="muted">max override</span>${inp(k + '.max', ch[k].max ?? '', { ro, type: 'number', ph: String(k === 'force' ? ci.forceMax : ci.techMax) })}</div>
         <div class="muted" style="margin-top:6px;font-size:12px">${extra}</div></div>`;
-      html += `<div class="box"><h4>Attacks <span class="spacer"></span>${!ro ? `<select data-act-change="add-weapon"><option value="">＋ add from list…</option>${R.WEAPONS.map((w, i) => `<option value="${i}">${esc(w.name)} (${w.damage} ${w.type})</option>`).join('')}</select><button class="btn tiny" data-act="add-attack">＋ custom</button>` : ''}</h4>
+      html += `<div class="box"><h4>Attacks <span class="spacer"></span>${!ro ? `<button class="btn tiny" data-act="pick-weapon">＋ weapon from SW5e</button><button class="btn tiny ghost" data-act="add-attack">custom</button>` : ''}</h4>
         <table class="t"><thead><tr><th>Name</th><th>Ability</th><th>Hit</th><th>Damage die</th><th>Type</th><th>Properties</th><th></th></tr></thead><tbody>
         ${(ch.attacks || []).map((a, i) => {
           const hit = R.attackBonus(ch, a), dmg = R.damageExpr(ch, a);
           return `<tr><td>${inp(`attacks.${i}.name`, a.name, { ro })}</td>
             <td style="width:96px">${inp(`attacks.${i}.ab`, a.ab || 'str', { ro, type: 'select', options: [{ v: 'str', t: 'Str' }, { v: 'dex', t: 'Dex' }, { v: 'finesse', t: 'Finesse' }, { v: 'con', t: 'Con' }, { v: 'int', t: 'Int' }, { v: 'wis', t: 'Wis' }, { v: 'cha', t: 'Cha' }] })}</td>
-            <td style="width:120px"><button class="btn small amber" data-act="atk" data-i="${i}">${R.fmt(hit)}</button> ${inp(`attacks.${i}.magic`, a.magic || '', { ro, type: 'number', w: '44px', ph: '+0' })}</td>
+            <td style="width:120px"><button class="btn small amber" data-act="atk" data-i="${i}">${R.fmt(hit)}</button> ${inp(`attacks.${i}.magic`, a.magic || '', { ro, type: 'number', w: '58px', ph: '+0' })}</td>
             <td style="width:160px"><div class="row">${inp(`attacks.${i}.damage`, a.damage || '', { ro, w: '64px' })}<button class="btn small" data-act="dmg" data-i="${i}" title="${esc(dmg)}">Dmg</button><button class="btn tiny" data-act="crit" data-i="${i}" title="Critical: dice doubled">Crit</button></div></td>
             <td style="width:100px">${inp(`attacks.${i}.type`, a.type || '', { ro, list: 'dlTypes' })}</td>
             <td>${inp(`attacks.${i}.props`, a.props || '', { ro })}</td>
@@ -493,22 +494,24 @@
         ${pts('force', fMax, +ch.force.used || 0, '', 'Force Points', `Light DC ${ci.lightDC} / atk ${R.fmt(ci.lightAtk)} · Dark DC ${ci.darkDC} / atk ${R.fmt(ci.darkAtk)}${ci.forceMaxLevel ? ' · max power level ' + ci.forceMaxLevel : ''}`)}
         ${pts('tech', tMax, +ch.tech.used || 0, 'tech', 'Tech Points', `Tech DC ${ci.techDC} / atk ${R.fmt(ci.techAtk)}${ci.techMaxLevel ? ' · max power level ' + ci.techMaxLevel : ''}`)}
       </div>
-      <div class="box" style="margin-top:12px"><h4>Powers <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="add-power">＋ power</button>' : ''}</h4>
+      <div class="box" style="margin-top:12px"><h4>Powers <span class="spacer"></span>${!ro ? `<button class="btn tiny" data-act="pick-power" data-kind="force">＋ force power</button>
+          <button class="btn tiny" data-act="pick-power" data-kind="tech">＋ tech power</button>
+          <button class="btn tiny ghost" data-act="add-power" title="Add a homebrew power by hand">custom</button>` : ''}</h4>
         <table class="t"><thead><tr><th>Name</th><th>Lvl</th><th>Type</th><th>Alignment</th><th>Notes</th><th></th><th></th></tr></thead><tbody>
-        ${(ch.powers || []).slice().map((p, i) => ({ p, i })).sort((a, b) => (+a.p.level || 0) - (+b.p.level || 0)).map(({ p, i }) => `<tr>
+        ${(ch.powers || []).slice().map((p, i) => ({ p, i })).sort((a, b) => (+a.p.level || 0) - (+b.p.level || 0)).map(({ p, i }) => `<tr data-power-tip="${i}">
           <td>${inp(`powers.${i}.name`, p.name, { ro })}</td>
           <td class="n">${inp(`powers.${i}.level`, +p.level || 0, { ro, type: 'number' })}</td>
           <td style="width:90px">${inp(`powers.${i}.type`, p.type || 'force', { ro, type: 'select', options: ['force', 'tech'] })}</td>
           <td style="width:110px">${p.type === 'tech' ? '' : inp(`powers.${i}.alignment`, p.alignment || 'universal', { ro, type: 'select', options: ['universal', 'light', 'dark'] })}</td>
           <td>${inp(`powers.${i}.notes`, p.notes || '', { ro, ph: 'range, duration, effect…' })}</td>
           <td style="width:60px"><button class="btn small amber" data-act="cast" data-i="${i}">Cast</button></td>
-          <td>${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="powers" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">No powers.</td></tr>'}</tbody></table>
-        <p class="muted" style="font-size:12px;margin:6px 0 0">Casting costs 1 + power level points (level 0 at-wills are free).</p></div>`;
+          <td style="white-space:nowrap">${!ro ? `<button class="btn tiny ghost" data-act="power-desc" data-i="${i}" title="Write or edit this power's description">✎</button><button class="btn tiny ghost" data-act="del" data-list="powers" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">No powers.</td></tr>'}</tbody></table>
+        <p class="muted" style="font-size:12px;margin:6px 0 0">Hover a power for its details. Casting costs 1 + power level points (level 0 at-wills are free).</p></div>`;
     }
 
     if (sub === 'gear') {
       html += `<div class="grid g2">
-        <div class="box"><h4>Equipment <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="add-item">＋ item</button>' : ''}</h4>
+        <div class="box"><h4>Equipment <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-equip">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-item" title="Add an item by hand">custom</button>' : ''}</h4>
           <div class="row" style="margin-bottom:8px"><span class="muted">Credits</span>${inp('credits', +ch.credits || 0, { ro, type: 'number', w: '120px' })}</div>
           <table class="t"><thead><tr><th>Qty</th><th>Item</th><th>Notes</th><th>Eq.</th><th></th></tr></thead><tbody>
           ${(ch.equipment || []).map((e, i) => `<tr><td class="n">${inp(`equipment.${i}.qty`, +e.qty || 1, { ro, type: 'number' })}</td>
@@ -517,10 +520,12 @@
             <td>${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">Empty.</td></tr>'}
           </tbody></table></div>
         <div class="box"><h4>Features & Traits <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="add-feature">＋ feature</button>' : ''}</h4>
-          ${(ch.features || []).map((f, i) => `<div style="margin-bottom:10px"><div class="row">${inp(`features.${i}.name`, f.name, { ro })}
-            ${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="features" data-i="${i}">✕</button>` : ''}
-            <button class="btn tiny" data-act="share-feature" data-i="${i}" title="Post to chat">💬</button></div>
-            ${inp(`features.${i}.text`, f.text || '', { ro, type: 'textarea', rows: 2 })}</div>`).join('') || '<p class="muted">None.</p>'}
+          <div class="feature-list">${(ch.features || []).map((f, i) => `<div class="feature-row">
+            <span class="feature-name" data-feature-tip="${i}" tabindex="0">${esc(f.name || 'Feature')}</span>
+            <span class="spacer"></span>
+            <button class="btn tiny" data-act="share-feature" data-i="${i}" title="Post to chat">💬</button>
+            ${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="features" data-i="${i}" title="Remove">✕</button>` : ''}</div>`).join('') || '<p class="muted">None.</p>'}</div>
+          ${(ch.features || []).length ? '<p class="muted" style="font-size:12px;margin:6px 0 0">Hover a feature for its description.</p>' : ''}
         </div>
         <div class="box"><h4>Proficiencies</h4>${inp('proficiencies', ch.proficiencies || '', { ro, type: 'textarea', rows: 3, ph: 'Armor, weapons, tools…' })}
           <h4 style="margin-top:10px">Languages</h4>${inp('languages', ch.languages || '', { ro, type: 'textarea', rows: 2 })}</div>
@@ -623,11 +628,39 @@
       case 'add-attack': mutate(c => c.attacks.push({ name: 'New attack', ab: 'str', damage: '1d6', type: 'kinetic', props: '', proficient: true })); break;
       case 'add-power': mutate(c => c.powers.push({ name: 'New power', level: 0, type: 'force', alignment: 'universal', notes: '' })); break;
       case 'add-item': mutate(c => c.equipment.push({ name: 'Item', qty: 1, notes: '' })); break;
-      case 'add-feature': mutate(c => c.features.push({ name: 'Feature', text: '' })); break;
+      case 'add-feature':   // the description is written once, here; on the sheet it's fixed text
+        modal(`<h3>＋ Add a feature or trait</h3>
+          <label>Name<input id="ftName" maxlength="80" placeholder="e.g. Fighting Style: Defense"></label>
+          <label>Description<textarea id="ftText" rows="6" placeholder="What it does"></textarea></label>
+          <p class="muted" style="margin:0;font-size:12px">Once added, the description can't be edited on the sheet.</p>
+          <div class="row"><span class="spacer"></span><button class="btn" id="ftCancel">Cancel</button><button class="btn primary" id="ftAdd">Add</button></div>`, box => {
+          $('#ftCancel', box).onclick = closeModal;
+          $('#ftAdd', box).onclick = () => {
+            const name = $('#ftName', box).value.trim(); if (!name) return toast('Give the feature a name.', true);
+            const text = $('#ftText', box).value.trim();
+            mutate(c => c.features.push({ name, text })); closeModal();
+          };
+          $('#ftName', box).focus();
+        });
+        break;
+      case 'pick-power': openPowerPicker(ch.id, b.dataset.kind); break;
+      case 'pick-equip': openEquipPicker(ch.id); break;
+      case 'pick-weapon': openEquipPicker(ch.id, { weapons: true }); break;
       case 'del': mutate(c => c[b.dataset.list].splice(i, 1)); break;
       case 'atk': { const at = ch.attacks[i]; roll(d20(R.attackBonus(ch, at)), `${at.name} — attack`, { d20: true, mode: rollModeFromEvent(e), charId: ch.id, kind: 'attack' }); break; }
       case 'dmg': { const at = ch.attacks[i]; roll(R.damageExpr(ch, at), `${at.name} — ${at.type || ''} damage`, { charId: ch.id, kind: 'damage' }); break; }
       case 'crit': { const at = ch.attacks[i]; roll(R.critExpr(R.damageExpr(ch, at)), `${at.name} — CRITICAL ${at.type || ''} damage`, { charId: ch.id, kind: 'damage' }); break; }
+      case 'power-desc': {
+        const pw = ch.powers[i];
+        modal(`<h3>✎ ${esc(pw.name || 'Power')}</h3>
+          <label>Description<textarea id="pwDesc" rows="10" placeholder="What the power does: effect, damage, saving throw, upcasting…">${esc(pw.description || '')}</textarea></label>
+          <div class="row"><span class="spacer"></span><button class="btn" id="pwCancel">Cancel</button><button class="btn primary" id="pwSave">Save</button></div>`, box => {
+          $('#pwCancel', box).onclick = closeModal;
+          $('#pwSave', box).onclick = () => { const v = $('#pwDesc', box).value; mutate(c => { c.powers[i].description = v; }); closeModal(); };
+          $('#pwDesc', box).focus();
+        });
+        break;
+      }
       case 'cast': {
         const p = ch.powers[i], lvl = +p.level || 0, cost = lvl ? lvl + 1 : 0, k = p.type === 'tech' ? 'tech' : 'force';
         const ci = R.casterInfo(ch);
@@ -663,6 +696,256 @@
         break;
     }
   });
+
+  // --------------------------------------------------------------------------- equipment picker
+  // "+ from SW5e" on Equipment (and Attacks): all SW5e standard gear (PHB, Expanded Content, Wretched Hives)
+  // and enhanced items, served by our API and cached. Filters are checkbox dropdowns plus a name search.
+  // Adding a weapon also adds an attack with SW5e's damage and properties.
+  const EQUIP = {};
+  async function equipList(set) {
+    if (EQUIP[set]) return EQUIP[set];
+    const r = await fetch(`${API}?op=equipment&set=${set}`, { credentials: 'same-origin' });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !Array.isArray(j)) throw new Error((j && j.error) || "Couldn't load the SW5e equipment list.");
+    return (EQUIP[set] = j);
+  }
+  const SRC = { PHB: "Player's Handbook", EC: 'Expanded Content', WH: 'Wretched Hives' };
+  // a dropdown of checkboxes; `sel` is a Set of the ticked values
+  function checkDrop(key, label, values, sel, names = {}) {
+    const summary = sel.size === values.length ? `All ${label}` : sel.size === 0 ? `No ${label}` : sel.size <= 2 ? [...sel].map(v => names[v] || v).join(', ') : `${sel.size} ${label}`;
+    return `<details class="pp-align" data-drop="${esc(key)}"><summary>${esc(summary)}</summary><div class="pp-align-menu">
+      <div class="row" style="gap:4px"><button class="btn tiny" data-eq="all" data-key="${esc(key)}">All</button><button class="btn tiny ghost" data-eq="none" data-key="${esc(key)}">None</button></div>
+      ${values.map(v => `<label class="toggle"><input type="checkbox" data-eq="check" data-key="${esc(key)}" value="${esc(v)}" ${sel.has(v) ? 'checked' : ''}> ${esc(names[v] || v)}</label>`).join('')}</div></details>`;
+  }
+  function weaponAttack(it) {
+    const props = (it.props || []).join(', ');
+    const ab = /blaster/i.test(it.wc) ? 'dex' : /finesse/i.test(props) ? 'finesse' : 'str';
+    return { name: it.n, ab, damage: it.dmg || '1', type: it.dt || 'kinetic', props: props.slice(0, 200), proficient: true };
+  }
+  function itemNotes(it, enhanced) {
+    if (enhanced) return [it.rar && `${it.rar} ${it.cat.toLowerCase()}`, it.sub, it.att && 'requires attunement'].filter(Boolean).join(' · ');
+    if (it.cat === 'Weapon') return [it.dmg && `${it.dmg} ${it.dt}`, (it.props || []).join(', ')].filter(Boolean).join(' · ');
+    if (it.cat === 'Armor') return [it.ac && `AC ${it.ac}`, it.accl, it.stealth && 'stealth disadvantage', it.str && `needs ${it.str}`].filter(Boolean).join(' · ');
+    return it.cat;
+  }
+  function openEquipPicker(charId, opts = {}) {
+    const F = { set: 'standard', q: '', limit: 120, sel: {} };
+    modal(`<div id="eqp" class="power-picker"><h3>＋ Add equipment from SW5e</h3><p class="muted">Loading…</p></div>`, async box => {
+      const ep = $('#eqp', box);
+      const ch = () => S.st.characters[charId];
+      let list = [];
+      const facets = () => F.set === 'standard'
+        ? [['cat', 'categories', it => it.cat], ['wc', 'weapon classes', it => it.wc || null], ['src', 'books', it => it.src]]
+        : [['cat', 'types', it => it.cat], ['rar', 'rarities', it => it.rar || null], ['src', 'books', it => it.src]];
+      const values = (fn) => [...new Set(list.map(fn).filter(Boolean))].sort((a, b) => {
+        const order = ['Standard', 'Premium', 'Prototype', 'Advanced', 'Legendary', 'Artifact'];
+        return order.indexOf(a) - order.indexOf(b) || a.localeCompare(b);
+      });
+      const load = async (set) => {
+        F.set = set; F.limit = 120; F.q = '';   // a fresh search for each tab
+        ep.querySelector('.pp-list').innerHTML = '<p class="muted">Loading the SW5e list…</p>';
+        try { list = await equipList(set); } catch (err) { ep.querySelector('.pp-list').innerHTML = `<p class="error">${esc(err.message)}</p>`; return; }
+        F.sel = {};
+        for (const [key, , fn] of facets()) F.sel[key] = new Set(values(fn));
+        if (set === 'standard' && opts.weapons) F.sel.cat = new Set(['Weapon']);
+        renderFilters(); render();
+      };
+      const renderFilters = () => {
+        ep.querySelector('.pp-filters').innerHTML = facets().map(([key, label, fn]) => checkDrop(key, label, values(fn), F.sel[key], key === 'src' ? SRC : {})).join('')
+          + `<input data-eq="q" placeholder="Search by name…" value="${esc(F.q)}" style="flex:1;min-width:140px">`;
+      };
+      const shown = () => list.filter(it => facets().every(([key, , fn]) => { const v = fn(it); return v === null || F.sel[key].has(v); })
+        && (!F.q || it.n.toLowerCase().includes(F.q)));
+      const render = () => {
+        const rows = shown(), have = new Map((ch() ? ch().equipment : []).map(e => [String(e.name).toLowerCase(), n0(e.qty) || 1]));
+        const enh = F.set === 'enhanced';
+        ep.querySelector('.pp-list').innerHTML = rows.slice(0, F.limit).map((it, i) => {
+          const qty = have.get(it.n.toLowerCase());
+          return `<div class="pp-row" data-i="${i}">
+            <div class="pp-main"><b>${esc(it.n)}</b><span class="pp-lvl">${esc(it.cat)}</span>
+              ${enh && it.rar ? `<span class="pp-tag pp-rar-${esc(it.rar.toLowerCase())}">${esc(it.rar)}</span>` : ''}${enh && it.att ? '<span class="pp-tag">Attunement</span>' : ''}
+              ${it.src ? `<span class="pp-tag" title="${esc(SRC[it.src] || it.src)}">${esc(it.src)}</span>` : ''}
+              <div class="pp-meta">${esc([!enh && it.wc, itemNotes(it, enh) !== it.cat && itemNotes(it, enh), !enh && it.cost != null && `${it.cost.toLocaleString()} cr`, !enh && it.wt && `${it.wt} lb`, enh && it.pre && `Requires ${it.pre}`].filter(Boolean).join(' · '))}</div>
+              ${it.desc ? `<details class="pp-desc"><summary>Description</summary><div>${md(it.desc)}</div></details>` : ''}</div>
+            <button class="btn small ${qty ? '' : 'primary'}" data-eq="add" data-i="${i}">${qty ? `Add another (${qty})` : 'Add'}</button></div>`;
+        }).join('') + (rows.length > F.limit ? `<button class="btn small" data-eq="more" style="width:100%">Show ${rows.length - F.limit} more</button>` : '')
+          + (!rows.length ? '<p class="muted">Nothing matches these filters.</p>' : '');
+        ep.querySelector('.pp-count').textContent = `${rows.length} of ${list.length} ${enh ? 'enhanced items' : 'items'}`;
+        ep._rows = rows;
+      };
+      ep.innerHTML = `<h3>＋ Add equipment from SW5e</h3>
+        <div class="subtabs" style="margin:0"><button data-eq="set" data-set="standard" class="on">Standard gear</button><button data-eq="set" data-set="enhanced">Enhanced items</button></div>
+        <div class="pp-filters"></div><div class="pp-count muted"></div><div class="pp-list"></div>
+        <p class="muted" style="font-size:11px;margin:0">Equipment data from SW5e (sw5e.com): Player's Handbook, Expanded Content and Wretched Hives.</p>
+        <div class="row"><span class="spacer"></span><button class="btn primary" data-eq="close">Done</button></div>`;
+      ep.addEventListener('change', e => {
+        const t = e.target;
+        if (t.dataset.eq === 'check') { t.checked ? F.sel[t.dataset.key].add(t.value) : F.sel[t.dataset.key].delete(t.value); F.limit = 120; render(); updateSummaries(); }
+      });
+      const updateSummaries = () => {   // refresh the dropdown labels without closing the one that's open
+        for (const [key, label, fn] of facets()) {
+          const sum = ep.querySelector(`[data-drop="${key}"] summary`); if (!sum) continue;
+          const vals = values(fn), sel = F.sel[key], names = key === 'src' ? SRC : {};
+          sum.textContent = sel.size === vals.length ? `All ${label}` : sel.size === 0 ? `No ${label}` : sel.size <= 2 ? [...sel].map(v => names[v] || v).join(', ') : `${sel.size} ${label}`;
+        }
+      };
+      ep.addEventListener('input', e => { if (e.target.dataset.eq === 'q') { F.q = e.target.value.trim().toLowerCase(); F.limit = 120; render(); } });
+      ep.addEventListener('click', e => {
+        const b = e.target.closest('[data-eq]'); if (!b) return;
+        const a = b.dataset.eq;
+        if (a === 'close') return closeModal();
+        if (a === 'set') { ep.querySelectorAll('[data-eq="set"]').forEach(x => x.classList.toggle('on', x === b)); load(b.dataset.set); return; }
+        if (a === 'more') { F.limit += 200; return render(); }
+        if (a === 'all' || a === 'none') {
+          e.preventDefault();
+          const fn = facets().find(f => f[0] === b.dataset.key)[2];
+          F.sel[b.dataset.key] = new Set(a === 'all' ? values(fn) : []);
+          ep.querySelectorAll(`[data-eq="check"][data-key="${b.dataset.key}"]`).forEach(cb => { cb.checked = a === 'all'; });
+          render(); updateSummaries(); return;
+        }
+        if (a === 'add') {
+          const it = ep._rows[+b.dataset.i]; if (!it) return;
+          const enh = F.set === 'enhanced';
+          mutate(c => {
+            const ex = c.equipment.find(x => String(x.name).toLowerCase() === it.n.toLowerCase());
+            if (ex) ex.qty = (n0(ex.qty) || 1) + 1;
+            else c.equipment.push({ name: it.n, qty: 1, equipped: false, notes: itemNotes(it, enh).slice(0, 200) });
+            if (!enh && it.cat === 'Weapon' && !c.attacks.some(x => String(x.name).toLowerCase() === it.n.toLowerCase())) c.attacks.push(weaponAttack(it));
+          });
+          toast(!enh && it.cat === 'Weapon' ? `Added ${it.n} (and its attack)` : `Added ${it.n}`);
+          setTimeout(render, 50);
+        }
+      });
+      await load('standard');
+      ep.querySelector('[data-eq="q"]')?.focus();
+    });
+  }
+
+  // --------------------------------------------------------------------------- power picker
+  // "+ force power" / "+ tech power": the whole SW5e list (served by our API, cached), filtered by level
+  // and, for force powers, by alignment checkboxes. Picking one adds it with the right level, type and alignment.
+  let POWER_LIST = null;
+  async function powerList() {
+    if (POWER_LIST) return POWER_LIST;
+    const r = await fetch(`${API}?op=powers`, { credentials: 'same-origin' });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !Array.isArray(j)) throw new Error((j && j.error) || "Couldn't load the SW5e power list.");
+    return (POWER_LIST = j);
+  }
+  const ALIGN = { light: 'Light', dark: 'Dark', universal: 'Universal' };
+  function openPowerPicker(charId, kind) {
+    const force = kind !== 'tech';
+    const F = { level: 'all', align: new Set(['light', 'dark', 'universal']), q: '', limit: 120 };
+    modal(`<div id="pp" class="power-picker"><h3>${force ? '＋ Add a force power' : '＋ Add a tech power'}</h3><p class="muted">Loading the SW5e power list…</p></div>`, async box => {
+      const pp = $('#pp', box);
+      let list;
+      try { list = (await powerList()).filter(p => p.t === (force ? 'force' : 'tech')); }
+      catch (err) { pp.innerHTML = `<h3>${force ? 'Force' : 'Tech'} powers</h3><p class="error">${esc(err.message)}</p><div class="row"><span class="spacer"></span><button class="btn" data-pp="close">Close</button></div>`; pp.onclick = e => { if (e.target.dataset.pp === 'close') closeModal(); }; return; }
+      const ch = () => S.st.characters[charId];
+      const known = () => new Set((ch() ? ch().powers : []).map(p => String(p.name).toLowerCase()));
+      const ci = () => R.casterInfo(ch() || {});
+      const shown = () => list.filter(p => (F.level === 'all' || p.l === +F.level) && (!force || F.align.has(p.a))
+        && (!F.q || p.n.toLowerCase().includes(F.q)));
+      const alignLabel = () => F.align.size === 3 ? 'All alignments' : F.align.size === 0 ? 'None selected' : [...F.align].map(a => ALIGN[a]).join(', ');
+      const render = () => {
+        const rows = shown(), kn = known(), maxLvl = force ? ci().forceMaxLevel : ci().techMaxLevel;
+        pp.querySelector('.pp-list').innerHTML = rows.slice(0, F.limit).map(p => {
+          const has = kn.has(p.n.toLowerCase());
+          return `<div class="pp-row" data-n="${esc(p.n)}">
+            <div class="pp-main"><b>${esc(p.n)}</b>
+              <span class="pp-lvl">${p.l ? 'Level ' + p.l : 'At-will'}</span>${force ? `<span class="pp-al pp-${esc(p.a)}">${esc(ALIGN[p.a] || '')}</span>` : ''}
+              ${p.c ? '<span class="pp-tag">Concentration</span>' : ''}${p.src === 'EC' ? '<span class="pp-tag" title="SW5e Expanded Content">EC</span>' : ''}
+              ${maxLvl && p.l > maxLvl ? '<span class="pp-tag pp-high" title="Above the highest level this character can cast right now">above your level</span>' : ''}
+              <div class="pp-meta">${esc(p.ct)} · Range ${esc(p.r)} · ${esc(p.d)}${p.pre ? ` · Requires ${esc(p.pre)}` : ''}</div>
+              <details class="pp-desc"><summary>Description</summary><div>${md(p.desc)}${p.hl ? `<p><b>At higher levels.</b> ${md(p.hl)}</p>` : ''}</div></details></div>
+            <button class="btn small ${has ? 'ghost' : 'primary'}" data-pp="add" ${has ? 'disabled' : ''}>${has ? '✓ Known' : 'Add'}</button></div>`;
+        }).join('') + (rows.length > F.limit ? `<button class="btn small" data-pp="more" style="width:100%">Show ${rows.length - F.limit} more</button>` : '')
+          + (!rows.length ? '<p class="muted">No powers match these filters.</p>' : '');
+        pp.querySelector('.pp-count').textContent = `${rows.length} of ${list.length} ${force ? 'force' : 'tech'} powers`;
+        const al = pp.querySelector('.pp-align summary'); if (al) al.textContent = alignLabel();
+      };
+      pp.innerHTML = `<h3>${force ? '＋ Add a force power' : '＋ Add a tech power'}</h3>
+        <div class="pp-filters">
+          <label class="mini">Level <select data-pp="level"><option value="all">All levels</option>${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(l => `<option value="${l}">${l ? l : '0 (at-will)'}</option>`).join('')}</select></label>
+          ${force ? `<details class="pp-align"><summary>All alignments</summary><div class="pp-align-menu">
+            ${['light', 'dark', 'universal'].map(a => `<label class="toggle"><input type="checkbox" data-pp="align" value="${a}" checked> ${ALIGN[a]}</label>`).join('')}</div></details>` : ''}
+          <input data-pp="q" placeholder="Search by name…" style="flex:1;min-width:140px">
+        </div>
+        <div class="pp-count muted"></div>
+        <div class="pp-list"></div>
+        <p class="muted" style="font-size:11px;margin:0">Power data from SW5e (sw5e.com).</p>
+        <div class="row"><span class="spacer"></span><button class="btn primary" data-pp="close">Done</button></div>`;
+      pp.addEventListener('change', e => {
+        const t = e.target;
+        if (t.dataset.pp === 'level') { F.level = t.value; F.limit = 120; render(); }
+        if (t.dataset.pp === 'align') { t.checked ? F.align.add(t.value) : F.align.delete(t.value); F.limit = 120; render(); }
+      });
+      pp.addEventListener('input', e => { if (e.target.dataset.pp === 'q') { F.q = e.target.value.trim().toLowerCase(); F.limit = 120; render(); } });
+      pp.addEventListener('click', e => {
+        const b = e.target.closest('[data-pp]'); if (!b) return;
+        if (b.dataset.pp === 'close') return closeModal();
+        if (b.dataset.pp === 'more') { F.limit += 200; return render(); }
+        if (b.dataset.pp === 'add') {
+          const p = list.find(x => x.n === b.closest('.pp-row').dataset.n); if (!p) return;
+          const notes = [p.ct, p.r && 'Range ' + p.r, p.d, p.c && !/concentration/i.test(p.d) ? 'Concentration' : ''].filter(Boolean).join(' · ');
+          const desc = p.desc + (p.hl ? '\n\nAt higher levels. ' + p.hl : '');
+          mutate(c => c.powers.push({ name: p.n, level: p.l, type: force ? 'force' : 'tech', alignment: force ? p.a : 'universal', notes: notes.slice(0, 300), description: desc.slice(0, 4000) }));
+          b.textContent = '✓ Added'; b.disabled = true; b.classList.replace('primary', 'ghost');
+          toast(`Added ${p.n}`);
+        }
+      });
+      render();
+      pp.querySelector('[data-pp="q"]').focus();
+    });
+  }
+
+  // --------------------------------------------------------------------------- power tooltips
+  const tip = document.createElement('div');
+  tip.className = 'hover-card hidden'; tip.setAttribute('role', 'tooltip');
+  document.body.appendChild(tip);
+  function powerCard(ch, pw) {
+    const ci = R.casterInfo(ch), lvl = +pw.level || 0, tech = pw.type === 'tech';
+    const cost = lvl ? lvl + 1 : 0;
+    const side = tech ? 'Tech' : pw.alignment === 'light' ? 'Light side' : pw.alignment === 'dark' ? 'Dark side' : 'Universal';
+    const dc = tech ? ci.techDC : pw.alignment === 'dark' ? ci.darkDC : pw.alignment === 'light' ? ci.lightDC : Math.max(ci.lightDC, ci.darkDC);
+    const atk = tech ? ci.techAtk : pw.alignment === 'dark' ? ci.darkAtk : pw.alignment === 'light' ? ci.lightAtk : Math.max(ci.lightAtk, ci.darkAtk);
+    const desc = String(pw.description || '').trim();
+    return `<div class="hc-title">${esc(pw.name || 'Power')}</div>
+      <div class="hc-sub">${lvl ? 'Level ' + lvl : 'At-will'} · ${side} ${tech ? 'power' : 'force power'}</div>
+      <div class="hc-stats"><span>Cost <b>${cost ? cost + (tech ? ' TP' : ' FP') : 'free'}</b></span><span>Save DC <b>${n0(dc)}</b></span><span>Attack <b>${R.fmt(n0(atk))}</b></span></div>
+      ${pw.notes ? `<div class="hc-notes">${esc(pw.notes)}</div>` : ''}
+      ${desc ? `<div class="hc-desc">${md(desc.length > 900 ? desc.slice(0, 900) + '…' : desc)}</div>`
+        : `<div class="hc-desc muted">No description yet${canEdit(ch) ? '. Click ✎ to add one.' : '.'}</div>`}`;
+  }
+  function placeTip(x, y) {
+    const r = tip.getBoundingClientRect(), pad = 14;
+    let left = x + pad, top = y + pad;
+    if (left + r.width > innerWidth - 8) left = x - r.width - pad;
+    if (top + r.height > innerHeight - 8) top = Math.max(8, innerHeight - r.height - 8);
+    tip.style.left = Math.max(8, left) + 'px'; tip.style.top = top + 'px';
+  }
+  function showFeatureTip(el, x, y) {
+    const ch = selChar(); const f = ch && ch.features[+el.dataset.featureTip];
+    if (!f) return;
+    const text = String(f.text || '').trim();
+    tip.innerHTML = `<div class="hc-title">${esc(f.name || 'Feature')}</div>
+      ${text ? `<div class="hc-desc">${md(text.length > 1500 ? text.slice(0, 1500) + '…' : text)}</div>` : '<div class="hc-desc muted">No description.</div>'}`;
+    tip.classList.remove('hidden'); placeTip(x, y);
+  }
+  function showPowerTip(row, x, y) {
+    const ch = selChar(); const pw = ch && ch.powers[+row.dataset.powerTip];
+    if (!pw) return;
+    tip.innerHTML = powerCard(ch, pw); tip.classList.remove('hidden'); placeTip(x, y);
+  }
+  const hideTip = () => tip.classList.add('hidden');
+  const tipTarget = e => e.target.closest('[data-power-tip], [data-feature-tip]');
+  const showTip = (el, x, y) => (el.dataset.featureTip !== undefined ? showFeatureTip(el, x, y) : showPowerTip(el, x, y));
+  $('#sheet').addEventListener('mouseover', e => { const el = tipTarget(e); if (el) showTip(el, e.clientX, e.clientY); });
+  $('#sheet').addEventListener('mousemove', e => { if (!tip.classList.contains('hidden') && tipTarget(e)) placeTip(e.clientX, e.clientY); });
+  $('#sheet').addEventListener('mouseout', e => { const el = tipTarget(e); if (el && !el.contains(e.relatedTarget)) hideTip(); });
+  $('#sheet').addEventListener('focusin', e => { const el = tipTarget(e); if (el) { const r = el.getBoundingClientRect(); showTip(el, r.left, r.bottom); } });
+  $('#sheet').addEventListener('focusout', hideTip);
+  document.addEventListener('scroll', hideTip, true);
 
   // --------------------------------------------------------------------------- combat
   function renderCombat(el) {
@@ -741,6 +1024,7 @@
   const canvas = $('#mapCanvas'), ctx = canvas.getContext('2d');
   const M = { drag: null, sel: null, selProp: null };
   const DD_PX = 256; // Dungeondraft draws assets at 256 px per grid square
+  const UI_FONT = '"Exo 2", "Segoe UI", sans-serif';
   const imgCache = {};
   function img(src) {
     src = imgUrl(src);
@@ -750,28 +1034,71 @@
     return im.complete && im.naturalWidth ? im : null;
   }
 
+  // The map is an endless grid you can pan (drag empty space, or middle-drag anywhere) and zoom
+  // (mouse wheel, trackpad pinch, two-finger pinch, or the buttons). One square is 70 px at 100%,
+  // like most VTTs. The board (cols x rows) is where the background image and floor are drawn.
+  const CAM = { x: 40, y: 40, z: 1, ready: false };
+  const ZMIN = 0.2, ZMAX = 3;
+  (() => { const c = store.get('holo.cam', null); if (c && isFinite(c.x) && isFinite(c.y) && isFinite(c.z)) Object.assign(CAM, c, { ready: true }); })();
+  let camSaveT;
+  const saveCam = () => { clearTimeout(camSaveT); camSaveT = setTimeout(() => store.set('holo.cam', { x: CAM.x, y: CAM.y, z: CAM.z }), 400); };
+  function viewSize() { const w = $('#mapWrap'); return { w: w.clientWidth || 800, h: w.clientHeight || 600 }; }
+  function zoomAt(sx, sy, factor) {
+    const z = Math.max(ZMIN, Math.min(ZMAX, CAM.z * factor));
+    CAM.x = sx - (sx - CAM.x) * (z / CAM.z); CAM.y = sy - (sy - CAM.y) * (z / CAM.z); CAM.z = z;
+    saveCam(); drawMap(); updateZoomLabel();
+  }
+  function fitBoard() {
+    const mp = S.st.map, g = mp.gridSize, { w, h } = viewSize();
+    const z = Math.max(ZMIN, Math.min(ZMAX, Math.min((w - 40) / (mp.cols * g), (h - 40) / (mp.rows * g))));
+    CAM.z = z; CAM.x = (w - mp.cols * g * z) / 2; CAM.y = (h - mp.rows * g * z) / 2;
+    saveCam(); drawMap(); updateZoomLabel();
+  }
+  function updateZoomLabel() { const l = $('#zoomPct'); if (l) l.textContent = Math.round(CAM.z * 100) + '%'; }
+
+  function sceneBar() {
+    const scenes = S.st.scenes || [], cur = S.st.scene;
+    if (!isGM()) return cur ? `<span class="scene-name" title="Current scene">📍 ${esc(cur.name)}</span>` : '';
+    return `<span class="scene-bar"><label class="mini" title="Pick a scene to show it to everyone">Scene
+        <select data-mact-change="scene"><option value="">${scenes.length ? '— pick a scene —' : '— no scenes yet —'}</option>
+        ${scenes.map(x => `<option value="${esc(x.id)}" ${cur && cur.id === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+      ${cur ? '<button class="btn small" data-mact="scene-save" title="Save the map into this scene">💾 Save</button>' : ''}
+      <button class="btn small" data-mact="scene-saveas" title="Save the map as a new named scene">＋ Save as new</button>
+      <button class="btn small ghost" data-mact="scene-new" title="Start an empty board as a new scene">New blank</button>
+      ${cur ? `<button class="btn small ghost" data-mact="scene-rename" title="Rename this scene">✎</button>
+        <button class="btn small ghost" data-mact="scene-delete" title="Delete this scene">🗑</button>` : ''}</span>`;
+  }
   function renderMapTools() {
     const mp = S.st.map, gm = isGM(), sc = selChar();
-    $('#mapTools').innerHTML = `
+    $('#mapTools').innerHTML = `${sceneBar()}<span class="tool-break"></span>
       ${sc && canEdit(sc) ? `<button class="btn small" data-mact="place">◉ Place ${esc(sc.name)}</button>` : ''}
-      <span class="muted">Zoom</span><input type="range" min="0.3" max="2" step="0.1" value="${S.zoom}" data-mact="zoom" style="width:90px">
+      <span class="zoom-ctl"><button class="btn small" data-mact="zout" title="Zoom out">−</button><button class="btn small" data-mact="z100" id="zoomPct" title="Back to 100% (70 px squares)">${Math.round(CAM.z * 100)}%</button><button class="btn small" data-mact="zin" title="Zoom in">＋</button>
+        <button class="btn small" data-mact="zfit" title="Fit the whole map in view">⤢ Fit</button></span>
       ${gm ? `<button class="btn small ${A.open ? 'primary' : ''}" data-mact="assets">📦 Assets</button><span class="spacer"></span>
-        <button class="btn small" data-mact="bg">🖼 Background…</button>${mp.bgVersion ? '<button class="btn small ghost" data-mact="clear-bg">clear</button>' : ''}
+        <button class="btn small" data-mact="bg">🖼 Background…</button>${mp.bgVersion && mp.bgUrl ? '<button class="btn small ghost" data-mact="clear-bg">clear</button>' : ''}
         ${mp.floor ? '<button class="btn small ghost" data-mact="clear-floor">clear floor</button>' : ''}
-        ${(mp.props || []).length ? `<button class="btn small ghost" data-mact="clear-props">clear ${mp.props.length} props</button>` : ''}
-        <button class="btn small" data-mact="fit" title="Set columns/rows to match the background image">Fit grid</button>
-        <span class="muted">cell px</span><input type="number" value="${n0(mp.gridSize)}" data-mset="gridSize">
-        <span class="muted">cols</span><input type="number" value="${n0(mp.cols)}" data-mset="cols">
-        <span class="muted">rows</span><input type="number" value="${n0(mp.rows)}" data-mset="rows">
+        ${(mp.props || []).length ? `<button class="btn small ghost" data-mact="clear-props">clear ${n0(mp.props.length)} props</button>` : ''}
+        <button class="btn small" data-mact="fit" title="Set the board size to match the background image">Fit board</button>
+        <label class="mini" title="Background image pixels per square">px/sq <input type="number" value="${n0(mp.gridSize)}" data-mset="gridSize"></label>
+        <label class="mini">cols <input type="number" value="${n0(mp.cols)}" data-mset="cols"></label>
+        <label class="mini">rows <input type="number" value="${n0(mp.rows)}" data-mset="rows"></label>
         <label class="toggle"><input type="checkbox" data-mset="showGrid" ${mp.showGrid ? 'checked' : ''}> grid</label>
         <button class="btn small" data-mact="npc">＋ Token</button>
-        <input type="file" id="bgFile" accept="image/*" hidden>` : '<span class="muted">Drag your token to move. Click a token for options.</span>'}`;
+        <input type="file" id="bgFile" accept="image/*" hidden>` : '<span class="muted">Drag your token to move it · drag empty space to pan · scroll to zoom</span>'}`;
   }
   $('#mapTools').addEventListener('click', async e => {
     const b = e.target.closest('[data-mact]'); if (!b) return;
-    const a = b.dataset.mact;
-    if (a === 'place') await act('token.add', { charId: S.selected, x: 1, y: 1 });
-    if (a === 'assets') { A.open = !A.open; renderMapTools(); renderDrawer(); }
+    const a = b.dataset.mact, { w, h } = viewSize();
+    if (a === 'zin') zoomAt(w / 2, h / 2, 1.25);
+    if (a === 'zout') zoomAt(w / 2, h / 2, 0.8);
+    if (a === 'z100') zoomAt(w / 2, h / 2, 1 / CAM.z);
+    if (a === 'zfit') fitBoard();
+    if (a === 'place') {   // drop the token in the middle of what you're looking at
+      const g = S.st.map.gridSize;
+      await act('token.add', { charId: S.selected, x: Math.floor((w / 2 - CAM.x) / CAM.z / g), y: Math.floor((h / 2 - CAM.y) / CAM.z / g) });
+    }
+    if (a.startsWith('scene-')) return sceneAction(a);
+    if (a === 'assets') { A.open = !A.open; renderMapTools(); renderDrawer(); requestAnimationFrame(drawMap); }
     if (a === 'bg') $('#bgFile').click();
     if (a === 'clear-bg') act('map.bg', { url: null });
     if (a === 'clear-floor') act('map.floor', { src: null });
@@ -779,12 +1106,27 @@
     if (a === 'fit' && S.mapImg) act('map.settings', { cols: Math.round(S.mapImg.width / S.st.map.gridSize), rows: Math.round(S.mapImg.height / S.st.map.gridSize) });
     if (a === 'npc') {
       const name = prompt('Token name', 'Enemy'); if (!name) return;
-      act('token.add', { name, color: '#ef5350', x: 1, y: 1 });
+      const g = S.st.map.gridSize;
+      act('token.add', { name, color: '#ef5350', x: Math.floor((w / 2 - CAM.x) / CAM.z / g), y: Math.floor((h / 2 - CAM.y) / CAM.z / g) });
     }
   });
-  $('#mapTools').addEventListener('input', e => { if (e.target.dataset.mact === 'zoom') { S.zoom = +e.target.value; drawMap(); } });
+  async function sceneAction(a) {
+    const cur = S.st.scene;
+    if (a === 'scene-save' && cur) { if (await act('scene.save')) toast(`Saved “${cur.name}”`); }
+    if (a === 'scene-saveas' || a === 'scene-new') {
+      const name = prompt(a === 'scene-new' ? 'Name for the new, empty scene:' : 'Name this scene:', ''); if (name === null) return;
+      if (await act(a === 'scene-new' ? 'scene.new' : 'scene.saveAs', { name: name.trim() || 'Untitled scene' })) toast(a === 'scene-new' ? 'New scene ready' : 'Scene saved');
+    }
+    if (a === 'scene-rename' && cur) { const name = prompt('Rename the scene:', cur.name); if (name && name.trim()) act('scene.rename', { id: cur.id, name: name.trim() }); }
+    if (a === 'scene-delete' && cur && confirm(`Delete the scene “${cur.name}”? The map on screen stays; only the saved scene is removed.`)) act('scene.delete', { id: cur.id });
+  }
   $('#mapTools').addEventListener('change', async e => {
     const t = e.target;
+    if (t.dataset.mactChange === 'scene') {
+      if (!t.value) return;
+      if (await act('scene.load', { id: t.value })) toast('Scene changed for everyone');
+      return;
+    }
     if (t.id === 'bgFile' && t.files[0]) {
       toast('Uploading map…');
       try {
@@ -797,6 +1139,9 @@
     if (t.dataset.mset) act('map.settings', { [t.dataset.mset]: t.type === 'checkbox' ? t.checked : +t.value });
   });
   async function loadMapBg() {
+    const sid = S.st.map.sceneId || '';
+    if (S.sceneSeen !== undefined && S.sceneSeen !== sid) { CAM.ready = false; requestAnimationFrame(drawMap); }
+    S.sceneSeen = sid;
     const v = S.st.map.bgVersion;
     if (v === S.mapBgVersion) return;
     S.mapBgVersion = v;
@@ -817,11 +1162,23 @@
 
   function drawMap() {
     if (!S.st || S.tab !== 'map') return;
-    const mp = S.st.map, g = mp.gridSize, W = mp.cols * g, H = mp.rows * g, z = S.zoom, dpr = window.devicePixelRatio || 1;
-    canvas.width = W * z * dpr; canvas.height = H * z * dpr; canvas.style.width = W * z + 'px'; canvas.style.height = H * z + 'px';
-    ctx.setTransform(z * dpr, 0, 0, z * dpr, 0, 0);
-    const MC = mapColors();
-    ctx.fillStyle = MC.bg; ctx.fillRect(0, 0, W, H);
+    const mp = S.st.map, g = mp.gridSize, W = mp.cols * g, H = mp.rows * g, dpr = window.devicePixelRatio || 1;
+    const { w: vw, h: vh } = viewSize();
+    if (!CAM.ready) {   // first open: fit the board, but never start smaller than 70% (then start at 100%, top-left)
+      CAM.ready = true; fitBoard();
+      if (CAM.z < 0.7) { CAM.z = 1; CAM.x = 40; CAM.y = 40; saveCam(); updateZoomLabel(); drawMap(); }
+      return;
+    }
+    if (canvas.width !== Math.round(vw * dpr) || canvas.height !== Math.round(vh * dpr)) {
+      canvas.width = Math.round(vw * dpr); canvas.height = Math.round(vh * dpr);
+      canvas.style.width = vw + 'px'; canvas.style.height = vh + 'px';
+    }
+    const z = CAM.z, MC = mapColors();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = MC.bg; ctx.fillRect(0, 0, vw, vh);
+    ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * CAM.x, dpr * CAM.y);
+    // the board: floor texture and background image
+    ctx.fillStyle = MC.board; ctx.fillRect(0, 0, W, H);
     const fl = img(mp.floor);
     if (fl) {
       const pat = ctx.createPattern(fl, 'repeat'), s = (g / DD_PX) * (mp.floorScale || 1);
@@ -829,12 +1186,16 @@
       ctx.fillStyle = pat; ctx.fillRect(0, 0, W, H);
     }
     if (S.mapImg) ctx.drawImage(S.mapImg, 0, 0, W, H);
+    // the grid fills the whole view, not just the board
     if (mp.showGrid) {
+      const x0 = Math.floor((-CAM.x / z) / g) * g, y0 = Math.floor((-CAM.y / z) / g) * g;
+      const x1 = (vw - CAM.x) / z, y1 = (vh - CAM.y) / z;
       ctx.strokeStyle = MC.grid; ctx.lineWidth = 1 / z; ctx.beginPath();
-      for (let x = 0; x <= W; x += g) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
-      for (let y = 0; y <= H; y += g) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
+      for (let x = x0; x <= x1; x += g) { ctx.moveTo(x, y0); ctx.lineTo(x, y1); }
+      for (let y = y0; y <= y1; y += g) { ctx.moveTo(x0, y); ctx.lineTo(x1, y); }
       ctx.stroke();
     }
+    ctx.strokeStyle = MC.edge; ctx.lineWidth = 2 / z; ctx.strokeRect(0, 0, W, H);
     // props
     for (const p of mp.props || []) {
       const drag = M.drag && M.drag.prop === p.id;
@@ -842,7 +1203,7 @@
       const im = img(p.src);
       ctx.save(); ctx.translate(px + w / 2, py + h / 2); ctx.rotate((p.rot || 0) * Math.PI / 180);
       if (im) ctx.drawImage(im, -w / 2, -h / 2, w, h); else { ctx.fillStyle = MC.ghost; ctx.fillRect(-w / 2, -h / 2, w, h); }
-      if (M.selProp === p.id) { ctx.strokeStyle = '#ffb74d'; ctx.lineWidth = 2 / z; ctx.setLineDash([6 / z, 4 / z]); ctx.strokeRect(-w / 2, -h / 2, w, h); }
+      if (M.selProp === p.id) { ctx.strokeStyle = themeHex('amber', '#ffb74d'); ctx.lineWidth = 2 / z; ctx.setLineDash([6 / z, 4 / z]); ctx.strokeRect(-w / 2, -h / 2, w, h); }
       ctx.restore();
     }
     // stamp preview
@@ -858,8 +1219,8 @@
       const cx = px + sz / 2, cy = py + sz / 2;
       ctx.globalAlpha = t.hidden ? 0.45 : 1;
       const isCur = cur && ((cur.charId && cur.charId === t.charId) || (!cur.charId && cur.name === t.name));
-      if (isCur) { ctx.beginPath(); ctx.arc(cx, cy, r + 5, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,183,77,.35)'; ctx.fill(); }
-      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = t.color || '#4fc3f7'; ctx.fill();
+      if (isCur) { ctx.beginPath(); ctx.arc(cx, cy, r + 5, 0, Math.PI * 2); ctx.fillStyle = rgba(themeHex('amber', '#ffb74d'), 0.4); ctx.fill(); }
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = color(t.color); ctx.fill();
       const ch = t.charId && S.st.characters[t.charId];
       const photo = ch && [ch.tokenImage, ch.image].find(u => imgUrl(u));
       const im = img(t.img || photo);
@@ -869,18 +1230,18 @@
         const s = t.img ? Math.min((r - 2) * 2 / im.width, (r - 2) * 2 / im.height) : Math.max((r * 2) / im.width, (r * 2) / im.height);
         ctx.drawImage(im, cx - im.width * s / 2, cy - im.height * s / 2, im.width * s, im.height * s); ctx.restore();
       } else {
-        ctx.fillStyle = '#04121b'; ctx.font = `bold ${Math.round(sz * 0.32)}px Segoe UI, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#04121b'; ctx.font = `bold ${Math.round(sz * 0.32)}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText(initials(t.name), cx, cy + 1);
       }
       ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.lineWidth = (M.sel === t.id ? 3 : 2); ctx.strokeStyle = M.sel === t.id ? '#fff' : 'rgba(0,0,0,.6)'; ctx.stroke();
+      ctx.lineWidth = (M.sel === t.id ? 3 : 2) / Math.min(1, z); ctx.strokeStyle = M.sel === t.id ? '#fff' : 'rgba(0,0,0,.6)'; ctx.stroke();
       if (ch && ch.hp && +ch.hp.max) {
         const pct = Math.max(0, Math.min(1, ch.hp.current / ch.hp.max));
         ctx.fillStyle = '#300'; ctx.fillRect(px + 4, py + sz - 6, sz - 8, 4);
         ctx.fillStyle = pct < .3 ? '#ef5350' : pct < .6 ? '#ffb74d' : '#66bb6a'; ctx.fillRect(px + 4, py + sz - 6, (sz - 8) * pct, 4);
       }
-      ctx.font = `600 ${Math.max(10, g * 0.22)}px Segoe UI, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.strokeText(t.name, cx, py + sz + 1); ctx.fillStyle = '#fff'; ctx.fillText(t.name, cx, py + sz + 1);
+      ctx.font = `600 ${Math.max(11 / z, g * 0.2)}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.lineWidth = 3 / z; ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.strokeText(t.name, cx, py + sz + 1); ctx.fillStyle = '#fff'; ctx.fillText(t.name, cx, py + sz + 1);
       ctx.globalAlpha = 1;
     }
   }
@@ -889,11 +1250,28 @@
     const g = S.st.map.gridSize;
     return S.st.map.tokens.slice().reverse().find(t => x >= t.x * g && x < (t.x + (t.size || 1)) * g && y >= t.y * g && y < (t.y + (t.size || 1)) * g);
   }
-  function mapXY(e) { const r = canvas.getBoundingClientRect(); return { x: (e.clientX - r.left) / S.zoom, y: (e.clientY - r.top) / S.zoom }; }
+  function screenXY(e) { const r = canvas.getBoundingClientRect(); return { sx: e.clientX - r.left, sy: e.clientY - r.top }; }
+  function mapXY(e) { const { sx, sy } = screenXY(e); return { x: (sx - CAM.x) / CAM.z, y: (sy - CAM.y) / CAM.z }; }
   const snap = (v, e) => e.altKey ? Math.round(v * 100) / 100 : Math.round(v * 2) / 2;
+  const TOK_MIN = -500, TOK_MAX = 1000;
+  const capture = e => { try { canvas.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ } };
+  const touches = new Map(); // pointers currently down, for two-finger pinch / pan
+  let pinch = null;
   canvas.addEventListener('contextmenu', e => { if (A.stamp) { e.preventDefault(); stopStamp(); } });
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const { sx, sy } = screenXY(e);
+    zoomAt(sx, sy, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)));
+  }, { passive: false });
   canvas.addEventListener('pointerdown', async e => {
     closeTokenPop();
+    touches.set(e.pointerId, screenXY(e));
+    if (touches.size === 2) { // second finger: start a pinch, cancel any drag
+      const [a, b] = [...touches.values()];
+      pinch = { d: Math.hypot(a.sx - b.sx, a.sy - b.sy), mx: (a.sx + b.sx) / 2, my: (a.sy + b.sy) / 2 };
+      M.drag = null; return;
+    }
+    if (e.button === 1) { e.preventDefault(); M.drag = { pan: true, sx: e.clientX, sy: e.clientY, cx: CAM.x, cy: CAM.y, moved: false }; capture(e); return; }
     if (e.button !== 0) return;
     const { x, y } = mapXY(e), g = S.st.map.gridSize;
     if (A.stamp) {           // place from the asset browser
@@ -910,29 +1288,46 @@
     M.sel = t ? t.id : null; M.selProp = null;
     if (t && canMove(t)) {
       M.drag = { id: t.id, ox: x - t.x * g, oy: y - t.y * g, px: t.x * g, py: t.y * g, moved: false };
-      canvas.setPointerCapture(e.pointerId);
-    } else if (!t && isGM()) {
+    } else if (!t && isGM() && propAt(x, y)) {
       const p = propAt(x, y);
-      if (p) {
-        M.selProp = p.id;
-        M.drag = { prop: p.id, ox: x - p.x * g, oy: y - p.y * g, px: p.x * g, py: p.y * g, moved: false };
-        canvas.setPointerCapture(e.pointerId);
-      }
+      M.selProp = p.id;
+      M.drag = { prop: p.id, ox: x - p.x * g, oy: y - p.y * g, px: p.x * g, py: p.y * g, moved: false };
+    } else if (!t) {
+      M.drag = { pan: true, sx: e.clientX, sy: e.clientY, cx: CAM.x, cy: CAM.y, moved: false }; // empty space: pan
     }
+    if (M.drag) capture(e);
+    canvas.classList.toggle('panning', !!(M.drag && M.drag.pan));
     drawMap();
     if (t && !M.drag) showTokenPop(t, e);
   });
   canvas.addEventListener('pointermove', e => {
+    if (touches.has(e.pointerId)) touches.set(e.pointerId, screenXY(e));
+    if (pinch && touches.size === 2) {
+      const [a, b] = [...touches.values()];
+      const d = Math.hypot(a.sx - b.sx, a.sy - b.sy), mx = (a.sx + b.sx) / 2, my = (a.sy + b.sy) / 2;
+      CAM.x += mx - pinch.mx; CAM.y += my - pinch.my;
+      zoomAt(mx, my, d / (pinch.d || d));
+      pinch = { d, mx, my }; return;
+    }
     if (A.stamp) { A.hover = mapXY(e); drawMap(); return; }
     if (!M.drag) return;
+    if (M.drag.pan) {
+      const dx = e.clientX - M.drag.sx, dy = e.clientY - M.drag.sy;
+      if (Math.abs(dx) + Math.abs(dy) > 3) M.drag.moved = true;
+      CAM.x = M.drag.cx + dx; CAM.y = M.drag.cy + dy; drawMap(); return;
+    }
     const { x, y } = mapXY(e);
     M.drag.px = x - M.drag.ox; M.drag.py = y - M.drag.oy; M.drag.moved = true; drawMap();
   });
   canvas.addEventListener('pointerleave', () => { if (A.stamp) { A.hover = null; drawMap(); } });
-  canvas.addEventListener('pointerup', e => {
+  const endPointer = e => {
+    touches.delete(e.pointerId);
+    if (touches.size < 2) pinch = null;
+    canvas.classList.remove('panning');
     if (!M.drag) return;
     const d = M.drag, g = S.st.map.gridSize;
     M.drag = null;
+    if (d.pan) { if (d.moved) saveCam(); else { M.sel = null; M.selProp = null; drawMap(); } return; }
     if (d.prop) {
       const p = (S.st.map.props || []).find(p => p.id === d.prop);
       if (p && d.moved) { p.x = snap(d.px / g, e); p.y = snap(d.py / g, e); act('prop.update', { id: p.id, fields: { x: p.x, y: p.y } }); }
@@ -941,17 +1336,20 @@
     }
     const t = S.st.map.tokens.find(t => t.id === d.id);
     if (t && d.moved) {
-      t.x = Math.max(0, Math.min(S.st.map.cols - 1, Math.round(d.px / g)));
-      t.y = Math.max(0, Math.min(S.st.map.rows - 1, Math.round(d.py / g)));
+      t.x = Math.max(TOK_MIN, Math.min(TOK_MAX, Math.round(d.px / g)));
+      t.y = Math.max(TOK_MIN, Math.min(TOK_MAX, Math.round(d.py / g)));
       act('token.move', { id: t.id, x: t.x, y: t.y });
     } else if (t) showTokenPop(t, e);
     drawMap();
-  });
+  };
+  canvas.addEventListener('pointerup', endPointer);
+  canvas.addEventListener('pointercancel', endPointer);
+  if (window.ResizeObserver) new ResizeObserver(() => drawMap()).observe($('#mapWrap'));
   function closeTokenPop() { const p = $('.token-pop'); if (p) p.remove(); }
   function popAt(e) {
     const wrap = $('#mapWrap'), r = wrap.getBoundingClientRect();
     const pop = document.createElement('div'); pop.className = 'token-pop';
-    pop.style.left = (e.clientX - r.left + wrap.scrollLeft + 10) + 'px'; pop.style.top = (e.clientY - r.top + wrap.scrollTop + 10) + 'px';
+    pop.style.left = Math.min(e.clientX - r.left + 10, r.width - 200) + 'px'; pop.style.top = Math.min(e.clientY - r.top + 10, r.height - 260) + 'px';
     wrap.appendChild(pop); return pop;
   }
   function showPropPop(p, e) {
@@ -1030,8 +1428,9 @@
     const items = filtered();
     el.innerHTML = `<div class="ad-head">
         <div class="row"><b style="flex:1">Asset library</b><button class="btn tiny" id="adUpload" title="Dungeondraft .dungeondraft_pack, a .zip of images, or images">＋ Upload pack</button></div>
-        <input type="file" id="adFile" accept=".dungeondraft_pack,.zip,.pck,image/*" multiple hidden>
+        <input type="file" id="adFile" multiple hidden>
         <div id="adProg" class="progress hidden"><div></div></div>
+        <div id="adMsg" class="pack-msg hidden" role="status"></div>
         ${A.packs.length ? `<select id="adPack"><option value="all">All packs (${A.packs.reduce((s, p) => s + n0(p.count), 0)})</option>${A.packs.map(p => `<option value="${esc(p.id)}" ${p.id === A.pack ? 'selected' : ''}>${esc(p.name)} (${n0(p.count)})</option>`).join('')}</select>
         <input id="adSearch" placeholder="Search crates, consoles, doors…" value="${esc(A.q)}">
         <div class="cats">${['all', ...Object.keys(cats).sort()].map(c => `<button data-cat="${esc(c)}" class="${A.cat === c ? 'on' : ''}">${esc(c)}${c === 'all' ? '' : ' ' + n0(cats[c])}</button>`).join('')}</div>` : ''}
@@ -1093,33 +1492,60 @@
     A.open = true; setTab('map'); renderMapTools();
     files.reduce((p, f) => p.then(() => uploadPack(f)), renderDrawer());
   }
-  // Packs are unpacked in the browser (packs.js) and sent in ~3 MB batches, so even a 60 MB
-  // Dungeondraft pack fits through the site's per-request size limit.
+  // Packs are unpacked in the browser (packs.js) and sent in small batches (~1.5 MB), so even a
+  // 60 MB Dungeondraft pack fits through the site's per-request limits. Each batch is numbered, so
+  // a retry after a timeout can't add the same images twice. Errors stay on screen and say which step failed.
+  function packStatus(text, isErr) {
+    const m = $('#adMsg'); if (!m) return;
+    m.textContent = text || ''; m.className = 'pack-msg' + (isErr ? ' err' : '') + (text ? '' : ' hidden');
+  }
+  async function postRetry(op, body, what) {
+    let last;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try { return await post(op, body); } catch (err) {
+        last = err;
+        // a refusal (full library, not the GM, bad file) won't change on retry; a timeout or blip might
+        if (/full|GM only|isn't|Please sign in|not found|no such/i.test(err.message)) break;
+        if (attempt < 3) { packStatus(`${what}: retrying (${err.message})…`); await sleep(1500 * attempt); }
+      }
+    }
+    throw new Error(`${what} failed: ${last.message}`);
+  }
   async function uploadPack(file) {
     const bar = () => $('#adProg');
-    const show = (pct, label) => { const b = bar(); if (b) { b.classList.remove('hidden'); b.firstElementChild.style.width = pct + '%'; b.title = label; } };
+    const show = (pct, label) => { const b = bar(); if (b) { b.classList.remove('hidden'); b.firstElementChild.style.width = pct + '%'; b.title = label; } packStatus(label); };
     try {
-      toast(`Reading ${file.name}…`);
-      const pack = await window.PackReader.read(file, (i, n) => show(40 * i / n, `Preparing ${i}/${n}`));
+      show(0, `Reading ${file.name} (${(file.size / 1048576).toFixed(0)} MB)…`);
+      let pack;
+      try { pack = await window.PackReader.read(file, (i, n) => show(40 * i / n, `Preparing images ${i} / ${n}`)); }
+      catch (err) { throw new Error(`Couldn't read ${file.name}: ${err.message}`); }
       const bytes = pack.items.reduce((s, it) => s + it.data.length * 0.75, 0);
-      const { packId } = await post('packstart', { name: pack.name, author: pack.author, bytes });
-      let batch = [], size = 0, sent = 0;
-      const flush = async () => {
-        if (!batch.length) return;
-        await post('packadd', { packId, items: batch });
-        sent += batch.length; batch = []; size = 0;
-        show(40 + 60 * sent / pack.items.length, `Uploading ${sent}/${pack.items.length}`);
-      };
+      const { packId } = await postRetry('packstart', { name: pack.name, author: pack.author, bytes }, 'Starting the upload');
+      const batches = [];
+      let cur = [], size = 0;
       for (const it of pack.items) {
-        if (size + it.data.length > 3000000) await flush();
-        batch.push(it); size += it.data.length;
+        if (cur.length && size + it.data.length > 1500000) { batches.push(cur); cur = []; size = 0; }
+        cur.push(it); size += it.data.length;
       }
-      await flush();
-      const done = await post('packdone', { packId });
-      toast(`Added “${done.pack.name}” — ${done.pack.count} images`);
+      if (cur.length) batches.push(cur);
+      let sent = 0;
+      for (let i = 0; i < batches.length; i++) {
+        await postRetry('packadd', { packId, seq: i, items: batches[i] }, `Uploading batch ${i + 1} of ${batches.length}`);
+        sent += batches[i].length;
+        show(40 + 60 * sent / pack.items.length, `Uploading images ${sent} / ${pack.items.length}`);
+      }
+      const done = await postRetry('packdone', { packId }, 'Finishing the upload');
+      toast(`Added “${done.pack.name}”: ${done.pack.count} images`);
+      packStatus(`Added “${done.pack.name}”: ${done.pack.count} images.`);
       A.pack = packId; A.cat = 'all';
       await loadPacks();
-    } catch (err) { toast(err.message || 'Upload failed', true); }
+    } catch (err) {
+      toast(err.message || 'Upload failed', true);
+      packStatus(err.message || 'Upload failed', true);
+      const b = bar(); if (b) b.classList.add('hidden');
+      await renderDrawer(); packStatus(err.message || 'Upload failed', true); // after the redraw, so it stays visible
+      return;
+    }
     const b = bar(); if (b) b.classList.add('hidden');
     renderDrawer();
   }
@@ -1200,7 +1626,7 @@
         <h4 style="margin-top:12px">Table name</h4>
         <div class="row"><input id="campRename" value="${esc(S.st.name)}" style="flex:1"><button class="btn small" id="doRename">Rename</button></div>
         <h4 style="margin-top:12px">Who's here</h4>
-        ${Object.entries(S.st.players).map(([id, p]) => `<div>${esc(p.name)} ${p.role === 'gm' ? '<span class="muted">(GM)</span>' : ''} ${S.st.online.some(o => o.clientId === id) ? '<span style="color:var(--green)">● online</span>' : '<span class="muted">offline</span>'}
+        ${Object.entries(S.st.players).map(([id, p]) => `<div>${esc(p.name)} ${p.role === 'gm' && !/^\s*gm\s*$/i.test(p.name || '') ? '<span class="muted">(GM)</span>' : ''} ${S.st.online.some(o => o.clientId === id) ? '<span style="color:var(--green)">● online</span>' : '<span class="muted">offline</span>'}
           <span class="muted">— ${chars().filter(c => c.owner === id).map(c => esc(c.name)).join(', ') || 'no characters'}</span></div>`).join('')}
         <div class="row" style="margin-top:12px"><button class="btn small danger" id="clearChat">Clear chat log</button></div>
       </div>
@@ -1262,7 +1688,7 @@
     if (m.levelup) return `<div class="msg lvl">${md(m.text)}</div>`;
     if (m.system) return `<div class="msg sys">${md(m.text)}</div>`;
     const who = m.as ? `${esc(m.as)} <span class="muted" style="font-weight:400">(${esc(m.from)})</span>` : m.charName ? `${esc(m.charName)} <span class="muted" style="font-weight:400">(${esc(m.from)})</span>` : esc(m.from);
-    const priv = m.private ? `<div class="tag">${m.roll ? '🔒 GM-only roll' : m.fromId === clientId ? '🔒 whisper to ' + esc(m.whisperTo || 'GM') : '🔒 whisper'}</div>` : '';
+    const priv = m.private ? `<div class="tag">${m.roll ? '🔒 GM-only roll' : '🔒 whisper to ' + esc(m.whisperTo || 'GM')}</div>` : '';
     if (m.roll) {
       const r = m.roll, crit = r.nat === 20 && r.kind !== 'damage', fumble = r.nat === 1 && r.kind !== 'damage';
       const detail = esc(r.detail).replace(/~(\d+)~/g, '<del>$1</del>');
@@ -1270,31 +1696,166 @@
         <div class="roll ${crit ? 'crit' : ''} ${fumble ? 'fumble' : ''}"><div class="label">${esc(r.label || r.expr)}${crit ? ' — NATURAL 20!' : fumble ? ' — natural 1' : ''}</div>
         <div class="total">${n0(r.total)}</div><div class="detail">${esc(r.expr)} → ${detail}</div></div></div>`;
     }
+    if (m.yell) return `<div class="msg yell"><div class="who">📣 ${who} yells${t}</div><div class="yell-text">${md(m.text)}</div></div>`;
+    if (m.ooc) return `<div class="msg ooc"><span class="ooc-tag">OOC</span> <b>${esc(m.from)}:</b> ${md(m.text)}</div>`;
     if (m.narration) return `<div class="msg narr">${md(m.text)}</div>`;
-    if (m.emote) return `<div class="msg emote">* ${esc(m.from)} ${md(m.text)}</div>`;
+    if (m.emote) return `<div class="msg emote">* ${m.as ? `${esc(m.as)} <span class="muted">(${esc(m.from)})</span>` : esc(m.from)} ${md(m.text)}</div>`;
     return `<div class="msg ${m.private ? 'priv' : ''}"><div class="who">${who}${t}</div>${priv}<div>${md(m.text)}</div></div>`;
+  }
+  // a yell also pops up on everyone else's screen for a moment
+  function showYell(m) {
+    const el = document.createElement('div');
+    el.className = 'yell-pop'; el.setAttribute('role', 'alert');
+    el.innerHTML = `<span class="who">📣 ${m.as ? `${esc(m.as)} (${esc(m.from)})` : esc(m.from)} yells</span><span class="text">${esc(m.text)}</span>`;
+    document.body.appendChild(el);
+    setTimeout(() => el.classList.add('out'), 3800);
+    setTimeout(() => el.remove(), 4400);
   }
   function renderChat() {
     const log = $('#chatLog'), msgs = S.st.chat;
     const last = msgs.length ? msgs[msgs.length - 1].id : null;
     if (last === S.lastChatId && log.childElementCount === msgs.length) return;
+    if (S.lastChatId !== null) {  // new since last time (not on first load): pop up other people's yells
+      const i = msgs.findIndex(m => m.id === S.lastChatId);
+      for (const m of msgs.slice(i + 1)) if (m.yell && m.fromId !== clientId) showYell(m);
+    }
     const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
     log.innerHTML = msgs.map(renderMsg).join('');
     if (atBottom || S.lastChatId === null || (msgs.length && msgs[msgs.length - 1].fromId === clientId)) log.scrollTop = log.scrollHeight;
     S.lastChatId = last;
   }
+
+  // ---- chat commands: type "/" for a menu that narrows as you type; names are suggested for whispers
+  const COMMANDS = [
+    { cmd: '/r', alias: ['/roll'], args: '<dice> [# label]', desc: 'Roll dice for everyone to see', ex: '/r 1d20+5 # Stealth' },
+    { cmd: '/gmr', alias: ['/gr'], args: '<dice>', desc: 'Secret roll that only you and the GM see', ex: '/gmr 1d20' },
+    { cmd: '/w', alias: ['/whisper', '/tell', '/msg'], args: '<player or character> <message>', desc: 'Whisper privately to a player or a character', ex: '/w Kira Vos meet me at the hangar', target: true },
+    { cmd: '/yell', alias: ['/y', '/shout'], args: '<message>', desc: 'Yell to everyone at the table, with a pop-up on every screen', ex: '/yell Incoming fighters!' },
+    { cmd: '/me', args: '<action>', desc: 'Describe what your character does', ex: '/me draws her blaster' },
+    { cmd: '/ooc', alias: ['/o'], args: '<message>', desc: 'Out-of-character table talk', ex: '/ooc brb, getting snacks' },
+    { cmd: '/init', args: '', desc: 'Roll initiative for your selected character', client: true },
+    { cmd: '/desc', args: '<text>', desc: 'Narrate the scene (GM)', ex: '/desc The cantina falls silent.', gm: true },
+    { cmd: '/clear', args: '', desc: 'Clear the chat log for everyone (GM)', gm: true, client: true },
+    { cmd: '/help', args: '', desc: 'Show every chat command', client: true },
+  ];
+  const cmdFor = word => COMMANDS.find(c => c.cmd === word || (c.alias || []).includes(word));
+  const CM = { items: [], sel: 0, open: false };
+  function whisperTargets() {
+    const out = isGM() ? [] : [{ name: 'gm', label: 'GM', sub: 'the Game Master' }];
+    for (const [id, p] of Object.entries(S.st.players)) if (p && p.name && id !== clientId) out.push({ name: p.name, label: p.name, sub: p.role === 'gm' ? 'GM' : 'player' });
+    for (const ch of chars()) if (ch.owner !== clientId) out.push({ name: ch.name, label: ch.name, sub: `${(S.st.players[ch.owner] || {}).name || 'someone'}'s character` });
+    return out;
+  }
+  // what the menu should show for the text typed so far
+  function menuItems(v) {
+    if (!S.st || !v.startsWith('/')) return [];
+    const sp = v.indexOf(' ');
+    if (sp < 0) {   // still typing the command word
+      const typed = v.toLowerCase();
+      // every command word that starts with what's typed, aliases included (so /r lists /r and /roll)
+      return COMMANDS.filter(c => !c.gm || isGM())
+        .flatMap(c => [c.cmd, ...(c.alias || [])].filter(w => w.startsWith(typed)).map(hit => ({ c, hit })))
+        .sort((a, b) => a.hit.length - b.hit.length || a.hit.localeCompare(b.hit))
+        .map(({ c, hit }) => ({ kind: 'cmd', insert: hit + (c.args ? ' ' : ''), c, hit, typed }));
+    }
+    const c = cmdFor(v.slice(0, sp).toLowerCase());
+    if (!c || !c.target) return [];
+    const rest = v.slice(sp + 1);
+    const lowRest = rest.toLowerCase();
+    // stop suggesting once a full name has been typed and the message has started
+    if (whisperTargets().some(t => lowRest.startsWith(t.name.toLowerCase() + ' '))) return [];
+    return whisperTargets().filter(t => t.name.toLowerCase().startsWith(lowRest))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(t => ({ kind: 'name', insert: v.slice(0, sp + 1) + t.name + ' ', t, typed: rest }));
+  }
+  function renderMenu() {
+    const box = $('#cmdMenu');
+    if (!CM.open || !CM.items.length) { box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    box.innerHTML = CM.items.map((it, i) => {
+      const on = i === CM.sel ? ' on' : '';
+      if (it.kind === 'cmd') {
+        const c = it.c, n = it.typed.length;
+        const shown = `<b>${esc(it.hit.slice(0, n))}</b>${esc(it.hit.slice(n))}`;
+        return `<div class="cm-item${on}" role="option" aria-selected="${i === CM.sel}" data-i="${i}"><span class="cm-cmd">${shown}</span> <span class="cm-args">${esc(c.args)}</span>
+          <div class="cm-desc">${esc(c.desc)}${it.hit !== c.cmd ? ` <span class="muted">(same as ${esc(c.cmd)})</span>` : ''}${c.gm ? ' <span class="cm-gm">GM</span>' : ''}</div></div>`;
+      }
+      const n = it.typed.length;
+      return `<div class="cm-item${on}" role="option" aria-selected="${i === CM.sel}" data-i="${i}"><span class="cm-cmd"><b>${esc(it.t.label.slice(0, n))}</b>${esc(it.t.label.slice(n))}</span>
+        <div class="cm-desc">${esc(it.t.sub)}</div></div>`;
+    }).join('');
+    const selEl = box.querySelector('.cm-item.on'); if (selEl) selEl.scrollIntoView({ block: 'nearest' });
+  }
+  function updateMenu() {
+    const v = $('#chatInput').value;
+    const items = menuItems(v);
+    const sameList = CM.items.length === items.length && CM.items.every((x, i) => x.insert === items[i].insert);
+    CM.items = items; CM.open = items.length > 0;
+    if (!sameList) CM.sel = 0;
+    renderMenu();
+  }
+  function acceptMenu(i = CM.sel) {
+    const it = CM.items[i]; if (!it) return;
+    const input = $('#chatInput');
+    input.value = it.insert; input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+    updateMenu();
+  }
+  function showHelp() {
+    modal(`<h3>💬 Chat commands</h3>
+      <p class="muted" style="margin:0">Type <code>/</code> in the chat box for a menu that narrows as you type. Arrow keys pick one; Tab or Enter fills it in.</p>
+      <table class="t"><tbody>${COMMANDS.filter(c => !c.gm || isGM()).map(c => `<tr><td style="white-space:nowrap"><code>${esc(c.cmd)}</code>${(c.alias || []).map(a => ` <code class="muted">${esc(a)}</code>`).join('')}</td>
+        <td>${esc(c.desc)}${c.ex ? `<br><span class="muted" style="font-size:12px">e.g. <code>${esc(c.ex)}</code></span>` : ''}</td></tr>`).join('')}</tbody></table>
+      <div class="row"><span class="spacer"></span><button class="btn primary" id="helpOk">Got it</button></div>`, box => { $('#helpOk', box).onclick = closeModal; });
+  }
+  async function rollMyInitiative(mode) {
+    const ch = selChar();
+    const mine = ch && canEdit(ch) ? ch : chars().find(c => c.owner === clientId);
+    if (!mine) { toast('Pick or create your character first.', true); return false; }
+    const bonus = R.initiative(mine);
+    let expr = '1d20' + (bonus >= 0 ? '+' : '') + bonus;
+    if (mode === 'adv') expr = expr.replace('1d20', '2d20kh1'); if (mode === 'dis') expr = expr.replace('1d20', '2d20kl1');
+    return !!(await act('init.add', { charId: mine.id, name: mine.name, bonus, expr }));
+  }
   $('#chatForm').addEventListener('submit', async e => {
     e.preventDefault();
     const input = $('#chatInput'), text = input.value.trim(); if (!text) return;
     S.chatHist.unshift(text); S.chatHistIdx = -1;
+    CM.open = false; renderMenu();
+    const word = text.split(/\s/)[0].toLowerCase(), c = cmdFor(word);
+    if (c && c.client) {           // handled right here, not sent as chat
+      input.value = '';
+      if (c.cmd === '/help') showHelp();
+      if (c.cmd === '/init') { if (await rollMyInitiative(S.rollMode)) toast('Initiative rolled; see the Combat tab'); }
+      if (c.cmd === '/clear' && confirm('Clear the chat log for everyone?')) act('chat.clear');
+      return;
+    }
     input.value = '';
     const sc = selChar();
-    const res = await act('chat', { text, as: sc && sc.owner === clientId && !text.startsWith('/') ? sc.name : '' });
+    const speaksAs = sc && sc.owner === clientId ? sc.name : '';   // talk, yells, whispers and emotes come from your character
+    const res = await act('chat', { text, as: !text.startsWith('/') || /^\/(w|whisper|tell|msg|y|yell|shout|me) /i.test(text) ? speaksAs : '' });
     if (!res) input.value = text;
   });
+  $('#chatInput').addEventListener('input', updateMenu);
+  $('#chatInput').addEventListener('blur', () => setTimeout(() => { CM.open = false; renderMenu(); }, 150));
   $('#chatInput').addEventListener('keydown', e => {
+    if (CM.open && CM.items.length) {
+      if (e.key === 'ArrowDown') { CM.sel = (CM.sel + 1) % CM.items.length; renderMenu(); e.preventDefault(); return; }
+      if (e.key === 'ArrowUp') { CM.sel = (CM.sel - 1 + CM.items.length) % CM.items.length; renderMenu(); e.preventDefault(); return; }
+      if (e.key === 'Tab') { acceptMenu(); e.preventDefault(); return; }
+      if (e.key === 'Enter') {
+        const it = CM.items[CM.sel];
+        // Enter fills in the highlighted choice, unless that's exactly what's typed already (then it sends)
+        if (it && it.insert.trim() !== e.target.value.trim()) { acceptMenu(); e.preventDefault(); return; }
+      }
+      if (e.key === 'Escape') { CM.open = false; renderMenu(); e.preventDefault(); e.stopPropagation(); return; }
+    }
     if (e.key === 'ArrowUp' && S.chatHist.length) { S.chatHistIdx = Math.min(S.chatHist.length - 1, S.chatHistIdx + 1); e.target.value = S.chatHist[S.chatHistIdx]; e.preventDefault(); }
     if (e.key === 'ArrowDown') { S.chatHistIdx = Math.max(-1, S.chatHistIdx - 1); e.target.value = S.chatHistIdx < 0 ? '' : S.chatHist[S.chatHistIdx]; e.preventDefault(); }
+  });
+  $('#cmdMenu').addEventListener('mousedown', e => {   // mousedown, so the input doesn't lose focus first
+    const it = e.target.closest('.cm-item'); if (!it) return;
+    e.preventDefault(); acceptMenu(+it.dataset.i);
   });
   $('#quickDice').innerHTML = [4, 6, 8, 10, 12, 20, 100].map(d => `<button type="button" data-d="${d}" title="Roll 1d${d}">d${d}</button>`).join('');
   $('#quickDice').addEventListener('click', e => {
@@ -1326,12 +1887,13 @@
   function mapColors() {
     const bg = themeHex('bg', '#0b0f17'), holo = themeHex('holo', '#4fc3f7');
     const dark = [1, 3, 5].map(i => Math.round(parseInt(bg.slice(i, i + 2), 16) * 0.82));
-    return { bg: `rgb(${dark.join(',')})`, grid: rgba(holo, 0.2), ghost: rgba(holo, 0.15) };
+    const board = [1, 3, 5].map(i => Math.round(parseInt(bg.slice(i, i + 2), 16) * 0.95 + 6));
+    return { bg: `rgb(${dark.join(',')})`, board: `rgb(${board.join(',')})`, grid: rgba(holo, 0.2), ghost: rgba(holo, 0.15), edge: rgba(holo, 0.45) };
   }
 
   function openThemes() {
-    const start = myPrefs() || { theme: 'holo-blue', custom: {} };
-    let draft = { theme: start.theme || 'holo-blue', custom: Object.assign({}, start.custom || {}) };
+    const start = myPrefs() || { theme: 'republic-command', custom: {} };
+    let draft = { theme: start.theme || 'republic-command', custom: Object.assign({}, start.custom || {}) };
     let saveTimer;
     const save = () => {
       applyPrefs(draft);
@@ -1382,7 +1944,7 @@
   // The GM grants levels (to the whole party or picked characters); each player then levels their
   // own character in a guided wizard. The GM can run the wizard for someone who missed the session.
   const pendingFor = id => ((S.st && S.st.levelUps) || {})[id];
-  const ASI_AT = { _: [4, 8, 12, 16, 19], Fighter: [4, 6, 8, 12, 14, 16, 19], Operative: [4, 8, 10, 12, 16, 19] };
+  const ASI_AT = { _: [4, 8, 12, 16, 19], Fighter: [4, 6, 8, 12, 14, 16, 19], Monk: [4, 8, 10, 12, 16, 19], Operative: [4, 8, 10, 12, 16, 19] }; // from SW5e's class tables
   const asiDue = (cls, lvl) => (ASI_AT[cls] || ASI_AT._).includes(lvl);
   const ABN = Object.fromEntries(R.ABILITIES.map(a => [a.key, a.name]));
 
