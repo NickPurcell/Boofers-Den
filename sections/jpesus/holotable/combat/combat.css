@@ -9,6 +9,8 @@
 .ct-chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--holo); color: var(--text); background: color-mix(in srgb, var(--holo) 12%, transparent); }
 .ct-cond { border-color: var(--red, #ef5350); }
 .ct-conc { border-color: var(--amber); }
+.ct-x { background: none; border: 0; color: var(--muted); cursor: pointer; padding: 0 0 0 4px; font: inherit; line-height: 1; }
+.ct-x:hover { color: var(--red, #ef5350); }
 .ct-pool { cursor: pointer; font: inherit; font-size: 12px; }
 .ct-pool:hover { border-color: var(--amber); }
 .ct-chip.spent { border-color: var(--line); color: var(--muted); background: transparent; text-decoration: line-through; }
@@ -45,3 +47,4 @@
 .ct-power b { color: var(--holo); }
 .ct-atk.primary.ct-power b { color: inherit; }
 #modalBox .ct-types { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-bottom: 8px; }
+#modalBox label[hidden] { display: none; }

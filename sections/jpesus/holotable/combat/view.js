@@ -22,8 +22,8 @@
     const w = E.buildWorld({
       characters: s.characters, entries: s.initiative.entries, active: f.active, turnId: f.turn, round: f.round, tokens: s.map.tokens,
       unitTokens: Object.fromEntries(Object.entries(f.units || {}).map(([id, u]) => [id, u.token])), npcSpeed: f.npcSpeed,
-      spent: f.spent, defenses: f.defenses || {},
-      npcStats: Object.fromEntries(Object.keys(f.npcDefenses || {}).map((k) => [k, Object.assign({ saves: (f.npcSaves || {})[k] || {} }, f.npcDefenses[k])])),
+      spent: f.spent, defenses: f.defenses || {}, effects: f.effects || [], conc: f.conc || {},
+      npcStats: Object.fromEntries(Object.keys(f.npcDefenses || {}).map((k) => [k, Object.assign({ saves: (f.npcSaves || {})[k] || {}, mods: (f.npcMods || {})[k] || {} }, f.npcDefenses[k])])),
     }, R);
     for (const [id, u] of Object.entries(f.units || {})) if (w.units[id] && u.down) w.units[id].down = true;
     UI.cache = { st: s, w, reach: null };
@@ -77,7 +77,8 @@
         // its speed and save bonuses: the ability modifier, or the bonus its stat block lists ("Dex +5")
         const saves = Object.fromEntries(['str', 'dex', 'con', 'int', 'wis', 'cha'].map((ab) => [ab, Math.floor(((m.ab || {})[ab] - 10) / 2) || 0]));
         for (const x of m.saves || []) { const mm = /^(str|dex|con|int|wis|cha)\w*\s*([+-]\d+)/i.exec(x); if (mm) saves[mm[1].toLowerCase()] = +mm[2]; }
-        UI.npcAsked[id] = true; act('fight.npc', { id, speed: sp ? +sp[1] : 30, saves, resist: m.res || [], immune: m.imm || [], vuln: m.vul || [], condImmune: m.cimm || [] });
+        const mods = Object.fromEntries(['str', 'dex', 'con', 'int', 'wis', 'cha'].filter((ab) => Number.isFinite(+(m.ab || {})[ab])).map((ab) => [ab, Math.floor(((m.ab || {})[ab] - 10) / 2)]));
+        UI.npcAsked[id] = true; act('fight.npc', { id, speed: sp ? +sp[1] : 30, saves, mods, resist: m.res || [], immune: m.imm || [], vuln: m.vul || [], condImmune: m.cimm || [] });
       }
       render(); H.drawMap();
     }).catch(() => { UI.npc[id] = { attacks: [] }; render(); });
@@ -191,19 +192,34 @@
     html += '<span class="spacer"></span>';
     html += `<button class="btn small ghost ${UI.ruler ? 'primary' : ''}" data-ct="measure" aria-pressed="${!!UI.ruler}" title="Measure a distance on the map">📏 Measure</button>`;
     if (mine && u && f.active && (u.conditions || []).includes('Prone')) html += `<button class="btn small" data-ct="stand" title="Standing up costs half your speed">Stand up (${Math.ceil((bud ? bud.speed : 30) / 2 / 5) * 5} ft)</button>`;
+    if (mine && u && f.active && bud && bud.action) for (const o of Object.values(w.units)) {
+      if (!(o.conditions || []).includes('Ignited') || (o.id !== u.id && E.feetBetween(u, o) > E.FT)) continue;
+      html += `<button class="btn small" data-ct="douse" data-id="${esc(o.id)}" title="Takes your action">🔥 Put out the flames${o.id === u.id ? '' : ` on ${esc(o.name)}`}</button>`;
+    }
     if (mine && u && f.active) html += '<button class="btn small amber" data-ct="end">End turn ⏭</button>';
     if (gm()) html += `<button class="btn small ghost" data-ct="undo" ${f.undo && f.undo.n ? '' : 'disabled'} title="${esc(f.undo && f.undo.last ? 'Undo: ' + f.undo.last : 'Nothing to undo')}">↶ Undo</button><button class="btn small ghost" data-ct="off" title="Turn the combat view off for everyone">Combat view off</button>`;
     html += '</div>';
     // the current combatant's conditions (how long each lasts) and what it is concentrating on
-    if (f.active && u && ((u.conditions || []).length || (f.conc || {})[u.id])) {
+    if (f.active && u && ((u.conditions || []).length || (f.conc || {})[u.id] || gm())) {
       const efs = (f.effects || []).filter((ef) => ef.unit === u.id);
+      // what the chip says beyond the name: its level, its fire damage, who caused it, or that the DM hasn't set one
+      const detail = (c) => {
+        const lv = E.LEVELS[c] ? E.levelOf(w, u, c) : 0, burn = c === 'Ignited' ? E.burnOf(w, u) : '';
+        const src = efs.filter((x) => x.condition === c && x.source && w.units[x.source]).map((x) => w.units[x.source].name)[0];
+        const bits = [];
+        if (E.LEVELS[c]) bits.push(lv ? `level ${lv}` : 'no level set');
+        if (c === 'Ignited') bits.push(burn ? `${burn} fire at the end of its turns` : 'no damage set');
+        if (src) bits.push(`by ${src}`);
+        return bits.length ? ` · ${bits.join(', ')}` : '';
+      };
       const until = (c) => {
-        const ef = efs.find((x) => x.condition === c);
+        const ef = efs.find((x) => x.condition === c && x.ends !== 'never');
         if (!ef) return '';
         const whose = ef.of === u.id ? 'its' : ef.of && w.units[ef.of] ? `${w.units[ef.of].name}'s` : "someone's";
         return ` (${ef.save ? `${ef.save.ability.toUpperCase()} save DC ${ef.save.dc} at the end of its turns` : `until the ${ef.ends} of ${whose} ${ef.rounds > 1 ? `turn, ${ef.rounds} rounds` : 'next turn'}`}${ef.conc ? ', while concentrating' : ''})`;
       };
-      html += `<div class="ct-row ct-conds">${(u.conditions || []).map((c) => `<span class="ct-chip ct-cond" title="${esc((R.CONDITIONS || {})[c] || c)}${esc(until(c))}">${esc(c)}${E.CONDITION_EFFECTS[c] ? '' : ' <span class="muted">(no automatic effect yet)</span>'}${esc(until(c))}</span>`).join('')}
+      html += `<div class="ct-row ct-conds">${(u.conditions || []).map((c) => `<span class="ct-chip ct-cond" title="${esc((R.CONDITIONS || {})[c] || c)}${esc(until(c))}">${esc(c)}${esc(detail(c))}${E.CONDITION_EFFECTS[c] ? '' : ' <span class="muted">(no automatic effect yet)</span>'}${esc(until(c))}${gm() ? ` <button class="ct-x" data-ct="uncond" data-c="${esc(c)}" title="Take ${esc(c.toLowerCase())} off ${esc(u.name)}" aria-label="Take ${esc(c.toLowerCase())} off">✕</button>` : ''}</span>`).join('')}
+        ${gm() ? '<button class="btn tiny ghost" data-ct="cond" title="Put a condition on a combatant, with its level, its damage or who caused it">＋ Condition</button>' : ''}
         ${(f.conc || {})[u.id] ? `<span class="ct-chip ct-conc" title="Damage asks for a Con save; dropping to 0 hit points or being incapacitated ends it">Concentrating: ${esc(f.conc[u.id])}</span>` : ''}</div>`;
     }
     // the current character's resources (its owner and the GM): use one, or add one
@@ -256,7 +272,7 @@
         const pv = t && E.preview(w, u.id, t.id, spec, { adv: UI.adv, dis: UI.dis });
         html += `<div class="ct-row ct-preview" aria-live="polite">${!t ? `<span>${esc(spec.name)}: pick a target on the map (lit in red).</span><button class="btn tiny ghost" data-ct="disarm">Cancel</button>`
           : !pv.legal ? `<span>${esc(pv.why)}</span>`
-          : `<span><b>${esc(t.name)}</b>, ${pv.feet} ft: you need <b>${pv.need}+</b> on the d20 (${Math.round(pv.chance * 100)}%)${pv.mode !== 'normal' ? ` · ${pv.mode === 'adv' ? 'advantage' : 'disadvantage'}: ${esc(pv.tilts.map((x) => x.text).join(', '))}` : ''}. Hit: ${esc(spec.damage)}${spec.type ? ' ' + esc(spec.type) : ''}.</span>
+          : `<span><b>${esc(t.name)}</b>, ${pv.feet} ft: you need <b>${pv.need}+</b> on the d20 (${Math.round(pv.chance * 100)}%)${pv.mode !== 'normal' ? ` · ${pv.mode === 'adv' ? 'advantage' : 'disadvantage'}: ${esc(pv.tilts.map((x) => x.text).join(', '))}` : ''}${pv.weak ? ` · weakened: −${pv.weak}` : ''}. Hit: ${esc(spec.damage)}${spec.type ? ' ' + esc(spec.type) : ''}.</span>
              <button class="btn small primary" data-ct="go">Attack</button>`}</div>`;
       } else if (bud && bud.moveLeft > 0) html += `<div class="ct-row muted ct-hint">Tap a lit square to move there, or pick an attack.</div>`;
     }
@@ -274,6 +290,9 @@
     if (k === 'undo') return send('fight.undo', {});
     if (k === 'end') { UI.armed = UI.target = null; return send('fight.end', {}); }
     if (k === 'stand') return send('fight.stand', {});
+    if (k === 'douse') return send('fight.douse', { target: el.dataset.id });
+    if (k === 'cond') return conditionModal();
+    if (k === 'uncond') { const u = cur(); return u && send('fight.condition', { unit: u.id, condition: el.dataset.c, op: 'remove' }); }
     if (k === 'custom') return customAttack();
     if (k === 'pool') return poolModal(el.dataset.key);
     if (k === 'addres') return resourceModal();
@@ -398,6 +417,38 @@
           die: $('#ctrDie', box).value || undefined, refill: $('#ctrRefill', box).value };
         H.closeModal();
         await send('fight.resource', { charId: u.charId, res });
+      };
+    });
+  }
+
+  // The DM's form: a condition on any combatant, asking for a level (Slowed, Corroded), a damage amount (Ignited), and
+  // optionally who caused it (it matters for Charmed and Grappled). It lasts until the DM takes it off.
+  function conditionModal() {
+    const w = world(), u = cur();
+    const units = Object.values(w.units);
+    const names = Array.from(new Set(Object.keys(R.CONDITIONS || {}).concat(Object.keys(E.CONDITION_EFFECTS), ['Deafened', 'Diseased']))).filter((c) => c !== 'Exhaustion').sort();
+    const opts = (sel) => units.map((x) => `<option value="${esc(x.id)}" ${sel === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+    H.modal(`<h3>Put a condition on</h3>
+      <label>Who <select id="ctkUnit">${opts(u ? u.id : '')}</select></label>
+      <label>Condition <select id="ctkCond">${names.map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>
+      <label id="ctkLvlRow" hidden>Level <select id="ctkLvl"></select></label>
+      <label id="ctkAmtRow" hidden>Fire damage at the end of each of its turns <input id="ctkAmt" maxlength="20" placeholder="1d6"></label>
+      <label>Caused by <span class="muted">(optional; a charm or a grapple with a cause ends properly)</span> <select id="ctkSrc"><option value="">nobody recorded</option>${opts('')}</select></label>
+      <p class="muted">It lasts until you take it off (✕ on its chip). Slowed and Corroded add to any level already there.</p>
+      <div class="row"><span class="spacer"></span><button class="btn" id="ctkCancel">Cancel</button><button class="btn primary" id="ctkOk">Put it on</button></div>`, (box) => {
+      const sync = () => {
+        const c = $('#ctkCond', box).value, top = (E.LEVELS || {})[c];
+        $('#ctkLvlRow', box).hidden = !top; $('#ctkAmtRow', box).hidden = c !== 'Ignited';
+        if (top) $('#ctkLvl', box).innerHTML = Array.from({ length: top }, (_, i) => `<option>${i + 1}</option>`).join('');
+      };
+      $('#ctkCond', box).onchange = sync; sync();
+      $('#ctkCancel', box).onclick = H.closeModal;
+      $('#ctkOk', box).onclick = async () => {
+        const c = $('#ctkCond', box).value;
+        if (c === 'Ignited' && !$('#ctkAmt', box).value.trim()) return toast('How much fire damage? Like 1d6, or 5.', true);
+        H.closeModal();
+        await send('fight.condition', { unit: $('#ctkUnit', box).value, condition: c, level: (E.LEVELS || {})[c] ? +$('#ctkLvl', box).value : 0,
+          amount: c === 'Ignited' ? $('#ctkAmt', box).value.trim() : '', source: $('#ctkSrc', box).value || null });
       };
     });
   }

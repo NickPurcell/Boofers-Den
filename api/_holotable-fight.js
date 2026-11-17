@@ -15,6 +15,8 @@ require("../sections/jpesus/holotable/rules.js");
 const R = globalThis.SW5E;
 
 const UNDO_MAX = 20, EVENTS_MAX = 30;
+// the conditions the DM can set from the combat view: HoloTable's list, plus SW5e's levelled ones until #77 brings them to rules.js
+const CONDS = new Set([...Object.keys((R && R.CONDITIONS) || {}), ...Object.keys(E.CONDITION_EFFECTS), "Deafened", "Diseased"]);
 const ID = /^[a-z0-9]{6,20}$/;
 const str = (v, n) => String(v == null ? "" : v).slice(0, n);
 const int = (v, d = 0) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : d; };
@@ -32,8 +34,8 @@ function state(camp) {
     // a creature's numbers from its stat block (the GM's screen sends them): speed, and save bonuses
     npc: Object.fromEntries(Object.entries(plainObj(f.npc)).filter(([k]) => ID.test(k)).map(([k, v]) => {
       const o = typeof v === "object" && v ? v : { speed: v };
-      const saves = Object.fromEntries(Object.entries(plainObj(o.saves)).filter(([ab, n]) => ["str", "dex", "con", "int", "wis", "cha"].includes(ab) && Number.isFinite(+n)).map(([ab, n]) => [ab, clamp(int(n), -10, 30)]));
-      return [k, Object.assign({ speed: clamp(int(o.speed, 30), 0, 200), saves }, defences(o))];
+      const abl = (x, lo, hi) => Object.fromEntries(Object.entries(plainObj(x)).filter(([ab, n]) => ["str", "dex", "con", "int", "wis", "cha"].includes(ab) && Number.isFinite(+n)).map(([ab, n]) => [ab, clamp(int(n), lo, hi)]));
+      return [k, Object.assign({ speed: clamp(int(o.speed, 30), 0, 200), saves: abl(o.saves, -10, 30), mods: abl(o.mods, -5, 15) }, defences(o))];
     })),
     // a character's resistances, immunities and vulnerabilities (set by its owner or the GM in the combat view)
     defenses: Object.fromEntries(Object.entries(plainObj(f.defenses)).filter(([k]) => ID.test(k)).slice(0, 60).map(([k, v]) => [k, defences(plainObj(v))])),
@@ -51,7 +53,8 @@ function state(camp) {
     // timed effects from abilities (a condition on a unit until the start or end of someone's turn, or a save) and
     // who is concentrating on what (issue #72, audit 4.6)
     effects: (Array.isArray(f.effects) ? f.effects : []).filter((x) => x && typeof x === "object" && ID.test(String(x.unit || ""))).slice(0, 200).map((x) => ({
-      id: str(x.id, 120), unit: x.unit, condition: str(x.condition, 30), ends: x.ends === "start" ? "start" : "end", of: ID.test(String(x.of || "")) ? x.of : x.unit,
+      id: str(x.id, 120), unit: x.unit, condition: str(x.condition, 30), ends: ["start", "end", "never"].includes(x.ends) ? x.ends : "end", of: ID.test(String(x.of || "")) ? x.of : x.unit,
+      level: clamp(int(x.level), 0, 4), amount: E.DICE.test(String(x.amount || "")) ? str(x.amount, 24) : "",
       rounds: clamp(int(x.rounds, 1), 1, 100), save: x.save && typeof x.save === "object" ? { ability: ["str", "dex", "con", "int", "wis", "cha"].includes(x.save.ability) ? x.save.ability : "con", dc: clamp(int(x.save.dc, 10), 1, 40) } : null,
       source: ID.test(String(x.source || "")) ? x.source : null, conc: !!x.conc })),
     conc: Object.fromEntries(Object.entries(plainObj(f.conc)).filter(([k, v]) => ID.test(k) && typeof v === "string").map(([k, v]) => [k, str(v, 80)])),
@@ -252,7 +255,8 @@ function apply(camp, cid, gm, type, p, G) {
       if (!e || e.charId) throw new G.Invalid("No such creature.");
       // defences arrive as the stat block's own lines ("Kinetic from unenhanced weapons") and are read here
       const lines = (v) => (Array.isArray(v) ? v : []).slice(0, 12).map((x) => str(x, 80));
-      f.npc[e.id] = Object.assign({ speed: clamp(int(p.speed, 30), 0, 200), saves: Object.fromEntries(Object.entries(plainObj(p.saves)).filter(([ab, n]) => ["str", "dex", "con", "int", "wis", "cha"].includes(ab) && Number.isFinite(+n)).map(([ab, n]) => [ab, clamp(int(n), -10, 30)])) },
+      const abl = (x, lo, hi) => Object.fromEntries(Object.entries(plainObj(x)).filter(([ab, n]) => ["str", "dex", "con", "int", "wis", "cha"].includes(ab) && Number.isFinite(+n)).map(([ab, n]) => [ab, clamp(int(n), lo, hi)]));
+      f.npc[e.id] = Object.assign({ speed: clamp(int(p.speed, 30), 0, 200), saves: abl(p.saves, -10, 30), mods: abl(p.mods, -5, 15) },
         defences({ resist: E.readDefenses(lines(p.resist)), immune: E.readDefenses(lines(p.immune)), vuln: E.readDefenses(lines(p.vuln)), condImmune: lines(p.condImmune) }));
       return {};
     }
@@ -327,7 +331,21 @@ function apply(camp, cid, gm, type, p, G) {
       G.addChat(camp, { system: true, text: `The GM undid the last combat step (${s.label}).` });
       return {};
     }
-    case "fight.move": case "fight.attack": case "fight.end": case "fight.use": case "fight.stand": {
+    case "fight.condition": {   // the DM puts a condition on a combatant (a level, a damage amount, who caused it) or takes it off
+      need(gm);
+      if (!f.on) throw new G.Invalid("The combat view is off.");
+      const name = str(p.condition, 30);
+      if (!CONDS.has(name)) throw new G.Invalid("That isn't a condition HoloTable knows.");
+      const world = worldOf(camp, false), unit = String(p.unit || "");
+      const r = E.setCondition(world, { unit, condition: name, op: p.op === "remove" ? "remove" : "add", level: int(p.level), amount: str(p.amount, 24), source: p.source ? String(p.source) : null });
+      if (!r.ok) throw new G.Invalid(r.why);
+      snapshot(camp, `${name} ${p.op === "remove" ? "taken off" : "put on"} ${world.units[unit].name}`);
+      writeBack(camp, cid, world, r.world, G);
+      const ut = unitTokens(camp), isHidden = (id) => !!id && hiddenEntry(camp, entry(id) || {}, ut[id]);
+      for (const line of r.log) G.addChat(camp, Object.assign({ system: true, text: str(line.text, 200) }, isHidden(line.unit) || isHidden(line.about) ? { to: ["@gm"], private: true } : {}));
+      return {};
+    }
+    case "fight.move": case "fight.attack": case "fight.end": case "fight.use": case "fight.stand": case "fight.douse": {
       if (!f.on) throw new G.Invalid("The combat view is off.");
       const cur = ini.entries[ini.turn];
       if (!ini.active || !cur) throw new G.Invalid("Combat hasn't started: start initiative first.");
@@ -350,6 +368,7 @@ function apply(camp, cid, gm, type, p, G) {
       if (type === "fight.move") act = { type: "move", unit: cur.id, x: p.x, y: p.y };
       else if (type === "fight.end") act = { type: "end", unit: cur.id };
       else if (type === "fight.stand") act = { type: "stand", unit: cur.id };
+      else if (type === "fight.douse") act = { type: "douse", unit: cur.id, target: String(p.target || "") };
       else if (type === "fight.use") {
         const ch = cur.charId && camp.characters[cur.charId];
         if (!ch) throw new G.Invalid("Creatures use their attacks for now.");
@@ -369,15 +388,17 @@ function apply(camp, cid, gm, type, p, G) {
       }
       const r = E.apply(world, act, (expr) => G.rollDice(expr));
       if (!r.ok) throw new G.Invalid(r.why);
-      const label = type === "fight.stand" ? `${cur.name} stood up` : type === "fight.move" ? `${cur.name} moved` : type === "fight.end" ? `${cur.name} ended the turn` : type === "fight.use" ? `${cur.name} used ${act.ability.name}` : `${cur.name}'s attack`;
+      const label = type === "fight.douse" ? `${cur.name} put out flames` : type === "fight.stand" ? `${cur.name} stood up` : type === "fight.move" ? `${cur.name} moved` : type === "fight.end" ? `${cur.name} ended the turn` : type === "fight.use" ? `${cur.name} used ${act.ability.name}` : `${cur.name}'s attack`;
       snapshot(camp, label);
       writeBack(camp, cid, world, r.world, G);
       // the roll lines go to chat as rolls, the way HoloTable shows every roll; a hidden creature's go to the GM only
       const secret = hiddenEntry(camp, cur, unitTokens(camp)[cur.id]);
       const ch = cur.charId && camp.characters[cur.charId];
-      for (const line of r.log) {
-        if (!line.roll) {   // an ability's opening line (what it costs) goes to chat too; moves and turn ends don't
-          if (type === "fight.use" || type === "fight.stand") G.addChat(camp, Object.assign({ system: true, text: str(line.text, 200) }, secret ? { to: ["@gm"], private: true } : {}));
+      const ut = unitTokens(camp), isHidden = (id) => !!id && hiddenEntry(camp, entry(id) || {}, ut[id]);
+      for (const [i, line] of r.log.entries()) {
+        if (!line.roll) {   // plain lines go to chat (a condition ending, concentration lost), but not "moves 10 ft." or "ends the turn."
+          if (i === 0 && (type === "fight.move" || type === "fight.end")) continue;
+          G.addChat(camp, Object.assign({ system: true, text: str(line.text, 200) }, secret || isHidden(line.unit) || isHidden(line.about) ? { to: ["@gm"], private: true } : {}));
           continue;
         }
         const msg = { from: G.playerName(camp, cid), fromId: cid, fight: true,
@@ -438,10 +459,12 @@ function view(camp, cid, gm) {
     undo: gm ? { n: (f.undo || []).length, last: ((f.undo || [])[(f.undo || []).length - 1] || {}).label || null } : null,
     npcSpeed: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v.speed : v])) : {},
     npcSaves: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, (v && v.saves) || {}])) : {},
+    npcMods: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, (v && v.mods) || {}])) : {},
     npcDefenses: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, defences(plainObj(v))])) : {},
     defenses: f.defenses || {},   // characters' own: as visible as their sheets
     lib: f.lib || {},
-    effects: (f.effects || []).filter((ef) => units[ef.unit]).map((ef) => ({ unit: ef.unit, condition: ef.condition, ends: ef.ends, of: units[ef.of] ? ef.of : null, rounds: ef.rounds, save: ef.save, conc: ef.conc })),
+    effects: (f.effects || []).filter((ef) => units[ef.unit]).map((ef) => ({ unit: ef.unit, condition: ef.condition, ends: ef.ends, of: units[ef.of] ? ef.of : null, rounds: ef.rounds, save: ef.save, conc: ef.conc,
+      level: ef.level || 0, amount: ef.amount || "", source: units[ef.source] ? ef.source : null })),   // a grappler or charmer the viewer can't see stays unnamed
     conc: Object.fromEntries(Object.entries(f.conc || {}).filter(([id]) => units[id])),
   };
 }

@@ -517,6 +517,95 @@ test("SW5e: weakened halves healing", () => {
   assert.equal(r.world.units.pal.hp, 8, "7 healing, halved to 3");
 });
 
+test("the DM's defaults: Slowed and Corroded by level, a bare one a label; slowing from exhaustion adds up", () => {
+  const ava = (o) => unit(Object.assign({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 }, o));
+  const r1 = (o) => unit(Object.assign({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0 }, o));
+  const slowed = (lv, o) => world([ava(Object.assign({ conditions: ["Slowed"] }, o))], "ava", { effects: lv ? [{ unit: "ava", condition: "Slowed", ends: "never", level: lv }] : [] });
+  assert.deepEqual([1, 2, 3, 4].map((lv) => E.budget(slowed(lv)).speed), [15, 5, 0, 0], "−15, −25, −30 ft, then 0");
+  assert.equal(E.budget(slowed(0)).speed, 30, "a bare Slowed set by hand is a label");
+  assert.equal(E.budget(slowed(1, { exhaustion: 2 })).speed, 5, "exhaustion's slowed level and Slowed 1 make level 2");
+  // the DM's form: levels add up to the top level; taking it off clears it
+  let r = E.setCondition(world([ava(), r1()], "ava"), { unit: "ava", condition: "Slowed", level: 3 });
+  r = E.setCondition(r.world, { unit: "ava", condition: "Slowed", level: 2 });
+  assert.deepEqual([E.levelOf(r.world, r.world.units.ava, "Slowed"), E.budget(r.world).speed, r.log[0].text], [4, 0, "Avery is slowed (level 4)."]);
+  r = E.setCondition(r.world, { unit: "ava", condition: "Slowed", op: "remove" });
+  assert.deepEqual([r.world.units.ava.conditions, r.world.effects, E.budget(r.world).speed], [[], [], 30]);
+  // corroded: one more damage from weapons for each level, none from powers
+  r = E.setCondition(world([ava(), r1()], "ava"), { unit: "r1", condition: "Corroded", level: 2 });
+  const hit = E.apply(r.world, { type: "attack", unit: "ava", target: "r1", attack: blade }, dice({ total: 18, nat: 13 }, { total: 6 }).roll);
+  assert.equal(hit.world.units.r1.hp, 12, "6 + 2");
+  assert.match(hit.log[1].text, /takes 8 kinetic damage \(2 more from corrosion\)/);
+  assert.equal(E.setCondition(world([ava({ condImmune: ["Corroded"] })], "ava"), { unit: "ava", condition: "Corroded", level: 1 }).ok, false, "immune");
+});
+
+test("the DM's defaults: Ignited burns at the end of its own turn until someone puts it out", () => {
+  const ava = (o) => unit(Object.assign({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 }, o));
+  const pal = (o) => unit(Object.assign({ id: "pal", name: "Pal", side: "pc", x: 1, y: 0 }, o));
+  let r = E.setCondition(world([ava(), pal()], "ava"), { unit: "ava", condition: "Ignited", amount: "1d6" });
+  assert.equal(r.log[0].text, "Avery is ignited (1d6 fire damage at the end of each of its turns).");
+  assert.equal(E.setCondition(world([ava()], "ava"), { unit: "ava", condition: "Ignited", amount: "lots" }).ok, false);
+  const d = dice({ total: 4 });
+  let t = E.turnPassed(r.world, "pal", "ava", d.roll);
+  assert.deepEqual([t.world.units.ava.hp, d.asked], [20, []], "not at the end of someone else's turn");
+  t = E.turnPassed(r.world, "ava", "pal", d.roll);
+  assert.deepEqual([t.world.units.ava.hp, d.asked, t.log[0].text], [16, ["1d6"], "Avery burns for 4 fire damage."]);
+  const res = E.turnPassed(Object.assign({}, r.world, { units: Object.assign({}, r.world.units, { ava: Object.assign({}, r.world.units.ava, { resist: [{ type: "fire", only: null }] }) }) }), "ava", "pal", dice({ total: 5 }).roll);
+  assert.equal(res.world.units.ava.hp, 18, "resistance to fire halves it");
+  // Pal, next to Avery, puts the flames out with its action; from 10 ft it can't
+  r.world.turnId = "pal";
+  assert.equal(E.apply(Object.assign({}, r.world, { units: Object.assign({}, r.world.units, { pal: pal({ x: 2 }) }) }), { type: "douse", unit: "pal", target: "ava" }, dice().roll).ok, false);
+  const out = E.apply(r.world, { type: "douse", unit: "pal", target: "ava" }, dice().roll);
+  assert.deepEqual([out.world.units.ava.conditions, out.world.effects, E.budget(out.world).action, out.log[0].text], [[], [], false, "Pal puts out the flames on Avery."]);
+});
+
+test("the DM's defaults: a grapple or a charm with a recorded cause ends properly; without one it stays", () => {
+  const ava = (o) => unit(Object.assign({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 }, o));
+  const r1 = (o) => unit(Object.assign({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0 }, o));
+  let r = E.setCondition(world([ava(), r1()], "r1"), { unit: "ava", condition: "Grappled", source: "r1" });
+  assert.equal(r.log[0].text, "Avery is grappled by Raider.");
+  // the grappler walks away: it ends
+  let m = E.apply(r.world, { type: "move", unit: "r1", x: 3, y: 0 }, dice().roll);
+  assert.deepEqual([m.world.units.ava.conditions, m.log.map((l) => l.text)], [[], ["Raider moves 10 ft.", "Avery is no longer grappled."]]);
+  // the grappler is stunned: it ends
+  const s = E.setCondition(r.world, { unit: "r1", condition: "Stunned" });
+  assert.deepEqual([s.world.units.ava.conditions, s.log[1].text], [[], "Avery is no longer grappled."]);
+  // no cause recorded: the grapple stays when the Raider leaves
+  r = E.setCondition(world([ava(), r1()], "r1"), { unit: "ava", condition: "Grappled" });
+  m = E.apply(r.world, { type: "move", unit: "r1", x: 3, y: 0 }, dice().roll);
+  assert.deepEqual(m.world.units.ava.conditions, ["Grappled"]);
+  // a grappler the world can't see (hidden from a player) leaves the grapple alone
+  const hidden = Object.assign({}, world([ava()], "ava"), { effects: [{ unit: "ava", condition: "Grappled", ends: "never", source: "lurk" }] });
+  hidden.units.ava.conditions = ["Grappled"];
+  assert.deepEqual(E.apply(hidden, { type: "end", unit: "ava" }, dice().roll).world.units.ava.conditions, ["Grappled"]);
+  // charmed with a cause: no attack and no harmful power at the charmer
+  const c = E.setCondition(world([ava(), r1()], "ava"), { unit: "ava", condition: "Charmed", source: "r1" });
+  assert.equal(E.apply(c.world, { type: "attack", unit: "ava", target: "r1", attack: blade }, dice().roll).ok, false);
+});
+
+test("the DM's defaults: weakened counts half a positive modifier on attacks and saves; exhaustion 4 caps healing at half", () => {
+  const ch = { classes: [{ name: "Fighter", level: 1 }], abilities: { str: 16, dex: 14, con: 12, int: 10, wis: 10, cha: 10 }, attacks: [{ name: "Vibrosword", ab: "str", damage: "1d8", type: "kinetic", props: "" }] };
+  const [sword] = E.attacksOf(ch, R);
+  const ava = unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0, conditions: ["Weakened"], mods: { str: 3, dex: 2, con: 1, int: 0, wis: 0, cha: -1 } });
+  const r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, ac: 12 });
+  const pv = E.preview(world([ava, r1], "ava"), "ava", "r1", sword);
+  assert.deepEqual([sword.abil, pv.weak, pv.bonus, pv.expr], ["str", 2, 3, "1d20+3"], "Str +3 counts as +1");
+  const atk = E.apply(world([ava, r1], "ava"), { type: "attack", unit: "ava", target: "r1", attack: sword }, dice({ total: 9, nat: 6 }).roll);
+  assert.match(atk.log[0].text, /\(weakened, −2\)/);
+  assert.equal(E.weakPenalty(ava, "dex"), 1); assert.equal(E.weakPenalty(ava, "cha"), 0, "a negative modifier stays as it is");
+  // a save while weakened (a power's save, against Avery)
+  const cass = consular();
+  const ab = E.abilitiesOf(cass, R, { "mind shove": { use: "action", range: [30, 30], save: { ability: "dex", dc: 13 } } })[0];
+  const me = unit({ id: "cass", name: "Cass", side: "npc", x: 2, y: 0, pools: Object.fromEntries(E.resourcesOf(cass, R).map((x) => [x.key, x])) });
+  const d = dice({ total: 12, nat: 10 });
+  E.apply(world([me, Object.assign({}, ava, { saves: { dex: 2 } })], "cass"), { type: "use", unit: "cass", ability: ab, target: "ava" }, d.roll);
+  assert.deepEqual(d.asked, ["1d20+1"], "Dex save +2 counts as +1");
+  // exhaustion 4: healing stops at half the maximum
+  const h = E.abilitiesOf(cass, R, { "mind shove": { use: "action", range: [30, 30], heal: { dice: "2d4" } } })[0];
+  const tired = unit({ id: "pal", name: "Pal", side: "pc", x: 1, y: 0, hp: 6, maxHp: 20, exhaustion: 4 });
+  const healed = E.apply(world([unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, pools: me.pools }), tired], "cass"), { type: "use", unit: "cass", ability: h, target: "pal" }, dice({ total: 8 }).roll);
+  assert.equal(healed.world.units.pal.hp, 10, "6 + 8 would be 14; the maximum is halved to 10");
+});
+
 /* ---------------------------------------------------------------- the server's fight actions, through the API */
 const Module = require("module");
 const HoloFake = require("./holotable-fake-redis.js");
@@ -900,4 +989,43 @@ test("the proposed tracker hook (issue #72): with it, the tracker's Next ends an
     await gm.act("init.next", {});                       // view off: the hook does nothing
     assert.deepEqual((await gm.state()).initiative.entries.find((e) => e.id === ids.raider).conditions, ["Prone"]);
   } finally { Game.applyAction = orig; }
+});
+
+test("the DM's condition form through the API: GM only, levels, undo, and a hidden cause stays hidden", async () => {
+  const { gm, sam, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.condition", { unit: ids.avery, condition: "Slowed", level: 2 })).code, 403, "players can't");
+  assert.equal((await gm.act("fight.condition", { unit: ids.avery, condition: "Sleepy" })).code, 400, "not a condition");
+  assert.equal((await gm.act("fight.condition", { unit: ids.avery, condition: "Slowed", level: 2 })).code, 200);
+  let st = await sam.state();
+  assert.deepEqual([st.initiative.entries.find((e) => e.id === ids.avery).conditions, st.fight.budget.speed], [["Slowed"], 5]);
+  assert.deepEqual(st.fight.effects.map((e) => [e.condition, e.level, e.ends]), [["Slowed", 2, "never"]]);
+  assert.ok(st.chat.some((m) => m.system && m.text === "Avery is slowed (level 2)."));
+  await gm.act("fight.undo", {});
+  st = await sam.state();
+  assert.deepEqual([st.initiative.entries.find((e) => e.id === ids.avery).conditions, st.fight.budget.speed], [[], 30]);
+  // grappled by the hidden Lurker: the GM sees who; the player sees a grapple with no cause and no line naming it
+  assert.equal((await gm.act("fight.condition", { unit: ids.avery, condition: "Grappled", source: ids.lurker })).code, 200);
+  st = await sam.state();
+  assert.deepEqual(st.fight.effects.map((e) => [e.condition, e.source]), [["Grappled", null]]);
+  assert.ok(!JSON.stringify(st).includes("Lurker"), "the hidden creature is never named");
+  assert.ok((await gm.state()).chat.some((m) => m.text === "Avery is grappled by Lurker."));
+  // Avery's own turn: the grapple stays (its cause is out of the player's sight, not gone); speed 0
+  assert.equal((await sam.state()).fight.budget.speed, 0);
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  assert.deepEqual((await gm.state()).initiative.entries.find((e) => e.id === ids.avery).conditions, ["Grappled"]);
+  // the GM takes it off
+  assert.equal((await gm.act("fight.condition", { unit: ids.avery, condition: "Grappled", op: "remove" })).code, 200);
+  assert.deepEqual((await gm.state()).initiative.entries.find((e) => e.id === ids.avery).conditions, []);
+});
+
+test("putting out the flames through the API: Avery, on fire, uses the action on itself", async () => {
+  const { gm, sam, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  await gm.act("fight.condition", { unit: ids.avery, condition: "Ignited", amount: "1d4" });
+  assert.equal((await sam.act("fight.douse", { target: ids.avery })).code, 200);
+  const st = await sam.state();
+  assert.deepEqual([st.initiative.entries.find((e) => e.id === ids.avery).conditions, st.fight.budget.action], [[], false]);
+  assert.ok(st.chat.some((m) => m.system && m.text === "Avery puts out the flames."));
+  assert.equal((await sam.act("fight.douse", { target: ids.avery })).code, 400, "nothing burning now");
 });

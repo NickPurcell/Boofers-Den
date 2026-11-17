@@ -93,7 +93,8 @@
   function attacksOf(ch, rules) {
     return (ch.attacks || []).map((a, i) => {
       const damage = rules.damageExpr(ch, a);
-      return Object.assign({ key: String(i), name: a.name || 'Attack', bonus: rules.attackBonus(ch, a), damage, crit: rules.critExpr(damage), type: a.type || '', enhanced: +a.magic > 0 }, readRange(a.props));
+      const ab = a.ab === 'finesse' ? (rules.abilityMod(ch, 'dex') > rules.abilityMod(ch, 'str') ? 'dex' : 'str') : ABILS.includes(a.ab) ? a.ab : 'str';
+      return Object.assign({ key: String(i), name: a.name || 'Attack', bonus: rules.attackBonus(ch, a), abil: ab, damage, crit: rules.critExpr(damage), type: a.type || '', enhanced: +a.magic > 0 }, readRange(a.props));
     }).filter((a) => a.melee || a.range);
   }
   // a creature's attack from its stat block entry ({ n, atk, dmg, dt, rng, d } as HoloTable's creature list keeps it)
@@ -117,7 +118,9 @@
   // Only the plainly mechanical parts are here; a condition with no entry is a label, as it is today. Later
   // conditions (levels of Slowed or Exhaustion, Ignited's damage) are new entries, not new code.
   // Checked against SW5e's Player's Handbook, appendix A (not only HoloTable's one-line tooltips), in our own words.
-  // Conditions with levels or amounts (Slowed, Corroded, Ignited) and line-of-sight parts are not here yet.
+  // Slowed and Corroded take their level, and Ignited its damage, from the effect that gave them (the DM's form or an
+  // ability's data); one set by hand as a bare name stays a label. Frightened, Blinded and Invisible always apply
+  // (sight and special senses aren't modelled; the DM overrides). These defaults are the coordinator's, 17 Nov 2026.
   const CONDITION_EFFECTS = {
     Blinded: { attacks: 'dis', attacked: 'adv' },
     Charmed: { charmed: true },                              // can't attack whoever charmed it (when the combat view knows who)
@@ -134,10 +137,22 @@
     Stunned: { noActions: true, speed0: true, autoFail: ['str', 'dex'], attacked: 'adv' },
     Unconscious: { noActions: true, speed0: true, autoFail: ['str', 'dex'], attacked: 'adv', closeCrit: true },
     Weakened: { weakened: true },                            // healing halved; half of a positive ability modifier
+    Slowed: { levels: 4 },                                   // speed −15 / −25 / −30 ft, then 0
+    Corroded: { levels: 3 },                                 // 1 more damage from weapons for each level
+    Ignited: { burns: true },                                // fire damage at the end of each of its turns, until put out
   };
   const effectsOf = (u) => (u.conditions || []).map((c) => [c, CONDITION_EFFECTS[c]]).filter(([, e]) => e);
   const has = (u, flag) => effectsOf(u).find(([, e]) => e[flag]);
   const INCAPACITATING = (u) => !!has(u, 'noActions');
+  const LEVELS = { Slowed: 4, Corroded: 3 }, SLOWED_FT = [0, 15, 25, 30];
+  // a levelled condition's level: the sum of the effects that gave it (more slowing adds levels), up to its top level
+  const levelOf = (w, u, c) => (u && (u.conditions || []).includes(c)
+    ? Math.min(LEVELS[c], ((w && w.effects) || []).filter((ef) => ef.unit === u.id && ef.condition === c).reduce((n, ef) => n + (+ef.level || 0), 0)) : 0);
+  const burnOf = (w, u) => (u && (u.conditions || []).includes('Ignited')
+    ? (((w && w.effects) || []).find((ef) => ef.unit === u.id && ef.condition === 'Ignited' && ef.amount) || {}).amount || '' : '');
+  // weakened: only half of a positive ability modifier (rounded down) counts on attack rolls and saves
+  const weakPenalty = (u, ab) => { const m = +((u && u.mods) || {})[ab]; return u && has(u, 'weakened') && m > 0 ? m - Math.floor(m / 2) : 0; };
+  const immuneTo = (t, cond) => (t.condImmune || []).concat(...effectsOf(t).map(([, e]) => e.condImmune || [])).some((c) => String(c).toLowerCase() === String(cond).toLowerCase());
   // conditions join the reasons a roll tilts: the attacker's own, then the target's
   REASONS.push(
     { id: 'self', when: (c) => effectsOf(c.actor).some(([, e]) => e.attacks), each: (c) => effectsOf(c.actor).filter(([, e]) => e.attacks)
@@ -171,10 +186,11 @@
     if (opts.dis) tilts.push({ dis: true, text: 'chosen' });
     const adv = tilts.some((x) => x.adv), dis = tilts.some((x) => x.dis);
     const mode = adv && !dis ? 'adv' : dis && !adv ? 'dis' : 'normal';
-    const need = Math.min(20, Math.max(2, t.ac - attack.bonus));   // the d20 needed; a 20 always hits, a 1 always misses
+    const weak = weakPenalty(a, attack.abil), bonus = attack.bonus - weak;
+    const need = Math.min(20, Math.max(2, t.ac - bonus));   // the d20 needed; a 20 always hits, a 1 always misses
     const p = (21 - need) / 20;
     const chance = mode === 'adv' ? 1 - (1 - p) ** 2 : mode === 'dis' ? p * p : p;
-    return { legal: true, feet, ranged, mode, tilts, need, chance, expr: (mode === 'adv' ? '2d20kh1' : mode === 'dis' ? '2d20kl1' : '1d20') + sgn(attack.bonus) };
+    return { legal: true, feet, ranged, mode, tilts, need, chance, weak, bonus, expr: (mode === 'adv' ? '2d20kh1' : mode === 'dis' ? '2d20kl1' : '1d20') + sgn(bonus) };
   }
 
   /* ---------------- resources (audit 3.1) ---------------- */
@@ -269,7 +285,8 @@
   function powerNumbers(ch, pw, rules) {
     const ci = rules.casterInfo(ch), lvl = +pw.level || 0, tech = pw.type === 'tech';
     const pick = (light, dark, t) => (tech ? t : pw.alignment === 'dark' ? dark : pw.alignment === 'light' ? light : Math.max(light, dark));
-    return { pool: tech ? 'tech' : 'force', cost: lvl ? lvl + 1 : 0, level: lvl, dc: pick(ci.lightDC, ci.darkDC, ci.techDC), atk: pick(ci.lightAtk, ci.darkAtk, ci.techAtk), maxLevel: tech ? ci.techMaxLevel : ci.forceMaxLevel };
+    const abil = tech ? 'int' : pw.alignment === 'dark' ? 'cha' : pw.alignment === 'light' ? 'wis' : rules.abilityMod(ch, 'cha') > rules.abilityMod(ch, 'wis') ? 'cha' : 'wis';
+    return { pool: tech ? 'tech' : 'force', cost: lvl ? lvl + 1 : 0, level: lvl, dc: pick(ci.lightDC, ci.darkDC, ci.techDC), atk: pick(ci.lightAtk, ci.darkAtk, ci.techAtk), maxLevel: tech ? ci.techMaxLevel : ci.forceMaxLevel, abil };
   }
   // the table's data for a power, with this character's numbers filled in; null when the table has no data for it
   function resolvePower(ch, pw, data, rules) {
@@ -282,7 +299,7 @@
       use: USES.includes(data.use) ? data.use : 'action', cost: n.cost ? { [n.pool]: n.cost } : {}, pool: n.pool,
       reach: data.reach == null ? null : +data.reach, range: Array.isArray(data.range) ? [+data.range[0], +data.range[1] || +data.range[0]] : null,
       area: data.area || null, targets: data.targets === 'self' ? 'self' : data.targets === 'area' ? 'area' : Math.max(1, +data.targets || 1),
-      attack: data.attack ? { bonus: num(data.attack.bonus == null ? 'power' : data.attack.bonus) } : null,
+      attack: data.attack ? { bonus: num(data.attack.bonus == null ? 'power' : data.attack.bonus), abil: n.abil } : null,
       save: data.save ? { ability: ABILS.includes(data.save.ability) ? data.save.ability : 'dex', dc: dc(data.save.dc), onSave: data.save.onSave === 'half' ? 'half' : 'none' } : null,
       damage: (data.damage || []).map((d) => ({ dice: String(d.dice || ''), add: d.add == null ? 0 : mod(d.add), type: d.type || '' })).filter((d) => d.dice),
       heal: data.heal && data.heal.dice ? { dice: String(data.heal.dice), add: data.heal.add == null ? 0 : mod(data.heal.add) } : null,
@@ -292,7 +309,7 @@
   }
   // a weapon attack row as an ability (its arithmetic still comes from rules.js through attacksOf)
   const weaponAbility = (a) => ({ key: 'atk:' + a.key, name: a.name, kind: 'weapon', use: 'action', cost: {}, reach: a.melee || null, range: a.range, targets: 1,
-    attack: { bonus: a.bonus }, save: null, damage: [{ dice: a.damage, add: 0, type: a.type }], crit: a.crit, applies: [], concentration: false });
+    attack: { bonus: a.bonus, abil: a.abil }, save: null, damage: [{ dice: a.damage, add: 0, type: a.type }], crit: a.crit, applies: [], concentration: false });
   // everything a character can use in the combat view: weapon attacks, and the powers on the sheet the table has data for
   function abilitiesOf(ch, rules, library) {
     const lib = library || {};
@@ -317,6 +334,7 @@
       damage: (Array.isArray(d.damage) ? d.damage : []).slice(0, 4).map((x) => ({ dice: dice(x && x.dice), add: x && ABILS.includes(x.add) ? x.add : null, type: String((x && x.type) || '').toLowerCase().replace(/[^a-z]/g, '').slice(0, 20) })).filter((x) => x.dice),
       heal: d.heal && dice(d.heal.dice) ? { dice: dice(d.heal.dice), add: ABILS.includes(d.heal.add) ? d.heal.add : null } : null,
       applies: (Array.isArray(d.applies) ? d.applies : []).slice(0, 4).filter((x) => x && x.condition).map((x) => ({ condition: String(x.condition).slice(0, 30),
+        level: LEVELS[x.condition] ? clampN(Math.round(+x.level) || 0, 0, LEVELS[x.condition]) : 0, amount: x.condition === 'Ignited' ? dice(x.amount) : '',
         until: x.until && typeof x.until === 'object' ? { ends: x.until.ends === 'start' ? 'start' : 'end', of: x.until.of === 'self' ? 'self' : 'target', rounds: clampN(Math.round(+x.until.rounds) || 1, 1, 100), save: !!x.until.save } : null })),
       concentration: !!d.concentration,
       upcast: d.upcast && dice(d.upcast.damage) ? { damage: dice(d.upcast.damage) } : null,
@@ -414,7 +432,8 @@
     const u = world.units[id], s = spentOf(world, id);
     let speed = u ? Math.max(0, +u.speed || 0) : 0;
     const ex = u ? +u.exhaustion || 0 : 0;   // exhaustion on the sheet: level 2 is one slowed level, level 5 four
-    if (u && (has(u, 'speed0') || ex >= 5)) speed = 0; else if (ex >= 2) speed = Math.max(0, speed - 15);
+    const slow = Math.min(4, (ex >= 5 ? 4 : ex >= 2 ? 1 : 0) + levelOf(world, u, 'Slowed'));
+    if (u && (has(u, 'speed0') || slow >= 4)) speed = 0; else speed = Math.max(0, speed - SLOWED_FT[slow]);
     const out = has(u || {}, 'noActions'), noReact = out || has(u || {}, 'noReactions');
     const one = has(u || {}, 'oneAction') && (s.action >= 1 || s.bonus >= 1);   // shocked: an action or a bonus action, not both
     return { key: s.key, moved: s.move, speed, moveLeft: Math.max(0, speed - s.move), action: !out && !one && s.action < 1, bonus: !out && !one && s.bonus < 1, reaction: !noReact && s.reaction < 1 };
@@ -429,6 +448,11 @@
 
   /* ---------------- applying one action ---------------- */
   function apply(world, act, roll) {
+    const r = applyOne(world, act, roll);
+    if (r.ok) settle(r.world, r.log);
+    return r;
+  }
+  function applyOne(world, act, roll) {
     if (!world.active) return no('Combat has not started: start initiative first.');
     const u = world.units[act.unit];
     if (!u) return no('That combatant is not on the map.');
@@ -459,15 +483,16 @@
         if (hit && pv.feet <= FT && has(t, 'closeCrit')) crit = true;   // any hit from within 5 ft on the paralyzed or unconscious
         w.spent[me.id].action += 1;
         const tilt = pv.mode === 'normal' ? '' : ` with ${pv.mode === 'adv' ? 'advantage' : 'disadvantage'} (${pv.tilts.map((x) => x.text).join(', ')})`;
-        const log = [{ kind: 'attack', roll: r, expr: pv.expr, text: `${me.name} attacks ${t.name} with ${attack.name}${tilt}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}` }];
+        const log = [{ kind: 'attack', roll: r, expr: pv.expr, text: `${me.name} attacks ${t.name} with ${attack.name}${tilt}${pv.weak ? ` (weakened, −${pv.weak})` : ''}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}` }];
         const events = [];
         if (!hit) { events.push({ kind: 'miss', unit: t.id }); return { ok: true, world: w, log, events }; }
         const expr = crit ? attack.crit || attack.damage : attack.damage;
         const d = roll(expr);
-        const df = defended(t, Math.max(0, d.total), String(attack.type || '').toLowerCase(), attack.enhanced ? 'enhanced' : 'weapon');
+        const corr = levelOf(w, t, 'Corroded');   // corroded: 1 more damage from weapons for each level
+        const df = defended(t, Math.max(0, d.total) + corr, String(attack.type || '').toLowerCase(), attack.enhanced ? 'enhanced' : 'weapon');
         const amount = df.amount;
         const took = takeDamage(t, amount);
-        log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 ? ' and drops to 0 hit points.' : '.'}` });
+        log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 ? ' and drops to 0 hit points.' : '.'}` });
         events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
         concentrationCheck(w, t, amount, roll, log);
         return { ok: true, world: w, log, events };
@@ -499,6 +524,7 @@
           for (const id of ids) {
             const t = w.units[id];
             if (!t) return no('No such target.');
+            if (t.id !== me.id && (w.effects || []).some((ef) => ef.unit === me.id && ef.condition === 'Charmed' && ef.source === t.id) && (ab.attack || ab.save || ab.damage.length)) return no(`${me.name} is charmed by ${t.name} and can't target it with that.`);
             const r = inReachOf(w, me, t, ab);
             if (!r.ok) return no(r.why);
           }
@@ -522,7 +548,7 @@
             if (!r0.melee && r0.long) tilts.push('long range');
             if (!r0.melee && Object.values(w.units).some((o) => o.id !== me.id && hostile(me, o) && !o.down && feetBetween(me, o) <= FT)) tilts.push('an enemy within 5 ft');
             const adv = !!act.adv, dis = !!act.dis || tilts.length > 0;
-            const expr = (adv && !dis ? '2d20kh1' : dis && !adv ? '2d20kl1' : '1d20') + sgn(ab.attack.bonus);
+            const expr = (adv && !dis ? '2d20kh1' : dis && !adv ? '2d20kl1' : '1d20') + sgn(ab.attack.bonus - weakPenalty(me, ab.attack.abil));
             const r = roll(expr);
             crit = r.nat === 20; hit = crit || (r.nat !== 1 && r.total >= t.ac);
             log.push({ unit: t.id, kind: 'attack', roll: r, expr, text: `${ab.name} against ${t.name}${dis && !adv && tilts.length ? ` (disadvantage: ${tilts.join(', ')})` : ''}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : 'a miss.'}` });
@@ -530,7 +556,7 @@
             const bonus = (t.saves || {})[ab.save.ability];
             const fail = effectsOf(t).find(([, e]) => (e.autoFail || []).includes(ab.save.ability));
             const sdis = effectsOf(t).some(([, e]) => (e.saveDis || []).includes(ab.save.ability));
-            const sexpr = (sdis ? '2d20kl1' : '1d20') + sgn(+bonus || 0);
+            const sexpr = (sdis ? '2d20kl1' : '1d20') + sgn((+bonus || 0) - weakPenalty(t, ab.save.ability));
             const r = roll(sexpr);
             const saved = !fail && r.total >= ab.save.dc;
             hit = !saved || ab.save.onSave === 'half'; half = saved && ab.save.onSave === 'half';
@@ -540,17 +566,19 @@
           // conditions the ability puts on its target, with how long they last
           if (!half) for (const ap of ab.applies || []) {
             if (!ap.condition) continue;
-            if ((t.condImmune || []).concat(...effectsOf(t).map(([, e]) => e.condImmune || [])).some((c) => String(c).toLowerCase() === String(ap.condition).toLowerCase())) { log.push({ unit: t.id, text: `${t.name} can't be ${String(ap.condition).toLowerCase()}.` }); continue; }
+            if (immuneTo(t, ap.condition)) { log.push({ unit: t.id, text: `${t.name} can't be ${String(ap.condition).toLowerCase()}.` }); continue; }
             t.conditions = Array.from(new Set((t.conditions || []).concat(ap.condition)));
             const until = ap.until || { ends: 'end', of: 'self', rounds: 1 };
+            if (ap.condition === 'Ignited' && ap.amount) w.effects = w.effects.filter((ef) => !(ef.unit === t.id && ef.condition === 'Ignited'));   // new flames replace the old
             w.effects.push({ id: `${me.id}-${ab.key}-${t.id}-${w.effects.length}`, unit: t.id, condition: ap.condition, ends: until.ends, of: until.of === 'target' ? t.id : me.id,
-              rounds: until.rounds || 1, save: until.save && ab.save ? { ability: ab.save.ability, dc: ab.save.dc } : null, source: me.id, conc: !!ab.concentration });
+              rounds: until.rounds || 1, save: until.save && ab.save ? { ability: ab.save.ability, dc: ab.save.dc } : null, source: me.id, conc: !!ab.concentration,
+              level: LEVELS[ap.condition] ? Math.min(LEVELS[ap.condition], +ap.level || 0) : 0, amount: ap.condition === 'Ignited' ? ap.amount || '' : '' });
             log.push({ unit: t.id, text: `${t.name} is ${String(ap.condition).toLowerCase()}${ab.concentration ? ` while ${me.name} concentrates` : ''}.` });
           }
           if (ab.damage.length) {
             const expr = dmgExpr(crit);
             const d = roll(expr);
-            const raw = Math.max(0, half ? Math.floor(d.total / 2) : d.total);
+            const raw = Math.max(0, half ? Math.floor(d.total / 2) : d.total) + (ab.kind === 'weapon' ? levelOf(w, t, 'Corroded') : 0);
             const df = defended(t, raw, String(dtype || '').toLowerCase(), ab.kind === 'weapon' ? 'weapon' : 'power');
             const amount = df.amount;
             const took = takeDamage(t, amount);
@@ -561,7 +589,8 @@
             const expr = diceExpr(ab.heal.dice, ab.heal.add);
             const d = roll(expr);
             const amount = Math.max(0, has(t, 'weakened') ? Math.floor(d.total / 2) : d.total);   // weakened: healing halved
-            if (t.hp != null) { t.hp = t.maxHp != null ? Math.min(t.maxHp, t.hp + amount) : t.hp + amount; if (t.hp > 0) delete t.down; }
+            const top = t.maxHp == null ? null : (+t.exhaustion || 0) >= 4 ? Math.floor(t.maxHp / 2) : t.maxHp;   // exhaustion 4: maximum halved
+            if (t.hp != null) { t.hp = top != null ? Math.max(t.hp, Math.min(top, t.hp + amount)) : t.hp + amount; if (t.hp > 0) delete t.down; }
             log.push({ unit: t.id, kind: 'heal', roll: d, expr, text: `${t.name} regains ${amount} hit points.` });
             events.push({ kind: 'heal', unit: t.id, amount });
           } else events.push({ kind: 'hit', unit: t.id, amount: 0 });
@@ -576,6 +605,16 @@
         me.conditions = me.conditions.filter((c) => c !== 'Prone');
         w.effects = (w.effects || []).filter((ef) => !(ef.unit === me.id && ef.condition === 'Prone'));
         return { ok: true, world: w, log: [{ text: `${me.name} stands up (${half} ft).` }], events: [] };
+      }
+      case 'douse': {   // putting out the flames, on yourself or on someone within 5 ft, takes an action
+        if (!b.action) return no(`${me.name} has already used the action this turn.`);
+        const t = w.units[act.target];
+        if (!t || !(t.conditions || []).includes('Ignited')) return no('Nobody there is on fire.');
+        if (t.id !== me.id && feetBetween(me, t) > FT) return no(`${t.name} is out of reach: within 5 ft only.`);
+        w.spent[me.id].action += 1;
+        w.effects = w.effects.filter((ef) => !(ef.unit === t.id && ef.condition === 'Ignited'));
+        t.conditions = t.conditions.filter((c) => c !== 'Ignited');
+        return { ok: true, world: w, log: [{ unit: t.id, text: t.id === me.id ? `${me.name} puts out the flames.` : `${me.name} puts out the flames on ${t.name}.` }], events: [] };
       }
       case 'end':
         return { ok: true, world: w, log: [{ text: `${me.name} ends the turn.` }], events: [], endTurn: true };
@@ -599,11 +638,58 @@
     if (!u || w.effects.some((o) => o.unit === ef.unit && o.condition === ef.condition)) return;
     u.conditions = (u.conditions || []).filter((c) => c !== ef.condition);
   }
+  // A grapple whose grappler is known ends when the grappler is incapacitated or down, or no longer within 5 ft of it.
+  // A grappler this world can't see (hidden from a player) leaves the grapple as it is.
+  function settle(w, log) {
+    const gone = (w.effects || []).filter((ef) => {
+      if (ef.condition !== 'Grappled' || !ef.source || ef.source === ef.unit) return false;
+      const g = w.units[ef.source], u = w.units[ef.unit];
+      return !!(g && u && (g.down || INCAPACITATING(g) || feetBetween(g, u) > FT));
+    });
+    if (!gone.length) return;
+    w.effects = w.effects.filter((ef) => !gone.includes(ef));
+    for (const ef of gone) {
+      const u = w.units[ef.unit], was = u && (u.conditions || []).includes('Grappled');
+      dropCondition(w, ef);
+      if (was && !(u.conditions || []).includes('Grappled')) log.push({ unit: u.id, text: `${u.name} is no longer grappled.` });
+    }
+  }
+  // The DM puts a condition on a unit, or takes one off, from the combat view. A level (Slowed, Corroded), a damage
+  // amount (Ignited) or who caused it (any condition; it matters for Charmed and Grappled) is kept on an effect that
+  // lasts until the DM takes it off. A bare condition with none of those is the same label HoloTable's tracker sets.
+  function setCondition(world, c) {
+    const w = clone(world), log = [];
+    w.effects = w.effects || []; w.conc = w.conc || {};
+    const u = w.units[c.unit];
+    if (!u) return no('That combatant is not on the map.');
+    const name = String(c.condition || ''), lower = name.toLowerCase();
+    if (!name) return no('Pick a condition.');
+    if (c.op === 'remove') {
+      if (!(u.conditions || []).includes(name)) return no(`${u.name} isn't ${lower}.`);
+      w.effects = w.effects.filter((ef) => !(ef.unit === u.id && ef.condition === name));
+      u.conditions = u.conditions.filter((x) => x !== name);
+      log.push({ unit: u.id, text: `${u.name} is no longer ${lower}.` });
+    } else {
+      if (immuneTo(u, name)) return no(`${u.name} can't be ${lower}.`);
+      const lv = LEVELS[name] ? Math.max(0, Math.min(LEVELS[name], Math.round(+c.level || 0))) : 0;
+      const amount = name === 'Ignited' ? String(c.amount || '').replace(/\s+/g, '') : '';
+      if (amount && !DICE.test(amount)) return no("That fire damage isn't a dice expression (like 1d6 or 5).");
+      const src = c.source && c.source !== u.id && w.units[c.source] ? c.source : null;
+      if (!lv && !amount && !src && (u.conditions || []).includes(name)) return no(`${u.name} is already ${lower}.`);
+      if (amount) w.effects = w.effects.filter((ef) => !(ef.unit === u.id && ef.condition === 'Ignited'));   // new flames replace the old
+      u.conditions = Array.from(new Set((u.conditions || []).concat(name)));
+      if (lv || amount || src) w.effects.push({ id: `dm-${u.id}-${w.effects.length}`, unit: u.id, condition: name, ends: 'never', of: u.id, rounds: 1, save: null, source: src, conc: false, level: lv, amount });
+      const total = LEVELS[name] ? levelOf(w, u, name) : 0;
+      log.push({ unit: u.id, about: src, text: `${u.name} is ${lower}${src ? ` by ${w.units[src].name}` : ''}${total ? ` (level ${total})` : ''}${amount ? ` (${amount} fire damage at the end of each of its turns)` : ''}.` });
+    }
+    settle(w, log);
+    return { ok: true, world: w, log, events: [] };
+  }
   // after damage: concentration needs a Con save (DC 10 or half the damage, whichever is higher); 0 hp ends it
   function concentrationCheck(w, t, amount, roll, log) {
     if (!w.conc || !w.conc[t.id] || amount <= 0) return;
     if (t.hp != null && t.hp <= 0) return endConcentration(w, t.id, `${t.name} drops`, log);
-    const dc = Math.max(10, Math.floor(amount / 2)), bonus = +((t.saves || {}).con) || 0;
+    const dc = Math.max(10, Math.floor(amount / 2)), bonus = (+((t.saves || {}).con) || 0) - weakPenalty(t, 'con');
     const r = roll('1d20' + sgn(bonus));
     log.push({ unit: t.id, kind: 'save', roll: r, expr: '1d20' + sgn(bonus), text: `${t.name} makes a concentration save (CON, DC ${dc}): ${r.total}, ${r.total >= dc ? 'a success' : 'a failure'}.` });
     if (r.total < dc) endConcentration(w, t.id, `${t.name} loses concentration`, log);
@@ -618,7 +704,7 @@
     for (const ef of w.effects) {
       let ends = false;
       if (ef.save && ef.unit === prevId) {
-        const u = w.units[ef.unit], bonus = +((u && u.saves) || {})[ef.save.ability] || 0;
+        const u = w.units[ef.unit], bonus = (+((u && u.saves) || {})[ef.save.ability] || 0) - weakPenalty(u, ef.save.ability);
         const r = roll('1d20' + sgn(bonus));
         log.push({ unit: ef.unit, kind: 'save', roll: r, expr: '1d20' + sgn(bonus), text: `${u ? u.name : 'Someone'} tries to shake off ${ef.condition.toLowerCase()} (${ef.save.ability.toUpperCase()}, DC ${ef.save.dc}): ${r.total}, ${r.total >= ef.save.dc ? 'a success' : 'a failure'}.` });
         if (r.total >= ef.save.dc) ends = true;
@@ -633,8 +719,18 @@
     const ended = w.effects.filter((ef) => !keep.includes(ef));
     w.effects = keep;
     for (const ef of ended) dropCondition(w, ef);
+    // ignited: the fire damage comes at the end of the burning unit's own turn
+    const burning = w.units[prevId], burn = burnOf(w, burning);
+    if (burn) {
+      const d = roll(burn);
+      const df = defended(burning, Math.max(0, d.total), 'fire', 'other');
+      const took = takeDamage(burning, df.amount);
+      log.push({ unit: burning.id, kind: 'damage', roll: d, expr: burn, text: `${burning.name} burns for ${df.amount} fire damage${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${burning.hp != null && burning.hp <= 0 ? ' and drops to 0 hit points.' : '.'}` });
+      concentrationCheck(w, burning, df.amount, roll, log);
+    }
     // incapacitated casters stop concentrating
     for (const id of Object.keys(w.conc)) if (w.units[id] && INCAPACITATING(w.units[id])) endConcentration(w, id, `${w.units[id].name} is incapacitated`, log);
+    settle(w, log);
     return { world: w, log };
   }
   /* ---------------- resistances, immunities, vulnerabilities (audit 5.10, 9.6) ---------------- */
@@ -697,6 +793,7 @@
         ...(() => { const d = ch ? (table.defenses || {})[e.charId] || {} : (table.npcStats || {})[e.id] || {};
           return { resist: d.resist || [], immune: d.immune || [], vuln: d.vuln || [], condImmune: d.condImmune || [] }; })(),
         saves: ch && rules ? Object.fromEntries(ABILS.map((ab) => [ab, rules.saveBonus(ch, ab)])) : Object.assign({}, ((table.npcStats || {})[e.id] || {}).saves),
+        mods: ch && rules ? Object.fromEntries(ABILS.map((ab) => [ab, rules.abilityMod(ch, ab)])) : Object.assign({}, ((table.npcStats || {})[e.id] || {}).mods),
       };
       if (units[e.id].hp != null && units[e.id].hp <= 0) units[e.id].down = true;
     }
@@ -709,5 +806,6 @@
 
   return { FT, TURN, squaresBetween, feetBetween, reachable, readRange, attacksOf, attackFromBehavior, REASONS, preview, budget, apply, takeDamage, buildWorld, turnKey,
     cleanResources, resourcesOf, atLevel, spend, rest, powerNumbers, resolvePower, weaponAbility, abilitiesOf, inReachOf, cleanAbility, setPoolUsed,
-    ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet };
+    ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
+    setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE };
 });
