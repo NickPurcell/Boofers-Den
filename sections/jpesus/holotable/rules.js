@@ -296,8 +296,33 @@
     return { cls, level: L, cols: Object.entries(CLASS_TABLE[cls]).map(([h, v]) => [h, v[L - 1]]).filter(([, v]) => v) };
   }).filter(Boolean);
 
+  // ---- senses (audit 5.12): [{ kind, range }] on the sheet. The four kinds SW5e's creatures and species use; feet 1-9999.
+  const SENSES = ['darkvision', 'blindsight', 'tremorsense', 'truesight'];
+  function cleanSenses(list) {
+    const best = {};
+    for (const x of Array.isArray(list) ? list.slice(0, 12) : []) {
+      const kind = String((x && x.kind) || '').toLowerCase(), range = Math.round(+(x && x.range));
+      if (SENSES.includes(kind) && range >= 1) best[kind] = Math.min(9999, Math.max(best[kind] || 0, range));
+    }
+    return SENSES.filter(k => best[k]).map(k => ({ kind: k, range: best[k] }));
+  }
+  // a species' senses from its traits ("Darkvision ... within 60 feet", "Energy Sensors ... blindsight ... 30 feet")
+  function sensesFromTraits(traits) {
+    const out = [];
+    for (const t of Array.isArray(traits) ? traits : []) {
+      const txt = `${(t && t.n) || ''} ${(t && t.d) || ''}`, m = /(darkvision|blindsight|tremorsense|truesight)/i.exec(txt);
+      const ft = /(\d+)\s*(?:feet|ft)/i.exec((t && t.d) || '');
+      if (m && ft) out.push({ kind: m[1].toLowerCase(), range: +ft[1] });
+    }
+    return cleanSenses(out);
+  }
+  const sensesText = list => cleanSenses(list).map(x => `${x.kind[0].toUpperCase()}${x.kind.slice(1)} ${x.range} ft`).join(' · ');
+  // "darkvision 60, blindsight 30" (the GM's typing) to the list
+  const parseSenses = text => cleanSenses(String(text || '').split(/[,;·\n]+/).map(p => { const m = /([a-z]+)\D*(\d+)/i.exec(p); return m && { kind: m[1], range: +m[2] }; }).filter(Boolean));
+
   root.SW5E = { ABILITIES, SKILLS, CLASSES, SPECIES, BACKGROUNDS, DAMAGE_TYPES, WEAPONS, CONDITIONS, REFERENCE,
     mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo, techOnShortRest,
     attackBonus, damageExpr, critExpr, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
-    CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt };
+    CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt,
+    SENSES, cleanSenses, sensesFromTraits, sensesText, parseSenses };
 })(typeof window !== 'undefined' ? window : globalThis);

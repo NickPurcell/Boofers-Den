@@ -713,3 +713,5 @@ body.no-sw5e-books [data-sa="deploy-info"], body.no-sw5e-books .lib-bar { displa
 .class-tbl { font-size: 12px; margin-top: 8px; line-height: 1.6; }
 .class-tbl b { font-family: var(--display); font-size: 11px; letter-spacing: .06em; color: var(--holo); margin-right: 6px; }
 .res-row .dot.on { background: var(--holo); border-color: var(--holo); }
+.senses-row { display: flex; align-items: center; gap: 8px; margin: 8px 0 2px; font-size: 13px; }
+.senses-row .lbl { font-family: var(--display); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
