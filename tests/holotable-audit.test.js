@@ -6,19 +6,21 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const DIR = path.join(__dirname, '..', 'sections', 'guitar-goblin', 'holotable-audit');
-const build = () => import(path.join(DIR, 'build.mjs'));
+// a file URL, not a path: Node's ESM import rejects a Windows path like C:\\...
+const build = () => import(require('node:url').pathToFileURL(path.join(DIR, 'build.mjs')).href);
+const lf = (s) => s.replace(/\r\n?/g, '\n');   // a Windows checkout may bring CRLF
 
 test('holotable audit: index.html is exactly what audit.md makes', async () => {
   const { parse, render } = await build();
   const html = render(parse(fs.readFileSync(path.join(DIR, 'audit.md'), 'utf8')));
-  assert.equal(fs.readFileSync(path.join(DIR, 'index.html'), 'utf8'), html, 'run: node sections/guitar-goblin/holotable-audit/build.mjs');
+  assert.equal(lf(fs.readFileSync(path.join(DIR, 'index.html'), 'utf8')), html, 'run: node sections/guitar-goblin/holotable-audit/build.mjs');
 });
 
 test('holotable audit: every checklist line is read, and the counts add up', async () => {
   const { parse } = await build();
   const md = fs.readFileSync(path.join(DIR, 'audit.md'), 'utf8');
   const a = parse(md);
-  assert.equal(a.items.length, (md.match(/^- \[[ x]\] \*\*/gm) || []).length);
+  assert.equal(a.items.length, (lf(md).match(/^- \[[ x]\] \*\*/gm) || []).length);
   assert.equal(a.count.done + a.count.partial + a.count.missing, a.items.length);
   assert.equal(a.count.every + a.count.some + a.count.nice, a.items.length);
   assert.equal(a.gaps.length, 10);
