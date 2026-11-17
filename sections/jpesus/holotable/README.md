@@ -100,6 +100,9 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
     with AC, HP (average or rolled) and a map token. 📜 opens the stat block, and its attacks, damage, saving throws, skills and
     ability checks roll GM-only (shift-click for advantage, ctrl-click for disadvantage). The tracker's "Save…" menu
     rolls a creature's save straight from its row: its listed bonus, or the plain modifier if it isn't proficient.
+  - **Encounter difficulty (GM):** above the initiative list, a meter rates the fight Easy, Medium, Hard or Deadly.
+    It uses SW5e's encounter-building rules: the creatures' XP, multiplied for how many there are, against the party's
+    thresholds. The party is the characters in initiative, or every player's character before anyone has rolled.
     Players never see which creature an NPC is.
   - **Starships of the Galaxy:** a Ships tab with ship sheets (size, tier, AC, hull and shield points, speed, hyperdrive,
     ship ability scores, saves and the 14 ship skills), crew with deployments and ranks, weapons that roll attack (Wis +

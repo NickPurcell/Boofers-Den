@@ -988,7 +988,8 @@
       <div class="row wrap" style="margin-top:6px"><label class="toggle"><input type="checkbox" id="npcToken" checked> also place map tokens</label>
         <label class="toggle" title="Players see these tokens as ??? until you reveal them"><input type="checkbox" id="npcNameHidden"> hide their names</label>
         <label class="toggle" title="For SW5e creatures: roll each one's hit dice instead of taking the average"><input type="checkbox" id="npcRollHp"> roll creature HP</label>
-        <span class="spacer"></span><button class="btn small amber" data-cact="add-creature">☠ Add an SW5e creature…</button></div></div>`;
+        <span class="spacer"></span><button class="btn small amber" data-cact="add-creature">☠ Add an SW5e creature…</button></div></div>
+      <div class="enc-diff row wrap" id="encDiff" title="The creatures' XP, multiplied for their numbers, against the party's thresholds (SW5e's encounter-building rules)"></div>`;
     html += `<div class="init-list">${ini.entries.map((en, i) => {
       const ch = en.charId && S.st.characters[en.charId];
       const canHp = gm || (ch && ch.owner === clientId);
@@ -1003,6 +1004,7 @@
         <div>${gm && en.sb ? `<button class="btn tiny" data-cact="statblock" title="${esc(en.sb)} stat block">📜</button> <select class="sb-save" data-cf="save" title="Roll this creature's saving throw (GM-only). Shift: advantage, Ctrl: disadvantage" aria-label="Roll a saving throw for ${esc(en.name)}"><option value="">Save…</option>${['str', 'dex', 'con', 'int', 'wis', 'cha'].map(k => `<option value="${k}">${k.toUpperCase()}</option>`).join('')}</select> ` : ''}${gm ? `<button class="btn tiny" data-cact="hide" title="Toggle hidden">${en.hidden ? '👁' : '◌'}</button> <button class="btn tiny ghost" data-cact="remove">✕</button>` : ''}</div></div>`;
     }).join('') || '<p class="muted">No combatants yet. Players: click “Roll initiative” on your sheet. GM: add enemies above.</p>'}</div>`;
     el.innerHTML = html;
+    if (gm && window.HTB) HTB.renderEncounter($('#encDiff'), ini.entries, S.st.characters, clientId);
   }
   $('#combat').addEventListener('click', async e => {
     const b = e.target.closest('[data-cact]'); if (!b) return;
