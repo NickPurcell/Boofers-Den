@@ -200,8 +200,8 @@
     const spec = armedSpec(), u = cur();
     if (!spec || !u) return;
     const r = spec.power ? await send('fight.use', Object.assign({ ability: spec.key, upcast: UI.upcast || 0, adv: UI.adv, dis: UI.dis }, spec.power.area ? { point: UI.aim } : { target: targetId }))
-      : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.key : specOut(spec), no: UI.noRiders || [] });
-    if (r) { UI.armed = null; UI.target = null; UI.aim = null; UI.adv = UI.dis = false; UI.upcast = 0; UI.noRiders = []; render(); }
+      : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.key : specOut(spec), no: UI.noRiders || [], add: UI.addRiders || {} });
+    if (r) { UI.armed = null; UI.target = null; UI.aim = null; UI.adv = UI.dis = false; UI.upcast = 0; UI.noRiders = []; UI.addRiders = {}; render(); }
   }
 
   /* ---------------- the bar under the map ---------------- */
@@ -393,7 +393,11 @@
         html += `<div class="ct-row ct-preview" aria-live="polite">${!t ? `<span>${esc(spec.name)}: pick a target on the map (lit in red).</span><button class="btn tiny ghost" data-ct="disarm">Cancel</button>`
           : !pv.legal ? `<span>${esc(pv.why)}</span>`
           : `<span><b>${esc(t.name)}</b>, ${pv.feet} ft: you need <b>${pv.need}+</b> on the d20 (${Math.round(pv.chance * 100)}%)${pv.mode !== 'normal' ? ` · ${E.modeName(pv)}: ${esc(pv.tilts.map((x) => x.text).join(', '))}` : ''}${pv.weak ? ` · weakened: −${pv.weak}` : ''}${(pv.notes || []).length ? ` · ${esc(pv.notes.join('; '))}` : ''}. Hit: ${esc(spec.damage)}${spec.type ? ' ' + esc(spec.type) : ''}.</span>
-             ${(pv.riders || []).map((x) => `<label class="ct-tog ct-rider" title="${esc(x.key === 'sneak' ? 'Once per turn, on a hit: the same type as the weapon' : 'While raging, on a Strength melee weapon hit')}"><input type="checkbox" data-ct="rider" data-key="${esc(x.key)}" ${(UI.noRiders || []).includes(x.key) ? '' : 'checked'}> + ${esc(x.name)} ${esc(x.dice || '+' + x.flat)}</label>`).join('')}
+             ${(pv.riders || []).map((x) => x.key === 'fes'
+               ? `<label class="ct-tog ct-rider" title="On a melee weapon hit: 1d8 for each force point spent (paid only if it hits)">+ ${esc(x.name)} <select data-ct="fes">${Array.from({ length: x.max + 1 }, (_, i) => `<option value="${i}" ${+((UI.addRiders || {}).fes || 0) === i ? 'selected' : ''}>${i ? `${i}d8 (${i} FP)` : 'none'}</option>`).join('')}</select></label>`
+               : x.key === 'double'
+               ? `<label class="ct-tog ct-rider" title="On a weapon hit, once a turn: 1 force point for a Kinetic Combat die (paid only if it hits)"><input type="checkbox" data-ct="rider-add" data-key="double" ${(UI.addRiders || {}).double ? 'checked' : ''}> + ${esc(x.name)} ${esc(x.dice)} (1 FP)</label>`
+               : `<label class="ct-tog ct-rider" title="${esc(x.key === 'sneak' ? 'Once per turn, on a hit: the same type as the weapon' : 'While raging, on a Strength melee weapon hit')}"><input type="checkbox" data-ct="rider" data-key="${esc(x.key)}" ${(UI.noRiders || []).includes(x.key) ? '' : 'checked'}> + ${esc(x.name)} ${esc(x.dice || '+' + x.flat)}</label>`).join('')}
              <button class="btn small primary" data-ct="go">Attack</button>`}</div>`;
       } else if (bud && bud.moveLeft > 0) html += `<div class="ct-row muted ct-hint">Tap a lit square to move there, or pick an attack.</div>`;
     }
@@ -402,6 +406,8 @@
   function onBarChange(e) {
     const el = e.target.closest('[data-ct=upcast]');
     if (el) { UI.upcast = +el.value || 0; render(); }
+    const fes = e.target.closest('[data-ct=fes]');   // Force-Empowered Strikes: how many force points to spend on a hit
+    if (fes) { UI.addRiders = Object.assign({}, UI.addRiders, { fes: +fes.value || 0 }); render(); }
   }
   function onBar(e) {
     const el = e.target.closest('[data-ct]');
@@ -439,6 +445,7 @@
     if (k === 'arm') { UI.armed = UI.armed === el.dataset.key ? null : el.dataset.key; UI.target = null; UI.upcast = 0; render(); return H.drawMap(); }
     if (k === 'disarm') { UI.armed = UI.target = UI.aim = null; render(); return H.drawMap(); }
     if (k === 'adv' || k === 'dis') { UI[k] = el.checked; return render(); }
+    if (k === 'rider-add') { UI.addRiders = Object.assign({}, UI.addRiders, { [el.dataset.key]: el.checked }); return render(); }
     if (k === 'rider') { const no = new Set(UI.noRiders || []); if (el.checked) no.delete(el.dataset.key); else no.add(el.dataset.key); UI.noRiders = [...no]; return render(); }
     if (k === 'teach') return teachModal();
     if (k === 'go' && (UI.target || UI.aim)) return attack(UI.target);

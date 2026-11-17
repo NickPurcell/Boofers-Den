@@ -258,7 +258,7 @@ test("turn budget: each unit's own turn refills its movement, action, bonus acti
   const hers = Object.assign({}, w, { turnId: "ava", round: 2 });
   assert.deepEqual([E.budget(hers).reaction, E.budget(hers).moveLeft, E.budget(hers).action], [true, 30, true]);
   const r = E.apply(hers, { type: "move", unit: "ava", x: 2, y: 0 }, dice().roll);
-  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0 });
+  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0 });
 });
 
 // a level-3 Consular with two powers; the table has data for one of them (numbers invented for the test)
@@ -2396,6 +2396,64 @@ test("class riders through the API: an Operative's Sneak Attack and a Berserker'
   assert.equal((await rae.act("fight.attack", { target: ids.raider, attack: "0", no: ["rage"] })).code, 200);
   const turnedDown = await label("damage");
   if (turnedDown && /Vibrosword/.test((await label("attack")) || "")) assert.doesNotMatch(turnedDown, /Rage/, "turned down");
+});
+
+test("Force-Empowered Strikes and Double Strike: the attacker's choice, paid in force points only on a hit (audit 5.9)", () => {
+  assert.deepEqual(E.ridersOf({ classes: [{ name: "Guardian", level: 5 }] }, R), { fes: 3 });
+  assert.deepEqual(E.ridersOf({ classes: [{ name: "Sentinel", level: 9 }] }, R), { kinetic: "d8" });
+  const sword = Object.assign({}, blade, { name: "Lightsaber", abil: "str", weapon: true });
+  const gun = Object.assign({}, rifle, { weapon: true });
+  const fp = (used) => ({ force: { key: "force", name: "Force points", max: 10, used, refill: "long" } });
+  const gd = (o) => unit(Object.assign({ id: "gd", name: "Gale", side: "pc", x: 0, y: 0, riders: { fes: 3 }, pools: fp(0) }, o));
+  const r1 = () => unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 60, maxHp: 60 });
+  const offered = (u, atk) => (E.preview(world([u, r1()], "gd"), "gd", "r1", atk).riders || []).map((x) => `${x.key}:${x.max || x.dice}`);
+  assert.deepEqual(offered(gd(), sword), ["fes:3"]);
+  assert.deepEqual(offered(gd({ pools: fp(9) }), sword), ["fes:1"], "no more than the points left");
+  assert.deepEqual(offered(gd({ pools: fp(10) }), sword), [], "none left");
+  assert.deepEqual(offered(gd({ x: -5 }), gun), [], "a melee weapon hit only");
+  // chosen: 2 points, 2d8 on the hit, doubled on a critical; nothing paid on a miss or when not chosen
+  let d = dice({ total: 15, nat: 12 }, { total: 20 });
+  let r = E.apply(world([gd(), r1()], "gd"), { type: "attack", unit: "gd", target: "r1", attack: sword, add: { fes: 2 } }, d.roll);
+  assert.deepEqual([d.asked[1], r.world.units.gd.pools.force.used], ["1d8+3+2d8", 2]);
+  assert.match(r.log[1].text, /Force-Empowered Strikes 2d8, 2 force points/);
+  d = dice({ total: 25, nat: 20 }, { total: 30 });
+  E.apply(world([gd(), r1()], "gd"), { type: "attack", unit: "gd", target: "r1", attack: sword, add: { fes: 3 } }, d.roll);
+  assert.equal(d.asked[1], "2d8+3+6d8");
+  r = E.apply(world([gd(), r1()], "gd"), { type: "attack", unit: "gd", target: "r1", attack: sword, add: { fes: 3 } }, dice({ total: 2, nat: 2 }).roll);
+  assert.equal(r.world.units.gd.pools.force.used, 0, "a miss costs nothing");
+  d = dice({ total: 15, nat: 12 }, { total: 6 });
+  r = E.apply(world([gd(), r1()], "gd"), { type: "attack", unit: "gd", target: "r1", attack: sword, add: { fes: 99 } }, d.roll);
+  assert.deepEqual([d.asked[1], r.world.units.gd.pools.force.used], ["1d8+3+3d8", 3], "never more than the Focused Strikes column");
+  r = E.apply(world([gd(), r1()], "gd"), { type: "attack", unit: "gd", target: "r1", attack: sword }, dice({ total: 15, nat: 12 }, { total: 6 }).roll);
+  assert.equal(r.world.units.gd.pools.force.used, 0, "not chosen: nothing spent");
+  // Double Strike: 1 point for a Kinetic Combat die, once a turn
+  const sn = unit({ id: "gd", name: "Sela", side: "pc", x: 0, y: 0, riders: { kinetic: "d6" }, pools: fp(0) });
+  d = dice({ total: 15, nat: 12 }, { total: 8 });
+  r = E.apply(world([sn, r1()], "gd"), { type: "attack", unit: "gd", target: "r1", attack: sword, add: { double: true } }, d.roll);
+  assert.deepEqual([d.asked[1], r.world.units.gd.pools.force.used, r.world.spent.gd.double], ["1d8+3+1d6", 1, 1]);
+  assert.deepEqual((E.preview(r.world, "gd", "r1", sword).riders || []).map((x) => x.key), [], "not again this turn");
+  // both from one pool (a Guardian/Sentinel multiclass with 2 points left): Double Strike's point comes first
+  const mc = unit({ id: "gd", name: "Mara", side: "pc", x: 0, y: 0, riders: { fes: 3, kinetic: "d6" }, pools: fp(8) });
+  d = dice({ total: 15, nat: 12 }, { total: 8 });
+  r = E.apply(world([mc, r1()], "gd"), { type: "attack", unit: "gd", target: "r1", attack: sword, add: { fes: 2, double: true } }, d.roll);
+  assert.deepEqual([d.asked[1], r.world.units.gd.pools.force.used], ["1d8+3+1d8+1d6", 10], "two points buy two points' worth");
+});
+
+test("Force-Empowered Strikes through the API: the points come off the sheet on a hit; a request can only say how many", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { classes: [{ name: "Guardian", level: 5 }], abilities: { str: 16, dex: 12, con: 12, int: 10, wis: 14, cha: 14 },
+    attacks: [{ name: "Lightsaber", ab: "str", damage: "1d8", type: "energy", props: "" }], force: { max: "", used: 0 } }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0", add: { fes: 2, dice: "50d8" } })).code, 200);
+  st = await gm.state();
+  const dmg = st.chat.filter((m) => m.fight && m.roll && m.roll.kind === "damage").pop();
+  if (dmg) {
+    assert.match(dmg.roll.label, /Force-Empowered Strikes (2d8|4d8), 2 force points/);
+    assert.equal(st.characters[avery].force.used, 2, "spent from the sheet's force points");
+  } else assert.equal(st.characters[avery].force.used, 0, "a miss costs nothing");
+  assert.ok(!/50d8/.test(JSON.stringify(st.chat)));
 });
 
 test("review of #134: a rage doesn't outlive its fight; dropping to 0 ends it with its effect; a sheet without Rages gets them", async () => {
