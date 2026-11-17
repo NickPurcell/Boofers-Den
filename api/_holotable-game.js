@@ -219,6 +219,14 @@ function viewFor(camp, cid, gm, online) {
       return Object.assign({}, e, { name: "???", charId: null, sb: undefined, hp: null, maxHp: null, tok: tok || undefined });
     });
     delete map.walls;   // walls are the GM's: a player's browser never learns the shape of a room it hasn't seen (issue #93)
+    delete map.fog;     // so is the fog's record; a player gets only their own squares, in the combat view
+    const fog = Fight.fogFor(camp, cid);   // fog of war (#93): tokens this player's characters can't see aren't sent, nor their tracker entries
+    if (fog) {
+      const curId = (camp.initiative.entries[camp.initiative.turn] || {}).id;
+      map.tokens = map.tokens.filter((t) => !fog.tokens.has(t.id));
+      ini.entries = ini.entries.filter((e) => !fog.entries.has(e.id));
+      ini.turn = ini.entries.findIndex((e) => e.id === curId);   // the tracker marks the turn by place in the list; an unseen one marks none
+    }
     map.tokens = map.tokens.filter((t) => !t.hidden).map((t) => {
       if (!t.moves && !t.nameHidden) return t;
       const v = Object.assign({}, t, { moves: undefined });
@@ -904,6 +912,7 @@ function cleanMap(g, raw) {
       id: /^[a-z0-9]{6,20}$/.test(t.id || "") ? t.id : rid(), name: str(t.name, 40), color: validColor(t.color), x: clamp(int(t.x), -500, 1000), y: clamp(int(t.y), -500, 1000),
       size: clamp(int(t.size, 1), 1, 4), charId: g.characters[t.charId] ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, nameHidden: !!t.nameHidden, img: validImg(t.img), moves: cleanMoves(t.moves) })),
     ...(Array.isArray(m.walls) && m.walls.length ? { walls: Fight.cleanWalls(m.walls) } : {}),   // the combat view's walls (issue #93), only on a map that has some
+    ...(m.fog && typeof m.fog === "object" ? { fog: Fight.cleanFog(m.fog) } : {}),   // fog of war (issue #93), only on a map the GM switched it on for
     props: (Array.isArray(m.props) ? m.props : []).slice(0, 1500).filter((p) => p && validImg(p.src)).map((p) => ({
       id: /^[a-z0-9]{6,20}$/.test(p.id || "") ? p.id : rid(), src: p.src, name: str(p.name, 60), x: n(p.x, 0), y: n(p.y, 0), w: n(p.w, 1), h: n(p.h, 1), rot: n(p.rot, 0), moves: cleanMoves(p.moves) })),
     sceneId: /^[a-z0-9]{6,20}$/.test(m.sceneId || "") ? m.sceneId : undefined,
@@ -944,6 +953,7 @@ function cleanGame(g) {
 
 module.exports = {
   cleanGame,
-  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, applyAction, validImg, validColor, cleanChar, cleanShip, rid,
+  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, validImg, validColor, cleanChar, cleanShip, rid,
+  applyAction: (camp, ...a) => { const out = applyAction(camp, ...a); Fight.noteSeen(camp); return out; },   // fog of war: what players see now joins what they've explored
   Forbidden, Invalid, IMG_PREFIX,
 };

@@ -95,6 +95,88 @@
     }
     return deg ? COVER[deg] : null;
   }
+  /* ---------------- fog of war (issue #93, step 4): what a viewer can see, as squares ---------------- */
+  // The visibility polygon from one point among sight-blocking walls and the board's edges, by an angular sweep: a ray
+  // towards every wall end (and just either side of it) stops at the nearest wall. The polygon's points come back
+  // sorted by angle.
+  function sightPolygon(walls, o, cols, rows) {
+    const edges = [[[0, 0], [cols, 0]], [[cols, 0], [cols, rows]], [[cols, rows], [0, rows]], [[0, rows], [0, 0]]];
+    const segs = edges.concat(walls.map((w) => [w.a, w.b])), n = segs.length;
+    // flat arrays for the inner loop: each segment's start, relative to the eye, and its direction
+    const AX = new Float64Array(n), AY = new Float64Array(n), EX = new Float64Array(n), EY = new Float64Array(n);
+    for (let i = 0; i < n; i++) { const [a, b] = segs[i]; AX[i] = a[0] - o[0]; AY[i] = a[1] - o[1]; EX[i] = b[0] - a[0]; EY[i] = b[1] - a[1]; }
+    const angles = new Float64Array(n * 6);
+    for (let i = 0, k = 0; i < n; i++) {
+      const t1 = Math.atan2(AY[i], AX[i]), t2 = Math.atan2(AY[i] + EY[i], AX[i] + EX[i]);
+      angles[k++] = t1 - 1e-4; angles[k++] = t1; angles[k++] = t1 + 1e-4; angles[k++] = t2 - 1e-4; angles[k++] = t2; angles[k++] = t2 + 1e-4;
+    }
+    angles.sort();
+    const out = [];
+    for (let j = 0; j < angles.length; j++) {
+      const t = angles[j], dx = Math.cos(t), dy = Math.sin(t);
+      let best = Infinity;
+      for (let i = 0; i < n; i++) {   // the ray r*(dx,dy) against segment A + s*E
+        const den = dx * EY[i] - dy * EX[i];
+        if (den > -1e-12 && den < 1e-12) continue;
+        const r = (AX[i] * EY[i] - AY[i] * EX[i]) / den;
+        if (r <= 1e-9 || r >= best) continue;
+        const sp = (AX[i] * dy - AY[i] * dx) / den;
+        if (sp >= -1e-9 && sp <= 1 + 1e-9) best = r;
+      }
+      if (best < Infinity) out.push({ t, x: o[0] + dx * best, y: o[1] + dy * best });
+    }
+    return out;
+  }
+  // The squares whose centre lies inside the polygon, filled row by row (even-odd crossings at the row's centre line).
+  function fillPolygon(poly, cols, rows, into) {
+    const n = poly.length;
+    if (n < 3) return into;
+    for (let y = 0; y < rows; y++) {
+      const cy = y + 0.5, xs = [];
+      for (let i = 0; i < n; i++) {
+        const p = poly[i], q = poly[(i + 1) % n];
+        if ((p.y <= cy && q.y > cy) || (q.y <= cy && p.y > cy)) xs.push(p.x + ((cy - p.y) / (q.y - p.y)) * (q.x - p.x));
+      }
+      xs.sort((a, b) => a - b);
+      for (let k = 0; k + 1 < xs.length; k += 2) {
+        const from = Math.max(0, Math.ceil(xs[k] - 0.5)), to = Math.min(cols - 1, Math.floor(xs[k + 1] - 0.5));
+        for (let x = from; x <= to; x++) into[y * cols + x] = 1;
+      }
+    }
+    return into;
+  }
+  // What the given units can see, together, on a cols x rows board: 1 per visible square. A unit sees from its centre;
+  // its own squares are always visible. Windows and open doors don't block sight; walls and closed doors do.
+  function visibleSquares(world, ids, cols, rows) {
+    const vis = new Uint8Array(cols * rows), walls = (world.walls || []).filter(blocksSight);
+    for (const id of ids) {
+      const u = world.units[id];
+      if (!u || u.down) continue;
+      const s = u.size || 1, o = [u.x + s / 2, u.y + s / 2];
+      fillPolygon(sightPolygon(walls, o, cols, rows), cols, rows, vis);
+      for (let x = u.x; x < u.x + s; x++) for (let y = u.y; y < u.y + s; y++) if (x >= 0 && y >= 0 && x < cols && y < rows) vis[y * cols + x] = 1;
+    }
+    return vis;
+  }
+  // a unit is seen if any of its squares is visible
+  const seenIn = (vis, cols, rows, u) => {
+    for (let x = u.x; x < u.x + (u.size || 1); x++) for (let y = u.y; y < u.y + (u.size || 1); y++) if (x >= 0 && y >= 0 && x < cols && y < rows && vis[y * cols + x]) return true;
+    return false;
+  };
+  // the visible squares as a short string for the browser: base64 of the bits, row by row
+  function packSquares(vis) {
+    const bytes = new Uint8Array(Math.ceil(vis.length / 8));
+    for (let i = 0; i < vis.length; i++) if (vis[i]) bytes[i >> 3] |= 1 << (i & 7);
+    let bin = '';
+    for (const b of bytes) bin += String.fromCharCode(b);
+    return typeof btoa === 'function' ? btoa(bin) : Buffer.from(bin, 'binary').toString('base64');
+  }
+  function unpackSquares(str, n) {
+    const bin = typeof atob === 'function' ? atob(str) : Buffer.from(str, 'base64').toString('binary');
+    const vis = new Uint8Array(n);
+    for (let i = 0; i < n; i++) vis[i] = (bin.charCodeAt(i >> 3) >> (i & 7)) & 1;
+    return vis;
+  }
   const overlaps = (ax, ay, as, b) => ax < b.x + (b.size || 1) && b.x < ax + as && ay < b.y + (b.size || 1) && b.y < ay + as;
   const hostile = (a, b) => a.side !== b.side;
 
@@ -1150,5 +1232,6 @@
     cleanResources, resourcesOf, atLevel, spend, rest, powerNumbers, resolvePower, weaponAbility, abilitiesOf, inReachOf, cleanAbility, setPoolUsed,
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
-    SENSES, readSenses, cleanSenses, senseFor, reasons, crosses, sees, cleanWalls, WALL_KINDS, coverOf, isDead, isStable, isDying, d20, flankOf, fixedTotal, cruel, modeName };
+    SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf, d20, flankOf, fixedTotal, cruel, modeName,
+    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares };
 });
