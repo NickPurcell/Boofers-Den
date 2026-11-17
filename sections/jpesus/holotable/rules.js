@@ -30,18 +30,19 @@
 
   // Checked against SW5e's class data (sw5eapi /api/class): hit die, saves, points per level and max power level.
   // caster: force/tech; pp = power points per class level; prog = full | threeQuarter | half; from = first casting level
+  // shortRest = the class regains all its tech points on a short rest as well as a long one (Engineer, Scout)
   // arch = what each class page calls its archetype (singular of "Berserker Approaches", "Sentinel Callings"...);
   // every SW5e class picks its archetype at class level 3.
   const CLASSES = {
     Berserker: { hd: 12, saves: ['str', 'con'], arch: 'Berserker Approach' },
     Consular:  { hd: 6,  saves: ['wis', 'cha'], arch: 'Consular Tradition', caster: 'force', pp: 4, prog: 'full' },
-    Engineer:  { hd: 8,  saves: ['con', 'int'], arch: 'Engineering Discipline', caster: 'tech',  pp: 2, prog: 'full' },
+    Engineer:  { hd: 8,  saves: ['con', 'int'], arch: 'Engineering Discipline', caster: 'tech',  pp: 2, prog: 'full', shortRest: true },
     Fighter:   { hd: 10, saves: ['str', 'con'], arch: 'Fighter Specialty' },
     Guardian:  { hd: 10, saves: ['con', 'cha'], arch: 'Guardian Focus', caster: 'force', pp: 2, prog: 'half' },
     Monk:      { hd: 8,  saves: ['str', 'dex'], arch: 'Monastic Order' },
     Operative: { hd: 8,  saves: ['dex', 'int'], arch: 'Operative Practice' },
     Scholar:   { hd: 8,  saves: ['int', 'wis'], arch: 'Academic Pursuit' },
-    Scout:     { hd: 10, saves: ['str', 'dex'], arch: 'Scout Technique', caster: 'tech',  pp: 1, prog: 'half', from: 2 },  // tech casting starts at 2nd level
+    Scout:     { hd: 10, saves: ['str', 'dex'], arch: 'Scout Technique', caster: 'tech',  pp: 1, prog: 'half', from: 2, shortRest: true },  // tech casting starts at 2nd level
     Sentinel:  { hd: 8,  saves: ['dex', 'cha'], arch: 'Sentinel Calling', caster: 'force', pp: 3, prog: 'threeQuarter' },
   };
 
@@ -78,14 +79,19 @@
     { name: 'Fragmentation grenade', damage: '3d6', type: 'kinetic', ab: 'dex', props: 'Thrown (30/90), 10-ft radius, Dex save for half' },
   ];
 
-  // The 16 conditions in SW5e's Player's Handbook (checked against sw5eapi /api/conditions).
+  // The 21 conditions in Appendix A of SW5e's Player's Handbook (checked against the PHB chapter itself;
+  // sw5eapi's short /api/conditions list leaves out Corroded, Diseased, Ignited, Slowed and Weakened).
+  // Summaries are in our own words; the PHB has the full wording.
   const CONDITIONS = {
     Blinded: 'Can\'t see; auto-fails sight checks. Attacks against it have advantage; its attacks have disadvantage.',
     Charmed: 'Can\'t attack or target the charmer with harmful effects. Charmer has advantage on social checks with it.',
+    Corroded: 'Up to 3 levels. Takes 1 extra damage from weapons for each level.',
     Deafened: 'Can\'t hear; auto-fails hearing checks.',
-    Exhaustion: 'Cumulative levels: 1 disadv. on checks · 2 speed halved · 3 disadv. on attacks & saves · 4 HP max halved · 5 speed 0 · 6 death. Long rest removes one level.',
+    Diseased: 'Suffers whatever the particular disease does.',
+    Exhaustion: 'Six levels; each includes the ones below it: 1 disadvantage on ability checks · 2 one slowed level · 3 disadvantage on attack rolls and saves · 4 hit point maximum halved · 5 four slowed levels · 6 death. A long rest (with food and drink) removes one level.',
     Frightened: 'Disadvantage on checks and attacks while the source is in sight; can\'t willingly move closer to it.',
     Grappled: 'Speed 0. Ends if the grappler is incapacitated or it is moved out of reach.',
+    Ignited: 'Takes the listed fire damage at the end of each of its turns, until someone within 5 ft uses an action to put the flames out (or something else does).',
     Incapacitated: 'Can\'t take actions or reactions.',
     Invisible: 'Can\'t be seen without special senses. Its attacks have advantage; attacks against it have disadvantage.',
     Paralyzed: 'Incapacitated, can\'t move or speak. Fails Str/Dex saves. Attacks against it have advantage; hits from within 5 ft are critical.',
@@ -93,9 +99,11 @@
     Poisoned: 'Disadvantage on attack rolls and ability checks.',
     Prone: 'Can only crawl; disadvantage on attacks. Melee attacks within 5 ft have advantage against it, ranged attacks have disadvantage. Standing costs half speed.',
     Restrained: 'Speed 0. Its attacks and Dex saves have disadvantage; attacks against it have advantage.',
-    Shocked: "Speed is halved, and the creature can't take reactions.",
+    Shocked: "Can't take reactions, and on its turn takes an action or a bonus action, not both.",
+    Slowed: 'Up to 4 levels: speed −15 ft · −25 ft · −30 ft · speed 0 and no bonuses to speed.',
     Stunned: 'Incapacitated, can\'t move, speaks falteringly. Fails Str/Dex saves; attacks against it have advantage.',
     Unconscious: 'Incapacitated, drops what it holds, falls prone. Fails Str/Dex saves; attacks have advantage, and hits within 5 ft are critical.',
+    Weakened: 'Healing it receives is halved, and it adds only half its ability modifier (if positive) to checks, attacks and saves.',
   };
 
   const REFERENCE = [
@@ -114,11 +122,13 @@
       Save DC = 8 + proficiency + ability mod · Attack = proficiency + ability mod. Points return on a long rest.<br>
       Casting a light side power is easier for light-aligned users and harder for dark-aligned ones (and vice versa) — see the PHB for alignment rules.` },
     { title: 'Tech powers', body: `Tech casting ability: <b>Intelligence</b>. Requires a wristpad or chassis (tech focus).<br>
-      Tech point max = (class multiplier × class level) + Int modifier. Casting costs <b>1 + power level</b> tech points; points return on a long rest.<br>
+      Tech point max = (class multiplier × class level) + Int modifier. Casting costs <b>1 + power level</b> tech points.
+      Engineers and Scouts regain all tech points on a <b>short or long rest</b>.<br>
       Save DC = 8 + proficiency + Int mod · Attack = proficiency + Int mod.` },
     { title: 'Concentration', body: 'Some powers need concentration. Taking damage forces a Con save, DC 10 or half the damage (whichever is higher), or the power ends. Only one concentration power at a time.' },
     { title: 'Resting', body: `<b>Short rest</b> (1 hour): spend Hit Dice — roll each + Con mod and regain that many HP.<br>
-      <b>Long rest</b> (8 hours): regain all HP, all force/tech points, and up to half your total Hit Dice (min 1). Only one per 24 hours.` },
+      Engineers and Scouts also regain all their tech points.<br>
+      <b>Long rest</b> (8 hours): regain all HP, all force/tech points, and up to half your total Hit Dice (min 1); exhaustion drops one level. Only one per 24 hours.` },
     { title: 'Dropping to 0 HP', body: `You fall unconscious. At the start of each turn make a <b>death save</b> (d20, no modifiers): 10+ success, 9− failure. Three successes = stable, three failures = death.
       Natural 20: regain 1 HP. Natural 1: two failures. Damage while at 0 HP = one failure (crit = two). Damage ≥ your HP max in one hit = instant death.` },
     { title: 'Weapon properties', body: `<b>Finesse</b>: use Str or Dex. <b>Light</b>: good for two-weapon fighting. <b>Heavy</b>: small creatures have disadvantage.
@@ -148,9 +158,15 @@
   const initiative = c => abilityMod(c, 'dex') + (+c.initMisc || 0);
   const passive = (c, sk) => 10 + skillBonus(c, sk);
 
+  // Sentinel table: a new max power level at levels 1, 3, 6, 9, 11, 14 and 17 (up to 7th)
+  const THREE_QUARTER_AT = [1, 3, 6, 9, 11, 14, 17];
+  // a short rest gives back all tech points if any of the character's tech casting comes from an Engineer or Scout
+  const techOnShortRest = c => (c.classes || []).some(k => { const d = CLASSES[k.name]; return d && d.shortRest && (+k.level || 0) >= (d.from || 1); });
+
   function casterInfo(c) {
     let force = 0, tech = 0, forceLvl = 0, techLvl = 0;
-    const maxLvl = (prog, L) => prog === 'full' ? Math.min(9, Math.ceil(L / 2)) : prog === 'threeQuarter' ? Math.min(7, Math.ceil(L / 3)) : Math.min(5, Math.ceil(L / 4));
+    const maxLvl = (prog, L) => (L < 1 ? 0 : prog === 'full' ? Math.min(9, Math.ceil(L / 2))
+      : prog === 'threeQuarter' ? THREE_QUARTER_AT.filter(t => L >= t).length : Math.min(5, Math.ceil(L / 4)));
     for (const k of c.classes || []) {
       const def = CLASSES[k.name];
       if (!def || !def.caster) continue;
@@ -195,6 +211,32 @@
     return Object.entries(by).map(([d, n]) => n + 'd' + d).join(' + ') || (totalLevel(c) + 'd8');
   }
 
+  // Hit dice by size (audit 7.2): [{ die: 10, total: 3, used: 1, classes: ['Fighter 3'] }], largest first. The used
+  // counts are kept per size in hitDiceUsed ({ d10: 1, d6: 0 }); an old single number is read as that many of the
+  // largest dice, which is how the sheet spent them before.
+  function hitDice(c) {
+    const by = {};
+    for (const k of c.classes || []) {
+      const hd = (CLASSES[k.name] || {}).hd || +k.hd || 8, L = +k.level || 0;
+      if (!L) continue;
+      const d = by[hd] = by[hd] || { die: hd, total: 0, used: 0, classes: [] };
+      d.total += L; d.classes.push(`${k.name} ${L}`);
+    }
+    const list = Object.values(by).sort((a, b) => b.die - a.die);
+    if (!list.length) list.push({ die: 8, total: totalLevel(c), used: 0, classes: [] });
+    const u = c.hitDiceUsed;
+    if (u && typeof u === 'object') for (const d of list) d.used = Math.max(0, Math.min(d.total, +u['d' + d.die] || 0));
+    else { let n = Math.max(0, +u || 0); for (const d of list) { d.used = Math.min(d.total, n); n -= d.used; } }
+    return list;
+  }
+  const hitDiceUsedTotal = c => hitDice(c).reduce((n, d) => n + d.used, 0);
+  const hitDiceUsedOf = list => Object.fromEntries(list.map(d => ['d' + d.die, d.used]));
+  // Force Recovery (Consular, 1st level): on a short rest, half the consular level plus Wis or Cha (the better), at least 1
+  const forceRecovery = c => {
+    const k = (c.classes || []).find(x => x.name === 'Consular' && (+x.level || 0) >= 1);
+    return k ? Math.max(1, Math.floor((+k.level || 0) / 2) + Math.max(abilityMod(c, 'wis'), abilityMod(c, 'cha'))) : 0;
+  };
+
   function blankCharacter() {
     return {
       _format: 'holotable-sw5e', name: 'New Character', species: 'Human', background: '', alignment: '',
@@ -211,6 +253,6 @@
   }
 
   root.SW5E = { ABILITIES, SKILLS, CLASSES, SPECIES, BACKGROUNDS, DAMAGE_TYPES, WEAPONS, CONDITIONS, REFERENCE,
-    mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo,
-    attackBonus, damageExpr, critExpr, hitDiceSummary, blankCharacter };
+    mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo, techOnShortRest,
+    attackBonus, damageExpr, critExpr, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, forceRecovery, blankCharacter };
 })(typeof window !== 'undefined' ? window : globalThis);

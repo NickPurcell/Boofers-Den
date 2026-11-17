@@ -233,7 +233,7 @@ test("resources: spending is checked and written back where the resource lives",
   assert.equal(r.ch.resources.find((x) => x.key === "focus").used, 3);
   assert.equal(E.spend(ch, "focus", 3, R).ok, false);
   assert.match(E.spend(ch, "focus", 3, R).why, /Not enough Focus: 2 of 3 left/);
-  assert.equal(E.spend(ch, "hitdice", 1, R).ch.hitDiceUsed, 2);
+  assert.deepEqual(E.spend(ch, "hitdice", 1, R).ch.hitDiceUsed, { d6: 2 }, "hit dice per die size (audit 7.2)");
   assert.equal(E.spend(ch, "nothing", 1, R).ok, false);
   assert.equal(E.spend(ch, "focus", 0, R).ok, false);
 });
@@ -243,7 +243,10 @@ test("resources: a short rest refills short ones (and tech points); a long rest 
   const short = E.rest(ch, "short", R);
   assert.deepEqual([short.resources.map((x) => x.used), short.tech.used, short.hitDiceUsed], [[0, 1, 2], 0, 4]);
   const long = E.rest(ch, "long", R);
-  assert.deepEqual([long.resources.map((x) => x.used), long.tech.used, long.hitDiceUsed], [[0, 0, 2], 0, 2], "manual ones stay; 2 of 4 hit dice back");
+  assert.deepEqual([long.resources.map((x) => x.used), long.tech.used, long.hitDiceUsed], [[0, 0, 2], 0, { d8: 2 }], "manual ones stay; 2 of 4 hit dice back");
+  // tech points come back on a short rest only for an Engineer or a Scout
+  const consularTech = Object.assign(caster(), { tech: { max: 4, used: 3 } });
+  assert.equal(E.rest(consularTech, "short", R).tech.used, 3);
 });
 
 test("turn budget: each unit's own turn refills its movement, action, bonus action and reaction", () => {
@@ -1686,4 +1689,30 @@ test("variants, only when the GM marks them: Crueler Criticals, Critical Saving 
   r = cs(1, 35);
   assert.match(r.log[1].text, /a failure/);
   assert.equal(r.world.units.r1.hp, 30 - 12, "2d6 at its maximum");
+});
+
+
+/* ---------------------------------------------------------------- rests (audit 7.2, 7.4, 7.5; issue #71) */
+test("rests: hit dice by size from the classes; an old single number reads as the largest dice; Force Recovery's numbers", () => {
+  const multi = { classes: [{ name: "Fighter", level: 3 }, { name: "Consular", level: 2 }], abilities: { str: 14, dex: 12, con: 14, int: 10, wis: 16, cha: 10 } };
+  assert.deepEqual(R.hitDice(Object.assign({}, multi, { hitDiceUsed: 0 })).map((d) => [d.die, d.total, d.used, d.classes.join()]), [[10, 3, 0, "Fighter 3"], [6, 2, 0, "Consular 2"]]);
+  assert.deepEqual(R.hitDice(Object.assign({}, multi, { hitDiceUsed: 4 })).map((d) => d.used), [3, 1], "an old number: the largest dice first");
+  assert.deepEqual(R.hitDice(Object.assign({}, multi, { hitDiceUsed: { d6: 2, d10: 1, d4: 9 } })).map((d) => d.used), [1, 2]);
+  assert.equal(R.hitDiceUsedTotal(Object.assign({}, multi, { hitDiceUsed: { d6: 2, d10: 1 } })), 3);
+  assert.equal(R.forceRecovery(multi), 1 + 3, "half of Consular 2 (1) + Wis +3");
+  assert.equal(R.forceRecovery({ classes: [{ name: "Consular", level: 1 }], abilities: { wis: 8, cha: 8 } }), 1, "at least 1");
+  assert.equal(R.forceRecovery({ classes: [{ name: "Fighter", level: 5 }] }), 0, "not a Consular");
+  // a long rest gives back half the total (here 2 of 5), the largest dice first
+  const back = E.rest(Object.assign({}, multi, { hitDiceUsed: { d10: 3, d6: 2 } }), "long", R).hitDiceUsed;
+  assert.deepEqual(back, { d10: 1, d6: 2 });
+});
+
+test("rests through the API: a sheet keeps its hit dice per size, and an old number still saves", async () => {
+  const { sam, avery } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hitDiceUsed: { d10: 1, d7: 4, __proto__x: 2 } }) });
+  st = await sam.state();
+  assert.deepEqual(st.characters[avery].hitDiceUsed, { d10: 1 });
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hitDiceUsed: 2 }) });
+  assert.equal((await sam.state()).characters[avery].hitDiceUsed, 2);
 });
