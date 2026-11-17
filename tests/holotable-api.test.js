@@ -1739,3 +1739,32 @@ test("the one-time senses fill never reads SW5e inside the game lock, and only r
   assert.equal(asked, 0);
   assert.equal(JSON.parse((await t2.gm.call("GET", { op: "export" })).data).sensesFilled, true);
 });
+
+test("the senses fill holds an action at most about a second while SW5e is slow, and fills a restored old backup again (notes on #132)", async () => {
+  const { gm } = await table();
+  await gm.act("char.save", { char: { name: "Vel", species: "Sith Pureblood" } });
+  let file = JSON.parse((await gm.call("GET", { op: "export" })).data);
+  delete file.sensesFilled;
+  await gm.post("restore", { campaign: file });
+  await db.del(S.K.sw5e("species")); await db.del(S.K.sw5eFail("species"));
+  handler.resetSpeciesSenses();
+  const realFetch = global.fetch;
+  global.fetch = () => new Promise((ok, bad) => setTimeout(() => bad(new Error("slow, then out")), 2500));
+  try {
+    const t0 = Date.now();
+    assert.equal((await gm.act("notes.save", { notes: "while SW5e is slow" })).code, 200);
+    assert.ok(Date.now() - t0 < 1800, `held ${Date.now() - t0} ms`);
+  } finally { await new Promise((ok) => setTimeout(ok, 2700)); global.fetch = realFetch; }
+  // the list back: filled; then an old backup (no mark, no senses) restored on a warm instance is filled again
+  await db.del(S.K.sw5eFail("species"));
+  await db.set(S.K.sw5e("species"), JSON.stringify([{ n: "Sith Pureblood", traits: [{ n: "Darkvision", d: "You can see in dim light within 60 feet of you as if it were bright light." }] }]));
+  handler.resetSpeciesSenses();
+  await gm.act("notes.save", { notes: "filled" });
+  const vel = () => gm.poll().then((r) => Object.values(r.data.state.characters).find((c) => c.name === "Vel").senses);
+  assert.deepEqual(await vel(), [{ kind: "darkvision", range: 60 }]);
+  for (const c of Object.values(file.characters)) delete c.senses;
+  await gm.post("restore", { campaign: file });   // the warm instance has seen the mark before
+  await gm.act("notes.save", { notes: "after an old backup" });
+  await gm.act("notes.save", { notes: "and another" });
+  assert.deepEqual(await vel(), [{ kind: "darkvision", range: 60 }], "filled again");
+});
