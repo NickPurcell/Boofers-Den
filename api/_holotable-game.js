@@ -185,6 +185,7 @@ function viewFor(camp, cid, gm, online) {
     variants: camp.variants || [],
     hpMax: camp.hpMax !== false,
     ships: (camp.ships || []).filter((x) => gm || !x.hidden),
+    sceneFx: camp.sceneFx || null,
     scene: (camp.scenes || []).filter((x) => x.id === camp.activeScene).map((x) => ({ id: x.id, name: x.name }))[0] || null,
     scenes: gm ? (camp.scenes || []).map((x) => ({ id: x.id, name: x.name, savedAt: x.savedAt })) : null,
   };
@@ -208,6 +209,11 @@ const abMod = (ch, ab) => Math.floor((num((ch.abilities || {})[ab], 10) - 10) / 
 const hitDieFor = (name, fallback) => HIT_DIE[String(name || "").toLowerCase()] || ([6, 8, 10, 12].includes(int(fallback)) ? int(fallback) : 8);
 
 // copy the live map into the active scene (returns false if no scene is active)
+// The screen wipe everyone sees when the GM changes the scene: a fresh id (so each change plays once)
+// and one of the wipe styles the page knows (left, right, down, up, diagonal, clock, iris, barn doors).
+const SCENE_WIPES = 8;
+const sceneWipe = (camp) => { camp.sceneFx = { n: rid(), k: crypto.randomInt(SCENE_WIPES) }; };
+
 function stashScene(camp) {
   const sc = (camp.scenes || []).find((x) => x.id === camp.activeScene);
   if (!sc) return false;
@@ -530,6 +536,7 @@ function applyAction(camp, cid, gm, type, p) {
           cols: old.cols || 24, rows: old.rows || 16, tokens: [], props: [], showGrid: old.showGrid !== false };
       }
       const sc = { id: rid(), name, savedAt: now(), map: JSON.parse(JSON.stringify(camp.map)) };
+      if (type === "scene.new") sceneWipe(camp);   // "save as" keeps the same board on screen, so no wipe
       camp.scenes.push(sc);
       camp.activeScene = sc.id;
       camp.map.sceneId = sc.id;
@@ -551,6 +558,7 @@ function applyAction(camp, cid, gm, type, p) {
       camp.map.bgVersion = bgv;
       camp.map.sceneId = sc.id;
       camp.activeScene = sc.id;
+      sceneWipe(camp);
       addChat(camp, { system: true, text: `The scene changes: ${sc.name}.` });
       return {};
     }
@@ -738,6 +746,8 @@ function cleanGame(g) {
   g.scenes = (Array.isArray(g.scenes) ? g.scenes : []).slice(0, 30).filter((x) => x && typeof x === "object")
     .map((x) => ({ id: /^[a-z0-9]{6,20}$/.test(x.id || "") ? x.id : rid(), name: str(x.name, 60) || "Scene", savedAt: num(x.savedAt, now()), map: cleanMap(g, x.map) }));
   if (!g.scenes.some((x) => x.id === g.activeScene)) g.activeScene = null;
+  const fx = g.sceneFx && typeof g.sceneFx === "object" ? g.sceneFx : null;
+  g.sceneFx = fx && /^[a-f0-9]{6,20}$/.test(fx.n || "") ? { n: fx.n, k: clamp(int(fx.k), 0, SCENE_WIPES - 1) } : null;
   g.levelUps = Object.fromEntries(Object.entries(g.levelUps || {}).filter(([id]) => g.characters[id])
     .map(([id, v]) => [id, { count: clamp(int((v || {}).count), 0, 20), grantId: rid(), at: now() }]).filter(([, v]) => v.count > 0));
   return g;
