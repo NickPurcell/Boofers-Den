@@ -863,3 +863,43 @@ test("scene wipes: each scene change picks one wipe the whole table sees; saving
   await gm.act("scene.save", {});
   assert.ok(seen.has((await p1.poll()).data.state.sceneFx.n), "saving the current scene doesn't play a wipe");
 });
+
+test("scene movements: the GM scripts tokens; they play once after the scene loads; players never see the script", async () => {
+  const { gm, p1 } = await table();
+  await gm.act("map.settings", { cols: 20, rows: 12 });
+  await gm.act("token.add", { name: "Bounty Hunter", x: 5, y: 5 });
+  await gm.act("token.add", { name: "Lookout", x: 2, y: 2, hidden: true });
+  await gm.act("token.add", { name: "Crate", x: 9, y: 9 });
+  const toks = (await gm.poll()).data.state.map.tokens, hunter = toks[0].id, lookout = toks[1].id;
+  assert.equal((await p1.act("token.script", { id: hunter, moves: { path: [{ x: 6, y: 5 }] } })).code, 403, "GM only");
+  await gm.act("token.script", { id: hunter, moves: { path: [{ x: 8, y: 5 }, { x: 8, y: 9 }], exit: "e", delay: 1.3 } });
+  await gm.act("token.script", { id: lookout, moves: { path: [{ x: 2, y: 4 }], exit: "nope", delay: 99 } });
+  let gv = (await gm.poll()).data.state.map.tokens;
+  assert.deepEqual(gv[0].moves, { path: [{ x: 8, y: 5 }, { x: 8, y: 9 }], exit: "e", delay: 1.5 });
+  assert.deepEqual(gv[1].moves, { path: [{ x: 2, y: 4 }], exit: "", delay: 20 }, "cleaned");
+  assert.equal((await p1.poll()).data.state.map.tokens[0].moves, undefined, "players can't see what's coming");
+  // put it in a scene, switch away, come back: the movements play once
+  const ambush = (await gm.act("scene.saveAs", { name: "Ambush" })).data.id;
+  await gm.act("scene.new", { name: "Elsewhere" });
+  await gm.act("scene.load", { id: ambush });
+  const pv = (await p1.poll()).data.state;
+  assert.deepEqual(pv.sceneFx.moves, [{ id: hunter, from: { x: 5, y: 5 }, path: [{ x: 8, y: 5 }, { x: 8, y: 9 }, { x: 21, y: 9 }], delay: 1.5 }], "exits off the right edge; the hidden lookout's move isn't sent to players");
+  assert.ok(pv.sceneFx.k >= 0, "with a wipe");
+  assert.deepEqual([pv.map.tokens[0].x, pv.map.tokens[0].y], [21, 9], "the server already put it where it ends");
+  const gs = (await gm.poll()).data.state;
+  assert.equal(gs.sceneFx.moves.length, 2, "the GM sees both");
+  assert.deepEqual(gs.map.tokens.find((t) => t.id === lookout), Object.assign({}, gs.map.tokens.find((t) => t.id === lookout), { x: 2, y: 4 }));
+  assert.ok(gs.map.tokens.every((t) => !t.moves), "played once");
+  // switching away and back doesn't replay them
+  await gm.act("scene.new", { name: "Elsewhere 2" });
+  await gm.act("scene.load", { id: ambush });
+  assert.deepEqual((await gm.poll()).data.state.sceneFx.moves, []);
+  // ▶ Play on the current board, without a wipe
+  assert.equal((await gm.act("scene.play", {})).code, 400, "nothing scripted");
+  await gm.act("token.script", { id: hunter, moves: { path: [{ x: 20, y: 9 }] } });
+  assert.equal((await p1.act("scene.play", {})).code, 403);
+  assert.equal((await gm.act("scene.play", {})).data.moved, 1);
+  const fx = (await p1.poll()).data.state.sceneFx;
+  assert.equal(fx.k, -1, "no wipe for Play");
+  assert.equal(fx.moves[0].from.x, 21);
+});
