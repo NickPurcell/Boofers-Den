@@ -31,3 +31,21 @@ test("creature saves: the listed bonus when it has one, otherwise the plain abil
   assert.equal(B.saveBonus(m, "str"), -5, "not proficient: Str 1 is -5");
   assert.equal(B.saveBonus(m, "cha"), 3, "a bare 'Cha' has no number, so the modifier is used");
 });
+
+test("encounter difficulty: SW5e's thresholds and multipliers", () => {
+  const B = loadBooks();
+  // four 3rd-level characters: easy 300, medium 600, hard 900, deadly 1,600
+  let d = B.difficulty([3, 3, 3, 3], [450, 450]);
+  assert.deepEqual([...d.th], [300, 600, 900, 1600]);
+  assert.deepEqual([d.raw, d.mult, d.adj, d.rating], [900, 1.5, 1350, "Hard"], "two creatures: ×1.5");
+  assert.equal(B.difficulty([3, 3, 3, 3], [1100, 450]).rating, "Deadly");
+  assert.equal(B.difficulty([3, 3, 3, 3], [50]).rating, "Trivial", "under the easy threshold");
+  assert.equal(B.difficulty([1, 2], [100]).th.join(), "75,150,225,300", "mixed levels add up");
+  // the multiplier by numbers, one step up for a party under 3, one step down for 6 or more
+  assert.deepEqual([1, 2, 3, 6, 7, 10, 11, 14, 15].map((n) => B.xpMultiplier(n, 4)), [1, 1.5, 2, 2, 2.5, 2.5, 3, 3, 4]);
+  assert.equal(B.xpMultiplier(1, 2), 1.5, "small party: one step up");
+  assert.equal(B.xpMultiplier(15, 2), 5, "small party, a horde: the top step");
+  assert.equal(B.xpMultiplier(1, 6), 0.5, "big party: one step down");
+  assert.equal(B.difficulty([5], []).rating, "", "no creatures: no rating");
+  assert.equal(B.difficulty([25, 0], [10]).th.join(), "2825,5750,8575,12800", "levels are kept within 1–20");
+});

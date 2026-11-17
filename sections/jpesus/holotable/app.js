@@ -988,7 +988,8 @@
       <div class="row wrap" style="margin-top:6px"><label class="toggle"><input type="checkbox" id="npcToken" checked> also place map tokens</label>
         <label class="toggle" title="Players see these tokens as ??? until you reveal them"><input type="checkbox" id="npcNameHidden"> hide their names</label>
         <label class="toggle" title="For SW5e creatures: roll each one's hit dice instead of taking the average"><input type="checkbox" id="npcRollHp"> roll creature HP</label>
-        <span class="spacer"></span><button class="btn small amber" data-cact="add-creature">☠ Add an SW5e creature…</button></div></div>`;
+        <span class="spacer"></span><button class="btn small amber" data-cact="add-creature">☠ Add an SW5e creature…</button></div></div>
+      <div class="enc-diff row wrap" id="encDiff" title="The creatures' XP, multiplied for their numbers, against the party's thresholds (SW5e's encounter-building rules)"></div>`;
     html += `<div class="init-list">${ini.entries.map((en, i) => {
       const ch = en.charId && S.st.characters[en.charId];
       const canHp = gm || (ch && ch.owner === clientId);
@@ -1003,6 +1004,7 @@
         <div>${gm && en.sb ? `<button class="btn tiny" data-cact="statblock" title="${esc(en.sb)} stat block">📜</button> <select class="sb-save" data-cf="save" title="Roll this creature's saving throw (GM-only). Shift: advantage, Ctrl: disadvantage" aria-label="Roll a saving throw for ${esc(en.name)}"><option value="">Save…</option>${['str', 'dex', 'con', 'int', 'wis', 'cha'].map(k => `<option value="${k}">${k.toUpperCase()}</option>`).join('')}</select> ` : ''}${gm ? `<button class="btn tiny" data-cact="hide" title="Toggle hidden">${en.hidden ? '👁' : '◌'}</button> <button class="btn tiny ghost" data-cact="remove">✕</button>` : ''}</div></div>`;
     }).join('') || '<p class="muted">No combatants yet. Players: click “Roll initiative” on your sheet. GM: add enemies above.</p>'}</div>`;
     el.innerHTML = html;
+    if (gm && window.HTB) HTB.renderEncounter($('#encDiff'), ini.entries, S.st.characters, clientId);
   }
   $('#combat').addEventListener('click', async e => {
     const b = e.target.closest('[data-cact]'); if (!b) return;
@@ -1939,7 +1941,7 @@
         <div class="row"><input id="campRename" value="${esc(S.st.name)}" style="flex:1"><button class="btn small" id="doRename">Rename</button></div>
         <h4 style="margin-top:12px">Who's here</h4>
         ${Object.entries(S.st.players).map(([id, p]) => `<div>${esc(p.name)} ${p.role === 'gm' && !/^\s*gm\s*$/i.test(p.name || '') ? '<span class="muted">(GM)</span>' : ''} ${S.st.online.some(o => o.clientId === id) ? '<span style="color:var(--green)">● online</span>' : '<span class="muted">offline</span>'}
-          <span class="muted">— ${chars().filter(c => c.owner === id).map(c => esc(c.name)).join(', ') || 'no characters'}</span></div>`).join('')}
+          <span class="muted">— ${chars().filter(c => c.owner === id).map(c => esc(c.name)).join(', ') || 'no characters'}</span>${id !== clientId && !S.st.online.some(o => o.clientId === id) && !chars().some(c => c.owner === id) ? ` <button class="btn tiny ghost" data-rmplayer="${esc(id)}" title="Remove this old entry from the list (offline, no characters)" aria-label="Remove ${esc(p.name)} from the player list">✕</button>` : ''}</div>`).join('')}
         <div class="row" style="margin-top:12px"><button class="btn small danger" id="clearChat">Clear chat log</button></div>
       </div>
       <div class="box"><h4>Level ups</h4>
@@ -1965,6 +1967,8 @@
     </div>`;
   }
   $('#gm').addEventListener('click', e => {
+    const rm = e.target.closest('[data-rmplayer]');
+    if (rm) { const pl = S.st.players[rm.dataset.rmplayer]; if (pl && confirm(`Remove ${pl.name || 'this player'} from the player list?`)) act('player.remove', { id: rm.dataset.rmplayer }); return; }
     const id = e.target.id;
     if (id === 'copyLink') navigator.clipboard?.writeText(location.origin + location.pathname).then(() => toast('Link copied'));
     if (id === 'doRename') act('campaign.rename', { name: $('#campRename').value });
