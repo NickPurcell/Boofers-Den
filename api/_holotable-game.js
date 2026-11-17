@@ -824,6 +824,18 @@ function applyAction(camp, cid, gm, type, p) {
     case "player.rename":
       (camp.players[cid] = camp.players[cid] || {}).name = str(p.name, 40) || "Player";
       return {};
+    case "player.remove": {   // the GM clears a stale entry from the player list (an old sign-in nobody uses any more)
+      need(gm);
+      const id = String(p.id || "");
+      if (!Object.prototype.hasOwnProperty.call(camp.players, id)) throw new Invalid("No such player.");
+      if (id === cid) throw new Invalid("That's you.");
+      // nobody's character is left without an owner: the GM gives it to someone else first
+      const owns = Object.values(chars).filter((c) => c && c.owner === id).map((c) => c.name || "a character");
+      if (owns.length) throw new Invalid(`${playerName(camp, id)} still owns ${owns.join(", ")}. Give ${owns.length > 1 ? "them" : "it"} to someone else first (Owner, on the sheet).`);
+      // chat keeps the names it was written with; someone still signed in comes back as the same person next time
+      delete camp.players[id];
+      return {};
+    }
     case "chat.clear": need(gm); camp.chat = []; return {};
 
     // ---- which SW5e variant rules this table uses (the GM decides; everyone sees the list)
