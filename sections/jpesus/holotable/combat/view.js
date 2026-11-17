@@ -61,7 +61,8 @@
       const ch = st().characters[u.charId];
       if (!ch) return [];
       const weapons = E.attacksOf(ch, R);
-      const powers = E.abilitiesOf(ch, R, F().lib || {}).filter((a) => a.kind === 'power').map((ab) => ({ key: ab.key, name: ab.name, power: ab,
+      // powers, and a weapon's burst and rapid fire (5.8) as save-based options beside its attack
+      const powers = E.abilitiesOf(ch, R, F().lib || {}).filter((a) => a.kind === 'power' || a.kind === 'volley').map((ab) => ({ key: ab.key, name: ab.name, power: ab,
         bonus: ab.attack ? ab.attack.bonus : null, damage: ab.damage.map((d) => d.dice + (d.add ? sgn(d.add) : '')).join('+') || (ab.heal ? 'heal ' + ab.heal.dice : ''),
         type: (ab.damage[0] || {}).type || '', melee: ab.reach || 0, range: ab.range, crit: '' }));
       return weapons.concat(powers);

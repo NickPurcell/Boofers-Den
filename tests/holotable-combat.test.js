@@ -2460,7 +2460,7 @@ test("weapon properties: versatile's two-handed die, heavy's Strength bonus, a S
   assert.deepEqual(E.weaponProps(sheet({ str: 20 }), { props: "Heavy" }, "str", R), { heavy: 2 });
   assert.deepEqual(E.weaponProps(sheet({ str: 8 }), { props: "Heavy" }, "str", R), { heavy: 1 }, "at least 1");
   assert.deepEqual(E.weaponProps(sheet({ dex: 16 }), { props: "Heavy" }, "dex", R), {}, "heavy counts only with Strength");
-  assert.deepEqual(E.weaponProps(sheet({ str: 12 }), { props: "Burst 4, power cell (range 90/360), reload 4, strength 15, two-handed" }, "dex", R), { unmet: "Strength 15" });
+  assert.deepEqual(E.weaponProps(sheet({ str: 12 }), { props: "Burst 4, power cell (range 90/360), reload 4, strength 15, two-handed" }, "dex", R), { burst: 4, unmet: "Strength 15" });
   assert.deepEqual(E.weaponProps(sheet({ str: 16 }), { props: "strength 15" }, "dex", R), {}, "met");
   assert.deepEqual(E.weaponProps(sheet({}), { props: "Range (40/160), Strength, Two-handed" }, "dex", R), {}, "a bare Strength without a number asks nothing");
   // in an attack: an unmet requirement is disadvantage; two hands use the larger die (doubled on a critical); heavy adds on a hit
@@ -2533,4 +2533,49 @@ test("review of #134: the engine drops a Raging condition with no live effect, a
   const ko = E.apply(world([bz, raider], "r1", { effects: live }), { type: "attack", unit: "r1", target: "bz", attack: Object.assign({}, blade, { weapon: true }) }, dice({ total: 20, nat: 15 }, { total: 30 }).roll);
   assert.deepEqual([ko.world.units.bz.conditions.includes("Raging"), (ko.world.effects || []).some((ef) => ef.condition === "Raging")], [false, false], "the rage and its effect end together");
   assert.ok(axe);
+});
+
+test("Burst and Rapid (audit 5.8): a Dexterity save instead of an attack roll; an attacker's advantage is the target's disadvantage", () => {
+  const bow = { key: "0", name: "Bowcaster", bonus: 5, abil: "dex", damage: "1d10+2", crit: "2d10+2", type: "energy", melee: 0, range: [50, 200], weapon: true, burst: 4 };
+  const cyc = { key: "1", name: "Cycler rifle", bonus: 6, abil: "dex", damage: "1d8+3", crit: "2d8+3", type: "kinetic", melee: 0, range: [90, 360], weapon: true, rapid: 2 };
+  const [burst] = E.volleysOf(bow), [rapid] = E.volleysOf(cyc);
+  assert.deepEqual([burst.key, burst.area.shape, burst.area.size, burst.save.dc, burst.damage[0].dice], ["burst:0", "cube", 10, 13, "1d10+2"]);
+  assert.deepEqual([rapid.key, rapid.targets, rapid.save.dc, rapid.damage[0].dice], ["rapid:1", 1, 14, "2d8+3"], "the damage dice twice, the modifier once");
+  assert.deepEqual(E.volleysOf(Object.assign({}, bow, { unmet: "Strength 13" })), [], "not without the Strength number");
+  assert.deepEqual(E.volleysOf(Object.assign({}, bow, { range: null, melee: 5 })), [], "a ranged weapon's");
+  const ava = unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0, pools: {} });
+  const r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 4, y: 0, hp: 40, maxHp: 40, saves: { dex: 1 } });
+  const r2 = unit({ id: "r2", name: "Thug", side: "npc", x: 5, y: 1, hp: 40, maxHp: 40, saves: { dex: 0 } });
+  // rapid: a failed save takes the doubled dice; a save takes nothing
+  let d = dice({ total: 8, nat: 7 }, { total: 14 });
+  let r = E.apply(world([ava, r1], "ava"), { type: "use", unit: "ava", ability: rapid, target: "r1" }, d.roll);
+  assert.equal(r.ok, true, r.why);
+  assert.deepEqual(d.asked, ["1d20+1", "2d8+3"]);
+  assert.match(r.log[1].text, /DEX save against DC 14/);
+  d = dice({ total: 15, nat: 14 });
+  r = E.apply(world([ava, r1], "ava"), { type: "use", unit: "ava", ability: rapid, target: "r1" }, d.roll);
+  assert.deepEqual([d.asked.length, r.world.units.r1.hp], [1, 40], "saved: nothing");
+  // the attacker's advantage: the save at disadvantage
+  d = dice({ total: 8, nat: 7 }, { total: 10 });
+  E.apply(world([ava, r1], "ava"), { type: "use", unit: "ava", ability: rapid, target: "r1", adv: true }, d.roll);
+  assert.equal(d.asked[0], "2d20kl1+1");
+  // burst: everyone in the 10-ft cube saves
+  d = dice({ total: 5, nat: 4 }, { total: 9 }, { total: 20, nat: 19 });
+  r = E.apply(world([ava, r1, r2], "ava"), { type: "use", unit: "ava", ability: burst, point: { x: 4, y: 0 } }, d.roll);
+  assert.equal(r.ok, true, r.why);
+  assert.deepEqual([r.world.units.r1.hp, r.world.units.r2.hp], [31, 40], "the Raider failed, the Thug saved");
+});
+
+test("Burst and Rapid through the API: offered beside the weapon, used as an action", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { abilities: { str: 12, dex: 16, con: 12, int: 10, wis: 10, cha: 10 },
+    attacks: [{ name: "Cycler rifle", ab: "dex", damage: "1d8", type: "kinetic", props: "Rapid 2, reload 8, slug cartridge (range 90/360), strength 11, two-handed" }] }) });
+  await gm.act("fight.toggle", { on: true });
+  assert.ok(E.abilitiesOf((await gm.state()).characters[avery], R, {}).some((a) => a.key === "rapid:0"));
+  const r = await sam.act("fight.use", { ability: "rapid:0", target: ids.raider });
+  assert.equal(r.code, 200, JSON.stringify(r.data));
+  const save = (await gm.state()).chat.filter((m) => m.fight && m.roll && m.roll.kind === "save").pop();
+  assert.match(save.roll.label, /DEX save against DC \d+/);
+  assert.equal((await sam.act("fight.use", { ability: "rapid:0", target: ids.raider })).code, 400, "it's the action");
 });

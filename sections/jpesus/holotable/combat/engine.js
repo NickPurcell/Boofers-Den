@@ -342,6 +342,9 @@
     const v = /\bversatile\s*\(\s*(\d*d\d+)\s*\)/i.exec(p);
     if (v) out.versatile = v[1].toLowerCase();
     if (/\bheavy\b/i.test(p) && abil === 'str') out.heavy = Math.max(1, Math.floor(rules.abilityMod(ch, 'str') / 2));
+    const burst = /\bburst\s+(\d{1,2})\b/i.exec(p), rapid = /\brapid\s+(\d{1,2})\b/i.exec(p);
+    if (burst) out.burst = +burst[1];
+    if (rapid) out.rapid = +rapid[1];
     for (const [, name, n] of p.matchAll(/\b(strength|dexterity)\s+(\d{1,2})\b/gi)) {
       const k = name.toLowerCase() === 'strength' ? 'str' : 'dex', score = +((ch.abilities || {})[k]) || 10;
       if (score < +n) out.unmet = `${name[0].toUpperCase()}${name.slice(1).toLowerCase()} ${n}`;
@@ -732,10 +735,27 @@
   // a weapon attack row as an ability (its arithmetic still comes from rules.js through attacksOf)
   const weaponAbility = (a) => ({ key: 'atk:' + a.key, name: a.name, kind: 'weapon', use: 'action', cost: {}, reach: a.melee || null, range: a.range, targets: 1,
     attack: { bonus: a.bonus, abil: a.abil }, save: null, damage: [{ dice: a.damage, add: 0, type: a.type }], crit: a.crit, applies: [], concentration: false });
-  // everything a character can use in the combat view: weapon attacks, and the powers on the sheet the table has data for
+  // Burst and Rapid (audit 5.8): a ranged weapon's other way to fire, as a Dexterity save (DC 8 + the attack bonus)
+  // instead of an attack roll; not while its Strength number isn't met (SW5e: the property needs it). Burst sprays a
+  // 10-ft cube within range: each creature in it saves or takes the weapon's damage. Rapid unloads on one target: it
+  // saves or takes the weapon's damage dice twice (modifiers once). Ammunition isn't counted yet (6.6).
+  function volleysOf(a) {
+    if (!a.range || (a.unmet && /^strength/i.test(a.unmet))) return [];
+    const base = { kind: 'volley', use: 'action', cost: {}, reach: null, range: a.range, attack: null, applies: [], concentration: false, weapon: a.key,
+      save: { ability: 'dex', dc: 8 + (+a.bonus || 0), onSave: 'none' } };
+    const out = [];
+    if (a.burst) out.push(Object.assign({}, base, { key: 'burst:' + a.key, name: `${a.name}, burst`, targets: 'area', area: { shape: 'cube', size: 10, width: 10, from: 'point' },
+      damage: [{ dice: a.damage, add: 0, type: a.type }], hint: `Burst ${a.burst}: a 10-ft cube; Dex save DC ${8 + (+a.bonus || 0)} or ${a.damage}` }));
+    if (a.rapid) out.push(Object.assign({}, base, { key: 'rapid:' + a.key, name: `${a.name}, rapid`, targets: 1,
+      damage: [{ dice: doubleDice(a.damage), add: 0, type: a.type }], hint: `Rapid ${a.rapid}: one target; Dex save DC ${8 + (+a.bonus || 0)} or ${doubleDice(a.damage)}` }));
+    return out;
+  }
+  // everything a character can use in the combat view: weapon attacks (and their bursts and rapid fire), and the powers
+  // on the sheet the table has data for
   function abilitiesOf(ch, rules, library) {
     const lib = library || {};
-    return attacksOf(ch, rules).map(weaponAbility)
+    const atks = attacksOf(ch, rules);
+    return atks.map(weaponAbility).concat(...atks.map(volleysOf))
       .concat((ch.powers || []).map((pw) => resolvePower(ch, pw, lib[String(pw.name || '').toLowerCase()], rules)).filter(Boolean));
   }
   // ability data as the table keeps it: only the fields of the format, each checked; null if nothing usable is left
@@ -1015,7 +1035,14 @@
             // cover helps a Dex save: from the caster for a power aimed at the target, from the origin for an area; flanked makes it worse
             const scv = ab.save.ability !== 'dex' || t.id === me.id ? null : ab.area ? coverFrom(w, origin, t) : coverOf(w, me, t);
             const sfl = ab.save.ability === 'dex' && t.id !== me.id ? flankOf(w, t, me) : 0;
-            const sm = d20(w, sadv ? 1 : 0, sdis ? 1 : 0);
+            // a volley (burst or rapid): what would have tilted the attack roll tilts the save the other way
+            let vadv = 0, vdis = 0;
+            if (ab.kind === 'volley' && t.id !== me.id) {
+              const vr = reasons(w, me, t, { range: ab.range, melee: 0 }, feetBetween(me, t), true).filter((x) => !x.note);
+              const vm = d20(w, vr.filter((x) => x.adv).length + (act.adv ? 1 : 0), vr.filter((x) => x.dis).length + (act.dis ? 1 : 0));
+              if (vm.mode === 'adv') vdis = 1; else if (vm.mode === 'dis') vadv = 1;
+            }
+            const sm = d20(w, (sadv ? 1 : 0) + vadv, (sdis ? 1 : 0) + vdis);
             const sexpr = d20expr(sm) + sgn((+bonus || 0) - weakPenalty(t, ab.save.ability) + (scv ? scv.bonus || 0 : 0) - sfl);
             const r = roll(sexpr);
             // Critical Saving Throws (the variant): a 20 always saves (any damage at its minimum), a 1 always fails (at its maximum)
@@ -1421,5 +1448,5 @@
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
     SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf, d20, flankOf, fixedTotal, cruel, modeName,
-    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, ridersOf, ridersFor, weaponProps };
+    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, ridersOf, ridersFor, weaponProps, volleysOf };
 });
