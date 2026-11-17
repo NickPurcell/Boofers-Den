@@ -684,3 +684,5 @@ body.no-sw5e-books [data-sa="deploy-info"], body.no-sw5e-books .lib-bar { displa
   body.on-map .map-tools > * { flex: none; }
   body.on-map .map-tools .tool-break, body.on-map .map-tools .spacer { display: none; }
 }
+.sb-chip { margin: 1px 2px; }
+.sb-save { font-size: 12px; padding: 1px 4px; max-width: 74px; }
