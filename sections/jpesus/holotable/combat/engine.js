@@ -114,7 +114,9 @@
     const others = Object.values(world.units).filter((o) => o.id !== u.id && !o.down);
     const size = u.size || 1, budget = Math.max(0, feet), crawl = (u.conditions || []).includes('Prone') ? 2 : 1;
     const blocked = (x, y) => others.some((o) => hostile(u, o) && overlaps(x, y, size, o) && Math.abs(sizeCat(u) - sizeCat(o)) < 2);
-    const moveWalls = (world.walls || []).filter(blocksMove);
+    // only the walls the move could reach (a big map's other walls cost nothing): a box around the mover, as far as its feet go
+    const R = Math.ceil(budget / FT) + size + 1, x0 = u.x - R, x1 = u.x + size + R, y0 = u.y - R, y1 = u.y + size + R;
+    const moveWalls = (world.walls || []).filter((w) => blocksMove(w) && Math.max(w.a[0], w.b[0]) >= x0 && Math.min(w.a[0], w.b[0]) <= x1 && Math.max(w.a[1], w.b[1]) >= y0 && Math.min(w.a[1], w.b[1]) <= y1);
     const occupied = (x, y) => others.some((o) => overlaps(x, y, size, o));
     const best = {}, out = {}, par = {}, prev = {}, at = {};
     const key = (x, y, p) => `${x},${y},${p}`;
