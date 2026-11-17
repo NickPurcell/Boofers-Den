@@ -395,6 +395,23 @@ function mapTools(camp, cid, gm, type, p, G) {
       if (list.length) camp.map.walls = list; else delete camp.map.walls;
       return {};
     }
+    case "fight.light": {   // the map's light (#93 step 5): its level, and the lights the GM places
+      const light = camp.map.light = cleanLight(camp.map.light) || { level: "bright", lights: [] };
+      if (p.level !== undefined) {
+        if (!Object.prototype.hasOwnProperty.call(E.LIGHT_LEVELS, p.level)) throw new G.Invalid("Bright, dim or dark.");
+        light.level = p.level;
+      } else if (p.op === "add") {
+        if (light.lights.length >= 200) throw new G.Invalid("That's the most lights one map can have (200).");
+        const [l] = cleanLight({ lights: [{ x: p.x, y: p.y, bright: p.bright, dim: p.dim }] }).lights;
+        if (!l) throw new G.Invalid("A light needs a bright or dim radius.");
+        light.lights.push(l);
+      } else if (p.op === "remove") light.lights = light.lights.filter((l) => l.id !== String(p.id || ""));
+      else if (p.op === "set") light.lights = cleanLight({ lights: Array.isArray(p.lights) ? p.lights.map((l) => Object.assign({}, l, { id: "" })) : [] }).lights;
+      else if (p.op === "clear") light.lights = [];
+      else throw new G.Invalid("Unknown light action.");
+      if (light.level === "bright" && !light.lights.length) delete camp.map.light;   // back to the map's exact shape
+      return {};
+    }
     case "fight.fog": {   // the GM switches fog of war on or off for this map, shares the party's sight, or resets what's explored (#93)
       const fog = camp.map.fog = cleanFog(camp.map.fog) || { on: false, shared: false, size: "", explored: {} };
       if (p.on !== undefined) fog.on = !!p.on;
@@ -409,7 +426,7 @@ function mapTools(camp, cid, gm, type, p, G) {
 }
 
 function apply(camp, cid, gm, type, p, G) {
-  if (type === "fight.wall" || type === "fight.fog") return mapTools(camp, cid, gm, type, p, G);
+  if (type === "fight.wall" || type === "fight.fog" || type === "fight.light") return mapTools(camp, cid, gm, type, p, G);
   // off (the default): only the GM's switch does anything, and switching it off when it was never on writes nothing
   if (!camp.fight || !camp.fight.on) {
     if (type !== "fight.toggle") throw new G.Invalid("The combat view is off.");
@@ -744,15 +761,59 @@ function eyesOf(camp, cid) {
 }
 // the squares some tokens see, remembered for the last few boards asked about: the answer only changes when a wall,
 // a door, the board or one of those tokens does, and each player's screen asks every few seconds
+/* light (issue #93, step 5): the map's level and its lights, kept by the map as map.light = { level, lights } */
+const LIGHT_ID = /^[a-z0-9]{1,20}$/;
+function cleanLight(x) {
+  if (!x || typeof x !== "object") return undefined;
+  const lights = (Array.isArray(x.lights) ? x.lights : []).slice(0, 200).filter((l) => l && typeof l === "object").map((l) => ({
+    id: LIGHT_ID.test(String(l.id || "")) ? String(l.id) : require("crypto").randomBytes(4).toString("hex"),
+    x: clamp(Math.round((+l.x || 0) * 100) / 100, -500, 1000), y: clamp(Math.round((+l.y || 0) * 100) / 100, -500, 1000),
+    bright: clamp(int(l.bright), 0, 300), dim: clamp(int(l.dim), 0, 300) })).filter((l) => l.bright + l.dim > 0);
+  return { level: Object.prototype.hasOwnProperty.call(E.LIGHT_LEVELS, x.level) ? x.level : "bright", lights };
+}
+// lighting matters only when the GM has dimmed or darkened the map (bright, the default, changes nothing)
+const lightOn = (camp) => !!(camp.map && camp.map.light && camp.map.light.level && camp.map.light.level !== "bright");
+// the map's lights plus any a token carries (token.light, if HoloTable's tokens get one), at the token's centre
+function lightsOf(camp) {
+  const out = ((camp.map.light || {}).lights || []).slice();
+  for (const t of camp.map.tokens || []) if (t.light && (+t.light.bright || +t.light.dim)) {
+    const s = clamp(int(t.size, 1), 1, 4);
+    out.push({ x: (+t.x || 0) + s / 2, y: (+t.y || 0) + s / 2, bright: clamp(int(t.light.bright), 0, 300), dim: clamp(int(t.light.dim), 0, 300) });
+  }
+  return out;
+}
+const sightWallsOf = (camp) => mapWalls(camp).filter((w) => w.kind === "wall" || w.kind === "sight" || (w.kind === "door" && !w.open));
+// each square's light, remembered like the squares seen
+const LIT_CACHE = new Map();
+function litOf(camp) {
+  const { cols, rows } = sizeOf(camp), walls = sightWallsOf(camp), lights = lightsOf(camp), level = camp.map.light.level;
+  const key = JSON.stringify([cols, rows, level, lights.map((l) => [l.x, l.y, l.bright, l.dim]), walls.map((w) => [w.a, w.b])]);
+  let lit = LIT_CACHE.get(key);
+  if (!lit) {
+    lit = E.lightSquares(walls, lights, level, cols, rows);
+    LIT_CACHE.set(key, lit);
+    if (LIT_CACHE.size > 20) LIT_CACHE.delete(LIT_CACHE.keys().next().value);
+  }
+  return lit;
+}
+// a token's senses: a character's from the combat view's defences (until #92 puts them on the sheet)
+function sensesOf(camp, t) {
+  const f = camp.fight || {};
+  return (t && t.charId && plainObj((f.defenses || {})[t.charId]).senses) || [];
+}
+const senseRange = (camp, t, kinds) => Math.max(0, ...sensesOf(camp, t).filter((x) => x && kinds.includes(x.kind)).map((x) => +x.range || 0));
+// the squares some tokens see, remembered for the last few boards asked about: the answer only changes when a wall,
+// a door, a light, the board or one of those tokens does, and each player's screen asks every few seconds
 const SEEN_CACHE = new Map();
-function squaresSeen(camp, eyes) {
-  const { cols, rows } = sizeOf(camp);
-  const walls = mapWalls(camp).filter((w) => w.kind === "wall" || w.kind === "sight" || (w.kind === "door" && !w.open));
-  const key = JSON.stringify([cols, rows, eyes.map((t) => [t.x, t.y, t.size || 1]), walls.map((w) => [w.a, w.b])]);
+function squaresSeen(camp, eyes, noLight) {
+  const { cols, rows } = sizeOf(camp), walls = sightWallsOf(camp), lighting = !noLight && lightOn(camp);
+  const dark = lighting ? Object.fromEntries(eyes.map((t, i) => ["e" + i, senseRange(camp, t, ["darkvision"])])) : null;
+  const key = JSON.stringify([cols, rows, eyes.map((t) => [t.x, t.y, t.size || 1]), walls.map((w) => [w.a, w.b]),
+    lighting ? [camp.map.light.level, lightsOf(camp).map((l) => [l.x, l.y, l.bright, l.dim]), dark] : 0]);
   let vis = SEEN_CACHE.get(key);
   if (!vis) {
     const units = Object.fromEntries(eyes.map((t, i) => ["e" + i, { id: "e" + i, x: +t.x || 0, y: +t.y || 0, size: clamp(int(t.size, 1), 1, 4) }]));
-    vis = E.visibleSquares({ walls, units }, Object.keys(units), cols, rows);
+    vis = E.visibleSquares({ walls, units }, Object.keys(units), cols, rows, lighting ? { lit: litOf(camp), dark } : undefined);
     SEEN_CACHE.set(key, vis);
     if (SEEN_CACHE.size > 40) SEEN_CACHE.delete(SEEN_CACHE.keys().next().value);
   }
@@ -768,12 +829,18 @@ function canWalk(camp, t, x, y) {
   return E.walkable(camp.map.walls, cols, rows, { x: int(t.x), y: int(t.y), size: clamp(int(t.size, 1), 1, 4) }, x, y);
 }
 // What fog hides from one player: null for the GM or with fog off; otherwise the squares they see and the tokens and
-// tracker entries they can't. A player's own tokens are never hidden from them.
+// tracker entries they can't. A player's own tokens are never hidden from them. In the dark, a creature within a
+// character's blindsight or tremorsense (and not behind a wall from it) is still perceived, though its square isn't lit.
 function fogFor(camp, cid) {
   if (!fogOn(camp) || !cid) return null;
   const { cols, rows } = sizeOf(camp), eyes = eyesOf(camp, cid), mine = new Set(eyes.map((t) => t.id));
-  const vis = squaresSeen(camp, eyes), tokens = new Set();
-  for (const t of camp.map.tokens || []) if (!mine.has(t.id) && !E.seenIn(vis, cols, rows, { x: +t.x || 0, y: +t.y || 0, size: clamp(int(t.size, 1), 1, 4) })) tokens.add(t.id);
+  const vis = squaresSeen(camp, eyes), tokens = new Set(), box = (t) => ({ x: +t.x || 0, y: +t.y || 0, size: clamp(int(t.size, 1), 1, 4) });
+  const feelers = lightOn(camp) ? eyes.map((e) => [e, senseRange(camp, e, ["blindsight", "tremorsense"])]).filter(([, r]) => r > 0) : [];
+  const felt = (t) => feelers.some(([e, r]) => {
+    const a = box(e), b = box(t), dx = Math.max(0, a.x - (b.x + b.size - 1), b.x - (a.x + a.size - 1)), dy = Math.max(0, a.y - (b.y + b.size - 1), b.y - (a.y + a.size - 1));
+    return E.sqFeet(dx, dy) <= r && E.seenIn(squaresSeen(camp, [e], true), cols, rows, b);
+  });
+  for (const t of camp.map.tokens || []) if (!mine.has(t.id) && !E.seenIn(vis, cols, rows, box(t)) && !felt(t)) tokens.add(t.id);
   const ut = unitTokens(camp), entries = new Set(camp.initiative.entries.filter((e) => ut[e.id] && tokens.has(ut[e.id])).map((e) => e.id));
   return { vis, tokens, entries, cols, rows };
 }
@@ -798,7 +865,17 @@ function fogView(camp, cid, gm, fog) {
     fog = fog || fogFor(camp, cid);
     const seen = exploredOf(camp, cid, cols, rows);
     for (let i = 0; i < seen.length; i++) if (fog.vis[i]) seen[i] = 1;
+    if (lightOn(camp)) {   // the squares seen only dimly: dim light, or darkness seen through darkvision
+      const lit = litOf(camp), dim = new Uint8Array(cols * rows);
+      for (let i = 0; i < dim.length; i++) if (fog.vis[i] && lit[i] < 2) dim[i] = 1;
+      on.dim = E.packSquares(dim);
+    }
     return Object.assign(on, { vis: E.packSquares(fog.vis), seen: E.packSquares(seen) });
+  }
+  if (lightOn(camp)) {   // the GM sees where the light falls: dark and dim squares
+    const lit = litOf(camp), dark = new Uint8Array(cols * rows), dim = new Uint8Array(cols * rows);
+    for (let i = 0; i < lit.length; i++) { if (lit[i] === 0) dark[i] = 1; else if (lit[i] === 1) dim[i] = 1; }
+    Object.assign(on, { dark: E.packSquares(dark), dimLit: E.packSquares(dim) });
   }
   const any = new Uint8Array(cols * rows);
   for (const pid of Object.keys(camp.players || {})) {
@@ -864,5 +941,5 @@ function cleanWalls(list) {
   });
 }
 
-module.exports = { apply, view, canWalk, fogFor, fogView, cleanFog, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
+module.exports = { apply, view, canWalk, fogFor, fogView, cleanFog, cleanLight, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
   cleanHitDiceUsed: R.cleanHitDiceUsed };   // for cleanChar: the sheet and the undo record clean hit dice the same way

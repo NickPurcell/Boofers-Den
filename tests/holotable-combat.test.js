@@ -2138,6 +2138,69 @@ test("objects that block sight (#110): they hide under fog and give cover like w
   assert.equal((await gm.state()).fight.propWalls.length, 0);
 });
 
+/* ---------------------------------------------------------------- light and darkvision (issue #93, step 5) */
+test("light under fog: the map's level, lights stopped by walls, darkvision and blindsight; players never get the record", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  const n = (st) => st.fog.cols * st.fog.rows, sq = (st, k, x, y) => E.unpackSquares(st.fog[k], n(st))[y * st.fog.cols + x];
+  assert.equal((await sam.act("fight.light", { level: "dark" })).code, 403, "the GM's");
+  assert.equal((await gm.act("fight.light", { level: "pitch" })).code, 400);
+  await gm.act("fight.fog", { on: true });
+  // bright (the default): fog alone, the Raider (6,0) in plain sight of Avery (0,0)
+  assert.ok(tokenOf(await sam.state(), "Raider"));
+  await gm.act("fight.light", { level: "dark" });
+  let sv = await sam.state();
+  assert.equal(tokenOf(sv, "Raider"), undefined, "dark: the Raider can't be seen");
+  assert.equal(sv.map.light, undefined, "players never get the lights' record");
+  assert.equal(sq(sv, "vis", 0, 0), 1, "Avery's own square");
+  assert.equal(sq(sv, "vis", 3, 0), 0);
+  // a glow rod at the Raider: lit, so seen; its edge is dim
+  await gm.act("fight.light", { op: "add", x: 6.5, y: 0.5, bright: 10, dim: 10 });
+  sv = await sam.state();
+  assert.ok(tokenOf(sv, "Raider"), "lit: seen");
+  assert.deepEqual([sq(sv, "vis", 6, 0), sq(sv, "dim", 6, 0), sq(sv, "vis", 3, 0), sq(sv, "dim", 3, 0)], [1, 0, 1, 1], "bright at the light, dim 15 ft out");
+  // a wall between the light and Avery's side: the light stops at it
+  await gm.act("fight.wall", { op: "add", a: [5, -1], b: [5, 3] });
+  sv = await sam.state();
+  assert.equal(tokenOf(sv, "Raider"), undefined, "the wall hides the lit Raider");
+  assert.equal(sq(sv, "vis", 4, 0), 0, "and keeps its light on its own side");
+  await gm.act("fight.wall", { op: "clear" });
+  // the light gone: darkvision 60 ft sees the Raider 30 ft away in the dark, dimly
+  const gv = await gm.state(), light = gv.map.light.lights[0];
+  assert.deepEqual(Object.keys(gv.fog).sort().filter((k) => k === "dark" || k === "dimLit"), ["dark", "dimLit"], "the GM sees where the light falls");
+  await gm.act("fight.light", { op: "remove", id: light.id });
+  await gm.act("fight.toggle", { on: true });
+  await sam.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 60 }] });
+  sv = await sam.state();
+  assert.ok(tokenOf(sv, "Raider"), "darkvision: seen in the dark");
+  assert.deepEqual([sq(sv, "vis", 6, 0), sq(sv, "dim", 6, 0)], [1, 1], "darkness through darkvision is dim");
+  // blindsight 10 ft only: the Raider far off is gone; moved next to Avery, it's perceived though its square isn't lit
+  await sam.act("fight.defenses", { charId: avery, senses: [{ kind: "blindsight", range: 10 }] });
+  assert.equal(tokenOf(await sam.state(), "Raider"), undefined);
+  await gm.act("token.move", { id: tokenOf(gv, "Raider").id, x: 2, y: 0 });
+  sv = await sam.state();
+  assert.ok(tokenOf(sv, "Raider"), "blindsight perceives it");
+  assert.equal(sq(sv, "vis", 2, 0), 0, "but doesn't light its square");
+  // back to bright with no lights: the record goes, the map's exact shape again
+  await gm.act("fight.light", { level: "bright" });
+  assert.equal((await gm.state()).map.light, undefined);
+  assert.ok(tokenOf(await sam.state(), "Raider"));
+});
+
+test("light: the GM's lights are checked; a dd2vtt-style set replaces them; a crafted record is cleaned", async () => {
+  const { gm } = await fight();
+  assert.equal((await gm.act("fight.light", { op: "add", x: 1, y: 1, bright: 0, dim: 0 })).code, 400, "a light needs a radius");
+  await gm.act("fight.light", { op: "add", x: 1.5, y: 1.5, bright: 20, dim: 20 });
+  await gm.act("fight.light", { op: "set", lights: [{ x: 3, y: 3, bright: 15, dim: 15 }, { x: 4, y: 4, bright: 5000, dim: 5 }, { x: 9, y: 9 }] });
+  const L = (await gm.state()).map.light;
+  assert.deepEqual(L.lights.map((l) => [l.x, l.y, l.bright, l.dim]), [[3, 3, 15, 15], [4, 4, 300, 5]], "set replaces; radii capped; no radius dropped");
+  assert.ok(L.lights.every((l) => /^[a-z0-9]{1,20}$/.test(l.id)), "ids made here");
+  const Fight = require("../api/_holotable-fight.js");
+  assert.deepEqual(Fight.cleanLight({ level: "__proto__", lights: [{ id: "<x>", x: "2", y: 1, bright: 10 }] }).level, "bright", "only a known level");
+  assert.equal(Fight.cleanLight("x"), undefined);
+  await gm.act("fight.light", { op: "clear" });
+  assert.equal((await gm.state()).map.light, undefined, "bright and no lights: no record");
+});
+
 /* ---------------------------------------------------------------- creature casting (audit 9.5) */
 test("creature casting: a stat block's force or tech points and innate N/day powers become the GM's counts", () => {
   const src = require("fs").readFileSync(require("path").join(__dirname, "../sections/jpesus/holotable/combat/view.js"), "utf8");

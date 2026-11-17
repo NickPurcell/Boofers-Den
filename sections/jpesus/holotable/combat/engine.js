@@ -148,16 +148,56 @@
   }
   // What the given units can see, together, on a cols x rows board: 1 per visible square. A unit sees from its centre;
   // its own squares are always visible. Windows and open doors don't block sight; walls and closed doors do.
-  function visibleSquares(world, ids, cols, rows) {
+  // With `light` ({ lit, dark: { unitId: darkvision feet } }, step 5), a square in sight counts only if it's lit, or
+  // dark but within that unit's darkvision (SW5e: darkness within darkvision is seen as dim light).
+  function visibleSquares(world, ids, cols, rows, light) {
     const vis = new Uint8Array(cols * rows), walls = (world.walls || []).filter(blocksSight);
     for (const id of ids) {
       const u = world.units[id];
       if (!u || u.down) continue;
       const s = u.size || 1, o = [u.x + s / 2, u.y + s / 2];
-      fillPolygon(sightPolygon(walls, o, cols, rows), cols, rows, vis);
+      if (!light) fillPolygon(sightPolygon(walls, o, cols, rows), cols, rows, vis);
+      else {
+        const own = fillPolygon(sightPolygon(walls, o, cols, rows), cols, rows, new Uint8Array(cols * rows)), dv = +((light.dark || {})[id]) || 0;
+        for (let i = 0; i < own.length; i++) {
+          if (!own[i] || vis[i]) continue;
+          if (light.lit[i]) { vis[i] = 1; continue; }
+          if (!dv) continue;
+          const x = i % cols, y = (i - x) / cols;
+          if (sqFeet(Math.max(0, u.x - x, x - (u.x + s - 1)), Math.max(0, u.y - y, y - (u.y + s - 1))) <= dv) vis[i] = 1;
+        }
+      }
       for (let x = u.x; x < u.x + s; x++) for (let y = u.y; y < u.y + s; y++) if (x >= 0 && y >= 0 && x < cols && y < rows) vis[y * cols + x] = 1;
     }
     return vis;
+  }
+  /* ---------------- light (issue #93, step 5): each square 2 bright, 1 dim or 0 dark ---------------- */
+  // The map's own level ('bright', the default, 'dim' or 'dark') and its lights: { x, y } a point in squares, bright and
+  // dim radii in feet (a glow rod 20/20: bright 20 ft, dim 20 ft beyond). A light reaches only where it can "see":
+  // walls, closed doors and objects that block sight stop it. Distances count as the table measures (5/10 diagonals).
+  const LIGHT_LEVELS = { bright: 2, dim: 1, dark: 0 };
+  const sqFeet = (dx, dy) => { const a = Math.abs(dx), b = Math.abs(dy); return FT * (Math.max(a, b) + Math.floor(Math.min(a, b) / 2)); };
+  function lightSquares(walls, lights, level, cols, rows) {
+    const base = LIGHT_LEVELS[level] == null ? 2 : LIGHT_LEVELS[level], lit = new Uint8Array(cols * rows).fill(base);
+    if (base === 2) return lit;
+    const sight = (walls || []).filter(blocksSight);
+    for (const l of lights || []) {
+      const bright = Math.max(0, +l.bright || 0), reach = bright + Math.max(0, +l.dim || 0), lx = +l.x, ly = +l.y;
+      if (!reach || !Number.isFinite(lx) || !Number.isFinite(ly)) continue;
+      const r = reach / FT + 1, x0 = Math.max(0, Math.floor(lx - r)), x1 = Math.min(cols - 1, Math.ceil(lx + r)), y0 = Math.max(0, Math.floor(ly - r)), y1 = Math.min(rows - 1, Math.ceil(ly + r));
+      if (x0 > x1 || y0 > y1) continue;
+      // only walls near the light can stop it within its reach
+      const near = sight.filter((w) => Math.max(w.a[0], w.b[0]) >= lx - r && Math.min(w.a[0], w.b[0]) <= lx + r && Math.max(w.a[1], w.b[1]) >= ly - r && Math.min(w.a[1], w.b[1]) <= ly + r);
+      const area = fillPolygon(sightPolygon(near, [lx, ly], cols, rows), cols, rows, new Uint8Array(cols * rows));
+      for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+        const i = y * cols + x;
+        if (!area[i] || lit[i] === 2) continue;
+        const d = sqFeet(Math.round(Math.abs(x + 0.5 - lx)), Math.round(Math.abs(y + 0.5 - ly)));   // squares from the light to this one
+        const v = d <= bright ? 2 : d <= reach ? 1 : 0;
+        if (v > lit[i]) lit[i] = v;
+      }
+    }
+    return lit;
   }
   // a unit is seen if any of its squares is visible
   const seenIn = (vis, cols, rows, u) => {
@@ -1282,5 +1322,5 @@
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
     SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf, d20, flankOf, fixedTotal, cruel, modeName,
-    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, walkable };
+    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, walkable };
 });
