@@ -36,7 +36,9 @@
     catch (e) { toast(e.message, true); return null; }
   }
   function modal(html, onMount) {
-    $('#modalBox').innerHTML = html; $('#modal').classList.remove('hidden');
+    const box = $('#modalBox');
+    box.onclick = box.oninput = box.onchange = null;
+    box.innerHTML = html; $('#modal').classList.remove('hidden');
     onMount && onMount($('#modalBox'));
   }
   const closeModal = () => $('#modal').classList.add('hidden');
@@ -173,6 +175,7 @@
       S.selected = (mine || chars()[0] || {}).id || null;
     }
     if (first && st.isGM && !chars().length) S.tab = 'gm';
+    applyPrefs((st.players[clientId] || {}).prefs || store.get('holo.theme', null));
     renderAll();
     maybeCelebrate();
   }
@@ -801,7 +804,8 @@
     const mp = S.st.map, g = mp.gridSize, W = mp.cols * g, H = mp.rows * g, z = S.zoom, dpr = window.devicePixelRatio || 1;
     canvas.width = W * z * dpr; canvas.height = H * z * dpr; canvas.style.width = W * z + 'px'; canvas.style.height = H * z + 'px';
     ctx.setTransform(z * dpr, 0, 0, z * dpr, 0, 0);
-    ctx.fillStyle = '#0d1420'; ctx.fillRect(0, 0, W, H);
+    const MC = mapColors();
+    ctx.fillStyle = MC.bg; ctx.fillRect(0, 0, W, H);
     const fl = img(mp.floor);
     if (fl) {
       const pat = ctx.createPattern(fl, 'repeat'), s = (g / DD_PX) * (mp.floorScale || 1);
@@ -810,7 +814,7 @@
     }
     if (S.mapImg) ctx.drawImage(S.mapImg, 0, 0, W, H);
     if (mp.showGrid) {
-      ctx.strokeStyle = 'rgba(79,195,247,0.18)'; ctx.lineWidth = 1 / z; ctx.beginPath();
+      ctx.strokeStyle = MC.grid; ctx.lineWidth = 1 / z; ctx.beginPath();
       for (let x = 0; x <= W; x += g) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
       for (let y = 0; y <= H; y += g) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
       ctx.stroke();
@@ -821,7 +825,7 @@
       const px = drag ? M.drag.px : p.x * g, py = drag ? M.drag.py : p.y * g, w = p.w * g, h = p.h * g;
       const im = img(p.src);
       ctx.save(); ctx.translate(px + w / 2, py + h / 2); ctx.rotate((p.rot || 0) * Math.PI / 180);
-      if (im) ctx.drawImage(im, -w / 2, -h / 2, w, h); else { ctx.fillStyle = 'rgba(79,195,247,.15)'; ctx.fillRect(-w / 2, -h / 2, w, h); }
+      if (im) ctx.drawImage(im, -w / 2, -h / 2, w, h); else { ctx.fillStyle = MC.ghost; ctx.fillRect(-w / 2, -h / 2, w, h); }
       if (M.selProp === p.id) { ctx.strokeStyle = '#ffb74d'; ctx.lineWidth = 2 / z; ctx.setLineDash([6 / z, 4 / z]); ctx.strokeRect(-w / 2, -h / 2, w, h); }
       ctx.restore();
     }
@@ -1283,6 +1287,81 @@
     roll('1d' + d, 'd' + d, { d20: d === 20, mode: rollModeFromEvent(e) });
   });
 
+  // --------------------------------------------------------------------------- colour themes
+  // Each person's choice is saved with their account (so it follows them to other devices) and
+  // cached in this browser so the page is already in their colours before they sign in.
+  const TH = window.HoloThemes;
+  const myPrefs = () => (S.st && S.st.players[clientId] && S.st.players[clientId].prefs) || store.get('holo.theme', null);
+  let appliedTheme = '';
+  function applyPrefs(prefs) {
+    const key = JSON.stringify(prefs || {});
+    if (key === appliedTheme) return;
+    appliedTheme = key;
+    TH.apply(prefs || {});
+    store.set('holo.theme', prefs || null);
+    if (S.st) drawMap();
+  }
+  // a theme colour for the canvas (which can't read CSS variables)
+  function themeHex(name, fallback) {
+    const v = getComputedStyle(document.documentElement).getPropertyValue('--' + name).trim();
+    return /^#[0-9a-fA-F]{6}$/.test(v) ? v : fallback;
+  }
+  const rgba = (hex, a) => `rgba(${[1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(',')},${a})`;
+  function mapColors() {
+    const bg = themeHex('bg', '#0b0f17'), holo = themeHex('holo', '#4fc3f7');
+    const dark = [1, 3, 5].map(i => Math.round(parseInt(bg.slice(i, i + 2), 16) * 0.82));
+    return { bg: `rgb(${dark.join(',')})`, grid: rgba(holo, 0.2), ghost: rgba(holo, 0.15) };
+  }
+
+  function openThemes() {
+    const start = myPrefs() || { theme: 'holo-blue', custom: {} };
+    let draft = { theme: start.theme || 'holo-blue', custom: Object.assign({}, start.custom || {}) };
+    let saveTimer;
+    const save = () => {
+      applyPrefs(draft);
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(() => act('player.prefs', draft), 400);
+    };
+    const card = t => {
+      const c = t.colors;
+      return `<button type="button" class="theme-card ${draft.theme === t.id ? 'on' : ''}" data-theme="${esc(t.id)}" style="background:${c.panel};color:${c.text}">
+        <span class="sw" style="background:${c.bg}"><i style="background:${c.panel2};border:1px solid ${c.line}"></i><i style="background:${c.holo}"></i><i class="dot" style="background:${c.amber}"></i></span>
+        <span class="nm">${esc(t.name)}</span><span class="tg" style="color:${c.muted}">${esc(t.tagline)}</span></button>`;
+    };
+    const render = box => {
+      const groups = TH.GROUPS.filter(g => g.id !== 'gm' || isGM());
+      const cur = TH.resolve(draft).colors;
+      box.innerHTML = `<div id="themePick"><h3>🎨 Your colours</h3>
+        <p class="muted" style="margin:0">Pick a look for your own screen. Everyone at the table can choose their own.</p>
+        <div class="theme-groups">${groups.map(g => `<div><h4>${esc(g.name)}${g.id === 'gm' ? ' 🛡' : ''}</h4>
+          <div class="theme-grid">${TH.THEMES.filter(t => t.group === g.id).map(card).join('')}</div></div>`).join('')}</div>
+        <div class="box" style="margin:0"><h4>Customise</h4>
+          <div class="custom-colors">${TH.CUSTOM_KEYS.map(k => `<label><input type="color" data-ck="${k.key}" value="${cur[k.key]}">${esc(k.label)}${draft.custom[k.key] ? ' ✎' : ''}</label>`).join('')}</div>
+          ${Object.keys(draft.custom).length ? '<button class="btn tiny" data-tact="reset" style="margin-top:8px">Reset to the template\'s colours</button>' : ''}</div>
+        <div class="row"><span class="spacer"></span><button class="btn primary" data-tact="done">Done</button></div></div>`;
+    };
+    modal('', box => {
+      render(box);
+      const wrap = box;
+      wrap.onclick = e => {
+        const t = e.target.closest('.theme-card[data-theme]'); // not <html>, which also carries data-theme
+        if (t) { draft = { theme: t.dataset.theme, custom: {} }; save(); render(wrap); return; }
+        const a = e.target.closest('[data-tact]');
+        if (a && a.dataset.tact === 'reset') { draft.custom = {}; save(); render(wrap); }
+        if (a && a.dataset.tact === 'done') closeModal();
+      };
+      wrap.oninput = e => {
+        const k = e.target.dataset.ck; if (!k) return;
+        draft.custom[k] = e.target.value;
+        applyPrefs(draft);              // live preview while dragging
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => act('player.prefs', draft), 600);
+      };
+      wrap.onchange = e => { if (e.target.dataset.ck) render(wrap); };
+    });
+  }
+  $('#themeBtn').addEventListener('click', openThemes);
+
   // --------------------------------------------------------------------------- level ups
   // The GM grants levels (to the whole party or picked characters); each player then levels their
   // own character in a guided wizard. The GM can run the wizard for someone who missed the session.
@@ -1502,6 +1581,7 @@
     if (A.stamp) stopStamp();
     if (M.selProp) { M.selProp = null; drawMap(); }
   });
+  applyPrefs(store.get('holo.theme', null));
   renderRules();
   $('#loginForm [name=name]').value = store.get('holo.name', '');
   // already signed in (the session cookie is HttpOnly, so ask the server)

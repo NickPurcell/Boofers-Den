@@ -85,18 +85,19 @@ async function loadGame() {
 async function onlineList(camp) {
   const h = await S.getClient().hgetall(S.K.on(GAME));
   const t = nowS();
-  return Object.entries(h || {}).filter(([, v]) => t - +String(v).split("|")[0] < ONLINE_S)
-    .map(([id, v]) => ({ clientId: id, name: G.playerName(camp, id), gm: String(v).split("|")[1] === "gm" }));
+  const parse = (v) => { try { return JSON.parse(v); } catch { return {}; } };
+  return Object.entries(h || {}).map(([id, v]) => [id, parse(v)]).filter(([, p]) => t - (+p.t || 0) < ONLINE_S)
+    .map(([id, p]) => ({ clientId: id, name: (camp.players[id] && camp.players[id].name) || String(p.name || "Player").slice(0, 40), gm: p.role === "gm" }));
 }
 
 // mark this person online; bump the game if someone arrived or left so everyone's list updates
 async function touchPresence(ses) {
   const r = S.getClient(), key = S.K.on(GAME), t = nowS();
   const h = (await r.hgetall(key)) || {};
-  const ts = (id) => +String(h[id] || "0").split("|")[0];
+  const ts = (id) => { try { return +JSON.parse(h[id]).t || 0; } catch { return 0; } };
   const stale = Object.keys(h).filter((id) => id !== ses.pid && t - ts(id) >= ONLINE_S);
   const arrived = !h[ses.pid] || t - ts(ses.pid) >= ONLINE_S;
-  await r.hset(key, ses.pid, `${t}|${ses.role}`);
+  await r.hset(key, ses.pid, JSON.stringify({ t, role: ses.role, name: ses.name }));
   for (const id of stale) await r.hdel(key, id);
   if (arrived || stale.length) await S.bump(GAME);
 }

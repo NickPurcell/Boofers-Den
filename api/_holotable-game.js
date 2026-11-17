@@ -519,6 +519,20 @@ function applyAction(camp, cid, gm, type, p) {
     case "levelup.apply":
       return applyLevelUp(camp, cid, gm, p);
 
+    // ---- each person's own colour theme (only changes what they see)
+    case "player.prefs": {
+      const theme = String(p.theme || "holo-blue");
+      if (!/^[a-z0-9-]{1,40}$/.test(theme)) throw new Invalid("bad theme");
+      if (theme.startsWith("gm-") && !gm) throw new Forbidden("That theme is the GM's.");
+      const custom = {};
+      for (const k of ["bg", "panel", "text", "holo", "amber"]) {
+        const v = (p.custom || {})[k];
+        if (v !== undefined && v !== null && v !== "") custom[k] = validColor(v, null);
+      }
+      for (const k of Object.keys(custom)) if (!custom[k]) delete custom[k];
+      (camp.players[cid] = camp.players[cid] || {}).prefs = { theme, custom };
+      return {};
+    }
     case "player.rename":
       (camp.players[cid] = camp.players[cid] || {}).name = str(p.name, 40) || "Player";
       return {};

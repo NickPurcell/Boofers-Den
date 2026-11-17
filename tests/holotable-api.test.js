@@ -345,3 +345,16 @@ test("HoloTable's keys stay apart from Find time to hang's", async () => {
   await gm.post("upload", { purpose: "bg", dataUrl: PNG_URL });
   for (const k of db.kv.keys()) assert.match(k, /^htp?v?:/, k);
 });
+
+test("colour themes: each person saves their own; the GM theme is the GM's; colours are checked", async () => {
+  const { gm, p1 } = await table();
+  assert.equal((await p1.act("player.prefs", { theme: "sith", custom: { holo: "#ff0000", bg: "url(evil)", text: "red" } })).code, 200);
+  const me = (await p1.call("GET", { op: "me" })).data.you;
+  const prefs = (await p1.poll()).data.state.players[me].prefs;
+  assert.deepEqual(prefs, { theme: "sith", custom: { holo: "#ff0000" } }, "only real #rrggbb colours are kept");
+  assert.equal((await p1.act("player.prefs", { theme: "gm-green-silver" })).code, 403);
+  assert.equal((await p1.act("player.prefs", { theme: "<script>" })).code, 400);
+  assert.equal((await gm.act("player.prefs", { theme: "gm-green-silver" })).code, 200);
+  const gmId = (await gm.call("GET", { op: "me" })).data.you;
+  assert.equal((await gm.poll()).data.state.players[gmId].prefs.theme, "gm-green-silver");
+});

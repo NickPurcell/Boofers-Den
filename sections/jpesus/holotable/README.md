@@ -27,6 +27,9 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
 - **Level ups:** the GM grants a level to the party or to chosen characters. Each player gets a pop-up and a guided wizard:
   pick a class or multiclass, roll or take average HP, take an ability score improvement or feat, add new features and powers,
   then see a before/after summary. The GM can level a character for a player who missed the session.
+- **Colour themes (🎨):** each person picks their own look. There are 18 themes in three groups: Light Side, Dark Side and
+  Across the Galaxy. The GM also gets an exclusive Green & Silver theme. Anyone can then fine-tune five colours.
+  The choice is saved with your account and follows you to other devices. Every theme passes a contrast check (themes.js).
 - **GM tools:** handouts, GM notes, a backup file download, automatic backups, and restore.
 
 ## How it runs
