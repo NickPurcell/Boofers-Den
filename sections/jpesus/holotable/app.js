@@ -1114,7 +1114,7 @@
         <label class="mini">cols <input type="number" value="${n0(mp.cols)}" data-mset="cols"></label>
         <label class="mini">rows <input type="number" value="${n0(mp.rows)}" data-mset="rows"></label>
         <label class="toggle"><input type="checkbox" data-mset="showGrid" ${mp.showGrid ? 'checked' : ''}> grid</label>
-        <button class="btn small" data-mact="npc">＋ Token</button>
+        <button class="btn small" data-mact="npc">＋ Token</button>${window.HTC && HTC.wallsButton ? HTC.wallsButton() : ''}
         ${mp.tokens.some(t => t.moves) || (mp.props || []).some(x => x.moves) ? '<button class="btn small amber" data-mact="play-moves" title="Play the scene movements on this board now, for everyone">▶ Play movements</button>' : ''}
         <input type="file" id="bgFile" accept="image/*" hidden>` : '<span class="muted">Drag your token to move it · drag empty space to pan · scroll to zoom</span>'}`;
   }

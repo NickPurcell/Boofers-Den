@@ -191,6 +191,7 @@
   function render() {
     const s = st();
     if (!s) return;
+    renderWallBar();
     const f = F(), b = ensureBar();
     // floating numbers for what just happened (not replayed when the page first loads)
     const evs = f.events || [];
@@ -217,16 +218,8 @@
       html += `<button class="btn small" data-ct="douse" data-id="${esc(o.id)}" title="Takes your action">🔥 Put out the flames${o.id === u.id ? '' : ` on ${esc(o.name)}`}</button>`;
     }
     if (mine && u && f.active) html += '<button class="btn small amber" data-ct="end">End turn ⏭</button>';
-    if (gm()) html += `<button class="btn small ${UI.walls ? 'primary' : 'ghost'}" data-ct="walls" aria-pressed="${!!UI.walls}" title="Draw walls, doors and windows: they block movement and line of sight (players never see them)">🧱 Walls</button>`;
     if (gm()) html += `<button class="btn small ghost" data-ct="undo" ${f.undo && f.undo.n ? '' : 'disabled'} title="${esc(f.undo && f.undo.last ? 'Undo: ' + f.undo.last : 'Nothing to undo')}">↶ Undo</button><button class="btn small ghost" data-ct="off" title="Turn the combat view off for everyone">Combat view off</button>`;
     html += '</div>';
-    // the wall tool's own row
-    if (UI.walls && gm()) {
-      const n = ((s.map || {}).walls || []).length;
-      html += `<div class="ct-row ct-walls">${[['wall', 'Wall'], ['door', 'Door'], ['window', 'Window'], ['toggle', 'Open / close a door'], ['erase', 'Erase']].map(([k, l]) => `<button class="btn tiny ${UI.walls.mode === k ? 'primary' : 'ghost'}" data-ct="wallmode" data-k="${k}">${l}</button>`).join('')}
-        <span class="muted ct-hint">${UI.walls.mode === 'wall' ? 'Click corner to corner; Esc or the same corner again ends the run.' : UI.walls.mode === 'door' || UI.walls.mode === 'window' ? 'Click its two ends.' : 'Click next to one.'} ${n} on this map; players never receive them.</span>
-        <span class="spacer"></span>${n ? '<button class="btn tiny ghost" data-ct="wallsclear">Clear all</button>' : ''}</div>`;
-    }
     // the order of play, as this viewer's tracker has it (hidden creatures aren't in a player's), and the log
     const order = (s.initiative.entries || []).filter((e) => f.active);
     if (order.length) {
@@ -355,9 +348,7 @@
     if (k === 'douse') return send('fight.douse', { target: el.dataset.id });
     if (k === 'common') return send('fight.common', { key: el.dataset.key });
     if (k === 'log') { UI.log = !UI.log; return render(); }
-    if (k === 'walls') { UI.walls = UI.walls ? null : { mode: 'wall', from: null }; render(); return H.drawMap(); }
-    if (k === 'wallmode') { UI.walls = { mode: el.dataset.k, from: null }; render(); return H.drawMap(); }
-    if (k === 'wallsclear') { if (confirm('Remove every wall, door and window from this map?')) send('fight.wall', { op: 'clear' }); return; }
+
     if (k === 'letgo') return send('fight.react', { id: el.dataset.id, take: false });
     if (k === 'react') {
       const re = world().units[el.dataset.unit], a = re && meleeOf(re).find((x) => x.key === el.dataset.key);
@@ -531,6 +522,40 @@
 
   /* ---------------- on the map (app.js calls these) ---------------- */
   // pointer down: claims the click only when it's an attack on a target, or a player's own token on their turn
+  // The GM's wall tool lives in the map tools beside "＋ Token" (app.js asks for its button) while the combat view is on,
+  // with its own small bar over the map, like the 🎬 movement bar.
+  function wallsButton() {
+    return gm() && F().on ? `<button class="btn small ${UI.walls ? 'primary' : ''}" data-ct-walls="1" aria-pressed="${!!UI.walls}" title="Draw walls, doors and windows: they block movement, sight and areas in the combat view (players never receive them)">🧱 Walls</button>` : '';
+  }
+  let wallBar = null;
+  function renderWallBar() {
+    if (!wallBar) {
+      wallBar = document.createElement('div');
+      wallBar.className = 'script-bar ct-wallbar hidden';
+      $('#mapWrap').appendChild(wallBar);
+      wallBar.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-wb]'); if (!b) return;
+        const a = b.dataset.wb;
+        if (a === 'done') UI.walls = null;
+        else if (a === 'clear') { if (confirm('Remove every wall, door and window from this map?')) send('fight.wall', { op: 'clear' }); return; }
+        else UI.walls = { mode: a, from: null };
+        renderWallBar(); render(); H.drawMap();
+      });
+    }
+    if (UI.walls && !(gm() && F().on)) UI.walls = null;
+    wallBar.classList.toggle('hidden', !UI.walls);
+    if (!UI.walls) { wallBar.innerHTML = ''; return; }
+    const n = ((st().map || {}).walls || []).length, T = UI.walls;
+    wallBar.innerHTML = `<b>🧱 Walls</b>${[['wall', 'Wall'], ['door', 'Door'], ['window', 'Window'], ['toggle', 'Open / close'], ['erase', 'Erase']].map(([k, l]) => `<button class="btn tiny ${T.mode === k ? 'primary' : 'ghost'}" data-wb="${k}">${l}</button>`).join('')}
+      <span class="muted" title="${T.mode === 'wall' ? 'Click corner to corner; Esc or the same corner again ends a run' : T.mode === 'door' || T.mode === 'window' ? 'Click its two ends' : 'Click next to one'}">${n} on this map</span>
+      ${n ? '<button class="btn tiny ghost" data-wb="clear">Clear walls</button>' : ''}<button class="btn tiny" data-wb="done">Done</button>`;
+  }
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('[data-ct-walls]')) return;
+    UI.walls = UI.walls ? null : { mode: 'wall', from: null };
+    renderWallBar(); render(); H.drawMap();
+    const b = e.target.closest('[data-ct-walls]'); b.classList.toggle('primary', !!UI.walls); b.setAttribute('aria-pressed', String(!!UI.walls));
+  });
   // the GM's wall tool (issue #93): click corner to corner; door and window are one segment each; erase or open/close
   // by clicking next to one. Escape (or clicking the last corner again) ends a run of walls.
   const nearestWall = (gx, gy, kinds) => {
@@ -731,6 +756,6 @@
     raf = requestAnimationFrame(step);
   }
 
-  window.HTC = { render, down, tap, hover, under, over };
+  window.HTC = { render, down, tap, hover, under, over, wallsButton };
   if (st()) render();
 })();
