@@ -538,6 +538,23 @@
       </div>`;
     }
 
+    // class resources (audit 3.2-3.11): rages, superiority dice, Second Wind... from SW5e's class tables, spent and
+    // given back here (the combat view reads the same list), plus each class's table values at its level
+    function classResourcesBox(ch, ro) {
+      const rows = R.resourceRows(ch), miss = R.missingClassResources(ch), tbl = R.classTableAt(ch);
+      if (!rows.length && !miss.length && !tbl.length) return '';
+      const refill = { short: 'short rest', long: 'long rest', turn: 'each turn' };
+      return `<div class="box class-res" style="margin-top:12px"><h4>Class resources <span class="spacer"></span>${!ro && miss.length
+        ? `<button class="btn tiny" data-act="add-class-res" title="${esc(miss.map(p => p.name).join(', '))}">＋ Add ${miss.map(p => esc(p.name)).join(', ')}</button>` : ''}</h4>
+        ${rows.length ? `<div class="list-rows">${rows.map(r => `<div class="lr res-row">
+          <span class="nm${r.die ? ' rollable' : ''}" ${r.die ? `data-roll="1${esc(r.die)}" data-label="${esc(r.name)}" title="Roll a ${esc(r.die)}"` : ''}>${esc(r.name)}${r.die ? ` <span class="muted">${esc(r.die)}</span>` : ''}</span>
+          ${r.max <= 12 ? `<span class="dots">${Array.from({ length: r.max }, (_, k) => `<span class="dot ${k < r.max - r.used ? 'on' : ''}"></span>`).join('')}</span>` : ''}
+          <span class="bonus">${r.max - r.used}/${r.max}</span>
+          ${!ro ? `<button class="btn tiny" data-act="res-use" data-i="${r.i}" ${r.used >= r.max ? 'disabled' : ''} title="Spend one">Use</button><button class="btn tiny ghost" data-act="res-back" data-i="${r.i}" ${r.used <= 0 ? 'disabled' : ''} title="Get one back">+1</button>` : ''}
+          <span class="muted res-refill">${refill[r.refill] || ''}</span></div>`).join('')}</div>` : '<p class="muted">Nothing to track yet.</p>'}
+        ${tbl.filter(t => t.cols.length).map(t => `<div class="class-tbl"><b>${esc(t.cls)} ${t.level}</b> ${t.cols.map(([h, v]) => `<span><span class="muted">${esc(h)}</span> ${esc(v)}</span>`).join(' · ')}</div>`).join('')}
+      </div>`;
+    }
     if (sub === 'actions') {
       const fMax = ch.force.max !== '' && ch.force.max != null ? +ch.force.max : ci.forceMax;
       const tMax = ch.tech.max !== '' && ch.tech.max != null ? +ch.tech.max : ci.techMax;
@@ -564,6 +581,7 @@
         ${pts('force', fMax, +ch.force.used || 0, '', 'Force Points', `Light DC ${ci.lightDC} / atk ${R.fmt(ci.lightAtk)} · Dark DC ${ci.darkDC} / atk ${R.fmt(ci.darkAtk)}${ci.forceMaxLevel ? ' · max power level ' + ci.forceMaxLevel : ''}`)}
         ${pts('tech', tMax, +ch.tech.used || 0, 'tech', 'Tech Points', `Tech DC ${ci.techDC} / atk ${R.fmt(ci.techAtk)}${ci.techMaxLevel ? ' · max power level ' + ci.techMaxLevel : ''}`)}
       </div>
+      ${classResourcesBox(ch, ro)}
       <div class="box" style="margin-top:12px"><h4>Powers <span class="spacer"></span>${!ro ? `<button class="btn tiny" data-act="pick-power" data-kind="force">＋ force power</button>
           <button class="btn tiny" data-act="pick-power" data-kind="tech">＋ tech power</button>
           <button class="btn tiny ghost" data-act="add-power" title="Add a homebrew power by hand">custom</button>` : ''}</h4>
@@ -720,6 +738,12 @@
       case 'atk': { const at = ch.attacks[i]; roll(d20(R.attackBonus(ch, at)), `${at.name} — attack`, { d20: true, mode: rollModeFromEvent(e), charId: ch.id, kind: 'attack' }); break; }
       case 'dmg': { const at = ch.attacks[i]; roll(R.damageExpr(ch, at), `${at.name} — ${at.type || ''} damage`, { charId: ch.id, kind: 'damage' }); break; }
       case 'crit': { const at = ch.attacks[i]; roll(R.critExpr(R.damageExpr(ch, at)), `${at.name} — CRITICAL ${at.type || ''} damage`, { charId: ch.id, kind: 'damage' }); break; }
+      case 'add-class-res': mutate(c => { c.resources = R.withClassResources(c); }); break;
+      case 'res-use': case 'res-back': mutate(c => {
+        const r = (c.resources || [])[i]; if (!r) return;
+        const row = R.resourceRows(c).find(x => x.i === i), max = row ? row.max : 0;
+        r.used = Math.max(0, Math.min(max, (+r.used || 0) + (a === 'res-use' ? 1 : -1)));
+      }); break;
       case 'power-desc': {
         const pw = ch.powers[i];
         modal(`<h3>✎ ${esc(pw.name || 'Power')}</h3>
