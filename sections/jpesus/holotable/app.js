@@ -1165,14 +1165,18 @@
   // --------------------------------------------------------------------------- scene wipes
   // Classic film-style screen wipes when the GM changes the scene. The old board is snapshotted onto an overlay,
   // the new one is drawn underneath, then the overlay is wiped away. The server picks the style, so everyone
-  // sees the same one. Skipped when the map isn't on screen, or for anyone who turned them off in the 🎨 menu.
+  // sees the same one. Skipped when the map isn't on screen, and (unless switched on in 🎨) on devices set to reduce motion.
   const WIPE_MS = 1100;
   const wipeCanvas = document.createElement('canvas');
   wipeCanvas.id = 'wipeCanvas'; wipeCanvas.setAttribute('aria-hidden', 'true');
   $('#mapWrap').appendChild(wipeCanvas);
   const WIPE = { id: 0 };
-  // each person can turn the wipes off for themselves (🎨 menu); they're on unless switched off
-  const wipesOn = () => store.get('holo.wipes', 'on') !== 'off';
+  // By default the wipes follow the device's "reduce motion" setting; each person's 🎨 switch overrides it either way.
+  const wipesOn = () => {
+    const v = store.get('holo.wipes', null);
+    if (v === 'on' || v === 'off') return v === 'on';
+    return !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  };
   function startWipe(kind) {
     if (S.tab !== 'map' || !canvas.width || !canvas.height || !wipesOn()) return;
     const old = document.createElement('canvas');
