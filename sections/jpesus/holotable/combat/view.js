@@ -1,0 +1,601 @@
+/* HoloTable combat view (off until the GM switches it on): the fight on the map, by clicking.
+   On your turn the squares you can still reach are lit and a click moves you there; the bar under the map lists your
+   attacks (greyed when the action is spent or nothing is in reach); pick one, hover a target to see what you need to
+   roll, click it to attack; End turn passes it on. Everyone watches it happen. The GM plays the creatures the same way,
+   can undo the last step, and switches the whole view on and off.
+   Everything here is a preview: the server decides every action (api/_holotable-fight.js), with the same engine. */
+(() => {
+  const H = window.HT, E = window.HTCombatEngine;
+  if (!H || !E) return;
+  const { $, esc, act, toast } = H;
+  const R = H.R;
+  const UI = { armed: null, target: null, adv: false, dis: false, seen: -1, floats: [], npc: {}, npcAsked: {}, cache: null, busy: false };
+  const st = () => H.S.st;
+  const F = () => (st() && st().fight) || { on: false };
+  const gm = () => !!(st() && st().isGM);
+  const sgn = (n) => (n >= 0 ? '+' : '') + n;
+
+  /* ---------------- the world, as the server will see it ---------------- */
+  function world() {
+    const s = st(), f = F();
+    if (UI.cache && UI.cache.st === s) return UI.cache.w;
+    const w = E.buildWorld({
+      characters: s.characters, entries: s.initiative.entries, active: f.active, turnId: f.turn, round: f.round, tokens: s.map.tokens,
+      unitTokens: Object.fromEntries(Object.entries(f.units || {}).map(([id, u]) => [id, u.token])), npcSpeed: f.npcSpeed,
+      spent: f.spent, defenses: f.defenses || {}, effects: f.effects || [], conc: f.conc || {},
+      npcStats: Object.fromEntries(Object.keys(f.npcDefenses || {}).map((k) => [k, Object.assign({ saves: (f.npcSaves || {})[k] || {}, mods: (f.npcMods || {})[k] || {} }, f.npcDefenses[k])])),
+    }, R);
+    for (const [id, u] of Object.entries(f.units || {})) if (w.units[id] && u.down) w.units[id].down = true;
+    UI.cache = { st: s, w, reach: null };
+    return w;
+  }
+  const cur = () => { const w = world(); return w.turnId ? w.units[w.turnId] : null; };
+  const myTurn = () => { const f = F(), u = cur(); return !!(f.on && u && (gm() ? true : (f.units[u.id] || {}).mine)); };
+  const entry = (id) => st().initiative.entries.find((e) => e.id === id);
+  const unitAt = (gx, gy) => {
+    const w = world();
+    return Object.values(w.units).find((u) => gx >= u.x && gx < u.x + (u.size || 1) && gy >= u.y && gy < u.y + (u.size || 1)) || null;
+  };
+  function reach() {
+    const w = world(), u = cur();
+    if (!u || !myTurn()) return {};
+    if (!UI.cache.reach) UI.cache.reach = E.reachable(w, u.id, E.budget(w).moveLeft);
+    return UI.cache.reach;
+  }
+
+  /* ---------------- attacks: the sheet's, or the creature's stat block (GM) ---------------- */
+  // what the current combatant can do: a character's weapon attacks and the powers the table has data for;
+  // a creature's attacks from its stat block (GM). Weapons keep their own key (the attack row) for fight.attack.
+  function attacks() {
+    const u = cur();
+    if (!u) return [];
+    if (u.charId) {
+      const ch = st().characters[u.charId];
+      if (!ch) return [];
+      const weapons = E.attacksOf(ch, R);
+      const powers = E.abilitiesOf(ch, R, F().lib || {}).filter((a) => a.kind === 'power').map((ab) => ({ key: ab.key, name: ab.name, power: ab,
+        bonus: ab.attack ? ab.attack.bonus : null, damage: ab.damage.map((d) => d.dice + (d.add ? sgn(d.add) : '')).join('+') || (ab.heal ? 'heal ' + ab.heal.dice : ''),
+        type: (ab.damage[0] || {}).type || '', melee: ab.reach || 0, range: ab.range, crit: '' }));
+      return weapons.concat(powers);
+    }
+    if (!gm()) return [];
+    const known = UI.npc[u.id];
+    if (!known) loadCreature(u.id);
+    return ((known && known.attacks) || []).concat(UI.custom && UI.custom.unit === u.id ? [UI.custom.spec] : []);
+  }
+  // the GM's own browser has the creature list (books.js); speed goes to the server once, attacks travel with each attack
+  function loadCreature(id) {
+    const e = entry(id);
+    if (!e || !e.sb || !window.HTB || UI.npc[id]) { if (e && !UI.npc[id]) UI.npc[id] = { attacks: [] }; return; }
+    UI.npc[id] = { attacks: [], loading: true };
+    window.HTB.list('monsters').then((list) => {
+      const m = (list || []).find((x) => x.n === e.sb);
+      const atks = m ? m.b.filter((b) => b.k === 'action').map(E.attackFromBehavior).filter(Boolean).map((a, i) => Object.assign(a, { key: 'sb' + i })) : [];
+      UI.npc[id] = { attacks: atks };
+      const sp = m && /(\d+)\s*f/.exec(m.speed || '');
+      if (m && F().npcSpeed[id] == null && !UI.npcAsked[id]) {
+        // its speed and save bonuses: the ability modifier, or the bonus its stat block lists ("Dex +5")
+        const saves = Object.fromEntries(['str', 'dex', 'con', 'int', 'wis', 'cha'].map((ab) => [ab, Math.floor(((m.ab || {})[ab] - 10) / 2) || 0]));
+        for (const x of m.saves || []) { const mm = /^(str|dex|con|int|wis|cha)\w*\s*([+-]\d+)/i.exec(x); if (mm) saves[mm[1].toLowerCase()] = +mm[2]; }
+        const mods = Object.fromEntries(['str', 'dex', 'con', 'int', 'wis', 'cha'].filter((ab) => Number.isFinite(+(m.ab || {})[ab])).map((ab) => [ab, Math.floor(((m.ab || {})[ab] - 10) / 2)]));
+        UI.npcAsked[id] = true; act('fight.npc', { id, speed: sp ? +sp[1] : 30, saves, mods, resist: m.res || [], immune: m.imm || [], vuln: m.vul || [], condImmune: m.cimm || [] });
+      }
+      render(); H.drawMap();
+    }).catch(() => { UI.npc[id] = { attacks: [] }; render(); });
+  }
+  function customAttack() {
+    const u = cur();
+    H.modal(`<h3>Custom attack</h3>
+      <p class="muted">For ${esc(u.name)}: an attack that isn't in its stat block.</p>
+      <label>Name <input id="ctcName" value="Attack" maxlength="60"></label>
+      <label>Attack bonus <input id="ctcBonus" type="number" value="4"></label>
+      <label>Damage <input id="ctcDmg" value="1d6+2" maxlength="40"></label>
+      <label>Reach (ft) <input id="ctcReach" type="number" value="5" min="0" step="5"></label>
+      <label>Range (ft, normal/long, blank if melee) <input id="ctcRange" placeholder="80/320"></label>
+      <div class="row"><span class="spacer"></span><button class="btn" id="ctcCancel">Cancel</button><button class="btn primary" id="ctcOk">Use it</button></div>`, (box) => {
+      $('#ctcCancel', box).onclick = H.closeModal;
+      $('#ctcOk', box).onclick = () => {
+        const rg = /^(\d+)\s*\/\s*(\d+)$/.exec($('#ctcRange', box).value.trim());
+        const damage = $('#ctcDmg', box).value.replace(/\s+/g, '');
+        UI.custom = { unit: u.id, spec: { key: 'custom', name: $('#ctcName', box).value || 'Attack', bonus: +$('#ctcBonus', box).value || 0, damage,
+          crit: damage.replace(/(\d*)d(\d+)/gi, (_, n, s) => (2 * (+n || 1)) + 'd' + s), type: '', melee: rg ? 0 : +$('#ctcReach', box).value || 5, range: rg ? [+rg[1], +rg[2]] : null } };
+        UI.armed = 'custom';
+        H.closeModal(); render(); H.drawMap();
+      };
+    });
+  }
+  const armedSpec = () => attacks().find((a) => a.key === UI.armed) || null;
+  const targets = (spec) => {
+    const w = world(), u = cur();
+    if (!u || !spec) return [];
+    if (spec.power) {
+      const ab = spec.power;
+      if (ab.area) return [u];   // aimed at a point: always usable when the slot and the points are there
+      return Object.values(w.units).filter((t) => (ab.targets === 'self' ? t.id === u.id : t.id !== u.id && (ab.heal ? t.side === u.side : t.side !== u.side) && !t.down) && E.inReachOf(w, u, t, ab).ok);
+    }
+    return Object.values(w.units).filter((t) => t.id !== u.id && t.side !== u.side && !t.down && E.preview(w, u.id, t.id, spec).legal);
+  };
+  // the line shown before a power is used on someone
+  function powerPreview(w, u, t, ab) {
+    const r = E.inReachOf(w, u, t, ab);
+    if (!r.ok) return { legal: false, why: r.why };
+    const lvl = ab.level + (UI.upcast || 0), cost = Object.entries(ab.cost || {}).map(([k, n]) => `${n + (UI.upcast && k === ab.pool ? UI.upcast : 0)} ${k === 'force' ? 'FP' : k === 'tech' ? 'TP' : k}`).join(', ');
+    let line = `${t.id === u.id ? 'On yourself' : `<b>${esc(t.name)}</b>, ${r.feet} ft`}: `;
+    if (ab.attack) {
+      const pv = E.preview(w, u.id, t.id, { name: ab.name, bonus: ab.attack.bonus, abil: ab.attack.abil, damage: 'x', melee: ab.reach || 0, range: ab.range }, { adv: UI.adv, dis: UI.dis });
+      line += pv.legal ? `you need <b>${pv.need}+</b> on the d20 (${Math.round(pv.chance * 100)}%)` : esc(pv.why);
+    } else if (ab.save) {
+      const sb = (t.saves || {})[ab.save.ability];
+      line += `a DC ${ab.save.dc} ${ab.save.ability.toUpperCase()} save${sb == null ? '' : ` (${sgn(sb)}): it fails on ${Math.max(0, ab.save.dc - 1 - sb)} or less`}`;
+    } else line += ab.heal ? 'healing' : 'no roll';
+    const dmg = ab.damage.length ? ab.damage.map((d) => d.dice + (d.add ? sgn(d.add) : '') + (d.type ? ' ' + d.type : '')).join(' + ') + (UI.upcast && ab.upcast ? ` + ${UI.upcast}×${ab.upcast.damage}` : '') + (ab.save && ab.save.onSave === 'half' ? ', half on a save' : '') : ab.heal ? `${ab.heal.dice}${ab.heal.add ? sgn(ab.heal.add) : ''} hit points back` : '';
+    return { legal: true, html: `${line}${dmg ? `. ${esc(dmg)}` : ''}${cost ? ` · costs ${esc(cost)}` : ''}${lvl !== ab.level ? ` · at level ${lvl}` : ''}.` };
+  }
+
+  // an area is aimed at a point: spheres, cylinders and cubes on a grid corner, cones and lines toward the pointer
+  const aimAt = (ab, gx, gy) => (ab.area.from === 'point' ? { x: Math.round(gx), y: Math.round(gy) } : { x: gx, y: gy });
+  function areaPreview() {
+    const spec = armedSpec(), u = cur();
+    if (!spec || !spec.power || !spec.power.area || !UI.aim || !u) return null;
+    return E.areaHits(world(), u.id, spec.power, UI.aim);
+  }
+
+  /* ---------------- talking to the server ---------------- */
+  async function send(type, payload) {
+    if (UI.busy) return null;
+    UI.busy = true;
+    try { return await act(type, payload); } finally { UI.busy = false; }
+  }
+  async function attack(targetId) {
+    const spec = armedSpec(), u = cur();
+    if (!spec || !u) return;
+    const r = spec.power ? await send('fight.use', Object.assign({ ability: spec.key, upcast: UI.upcast || 0, adv: UI.adv, dis: UI.dis }, spec.power.area ? { point: UI.aim } : { target: targetId }))
+      : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.key : { name: spec.name, bonus: spec.bonus, damage: spec.damage, type: spec.type, melee: spec.melee, range: spec.range } });
+    if (r) { UI.armed = null; UI.target = null; UI.aim = null; UI.adv = UI.dis = false; UI.upcast = 0; render(); }
+  }
+
+  /* ---------------- the bar under the map ---------------- */
+  let bar = null;
+  function ensureBar() {
+    if (bar) return bar;
+    bar = document.createElement('div');
+    bar.className = 'ct-bar';
+    bar.id = 'ctBar';
+    $('#pane-map').appendChild(bar);
+    bar.addEventListener('click', onBar);
+    bar.addEventListener('change', onBarChange);
+    return bar;
+  }
+  let sw = null;
+  function ensureSwitch() {
+    if (sw) return sw;
+    sw = document.createElement('button');
+    sw.className = 'btn small ct-switch'; sw.id = 'ctSwitch'; sw.hidden = true; sw.type = 'button';
+    sw.textContent = '⚔ Combat view';
+    sw.title = 'Turn on the combat view for everyone: click to move, an action bar, and the rules doing the arithmetic. Off again any time.';
+    sw.addEventListener('click', () => send('fight.toggle', { on: true }));
+    $('#mapWrap').appendChild(sw);
+    return sw;
+  }
+  function render() {
+    const s = st();
+    if (!s) return;
+    const f = F(), b = ensureBar();
+    // floating numbers for what just happened (not replayed when the page first loads)
+    const evs = f.events || [];
+    const top = evs.reduce((m, ev) => Math.max(m, ev.seq), 0);
+    if (UI.seen < 0) UI.seen = top;
+    for (const ev of evs) if (ev.seq > UI.seen && ev.kind !== 'move') UI.floats.push({ token: ev.token, kind: ev.kind, amount: ev.amount, t0: performance.now() });
+    UI.seen = Math.max(UI.seen, top);
+    if (UI.floats.length) animate();
+    // off (the default): no bar and no change to the map's layout; the GM alone gets one small switch in its corner
+    const sw = ensureSwitch();
+    sw.hidden = f.on || !gm();
+    if (!f.on) { b.hidden = true; b.innerHTML = ''; UI.floats = []; return; }
+    b.hidden = false;
+    const u = cur(), mine = myTurn(), bud = f.budget, w = world();
+    const who = !f.active ? 'Combat hasn\'t started' : u ? `${esc(u.name)}'s turn` : f.turn ? 'A combatant not on the map' : 'Someone you can\'t see is acting';
+    const chip = (on, label, title) => `<span class="ct-chip ${on ? '' : 'spent'}" title="${esc(title)}">${on ? '' : '<span aria-hidden="true">✕ </span>'}${esc(label)}${on ? '' : ' (used)'}</span>`;
+    let html = `<div class="ct-row"><span class="ct-turn">${f.active ? `Round ${+f.round || 1} · ` : ''}${who}${mine && !gm() ? ' <span class="ct-you">your turn</span>' : ''}</span>`;
+    if (bud) html += `<span class="ct-chips">${chip(bud.moveLeft > 0, `Move ${bud.moveLeft}/${bud.speed} ft`, 'Movement left this turn')}${chip(bud.action, 'Action', 'One action a turn')}${chip(bud.bonus, 'Bonus action', 'One bonus action a turn')}${chip(bud.reaction, 'Reaction', 'One reaction between your turns')}</span>`;
+    html += '<span class="spacer"></span>';
+    html += `<button class="btn small ghost ${UI.ruler ? 'primary' : ''}" data-ct="measure" aria-pressed="${!!UI.ruler}" title="Measure a distance on the map">📏 Measure</button>`;
+    if (mine && u && f.active && (u.conditions || []).includes('Prone')) html += `<button class="btn small" data-ct="stand" title="Standing up costs half your speed">Stand up (${Math.ceil((bud ? bud.speed : 30) / 2 / 5) * 5} ft)</button>`;
+    if (mine && u && f.active && bud && bud.action) for (const o of Object.values(w.units)) {
+      if (!(o.conditions || []).includes('Ignited') || (o.id !== u.id && E.feetBetween(u, o) > E.FT)) continue;
+      html += `<button class="btn small" data-ct="douse" data-id="${esc(o.id)}" title="Takes your action">🔥 Put out the flames${o.id === u.id ? '' : ` on ${esc(o.name)}`}</button>`;
+    }
+    if (mine && u && f.active) html += '<button class="btn small amber" data-ct="end">End turn ⏭</button>';
+    if (gm()) html += `<button class="btn small ghost" data-ct="undo" ${f.undo && f.undo.n ? '' : 'disabled'} title="${esc(f.undo && f.undo.last ? 'Undo: ' + f.undo.last : 'Nothing to undo')}">↶ Undo</button><button class="btn small ghost" data-ct="off" title="Turn the combat view off for everyone">Combat view off</button>`;
+    html += '</div>';
+    // the current combatant's conditions (how long each lasts) and what it is concentrating on
+    if (f.active && u && ((u.conditions || []).length || (f.conc || {})[u.id] || gm())) {
+      const efs = (f.effects || []).filter((ef) => ef.unit === u.id);
+      // what the chip says beyond the name: its level, its fire damage, who caused it, or that the DM hasn't set one
+      const detail = (c) => {
+        const lv = E.LEVELS[c] ? E.levelOf(w, u, c) : 0, burn = c === 'Ignited' ? E.burnOf(w, u) : '';
+        const src = efs.filter((x) => x.condition === c && x.source && w.units[x.source]).map((x) => w.units[x.source].name)[0];
+        const bits = [];
+        if (E.LEVELS[c]) bits.push(lv ? `level ${lv}` : 'no level set');
+        if (c === 'Ignited') bits.push(burn ? `${burn} fire at the end of its turns` : 'no damage set');
+        if (src) bits.push(`by ${src}`);
+        return bits.length ? ` · ${bits.join(', ')}` : '';
+      };
+      const until = (c) => {
+        const ef = efs.find((x) => x.condition === c && x.ends !== 'never');
+        if (!ef) return '';
+        const whose = ef.of === u.id ? 'its' : ef.of && w.units[ef.of] ? `${w.units[ef.of].name}'s` : "someone's";
+        return ` (${ef.save ? `${ef.save.ability.toUpperCase()} save DC ${ef.save.dc} at the end of its turns` : `until the ${ef.ends} of ${whose} ${ef.rounds > 1 ? `turn, ${ef.rounds} rounds` : 'next turn'}`}${ef.conc ? ', while concentrating' : ''})`;
+      };
+      html += `<div class="ct-row ct-conds">${(u.conditions || []).map((c) => `<span class="ct-chip ct-cond" title="${esc((R.CONDITIONS || {})[c] || c)}${esc(until(c))}">${esc(c)}${esc(detail(c))}${E.CONDITION_EFFECTS[c] ? '' : ' <span class="muted">(no automatic effect yet)</span>'}${esc(until(c))}${gm() ? ` <button class="ct-x" data-ct="uncond" data-c="${esc(c)}" title="Take ${esc(c.toLowerCase())} off ${esc(u.name)}" aria-label="Take ${esc(c.toLowerCase())} off">✕</button>` : ''}</span>`).join('')}
+        ${gm() ? '<button class="btn tiny ghost" data-ct="cond" title="Put a condition on a combatant, with its level, its damage or who caused it">＋ Condition</button>' : ''}
+        ${(f.conc || {})[u.id] ? `<span class="ct-chip ct-conc" title="Damage asks for a Con save; dropping to 0 hit points or being incapacitated ends it">Concentrating: ${esc(f.conc[u.id])}</span>` : ''}</div>`;
+    }
+    // the current character's resources (its owner and the GM): use one, or add one
+    if (f.active && u && u.charId && (mine || gm())) {
+      const pools = Object.values(u.pools || {}).filter((r) => r.key !== 'hitdice');
+      html += `<div class="ct-row ct-pools">${pools.map((r) => `<button class="ct-chip ct-pool ${r.used >= r.max ? 'spent' : ''}" data-ct="pool" data-key="${esc(r.key)}" title="${esc(r.name)}: ${r.max - r.used} of ${r.max} left${r.refill === 'short' ? ', back on a short or long rest' : r.refill === 'long' ? ', back on a long rest' : ''}">${esc(r.name)} ${r.max - r.used}/${r.max}${r.die ? ' ' + esc(r.die) : ''}</button>`).join('')}
+        <button class="btn tiny ghost" data-ct="addres" title="Add a resource with a maximum (uses, or a pool of dice)">＋ Resource</button>
+        <button class="btn tiny ghost" data-ct="defs" title="Damage resistances, immunities and vulnerabilities">🛡 ${(() => { const d = (f.defenses || {})[u.charId] || {}; const n = (d.resist || []).length + (d.immune || []).length + (d.vuln || []).length; return n ? `Defences (${n})` : 'Defences'; })()}</button></div>`;
+    }
+    if (!f.active) html += `<div class="ct-row muted">${gm() ? 'Start initiative in the Combat tab to begin.' : 'Waiting for the GM to start initiative.'}</div>`;
+    else if (mine && u) {
+      const atks = attacks();
+      const spent = bud && !bud.action;
+      html += '<div class="ct-row ct-actions" role="group" aria-label="Attacks">';
+      for (const a of atks) {
+        const n = targets(a).length;
+        const slot = a.power ? a.power.use : 'action';
+        const slotSpent = bud && slot !== 'free' && !bud[slot];
+        const pool = a.power && Object.entries(a.power.cost || {})[0];
+        const poorly = pool && (!u.pools[pool[0]] || u.pools[pool[0]].max - u.pools[pool[0]].used < pool[1]);
+        const off = slotSpent || !n || poorly;
+        const why = slotSpent ? `Your ${slot === 'bonus' ? 'bonus action' : slot} is used this turn` : poorly ? `Not enough ${pool[0] === 'force' ? 'force' : pool[0] === 'tech' ? 'tech' : pool[0]} points` : !n ? 'Nothing in reach or range' : a.power && a.power.targets === 'self' ? 'Use it on yourself' : 'Pick a target on the map';
+        const tag = a.power ? (a.power.attack ? sgn(a.power.attack.bonus) : a.power.save ? `DC ${a.power.save.dc}` : '') : sgn(a.bonus);
+        html += `<button class="btn small ct-atk ${a.power ? 'ct-power' : ''} ${UI.armed === a.key ? 'primary' : ''}" data-ct="arm" data-key="${esc(a.key)}" ${off ? 'disabled' : ''} aria-pressed="${UI.armed === a.key}"
+          title="${esc(why)}">${esc(a.name)} <b>${esc(tag)}</b> <span class="muted">${esc(a.damage)}${a.type ? ' ' + esc(a.type) : ''} · ${a.power && a.power.targets === 'self' ? 'self' : a.range ? `${a.range[0]}${a.range[1] !== a.range[0] ? '/' + a.range[1] : ''} ft` : `${a.melee} ft`}${pool ? ` · ${pool[1]} ${pool[0] === 'force' ? 'FP' : pool[0] === 'tech' ? 'TP' : pool[0]}` : ''}${slot !== 'action' ? ` · ${slot === 'bonus' ? 'bonus' : slot}` : ''}</span></button>`;
+      }
+      if (gm() && u.charId) html += '<button class="btn small ghost" data-ct="teach" title="Give the table the numbers for one of this character\'s powers">＋ Power data</button>';
+      if (!atks.length) html += `<span class="muted">${u.charId ? 'No weapon attacks on this sheet.' : UI.npc[u.id] && UI.npc[u.id].loading ? 'Reading the stat block…' : 'No attacks found in the stat block.'}</span>`;
+      if (gm() && !u.charId) html += '<button class="btn small ghost" data-ct="custom">＋ Custom attack</button>';
+      html += `<label class="ct-tog"><input type="checkbox" data-ct="adv" ${UI.adv ? 'checked' : ''}> Advantage</label><label class="ct-tog"><input type="checkbox" data-ct="dis" ${UI.dis ? 'checked' : ''}> Disadvantage</label></div>`;
+      const spec = armedSpec();
+      if (spec && spec.power && spec.power.area) {
+        const ab = spec.power, hits = areaPreview();
+        const up = ab.upcast && ab.maxLevel > ab.level ? `<label class="ct-tog">Level <select data-ct="upcast">${Array.from({ length: ab.maxLevel - ab.level + 1 }, (_, i) => `<option value="${i}" ${UI.upcast === i ? 'selected' : ''}>${ab.level + i}</option>`).join('')}</select></label>` : '';
+        const what = `${ab.area.size} ft ${ab.area.shape}${ab.area.shape === 'line' ? ` (${ab.area.width} ft wide)` : ''}`;
+        const names = hits && hits.ok ? hits.units.map((id) => w.units[id].name) : [];
+        html += `<div class="ct-row ct-preview" aria-live="polite">${!hits ? `<span>${esc(ab.name)} (${esc(what)}): point at where it goes${ab.area.from === 'point' ? ` (up to ${ab.range ? ab.range[1] : ab.reach} ft away)` : ''}.</span>${up}<button class="btn tiny ghost" data-ct="disarm">Cancel</button>`
+          : !hits.ok ? `<span>${esc(hits.why)}</span>${up}`
+          : `<span>${esc(ab.name)}, ${esc(what)}: catches ${names.length ? `<b>${esc(names.join(', '))}</b>` : 'no one you can see'}${ab.save ? ` · DC ${ab.save.dc} ${ab.save.ability.toUpperCase()} save${ab.save.onSave === 'half' ? ', half on a success' : ''}` : ''}.</span>${up}<button class="btn small primary" data-ct="go">Use</button>`}</div>`;
+      } else if (spec && spec.power) {
+        const ab = spec.power, self = ab.targets === 'self';
+        const t = self ? u : UI.target && w.units[UI.target];
+        const up = ab.upcast && ab.maxLevel > ab.level ? `<label class="ct-tog">Level <select data-ct="upcast">${Array.from({ length: ab.maxLevel - ab.level + 1 }, (_, i) => `<option value="${i}" ${UI.upcast === i ? 'selected' : ''}>${ab.level + i}</option>`).join('')}</select></label>` : '';
+        const pv = t && powerPreview(w, u, t, ab);
+        html += `<div class="ct-row ct-preview" aria-live="polite">${!t ? `<span>${esc(ab.name)}: pick a target on the map (lit).</span>${up}<button class="btn tiny ghost" data-ct="disarm">Cancel</button>`
+          : !pv.legal ? `<span>${esc(pv.why)}</span>` : `<span>${pv.html}</span>${up}<button class="btn small primary" data-ct="go">Use</button>`}</div>`;
+        if (self && !UI.target) UI.target = u.id;
+      } else if (spec) {
+        const t = UI.target && w.units[UI.target];
+        const pv = t && E.preview(w, u.id, t.id, spec, { adv: UI.adv, dis: UI.dis });
+        html += `<div class="ct-row ct-preview" aria-live="polite">${!t ? `<span>${esc(spec.name)}: pick a target on the map (lit in red).</span><button class="btn tiny ghost" data-ct="disarm">Cancel</button>`
+          : !pv.legal ? `<span>${esc(pv.why)}</span>`
+          : `<span><b>${esc(t.name)}</b>, ${pv.feet} ft: you need <b>${pv.need}+</b> on the d20 (${Math.round(pv.chance * 100)}%)${pv.mode !== 'normal' ? ` · ${pv.mode === 'adv' ? 'advantage' : 'disadvantage'}: ${esc(pv.tilts.map((x) => x.text).join(', '))}` : ''}${pv.weak ? ` · weakened: −${pv.weak}` : ''}. Hit: ${esc(spec.damage)}${spec.type ? ' ' + esc(spec.type) : ''}.</span>
+             <button class="btn small primary" data-ct="go">Attack</button>`}</div>`;
+      } else if (bud && bud.moveLeft > 0) html += `<div class="ct-row muted ct-hint">Tap a lit square to move there, or pick an attack.</div>`;
+    }
+    b.innerHTML = html;
+  }
+  function onBarChange(e) {
+    const el = e.target.closest('[data-ct=upcast]');
+    if (el) { UI.upcast = +el.value || 0; render(); }
+  }
+  function onBar(e) {
+    const el = e.target.closest('[data-ct]');
+    if (!el) return;
+    const k = el.dataset.ct;
+    if (k === 'on' || k === 'off') return send('fight.toggle', { on: k === 'on' });
+    if (k === 'undo') return send('fight.undo', {});
+    if (k === 'end') { UI.armed = UI.target = null; return send('fight.end', {}); }
+    if (k === 'stand') return send('fight.stand', {});
+    if (k === 'douse') return send('fight.douse', { target: el.dataset.id });
+    if (k === 'cond') return conditionModal();
+    if (k === 'uncond') { const u = cur(); return u && send('fight.condition', { unit: u.id, condition: el.dataset.c, op: 'remove' }); }
+    if (k === 'custom') return customAttack();
+    if (k === 'pool') return poolModal(el.dataset.key);
+    if (k === 'addres') return resourceModal();
+    if (k === 'defs') return defencesModal();
+    if (k === 'arm') { UI.armed = UI.armed === el.dataset.key ? null : el.dataset.key; UI.target = null; UI.upcast = 0; render(); return H.drawMap(); }
+    if (k === 'disarm') { UI.armed = UI.target = UI.aim = null; render(); return H.drawMap(); }
+    if (k === 'adv' || k === 'dis') { UI[k] = el.checked; return render(); }
+    if (k === 'teach') return teachModal();
+    if (k === 'go' && (UI.target || UI.aim)) return attack(UI.target);
+    if (k === 'measure') { UI.ruler = UI.ruler ? null : { a: null, b: null }; render(); return H.drawMap(); }
+  }
+
+  /* ---------------- teaching the table a power's numbers (issue #73) ---------------- */
+  const ABN = { strength: 'str', dexterity: 'dex', constitution: 'con', intelligence: 'int', wisdom: 'wis', charisma: 'cha' };
+  // a first guess from the description on the sheet: dice and damage type, the save, the range; the GM checks it
+  function suggest(pw) {
+    const t = String(pw.description || '') + ' ' + String(pw.notes || '');
+    const dmg = /(\d+d\d+)(?:\s*\+\s*your [a-z]+ modifier)?\s+([a-z]+)\s+damage/i.exec(t);
+    const sv = /(strength|dexterity|constitution|intelligence|wisdom|charisma) saving throw/i.exec(t);
+    const rg = /range[^0-9]{0,12}(\d+)\s*(?:feet|ft)/i.exec(t) || /within (\d+) feet/i.exec(t);
+    const up = /(?:higher level|each (?:slot )?level above)[^.]*?(\d+d\d+)/i.exec(t);
+    return {
+      use: /bonus action/i.test(t) ? 'bonus' : /reaction/i.test(t) && !/action/i.test(t.replace(/reaction/ig, '')) ? 'reaction' : 'action',
+      range: rg ? +rg[1] : /\bself\b/i.test(t) ? 'self' : 30,
+      roll: /power attack/i.test(t) ? 'attack' : sv ? 'save' : 'none', saveAb: sv ? ABN[sv[1].toLowerCase()] : 'dex', half: /half as much/i.test(t),
+      dice: dmg ? dmg[1] : '', type: dmg ? dmg[2].toLowerCase() : '', heal: /regains?.{0,30}hit points/i.test(t) && !dmg ? ((/(\d+d\d+)/.exec(t) || [])[1] || '') : '',
+      upcast: up ? up[1] : '', concentration: /concentration/i.test(t),
+    };
+  }
+  function teachModal() {
+    const u = cur(), ch = u && st().characters[u.charId];
+    if (!ch) return;
+    const lib = F().lib || {};
+    const pws = (ch.powers || []).filter((p) => p.name);
+    if (!pws.length) return toast(`${u.name} has no powers on the sheet.`, true);
+    const pick = pws.find((p) => !lib[p.name.toLowerCase()]) || pws[0];
+    const draw = (pw) => {
+      const have = lib[pw.name.toLowerCase()], g = suggest(pw);
+      const v = have ? { use: have.use, range: have.targets === 'self' ? 'self' : have.range ? have.range[0] : have.reach || 5, roll: have.attack ? 'attack' : have.save ? 'save' : 'none',
+        saveAb: have.save ? have.save.ability : 'dex', half: !!(have.save && have.save.onSave === 'half'), dice: (have.damage[0] || {}).dice || '', type: (have.damage[0] || {}).type || '',
+        heal: have.heal ? have.heal.dice : '', upcast: have.upcast ? have.upcast.damage : '', concentration: have.concentration } : g;
+      const opt = (val, cur, label) => `<option value="${esc(val)}" ${String(val) === String(cur) ? 'selected' : ''}>${label}</option>`;   // raw value compared, escaped when written
+      H.modal(`<h3>Power data</h3>
+        <p class="muted">The numbers the combat view uses for one of ${esc(u.name)}'s powers. ${have ? 'The table already has data for this one.' : 'A first guess from its description on the sheet: check it before saving.'} Without data, a power still works from the sheet as before.</p>
+        <label>Power <select id="ctkPw">${pws.map((p) => opt(p.name, pw.name, `${esc(p.name)}${lib[p.name.toLowerCase()] ? ' ✓' : ''}`)).join('')}</select></label>
+        <div class="row2"><label>Takes <select id="ctkUse">${opt('action', v.use, 'an action')}${opt('bonus', v.use, 'a bonus action')}${opt('reaction', v.use, 'a reaction')}</select></label>
+        <label>Range (ft), or "self" <input id="ctkRange" value="${esc(v.range)}"></label></div>
+        <div class="row2"><label>Roll <select id="ctkRoll">${opt('attack', v.roll, 'an attack roll')}${opt('save', v.roll, 'a saving throw')}${opt('none', v.roll, 'none')}</select></label>
+        <label>Save <select id="ctkSave">${['str', 'dex', 'con', 'int', 'wis', 'cha'].map((a) => opt(a, v.saveAb, a.toUpperCase())).join('')}</select></label></div>
+        <label class="check"><input type="checkbox" id="ctkHalf" ${v.half ? 'checked' : ''}> Half damage on a successful save</label>
+        <div class="row2"><label>Damage dice <input id="ctkDice" value="${esc(v.dice)}" placeholder="2d6"></label><label>Damage type <input id="ctkType" value="${esc(v.type)}" placeholder="force"></label></div>
+        <div class="row2"><label>Healing dice (instead of damage) <input id="ctkHeal" value="${esc(v.heal)}" placeholder="1d8"></label><label>Extra dice per level higher <input id="ctkUp" value="${esc(v.upcast)}" placeholder="1d6"></label></div>
+        <label class="check"><input type="checkbox" id="ctkConc" ${v.concentration ? 'checked' : ''}> Concentration</label>
+        <div class="row">${have ? '<button class="btn danger" id="ctkDel">Forget it</button>' : ''}<span class="spacer"></span><button class="btn" id="ctkCancel">Cancel</button><button class="btn primary" id="ctkOk">Save</button></div>`, (box) => {
+        $('#ctkPw', box).onchange = (e) => draw(pws.find((p) => p.name === e.target.value) || pw);
+        $('#ctkCancel', box).onclick = H.closeModal;
+        if (have) $('#ctkDel', box).onclick = async () => { H.closeModal(); await send('fight.ability', { name: pw.name, data: null }); };
+        $('#ctkOk', box).onclick = async () => {
+          const rg = $('#ctkRange', box).value.trim().toLowerCase(), roll = $('#ctkRoll', box).value;
+          const data = { use: $('#ctkUse', box).value, targets: rg === 'self' ? 'self' : 1, concentration: $('#ctkConc', box).checked,
+            range: rg !== 'self' && +rg > 5 ? [+rg, +rg] : null, reach: rg !== 'self' && +rg <= 5 ? 5 : null,
+            attack: roll === 'attack' ? { bonus: 'power' } : null, save: roll === 'save' ? { ability: $('#ctkSave', box).value, dc: 'power', onSave: $('#ctkHalf', box).checked ? 'half' : 'none' } : null,
+            damage: $('#ctkDice', box).value.trim() ? [{ dice: $('#ctkDice', box).value.trim(), type: $('#ctkType', box).value.trim() }] : [],
+            heal: $('#ctkHeal', box).value.trim() ? { dice: $('#ctkHeal', box).value.trim(), add: null } : null,
+            upcast: $('#ctkUp', box).value.trim() ? { damage: $('#ctkUp', box).value.trim() } : null };
+          H.closeModal();
+          await send('fight.ability', { name: pw.name, data });
+        };
+      });
+    };
+    draw(pick);
+  }
+
+  /* ---------------- a character's damage defences (audit 5.10) ---------------- */
+  function defencesModal() {
+    const u = cur();
+    if (!u || !u.charId) return;
+    const d = (F().defenses || {})[u.charId] || {}, on = (list, t) => (d[list] || []).some((x) => x.type === t);
+    const row = (list, label) => `<div class="lbl">${label}</div><div class="ct-types">${E.DAMAGE.map((t) => `<label class="check"><input type="checkbox" data-l="${list}" value="${t}" ${on(list, t) ? 'checked' : ''}> ${t}</label>`).join('')}</div>`;
+    H.modal(`<h3>${esc(u.name)}: damage defences</h3>
+      <p class="muted">Applied when ${esc(u.name)} takes damage in the combat view: resisted is halved, immune is ignored, vulnerable is doubled.</p>
+      ${row('resist', 'Resistant to')}${row('immune', 'Immune to')}${row('vuln', 'Vulnerable to')}
+      <div class="row"><span class="spacer"></span><button class="btn" id="ctdCancel">Cancel</button><button class="btn primary" id="ctdOk">Save</button></div>`, (box) => {
+      $('#ctdCancel', box).onclick = H.closeModal;
+      $('#ctdOk', box).onclick = async () => {
+        const pick = (l) => [...box.querySelectorAll(`input[data-l=${l}]:checked`)].map((x) => x.value);
+        H.closeModal();
+        await send('fight.defenses', { charId: u.charId, resist: pick('resist'), immune: pick('immune'), vuln: pick('vuln') });
+      };
+    });
+  }
+
+  /* ---------------- resources (audit 3.1) ---------------- */
+  function poolModal(key) {
+    const u = cur(), r = u && u.pools[key];
+    if (!r) return;
+    const own = r.from === 'sheet';
+    H.modal(`<h3>${esc(r.name)}</h3>
+      <p>${r.max - r.used} of ${r.max} left${r.die ? ` (${esc(r.die)})` : ''}. ${r.refill === 'short' ? 'Comes back on a short or a long rest.' : r.refill === 'long' ? 'Comes back on a long rest.' : r.refill === 'turn' ? 'Comes back at the start of each turn.' : 'Refilled by hand.'}</p>
+      <div class="row"><button class="btn primary" id="ctpUse" ${r.used >= r.max ? 'disabled' : ''}>Use one</button>
+        ${own ? '<button class="btn danger" id="ctpDel">Remove it</button>' : ''}<span class="spacer"></span><button class="btn" id="ctpClose">Close</button></div>`, (box) => {
+      $('#ctpClose', box).onclick = H.closeModal;
+      $('#ctpUse', box).onclick = async () => { H.closeModal(); await send('fight.spend', { charId: u.charId, key }); };
+      if (own) $('#ctpDel', box).onclick = async () => { if (!confirm(`Remove ${r.name} from ${u.name}?`)) return; H.closeModal(); await send('fight.resource', { charId: u.charId, op: 'remove', key }); };
+    });
+  }
+  function resourceModal() {
+    const u = cur();
+    if (!u || !u.charId) return;
+    H.modal(`<h3>New resource for ${esc(u.name)}</h3>
+      <p class="muted">Anything with a maximum that gets used up: uses of a feature, or a pool of dice.</p>
+      <label>Name <input id="ctrName" maxlength="60" placeholder="Second Wind"></label>
+      <label>Maximum <input id="ctrMax" type="number" min="1" max="999" value="1"></label>
+      <label>Die (for a pool of dice) <select id="ctrDie"><option value="">none</option>${['d4', 'd6', 'd8', 'd10', 'd12'].map((d) => `<option>${d}</option>`).join('')}</select></label>
+      <label>Comes back <select id="ctrRefill"><option value="short">on a short or long rest</option><option value="long">on a long rest</option><option value="turn">every turn</option><option value="manual">by hand</option></select></label>
+      <div class="row"><span class="spacer"></span><button class="btn" id="ctrCancel">Cancel</button><button class="btn primary" id="ctrOk">Add it</button></div>`, (box) => {
+      $('#ctrCancel', box).onclick = H.closeModal;
+      $('#ctrOk', box).onclick = async () => {
+        const name = $('#ctrName', box).value.trim();
+        if (!name) return toast('Give it a name.', true);
+        const res = { key: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30), name, max: +$('#ctrMax', box).value || 1, used: 0,
+          die: $('#ctrDie', box).value || undefined, refill: $('#ctrRefill', box).value };
+        H.closeModal();
+        await send('fight.resource', { charId: u.charId, res });
+      };
+    });
+  }
+
+  // The DM's form: a condition on any combatant, asking for a level (Slowed, Corroded), a damage amount (Ignited), and
+  // optionally who caused it (it matters for Charmed and Grappled). It lasts until the DM takes it off.
+  function conditionModal() {
+    const w = world(), u = cur();
+    const units = Object.values(w.units);
+    const names = Array.from(new Set(Object.keys(R.CONDITIONS || {}).concat(Object.keys(E.CONDITION_EFFECTS), ['Deafened', 'Diseased']))).filter((c) => c !== 'Exhaustion').sort();
+    const opts = (sel) => units.map((x) => `<option value="${esc(x.id)}" ${sel === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('');
+    H.modal(`<h3>Put a condition on</h3>
+      <label>Who <select id="ctkUnit">${opts(u ? u.id : '')}</select></label>
+      <label>Condition <select id="ctkCond">${names.map((c) => `<option>${esc(c)}</option>`).join('')}</select></label>
+      <label id="ctkLvlRow" hidden>Level <select id="ctkLvl"></select></label>
+      <label id="ctkAmtRow" hidden>Fire damage at the end of each of its turns <input id="ctkAmt" maxlength="20" placeholder="1d6"></label>
+      <label>Caused by <span class="muted">(optional; a charm or a grapple with a cause ends properly)</span> <select id="ctkSrc"><option value="">nobody recorded</option>${opts('')}</select></label>
+      <p class="muted">It lasts until you take it off (✕ on its chip). Slowed and Corroded add to any level already there.</p>
+      <div class="row"><span class="spacer"></span><button class="btn" id="ctkCancel">Cancel</button><button class="btn primary" id="ctkOk">Put it on</button></div>`, (box) => {
+      const sync = () => {
+        const c = $('#ctkCond', box).value, top = (E.LEVELS || {})[c];
+        $('#ctkLvlRow', box).hidden = !top; $('#ctkAmtRow', box).hidden = c !== 'Ignited';
+        if (top) $('#ctkLvl', box).innerHTML = Array.from({ length: top }, (_, i) => `<option>${i + 1}</option>`).join('');
+      };
+      $('#ctkCond', box).onchange = sync; sync();
+      $('#ctkCancel', box).onclick = H.closeModal;
+      $('#ctkOk', box).onclick = async () => {
+        const c = $('#ctkCond', box).value;
+        if (c === 'Ignited' && !$('#ctkAmt', box).value.trim()) return toast('How much fire damage? Like 1d6, or 5.', true);
+        H.closeModal();
+        await send('fight.condition', { unit: $('#ctkUnit', box).value, condition: c, level: (E.LEVELS || {})[c] ? +$('#ctkLvl', box).value : 0,
+          amount: c === 'Ignited' ? $('#ctkAmt', box).value.trim() : '', source: $('#ctkSrc', box).value || null });
+      };
+    });
+  }
+
+  /* ---------------- on the map (app.js calls these) ---------------- */
+  // pointer down: claims the click only when it's an attack on a target, or a player's own token on their turn
+  function down(gx, gy, e) {
+    if (!F().on) return false;
+    if (UI.ruler) {   // two taps (or a click and a click): from here to there
+      if (!UI.ruler.a || UI.ruler.b) UI.ruler = { a: { x: gx, y: gy }, b: null, live: { x: gx, y: gy } };
+      else UI.ruler.b = { x: gx, y: gy };
+      H.drawMap(); return true;
+    }
+    if (!myTurn()) return false;
+    const spec = armedSpec();
+    if (spec && spec.power && spec.power.area) {
+      UI.aim = aimAt(spec.power, gx, gy); render(); H.drawMap();
+      if (e.pointerType === 'mouse') { const h = areaPreview(); if (h && h.ok) attack(null); }
+      return true;
+    }
+    const t = unitAt(gx, gy), u = cur();
+    if (UI.armed && t && t.id !== u.id) {
+      const legal = targets(armedSpec()).some((x) => x.id === t.id);
+      if (!legal) { UI.target = t.id; render(); return true; }
+      if (e.pointerType === 'mouse' && UI.target === t.id) { attack(t.id); return true; }
+      UI.target = t.id; render(); H.drawMap();
+      if (e.pointerType === 'mouse') attack(t.id);
+      return true;
+    }
+    if (t && t.id === u.id && !gm()) { UI.armed = UI.target = null; render(); return true; }
+    return false;
+  }
+  // a tap on empty map (no pan): move there if it's lit
+  function tap(gx, gy) {
+    if (!F().on || !myTurn()) return false;
+    const x = Math.floor(gx), y = Math.floor(gy);
+    if (UI.armed) { UI.armed = UI.target = null; render(); H.drawMap(); return true; }
+    if (reach()[`${x},${y}`] === undefined) return false;
+    send('fight.move', { x, y });
+    return true;
+  }
+  function hover(gx, gy) {
+    if (!F().on) return;
+    if (UI.ruler && UI.ruler.a && !UI.ruler.b) { UI.ruler.live = { x: gx, y: gy }; H.drawMap(); return; }
+    if (!myTurn()) return;
+    const spec = armedSpec();
+    if (spec && spec.power && spec.power.area) { const a = aimAt(spec.power, gx, gy); if (!UI.aim || a.x !== UI.aim.x || a.y !== UI.aim.y) { UI.aim = a; render(); H.drawMap(); } return; }
+    if (!UI.armed) {   // the cost of a lit square
+      const k = `${Math.floor(gx)},${Math.floor(gy)}`, c = reach()[k];
+      if ((c === undefined ? null : k) !== (UI.hoverSq && UI.hoverSq.k)) { UI.hoverSq = c === undefined ? null : { k, c }; H.drawMap(); }
+      return;
+    }
+    const t = unitAt(gx, gy), id = t && t.id !== (cur() || {}).id ? t.id : null;
+    if (id !== UI.target && (id || UI.target)) { UI.target = id; render(); H.drawMap(); }
+  }
+  function cssVar(name, fallback) { const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return /^#[0-9a-f]{6}$/i.test(v) ? v : fallback; }
+  const alpha = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
+  // under the tokens: the squares you can reach
+  function under(ctx, g, z) {
+    if (!F().on || !myTurn()) return;
+    const holo = cssVar('--holo', '#4fc3f7'), dim = UI.armed ? 0.45 : 1;   // fainter while an attack is picked
+    ctx.save();
+    ctx.fillStyle = alpha(holo, 0.16 * dim); ctx.strokeStyle = alpha(holo, 0.55 * dim); ctx.lineWidth = 1 / z;
+    for (const k of Object.keys(reach())) {
+      const [x, y] = k.split(',').map(Number);
+      ctx.fillRect(x * g + 2, y * g + 2, g - 4, g - 4); ctx.strokeRect(x * g + 2, y * g + 2, g - 4, g - 4);
+    }
+    ctx.restore();
+  }
+  // over the tokens: who you can hit, the target you're pointing at, and what just happened
+  function over(ctx, g, z) {
+    const f = F();
+    if (!f.on) return;
+    const w = world();
+    const ring = (u, color, width, dash) => {
+      const s = (u.size || 1) * g, cx = u.x * g + s / 2, cy = u.y * g + s / 2;
+      ctx.beginPath(); ctx.arc(cx, cy, s / 2 + 2, 0, Math.PI * 2);
+      ctx.setLineDash(dash ? [6 / z, 4 / z] : []); ctx.lineWidth = width / Math.min(1, z); ctx.strokeStyle = color; ctx.stroke(); ctx.setLineDash([]);
+    };
+    ctx.save();
+    const armedArea = (armedSpec() || {}).power && armedSpec().power.area;
+    if (myTurn() && UI.armed && !armedArea) {   // an area shows its template and catch instead
+      const red = cssVar('--red', '#ef5350');
+      for (const t of targets(armedSpec())) ring(t, alpha(red, 0.9), 2, t.id !== UI.target);
+      const t = UI.target && w.units[UI.target];
+      if (t) ring(t, '#ffffff', 3, false);
+    }
+    // the template of an area power being aimed, and who it catches
+    const hits = myTurn() ? areaPreview() : null;
+    if (hits && hits.ok) {
+      const red = cssVar('--red', '#ef5350');
+      ctx.fillStyle = alpha(red, 0.22); ctx.strokeStyle = alpha(red, 0.7); ctx.lineWidth = 1 / z;
+      for (const [x, y] of hits.squares) { ctx.fillRect(x * g, y * g, g, g); ctx.strokeRect(x * g, y * g, g, g); }
+      for (const id of hits.units) ring(w.units[id], '#ffffff', 2, false);
+    }
+    // the cost of the lit square under the pointer
+    if (UI.hoverSq && myTurn() && !UI.armed) {
+      const [x, y] = UI.hoverSq.k.split(',').map(Number);
+      label(ctx, `${UI.hoverSq.c} ft`, x * g + g / 2, y * g + g / 2, z, g);
+    }
+    // the ruler
+    const R0 = UI.ruler;
+    if (R0 && R0.a) {
+      const b = R0.b || R0.live || R0.a, ax = (Math.floor(R0.a.x) + 0.5) * g, ay = (Math.floor(R0.a.y) + 0.5) * g, bx = (Math.floor(b.x) + 0.5) * g, by = (Math.floor(b.y) + 0.5) * g;
+      ctx.strokeStyle = cssVar('--amber', '#ffb74d'); ctx.lineWidth = 3 / z; ctx.setLineDash([8 / z, 6 / z]);
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.setLineDash([]);
+      label(ctx, `${E.ruler(R0.a, b)} ft`, (ax + bx) / 2, (ay + by) / 2, z, g);
+    }
+    // floating results over tokens, for 1.6 s
+    const tnow = performance.now();
+    UI.floats = UI.floats.filter((fl) => tnow - fl.t0 < 1600);
+    for (const fl of UI.floats) {
+      const tok = st().map.tokens.find((t) => t.id === fl.token);
+      if (!tok) continue;
+      const p = (tnow - fl.t0) / 1600, s = (tok.size || 1) * g;
+      const text = fl.kind === 'miss' ? 'Miss' : fl.kind === 'heal' ? `+${fl.amount}` : fl.kind === 'crit' ? `Critical −${fl.amount}` : `−${fl.amount}`;
+      ctx.globalAlpha = 1 - p * p;
+      ctx.font = `700 ${Math.max(14 / z, g * 0.32)}px "Exo 2", "Segoe UI", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.lineWidth = 4 / z; ctx.strokeStyle = 'rgba(0,0,0,.85)';
+      const x = tok.x * g + s / 2, y = tok.y * g - p * g * 0.6;
+      ctx.strokeText(text, x, y);
+      ctx.fillStyle = fl.kind === 'miss' ? '#e0e0e0' : fl.kind === 'heal' ? '#7ee787' : fl.kind === 'crit' ? cssVar('--amber', '#ffb74d') : '#ff6e6e';
+      ctx.fillText(text, x, y);
+    }
+    ctx.restore();
+  }
+  function label(ctx, text, x, y, z, g) {
+    ctx.font = `700 ${Math.max(12 / z, g * 0.24)}px "Exo 2", "Segoe UI", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 4 / z; ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(text, x, y); ctx.fillStyle = '#ffffff'; ctx.fillText(text, x, y);
+  }
+  let raf = 0;
+  function animate() {
+    if (raf) return;
+    // the loop prunes as it goes, so it stops by itself even when the map isn't drawn (another tab, the view off)
+    const step = () => { const t = performance.now(); UI.floats = UI.floats.filter((fl) => t - fl.t0 < 1600); H.drawMap(); raf = UI.floats.length && F().on ? requestAnimationFrame(step) : 0; };
+    raf = requestAnimationFrame(step);
+  }
+
+  window.HTC = { render, down, tap, hover, under, over };
+  if (st()) render();
+})();
