@@ -85,7 +85,9 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 1000) caps the total size of uploaded 
     red. It waits through scene changes, and plays the moment you press Start in initiative or switch the combat view on.
     Say talks go wrong: the bounty hunter dives behind the crates and the sniper runs up to the balcony.
   - **The other buttons:** Save, Save as new, New blank, Rename and Delete. A table can keep up to 30 scenes.
-  - **Images:** an uploaded image is deleted only once nothing on the table, saved scenes included, uses it.
+  - **Images:** an uploaded image is deleted only once nothing on the table, saved scenes included, uses it, and no
+    kept automatic backup does either. One a backup still shows waits (`ht:imgwait`) until that backup rolls off the
+    list, so restoring a backup never shows a broken map, photo or handout.
 - **Level ups:** the GM grants a level to the party or to chosen characters. Each player gets a pop-up and a guided wizard:
   - **Class:** pick a class or multiclass (multiclassing happens only here, not on the sheet). On reaching level 3 in a
     class, a "Pick <name>" button (Sentinel Calling, Berserker Approach, Monastic Order..., each class's own word) lists
