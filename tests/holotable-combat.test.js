@@ -1406,6 +1406,136 @@ test("0 hit points through the API: the death saves land on the sheet, and undo 
   assert.deepEqual((await sam.state()).characters[avery].deathSaves, { s: 0, f: 0 });
 });
 
+/* ---------------------------------------------------------------- walls and line of sight (issue #93) */
+test("walls: segments cross; line of sight goes round a wall's end, not through it; doors and windows", () => {
+  assert.equal(E.crosses([0, 0], [4, 4], [0, 4], [4, 0]), true);
+  assert.equal(E.crosses([0, 0], [1, 1], [2, 0], [2, 4]), false);
+  assert.equal(E.crosses([0, 2], [4, 2], [2, 2], [2, 6]), true, "touching a wall's end counts");
+  const ava = unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 }), r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 4, y: 0 });
+  const wall = (o) => Object.assign({ a: [2, -3], b: [2, 3], kind: "wall" }, o);
+  assert.equal(E.sees(world([ava, r1], "ava"), ava, r1), true, "no walls: everyone sees everyone");
+  assert.equal(E.sees(world([ava, r1], "ava", { walls: [wall()] }), ava, r1), false);
+  assert.equal(E.sees(world([ava, r1], "ava", { walls: [wall({ b: [2, 0.5] })] }), ava, r1), true, "past the end of a short wall");
+  assert.equal(E.sees(world([ava, r1], "ava", { walls: [wall({ kind: "door", open: false })] }), ava, r1), false);
+  assert.equal(E.sees(world([ava, r1], "ava", { walls: [wall({ kind: "door", open: true })] }), ava, r1), true);
+  assert.equal(E.sees(world([ava, r1], "ava", { walls: [wall({ kind: "window" })] }), ava, r1), true, "a window doesn't block sight");
+  assert.deepEqual(E.cleanWalls([{ a: [1.234, 2], b: [1.234, 5], kind: "door", open: 1 }, { a: [1, 1], b: [1, 1] }, { a: [0, 0], b: [3, 0], kind: "lava" }]),
+    [{ id: "", a: [1.23, 2], b: [1.23, 5], kind: "door", open: true }]);
+});
+
+test("walls: movement can't cross a wall, a window or a closed door; it goes round, or through an open door", () => {
+  const ava = unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 });
+  const w = (walls) => world([ava], "ava", { walls });
+  assert.equal(E.reachable(w([]), "ava", 30)["3,0"], 15);
+  assert.equal(E.reachable(w([{ a: [2, -9], b: [2, 9], kind: "wall" }]), "ava", 30)["3,0"], undefined, "a long wall in the way");
+  assert.equal(E.reachable(w([{ a: [2, -9], b: [2, 9], kind: "window" }]), "ava", 30)["3,0"], undefined, "a window too");
+  const doorway = (open) => [{ a: [2, -9], b: [2, 0], kind: "wall" }, { a: [2, 0], b: [2, 1], kind: "door", open }, { a: [2, 1], b: [2, 9], kind: "wall" }];
+  assert.equal(E.reachable(w(doorway(true)), "ava", 30)["3,0"], 15, "through the open door");
+  assert.equal(E.reachable(w(doorway(false)), "ava", 30)["3,0"], undefined, "not through the closed one");
+  assert.equal(E.reachable(w([{ a: [2, 1], b: [2, 9], kind: "wall" }]), "ava", 30)["3,1"] > 10, true, "round the wall's end costs more than straight");
+  const r = E.apply(w([{ a: [2, -9], b: [2, 9], kind: "wall" }]), { type: "move", unit: "ava", x: 3, y: 0 }, dice().roll);
+  assert.equal(r.ok, false);
+});
+
+test("walls: Frightened counts only while its source is in sight; in sight, no moving closer to it", () => {
+  const ava = (o) => unit(Object.assign({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0, conditions: ["Frightened"] }, o));
+  const r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 6, y: 0 }), r2 = unit({ id: "r2", name: "Thug", side: "npc", x: 0, y: 3 });
+  const fx = [{ unit: "ava", condition: "Frightened", ends: "never", source: "r1" }];
+  const wall = [{ a: [3, -9], b: [3, 2], kind: "wall" }];
+  // in sight: disadvantage on attacks; behind the wall: none, and the preview says why
+  assert.equal(E.preview(world([ava(), r1, r2], "ava", { effects: fx }), "ava", "r2", rifle).mode, "dis");
+  const hidden = E.preview(world([ava(), r1, r2], "ava", { effects: fx, walls: wall }), "ava", "r2", rifle);
+  assert.deepEqual([hidden.mode, hidden.notes], ["normal", ["frightened, but Raider is out of sight"]]);
+  // a Frightened set by hand, with no source: it always counts (the earlier default)
+  assert.equal(E.preview(world([ava(), r1, r2], "ava", { walls: wall }), "ava", "r2", rifle).mode, "dis");
+  // in sight: stepping toward the Raider is refused, stepping away is fine; behind the wall, toward is fine
+  assert.match(E.apply(world([ava(), r1], "ava", { effects: fx }), { type: "move", unit: "ava", x: 1, y: 0 }, dice().roll).why, /frightened of Raider/);
+  assert.ok(E.apply(world([ava({ x: 2 }), r1], "ava", { effects: fx }), { type: "move", unit: "ava", x: 1, y: 0 }, dice().roll).ok);
+  assert.ok(E.apply(world([ava({ y: 0 }), r1], "ava", { effects: fx, walls: [{ a: [2, -9], b: [2, 9], kind: "wall" }] }), { type: "move", unit: "ava", x: 1, y: 0 }, dice().roll).ok);
+});
+
+test("walls through the API: the GM's alone; players never receive them; movement and the squares a player is sent respect them; scenes keep them", async () => {
+  const { gm, sam, ids } = await fight();
+  assert.equal((await gm.act("fight.wall", { op: "add", a: [2, -5], b: [2, 5] })).code, 400, "the combat view is off");
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.wall", { op: "add", a: [2, -5], b: [2, 5] })).code, 403);
+  assert.equal((await gm.act("fight.wall", { op: "add", a: [2, -5], b: [2, 0] })).code, 200);
+  assert.equal((await gm.act("fight.wall", { op: "add", a: [2, 0], b: [2, 1], kind: "door" })).code, 200);
+  assert.equal((await gm.act("fight.wall", { op: "add", a: [2, 1], b: [2, 9] })).code, 200);
+  assert.equal((await gm.act("fight.wall", { op: "add", a: [3, 3], b: [3, 3] })).code, 400, "two different ends");
+  const gv = await gm.state();
+  assert.equal(gv.map.walls.length, 3);
+  // Sam's browser gets no walls at all, only the squares Avery can reach (not past the wall)
+  let pv = await sam.state();
+  assert.equal("walls" in pv.map, false);
+  assert.ok(!JSON.stringify(pv).includes('"kind":"door"'));
+  assert.ok(pv.fight.reach && pv.fight.reach["1,0"] === 5 && pv.fight.reach["3,0"] === undefined, "the closed door stops it");
+  assert.equal((await sam.act("fight.move", { x: 3, y: 0 })).code, 400);
+  // the GM opens the door: through it
+  const door = gv.map.walls.find((w) => w.kind === "door");
+  assert.equal((await gm.act("fight.wall", { op: "door", id: door.id, open: true })).code, 200);
+  pv = await sam.state();
+  assert.equal(pv.fight.reach["3,0"], 15);
+  assert.equal((await sam.act("fight.move", { x: 3, y: 0 })).code, 200);
+  // Rae, whose turn it isn't, is sent no squares
+  // a scene keeps its walls: save it, open a blank one (no walls), come back
+  const sc = (await gm.act("scene.saveAs", { name: "Bunker" })).data.id;
+  await gm.act("scene.new", { name: "Open field" });
+  assert.equal("walls" in (await gm.state()).map, false);
+  await gm.act("scene.load", { id: sc });
+  assert.equal((await gm.state()).map.walls.length, 3);
+  // erase one, clear the rest
+  assert.equal((await gm.act("fight.wall", { op: "remove", id: door.id })).code, 200);
+  assert.equal((await gm.state()).map.walls.length, 2);
+  await gm.act("fight.wall", { op: "clear" });
+  assert.equal("walls" in (await gm.state()).map, false, "no walls left: the map is as it was");
+});
+
+test("walls through the API: Frightened only while its source is in sight", async () => {
+  const { gm, sam, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  // a Thug next to Avery; the Raider frightens Avery from across the room
+  await gm.act("token.add", { name: "Thug", x: 0, y: 1 });
+  await gm.act("init.add", { name: "Thug", init: 1, hp: 20, ac: 2 });
+  const thug = (await gm.state()).initiative.entries.find((e) => e.name === "Thug").id;
+  await gm.act("fight.condition", { unit: ids.avery, condition: "Frightened", source: ids.raider });
+  const swing = async () => {
+    assert.equal((await sam.act("fight.attack", { target: thug, attack: "0" })).code, 200);
+    return (await gm.state()).chat.filter((m) => m.fight && m.roll && m.roll.kind === "attack").pop().roll.label;
+  };
+  assert.match(await swing(), /disadvantage \(you are frightened\)/, "the Raider in sight");
+  await gm.act("fight.undo", {});
+  await gm.act("fight.wall", { op: "add", a: [3, -9], b: [3, 9] });   // a wall between Avery (0,0) and the Raider (6,0)
+  const line = await swing();
+  assert.match(line, /frightened, but Raider is out of sight/);
+  assert.ok(!/disadvantage/.test(line), line);
+});
+
+test("cover (issue #93, step 2): from walls by the grid method, from creatures by size; total cover can't be targeted; no walls, no cover", () => {
+  const ava = unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 2 });
+  const r1 = (o) => unit(Object.assign({ id: "r1", name: "Raider", side: "npc", x: 4, y: 2, ac: 12 }, o));
+  const w = (walls, extra = []) => world([ava, r1(), ...extra], "ava", { walls });
+  // a wall right across: total; one stopping halfway down the Raider's square: half (two of its corners hidden)
+  assert.equal(E.coverOf(w([{ a: [3, -9], b: [3, 9], kind: "wall" }]), ava, r1()).name, "total");
+  assert.equal(E.preview(w([{ a: [3, -9], b: [3, 9], kind: "wall" }]), "ava", "r1", rifle).why, "Raider has total cover.");
+  const half = E.preview(w([{ a: [3.9, 0], b: [3.9, 2.5], kind: "wall" }, { a: [3.9, 2.5], b: [4.1, 2.5], kind: "wall" }]), "ava", "r1", rifle);
+  assert.ok(half.legal && half.cover, JSON.stringify(half));
+  assert.equal(half.ac, 12 + half.cover.bonus);
+  assert.ok(half.notes.some((n) => /cover, \+\d AC/.test(n)));
+  // an open door doesn't cover; no walls on the map: no cover at all, not even from a creature in the way
+  assert.equal(E.coverOf(w([{ a: [3, -9], b: [3, 9], kind: "door", open: true }]), ava, r1()), null);
+  const thug = unit({ id: "th", name: "Thug", side: "npc", x: 2, y: 2 });
+  assert.equal(E.coverOf(world([ava, r1(), thug], "ava"), ava, r1()), null, "no walls: the GM handles cover by hand");
+  // with walls somewhere on the map, a same-size creature in the line gives half cover
+  assert.equal(E.coverOf(w([{ a: [20, 20], b: [21, 20], kind: "wall" }], [thug]), ava, r1()).name, "half");
+  // a power can't be aimed at a creature behind total cover
+  const ch = consular();
+  const ab = E.abilitiesOf(ch, R, { "mind shove": { use: "action", range: [60, 60], save: { ability: "dex", dc: 13 } } })[0];
+  const me = unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 2, pools: Object.fromEntries(E.resourcesOf(ch, R).map((x) => [x.key, x])) });
+  const blocked = world([me, r1()], "cass", { walls: [{ a: [3, -9], b: [3, 9], kind: "wall" }] });
+  assert.equal(E.apply(blocked, { type: "use", unit: "cass", ability: ab, target: "r1" }, dice().roll).why, "Raider has total cover.");
+});
+
 test("review #94: a reaction prompt survives the tracker's index moving, and lapses once either side is hidden", async () => {
   const setup = async () => {
     const t = await fight();
@@ -1480,4 +1610,39 @@ test("creature resources through the API: recharge rolls at the start of its tur
   assert.deepEqual(line.to, ["@gm"]);
   assert.ok(!(await sam.state()).chat.some((m) => m.roll && m.roll.kind === "recharge"), "players don't see it");
   assert.equal(gv.fight.npcRes[ids.raider].find((r) => r.key === "plasma-cannon").used, line.roll.total >= 5 ? 0 : 1);
+});
+
+test("areas stopped by walls (issue #93, step 3): no clear line from the origin, not in the area; cover from the origin helps a Dex save", () => {
+  const ch = consular();
+  const lib = { "blast wave": { use: "action", range: [60, 60], area: { shape: "sphere", size: 15, from: "point" }, save: { ability: "dex", dc: 14, onSave: "half" }, damage: [{ dice: "2d6", type: "fire" }] } };
+  const ab = E.abilitiesOf(Object.assign({}, ch, { powers: [{ name: "Blast Wave", level: 1, type: "force", alignment: "universal" }] }), R, lib)[0];
+  const me = unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, pools: Object.fromEntries(E.resourcesOf(ch, R).map((x) => [x.key, x])) });
+  const near = unit({ id: "r1", name: "Raider", side: "npc", x: 5, y: 5 }), behind = unit({ id: "r2", name: "Scout", side: "npc", x: 8, y: 5 });
+  const open = world([me, near, behind], "cass");
+  assert.deepEqual(E.areaHits(open, "cass", ab, { x: 6, y: 6 }).units.sort(), ["r1", "r2"]);
+  const walled = world([me, near, behind], "cass", { walls: [{ a: [7.5, -9], b: [7.5, 20], kind: "wall" }] });
+  assert.deepEqual(E.areaHits(walled, "cass", ab, { x: 6, y: 6 }).units, ["r1"], "the Scout is behind the wall");
+  // a half wall across part of the Raider's square: a Dex save with cover from the origin
+  const partial = world([me, near], "cass", { walls: [{ a: [5.2, 5.6], b: [5.2, 6.2], kind: "wall" }] });   // hides one of its corners from the origin
+  const d = dice({ total: 10, nat: 10 }, { total: 6 });
+  const r = E.apply(partial, { type: "use", unit: "cass", ability: ab, point: { x: 7, y: 4 } }, d.roll);
+  assert.ok(r.ok, r.why);
+  const save = r.log.find((l) => l.kind === "save");
+  assert.match(save.text, /one-quarter cover, \+2\)/, save.text);
+});
+
+test("walls through the API: a whole map's walls set at once (an import), checked and capped", async () => {
+  const { gm, sam } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.wall", { op: "set", walls: [] })).code, 403);
+  assert.equal((await gm.act("fight.wall", { op: "set" })).code, 400);
+  const many = Array.from({ length: 2100 }, (_, i) => ({ a: [i % 50, 1], b: [i % 50, 2], kind: i % 7 ? "wall" : "door", open: i % 2 === 0 }));
+  many.push({ a: [1, 1], b: [1, 1] }, { a: [0, 0], b: [3, 0], kind: "lava" });
+  assert.equal((await gm.act("fight.wall", { op: "set", walls: many })).code, 200);
+  const w = (await gm.state()).map.walls;
+  assert.equal(w.length, 2000, "capped");
+  assert.ok(w.every((x) => /^[a-f0-9]{10}$/.test(x.id) && ["wall", "door"].includes(x.kind)), "fresh ids, known kinds");
+  assert.equal("walls" in (await sam.state()).map, false);
+  assert.equal((await gm.act("fight.wall", { op: "set", walls: [] })).code, 200);
+  assert.equal("walls" in (await gm.state()).map, false, "an empty set leaves no walls key");
 });

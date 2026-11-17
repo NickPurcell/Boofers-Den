@@ -38,6 +38,63 @@
     const as = a.size || 1, bs = b.size || 1;
     return gridFeet(Math.max(0, b.x - (a.x + as - 1), a.x - (b.x + bs - 1)), Math.max(0, b.y - (a.y + as - 1), a.y - (b.y + bs - 1)));
   }
+  /* ---------------- walls (issue #93): segments in grid units, a square's corners at whole numbers ---------------- */
+  // { a: [x, y], b: [x, y], kind: 'wall' | 'door' | 'window', open }. A wall blocks sight and movement; a closed door
+  // blocks both; a window blocks movement only. A world with no walls behaves exactly as before.
+  const WALL_KINDS = ['wall', 'door', 'window'];
+  const blocksSight = (w) => w.kind === 'wall' || (w.kind === 'door' && !w.open);
+  const blocksMove = (w) => w.kind === 'wall' || w.kind === 'window' || (w.kind === 'door' && !w.open);
+  // do segments p1–p2 and q1–q2 meet (touching counts, so nothing slips through where two walls join)?
+  function crosses(p1, p2, q1, q2) {
+    const d = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    const on = (a, b, c) => Math.min(a[0], b[0]) - 1e-9 <= c[0] && c[0] <= Math.max(a[0], b[0]) + 1e-9 && Math.min(a[1], b[1]) - 1e-9 <= c[1] && c[1] <= Math.max(a[1], b[1]) + 1e-9;
+    const d1 = d(q1, q2, p1), d2 = d(q1, q2, p2), d3 = d(p1, p2, q1), d4 = d(p1, p2, q2);
+    if (((d1 > 1e-9 && d2 < -1e-9) || (d1 < -1e-9 && d2 > 1e-9)) && ((d3 > 1e-9 && d4 < -1e-9) || (d3 < -1e-9 && d4 > 1e-9))) return true;
+    return (Math.abs(d1) <= 1e-9 && on(q1, q2, p1)) || (Math.abs(d2) <= 1e-9 && on(q1, q2, p2)) || (Math.abs(d3) <= 1e-9 && on(p1, p2, q1)) || (Math.abs(d4) <= 1e-9 && on(p1, p2, q2));
+  }
+  const clear = (walls, p, q, test) => !(walls || []).some((w) => test(w) && crosses(p, q, w.a, w.b));
+  // points that stand for a unit's space: its centre and its corners, a little inside so a line along a wall's face
+  // doesn't count as blocked
+  function spots(u) {
+    const s = u.size || 1, e = 0.15;
+    return [[u.x + s / 2, u.y + s / 2], [u.x + e, u.y + e], [u.x + s - e, u.y + e], [u.x + e, u.y + s - e], [u.x + s - e, u.y + s - e]];
+  }
+  // can `a` see `b`: some line from a's space to b's crosses no wall and no closed door (windows don't block sight)
+  function sees(world, a, b) {
+    const walls = (world.walls || []).filter(blocksSight);
+    if (!walls.length || !a || !b) return true;
+    const sa = spots(a), sb = spots(b);
+    return sa.some((p) => sb.some((q) => clear(walls, p, q, () => true)));
+  }
+  // Cover (issue #93, step 2), only on a map with walls (without walls the GM applies cover by hand, as before).
+  // SW5e's four degrees: one-quarter +2, half +3, three-quarters +5 to AC and Dex saves; total: can't be targeted.
+  // How much a wall covers isn't measured in SW5e's text, so the default here is the grid method: lines from the
+  // attacker's best corner to the target's four corners; 1 blocked is one-quarter, 2 half, 3 three-quarters, 4 total.
+  // A creature in the way covers by its size against the target's, as SW5e says: one size smaller one-quarter, the same
+  // size half, larger three-quarters. Only the most protective degree counts.
+  const COVER = [null, { name: 'one-quarter', bonus: 2 }, { name: 'half', bonus: 3 }, { name: 'three-quarters', bonus: 5 }, { name: 'total', bonus: null }];
+  const corners = (u) => { const s = u.size || 1, e = 0.05; return [[u.x + e, u.y + e], [u.x + s - e, u.y + e], [u.x + e, u.y + s - e], [u.x + s - e, u.y + s - e]]; };
+  // cover from a point (an area's origin) for a Dex save: the same lines, from that one point
+  function coverFrom(world, p, t) {
+    const walls = (world.walls || []).filter(blocksSight);
+    if (!walls.length || !p || !t) return null;
+    const deg = corners(t).filter((q) => !clear(walls, [p.x, p.y], q, () => true)).length;
+    return deg && deg < 4 ? COVER[deg] : null;
+  }
+  function coverOf(world, a, t) {
+    const walls = (world.walls || []).filter(blocksSight);
+    if (!(world.walls || []).length || !a || !t || a.id === t.id) return null;
+    let deg = walls.length ? Math.min(...corners(a).map((p) => corners(t).filter((q) => !clear(walls, p, q, () => true)).length)) : 0;
+    const mid = (u) => [u.x + (u.size || 1) / 2, u.y + (u.size || 1) / 2];
+    for (const o of Object.values(world.units)) {
+      if (o.id === a.id || o.id === t.id || o.down) continue;
+      const s = o.size || 1, box = [[[o.x, o.y], [o.x + s, o.y]], [[o.x + s, o.y], [o.x + s, o.y + s]], [[o.x + s, o.y + s], [o.x, o.y + s]], [[o.x, o.y + s], [o.x, o.y]]];
+      if (!box.some(([p, q]) => crosses(mid(a), mid(t), p, q))) continue;
+      const d = sizeCat(o) - sizeCat(t);
+      deg = Math.max(deg, d <= -2 ? 0 : d === -1 ? 1 : d === 0 ? 2 : 3);
+    }
+    return deg ? COVER[deg] : null;
+  }
   const overlaps = (ax, ay, as, b) => ax < b.x + (b.size || 1) && b.x < ax + as && ay < b.y + (b.size || 1) && b.y < ay + as;
   const hostile = (a, b) => a.side !== b.side;
 
@@ -57,6 +114,7 @@
     const others = Object.values(world.units).filter((o) => o.id !== u.id && !o.down);
     const size = u.size || 1, budget = Math.max(0, feet), crawl = (u.conditions || []).includes('Prone') ? 2 : 1;
     const blocked = (x, y) => others.some((o) => hostile(u, o) && overlaps(x, y, size, o) && Math.abs(sizeCat(u) - sizeCat(o)) < 2);
+    const moveWalls = (world.walls || []).filter(blocksMove);
     const occupied = (x, y) => others.some((o) => overlaps(x, y, size, o));
     const best = {}, out = {}, par = {}, prev = {}, at = {};
     const key = (x, y, p) => `${x},${y},${p}`;
@@ -70,6 +128,7 @@
         if (!dx && !dy) continue;
         const nx = x + dx, ny = y + dy;
         if (nx < -500 || ny < -500 || nx > 1000 || ny > 1000 || blocked(nx, ny)) continue;
+        if (moveWalls.length && !clear(moveWalls, [x + size / 2, y + size / 2], [nx + size / 2, ny + size / 2], () => true)) continue;
         const diag = dx && dy, np = diag ? 1 - pr : pr;
         const step = ((diag && pr ? 2 * FT : FT) + (occupied(nx, ny) ? FT : 0)) * crawl;
         const nc = c + step, k = key(nx, ny, np);
@@ -139,7 +198,7 @@
   const CONDITION_EFFECTS = {
     Blinded: { attacks: 'dis', attacked: 'adv' },
     Charmed: { charmed: true },                              // can't attack whoever charmed it (when the combat view knows who)
-    Frightened: { attacks: 'dis' },                          // the book: while the source is in sight (sight isn't modelled)
+    Frightened: { attacks: 'dis' },                          // while its source is in sight (when the source is known and there are walls)
     Grappled: { speed0: true },
     Incapacitated: { noActions: true },                      // no actions and no reactions
     Invisible: { attacks: 'adv', attacked: 'dis' },
@@ -181,6 +240,8 @@
   const senseFor = (a, b, kinds) => (a && b && (a.senses || []).find((x) => kinds.includes(x.kind) && feetBetween(a, b) <= x.range)) || null;
   // a sense that takes the bite out of a condition between two units: the blinded one perceiving the other without
   // sight, or the other one finding the invisible one. Returns { who, sense } for the preview's note, or null.
+  // the source of a condition on `u`, when an effect recorded who caused it
+  const sourceOf = (w, u, cond) => { const ef = ((w && w.effects) || []).find((x) => x.unit === u.id && x.condition === cond && x.source); return ef && w.units[ef.source] || null; };
   function defeated(cond, holder, other) {
     if (cond === 'Blinded') { const x = senseFor(holder, other, NO_SIGHT); return x && { who: holder, sense: x }; }
     if (cond === 'Invisible') { const x = senseFor(other, holder, SEES_INVISIBLE); return x && { who: other, sense: x }; }
@@ -203,7 +264,12 @@
   REASONS.push(
     { id: 'self', when: (c) => effectsOf(c.actor).some(([, e]) => e.attacks), each: (c) => effectsOf(c.actor).filter(([, e]) => e.attacks)
       .filter(([, e]) => e.attacks !== 'prone' || !c.ranged || c.feet <= 30)   // prone: melee, or ranged at a target within 30 ft
-      .map(([n, e]) => { const d = defeated(n, c.actor, c.target); return d ? senseNote(d, n) : { [e.attacks === 'prone' ? 'dis' : e.attacks]: true, text: `you are ${n.toLowerCase()}` }; }) },
+      .map(([n, e]) => {
+        const d = defeated(n, c.actor, c.target);
+        if (d) return senseNote(d, n);
+        if (n === 'Frightened') { const src = sourceOf(c.world, c.actor, n); if (src && !sees(c.world, c.actor, src)) return { note: true, text: `frightened, but ${src.name} is out of sight` }; }
+        return { [e.attacks === 'prone' ? 'dis' : e.attacks]: true, text: `you are ${n.toLowerCase()}` };
+      }) },
     { id: 'exhausted', when: (c) => (+c.actor.exhaustion || 0) >= 3, each: () => [{ dis: true, text: 'exhaustion' }] },
     { id: 'dodge', when: (c) => c.dodging, each: (c) => [{ dis: true, text: `${c.target.name} is dodging` }] },
     { id: 'target', when: (c) => effectsOf(c.target).some(([, e]) => e.attacked), each: (c) => effectsOf(c.target).filter(([, e]) => e.attacked).map(([n, e]) => {
@@ -221,7 +287,7 @@
   function reasons(world, a, t, attack, feet, ranged) {
     const enemyClose = Object.values(world.units).some((o) => o.id !== a.id && hostile(a, o) && !o.down && feetBetween(a, o) <= FT
       && (!(o.conditions || []).includes('Blinded') || senseFor(o, a, NO_SIGHT)) && !INCAPACITATING(o));
-    const ctx = { feet, ranged, enemyClose, attack, actor: a, target: t, dodging: dodging(world, t) };
+    const ctx = { feet, ranged, enemyClose, attack, actor: a, target: t, dodging: dodging(world, t), world };
     return REASONS.filter((r) => r.when(ctx)).flatMap((r) => (r.each ? r.each(ctx) : [{ dis: !!r.dis, adv: !!r.adv, text: r.text }]))
       .map((x) => (x.note ? { note: true, text: x.text } : { dis: !!x.dis, adv: !!x.adv, text: x.text }));
   }
@@ -244,10 +310,14 @@
     const adv = tilts.some((x) => x.adv), dis = tilts.some((x) => x.dis);
     const mode = adv && !dis ? 'adv' : dis && !adv ? 'dis' : 'normal';
     const weak = weakPenalty(a, attack.abil), bonus = attack.bonus - weak;
-    const need = Math.min(20, Math.max(2, t.ac - bonus));   // the d20 needed; a 20 always hits, a 1 always misses
+    const cover = coverOf(world, a, t);
+    if (cover && cover.bonus == null) return { legal: false, why: `${t.name} has total cover.`, feet };
+    const ac = +t.ac + (cover ? cover.bonus : 0);
+    if (cover) notes.push(`${cover.name} cover, +${cover.bonus} AC`);
+    const need = Math.min(20, Math.max(2, ac - bonus));   // the d20 needed; a 20 always hits, a 1 always misses
     const p = (21 - need) / 20;
     const chance = mode === 'adv' ? 1 - (1 - p) ** 2 : mode === 'dis' ? p * p : p;
-    return { legal: true, feet, ranged, mode, tilts, notes, need, chance, weak, bonus, expr: (mode === 'adv' ? '2d20kh1' : mode === 'dis' ? '2d20kl1' : '1d20') + sgn(bonus) };
+    return { legal: true, feet, ranged, mode, tilts, notes, need, chance, weak, bonus, ac, cover, expr: (mode === 'adv' ? '2d20kh1' : mode === 'dis' ? '2d20kl1' : '1d20') + sgn(bonus) };
   }
 
   /* ---------------- resources (audit 3.1) ---------------- */
@@ -468,7 +538,11 @@
     if (!u || !ab.area || !point || !Number.isFinite(+point.x) || !Number.isFinite(+point.y)) return { ok: false, why: 'Pick where to aim it.' };
     const o = areaOrigin(world, u, ab, { x: +point.x, y: +point.y });
     if (!o.ok) return o;
-    const squares = areaSquares(ab.area, o.origin, o.aim), set = new Set(squares.map(([x, y]) => `${x},${y}`));
+    // walls stop an area: a square with no clear straight line from the origin isn't in it (SW5e: an area spreads in
+    // straight lines from its point of origin). Walls, windows and closed doors stop it.
+    const stops = (world.walls || []).filter(blocksMove);
+    const squares = areaSquares(ab.area, o.origin, o.aim).filter(([x, y]) => !stops.length || clear(stops, [o.origin.x, o.origin.y], [x + 0.5, y + 0.5], () => true));
+    const set = new Set(squares.map(([x, y]) => `${x},${y}`));
     const caught = Object.values(world.units).filter((t) => !t.down && (ab.area.from === 'point' || t.id !== u.id) && (() => {
       for (let x = t.x; x < t.x + (t.size || 1); x++) for (let y = t.y; y < t.y + (t.size || 1); y++) if (set.has(`${x},${y}`)) return true;
       return false;
@@ -539,6 +613,9 @@
         if (x === me.x && y === me.y) return no('Already there.');
         const found = search(w, me.id, b.moveLeft), cost = found.out[`${x},${y}`];
         if (cost === undefined) return no(b.moveLeft ? `${me.name} can't reach that square with ${b.moveLeft} ft of movement left.` : `${me.name} has no movement left this turn.`);
+        // frightened: it can't willingly move closer to the source of its fear while it can see it
+        const fear = (me.conditions || []).includes('Frightened') && sourceOf(w, me, 'Frightened');
+        if (fear && sees(w, me, fear) && feetBetween(Object.assign({}, me, { x, y }), fear) < feetBetween(me, fear)) return no(`${me.name} is frightened of ${fear.name} and can't move closer to it.`);
         const path = pathTo(w, me.id, b.moveLeft, x, y) || [{ x: me.x, y: me.y }, { x, y }];
         const reactions = opportunities(w, me, path);
         me.x = x; me.y = y; w.spent[me.id].move += cost; w.spent[me.id].diag = found.par[`${x},${y}`] ? 1 : 0;
@@ -574,11 +651,11 @@
           const p = (me.pools || {})[pool];
           if (!p || p.max - p.used < n) return no(`Not enough ${p ? p.name : pool}: ${n} needed${p ? `, ${p.max - p.used} left` : ''}.`);
         }
-        let ids;
+        let ids, origin = null;
         if (ab.area) {   // everyone the template catches, aimed at a point
           const hits = areaHits(w, me.id, ab, act.point);
           if (!hits.ok) return no(hits.why);
-          ids = hits.units;
+          ids = hits.units; origin = hits.origin;
         } else {
           ids = ab.targets === 'self' ? [me.id] : (Array.isArray(act.targets) ? act.targets : [act.target]).filter(Boolean).map(String);
           const max = ab.targets === 'self' ? 1 : ab.targets;
@@ -591,6 +668,8 @@
             if (ab.attack && (t.ac == null || t.ac === '' || !Number.isFinite(+t.ac))) return no(`${t.name} has no AC set.`);
             const r = inReachOf(w, me, t, ab);
             if (!r.ok) return no(r.why);
+            const cv = t.id !== me.id && coverOf(w, me, t);
+            if (cv && cv.bonus == null && (ab.attack || ab.save || ab.damage.length)) return no(`${t.name} has total cover.`);
           }
         }
         // pay first: the turn slot and the points; a new concentration power ends the old one
@@ -614,19 +693,22 @@
             const adv = !!act.adv || tl.some((x) => x.adv), dis = !!act.dis || tl.some((x) => x.dis);
             const tilts = tl.filter((x) => (adv && !dis ? x.adv : x.dis)).map((x) => x.text).concat(notes);
             const expr = (adv && !dis ? '2d20kh1' : dis && !adv ? '2d20kl1' : '1d20') + sgn(ab.attack.bonus - weakPenalty(me, ab.attack.abil));
+            const cv = me.id === t.id || ab.area ? null : coverOf(w, me, t), ac = +t.ac + (cv ? cv.bonus || 0 : 0);
             const r = roll(expr);
-            crit = r.nat === 20; hit = crit || (r.nat !== 1 && r.total >= t.ac);
-            log.push({ unit: t.id, kind: 'attack', roll: r, expr, text: `${ab.name} against ${t.name}${tilts.length ? ` (${adv && !dis ? 'advantage: ' : dis && !adv ? 'disadvantage: ' : ''}${tilts.join(', ')})` : ''}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : 'a miss.'}` });
+            crit = r.nat === 20; hit = crit || (r.nat !== 1 && r.total >= ac);
+            log.push({ unit: t.id, kind: 'attack', roll: r, expr, text: `${ab.name} against ${t.name}${tilts.length ? ` (${adv && !dis ? 'advantage: ' : dis && !adv ? 'disadvantage: ' : ''}${tilts.join(', ')})` : ''}${cv ? ` (${cv.name} cover, +${cv.bonus} AC)` : ''}: ${r.total} against AC ${ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : 'a miss.'}` });
           } else if (ab.save) {
             const bonus = (t.saves || {})[ab.save.ability];
             const fail = effectsOf(t).find(([, e]) => (e.autoFail || []).includes(ab.save.ability));
             const sdis = effectsOf(t).some(([, e]) => (e.saveDis || []).includes(ab.save.ability));
             const sadv = ab.save.ability === 'dex' && dodging(w, t);
-            const sexpr = (sdis && !sadv ? '2d20kl1' : sadv && !sdis ? '2d20kh1' : '1d20') + sgn((+bonus || 0) - weakPenalty(t, ab.save.ability));
+            // cover helps a Dex save: from the caster for a power aimed at the target, from the origin for an area
+            const scv = ab.save.ability !== 'dex' || t.id === me.id ? null : ab.area ? coverFrom(w, origin, t) : coverOf(w, me, t);
+            const sexpr = (sdis && !sadv ? '2d20kl1' : sadv && !sdis ? '2d20kh1' : '1d20') + sgn((+bonus || 0) - weakPenalty(t, ab.save.ability) + (scv ? scv.bonus || 0 : 0));
             const r = roll(sexpr);
             const saved = !fail && r.total >= ab.save.dc;
             hit = !saved || ab.save.onSave === 'half'; half = saved && ab.save.onSave === 'half';
-            log.push({ unit: t.id, kind: 'save', roll: r, expr: sexpr, text: `${t.name} makes a ${ab.save.ability.toUpperCase()} save against DC ${ab.save.dc}${bonus == null ? ' (no save bonus known)' : ''}${sdis && !sadv ? ' with disadvantage' : sadv && !sdis ? ' with advantage (dodging)' : ''}: ${r.total}, ${fail ? `an automatic failure (${fail[0].toLowerCase()})` : saved ? 'a success' : 'a failure'}.` });
+            log.push({ unit: t.id, kind: 'save', roll: r, expr: sexpr, text: `${t.name} makes a ${ab.save.ability.toUpperCase()} save against DC ${ab.save.dc}${bonus == null ? ' (no save bonus known)' : ''}${scv ? ` (${scv.name} cover, +${scv.bonus})` : ''}${sdis && !sadv ? ' with disadvantage' : sadv && !sdis ? ' with advantage (dodging)' : ''}: ${r.total}, ${fail ? `an automatic failure (${fail[0].toLowerCase()})` : saved ? 'a success' : 'a failure'}.` });
           }
           if (!hit) { events.push({ kind: 'miss', unit: t.id }); continue; }
           // conditions the ability puts on its target, with how long they last
@@ -712,10 +794,10 @@
     const r = roll(pv.expr);
     const nat = r.nat, fumble = nat === 1;
     let crit = nat === 20;
-    const hit = crit || (!fumble && r.total >= t.ac);
+    const hit = crit || (!fumble && r.total >= pv.ac);
     if (hit && pv.feet <= FT && has(t, 'closeCrit')) crit = true;   // any hit from within 5 ft on the paralyzed or unconscious
     const tilt = pv.mode === 'normal' ? '' : ` with ${pv.mode === 'adv' ? 'advantage' : 'disadvantage'} (${pv.tilts.map((x) => x.text).join(', ')})`;
-    const log = [{ unit: me.id, kind: 'attack', roll: r, expr: pv.expr, text: `${me.name} ${how ? `makes ${how} against` : 'attacks'} ${t.name} with ${attack.name}${tilt}${pv.notes.length ? ` (${pv.notes.join('; ')})` : ''}${pv.weak ? ` (weakened, −${pv.weak})` : ''}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}` }];
+    const log = [{ unit: me.id, kind: 'attack', roll: r, expr: pv.expr, text: `${me.name} ${how ? `makes ${how} against` : 'attacks'} ${t.name} with ${attack.name}${tilt}${pv.notes.length ? ` (${pv.notes.join('; ')})` : ''}${pv.weak ? ` (weakened, −${pv.weak})` : ''}: ${r.total} against AC ${pv.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}` }];
     const events = [];
     if (!hit) { events.push({ kind: 'miss', unit: t.id }); return { ok: true, log, events }; }
     const expr = crit ? attack.crit || attack.damage : attack.damage;
@@ -952,6 +1034,13 @@
     log.push({ unit: t.id, kind: 'save', roll: r, expr: '1d20', text: `${t.name} makes a death save: ${r.total}, ${text}` });
   }
 
+  // walls as stored on a map: checked, rounded to 0.01 of a square, at most 2000
+  function cleanWalls(list) {
+    const n = (v) => Math.round(clampN(+v || 0, -500, 1000) * 100) / 100;
+    return (Array.isArray(list) ? list : []).slice(0, 2000).filter((w) => w && Array.isArray(w.a) && Array.isArray(w.b) && WALL_KINDS.includes(w.kind || 'wall'))
+      .map((w) => ({ id: String(w.id || '').replace(/[^a-z0-9]/g, '').slice(0, 20), a: [n(w.a[0]), n(w.a[1])], b: [n(w.b[0]), n(w.b[1])], kind: w.kind || 'wall', ...(w.kind === 'door' ? { open: !!w.open } : {}) }))
+      .filter((w) => w.a[0] !== w.b[0] || w.a[1] !== w.b[1]);
+  }
   /* ---------------- building a world from the table ---------------- */
   // table: { characters, entries (initiative, in order), active, turn (index) or turnId, round, tokens, unitTokens: { entryId: tokenId },
   //          npcSpeed: { entryId: feet }, spent: { unitId: { key, move, action, bonus, reaction } } }
@@ -987,7 +1076,7 @@
     const cur = table.turnId !== undefined ? (table.entries || []).find((e) => e.id === table.turnId) : (table.entries || [])[table.turn];
     return {
       active: !!table.active && !!cur, round: table.round || 1, turnId: cur ? cur.id : null, units,
-      spent: table.spent || {}, effects: table.effects || [], conc: table.conc || {},
+      spent: table.spent || {}, effects: table.effects || [], conc: table.conc || {}, walls: cleanWalls(table.walls),
     };
   }
 
@@ -995,5 +1084,5 @@
     cleanResources, resourcesOf, atLevel, spend, rest, powerNumbers, resolvePower, weaponAbility, abilitiesOf, inReachOf, cleanAbility, setPoolUsed,
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
-    SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying };
+    SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf };
 });

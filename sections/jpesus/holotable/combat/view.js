@@ -22,7 +22,7 @@
     const w = E.buildWorld({
       characters: s.characters, entries: s.initiative.entries, active: f.active, turnId: f.turn, round: f.round, tokens: s.map.tokens,
       unitTokens: Object.fromEntries(Object.entries(f.units || {}).map(([id, u]) => [id, u.token])), npcSpeed: f.npcSpeed,
-      spent: f.spent, defenses: f.defenses || {}, effects: f.effects || [], conc: f.conc || {},
+      spent: f.spent, defenses: f.defenses || {}, effects: f.effects || [], conc: f.conc || {}, walls: (s.map && s.map.walls) || [],
       npcStats: Object.fromEntries(Array.from(new Set(Object.keys(f.npcDefenses || {}).concat(Object.keys(f.npcBody || {})))).map((k) => [k,
         Object.assign({ saves: (f.npcSaves || {})[k] || {}, mods: (f.npcMods || {})[k] || {} }, (f.npcDefenses || {})[k] || {}, (f.npcBody || {})[k] || {})])),
     }, R);
@@ -41,7 +41,7 @@
   function reach() {
     const w = world(), u = cur();
     if (!u || !myTurn()) return {};
-    if (!UI.cache.reach) UI.cache.reach = E.reachable(w, u.id, E.budget(w).moveLeft);
+    if (!UI.cache.reach) UI.cache.reach = F().reach || E.reachable(w, u.id, E.budget(w).moveLeft);
     return UI.cache.reach;
   }
 
@@ -209,6 +209,7 @@
   function render() {
     const s = st();
     if (!s) return;
+    renderWallBar();
     const f = F(), b = ensureBar();
     // floating numbers for what just happened (not replayed when the page first loads)
     const evs = f.events || [];
@@ -392,6 +393,7 @@
       return send('fight.npcres', { id: el.dataset.unit, key: r.key, op: r.used >= r.max ? 'reset' : 'use' });
     }
     if (k === 'log') { UI.log = !UI.log; return render(); }
+
     if (k === 'letgo') return send('fight.react', { id: el.dataset.id, take: false });
     if (k === 'react') {
       const re = world().units[el.dataset.unit], a = re && meleeOf(re).find((x) => x.key === el.dataset.key);
@@ -565,8 +567,108 @@
 
   /* ---------------- on the map (app.js calls these) ---------------- */
   // pointer down: claims the click only when it's an attack on a target, or a player's own token on their turn
+  // Import a Universal VTT file (Dungeondraft's "export for other tabletops", .dd2vtt): its picture becomes the map's
+  // background (shrunk under HoloTable's image limit, through its own upload), the board takes its size in squares, and
+  // its line-of-sight polylines become walls and its portals doors (open or closed as exported). Lights are ignored.
+  async function importUvtt(file) {
+    const toast = H.toast;
+    try {
+      const d = JSON.parse(await file.text());
+      const res = d && d.resolution, size = res && res.map_size, o = (res && res.map_origin) || { x: 0, y: 0 };
+      if (!size || !(+size.x > 0) || !(+size.y > 0)) throw new Error("That isn't a Universal VTT file (no map size).");
+      const pt = (q) => [(+q.x || 0) - (+o.x || 0), (+q.y || 0) - (+o.y || 0)];
+      const walls = [];
+      for (const line of [].concat(d.line_of_sight || [], d.objects_line_of_sight || [])) {
+        if (!Array.isArray(line)) continue;
+        for (let i = 0; i + 1 < line.length; i++) walls.push({ a: pt(line[i]), b: pt(line[i + 1]), kind: 'wall' });
+      }
+      for (const door of d.portals || []) {
+        if (door && Array.isArray(door.bounds) && door.bounds.length >= 2) walls.push({ a: pt(door.bounds[0]), b: pt(door.bounds[1]), kind: 'door', open: door.closed === false });
+      }
+      const had = ((st().map || {}).walls || []).length || st().map.bgUrl;
+      if (had && !confirm(`Replace this map's picture, size and walls with ${file.name}?`)) return;
+      toast('Importing the map…');
+      if (d.image) {
+        const img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => bad(new Error("Couldn't read the map's picture.")); i.src = `data:image/png;base64,${String(d.image).replace(/^data:[^,]*,/, '')}`; });
+        let dataUrl = '';
+        for (const [dim, q] of [[4096, 0.85], [4096, 0.7], [3072, 0.7], [2048, 0.7]]) {
+          const sc = Math.min(1, dim / Math.max(img.width, img.height)), c = document.createElement('canvas');
+          c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
+          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          dataUrl = c.toDataURL('image/jpeg', q);
+          if (dataUrl.length * 0.75 < 2.9 * 1024 * 1024) break;
+        }
+        const up = await H.post('upload', { purpose: 'bg', dataUrl });
+        await act('map.bg', { url: up.url });
+      }
+      await act('map.settings', { cols: Math.max(5, Math.min(200, Math.round(+size.x))), rows: Math.max(5, Math.min(200, Math.round(+size.y))) });
+      await send('fight.wall', { op: 'set', walls: walls.slice(0, 2000) });
+      toast(`Imported ${file.name}: ${Math.min(2000, walls.length)} walls and doors${walls.length > 2000 ? ' (the first 2000)' : ''}.`);
+    } catch (err) { toast(err.message || "Couldn't import that file.", true); }
+  }
+  // The GM's wall tool lives in the map tools beside "＋ Token" (app.js asks for its button) while the combat view is on,
+  // with its own small bar over the map, like the 🎬 movement bar.
+  function wallsButton() {
+    return gm() && F().on ? `<button class="btn small ${UI.walls ? 'primary' : ''}" data-ct-walls="1" aria-pressed="${!!UI.walls}" title="Draw walls, doors and windows: they block movement, sight and areas in the combat view (players never receive them)">🧱 Walls</button>` : '';
+  }
+  let wallBar = null;
+  function renderWallBar() {
+    if (!wallBar) {
+      wallBar = document.createElement('div');
+      wallBar.className = 'script-bar ct-wallbar hidden';
+      $('#mapWrap').appendChild(wallBar);
+      wallBar.addEventListener('change', (e) => { const f = e.target.matches('[data-wb-file]') && e.target.files[0]; if (f) importUvtt(f).finally(() => { e.target.value = ''; }); });
+      wallBar.addEventListener('click', (e) => {
+        const b = e.target.closest('[data-wb]'); if (!b) return;
+        const a = b.dataset.wb;
+        if (a === 'done') UI.walls = null;
+        else if (a === 'clear') { if (confirm('Remove every wall, door and window from this map?')) send('fight.wall', { op: 'clear' }); return; }
+        else UI.walls = { mode: a, from: null };
+        renderWallBar(); render(); H.drawMap();
+      });
+    }
+    if (UI.walls && !(gm() && F().on)) UI.walls = null;
+    wallBar.classList.toggle('hidden', !UI.walls);
+    if (!UI.walls) { wallBar.innerHTML = ''; return; }
+    const n = ((st().map || {}).walls || []).length, T = UI.walls;
+    wallBar.innerHTML = `<b>🧱 Walls</b>${[['wall', 'Wall'], ['door', 'Door'], ['window', 'Window'], ['toggle', 'Open / close'], ['erase', 'Erase']].map(([k, l]) => `<button class="btn tiny ${T.mode === k ? 'primary' : 'ghost'}" data-wb="${k}">${l}</button>`).join('')}
+      <span class="muted" title="${T.mode === 'wall' ? 'Click corner to corner; Esc or the same corner again ends a run' : T.mode === 'door' || T.mode === 'window' ? 'Click its two ends' : 'Click next to one'}">${n} on this map</span>
+      ${n ? '<button class="btn tiny ghost" data-wb="clear">Clear walls</button>' : ''}
+      <label class="btn tiny ghost" title="Dungeondraft's export for other tabletops (Universal VTT): the picture, the board size, its walls and doors">Import .dd2vtt<input type="file" accept=".dd2vtt,.uvtt,.df2vtt,application/json" data-wb-file hidden></label>
+      <button class="btn tiny" data-wb="done">Done</button>`;
+  }
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('[data-ct-walls]')) return;
+    UI.walls = UI.walls ? null : { mode: 'wall', from: null };
+    renderWallBar(); render(); H.drawMap();
+    const b = e.target.closest('[data-ct-walls]'); b.classList.toggle('primary', !!UI.walls); b.setAttribute('aria-pressed', String(!!UI.walls));
+  });
+  // the GM's wall tool (issue #93): click corner to corner; door and window are one segment each; erase or open/close
+  // by clicking next to one. Escape (or clicking the last corner again) ends a run of walls.
+  const nearestWall = (gx, gy, kinds) => {
+    let best = null, bd = 0.35;
+    for (const wl of ((st().map || {}).walls || [])) {
+      if (kinds && !kinds.includes(wl.kind)) continue;
+      const [ax, ay] = wl.a, [bx, by] = wl.b, dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy || 1;
+      const t = Math.max(0, Math.min(1, ((gx - ax) * dx + (gy - ay) * dy) / L)), d = Math.hypot(gx - (ax + t * dx), gy - (ay + t * dy));
+      if (d < bd) { bd = d; best = wl; }
+    }
+    return best;
+  };
+  function wallClick(gx, gy) {
+    const T = UI.walls, pt = [Math.round(gx), Math.round(gy)];
+    if (T.mode === 'erase') { const wl = nearestWall(gx, gy); if (wl) send('fight.wall', { op: 'remove', id: wl.id }); return; }
+    if (T.mode === 'toggle') { const wl = nearestWall(gx, gy, ['door']); if (wl) send('fight.wall', { op: 'door', id: wl.id, open: !wl.open }); return; }
+    if (!T.from) { T.from = pt; H.drawMap(); return; }
+    if (T.from[0] === pt[0] && T.from[1] === pt[1]) { T.from = null; H.drawMap(); return; }
+    send('fight.wall', { op: 'add', a: T.from, b: pt, kind: T.mode });
+    T.from = T.mode === 'wall' ? pt : null;
+    H.drawMap();
+  }
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && UI.walls && UI.walls.from) { UI.walls.from = null; H.drawMap(); } });
   function down(gx, gy, e) {
     if (!F().on) return false;
+    if (UI.walls && gm()) { wallClick(gx, gy); return true; }
     if (UI.ruler) {   // two taps (or a click and a click): from here to there
       if (!UI.ruler.a || UI.ruler.b) UI.ruler = { a: { x: gx, y: gy }, b: null, live: { x: gx, y: gy } };
       else UI.ruler.b = { x: gx, y: gy };
@@ -602,6 +704,7 @@
   }
   function hover(gx, gy) {
     if (!F().on) return;
+    if (UI.walls && gm()) { UI.walls.live = [Math.round(gx), Math.round(gy)]; if (UI.walls.from) H.drawMap(); return; }
     if (UI.ruler && UI.ruler.a && !UI.ruler.b) { UI.ruler.live = { x: gx, y: gy }; H.drawMap(); return; }
     if (!myTurn()) return;
     const spec = armedSpec();
@@ -673,6 +776,21 @@
       ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.setLineDash([]);
       label(ctx, `${E.ruler(R0.a, b)} ft`, (ax + bx) / 2, (ay + by) / 2, z, g);
     }
+    // walls (the GM's map only): wall, door (a gap when open), window
+    const walls = gm() ? ((st().map || {}).walls || []) : [];
+    if (walls.length || (UI.walls && gm())) {
+      const lw = (UI.walls ? 5 : 3) / Math.min(1, z);
+      for (const wl of walls) {
+        ctx.beginPath(); ctx.moveTo(wl.a[0] * g, wl.a[1] * g); ctx.lineTo(wl.b[0] * g, wl.b[1] * g);
+        ctx.lineWidth = lw; ctx.setLineDash(wl.kind === 'window' ? [6 / z, 5 / z] : wl.kind === 'door' && wl.open ? [3 / z, 9 / z] : []);
+        ctx.strokeStyle = wl.kind === 'door' ? '#c8935a' : wl.kind === 'window' ? '#8fd3ff' : alpha('#ffffff', UI.walls ? 0.95 : 0.6);
+        ctx.stroke(); ctx.setLineDash([]);
+      }
+      if (UI.walls && UI.walls.from && UI.walls.live) {
+        ctx.beginPath(); ctx.moveTo(UI.walls.from[0] * g, UI.walls.from[1] * g); ctx.lineTo(UI.walls.live[0] * g, UI.walls.live[1] * g);
+        ctx.lineWidth = lw; ctx.strokeStyle = alpha(cssVar('--amber', '#ffb74d'), 0.9); ctx.setLineDash([8 / z, 6 / z]); ctx.stroke(); ctx.setLineDash([]);
+      }
+    }
     // status on the tokens (audit 8.10): conditions as badges, concentration as an amber ring, and a creature's hit
     // points as a bar for the GM only (players never get a creature's hit points)
     for (const u of Object.values(w.units)) {
@@ -725,6 +843,6 @@
     raf = requestAnimationFrame(step);
   }
 
-  window.HTC = { render, down, tap, hover, under, over };
+  window.HTC = { render, down, tap, hover, under, over, wallsButton };
   if (st()) render();
 })();
