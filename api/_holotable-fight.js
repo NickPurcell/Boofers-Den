@@ -482,6 +482,10 @@ function apply(camp, cid, gm, type, p, G) {
       // senses live on the sheet now (#92) and are the GM's (jpesus's ruling): a player's save never touches them; the GM's
       // senses from this dialog go to the sheet
       if (gm && Array.isArray(p.senses)) setSheetSenses(ch, p.senses);
+      else if (p.senses !== undefined) {   // a player sending different senses is refused, not quietly ignored
+        const sig = (l) => R.cleanSenses(l).map((x) => `${x.kind}:${x.range}`).sort().join();
+        if (sig(p.senses) !== sig(ch.senses)) throw new G.Forbidden("Only the GM sets senses.");
+      }
       f.defenses[ch.id] = defences({ resist: types(p.resist), immune: types(p.immune), vuln: types(p.vuln), senses: [] });
       return {};
     }

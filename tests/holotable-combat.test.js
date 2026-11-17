@@ -1332,7 +1332,10 @@ test("senses through the API: a creature's from its stat block stay the GM's; a 
   assert.ok(!JSON.stringify((await sam.state()).fight).includes("blindsight"), "a creature's senses aren't sent to players");
   assert.equal((await rae.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 60 }] })).code, 403);
   // a character's senses are on its sheet (#92) and the GM's (jpesus's ruling): the owner's save leaves them alone
-  assert.equal((await sam.act("fight.defenses", { charId: avery, resist: ["fire"], senses: [{ kind: "darkvision", range: 9999 }] })).code, 200, "the owner still saves resistances");
+  const refused = await sam.act("fight.defenses", { charId: avery, resist: ["fire"], senses: [{ kind: "darkvision", range: 9999 }] });
+  assert.equal(refused.code, 403, "a player's senses are refused");
+  assert.match(JSON.stringify(refused.data), /Only the GM sets senses/);
+  assert.equal((await sam.act("fight.defenses", { charId: avery, resist: ["fire"] })).code, 200, "the owner still saves resistances");
   let st = await gm.state();
   assert.deepEqual([st.characters[avery].senses, st.fight.defenses[avery].resist.map((x) => x.type)], [undefined, ["fire"]], "no senses from a player");
   assert.equal((await gm.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 60 }, { kind: "x-ray", range: 9 }] })).code, 200);
@@ -2277,7 +2280,8 @@ test("the GM sees and sets every character's senses at any time, view on or off;
   assert.deepEqual([gv.fight, gv.characters[avery].senses, gv.characters[bolt].senses], [undefined, [{ kind: "darkvision", range: 60 }], undefined], "on the sheet; the view stays off");
   // a player's save (sheet or Defences) never changes them
   await gm.act("fight.toggle", { on: true });
-  await sam.act("fight.defenses", { charId: avery, resist: ["fire"], senses: [{ kind: "darkvision", range: 9999 }] });
+  assert.equal((await sam.act("fight.defenses", { charId: avery, resist: ["fire"], senses: [{ kind: "darkvision", range: 9999 }] })).code, 403, "refused");
+  assert.equal((await sam.act("fight.defenses", { charId: avery, resist: ["fire"], senses: [{ kind: "darkvision", range: 60 }] })).code, 200, "unchanged senses: the save goes through");
   const ch = (await sam.state()).characters[avery];
   await sam.act("char.save", { char: Object.assign({}, ch, { senses: [{ kind: "truesight", range: 9999 }] }) });
   gv = await gm.state();
