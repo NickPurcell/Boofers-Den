@@ -26,7 +26,7 @@
       npcStats: Object.fromEntries(Array.from(new Set(Object.keys(f.npcDefenses || {}).concat(Object.keys(f.npcBody || {})))).map((k) => [k,
         Object.assign({ saves: (f.npcSaves || {})[k] || {}, mods: (f.npcMods || {})[k] || {} }, (f.npcDefenses || {})[k] || {}, (f.npcBody || {})[k] || {})])),
     }, R);
-    for (const [id, u] of Object.entries(f.units || {})) if (w.units[id] && u.down) w.units[id].down = true;
+    for (const [id, u] of Object.entries(f.units || {})) { if (w.units[id] && u.down) w.units[id].down = true; if (w.units[id] && u.hidden) w.units[id].hidden = true; }
     UI.cache = { st: s, w, reach: null };
     return w;
   }
