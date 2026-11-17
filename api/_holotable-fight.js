@@ -74,11 +74,14 @@ function state(camp) {
 }
 
 // { key, name, max, used, refill: 'turn' | 'short' | 'long' | 'manual', recharge: 2..6 or null, cost }
+// a creature's limited abilities; a points pool (a forcecaster's or techcaster's force or tech points, audit 9.5) holds
+// up to 300 and is spent several at a time, a power's level + 1
 function cleanNpcRes(list) {
-  return (Array.isArray(list) ? list : []).slice(0, 20).filter((r) => r && typeof r === "object").map((r) => {
-    const max = clamp(int(r.max, 1), 1, 20);
+  return (Array.isArray(list) ? list : []).slice(0, 40).filter((r) => r && typeof r === "object").map((r) => {
+    const points = !!r.points, max = clamp(int(r.max, 1), 1, points ? 300 : 20);
     return { key: str(r.key, 40).toLowerCase().replace(/[^a-z0-9-]/g, ""), name: str(r.name, 80), max, used: clamp(int(r.used), 0, max),
-      refill: ["turn", "short", "long", "manual"].includes(r.refill) ? r.refill : "manual", recharge: r.recharge == null ? null : clamp(int(r.recharge, 6), 2, 6) };
+      refill: ["turn", "short", "long", "manual"].includes(r.refill) ? r.refill : "manual", recharge: r.recharge == null ? null : clamp(int(r.recharge, 6), 2, 6),
+      ...(points ? { points: true } : {}) };
   }).filter((r) => r.key && r.name);
 }
 function cleanPending(x) {
@@ -518,7 +521,7 @@ function apply(camp, cid, gm, type, p, G) {
         const n = clamp(int(p.n, 1), 1, r.max);
         if (r.max - r.used < n) throw new G.Invalid(`${r.name}: ${r.max - r.used} of ${r.max} left.`);
         r.used += n;
-        G.addChat(camp, { system: true, fight: true, to: ["@gm"], private: true, text: str(`${e.name} uses ${r.name}${n > 1 ? ` (${n})` : ""}: ${r.max - r.used} of ${r.max} left.`, 200) });
+        G.addChat(camp, { system: true, fight: true, to: ["@gm"], private: true, text: str(r.points ? `${e.name} spends ${n} ${r.name.toLowerCase()}: ${r.max - r.used} of ${r.max} left.` : `${e.name} uses ${r.name}${n > 1 ? ` (${n})` : ""}: ${r.max - r.used} of ${r.max} left.`, 200) });
       }
       return {};
     }
