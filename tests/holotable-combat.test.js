@@ -2397,3 +2397,40 @@ test("class riders through the API: an Operative's Sneak Attack and a Berserker'
   const turnedDown = await label("damage");
   if (turnedDown && /Vibrosword/.test((await label("attack")) || "")) assert.doesNotMatch(turnedDown, /Rage/, "turned down");
 });
+
+test("review of #134: a rage doesn't outlive its fight; dropping to 0 ends it with its effect; a sheet without Rages gets them", async () => {
+  const { gm, sam, rae, bolt, ids } = await fight();
+  let st = await rae.state();
+  await rae.act("char.save", { char: Object.assign({}, st.characters[bolt], { classes: [{ name: "Berserker", level: 3 }], resources: [] }) });
+  await gm.act("fight.toggle", { on: true });
+  await sam.act("fight.end", {}); await gm.act("fight.end", {});   // Bolt's turn
+  assert.equal((await rae.act("fight.common", { key: "rage" })).code, 200);
+  st = await gm.state();
+  const rages = (st.characters[bolt].resources || []).find((r) => r.key === "rage");
+  assert.ok(rages && rages.used === 1, "the class's Rages, from the class table, with one used");
+  assert.ok(st.characters[bolt].conditions.includes("Raging"));
+  // the fight ends with the rage still running (fewer than 10 turns), and a new one starts
+  await gm.act("init.clear", {});
+  await rae.act("init.add", { charId: bolt, name: "Bolt", init: 20 });
+  await gm.act("init.add", { name: "Raider", init: 5, hp: 30, ac: 2 });
+  await gm.act("init.start", {});
+  st = await gm.state();
+  const boltId = st.initiative.entries.find((e) => e.name === "Bolt").id;
+  assert.equal(st.fight.turn, boltId);
+  assert.equal((await rae.act("fight.common", { key: "rage" })).code, 200, "not 'already raging': the old rage ended with its fight");
+  st = await gm.state();
+  assert.equal(st.characters[bolt].resources.find((r) => r.key === "rage").used, 2, "and it counts");
+});
+
+test("review of #134: the engine drops a Raging condition with no live effect, and the effect goes when the berserker drops", () => {
+  const w = E.buildWorld({ characters: { c1: { id: "c1", name: "Brak", classes: [{ name: "Berserker", level: 3 }], conditions: ["Raging"], hp: { max: 30, current: 30 }, abilities: {} } },
+    entries: [{ id: "e1", name: "Brak", charId: "c1", init: 10 }], active: true, turnId: "e1", round: 1, tokens: [{ id: "t1", charId: "c1", x: 0, y: 0 }], unitTokens: { e1: "t1" }, effects: [] }, R);
+  assert.deepEqual(w.units.e1.conditions, [], "no live effect: not raging");
+  const axe = Object.assign({}, blade, { abil: "str", weapon: true });
+  const bz = unit({ id: "bz", name: "Brak", side: "pc", x: 0, y: 0, hp: 3, maxHp: 30, riders: { rage: 2 }, conditions: ["Raging"] });
+  const raider = unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0 });
+  const live = [{ id: "rage-bz", unit: "bz", condition: "Raging", ends: "end", of: "bz", rounds: 10 }];
+  const ko = E.apply(world([bz, raider], "r1", { effects: live }), { type: "attack", unit: "r1", target: "bz", attack: Object.assign({}, blade, { weapon: true }) }, dice({ total: 20, nat: 15 }, { total: 30 }).roll);
+  assert.deepEqual([ko.world.units.bz.conditions.includes("Raging"), (ko.world.effects || []).some((ef) => ef.condition === "Raging")], [false, false], "the rage and its effect end together");
+  assert.ok(axe);
+});
