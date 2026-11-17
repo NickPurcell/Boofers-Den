@@ -839,5 +839,5 @@ function cleanWalls(list) {
   });
 }
 
-module.exports = { apply, view, fogFor, fogView, cleanFog, noteSeen, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
+module.exports = { apply, view, fogFor, fogView, cleanFog, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
   cleanHitDiceUsed: R.cleanHitDiceUsed };   // for cleanChar: the sheet and the undo record clean hit dice the same way
