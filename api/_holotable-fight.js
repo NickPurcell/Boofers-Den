@@ -133,7 +133,7 @@ function worldOf(camp, forPlayer, G) {
     tokens: camp.map.tokens, unitTokens: ut, spent: f.spent || {}, effects: f.effects || [], conc: f.conc || {},
     npcSpeed: Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v.speed : v])),
     npcStats: Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v : {}])),
-    defenses: f.defenses || {},
+    defenses: f.defenses || {}, walls: (camp.map && camp.map.walls) || [],
   }, R);
   if (G && G.shownName) for (const e of entries) if (w.units[e.id]) w.units[e.id].name = G.shownName(camp, e);
   return w;
@@ -398,6 +398,26 @@ function apply(camp, cid, gm, type, p, G) {
       G.addChat(camp, { system: true, fight: true, text: `The GM undid the last combat step (${s.label}).` });
       return {};
     }
+    case "fight.wall": {   // the GM draws, erases, opens and closes walls on the map (issue #93); players never receive them
+      need(gm);
+      if (!f.on) throw new G.Invalid("The combat view is off.");
+      let list = E.cleanWalls(camp.map.walls);
+      if (p.op === "add") {
+        const [w] = E.cleanWalls([{ id: require("crypto").randomBytes(5).toString("hex"), a: p.a, b: p.b, kind: p.kind || "wall", open: false }]);
+        if (!w) throw new G.Invalid("A wall needs two different ends.");
+        if (list.length >= 2000) throw new G.Invalid("That's the most walls one map can have (2000).");
+        list.push(w);
+      } else if (p.op === "remove") {
+        list = list.filter((w) => w.id !== String(p.id || ""));
+      } else if (p.op === "door") {
+        const w = list.find((x) => x.id === String(p.id || "") && x.kind === "door");
+        if (!w) throw new G.Invalid("No such door.");
+        w.open = !!p.open;
+      } else if (p.op === "clear") list = [];
+      else throw new G.Invalid("Unknown wall action.");
+      if (list.length) camp.map.walls = list; else delete camp.map.walls;
+      return {};
+    }
     case "fight.condition": {   // the DM puts a condition on a combatant (a level, a damage amount, who caused it) or takes it off
       need(gm);
       if (!f.on) throw new G.Invalid("The combat view is off.");
@@ -547,6 +567,9 @@ function view(camp, cid, gm, shownName) {
     effects: (f.effects || []).filter((ef) => units[ef.unit]).map((ef) => ({ unit: ef.unit, condition: ef.condition, ends: ef.ends, of: units[ef.of] ? ef.of : null, rounds: ef.rounds, save: ef.save, conc: ef.conc,
       level: ef.level || 0, amount: ef.amount || "", source: units[ef.source] ? ef.source : null })),   // a grappler or charmer the viewer can't see stays unnamed
     conc: Object.fromEntries(Object.entries(f.conc || {}).filter(([id]) => units[id])),
+    // with walls on the map, the squares this viewer can move to on their own turn: their browser has no walls to work
+    // them out with (players never receive walls)
+    reach: (camp.map.walls || []).length && turn && (gm || (units[turn] || {}).mine) ? E.reachable(world, turn, E.budget(world).moveLeft) : null,
     // a creature's size and reach, for the ones this viewer can see (both show on the map anyway)
     npcBody: Object.fromEntries(Object.entries(f.npc || {}).filter(([k]) => units[k]).map(([k, v]) => [k, { sizeCat: v.sizeCat == null ? null : v.sizeCat, reach: v.reach || 5 }])),
     // reactions waiting: who may react to whom; `mine` when this viewer is the one to answer
@@ -572,4 +595,4 @@ function restored(g) {
   Object.assign(g.fight, { undo: [], events: [], pending: [] });
 }
 
-module.exports = { apply, view, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources };
+module.exports = { apply, view, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls: E.cleanWalls };
