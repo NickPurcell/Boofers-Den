@@ -670,7 +670,7 @@ function apply(camp, cid, gm, type, p, G) {
           if (!spec) throw new G.Invalid("That attack isn't on the sheet.");
         } else spec = cleanSpec(p.attack, G);
         act = { type: "attack", unit: cur.id, target: String(p.target || ""), attack: spec, adv: !!p.adv, dis: !!p.dis, no: Array.isArray(p.no) ? p.no.slice(0, 4).map((x) => str(x, 20)) : [],
-          add: { fes: clamp(int(p.add && p.add.fes), 0, 20), double: !!(p.add && p.add.double) } };   // only how many, never the dice: the engine works those out
+          add: { fes: clamp(int(p.add && p.add.fes), 0, 20), double: !!(p.add && p.add.double) }, twoHands: !!p.twoHands };   // only how many, never the dice: the engine works those out
       }
       const limited = act.type === "attack" && !cur.charId && p.attack && p.attack.res && ((f.npcres || {})[cur.id] || []).find((x) => x.key === String(p.attack.res));
       if (limited && limited.used >= limited.max) throw new G.Invalid(`${limited.name} is spent${limited.recharge ? ` until it recharges (${limited.recharge}-6 at the start of ${cur.name}'s turn)` : ""}.`);
