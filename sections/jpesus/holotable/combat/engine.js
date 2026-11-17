@@ -101,6 +101,37 @@
     { id: 'long', dis: true, text: 'long range', when: (c) => c.ranged && c.feet > c.attack.range[0] },
     { id: 'close', dis: true, text: 'an enemy within 5 ft', when: (c) => c.ranged && c.enemyClose },
   ];
+  /* ---------------- conditions that take effect (issue #72) ---------------- */
+  // What each condition does to the arithmetic, following HoloTable's own descriptions in rules.js (CONDITIONS).
+  // Only the plainly mechanical parts are here; a condition with no entry is a label, as it is today. Later
+  // conditions (levels of Slowed or Exhaustion, Ignited's damage) are new entries, not new code.
+  const CONDITION_EFFECTS = {
+    Blinded: { attacks: 'dis', attacked: 'adv' },
+    Frightened: { attacks: 'dis' },
+    Grappled: { speed0: true },
+    Incapacitated: { noActions: true },
+    Invisible: { attacks: 'adv', attacked: 'dis' },
+    Paralyzed: { noActions: true, speed0: true, autoFail: ['str', 'dex'], attacked: 'adv', meleeCrit: true },
+    Petrified: { noActions: true, speed0: true, autoFail: ['str', 'dex'], attacked: 'adv' },
+    Poisoned: { attacks: 'dis' },
+    Prone: { attacks: 'dis', attacked: 'near' },          // near: advantage within 5 ft, disadvantage beyond
+    Restrained: { speed0: true, attacks: 'dis', attacked: 'adv', saveDis: ['dex'] },
+    Shocked: { speedHalf: true, noReactions: true },
+    Stunned: { noActions: true, speed0: true, autoFail: ['str', 'dex'], attacked: 'adv' },
+    Unconscious: { noActions: true, speed0: true, autoFail: ['str', 'dex'], attacked: 'adv', meleeCrit: true },
+  };
+  const effectsOf = (u) => (u.conditions || []).map((c) => [c, CONDITION_EFFECTS[c]]).filter(([, e]) => e);
+  const has = (u, flag) => effectsOf(u).find(([, e]) => e[flag]);
+  const INCAPACITATING = (u) => !!has(u, 'noActions');
+  // conditions join the reasons a roll tilts: the attacker's own, then the target's
+  REASONS.push(
+    { id: 'self', when: (c) => effectsOf(c.actor).some(([, e]) => e.attacks), each: (c) => effectsOf(c.actor).filter(([, e]) => e.attacks).map(([n, e]) => ({ [e.attacks]: true, text: `you are ${n.toLowerCase()}` })) },
+    { id: 'target', when: (c) => effectsOf(c.target).some(([, e]) => e.attacked), each: (c) => effectsOf(c.target).filter(([, e]) => e.attacked).map(([n, e]) => {
+      const way = e.attacked === 'near' ? (c.feet <= FT ? 'adv' : 'dis') : e.attacked;
+      return { [way]: true, text: `${c.target.name} is ${n.toLowerCase()}` };
+    }) },
+  );
+
   // Can `actorId` hit `targetId` with `attack` right now, and what would it take?
   function preview(world, actorId, targetId, attack, opts = {}) {
     const a = world.units[actorId], t = world.units[targetId];
@@ -114,7 +145,8 @@
     const ranged = !inReach;
     const enemyClose = Object.values(world.units).some((o) => o.id !== a.id && hostile(a, o) && !o.down && feetBetween(a, o) <= FT);
     const ctx = { feet, ranged, enemyClose, attack, actor: a, target: t };
-    const tilts = REASONS.filter((r) => r.when(ctx)).map((r) => ({ dis: !!r.dis, adv: !!r.adv, text: r.text }));
+    const tilts = REASONS.filter((r) => r.when(ctx)).flatMap((r) => (r.each ? r.each(ctx) : [{ dis: !!r.dis, adv: !!r.adv, text: r.text }]))
+      .map((x) => ({ dis: !!x.dis, adv: !!x.adv, text: x.text }));
     if (opts.adv) tilts.push({ adv: true, text: 'chosen' });
     if (opts.dis) tilts.push({ dis: true, text: 'chosen' });
     const adv = tilts.some((x) => x.adv), dis = tilts.some((x) => x.dis);
@@ -360,13 +392,15 @@
   function budget(world, id) {
     id = id || world.turnId;
     const u = world.units[id], s = spentOf(world, id);
-    const speed = u ? Math.max(0, +u.speed || 0) : 0;
-    return { key: s.key, moved: s.move, speed, moveLeft: Math.max(0, speed - s.move), action: s.action < 1, bonus: s.bonus < 1, reaction: s.reaction < 1 };
+    let speed = u ? Math.max(0, +u.speed || 0) : 0;
+    if (u && has(u, 'speed0')) speed = 0; else if (u && has(u, 'speedHalf')) speed = Math.floor(speed / 2 / FT) * FT;
+    const out = has(u || {}, 'noActions'), noReact = out || has(u || {}, 'noReactions');
+    return { key: s.key, moved: s.move, speed, moveLeft: Math.max(0, speed - s.move), action: !out && s.action < 1, bonus: !out && s.bonus < 1, reaction: !noReact && s.reaction < 1 };
   }
   // a new turn gives its unit full movement, an action, a bonus action and its reaction back
   function fresh(world) {
     const w = clone(world);
-    w.spent = w.spent || {};
+    w.spent = w.spent || {}; w.effects = w.effects || []; w.conc = w.conc || {};
     if (w.turnId && (!w.spent[w.turnId] || w.spent[w.turnId].key !== turnKey(w))) w.spent[w.turnId] = { key: turnKey(w), move: 0, action: 0, bonus: 0, reaction: 0 };
     return w;
   }
@@ -378,6 +412,7 @@
     if (!u) return no('That combatant is not on the map.');
     if (act.unit !== world.turnId) return no(`It's not ${u.name}'s turn.`);
     const w = fresh(world), me = w.units[u.id], b = budget(w);
+    if (act.type !== 'end' && act.type !== 'move' && INCAPACITATING(me)) return no(`${me.name} is ${String((has(me, 'noActions') || [''])[0]).toLowerCase()} and can't act.`);
     switch (act.type) {
       case 'move': {
         const x = Math.round(+act.x), y = Math.round(+act.y);
@@ -396,8 +431,10 @@
         const pv = preview(w, me.id, act.target, attack, { adv: !!act.adv, dis: !!act.dis });
         if (!pv.legal) return no(pv.why);
         const r = roll(pv.expr);
-        const nat = r.nat, crit = nat === 20, fumble = nat === 1;
+        const nat = r.nat, fumble = nat === 1;
+        let crit = nat === 20;
         const hit = crit || (!fumble && r.total >= t.ac);
+        if (hit && !pv.ranged && pv.feet <= FT && has(t, 'meleeCrit')) crit = true;   // a melee hit on the helpless is a critical
         w.spent[me.id].action += 1;
         const tilt = pv.mode === 'normal' ? '' : ` with ${pv.mode === 'adv' ? 'advantage' : 'disadvantage'} (${pv.tilts.map((x) => x.text).join(', ')})`;
         const log = [{ kind: 'attack', roll: r, expr: pv.expr, text: `${me.name} attacks ${t.name} with ${attack.name}${tilt}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}` }];
@@ -407,8 +444,9 @@
         const d = roll(expr);
         const amount = Math.max(0, d.total);
         const took = takeDamage(t, amount);
-        log.push({ kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 ? ' and drops to 0 hit points.' : '.'}` });
+        log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 ? ' and drops to 0 hit points.' : '.'}` });
         events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
+        concentrationCheck(w, t, amount, roll, log);
         return { ok: true, world: w, log, events };
       }
       case 'use': {
@@ -442,8 +480,10 @@
             if (!r.ok) return no(r.why);
           }
         }
-        // pay first: the turn slot and the points
+        // pay first: the turn slot and the points; a new concentration power ends the old one
         if (slot !== 'free') w.spent[me.id][slot] += 1;
+        if (ab.concentration && w.conc[me.id]) endConcentration(w, me.id, `${me.name} starts concentrating on ${ab.name}`, null);
+        if (ab.concentration) w.conc[me.id] = ab.name;
         for (const [pool, n] of Object.entries(cost)) if (n) me.pools[pool] = Object.assign({}, me.pools[pool], { used: me.pools[pool].used + n });
         const costText = Object.entries(cost).filter(([, n]) => n).map(([pool, n]) => `${n} ${(me.pools[pool] || {}).name || pool}`).join(', ');
         const log = [{ text: `${me.name} uses ${ab.name}${up ? ` at level ${ab.level + up}` : ''}${costText ? ` (${costText})` : ''}.` }], events = [];   // never says who or how many: a hidden creature may be among them
@@ -465,12 +505,24 @@
             log.push({ unit: t.id, kind: 'attack', roll: r, expr, text: `${ab.name} against ${t.name}${dis && !adv && tilts.length ? ` (disadvantage: ${tilts.join(', ')})` : ''}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : 'a miss.'}` });
           } else if (ab.save) {
             const bonus = (t.saves || {})[ab.save.ability];
-            const r = roll('1d20' + sgn(+bonus || 0));
-            const saved = r.total >= ab.save.dc;
+            const fail = effectsOf(t).find(([, e]) => (e.autoFail || []).includes(ab.save.ability));
+            const sdis = effectsOf(t).some(([, e]) => (e.saveDis || []).includes(ab.save.ability));
+            const sexpr = (sdis ? '2d20kl1' : '1d20') + sgn(+bonus || 0);
+            const r = roll(sexpr);
+            const saved = !fail && r.total >= ab.save.dc;
             hit = !saved || ab.save.onSave === 'half'; half = saved && ab.save.onSave === 'half';
-            log.push({ unit: t.id, kind: 'save', roll: r, expr: '1d20' + sgn(+bonus || 0), text: `${t.name} makes a ${ab.save.ability.toUpperCase()} save against DC ${ab.save.dc}${bonus == null ? ' (no save bonus known)' : ''}: ${r.total}, ${saved ? 'a success' : 'a failure'}.` });
+            log.push({ unit: t.id, kind: 'save', roll: r, expr: sexpr, text: `${t.name} makes a ${ab.save.ability.toUpperCase()} save against DC ${ab.save.dc}${bonus == null ? ' (no save bonus known)' : ''}${sdis ? ' with disadvantage' : ''}: ${r.total}, ${fail ? `an automatic failure (${fail[0].toLowerCase()})` : saved ? 'a success' : 'a failure'}.` });
           }
           if (!hit) { events.push({ kind: 'miss', unit: t.id }); continue; }
+          // conditions the ability puts on its target, with how long they last
+          if (!half) for (const ap of ab.applies || []) {
+            if (!ap.condition) continue;
+            t.conditions = Array.from(new Set((t.conditions || []).concat(ap.condition)));
+            const until = ap.until || { ends: 'end', of: 'self', rounds: 1 };
+            w.effects.push({ id: `${me.id}-${ab.key}-${t.id}-${w.effects.length}`, unit: t.id, condition: ap.condition, ends: until.ends, of: until.of === 'target' ? t.id : me.id,
+              rounds: until.rounds || 1, save: until.save && ab.save ? { ability: ab.save.ability, dc: ab.save.dc } : null, source: me.id, conc: !!ab.concentration });
+            log.push({ unit: t.id, text: `${t.name} is ${String(ap.condition).toLowerCase()}${ab.concentration ? ` while ${me.name} concentrates` : ''}.` });
+          }
           if (ab.damage.length) {
             const expr = dmgExpr(crit);
             const d = roll(expr);
@@ -478,6 +530,7 @@
             const took = takeDamage(t, amount);
             log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${dtype ? ' ' + dtype : ''} damage${half ? ' (half, on a save)' : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 ? ' and drops to 0 hit points.' : '.'}` });
             events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
+            concentrationCheck(w, t, amount, roll, log);
           } else if (ab.heal) {
             const expr = diceExpr(ab.heal.dice, ab.heal.add);
             const d = roll(expr);
@@ -494,6 +547,60 @@
       default:
         return no('Unknown combat action.');
     }
+  }
+  // a unit's concentration ends: its effects (and the conditions they gave) go
+  function endConcentration(w, id, why, log) {
+    const name = w.conc[id];
+    if (!name) return;
+    delete w.conc[id];
+    const gone = w.effects.filter((ef) => ef.source === id && ef.conc);
+    w.effects = w.effects.filter((ef) => !(ef.source === id && ef.conc));
+    for (const ef of gone) dropCondition(w, ef);
+    if (log) log.push({ text: `${why}: ${name} ends.` });
+  }
+  // a condition given by an effect goes when the effect does (unless another effect still gives it)
+  function dropCondition(w, ef) {
+    const u = w.units[ef.unit];
+    if (!u || w.effects.some((o) => o.unit === ef.unit && o.condition === ef.condition)) return;
+    u.conditions = (u.conditions || []).filter((c) => c !== ef.condition);
+  }
+  // after damage: concentration needs a Con save (DC 10 or half the damage, whichever is higher); 0 hp ends it
+  function concentrationCheck(w, t, amount, roll, log) {
+    if (!w.conc || !w.conc[t.id] || amount <= 0) return;
+    if (t.hp != null && t.hp <= 0) return endConcentration(w, t.id, `${t.name} drops`, log);
+    const dc = Math.max(10, Math.floor(amount / 2)), bonus = +((t.saves || {}).con) || 0;
+    const r = roll('1d20' + sgn(bonus));
+    log.push({ unit: t.id, kind: 'save', roll: r, expr: '1d20' + sgn(bonus), text: `${t.name} makes a concentration save (CON, DC ${dc}): ${r.total}, ${r.total >= dc ? 'a success' : 'a failure'}.` });
+    if (r.total < dc) endConcentration(w, t.id, `${t.name} loses concentration`, log);
+  }
+  // A turn passed from one unit to the next: effects that end at the end of the first one's turn or the start of
+  // the next one's go (after their rounds), and an effect that a save can end gives its unit that save at the end of
+  // its own turn. Returns the new world and the log; the world passed in is not changed.
+  function turnPassed(world, prevId, nextId, roll) {
+    const w = clone(world), log = [];
+    w.effects = w.effects || []; w.conc = w.conc || {};
+    const keep = [];
+    for (const ef of w.effects) {
+      let ends = false;
+      if (ef.save && ef.unit === prevId) {
+        const u = w.units[ef.unit], bonus = +((u && u.saves) || {})[ef.save.ability] || 0;
+        const r = roll('1d20' + sgn(bonus));
+        log.push({ unit: ef.unit, kind: 'save', roll: r, expr: '1d20' + sgn(bonus), text: `${u ? u.name : 'Someone'} tries to shake off ${ef.condition.toLowerCase()} (${ef.save.ability.toUpperCase()}, DC ${ef.save.dc}): ${r.total}, ${r.total >= ef.save.dc ? 'a success' : 'a failure'}.` });
+        if (r.total >= ef.save.dc) ends = true;
+      }
+      if (!ends && ((ef.ends === 'end' && ef.of === prevId) || (ef.ends === 'start' && ef.of === nextId))) {
+        ef.rounds = (ef.rounds || 1) - 1;
+        if (ef.rounds <= 0) ends = true;
+      }
+      if (ends) { const u = w.units[ef.unit]; log.push({ unit: ef.unit, text: `${u ? u.name : 'Someone'} is no longer ${ef.condition.toLowerCase()}.` }); w.endedEffects = (w.endedEffects || []).concat(ef); }
+      else keep.push(ef);
+    }
+    const ended = w.effects.filter((ef) => !keep.includes(ef));
+    w.effects = keep;
+    for (const ef of ended) dropCondition(w, ef);
+    // incapacitated casters stop concentrating
+    for (const id of Object.keys(w.conc)) if (w.units[id] && INCAPACITATING(w.units[id])) endConcentration(w, id, `${w.units[id].name} is incapacitated`, log);
+    return { world: w, log };
   }
   // temporary hit points go first; hit points stop at 0; a creature whose hit points aren't known just takes the hit
   function takeDamage(t, amount) {
@@ -523,6 +630,7 @@
         temp: ch ? +hp.temp || 0 : 0,
         speed: ch ? +ch.speed || 30 : +((table.npcSpeed || {})[e.id]) || 30,
         pools: ch ? Object.fromEntries(resourcesOf(ch, rules).map((r) => [r.key, r])) : {},
+        conditions: Array.from(new Set([].concat(e.conditions || [], ch ? ch.conditions || [] : []))),
         saves: ch && rules ? Object.fromEntries(ABILS.map((ab) => [ab, rules.saveBonus(ch, ab)])) : Object.assign({}, ((table.npcStats || {})[e.id] || {}).saves),
       };
       if (units[e.id].hp != null && units[e.id].hp <= 0) units[e.id].down = true;
@@ -530,11 +638,11 @@
     const cur = table.turnId !== undefined ? (table.entries || []).find((e) => e.id === table.turnId) : (table.entries || [])[table.turn];
     return {
       active: !!table.active && !!cur, round: table.round || 1, turnId: cur ? cur.id : null, units,
-      spent: table.spent || {},
+      spent: table.spent || {}, effects: table.effects || [], conc: table.conc || {},
     };
   }
 
   return { FT, TURN, squaresBetween, feetBetween, reachable, readRange, attacksOf, attackFromBehavior, REASONS, preview, budget, apply, takeDamage, buildWorld, turnKey,
     cleanResources, resourcesOf, atLevel, spend, rest, powerNumbers, resolvePower, weaponAbility, abilitiesOf, inReachOf, cleanAbility, setPoolUsed,
-    ruler, areaSquares, areaHits };
+    ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration };
 });

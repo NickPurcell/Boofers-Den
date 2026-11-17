@@ -192,6 +192,18 @@
     if (mine && u && f.active) html += '<button class="btn small amber" data-ct="end">End turn ⏭</button>';
     if (gm()) html += `<button class="btn small ghost" data-ct="undo" ${f.undo && f.undo.n ? '' : 'disabled'} title="${esc(f.undo && f.undo.last ? 'Undo: ' + f.undo.last : 'Nothing to undo')}">↶ Undo</button><button class="btn small ghost" data-ct="off" title="Turn the combat view off for everyone">Combat view off</button>`;
     html += '</div>';
+    // the current combatant's conditions (how long each lasts) and what it is concentrating on
+    if (f.active && u && ((u.conditions || []).length || (f.conc || {})[u.id])) {
+      const efs = (f.effects || []).filter((ef) => ef.unit === u.id);
+      const until = (c) => {
+        const ef = efs.find((x) => x.condition === c);
+        if (!ef) return '';
+        const whose = ef.of === u.id ? 'its' : ef.of && w.units[ef.of] ? `${w.units[ef.of].name}'s` : "someone's";
+        return ` (${ef.save ? `${ef.save.ability.toUpperCase()} save DC ${ef.save.dc} at the end of its turns` : `until the ${ef.ends} of ${whose} ${ef.rounds > 1 ? `turn, ${ef.rounds} rounds` : 'next turn'}`}${ef.conc ? ', while concentrating' : ''})`;
+      };
+      html += `<div class="ct-row ct-conds">${(u.conditions || []).map((c) => `<span class="ct-chip ct-cond" title="${esc((R.CONDITIONS || {})[c] || c)}${esc(until(c))}">${esc(c)}${E.CONDITION_EFFECTS[c] ? '' : ' <span class="muted">(no automatic effect yet)</span>'}${esc(until(c))}</span>`).join('')}
+        ${(f.conc || {})[u.id] ? `<span class="ct-chip ct-conc" title="Damage asks for a Con save; dropping to 0 hit points or being incapacitated ends it">Concentrating: ${esc(f.conc[u.id])}</span>` : ''}</div>`;
+    }
     // the current character's resources (its owner and the GM): use one, or add one
     if (f.active && u && u.charId && (mine || gm())) {
       const pools = Object.values(u.pools || {}).filter((r) => r.key !== 'hitdice');

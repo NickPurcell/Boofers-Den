@@ -363,6 +363,86 @@ test("areas: an area power catches everyone in the template and each of them sav
   assert.deepEqual(E.areaHits(world([me, near], "cass"), "cass", cone, { x: 5.5, y: 0.5 }).units, ["n"]);
 });
 
+test("conditions: they tilt attack rolls both ways, and Prone depends on distance", () => {
+  const ava = (c) => unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0, conditions: c || [] });
+  const r1 = (x, c) => unit({ id: "r1", name: "Raider", side: "npc", x, y: 0, conditions: c || [] });
+  const pv = (a, t, atk) => E.preview(world([a, t], "ava"), "ava", "r1", atk);
+  assert.deepEqual([pv(ava(["Poisoned"]), r1(1), blade).mode, pv(ava(["Poisoned"]), r1(1), blade).tilts[0].text], ["dis", "you are poisoned"]);
+  assert.equal(pv(ava(), r1(1, ["Restrained"]), blade).mode, "adv");
+  assert.equal(pv(ava(["Invisible"]), r1(1), blade).mode, "adv");
+  assert.equal(pv(ava(), r1(1, ["Prone"]), blade).mode, "adv", "prone, within 5 ft: advantage");
+  assert.equal(pv(ava(), r1(6, ["Prone"]), rifle).mode, "dis", "prone, at range: disadvantage");
+  assert.equal(pv(ava(["Poisoned"]), r1(1, ["Restrained"]), blade).mode, "normal", "advantage and disadvantage cancel out");
+  assert.equal(pv(ava(["Charmed"]), r1(1), blade).mode, "normal", "a condition with no listed effect is a label");
+});
+
+test("conditions: speed, actions and saves", () => {
+  const w = (c) => world([unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0, conditions: c }), unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 20 })], "ava");
+  assert.equal(E.budget(w(["Restrained"])).moveLeft, 0);
+  assert.deepEqual([E.budget(w(["Shocked"])).moveLeft, E.budget(w(["Shocked"])).reaction], [15, false]);
+  assert.deepEqual([E.budget(w(["Stunned"])).action, E.budget(w(["Stunned"])).moveLeft], [false, 0]);
+  assert.match(E.apply(w(["Stunned"]), { type: "attack", unit: "ava", target: "r1", attack: blade }, dice().roll).why, /stunned and can't act/);
+  // a melee hit against a paralyzed creature within 5 ft is a critical
+  const d = dice({ total: 15, nat: 10 }, { total: 11 });
+  const r = E.apply(world([unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 }), unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, conditions: ["Paralyzed"] })], "ava"), { type: "attack", unit: "ava", target: "r1", attack: blade }, d.roll);
+  assert.deepEqual([d.asked, r.events[0].kind], [["2d20kh1+5", "2d8+3"], "crit"]);
+  // a paralyzed creature fails a DEX save outright; a restrained one rolls it with disadvantage
+  const ch = consular();
+  const lib = { "mind shove": { use: "action", range: [60, 60], save: { ability: "dex", dc: 10 }, damage: [{ dice: "1d6" }] } };
+  const ab = E.abilitiesOf(ch, R, lib)[0];
+  const me = unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, pools: Object.fromEntries(E.resourcesOf(ch, R).map((x) => [x.key, x])) });
+  let dd = dice({ total: 30, nat: 20 }, { total: 4 });
+  let rr = E.apply(world([me, unit({ id: "r1", name: "Raider", side: "npc", x: 2, y: 0, conditions: ["Paralyzed"] })], "cass"), { type: "use", unit: "cass", ability: ab, target: "r1" }, dd.roll);
+  assert.match(rr.log[1].text, /an automatic failure \(paralyzed\)/);
+  dd = dice({ total: 15, nat: 15 });
+  rr = E.apply(world([me, unit({ id: "r1", name: "Raider", side: "npc", x: 2, y: 0, conditions: ["Restrained"], saves: { dex: 0 } })], "cass"), { type: "use", unit: "cass", ability: ab, target: "r1" }, dd.roll);
+  assert.equal(dd.asked[0], "2d20kl1+0");
+});
+
+test("conditions: an ability puts one on, and it ends by itself (after its rounds, or on a save)", () => {
+  const ch = consular();
+  const lib = { "mind shove": { use: "action", range: [60, 60], save: { ability: "str", dc: 12 }, applies: [{ condition: "Prone", until: { ends: "end", of: "target", rounds: 1 } }] },
+    "unknown art": { use: "action", range: [60, 60], save: { ability: "wis", dc: 14 }, applies: [{ condition: "Restrained", until: { ends: "end", of: "target", rounds: 10, save: true } }] } };
+  const [shove, hold] = E.abilitiesOf(ch, R, lib);
+  const me = unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, pools: Object.fromEntries(E.resourcesOf(ch, R).map((x) => [x.key, x])) });
+  const raider = unit({ id: "r1", name: "Raider", side: "npc", x: 2, y: 0, saves: { str: 0, wis: 1 } });
+  let r = E.apply(world([me, raider], "cass"), { type: "use", unit: "cass", ability: shove, target: "r1" }, dice({ total: 5, nat: 5 }).roll);
+  assert.deepEqual(r.world.units.r1.conditions, ["Prone"]);
+  assert.equal(r.world.effects.length, 1);
+  assert.match(r.log.at(-1).text, /Raider is prone/);
+  // Cass's turn ends: nothing yet. The Raider's turn ends: the prone effect is over.
+  let t = E.turnPassed(r.world, "cass", "r1", dice().roll);
+  assert.deepEqual(t.world.units.r1.conditions, ["Prone"]);
+  t = E.turnPassed(t.world, "r1", "cass", dice().roll);
+  assert.deepEqual([t.world.units.r1.conditions, t.world.effects.length], [[], 0]);
+  assert.match(t.log[0].text, /Raider is no longer prone/);
+  // a save-ends effect: the Raider tries at the end of each of its turns
+  r = E.apply(world([me, raider], "cass"), { type: "use", unit: "cass", ability: hold, target: "r1" }, dice({ total: 3, nat: 2 }).roll);
+  t = E.turnPassed(r.world, "r1", "cass", dice({ total: 9, nat: 8 }).roll);
+  assert.deepEqual(t.world.units.r1.conditions, ["Restrained"], "9 against DC 14: still restrained");
+  t = E.turnPassed(t.world, "r1", "cass", dice({ total: 16, nat: 15 }).roll);
+  assert.deepEqual(t.world.units.r1.conditions, []);
+});
+
+test("concentration: one power at a time; damage asks for a Con save; dropping to 0 ends it", () => {
+  const ch = consular();
+  const hold = { use: "action", range: [60, 60], save: { ability: "wis", dc: 14 }, applies: [{ condition: "Restrained", until: { ends: "end", of: "self", rounds: 10 } }], concentration: true };
+  const lib = { "mind shove": hold, "unknown art": Object.assign({}, hold, { applies: [{ condition: "Blinded", until: { ends: "end", of: "self", rounds: 10 } }] }) };
+  const [a1, a2] = E.abilitiesOf(ch, R, lib);
+  const me = unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, hp: 40, maxHp: 40, saves: { con: 1 }, pools: Object.fromEntries(E.resourcesOf(ch, R).map((x) => [x.key, x])) });
+  const raider = unit({ id: "r1", name: "Raider", side: "npc", x: 2, y: 0, saves: { wis: 0 } });
+  let r = E.apply(world([me, raider], "cass"), { type: "use", unit: "cass", ability: a1, target: "r1" }, dice({ total: 2, nat: 2 }).roll);
+  assert.deepEqual([r.world.conc.cass, r.world.units.r1.conditions], ["Mind Shove", ["Restrained"]]);
+  // a new concentration power (next round) ends the first, and its condition goes with it
+  r = E.apply(Object.assign({}, r.world, { round: 2 }), { type: "use", unit: "cass", ability: a2, target: "r1" }, dice({ total: 2, nat: 2 }).roll);
+  assert.deepEqual([r.world.conc.cass, r.world.units.r1.conditions], ["Unknown Art", ["Blinded"]]);
+  // the Raider hits Cass for 24: a DC 12 Con save; 8 fails and the power ends
+  const hit = E.apply(Object.assign({}, r.world, { turnId: "r1" }), { type: "attack", unit: "r1", target: "cass", attack: Object.assign({}, blade, { bonus: 9, melee: 10 }) }, dice({ total: 25, nat: 16 }, { total: 24 }, { total: 8, nat: 7 }).roll);
+  assert.match(hit.log.find((l) => /concentration save/.test(l.text)).text, /DC 12\): 8, a failure/);
+  assert.deepEqual([hit.world.conc.cass, hit.world.units.r1.conditions], [undefined, []]);
+  assert.match(hit.log.at(-1).text, /Cass loses concentration: Unknown Art ends/);
+});
+
 /* ---------------------------------------------------------------- the server's fight actions, through the API */
 const Module = require("module");
 const HoloFake = require("./holotable-fake-redis.js");
@@ -632,4 +712,41 @@ test("areas through the API: a blast catches a hidden creature without telling t
   assert.ok(lurker.hp < 10, "the hidden creature was caught and took the damage");
   assert.ok(gv.chat.some((m) => m.fight && m.private && /Lurker/.test(m.roll.label)), "the GM sees its save");
   assert.ok(!JSON.stringify(pv).includes("Lurker") && !JSON.stringify(pv).includes(ids.lurker), "the player learns nothing of it");
+});
+
+test("conditions through the API: a power restrains, the tracker shows it, the turn change ends it, undo brings it back", async () => {
+  const { gm, sam, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  let st = await sam.state();
+  const av = Object.values(st.characters).find((c) => c.name === "Avery");
+  await sam.act("char.save", { char: Object.assign({}, av, { classes: [{ name: "Consular", level: 3 }], abilities: Object.assign({}, av.abilities, { wis: 16 }),
+    powers: [{ name: "Hold", level: 1, type: "force", alignment: "universal" }] }) });
+  await gm.act("fight.ability", { name: "Hold", data: { use: "action", range: [60, 60], save: { ability: "wis", dc: 40 }, applies: [{ condition: "Restrained", until: { ends: "end", of: "target", rounds: 1 } }], concentration: true } });
+  assert.equal((await sam.act("fight.use", { ability: "pw:hold", target: ids.raider })).code, 200);
+  st = await sam.state();
+  assert.deepEqual(st.initiative.entries.find((e) => e.id === ids.raider).conditions, ["Restrained"], "the tracker shows it");
+  assert.equal(st.fight.conc[ids.avery], "Hold");
+  assert.equal(st.fight.effects[0].condition, "Restrained");
+  // End turn: the Raider's turn begins; its turn ends: the effect goes (at the next combat step after it)
+  await sam.act("fight.end", {});
+  assert.deepEqual((await sam.state()).initiative.entries.find((e) => e.id === ids.raider).conditions, ["Restrained"]);
+  await gm.act("fight.end", {});
+  st = await sam.state();
+  assert.deepEqual(st.initiative.entries.find((e) => e.id === ids.raider).conditions, [], "gone at the end of the Raider's turn");
+  assert.ok(st.chat.some((m) => m.system && /Raider is no longer restrained/.test(m.text)));
+  // undo the Raider's End turn: restrained again
+  await gm.act("fight.undo", {});
+  assert.deepEqual((await gm.state()).initiative.entries.find((e) => e.id === ids.raider).conditions, ["Restrained"]);
+});
+
+test("concentration: dropping to 0 hit points ends it without a save", () => {
+  const ch = consular();
+  const ab = E.abilitiesOf(ch, R, { "mind shove": { use: "action", range: [60, 60], save: { ability: "wis", dc: 14 }, applies: [{ condition: "Restrained" }], concentration: true } })[0];
+  const me = unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, hp: 10, maxHp: 10, pools: Object.fromEntries(E.resourcesOf(ch, R).map((x) => [x.key, x])) });
+  const r = E.apply(world([me, unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, saves: { wis: 0 } })], "cass"), { type: "use", unit: "cass", ability: ab, target: "r1" }, dice({ total: 2, nat: 2 }).roll);
+  const d = dice({ total: 25, nat: 16 }, { total: 12 });
+  const hit = E.apply(Object.assign({}, r.world, { turnId: "r1" }), { type: "attack", unit: "r1", target: "cass", attack: blade }, d.roll);
+  assert.equal(d.asked.length, 2, "no concentration save is rolled");
+  assert.deepEqual([hit.world.conc.cass, hit.world.units.r1.conditions], [undefined, []]);
+  assert.match(hit.log.at(-1).text, /Cass drops: Mind Shove ends/);
 });

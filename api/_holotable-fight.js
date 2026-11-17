@@ -46,6 +46,14 @@ function state(camp) {
       token: typeof ev.token === "string" && ID.test(ev.token) ? ev.token : null, amount: ev.amount == null ? null : clamp(int(ev.amount), 0, 100000),
       feet: ev.feet == null ? null : clamp(int(ev.feet), 0, 1000), hidden: !!ev.hidden })),
     seq: int(f.seq),
+    // timed effects from abilities (a condition on a unit until the start or end of someone's turn, or a save) and
+    // who is concentrating on what (issue #72, audit 4.6)
+    effects: (Array.isArray(f.effects) ? f.effects : []).filter((x) => x && typeof x === "object" && ID.test(String(x.unit || ""))).slice(0, 200).map((x) => ({
+      id: str(x.id, 120), unit: x.unit, condition: str(x.condition, 30), ends: x.ends === "start" ? "start" : "end", of: ID.test(String(x.of || "")) ? x.of : x.unit,
+      rounds: clamp(int(x.rounds, 1), 1, 100), save: x.save && typeof x.save === "object" ? { ability: ["str", "dex", "con", "int", "wis", "cha"].includes(x.save.ability) ? x.save.ability : "con", dc: clamp(int(x.save.dc, 10), 1, 40) } : null,
+      source: ID.test(String(x.source || "")) ? x.source : null, conc: !!x.conc })),
+    conc: Object.fromEntries(Object.entries(plainObj(f.conc)).filter(([k, v]) => ID.test(k) && typeof v === "string").map(([k, v]) => [k, str(v, 80)])),
+    lastTurn: str(f.lastTurn, 60),
   };
   return camp.fight;
 }
@@ -62,6 +70,11 @@ function cleanSnap(x) {
     tokens: (Array.isArray(x.tokens) ? x.tokens : []).slice(0, 300).filter((t) => Array.isArray(t) && typeof t[0] === "string").map((t) => [t[0], num(t[1], -500, 1000), num(t[2], -500, 1000)]),
     hp: (Array.isArray(x.hp) ? x.hp : []).slice(0, 300).filter((h) => Array.isArray(h) && typeof h[0] === "string")
       .map((h) => [h[0], nul(h[1]), Array.isArray(h[2]) ? [num(h[2][0], -1000, 100000), num(h[2][1], 0, 100000)] : null]),
+    effects: Array.isArray(x.effects) ? state({ fight: { effects: x.effects } }).effects : [],
+    conc: Object.fromEntries(Object.entries(plainObj(x.conc)).filter(([k, v]) => ID.test(k) && typeof v === "string").map(([k, v]) => [k, str(v, 80)])),
+    lastTurn: str(x.lastTurn, 60),
+    conds: (Array.isArray(x.conds) ? x.conds : []).slice(0, 300).filter((c) => Array.isArray(c) && typeof c[0] === "string")
+      .map(([id, ec, cc]) => [id, (Array.isArray(ec) ? ec : []).slice(0, 20).map((c) => str(c, 30)), Array.isArray(cc) ? cc.slice(0, 20).map((c) => str(c, 30)) : null]),
     chars: (Array.isArray(x.chars) ? x.chars : []).slice(0, 60).filter((c) => Array.isArray(c) && typeof c[0] === "string" && c[1] && typeof c[1] === "object")
       .map(([id, r]) => [id, { resources: E.cleanResources(r.resources),
         force: { max: plainObj(r.force).max == null || plainObj(r.force).max === "" ? "" : num(plainObj(r.force).max, 0, 999), used: num(plainObj(r.force).used, 0, 999) },
@@ -92,7 +105,7 @@ function worldOf(camp, forPlayer) {
   const cur = ini.entries[ini.turn];
   return E.buildWorld({
     characters: camp.characters, entries, active: ini.active, turnId: cur && entries.includes(cur) ? cur.id : null, round: ini.round,
-    tokens: camp.map.tokens, unitTokens: ut, spent: f.spent || {},
+    tokens: camp.map.tokens, unitTokens: ut, spent: f.spent || {}, effects: f.effects || [], conc: f.conc || {},
     npcSpeed: Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v.speed : v])),
     npcStats: Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v : {}])),
   }, R);
@@ -129,6 +142,8 @@ function snapshot(camp, label) {
     label: str(label, 120), at: now(), seq: f.seq,
     ini: { turnId: (ini.entries[ini.turn] || {}).id || null, round: ini.round, active: ini.active },
     spent: JSON.parse(JSON.stringify(f.spent || {})),
+    effects: JSON.parse(JSON.stringify(f.effects || [])), conc: Object.assign({}, f.conc), lastTurn: f.lastTurn || "",
+    conds: ini.entries.map((e) => [e.id, (e.conditions || []).slice(), e.charId && camp.characters[e.charId] ? (camp.characters[e.charId].conditions || []).slice() : null]),
     chars: Object.values(camp.characters).map((c) => [c.id, JSON.parse(JSON.stringify({ resources: c.resources || [], force: c.force, tech: c.tech, hitDiceUsed: c.hitDiceUsed }))]),
     tokens: (camp.map.tokens || []).filter((t) => tok.has(t.id)).map((t) => [t.id, t.x, t.y]),
     hp: ini.entries.map((e) => [e.id, e.hp, e.charId && camp.characters[e.charId] ? [camp.characters[e.charId].hp.current, camp.characters[e.charId].hp.temp] : null]),
@@ -149,6 +164,14 @@ function restore(camp, s) {
   ini.round = s.ini.round; ini.active = s.ini.active;
   f.spent = s.spent || {};
   for (const [id, r] of s.chars || []) if (camp.characters[id]) Object.assign(camp.characters[id], r);
+  if (Array.isArray(s.effects)) f.effects = s.effects;
+  if (s.conc) f.conc = s.conc;
+  if (typeof s.lastTurn === "string") f.lastTurn = s.lastTurn;
+  for (const [id, ec, cc] of s.conds || []) {
+    const e = ini.entries.find((k) => k.id === id);
+    if (e) e.conditions = ec;
+    if (e && cc && e.charId && camp.characters[e.charId]) camp.characters[e.charId].conditions = cc;
+  }
   f.events = f.events.filter((ev) => ev.seq <= s.seq);
 }
 
@@ -171,6 +194,35 @@ function writeBack(camp, cid, before, after, G) {
     }
   }
   f.spent = after.spent || {};
+  if (after.effects) f.effects = after.effects;
+  if (after.conc) f.conc = after.conc;
+  // conditions the engine gave or took away: on the tracker entry, and on the sheet for a character
+  for (const [id, a] of Object.entries(after.units)) {
+    const b = before.units[id];
+    if (!b || JSON.stringify(a.conditions || []) === JSON.stringify(b.conditions || [])) continue;
+    G.applyAction(camp, cid, true, "init.update", { id, fields: { conditions: a.conditions || [] } });
+    if (a.charId && camp.characters[a.charId]) camp.characters[a.charId].conditions = (a.conditions || []).slice(0, 20);
+  }
+}
+// The turn moved on since the last combat step (End turn, or the tracker's Next): effects that end now go, and
+// save-ends effects roll their save. Done at the next combat action, never on a read, so a poll changes nothing.
+function tick(camp, cid, G) {
+  const f = camp.fight, ini = camp.initiative, cur = ini.entries[ini.turn];
+  const key = ini.active && cur ? `${ini.round}:${cur.id}` : "";
+  if (!key || key === f.lastTurn) return;
+  const prevId = (f.lastTurn || "").split(":")[1] || null;
+  f.lastTurn = key;
+  if (!f.effects.length && !Object.keys(f.conc).length) return;
+  const before = worldOf(camp, false);
+  const r = E.turnPassed(before, prevId, cur.id, (expr) => G.rollDice(expr));
+  writeBack(camp, cid, before, r.world, G);
+  for (const line of r.log) {
+    const hidden = line.unit && hiddenEntry(camp, ini.entries.find((e) => e.id === line.unit) || {}, (before.units[line.unit] || {}).tokenId);
+    const msg = line.roll ? { from: "Combat", fromId: "@gm", fight: true, roll: { total: line.roll.total, detail: line.roll.detail, nat: line.roll.nat == null ? null : line.roll.nat, expr: line.expr, label: str(line.text, 200), kind: line.kind } }
+      : { system: true, text: str(line.text, 200) };
+    if (hidden) { msg.to = ["@gm"]; msg.private = true; msg.fromId = "@gm"; }
+    G.addChat(camp, msg);
+  }
 }
 
 function apply(camp, cid, gm, type, p, G) {
@@ -259,6 +311,7 @@ function apply(camp, cid, gm, type, p, G) {
       const cur = ini.entries[ini.turn];
       if (!ini.active || !cur) throw new G.Invalid("Combat hasn't started: start initiative first.");
       need(mayAct(camp, cid, gm, cur), "It's not your turn.");
+      tick(camp, cid, G);
       // an area catches whoever is in it, hidden or not; only its rolls about a hidden one stay with the GM
       const areaUse = type === "fight.use" && cur.charId && (() => {
         const ch = camp.characters[cur.charId];
@@ -269,6 +322,7 @@ function apply(camp, cid, gm, type, p, G) {
       if (type === "fight.end" && !world.units[cur.id]) {      // a combatant with no token can still pass the turn
         snapshot(camp, `${cur.name} ends the turn`);
         G.applyAction(camp, cid, true, "init.next", {});
+        tick(camp, cid, G);
         return {};
       }
       let act;
@@ -327,7 +381,7 @@ function apply(camp, cid, gm, type, p, G) {
           hidden: secret && ev.kind === "move" ? true : hiddenEntry(camp, entry(ev.unit) || {}, u && u.tokenId) });
       }
       if (f.events.length > EVENTS_MAX) f.events.splice(0, f.events.length - EVENTS_MAX);
-      if (r.endTurn) G.applyAction(camp, cid, true, "init.next", {});
+      if (r.endTurn) { G.applyAction(camp, cid, true, "init.next", {}); tick(camp, cid, G); }
       return {};
     }
     default:
@@ -363,6 +417,8 @@ function view(camp, cid, gm) {
     npcSpeed: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v.speed : v])) : {},
     npcSaves: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, (v && v.saves) || {}])) : {},
     lib: f.lib || {},
+    effects: (f.effects || []).filter((ef) => units[ef.unit]).map((ef) => ({ unit: ef.unit, condition: ef.condition, ends: ef.ends, of: units[ef.of] ? ef.of : null, rounds: ef.rounds, save: ef.save, conc: ef.conc })),
+    conc: Object.fromEntries(Object.entries(f.conc || {}).filter(([id]) => units[id])),
   };
 }
 
