@@ -38,6 +38,34 @@
     const as = a.size || 1, bs = b.size || 1;
     return gridFeet(Math.max(0, b.x - (a.x + as - 1), a.x - (b.x + bs - 1)), Math.max(0, b.y - (a.y + as - 1), a.y - (b.y + bs - 1)));
   }
+  /* ---------------- walls (issue #93): segments in grid units, a square's corners at whole numbers ---------------- */
+  // { a: [x, y], b: [x, y], kind: 'wall' | 'door' | 'window', open }. A wall blocks sight and movement; a closed door
+  // blocks both; a window blocks movement only. A world with no walls behaves exactly as before.
+  const WALL_KINDS = ['wall', 'door', 'window'];
+  const blocksSight = (w) => w.kind === 'wall' || (w.kind === 'door' && !w.open);
+  const blocksMove = (w) => w.kind === 'wall' || w.kind === 'window' || (w.kind === 'door' && !w.open);
+  // do segments p1–p2 and q1–q2 meet (touching counts, so nothing slips through where two walls join)?
+  function crosses(p1, p2, q1, q2) {
+    const d = (a, b, c) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+    const on = (a, b, c) => Math.min(a[0], b[0]) - 1e-9 <= c[0] && c[0] <= Math.max(a[0], b[0]) + 1e-9 && Math.min(a[1], b[1]) - 1e-9 <= c[1] && c[1] <= Math.max(a[1], b[1]) + 1e-9;
+    const d1 = d(q1, q2, p1), d2 = d(q1, q2, p2), d3 = d(p1, p2, q1), d4 = d(p1, p2, q2);
+    if (((d1 > 1e-9 && d2 < -1e-9) || (d1 < -1e-9 && d2 > 1e-9)) && ((d3 > 1e-9 && d4 < -1e-9) || (d3 < -1e-9 && d4 > 1e-9))) return true;
+    return (Math.abs(d1) <= 1e-9 && on(q1, q2, p1)) || (Math.abs(d2) <= 1e-9 && on(q1, q2, p2)) || (Math.abs(d3) <= 1e-9 && on(p1, p2, q1)) || (Math.abs(d4) <= 1e-9 && on(p1, p2, q2));
+  }
+  const clear = (walls, p, q, test) => !(walls || []).some((w) => test(w) && crosses(p, q, w.a, w.b));
+  // points that stand for a unit's space: its centre and its corners, a little inside so a line along a wall's face
+  // doesn't count as blocked
+  function spots(u) {
+    const s = u.size || 1, e = 0.15;
+    return [[u.x + s / 2, u.y + s / 2], [u.x + e, u.y + e], [u.x + s - e, u.y + e], [u.x + e, u.y + s - e], [u.x + s - e, u.y + s - e]];
+  }
+  // can `a` see `b`: some line from a's space to b's crosses no wall and no closed door (windows don't block sight)
+  function sees(world, a, b) {
+    const walls = (world.walls || []).filter(blocksSight);
+    if (!walls.length || !a || !b) return true;
+    const sa = spots(a), sb = spots(b);
+    return sa.some((p) => sb.some((q) => clear(walls, p, q, () => true)));
+  }
   const overlaps = (ax, ay, as, b) => ax < b.x + (b.size || 1) && b.x < ax + as && ay < b.y + (b.size || 1) && b.y < ay + as;
   const hostile = (a, b) => a.side !== b.side;
 
@@ -57,6 +85,7 @@
     const others = Object.values(world.units).filter((o) => o.id !== u.id && !o.down);
     const size = u.size || 1, budget = Math.max(0, feet), crawl = (u.conditions || []).includes('Prone') ? 2 : 1;
     const blocked = (x, y) => others.some((o) => hostile(u, o) && overlaps(x, y, size, o) && Math.abs(sizeCat(u) - sizeCat(o)) < 2);
+    const moveWalls = (world.walls || []).filter(blocksMove);
     const occupied = (x, y) => others.some((o) => overlaps(x, y, size, o));
     const best = {}, out = {}, par = {}, prev = {}, at = {};
     const key = (x, y, p) => `${x},${y},${p}`;
@@ -70,6 +99,7 @@
         if (!dx && !dy) continue;
         const nx = x + dx, ny = y + dy;
         if (nx < -500 || ny < -500 || nx > 1000 || ny > 1000 || blocked(nx, ny)) continue;
+        if (moveWalls.length && !clear(moveWalls, [x + size / 2, y + size / 2], [nx + size / 2, ny + size / 2], () => true)) continue;
         const diag = dx && dy, np = diag ? 1 - pr : pr;
         const step = ((diag && pr ? 2 * FT : FT) + (occupied(nx, ny) ? FT : 0)) * crawl;
         const nc = c + step, k = key(nx, ny, np);
@@ -139,7 +169,7 @@
   const CONDITION_EFFECTS = {
     Blinded: { attacks: 'dis', attacked: 'adv' },
     Charmed: { charmed: true },                              // can't attack whoever charmed it (when the combat view knows who)
-    Frightened: { attacks: 'dis' },                          // the book: while the source is in sight (sight isn't modelled)
+    Frightened: { attacks: 'dis' },                          // while its source is in sight (when the source is known and there are walls)
     Grappled: { speed0: true },
     Incapacitated: { noActions: true },                      // no actions and no reactions
     Invisible: { attacks: 'adv', attacked: 'dis' },
@@ -181,6 +211,8 @@
   const senseFor = (a, b, kinds) => (a && b && (a.senses || []).find((x) => kinds.includes(x.kind) && feetBetween(a, b) <= x.range)) || null;
   // a sense that takes the bite out of a condition between two units: the blinded one perceiving the other without
   // sight, or the other one finding the invisible one. Returns { who, sense } for the preview's note, or null.
+  // the source of a condition on `u`, when an effect recorded who caused it
+  const sourceOf = (w, u, cond) => { const ef = ((w && w.effects) || []).find((x) => x.unit === u.id && x.condition === cond && x.source); return ef && w.units[ef.source] || null; };
   function defeated(cond, holder, other) {
     if (cond === 'Blinded') { const x = senseFor(holder, other, NO_SIGHT); return x && { who: holder, sense: x }; }
     if (cond === 'Invisible') { const x = senseFor(other, holder, SEES_INVISIBLE); return x && { who: other, sense: x }; }
@@ -203,7 +235,12 @@
   REASONS.push(
     { id: 'self', when: (c) => effectsOf(c.actor).some(([, e]) => e.attacks), each: (c) => effectsOf(c.actor).filter(([, e]) => e.attacks)
       .filter(([, e]) => e.attacks !== 'prone' || !c.ranged || c.feet <= 30)   // prone: melee, or ranged at a target within 30 ft
-      .map(([n, e]) => { const d = defeated(n, c.actor, c.target); return d ? senseNote(d, n) : { [e.attacks === 'prone' ? 'dis' : e.attacks]: true, text: `you are ${n.toLowerCase()}` }; }) },
+      .map(([n, e]) => {
+        const d = defeated(n, c.actor, c.target);
+        if (d) return senseNote(d, n);
+        if (n === 'Frightened') { const src = sourceOf(c.world, c.actor, n); if (src && !sees(c.world, c.actor, src)) return { note: true, text: `frightened, but ${src.name} is out of sight` }; }
+        return { [e.attacks === 'prone' ? 'dis' : e.attacks]: true, text: `you are ${n.toLowerCase()}` };
+      }) },
     { id: 'exhausted', when: (c) => (+c.actor.exhaustion || 0) >= 3, each: () => [{ dis: true, text: 'exhaustion' }] },
     { id: 'dodge', when: (c) => c.dodging, each: (c) => [{ dis: true, text: `${c.target.name} is dodging` }] },
     { id: 'target', when: (c) => effectsOf(c.target).some(([, e]) => e.attacked), each: (c) => effectsOf(c.target).filter(([, e]) => e.attacked).map(([n, e]) => {
@@ -221,7 +258,7 @@
   function reasons(world, a, t, attack, feet, ranged) {
     const enemyClose = Object.values(world.units).some((o) => o.id !== a.id && hostile(a, o) && !o.down && feetBetween(a, o) <= FT
       && (!(o.conditions || []).includes('Blinded') || senseFor(o, a, NO_SIGHT)) && !INCAPACITATING(o));
-    const ctx = { feet, ranged, enemyClose, attack, actor: a, target: t, dodging: dodging(world, t) };
+    const ctx = { feet, ranged, enemyClose, attack, actor: a, target: t, dodging: dodging(world, t), world };
     return REASONS.filter((r) => r.when(ctx)).flatMap((r) => (r.each ? r.each(ctx) : [{ dis: !!r.dis, adv: !!r.adv, text: r.text }]))
       .map((x) => (x.note ? { note: true, text: x.text } : { dis: !!x.dis, adv: !!x.adv, text: x.text }));
   }
@@ -538,6 +575,9 @@
         if (x === me.x && y === me.y) return no('Already there.');
         const found = search(w, me.id, b.moveLeft), cost = found.out[`${x},${y}`];
         if (cost === undefined) return no(b.moveLeft ? `${me.name} can't reach that square with ${b.moveLeft} ft of movement left.` : `${me.name} has no movement left this turn.`);
+        // frightened: it can't willingly move closer to the source of its fear while it can see it
+        const fear = (me.conditions || []).includes('Frightened') && sourceOf(w, me, 'Frightened');
+        if (fear && sees(w, me, fear) && feetBetween(Object.assign({}, me, { x, y }), fear) < feetBetween(me, fear)) return no(`${me.name} is frightened of ${fear.name} and can't move closer to it.`);
         const path = pathTo(w, me.id, b.moveLeft, x, y) || [{ x: me.x, y: me.y }, { x, y }];
         const reactions = opportunities(w, me, path);
         me.x = x; me.y = y; w.spent[me.id].move += cost; w.spent[me.id].diag = found.par[`${x},${y}`] ? 1 : 0;
@@ -898,6 +938,13 @@
     return { fromTemp };
   }
 
+  // walls as stored on a map: checked, rounded to 0.01 of a square, at most 2000
+  function cleanWalls(list) {
+    const n = (v) => Math.round(clampN(+v || 0, -500, 1000) * 100) / 100;
+    return (Array.isArray(list) ? list : []).slice(0, 2000).filter((w) => w && Array.isArray(w.a) && Array.isArray(w.b) && WALL_KINDS.includes(w.kind || 'wall'))
+      .map((w) => ({ id: String(w.id || '').replace(/[^a-z0-9]/g, '').slice(0, 20), a: [n(w.a[0]), n(w.a[1])], b: [n(w.b[0]), n(w.b[1])], kind: w.kind || 'wall', ...(w.kind === 'door' ? { open: !!w.open } : {}) }))
+      .filter((w) => w.a[0] !== w.b[0] || w.a[1] !== w.b[1]);
+  }
   /* ---------------- building a world from the table ---------------- */
   // table: { characters, entries (initiative, in order), active, turn (index) or turnId, round, tokens, unitTokens: { entryId: tokenId },
   //          npcSpeed: { entryId: feet }, spent: { unitId: { key, move, action, bonus, reaction } } }
@@ -932,7 +979,7 @@
     const cur = table.turnId !== undefined ? (table.entries || []).find((e) => e.id === table.turnId) : (table.entries || [])[table.turn];
     return {
       active: !!table.active && !!cur, round: table.round || 1, turnId: cur ? cur.id : null, units,
-      spent: table.spent || {}, effects: table.effects || [], conc: table.conc || {},
+      spent: table.spent || {}, effects: table.effects || [], conc: table.conc || {}, walls: cleanWalls(table.walls),
     };
   }
 
@@ -940,5 +987,5 @@
     cleanResources, resourcesOf, atLevel, spend, rest, powerNumbers, resolvePower, weaponAbility, abilitiesOf, inReachOf, cleanAbility, setPoolUsed,
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
-    SENSES, readSenses, cleanSenses, senseFor, reasons };
+    SENSES, readSenses, cleanSenses, senseFor, reasons, crosses, sees, cleanWalls, WALL_KINDS };
 });
