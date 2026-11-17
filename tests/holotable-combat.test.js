@@ -1835,8 +1835,24 @@ test("review of #109 (and #111): an id that every object inherits (__proto__, co
       assert.ok(r.code < 500, `${type} ${bad}: ${r.code}`);
     }
   }
+  // the combat view's character actions and the photo upload (review of #109)
+  await gm.act("fight.toggle", { on: true });
+  const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+  for (const bad of ["__proto__", "constructor", "toString"]) {
+    for (const [type, p] of [["fight.spend", { charId: bad, key: "hitdice", n: 1 }], ["fight.resource", { charId: bad, op: "add", res: { key: "x", name: "X", max: 2, refill: "long" } }],
+      ["fight.defenses", { charId: bad, resist: ["fire"] }]]) {
+      const r = await gm.act(type, p);
+      assert.ok(r.code === 400 || r.code === 404, `${type} ${bad}: ${r.code}`);
+    }
+    const up = await gm.call("POST", { op: "upload" }, { purpose: "photo", charId: bad, kind: "profile", dataUrl: png });
+    assert.equal(up.code, 404, `photo upload ${bad}`);
+  }
+  for (const k of ["image", "tokenImage", "resources", "force", "tech", "hitDiceUsed"]) assert.equal(({})[k], undefined, `nothing set ${k} on Object.prototype`);
+  const after = await gm.state();
+  assert.deepEqual(Object.keys(after.fight.defenses || {}).filter((k) => !Object.prototype.hasOwnProperty.call(after.characters, k)), []);
   assert.equal(({}).hp, undefined, "nothing was written onto Object.prototype");
   assert.equal(({}).owner, undefined);
+  assert.ok(!Object.keys((await gm.state()).characters).some((k) => k in Object.prototype), "no character is saved under an inherited name");
   assert.equal(JSON.stringify(Object.getOwnPropertyNames(Object.prototype).sort()), before);
   const st = await gm.state();
   assert.ok(!st.map.tokens.some((t) => t.charId && !Object.prototype.hasOwnProperty.call(st.characters, t.charId)), "no token linked to an inherited name");

@@ -448,7 +448,7 @@ function applyAction(camp, cid, gm, type, p) {
     case "char.save": {
       if (!p.char || typeof p.char !== "object" || Array.isArray(p.char)) throw new Invalid("bad character");
       if (JSON.stringify(p.char).length > 400000) throw new Invalid("character sheet too large");
-      const id = /^[a-z0-9]{6,20}$/.test(p.char.id || "") ? p.char.id : rid(12);
+      const id = /^[a-z0-9]{6,20}$/.test(p.char.id || "") && !(p.char.id in Object.prototype) ? p.char.id : rid(12);   // never an inherited name ("constructor")
       need(canEditChar(camp, cid, gm, id), "not your character");
       if (!charById(camp, id) && Object.keys(chars).length >= 60) throw new Invalid("too many characters at this table");
       const old = charById(camp, id);
@@ -968,6 +968,6 @@ function cleanGame(g) {
 
 module.exports = {
   cleanGame,
-  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, applyAction, validImg, validColor, cleanChar, cleanShip, rid,
+  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, applyAction, validImg, validColor, cleanChar, cleanShip, rid, charById,
   Forbidden, Invalid, IMG_PREFIX,
 };

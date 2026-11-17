@@ -472,7 +472,7 @@ async function handlePost(req, res, q, b, ses) {
       let url, old;
       const err = await S.withLock(GAME, async () => {
         const camp = await loadGame();
-        const ch = camp.characters[b.charId];
+        const ch = G.charById(camp, b.charId);   // own characters only: never an inherited name like "__proto__" (#111)
         if (!ch) return [404, "No such character."];
         if (!(gm || ch.owner === ses.pid)) return [403, "You can only change photos for your own characters."];
         ({ url } = await S.putImage(buf));
