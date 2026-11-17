@@ -1459,9 +1459,14 @@ test("walls: Frightened counts only while its source is in sight; in sight, no m
 
 test("walls through the API: the GM's alone; players never receive them; movement and the squares a player is sent respect them; scenes keep them", async () => {
   const { gm, sam, ids } = await fight();
-  assert.equal((await gm.act("fight.wall", { op: "add", a: [2, -5], b: [2, 5] })).code, 400, "the combat view is off");
-  await gm.act("fight.toggle", { on: true });
+  // walls are the map's (#93): the GM draws them with the combat view off too, and the view's record isn't touched
+  assert.equal((await gm.act("fight.wall", { op: "add", a: [2, -5], b: [2, 5] })).code, 200, "walls work with the combat view off");
   assert.equal((await sam.act("fight.wall", { op: "add", a: [2, -5], b: [2, 5] })).code, 403);
+  let off = await gm.state();
+  assert.equal(off.fight, undefined, "the combat view stays off");
+  await gm.act("fight.wall", { op: "clear" });
+  assert.equal((await gm.state()).map.walls, undefined, "cleared: the map's exact shape again");
+  await gm.act("fight.toggle", { on: true });
   assert.equal((await gm.act("fight.wall", { op: "add", a: [2, -5], b: [2, 0] })).code, 200);
   assert.equal((await gm.act("fight.wall", { op: "add", a: [2, 0], b: [2, 1], kind: "door" })).code, 200);
   assert.equal((await gm.act("fight.wall", { op: "add", a: [2, 1], b: [2, 9] })).code, 200);
@@ -1815,7 +1820,6 @@ test("review #102: walls without a usable id get their own on the way in; erasin
 /* ---------------------------------------------------------------- fog of war (issue #93, step 4) */
 test("fog of war through the API: the GM's switch; a player isn't sent what their characters can't see; doors, explored squares, shared sight", async () => {
   const { gm, sam, rae, ids } = await fight();
-  assert.equal((await gm.act("fight.fog", { on: true })).code, 400, "the combat view is off");
   await gm.act("fight.toggle", { on: true });
   assert.equal((await sam.act("fight.fog", { on: true })).code, 403, "the GM's switch");
   // a wall down x = 3 with a closed door at y 2-3: Avery (0,0) and Bolt (0,4) on one side, the Raider (6,0) on the other
@@ -1835,9 +1839,9 @@ test("fog of war through the API: the GM's switch; a player isn't sent what thei
   assert.ok(tokenOf(sv, "Avery") && tokenOf(sv, "Bolt"), "the party's side of the wall");
   assert.equal(sv.map.fog, undefined, "the fog's record is the GM's");
   assert.equal(sv.map.walls, undefined);
-  const { cols, rows } = sv.fight.fog, n = cols * rows, vis = E.unpackSquares(sv.fight.fog.vis, n), at = (x, y) => vis[y * cols + x];
+  const { cols, rows } = sv.fog, n = cols * rows, vis = E.unpackSquares(sv.fog.vis, n), at = (x, y) => vis[y * cols + x];
   assert.deepEqual([at(0, 0), at(2, 5), at(4, 0), at(6, 0)], [1, 1, 0, 0], "Avery's side lit, the far side dark");
-  assert.equal(JSON.stringify(Object.keys(sv.fight).sort()), JSON.stringify(Object.keys(Object.assign({ fog: 1 }, JSON.parse(`{${before.slice(1, -1).split(",").map((k) => `${k}:1`).join(",")}}`))).sort()), "one key more: fog");
+  assert.equal(JSON.stringify(Object.keys(sv.fight).sort()), before, "the combat view's state is as before: the fog is the map's, at the top of the state");
   // the reachable squares stop at what Avery sees: none on the far side of the wall
   assert.ok(Object.keys(sv.fight.reach).length > 0);
   assert.ok(Object.keys(sv.fight.reach).every((k) => { const [x, y] = k.split(",").map(Number); return x >= 0 && y >= 0 && vis[y * cols + x]; }), "only lit squares are offered");
@@ -1846,7 +1850,7 @@ test("fog of war through the API: the GM's switch; a player isn't sent what thei
   // the GM sees everything, with a veil where no player sees
   const gv = await gm.state();
   assert.ok(tokenOf(gv, "Raider") && gv.map.fog.on);
-  const any = E.unpackSquares(gv.fight.fog.any, n);
+  const any = E.unpackSquares(gv.fog.any, n);
   assert.deepEqual([any[0], any[6]], [1, 0]);
   // the door opens: the Raider is in sight through it
   const door = gv.map.walls.find((w) => w.kind === "door");
@@ -1857,7 +1861,7 @@ test("fog of war through the API: the GM's switch; a player isn't sent what thei
   // explored: once seen, the far side stays dim after the door shuts
   await gm.act("fight.wall", { op: "door", id: door.id, open: false });
   sv = await sam.state();
-  const seen = E.unpackSquares(sv.fight.fog.seen, n), vis2 = E.unpackSquares(sv.fight.fog.vis, n);
+  const seen = E.unpackSquares(sv.fog.seen, n), vis2 = E.unpackSquares(sv.fog.vis, n);
   assert.equal(tokenOf(sv, "Raider"), undefined);
   assert.deepEqual([vis2[5 * cols + 6], seen[5 * cols + 6]], [0, 1], "the Raider's square: not seen now, explored");
   // Rae's Bolt: sees only Bolt's own sight; with shared sight, Avery's too
@@ -1874,7 +1878,7 @@ test("fog of war through the API: the GM's switch; a player isn't sent what thei
   assert.deepEqual(Object.keys((await gm.state()).map.fog.explored).length, 2, "reset, then this action's sight is noted again");
   await gm.act("fight.fog", { on: false });
   sv = await sam.state();
-  assert.ok(tokenOf(sv, "Raider") && !sv.fight.fog);
+  assert.ok(tokenOf(sv, "Raider") && !sv.fog);
 });
 
 test("fog of war: the tracker's turn marker follows the visible list, and marks nothing while an unseen creature acts", async () => {
@@ -1902,4 +1906,36 @@ test("fog of war: a crafted fog record is cleaned; visibility on a big map with 
   const t0 = Date.now();
   E.visibleSquares({ walls, units: { a: { id: "a", x: 100, y: 0, size: 1 } } }, ["a"], 200, 200);
   assert.ok(Date.now() - t0 < 2000, "2,000 walls on 200 x 200 squares");
+});
+
+test("fog of war outside the combat view (#93): walls and fog are the map's; a split party explores with the view off", async () => {
+  const { gm, sam, rae, ids } = await fight();
+  let st0 = await gm.state();
+  await gm.act("token.move", { id: tokenOf(st0, "Raider").id, x: 6, y: 5 });
+  assert.equal((await gm.act("fight.wall", { op: "add", a: [3, 0], b: [3, 16] })).code, 200);
+  assert.equal((await sam.act("fight.fog", { on: true })).code, 403, "the GM's switch");
+  assert.equal((await gm.act("fight.fog", { on: true })).code, 200, "fog works with the combat view off");
+  let sv = await sam.state(), gv = await gm.state();
+  assert.equal(sv.fight, undefined, "the combat view is still off");
+  assert.equal(gv.fight, undefined);
+  assert.ok(sv.fog && sv.fog.vis && sv.fog.seen, "the player's squares, at the top of the state");
+  assert.ok(gv.fog && gv.fog.any, "the GM's veil");
+  assert.equal(tokenOf(sv, "Raider"), undefined, "behind the wall: not sent");
+  assert.ok(!sv.initiative.entries.some((e) => e.id === ids.raider));
+  assert.equal(sv.map.walls, undefined);
+  assert.equal(sv.map.fog, undefined);
+  // the party splits: the GM drags Avery past the wall; Sam sees the Raider through Avery, Rae (Bolt) doesn't
+  await gm.act("token.move", { id: tokenOf(gv, "Avery").id, x: 5, y: 0 });
+  sv = await sam.state();
+  let rv = await rae.state();
+  assert.ok(tokenOf(sv, "Raider"), "Avery sees it");
+  assert.equal(tokenOf(rv, "Raider"), undefined, "Bolt, on the other side of the wall, doesn't");
+  assert.equal(tokenOf(rv, "Avery"), undefined, "nor where Avery went");
+  // explored follows the drag, with no combat view at all
+  const n = sv.fog.cols * sv.fog.rows, seen = E.unpackSquares(sv.fog.seen, n);
+  assert.equal(seen[5 * sv.fog.cols + 6], 1, "the Raider's square is explored for Sam");
+  // fog off: everything again, and no fog key
+  await gm.act("fight.fog", { on: false });
+  sv = await sam.state();
+  assert.ok(tokenOf(sv, "Raider") && sv.fog === undefined);
 });

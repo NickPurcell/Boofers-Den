@@ -209,6 +209,7 @@ function viewFor(camp, cid, gm, online) {
       .map((e) => Object.assign({}, e, e.npc ? { hp: null, maxHp: null, sb: undefined } : {}));
   }
   const map = Object.assign({}, camp.map);
+  let fog = null;
   if (!gm) {
     // tokens whose name the GM hasn't revealed yet: players get "???" and no sheet link, and the
     // matching initiative entries are masked the same way (tok tells the client which token is up)
@@ -220,7 +221,7 @@ function viewFor(camp, cid, gm, online) {
     });
     delete map.walls;   // walls are the GM's: a player's browser never learns the shape of a room it hasn't seen (issue #93)
     delete map.fog;     // so is the fog's record; a player gets only their own squares, in the combat view
-    const fog = Fight.fogFor(camp, cid);   // fog of war (#93): tokens this player's characters can't see aren't sent, nor their tracker entries
+    fog = Fight.fogFor(camp, cid);   // fog of war (#93): tokens this player's characters can't see aren't sent, nor their tracker entries
     if (fog) {
       const curId = (camp.initiative.entries[camp.initiative.turn] || {}).id;
       map.tokens = map.tokens.filter((t) => !fog.tokens.has(t.id));
@@ -236,6 +237,7 @@ function viewFor(camp, cid, gm, online) {
   }
   if (!gm) map.props = (map.props || []).map((x) => (x.moves ? Object.assign({}, x, { moves: undefined }) : x));
   const shown = new Set([...map.tokens.map((t) => t.id), ...(map.props || []).map((x) => x.id)]);
+  const fogState = Fight.fogView(camp, cid, gm, fog);
   const fxView = camp.sceneFx ? Object.assign({}, camp.sceneFx, { moves: (camp.sceneFx.moves || []).filter((m) => shown.has(m.id)) }) : null;
   return {
     name: camp.name, you: cid, isGM: !!gm, updated: camp.updated,
@@ -249,7 +251,8 @@ function viewFor(camp, cid, gm, online) {
     audio: camp.audio ? Object.assign({}, camp.audio, { now: now() }) : null,   // "now" lets each screen line its clock up
     ships: (camp.ships || []).filter((x) => gm || !x.hidden),
     sceneFx: fxView,
-    ...(camp.fight && camp.fight.on ? { fight: Fight.view(camp, cid, gm, shownName) } : {}),   // the combat view, only while it is on
+    ...(camp.fight && camp.fight.on ? { fight: Fight.view(camp, cid, gm, shownName) } : {}),
+    ...(fogState ? { fog: fogState } : {}),   // the map's fog of war (#93), combat view or not: only while the GM has it on   // the combat view, only while it is on
     scene: (camp.scenes || []).filter((x) => x.id === camp.activeScene).map((x) => ({ id: x.id, name: x.name }))[0] || null,
     scenes: gm ? (camp.scenes || []).map((x) => ({ id: x.id, name: x.name, savedAt: x.savedAt })) : null,
   };

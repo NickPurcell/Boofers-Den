@@ -610,7 +610,7 @@
   // The GM's wall tool lives in the map tools beside "＋ Token" (app.js asks for its button) while the combat view is on,
   // with its own small bar over the map, like the 🎬 movement bar.
   function wallsButton() {
-    return gm() && F().on ? `<button class="btn small ${UI.walls ? 'primary' : ''}" data-ct-walls="1" aria-pressed="${!!UI.walls}" title="Draw walls, doors and windows: they block movement, sight and areas in the combat view (players never receive them)">🧱 Walls</button>` : '';
+    return gm() ? `<button class="btn small ${UI.walls ? 'primary' : ''}" data-ct-walls="1" aria-pressed="${!!UI.walls}" title="Draw walls, doors and windows: they block movement, sight and areas in the combat view (players never receive them)">🧱 Walls</button>` : '';
   }
   let wallBar = null;
   function renderWallBar() {
@@ -636,7 +636,7 @@
         renderWallBar(); render(); H.drawMap();
       });
     }
-    if (UI.walls && !(gm() && F().on)) UI.walls = null;
+    if (UI.walls && !gm()) UI.walls = null;
     wallBar.classList.toggle('hidden', !UI.walls);
     if (!UI.walls) { wallBar.innerHTML = ''; return; }
     const n = ((st().map || {}).walls || []).length, T = UI.walls;
@@ -682,8 +682,8 @@
   }
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && UI.walls && UI.walls.from) { UI.walls.from = null; H.drawMap(); } });
   function down(gx, gy, e) {
+    if (UI.walls && gm()) { wallClick(gx, gy); return true; }   // the wall tool works with the combat view off too
     if (!F().on) return false;
-    if (UI.walls && gm()) { wallClick(gx, gy); return true; }
     if (UI.ruler) {   // two taps (or a click and a click): from here to there
       if (!UI.ruler.a || UI.ruler.b) UI.ruler = { a: { x: gx, y: gy }, b: null, live: { x: gx, y: gy } };
       else UI.ruler.b = { x: gx, y: gy };
@@ -718,8 +718,8 @@
     return true;
   }
   function hover(gx, gy) {
-    if (!F().on) return;
     if (UI.walls && gm()) { UI.walls.live = [Math.round(gx), Math.round(gy)]; if (UI.walls.from) H.drawMap(); return; }
+    if (!F().on) return;
     if (UI.ruler && UI.ruler.a && !UI.ruler.b) { UI.ruler.live = { x: gx, y: gy }; H.drawMap(); return; }
     if (!myTurn()) return;
     const spec = armedSpec();
@@ -755,14 +755,14 @@
     return c;
   }
   function drawFog(ctx, g) {
-    const fog = F().fog;
+    const fog = st().fog;   // the map's fog (#93): sent at the top of the state, combat view or not
     if (!fog || !(fog.vis || fog.any)) return;
     ctx.save(); ctx.imageSmoothingEnabled = false;
     ctx.drawImage(fogPicture(fog), 0, 0, fog.cols * g, fog.rows * g);
     ctx.restore();
   }
   function under(ctx, g, z) {
-    if (F().on) drawFog(ctx, g);
+    drawFog(ctx, g);
     if (!F().on || !myTurn()) return;
     const holo = cssVar('--holo', '#4fc3f7'), dim = UI.armed ? 0.45 : 1;   // fainter while an attack is picked
     ctx.save();
@@ -780,9 +780,26 @@
   // two letters for a condition on a token's badge (the chip in the bar and the token's tooltip have the full name)
   const ABBR = { Incapacitated: 'Ic', Invisible: 'Iv', Petrified: 'Pe', Paralyzed: 'Pa', Poisoned: 'Po', Deafened: 'De', Diseased: 'Di', Stunned: 'St', Slowed: 'Sl', Shocked: 'Sh' };
   const abbr = (c) => ABBR[c] || String(c).slice(0, 2);
+  // the GM's walls (wall, door: a gap when open, window), and the segment being drawn; with the combat view on or off
+  function drawWalls(ctx, g, z) {
+    const walls = gm() ? ((st().map || {}).walls || []) : [];
+    if (walls.length || (UI.walls && gm())) {
+      const lw = (UI.walls ? 5 : 3) / Math.min(1, z);
+      for (const wl of walls) {
+        ctx.beginPath(); ctx.moveTo(wl.a[0] * g, wl.a[1] * g); ctx.lineTo(wl.b[0] * g, wl.b[1] * g);
+        ctx.lineWidth = lw; ctx.setLineDash(wl.kind === 'window' ? [6 / z, 5 / z] : wl.kind === 'door' && wl.open ? [3 / z, 9 / z] : []);
+        ctx.strokeStyle = wl.kind === 'door' ? '#c8935a' : wl.kind === 'window' ? '#8fd3ff' : alpha('#ffffff', UI.walls ? 0.95 : 0.6);
+        ctx.stroke(); ctx.setLineDash([]);
+      }
+      if (UI.walls && UI.walls.from && UI.walls.live) {
+        ctx.beginPath(); ctx.moveTo(UI.walls.from[0] * g, UI.walls.from[1] * g); ctx.lineTo(UI.walls.live[0] * g, UI.walls.live[1] * g);
+        ctx.lineWidth = lw; ctx.strokeStyle = alpha(cssVar('--amber', '#ffb74d'), 0.9); ctx.setLineDash([8 / z, 6 / z]); ctx.stroke(); ctx.setLineDash([]);
+      }
+    }
+  }
   function over(ctx, g, z) {
     const f = F();
-    if (!f.on) return;
+    if (!f.on) { ctx.save(); drawWalls(ctx, g, z); ctx.restore(); return; }   // walls and fog are the map's (#93), the rest is the combat view's
     const w = world();
     const ring = (u, color, width, dash) => {
       const s = (u.size || 1) * g, cx = u.x * g + s / 2, cy = u.y * g + s / 2;
@@ -818,21 +835,7 @@
       ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.setLineDash([]);
       label(ctx, `${E.ruler(R0.a, b)} ft`, (ax + bx) / 2, (ay + by) / 2, z, g);
     }
-    // walls (the GM's map only): wall, door (a gap when open), window
-    const walls = gm() ? ((st().map || {}).walls || []) : [];
-    if (walls.length || (UI.walls && gm())) {
-      const lw = (UI.walls ? 5 : 3) / Math.min(1, z);
-      for (const wl of walls) {
-        ctx.beginPath(); ctx.moveTo(wl.a[0] * g, wl.a[1] * g); ctx.lineTo(wl.b[0] * g, wl.b[1] * g);
-        ctx.lineWidth = lw; ctx.setLineDash(wl.kind === 'window' ? [6 / z, 5 / z] : wl.kind === 'door' && wl.open ? [3 / z, 9 / z] : []);
-        ctx.strokeStyle = wl.kind === 'door' ? '#c8935a' : wl.kind === 'window' ? '#8fd3ff' : alpha('#ffffff', UI.walls ? 0.95 : 0.6);
-        ctx.stroke(); ctx.setLineDash([]);
-      }
-      if (UI.walls && UI.walls.from && UI.walls.live) {
-        ctx.beginPath(); ctx.moveTo(UI.walls.from[0] * g, UI.walls.from[1] * g); ctx.lineTo(UI.walls.live[0] * g, UI.walls.live[1] * g);
-        ctx.lineWidth = lw; ctx.strokeStyle = alpha(cssVar('--amber', '#ffb74d'), 0.9); ctx.setLineDash([8 / z, 6 / z]); ctx.stroke(); ctx.setLineDash([]);
-      }
-    }
+    drawWalls(ctx, g, z);
     // status on the tokens (audit 8.10): conditions as badges, concentration as an amber ring, and a creature's hit
     // points as a bar for the GM only (players never get a creature's hit points)
     for (const u of Object.values(w.units)) {
