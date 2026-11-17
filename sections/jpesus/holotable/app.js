@@ -1944,7 +1944,7 @@
   // The GM grants levels (to the whole party or picked characters); each player then levels their
   // own character in a guided wizard. The GM can run the wizard for someone who missed the session.
   const pendingFor = id => ((S.st && S.st.levelUps) || {})[id];
-  const ASI_AT = { _: [4, 8, 12, 16, 19], Fighter: [4, 6, 8, 12, 14, 16, 19], Operative: [4, 8, 10, 12, 16, 19] };
+  const ASI_AT = { _: [4, 8, 12, 16, 19], Fighter: [4, 6, 8, 12, 14, 16, 19], Monk: [4, 8, 10, 12, 16, 19], Operative: [4, 8, 10, 12, 16, 19] }; // from SW5e's class tables
   const asiDue = (cls, lvl) => (ASI_AT[cls] || ASI_AT._).includes(lvl);
   const ABN = Object.fromEntries(R.ABILITIES.map(a => [a.key, a.name]));
 

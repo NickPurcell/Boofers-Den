@@ -28,7 +28,8 @@
     { key: 'technology', name: 'Technology', ab: 'int' },
   ];
 
-  // caster: force/tech; pp = power points per class level; prog = full | threeQuarter | half
+  // Checked against SW5e's class data (sw5eapi /api/class): hit die, saves, points per level and max power level.
+  // caster: force/tech; pp = power points per class level; prog = full | threeQuarter | half; from = first casting level
   const CLASSES = {
     Berserker: { hd: 12, saves: ['str', 'con'] },
     Consular:  { hd: 6,  saves: ['wis', 'cha'], caster: 'force', pp: 4, prog: 'full' },
@@ -36,9 +37,9 @@
     Fighter:   { hd: 10, saves: ['str', 'con'] },
     Guardian:  { hd: 10, saves: ['con', 'cha'], caster: 'force', pp: 2, prog: 'half' },
     Monk:      { hd: 8,  saves: ['str', 'dex'] },
-    Operative: { hd: 8,  saves: ['dex', 'cha'] },
+    Operative: { hd: 8,  saves: ['dex', 'int'] },
     Scholar:   { hd: 8,  saves: ['int', 'wis'] },
-    Scout:     { hd: 10, saves: ['str', 'dex'], caster: 'tech',  pp: 1, prog: 'half' },
+    Scout:     { hd: 10, saves: ['str', 'dex'], caster: 'tech',  pp: 1, prog: 'half', from: 2 },  // tech casting starts at 2nd level
     Sentinel:  { hd: 8,  saves: ['dex', 'cha'], caster: 'force', pp: 3, prog: 'threeQuarter' },
   };
 
@@ -75,6 +76,7 @@
     { name: 'Fragmentation grenade', damage: '3d6', type: 'kinetic', ab: 'dex', props: 'Thrown (30/90), 10-ft radius, Dex save for half' },
   ];
 
+  // The 16 conditions in SW5e's Player's Handbook (checked against sw5eapi /api/conditions).
   const CONDITIONS = {
     Blinded: 'Can\'t see; auto-fails sight checks. Attacks against it have advantage; its attacks have disadvantage.',
     Charmed: 'Can\'t attack or target the charmer with harmful effects. Charmer has advantage on social checks with it.',
@@ -89,11 +91,9 @@
     Poisoned: 'Disadvantage on attack rolls and ability checks.',
     Prone: 'Can only crawl; disadvantage on attacks. Melee attacks within 5 ft have advantage against it, ranged attacks have disadvantage. Standing costs half speed.',
     Restrained: 'Speed 0. Its attacks and Dex saves have disadvantage; attacks against it have advantage.',
-    Shocked: 'SW5e condition — the creature\'s reactions and actions are disrupted (see SW5e PHB for exact effect).',
-    Slowed: 'SW5e condition — the creature\'s speed is reduced (see SW5e PHB for exact amount).',
+    Shocked: "Speed is halved, and the creature can't take reactions.",
     Stunned: 'Incapacitated, can\'t move, speaks falteringly. Fails Str/Dex saves; attacks against it have advantage.',
     Unconscious: 'Incapacitated, drops what it holds, falls prone. Fails Str/Dex saves; attacks have advantage, and hits within 5 ft are critical.',
-    Weakened: 'SW5e condition — the creature deals reduced weapon damage (see SW5e PHB for exact effect).',
   };
 
   const REFERENCE = [
@@ -152,7 +152,7 @@
     for (const k of c.classes || []) {
       const def = CLASSES[k.name];
       if (!def || !def.caster) continue;
-      const L = +k.level || 0;
+      const L = (+k.level || 0) >= (def.from || 1) ? +k.level || 0 : 0;
       if (def.caster === 'force') { force += def.pp * L; forceLvl = Math.max(forceLvl, maxLvl(def.prog, L)); }
       else { tech += def.pp * L; techLvl = Math.max(techLvl, maxLvl(def.prog, L)); }
     }
