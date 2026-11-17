@@ -839,11 +839,13 @@ test("combat view: ending the turn passes it on; creatures are the GM's; undo pu
   // the Raider's turn: players can't act for it; the GM can, with an attack from its stat block
   assert.equal((await sam.act("fight.move", { x: 1, y: 0 })).code, 403);
   assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Blaster", bonus: 30, damage: "rm -rf", range: [60, 240] } })).code, 400, "damage must be dice");
-  assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Blaster", bonus: 30, damage: "2d6+2", type: "energy", range: [60, 240] } })).code, 200);
+  // 1d6+2: even a critical hit (2d6+2) can't take Avery's 20 hit points, so no "falls unconscious" line follows (a crit
+  // with 2d6+2 doubled could, and that made this test fail about once in 400 runs)
+  assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Blaster", bonus: 30, damage: "1d6+2", type: "energy", range: [60, 240] } })).code, 200);
   st = await gm.state();
   const hp = st.characters[avery].hp.current;
-  const last = st.chat.filter((m) => m.fight).at(-1);
-  if (last.roll.kind === "damage") assert.equal(hp, 20 - Math.min(20, last.roll.total)); else assert.equal(hp, 20);
+  const dmg = st.chat.filter((m) => m.fight && m.roll && m.roll.kind === "damage").at(-1);   // none on a natural 1
+  assert.equal(hp, dmg ? 20 - dmg.roll.total : 20);
   // undo the attack: Avery's hit points come back
   assert.equal((await sam.act("fight.undo", {})).code, 403);
   assert.equal((await gm.act("fight.undo", {})).code, 200);
