@@ -22,7 +22,7 @@
     const w = E.buildWorld({
       characters: s.characters, entries: s.initiative.entries, active: f.active, turnId: f.turn, round: f.round, tokens: s.map.tokens,
       unitTokens: Object.fromEntries(Object.entries(f.units || {}).map(([id, u]) => [id, u.token])), npcSpeed: f.npcSpeed,
-      spent: f.spent, defenses: f.defenses || {}, effects: f.effects || [], conc: f.conc || {},
+      spent: f.spent, defenses: f.defenses || {}, effects: f.effects || [], conc: f.conc || {}, walls: (s.map && s.map.walls) || [],
       npcStats: Object.fromEntries(Array.from(new Set(Object.keys(f.npcDefenses || {}).concat(Object.keys(f.npcBody || {})))).map((k) => [k,
         Object.assign({ saves: (f.npcSaves || {})[k] || {}, mods: (f.npcMods || {})[k] || {} }, (f.npcDefenses || {})[k] || {}, (f.npcBody || {})[k] || {})])),
     }, R);
@@ -41,7 +41,7 @@
   function reach() {
     const w = world(), u = cur();
     if (!u || !myTurn()) return {};
-    if (!UI.cache.reach) UI.cache.reach = E.reachable(w, u.id, E.budget(w).moveLeft);
+    if (!UI.cache.reach) UI.cache.reach = F().reach || E.reachable(w, u.id, E.budget(w).moveLeft);
     return UI.cache.reach;
   }
 
@@ -218,8 +218,16 @@
     }
     if (mine && u && f.active && E.isDying(u) && !E.spentOf(w, u.id).ds) html += '<button class="btn small primary" data-ct="deathsave" title="At 0 hit points: 10 or more succeeds, a 1 counts twice, a 20 brings you back with 1 hit point">🎲 Death save</button>';
     if (mine && u && f.active) html += '<button class="btn small amber" data-ct="end">End turn ⏭</button>';
+    if (gm()) html += `<button class="btn small ${UI.walls ? 'primary' : 'ghost'}" data-ct="walls" aria-pressed="${!!UI.walls}" title="Draw walls, doors and windows: they block movement and line of sight (players never see them)">🧱 Walls</button>`;
     if (gm()) html += `<button class="btn small ghost" data-ct="undo" ${f.undo && f.undo.n ? '' : 'disabled'} title="${esc(f.undo && f.undo.last ? 'Undo: ' + f.undo.last : 'Nothing to undo')}">↶ Undo</button><button class="btn small ghost" data-ct="off" title="Turn the combat view off for everyone">Combat view off</button>`;
     html += '</div>';
+    // the wall tool's own row
+    if (UI.walls && gm()) {
+      const n = ((s.map || {}).walls || []).length;
+      html += `<div class="ct-row ct-walls">${[['wall', 'Wall'], ['door', 'Door'], ['window', 'Window'], ['toggle', 'Open / close a door'], ['erase', 'Erase']].map(([k, l]) => `<button class="btn tiny ${UI.walls.mode === k ? 'primary' : 'ghost'}" data-ct="wallmode" data-k="${k}">${l}</button>`).join('')}
+        <span class="muted ct-hint">${UI.walls.mode === 'wall' ? 'Click corner to corner; Esc or the same corner again ends the run.' : UI.walls.mode === 'door' || UI.walls.mode === 'window' ? 'Click its two ends.' : 'Click next to one.'} ${n} on this map; players never receive them.</span>
+        <span class="spacer"></span>${n ? '<button class="btn tiny ghost" data-ct="wallsclear">Clear all</button>' : ''}</div>`;
+    }
     // the order of play, as this viewer's tracker has it (hidden creatures aren't in a player's), and the log
     const order = (s.initiative.entries || []).filter((e) => f.active);
     if (order.length) {
@@ -355,6 +363,9 @@
     if (k === 'common') return send('fight.common', { key: el.dataset.key });
     if (k === 'deathsave') return send('fight.deathsave', {});
     if (k === 'log') { UI.log = !UI.log; return render(); }
+    if (k === 'walls') { UI.walls = UI.walls ? null : { mode: 'wall', from: null }; render(); return H.drawMap(); }
+    if (k === 'wallmode') { UI.walls = { mode: el.dataset.k, from: null }; render(); return H.drawMap(); }
+    if (k === 'wallsclear') { if (confirm('Remove every wall, door and window from this map?')) send('fight.wall', { op: 'clear' }); return; }
     if (k === 'letgo') return send('fight.react', { id: el.dataset.id, take: false });
     if (k === 'react') {
       const re = world().units[el.dataset.unit], a = re && meleeOf(re).find((x) => x.key === el.dataset.key);
@@ -528,8 +539,32 @@
 
   /* ---------------- on the map (app.js calls these) ---------------- */
   // pointer down: claims the click only when it's an attack on a target, or a player's own token on their turn
+  // the GM's wall tool (issue #93): click corner to corner; door and window are one segment each; erase or open/close
+  // by clicking next to one. Escape (or clicking the last corner again) ends a run of walls.
+  const nearestWall = (gx, gy, kinds) => {
+    let best = null, bd = 0.35;
+    for (const wl of ((st().map || {}).walls || [])) {
+      if (kinds && !kinds.includes(wl.kind)) continue;
+      const [ax, ay] = wl.a, [bx, by] = wl.b, dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy || 1;
+      const t = Math.max(0, Math.min(1, ((gx - ax) * dx + (gy - ay) * dy) / L)), d = Math.hypot(gx - (ax + t * dx), gy - (ay + t * dy));
+      if (d < bd) { bd = d; best = wl; }
+    }
+    return best;
+  };
+  function wallClick(gx, gy) {
+    const T = UI.walls, pt = [Math.round(gx), Math.round(gy)];
+    if (T.mode === 'erase') { const wl = nearestWall(gx, gy); if (wl) send('fight.wall', { op: 'remove', id: wl.id }); return; }
+    if (T.mode === 'toggle') { const wl = nearestWall(gx, gy, ['door']); if (wl) send('fight.wall', { op: 'door', id: wl.id, open: !wl.open }); return; }
+    if (!T.from) { T.from = pt; H.drawMap(); return; }
+    if (T.from[0] === pt[0] && T.from[1] === pt[1]) { T.from = null; H.drawMap(); return; }
+    send('fight.wall', { op: 'add', a: T.from, b: pt, kind: T.mode });
+    T.from = T.mode === 'wall' ? pt : null;
+    H.drawMap();
+  }
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && UI.walls && UI.walls.from) { UI.walls.from = null; H.drawMap(); } });
   function down(gx, gy, e) {
     if (!F().on) return false;
+    if (UI.walls && gm()) { wallClick(gx, gy); return true; }
     if (UI.ruler) {   // two taps (or a click and a click): from here to there
       if (!UI.ruler.a || UI.ruler.b) UI.ruler = { a: { x: gx, y: gy }, b: null, live: { x: gx, y: gy } };
       else UI.ruler.b = { x: gx, y: gy };
@@ -565,6 +600,7 @@
   }
   function hover(gx, gy) {
     if (!F().on) return;
+    if (UI.walls && gm()) { UI.walls.live = [Math.round(gx), Math.round(gy)]; if (UI.walls.from) H.drawMap(); return; }
     if (UI.ruler && UI.ruler.a && !UI.ruler.b) { UI.ruler.live = { x: gx, y: gy }; H.drawMap(); return; }
     if (!myTurn()) return;
     const spec = armedSpec();
@@ -635,6 +671,21 @@
       ctx.strokeStyle = cssVar('--amber', '#ffb74d'); ctx.lineWidth = 3 / z; ctx.setLineDash([8 / z, 6 / z]);
       ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.setLineDash([]);
       label(ctx, `${E.ruler(R0.a, b)} ft`, (ax + bx) / 2, (ay + by) / 2, z, g);
+    }
+    // walls (the GM's map only): wall, door (a gap when open), window
+    const walls = gm() ? ((st().map || {}).walls || []) : [];
+    if (walls.length || (UI.walls && gm())) {
+      const lw = (UI.walls ? 5 : 3) / Math.min(1, z);
+      for (const wl of walls) {
+        ctx.beginPath(); ctx.moveTo(wl.a[0] * g, wl.a[1] * g); ctx.lineTo(wl.b[0] * g, wl.b[1] * g);
+        ctx.lineWidth = lw; ctx.setLineDash(wl.kind === 'window' ? [6 / z, 5 / z] : wl.kind === 'door' && wl.open ? [3 / z, 9 / z] : []);
+        ctx.strokeStyle = wl.kind === 'door' ? '#c8935a' : wl.kind === 'window' ? '#8fd3ff' : alpha('#ffffff', UI.walls ? 0.95 : 0.6);
+        ctx.stroke(); ctx.setLineDash([]);
+      }
+      if (UI.walls && UI.walls.from && UI.walls.live) {
+        ctx.beginPath(); ctx.moveTo(UI.walls.from[0] * g, UI.walls.from[1] * g); ctx.lineTo(UI.walls.live[0] * g, UI.walls.live[1] * g);
+        ctx.lineWidth = lw; ctx.strokeStyle = alpha(cssVar('--amber', '#ffb74d'), 0.9); ctx.setLineDash([8 / z, 6 / z]); ctx.stroke(); ctx.setLineDash([]);
+      }
     }
     // status on the tokens (audit 8.10): conditions as badges, concentration as an amber ring, and a creature's hit
     // points as a bar for the GM only (players never get a creature's hit points)

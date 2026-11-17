@@ -1453,3 +1453,60 @@ test("0 hit points through the API: the death saves land on the sheet, and undo 
   await gm.act("fight.undo", {});
   assert.deepEqual((await sam.state()).characters[avery].deathSaves, { s: 0, f: 0 });
 });
+
+test("walls through the API: the GM's alone; players never receive them; movement and the squares a player is sent respect them; scenes keep them", async () => {
+  const { gm, sam, ids } = await fight();
+  assert.equal((await gm.act("fight.wall", { op: "add", a: [2, -5], b: [2, 5] })).code, 400, "the combat view is off");
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.wall", { op: "add", a: [2, -5], b: [2, 5] })).code, 403);
+  assert.equal((await gm.act("fight.wall", { op: "add", a: [2, -5], b: [2, 0] })).code, 200);
+  assert.equal((await gm.act("fight.wall", { op: "add", a: [2, 0], b: [2, 1], kind: "door" })).code, 200);
+  assert.equal((await gm.act("fight.wall", { op: "add", a: [2, 1], b: [2, 9] })).code, 200);
+  assert.equal((await gm.act("fight.wall", { op: "add", a: [3, 3], b: [3, 3] })).code, 400, "two different ends");
+  const gv = await gm.state();
+  assert.equal(gv.map.walls.length, 3);
+  // Sam's browser gets no walls at all, only the squares Avery can reach (not past the wall)
+  let pv = await sam.state();
+  assert.equal("walls" in pv.map, false);
+  assert.ok(!JSON.stringify(pv).includes('"kind":"door"'));
+  assert.ok(pv.fight.reach && pv.fight.reach["1,0"] === 5 && pv.fight.reach["3,0"] === undefined, "the closed door stops it");
+  assert.equal((await sam.act("fight.move", { x: 3, y: 0 })).code, 400);
+  // the GM opens the door: through it
+  const door = gv.map.walls.find((w) => w.kind === "door");
+  assert.equal((await gm.act("fight.wall", { op: "door", id: door.id, open: true })).code, 200);
+  pv = await sam.state();
+  assert.equal(pv.fight.reach["3,0"], 15);
+  assert.equal((await sam.act("fight.move", { x: 3, y: 0 })).code, 200);
+  // Rae, whose turn it isn't, is sent no squares
+  // a scene keeps its walls: save it, open a blank one (no walls), come back
+  const sc = (await gm.act("scene.saveAs", { name: "Bunker" })).data.id;
+  await gm.act("scene.new", { name: "Open field" });
+  assert.equal("walls" in (await gm.state()).map, false);
+  await gm.act("scene.load", { id: sc });
+  assert.equal((await gm.state()).map.walls.length, 3);
+  // erase one, clear the rest
+  assert.equal((await gm.act("fight.wall", { op: "remove", id: door.id })).code, 200);
+  assert.equal((await gm.state()).map.walls.length, 2);
+  await gm.act("fight.wall", { op: "clear" });
+  assert.equal("walls" in (await gm.state()).map, false, "no walls left: the map is as it was");
+});
+
+test("walls through the API: Frightened only while its source is in sight", async () => {
+  const { gm, sam, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  // a Thug next to Avery; the Raider frightens Avery from across the room
+  await gm.act("token.add", { name: "Thug", x: 0, y: 1 });
+  await gm.act("init.add", { name: "Thug", init: 1, hp: 20, ac: 2 });
+  const thug = (await gm.state()).initiative.entries.find((e) => e.name === "Thug").id;
+  await gm.act("fight.condition", { unit: ids.avery, condition: "Frightened", source: ids.raider });
+  const swing = async () => {
+    assert.equal((await sam.act("fight.attack", { target: thug, attack: "0" })).code, 200);
+    return (await gm.state()).chat.filter((m) => m.fight && m.roll && m.roll.kind === "attack").pop().roll.label;
+  };
+  assert.match(await swing(), /disadvantage \(you are frightened\)/, "the Raider in sight");
+  await gm.act("fight.undo", {});
+  await gm.act("fight.wall", { op: "add", a: [3, -9], b: [3, 9] });   // a wall between Avery (0,0) and the Raider (6,0)
+  const line = await swing();
+  assert.match(line, /frightened, but Raider is out of sight/);
+  assert.ok(!/disadvantage/.test(line), line);
+});
