@@ -675,3 +675,12 @@ body.no-sw5e-books [data-sa="deploy-info"], body.no-sw5e-books .lib-bar { displa
 .au-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 720px) { .audio-now { max-width: 120px; } }
 .au-note { font-size: 12px; margin: 8px 0 0; }
+/* phones: on the map tab, the map gets most of the screen. The roster and chat shrink, and the map tools
+   scroll sideways in one row instead of wrapping into several. */
+@media (max-width: 820px) {
+  body.on-map .layout { grid-template-rows: auto minmax(0, 1fr) 170px; }
+  body.on-map .roster { max-height: 64px; }
+  body.on-map .map-tools { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+  body.on-map .map-tools > * { flex: none; }
+  body.on-map .map-tools .tool-break, body.on-map .map-tools .spacer { display: none; }
+}

@@ -356,6 +356,7 @@
     if (S.tab === 'gm' && !isGM()) S.tab = 'sheet';
     $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
     $$('.pane').forEach(p => p.classList.toggle('on', p.id === 'pane-' + S.tab));
+    document.body.classList.toggle('on-map', S.tab === 'map');   // phones give the map most of the screen
   }
   $('#tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setTab(b.dataset.tab); });
 
@@ -1064,11 +1065,12 @@
   // The map is an endless grid you can pan (drag empty space, or middle-drag anywhere) and zoom
   // (mouse wheel, trackpad pinch, two-finger pinch, or the buttons). One square is 70 px at 100%,
   // like most VTTs. The board (cols x rows) is where the background image and floor are drawn.
-  const CAM = { x: 40, y: 40, z: 1, ready: false };
-  const ZMIN = 0.2, ZMAX = 3;
-  (() => { const c = store.get('holo.cam', null); if (c && isFinite(c.x) && isFinite(c.y) && isFinite(c.z)) Object.assign(CAM, c, { ready: true }); })();
-  let camSaveT;
-  const saveCam = () => { clearTimeout(camSaveT); camSaveT = setTimeout(() => store.set('holo.cam', { x: CAM.x, y: CAM.y, z: CAM.z }), 400); };
+  // The view always opens fitted to the board (whatever size the GM set), and refits when the board's size
+  // changes, the scene changes, or the screen resizes, unless this person has zoomed or panned since.
+  const CAM = { x: 40, y: 40, z: 1, ready: false, fitted: false, key: '' };
+  const ZMIN = 0.05, ZMAX = 3;
+  try { localStorage.removeItem('holo.cam'); } catch { /* storage blocked */ }   // the old saved camera isn't used any more
+  const saveCam = () => { CAM.fitted = false; };   // the person moved the view themselves
   function viewSize() { const w = $('#mapWrap'); return { w: w.clientWidth || 800, h: w.clientHeight || 600 }; }
   function zoomAt(sx, sy, factor) {
     const z = Math.max(ZMIN, Math.min(ZMAX, CAM.z * factor));
@@ -1077,9 +1079,10 @@
   }
   function fitBoard() {
     const mp = S.st.map, g = mp.gridSize, { w, h } = viewSize();
-    const z = Math.max(ZMIN, Math.min(ZMAX, Math.min((w - 40) / (mp.cols * g), (h - 40) / (mp.rows * g))));
+    const pad = Math.min(40, Math.round(Math.min(w, h) * 0.04));   // a small margin, smaller on phones
+    const z = Math.max(ZMIN, Math.min(ZMAX, Math.min((w - 2 * pad) / (mp.cols * g), (h - 2 * pad) / (mp.rows * g))));
     CAM.z = z; CAM.x = (w - mp.cols * g * z) / 2; CAM.y = (h - mp.rows * g * z) / 2;
-    saveCam(); drawMap(); updateZoomLabel();
+    CAM.fitted = true; CAM.ready = true; drawMap(); updateZoomLabel();
   }
   function updateZoomLabel() { const l = $('#zoomPct'); if (l) l.textContent = Math.round(CAM.z * 100) + '%'; }
 
@@ -1412,10 +1415,11 @@
     if (!S.st || S.tab !== 'map') return;
     const mp = S.st.map, g = mp.gridSize, W = mp.cols * g, H = mp.rows * g, dpr = window.devicePixelRatio || 1;
     const { w: vw, h: vh } = viewSize();
-    if (!CAM.ready) {   // first open: fit the board, but never start smaller than 70% (then start at 100%, top-left)
-      CAM.ready = true; fitBoard();
-      if (CAM.z < 0.7) { CAM.z = 1; CAM.x = 40; CAM.y = 40; saveCam(); updateZoomLabel(); drawMap(); }
-      return;
+    const key = `${mp.cols}x${mp.rows}@${g}`;
+    if (key !== CAM.key) { CAM.key = key; CAM.ready = false; }   // first open, or the GM resized the board
+    if (!CAM.ready) {
+      if (!$('#mapWrap').clientWidth) return;   // not laid out yet; the resize observer draws again once it is
+      fitBoard(); return;
     }
     if (canvas.width !== Math.round(vw * dpr) || canvas.height !== Math.round(vh * dpr)) {
       canvas.width = Math.round(vw * dpr); canvas.height = Math.round(vh * dpr);
@@ -1625,7 +1629,8 @@
   };
   canvas.addEventListener('pointerup', endPointer);
   canvas.addEventListener('pointercancel', endPointer);
-  if (window.ResizeObserver) new ResizeObserver(() => drawMap()).observe($('#mapWrap'));
+  // a rotated phone or resized window refits, unless this person has zoomed or panned since the last fit
+  if (window.ResizeObserver) new ResizeObserver(() => { if (CAM.fitted) CAM.ready = false; drawMap(); }).observe($('#mapWrap'));
   function closeTokenPop() { const p = $('.token-pop'); if (p) p.remove(); }
   function popAt(e) {
     const wrap = $('#mapWrap'), r = wrap.getBoundingClientRect();
