@@ -200,8 +200,8 @@
     const spec = armedSpec(), u = cur();
     if (!spec || !u) return;
     const r = spec.power ? await send('fight.use', Object.assign({ ability: spec.key, upcast: UI.upcast || 0, adv: UI.adv, dis: UI.dis }, spec.power.area ? { point: UI.aim } : { target: targetId }))
-      : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.key : specOut(spec) });
-    if (r) { UI.armed = null; UI.target = null; UI.aim = null; UI.adv = UI.dis = false; UI.upcast = 0; render(); }
+      : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.key : specOut(spec), no: UI.noRiders || [] });
+    if (r) { UI.armed = null; UI.target = null; UI.aim = null; UI.adv = UI.dis = false; UI.upcast = 0; UI.noRiders = []; render(); }
   }
 
   /* ---------------- the bar under the map ---------------- */
@@ -362,6 +362,10 @@
         const used = bud && !bud[c.use];
         html += `<button class="btn small ghost ct-common" data-ct="common" data-key="${esc(c.key)}" ${used ? 'disabled' : ''} title="${esc(used ? `Your ${c.use === 'bonus' ? 'bonus action' : c.use} is used this turn` : c.hint)}">${esc(c.name)}</button>`;
       }
+      if ((u.riders || {}).rage) {   // a Berserker's Rage (audit 5.9): a bonus action and a use of Rages
+        const raging = (u.conditions || []).includes('Raging'), pool = (u.pools || {}).rage, out = pool && pool.used >= pool.max, used = bud && !bud.bonus;
+        html += `<button class="btn small ghost ct-common" data-ct="common" data-key="rage" ${raging || out || used ? 'disabled' : ''} title="${esc(raging ? 'Raging: +' + u.riders.rage + ' damage on Strength melee weapon attacks, resistance to kinetic and energy' : out ? 'No rages left until a long rest' : used ? 'Your bonus action is used this turn' : `Bonus action, 1 minute: +${u.riders.rage} damage on Strength melee weapon attacks, resistance to kinetic and energy, advantage on Strength saves`)}">${raging ? '🔥 Raging' : 'Rage'}${pool && pool.max < 99 ? ` <span class="muted">${pool.max - pool.used}/${pool.max}</span>` : ''}</button>`;
+      }
       if (gm() && u.charId) html += '<button class="btn small ghost" data-ct="teach" title="Give the table the numbers for one of this character\'s powers">＋ Power data</button>';
       if (!atks.length) html += `<span class="muted">${u.charId ? 'No weapon attacks on this sheet.' : UI.npc[u.id] && UI.npc[u.id].loading ? 'Reading the stat block…' : 'No attacks found in the stat block.'}</span>`;
       if (gm() && !u.charId) html += '<button class="btn small ghost" data-ct="custom">＋ Custom attack</button>';
@@ -389,6 +393,7 @@
         html += `<div class="ct-row ct-preview" aria-live="polite">${!t ? `<span>${esc(spec.name)}: pick a target on the map (lit in red).</span><button class="btn tiny ghost" data-ct="disarm">Cancel</button>`
           : !pv.legal ? `<span>${esc(pv.why)}</span>`
           : `<span><b>${esc(t.name)}</b>, ${pv.feet} ft: you need <b>${pv.need}+</b> on the d20 (${Math.round(pv.chance * 100)}%)${pv.mode !== 'normal' ? ` · ${E.modeName(pv)}: ${esc(pv.tilts.map((x) => x.text).join(', '))}` : ''}${pv.weak ? ` · weakened: −${pv.weak}` : ''}${(pv.notes || []).length ? ` · ${esc(pv.notes.join('; '))}` : ''}. Hit: ${esc(spec.damage)}${spec.type ? ' ' + esc(spec.type) : ''}.</span>
+             ${(pv.riders || []).map((x) => `<label class="ct-tog ct-rider" title="${esc(x.key === 'sneak' ? 'Once per turn, on a hit: the same type as the weapon' : 'While raging, on a Strength melee weapon hit')}"><input type="checkbox" data-ct="rider" data-key="${esc(x.key)}" ${(UI.noRiders || []).includes(x.key) ? '' : 'checked'}> + ${esc(x.name)} ${esc(x.dice || '+' + x.flat)}</label>`).join('')}
              <button class="btn small primary" data-ct="go">Attack</button>`}</div>`;
       } else if (bud && bud.moveLeft > 0) html += `<div class="ct-row muted ct-hint">Tap a lit square to move there, or pick an attack.</div>`;
     }
@@ -434,6 +439,7 @@
     if (k === 'arm') { UI.armed = UI.armed === el.dataset.key ? null : el.dataset.key; UI.target = null; UI.upcast = 0; render(); return H.drawMap(); }
     if (k === 'disarm') { UI.armed = UI.target = UI.aim = null; render(); return H.drawMap(); }
     if (k === 'adv' || k === 'dis') { UI[k] = el.checked; return render(); }
+    if (k === 'rider') { const no = new Set(UI.noRiders || []); if (el.checked) no.delete(el.dataset.key); else no.add(el.dataset.key); UI.noRiders = [...no]; return render(); }
     if (k === 'teach') return teachModal();
     if (k === 'go' && (UI.target || UI.aim)) return attack(UI.target);
     if (k === 'measure') { UI.ruler = UI.ruler ? null : { a: null, b: null }; render(); return H.drawMap(); }

@@ -49,7 +49,7 @@ function state(camp) {
     // what each unit has spent of its turn (movement in feet, action, bonus action, reaction), since its turn began
     spent: Object.fromEntries(Object.entries(plainObj(f.spent)).filter(([k, v]) => ID.test(k) && v && typeof v === "object")
       .map(([k, v]) => [k, { key: str(v.key, 40), move: clamp(int(v.move), 0, 1000), action: clamp(int(v.action), 0, 9), bonus: clamp(int(v.bonus), 0, 9), reaction: clamp(int(v.reaction), 0, 9), diag: v.diag ? 1 : 0,
-        dash: clamp(int(v.dash), 0, 9), disengage: v.disengage ? 1 : 0, dodge: v.dodge ? 1 : 0, ds: v.ds ? 1 : 0 }])),
+        dash: clamp(int(v.dash), 0, 9), disengage: v.disengage ? 1 : 0, dodge: v.dodge ? 1 : 0, ds: v.ds ? 1 : 0, sneak: v.sneak ? 1 : 0 }])),
     // reactions waiting for an answer: an opportunity attack someone may take (the turn waits until it's answered)
     pending: (Array.isArray(f.pending) ? f.pending : []).slice(0, 12).map(cleanPending).filter(Boolean),
     // a creature's limited abilities from its stat block (audit 9.5, issue #76): recharge, per day, legendary actions
@@ -634,6 +634,12 @@ function apply(camp, cid, gm, type, p, G) {
         const ab = ch && E.abilitiesOf(ch, R, f.lib).find((a) => a.key === String(p.ability || ""));
         return !!(ab && ab.area);
       })();
+      // Rage counts its uses: a sheet from before #108 gets its class's Rages resource from the class table first
+      const rager = type === "fight.common" && String(p.key || "") === "rage" && cur.charId && charOf(camp, cur.charId);
+      if (rager && R.withClassResources && !(rager.resources || []).some((r) => r && r.key === "rage")) {
+        const withRage = E.cleanResources(R.withClassResources(rager));
+        if (withRage.some((r) => r.key === "rage")) rager.resources = withRage;
+      }
       const world = worldOf(camp, !gm && !areaUse, G, cid);
       if (type === "fight.end" && !world.units[cur.id]) {      // a combatant with no token can still pass the turn
         snapshot(camp, `${G.shownName(camp, cur)} ends the turn`);
@@ -663,7 +669,7 @@ function apply(camp, cid, gm, type, p, G) {
           spec = ch && E.attacksOf(ch, R).find((a) => a.key === String(p.attack));
           if (!spec) throw new G.Invalid("That attack isn't on the sheet.");
         } else spec = cleanSpec(p.attack, G);
-        act = { type: "attack", unit: cur.id, target: String(p.target || ""), attack: spec, adv: !!p.adv, dis: !!p.dis };
+        act = { type: "attack", unit: cur.id, target: String(p.target || ""), attack: spec, adv: !!p.adv, dis: !!p.dis, no: Array.isArray(p.no) ? p.no.slice(0, 4).map((x) => str(x, 20)) : [] };
       }
       const limited = act.type === "attack" && !cur.charId && p.attack && p.attack.res && ((f.npcres || {})[cur.id] || []).find((x) => x.key === String(p.attack.res));
       if (limited && limited.used >= limited.max) throw new G.Invalid(`${limited.name} is spent${limited.recharge ? ` until it recharges (${limited.recharge}-6 at the start of ${cur.name}'s turn)` : ""}.`);
