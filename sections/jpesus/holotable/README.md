@@ -50,6 +50,9 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
 - **Scenes (GM):** save the map setup (background, floor, grid, tokens, props) under a name and pick one from the
   Scene dropdown to show it to everyone at once.
   - **Switching keeps your work:** changes to the current scene are kept in that scene when you switch away.
+  - **Screen wipes:** every scene change plays a random film-style wipe for the whole table (left, right, down, up,
+    diagonal, clock, iris or barn doors; the server picks it, so everyone sees the same one). They follow each device's
+    "reduce motion" setting by default, and anyone can switch them on or off for themselves in the 🎨 menu.
   - **The other buttons:** Save, Save as new, New blank, Rename and Delete. A table can keep up to 30 scenes.
   - **Images:** an uploaded image is deleted only once nothing on the table, saved scenes included, uses it.
 - **Level ups:** the GM grants a level to the party or to chosen characters. Each player gets a pop-up and a guided wizard:

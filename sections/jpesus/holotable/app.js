@@ -168,6 +168,10 @@
       if (!n.classes.length) n.classes = [{ name: 'Fighter', level: 1, archetype: '' }];
       st.characters[id] = n;
     }
+    // the GM changed the scene: wipe from the old board to the new one (snapshot taken before redrawing)
+    const fx = st.sceneFx;
+    if (fx && S.fxSeen !== undefined && fx.n !== S.fxSeen) startWipe(fx.k);
+    S.fxSeen = fx ? fx.n : null;
     S.st = st;
     document.body.classList.toggle('is-gm', !!st.isGM);
     document.body.classList.toggle('no-sw5e-books', st.sw5eBooks === false);
@@ -1158,6 +1162,90 @@
     }
     if (t.dataset.mset) act('map.settings', { [t.dataset.mset]: t.type === 'checkbox' ? t.checked : +t.value });
   });
+  // --------------------------------------------------------------------------- scene wipes
+  // Classic film-style screen wipes when the GM changes the scene. The old board is snapshotted onto an overlay,
+  // the new one is drawn underneath, then the overlay is wiped away. The server picks the style, so everyone
+  // sees the same one. Skipped when the map isn't on screen, and (unless switched on in 🎨) on devices set to reduce motion.
+  const WIPE_MS = 1100;
+  const wipeCanvas = document.createElement('canvas');
+  wipeCanvas.id = 'wipeCanvas'; wipeCanvas.setAttribute('aria-hidden', 'true');
+  $('#mapWrap').appendChild(wipeCanvas);
+  const WIPE = { id: 0 };
+  // By default the wipes follow the device's "reduce motion" setting; each person's 🎨 switch overrides it either way.
+  const wipesOn = () => {
+    const v = store.get('holo.wipes', null);
+    if (v === 'on' || v === 'off') return v === 'on';
+    return !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  };
+  function startWipe(kind) {
+    if (S.tab !== 'map' || !canvas.width || !canvas.height || !wipesOn()) return;
+    const old = document.createElement('canvas');
+    old.width = canvas.width; old.height = canvas.height;
+    old.getContext('2d').drawImage(canvas, 0, 0);
+    wipeCanvas.width = canvas.width; wipeCanvas.height = canvas.height;
+    wipeCanvas.style.width = canvas.style.width; wipeCanvas.style.height = canvas.style.height;
+    const w = wipeCanvas.getContext('2d');
+    paintWipe(w, old, kind, 0);
+    wipeCanvas.classList.add('on');
+    const id = ++WIPE.id, waitFrom = performance.now();
+    const go = () => {
+      if (id !== WIPE.id) return;
+      // give the new scene's background a moment to load (at most 1.5 s) so the wipe reveals it, not a blank board
+      const bg = S.st && imgUrl(S.st.map.bgUrl);
+      if (bg && !(S.mapImg && S.mapImg.complete && S.mapImg.src.endsWith(bg)) && performance.now() - waitFrom < 1500) return setTimeout(go, 60);
+      const t0 = performance.now();
+      const frame = t => {
+        if (id !== WIPE.id) return;
+        const p = Math.min(1, (t - t0) / WIPE_MS), e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+        paintWipe(w, old, kind, e);
+        if (p < 1) requestAnimationFrame(frame); else wipeCanvas.classList.remove('on');
+      };
+      requestAnimationFrame(frame);
+      // never leave the old scene covering the new one (e.g. a background tab where animation frames pause)
+      setTimeout(() => { if (id === WIPE.id) { WIPE.id++; wipeCanvas.classList.remove('on'); } }, WIPE_MS + 400);
+    };
+    if (document.hidden) { wipeCanvas.classList.remove('on'); return; }
+    setTimeout(go, 80);
+  }
+  // Draw the old board with the part already wiped (progress e, 0..1) cut away.
+  function paintWipe(w, old, kind, e) {
+    const W = wipeCanvas.width, H = wipeCanvas.height, soft = Math.max(W, H) * 0.05;
+    w.setTransform(1, 0, 0, 1, 0, 0);
+    w.globalCompositeOperation = 'source-over';
+    w.clearRect(0, 0, W, H);
+    w.drawImage(old, 0, 0);
+    if (e <= 0) return;
+    w.globalCompositeOperation = 'destination-out';
+    w.fillStyle = '#000';
+    // a straight wipe at `angle` (0 = left to right) with a soft edge
+    const linear = angle => {
+      const a = angle * Math.PI / 180, L = Math.abs(W * Math.cos(a)) + Math.abs(H * Math.sin(a)), Mx = Math.abs(W * Math.sin(a)) + Math.abs(H * Math.cos(a));
+      w.translate(W / 2, H / 2); w.rotate(a);
+      const pos = -L / 2 + e * (L + soft);
+      const g = w.createLinearGradient(pos - soft, 0, pos, 0);
+      g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+      w.fillRect(-L / 2 - 2, -Mx / 2 - 2, Math.max(0, pos - soft + L / 2 + 2), Mx + 4);
+      w.fillStyle = g; w.fillRect(pos - soft, -Mx / 2 - 2, soft, Mx + 4);
+    };
+    const R = Math.hypot(W, H) / 2;
+    switch (kind) {
+      case 0: linear(0); break;          // left to right
+      case 1: linear(180); break;        // right to left
+      case 2: linear(90); break;         // top to bottom
+      case 3: linear(270); break;        // bottom to top
+      case 4: linear(35); break;         // diagonal
+      case 5:                            // clock wipe, sweeping from 12 o'clock
+        w.beginPath(); w.moveTo(W / 2, H / 2); w.arc(W / 2, H / 2, R + 4, -Math.PI / 2, -Math.PI / 2 + e * Math.PI * 2); w.closePath(); w.fill(); break;
+      case 6:                            // iris opening from the centre
+        w.beginPath(); w.arc(W / 2, H / 2, e * (R + 4), 0, Math.PI * 2); w.fill(); break;
+      default: {                         // barn doors, opening from the middle
+        const hw = e * (W / 2 + 4); w.fillRect(W / 2 - hw, 0, hw * 2, H);
+      }
+    }
+    w.setTransform(1, 0, 0, 1, 0, 0);
+    w.globalCompositeOperation = 'source-over';
+  }
+
   async function loadMapBg() {
     const sid = S.st.map.sceneId || '';
     if (S.sceneSeen !== undefined && S.sceneSeen !== sid) { CAM.ready = false; requestAnimationFrame(drawMap); }
@@ -1939,6 +2027,7 @@
         <div class="box" style="margin:0"><h4>Customise</h4>
           <div class="custom-colors">${TH.CUSTOM_KEYS.map(k => `<label><input type="color" data-ck="${k.key}" value="${cur[k.key]}">${esc(k.label)}${draft.custom[k.key] ? ' ✎' : ''}</label>`).join('')}</div>
           ${Object.keys(draft.custom).length ? '<button class="btn tiny" data-tact="reset" style="margin-top:8px">Reset to the template\'s colours</button>' : ''}</div>
+        <label class="toggle"><input type="checkbox" data-tact="wipes" ${wipesOn() ? 'checked' : ''}> Screen wipes when the GM changes the scene</label>
         <div class="row"><span class="spacer"></span><button class="btn primary" data-tact="done">Done</button></div></div>`;
     };
     modal('', box => {
@@ -1958,7 +2047,10 @@
         clearTimeout(saveTimer);
         saveTimer = setTimeout(() => act('player.prefs', draft), 600);
       };
-      wrap.onchange = e => { if (e.target.dataset.ck) render(wrap); };
+      wrap.onchange = e => {
+        if (e.target.dataset.tact === 'wipes') { store.set('holo.wipes', e.target.checked ? 'on' : 'off'); return; }
+        if (e.target.dataset.ck) render(wrap);
+      };
     });
   }
   $('#themeBtn').addEventListener('click', openThemes);

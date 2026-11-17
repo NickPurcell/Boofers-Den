@@ -842,3 +842,24 @@ test("archetypes: chosen once per class, on reaching class level 3, never before
   await up("Way of the Sword");
   assert.equal(await arch(), "Way of the Shield", "can't be changed by a later level up");
 });
+
+test("scene wipes: each scene change picks one wipe the whole table sees; saving doesn't", async () => {
+  const { gm, p1 } = await table();
+  await gm.act("scene.saveAs", { name: "Cantina" });
+  assert.equal((await p1.poll()).data.state.sceneFx, null, "saving the board as a scene changes nothing on screen");
+  const a = (await gm.act("scene.new", { name: "Hangar" })).data.id;
+  const fx1 = (await p1.poll()).data.state.sceneFx;
+  assert.match(fx1.n, /^[a-f0-9]{6,20}$/); assert.ok(fx1.k >= 0 && fx1.k < 8);
+  assert.deepEqual((await gm.poll()).data.state.sceneFx, fx1, "the GM and players get the same wipe");
+  const cantina = (await gm.poll()).data.state.scenes.find((s) => s.name === "Cantina").id;
+  const seen = new Set([fx1.n]), kinds = new Set([fx1.k]);
+  for (let i = 0; i < 30; i++) {
+    await gm.act("scene.load", { id: i % 2 ? a : cantina });
+    const fx = (await p1.poll()).data.state.sceneFx;
+    seen.add(fx.n); kinds.add(fx.k);
+  }
+  assert.equal(seen.size, 31, "every change plays once");
+  assert.ok(kinds.size > 3, "the wipe is random");
+  await gm.act("scene.save", {});
+  assert.ok(seen.has((await p1.poll()).data.state.sceneFx.n), "saving the current scene doesn't play a wipe");
+});
