@@ -67,6 +67,7 @@
 .ct-wallbar.hidden { display: none; }
 .ct-wallbar > * { white-space: nowrap; flex: none; }
 .ct-fogctl { display: inline-flex; gap: 6px; align-items: center; margin-left: 4px; padding-left: 8px; border-left: 1px solid var(--line); }
+.ct-wallbar select { font-size: 12px; padding: 1px 4px; }
 .ct-ptsn { width: 46px; font-size: 12px; padding: 1px 4px; margin-right: -2px; }
 #modalBox table.ct-senses { border-collapse: collapse; width: 100%; margin: 6px 0 10px; font-size: 13px; }
 #modalBox table.ct-senses th { font-weight: 600; text-align: left; padding: 2px 4px; font-size: 12px; }

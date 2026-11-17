@@ -649,11 +649,17 @@
       }
       await act('map.settings', { cols: Math.max(5, Math.min(200, Math.round(+size.x))), rows: Math.max(5, Math.min(200, Math.round(+size.y))) });
       await wallSend({ op: 'set', walls: walls.slice(0, 2000) });
-      toast(`Imported ${file.name}: ${Math.min(2000, walls.length)} walls and doors${walls.length > 2000 ? ' (the first 2000)' : ''}.`);
+      // its lights (#93 step 5): Universal VTT gives one range in squares; the inner half is bright, the rest dim
+      const lights = (Array.isArray(d.lights) ? d.lights : []).filter((l) => l && l.position && +l.range > 0).slice(0, 200).map((l) => {
+        const [x, y] = pt(l.position), feet = Math.round(+l.range * 5), bright = Math.round(feet / 2 / 5) * 5;
+        return { x, y, bright, dim: Math.max(0, feet - bright) };
+      });
+      if (lights.length) await wallSend({ op: 'set', lights }, 'fight.light');
+      toast(`Imported ${file.name}: ${Math.min(2000, walls.length)} walls and doors${walls.length > 2000 ? ' (the first 2000)' : ''}${lights.length ? `, ${lights.length} light${lights.length === 1 ? '' : 's'}` : ''}.`);
     } catch (err) { toast(err.message || "Couldn't import that file.", true); }
   }
-  // The GM's wall tool lives in the map tools beside "＋ Token" (app.js asks for its button) while the combat view is on,
-  // with its own small bar over the map, like the 🎬 movement bar.
+  // The GM's wall tool lives in the map tools beside "＋ Token" (app.js asks for its button), with its own row under
+  // the map tools: walls, doors, windows, lights, the map's light level and fog.
   function wallsButton() {
     return gm() ? `<button class="btn small ${UI.walls ? 'primary' : ''}" data-ct-walls="1" aria-pressed="${!!UI.walls}" title="Draw walls, doors and windows: they block movement, sight and areas in the combat view (players never receive them)">🧱 Walls</button>` : '';
   }
@@ -665,7 +671,11 @@
       // a row of its own between the map tools and the map, so it never covers any of the board
       const pane = $('#pane-map'), body = pane && pane.querySelector('.map-body');
       if (body) pane.insertBefore(wallBar, body); else $('#mapWrap').appendChild(wallBar);
-      wallBar.addEventListener('change', (e) => { const f = e.target.matches('[data-wb-file]') && e.target.files[0]; if (f) importUvtt(f).finally(() => { e.target.value = ''; }); });
+      wallBar.addEventListener('change', (e) => {
+        if (e.target.matches('[data-wb-level]')) { wallSend({ level: e.target.value }, 'fight.light'); return; }
+        if (e.target.matches('[data-wb-radius]')) { UI.lightSize = e.target.value; return; }
+        const f = e.target.matches('[data-wb-file]') && e.target.files[0]; if (f) importUvtt(f).finally(() => { e.target.value = ''; });
+      });
       wallBar.addEventListener('click', (e) => {
         const b = e.target.closest('[data-wb]'); if (!b) return;
         const a = b.dataset.wb;
@@ -690,6 +700,10 @@
       <span class="muted" title="${T.mode === 'wall' ? 'Click corner to corner; Esc or the same corner again ends a run' : T.mode === 'door' || T.mode === 'window' ? 'Click its two ends' : 'Click next to one'}">${n} on this map</span>
       ${n ? '<button class="btn tiny ghost" data-wb="clear">Clear walls</button>' : ''}
       <label class="btn tiny ghost" title="Dungeondraft's export for other tabletops (Universal VTT): the picture, the board size, its walls and doors">Import .dd2vtt<input type="file" accept=".dd2vtt,.uvtt,.df2vtt,application/json" data-wb-file hidden></label>
+      <span class="ct-fogctl">${(() => { const light = (st().map || {}).light || {}, lv = light.level || 'bright';
+        return `<select class="ct-lightlv" data-wb-level title="The map's own light: bright changes nothing; dim and dark limit what players see under fog">${[['bright', '☀ Bright'], ['dim', '🌗 Dim'], ['dark', '🌑 Dark']].map(([k, l]) => `<option value="${k}" ${lv === k ? 'selected' : ''}>${l}</option>`).join('')}</select>`
+          + `<button class="btn tiny ${T.mode === 'light' ? 'primary' : 'ghost'}" data-wb="light" title="Click to place a light; Erase removes one">💡 Light</button>`
+          + `<select data-wb-radius title="Bright / dim radius in feet">${LIGHT_SIZES.map(([b, d, l]) => `<option value="${b}/${d}" ${UI.lightSize === `${b}/${d}` ? 'selected' : ''}>${l}</option>`).join('')}</select>`; })()}</span>
       <span class="ct-fogctl">${(() => { const fog = (st().map || {}).fog || {}; return `<button class="btn tiny ${fog.on ? 'primary' : 'ghost'}" data-wb="fog" aria-pressed="${!!fog.on}" title="Each player sees only what their characters can see through the walls; the rest of the map is dark">🌫 Fog ${fog.on ? 'on' : 'off'}</button>`
         + (fog.on ? `<button class="btn tiny ${fog.shared ? 'primary' : 'ghost'}" data-wb="shared" aria-pressed="${!!fog.shared}" title="Every player sees what any character sees">Shared sight</button><button class="btn tiny ghost" data-wb="reset">Reset explored</button>` : ''); })()}</span>
       <button class="btn tiny ghost" data-wb="senses" title="Every character's senses: darkvision and the rest decide what each player sees under fog and light">👁 Senses</button>
@@ -717,9 +731,16 @@
   // (the one-at-a-time guard on other actions would swallow the next segment)
   let wallChain = Promise.resolve();
   const wallSend = (p, type) => (wallChain = wallChain.then(() => act(type || 'fight.wall', p)).catch(() => null));
+  // lights (#93 step 5): a click places one at the centre of the square; Erase removes the nearest within half a square
+  const LIGHT_SIZES = [[5, 5, 'Candle 5/5'], [10, 10, 'Fire 10/10'], [20, 20, 'Glow rod 20/20'], [30, 30, 'Lamp 30/30'], [60, 60, 'Floodlight 60/60']];
+  const nearestLight = (gx, gy) => (((st().map || {}).light || {}).lights || []).find((l) => Math.hypot(l.x - gx, l.y - gy) < 0.6) || null;
   function wallClick(gx, gy) {
     const T = UI.walls, pt = [Math.round(gx), Math.round(gy)];
-    if (T.mode === 'erase') { const wl = nearestWall(gx, gy); if (wl) wallSend({ op: 'remove', id: wl.id }); return; }
+    if (T.mode === 'light') {
+      const [b, d] = String(UI.lightSize || '20/20').split('/').map(Number);
+      wallSend({ op: 'add', x: Math.floor(gx) + 0.5, y: Math.floor(gy) + 0.5, bright: b, dim: d }, 'fight.light'); return;
+    }
+    if (T.mode === 'erase') { const lt = nearestLight(gx, gy); if (lt) { wallSend({ op: 'remove', id: lt.id }, 'fight.light'); return; } const wl = nearestWall(gx, gy); if (wl) wallSend({ op: 'remove', id: wl.id }); return; }
     if (T.mode === 'toggle') { const wl = nearestWall(gx, gy, ['door']); if (wl) wallSend({ op: 'door', id: wl.id, open: !wl.open }); return; }
     if (!T.from) { T.from = pt; H.drawMap(); return; }
     if (T.from[0] === pt[0] && T.from[1] === pt[1]) { T.from = null; H.drawMap(); return; }
@@ -786,15 +807,18 @@
   // drawn as a picture one pixel per square, scaled up without smoothing, and rebuilt only when the squares change
   let fogPic = null;
   function fogPicture(fog) {
-    const key = [fog.cols, fog.rows, fog.vis, fog.seen, fog.any].join('|');
+    const key = [fog.cols, fog.rows, fog.vis, fog.seen, fog.any, fog.dim, fog.dark, fog.dimLit].join('|');
     if (fogPic && fogPic.key === key) return fogPic.canvas;
     const n = fog.cols * fog.rows, c = document.createElement('canvas'); c.width = fog.cols; c.height = fog.rows;
     const cx = c.getContext('2d'), im = cx.createImageData(fog.cols, fog.rows);
     const shade = cssVar('--bg', '#05080d').replace('#', ''), rgb = [0, 2, 4].map((i) => parseInt(shade.slice(i, i + 2), 16) || 0);
-    const vis = fog.vis ? E.unpackSquares(fog.vis, n) : null, seen = fog.seen ? E.unpackSquares(fog.seen, n) : null, any = fog.any ? E.unpackSquares(fog.any, n) : null;
+    const un = (k) => (fog[k] ? E.unpackSquares(fog[k], n) : null);
+    const vis = un('vis'), seen = un('seen'), any = un('any'), dim = un('dim'), dark = un('dark'), dimLit = un('dimLit');
     for (let i = 0; i < n; i++) {
-      // a player: black where never seen, dim where explored, clear where seen now; the GM: a light veil where no player sees
-      const a = any ? (any[i] ? 0 : 70) : vis[i] ? 0 : seen[i] ? 150 : 250;
+      // a player: black where never seen, dim where explored, clear where seen now (a light veil where it's seen only
+      // dimly); the GM: a light veil where no player sees, deeper where the light doesn't reach
+      const a = any ? Math.max(any[i] ? 0 : 70, dark && dark[i] ? 125 : dimLit && dimLit[i] ? 60 : 0)
+        : vis[i] ? (dim && dim[i] ? 95 : 0) : seen[i] ? 150 : 250;
       im.data.set([rgb[0], rgb[1], rgb[2], a], i * 4);
     }
     cx.putImageData(im, 0, 0);
@@ -829,6 +853,11 @@
   const abbr = (c) => ABBR[c] || String(c).slice(0, 2);
   // the GM's walls (wall, door: a gap when open, window), and the segment being drawn; with the combat view on or off
   function drawWalls(ctx, g, z) {
+    if (gm()) for (const l of (((st().map || {}).light || {}).lights || [])) {   // the GM's lights: a lamp and its reach
+      const cx = l.x * g, cy = l.y * g, amber = cssVar('--amber', '#ffb74d');
+      ctx.beginPath(); ctx.arc(cx, cy, ((l.bright + l.dim) / 5) * g, 0, Math.PI * 2); ctx.strokeStyle = alpha(amber, UI.walls ? 0.45 : 0.18); ctx.lineWidth = 1 / z; ctx.setLineDash([4 / z, 6 / z]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(cx, cy, Math.max(4 / z, g * 0.14), 0, Math.PI * 2); ctx.fillStyle = alpha(amber, 0.9); ctx.fill();
+    }
     const walls = gm() ? ((st().map || {}).walls || []) : [];
     if (walls.length || (UI.walls && gm())) {
       const lw = (UI.walls ? 5 : 3) / Math.min(1, z);
