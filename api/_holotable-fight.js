@@ -440,6 +440,18 @@ function gmSenses(camp, gm, p, G) {
   return {};
 }
 
+// Second Wind (Fighter): regain 1d10 + fighter level hit points, rolled on the server and shown in chat
+function secondWind(camp, cid, ch, G) {
+  const lvl = ((ch.classes || []).find((k) => String(k.name).toLowerCase() === "fighter") || {}).level || 1;
+  const res = G.rollDice(`1d10+${clamp(int(lvl), 1, 20)}`);
+  const n0 = (v, d) => (Number.isFinite(+v) ? +v : d);
+  const was = n0((ch.hp || {}).current, 0), max = n0((ch.hp || {}).max, was);
+  ch.hp = Object.assign({}, ch.hp, { current: Math.min(max, was + Math.max(0, res.total)) });
+  G.reviveChar(camp, ch, was);
+  for (const e of camp.initiative.entries) if (e.charId === ch.id) e.hp = ch.hp.current;
+  G.addChat(camp, { from: G.shownName(camp, { charId: ch.id, name: ch.name }), fromId: cid, charName: ch.name,
+    roll: Object.assign({}, res, { expr: `1d10+${lvl}`, label: "Second Wind (healing)", kind: "heal" }) });
+}
 function apply(camp, cid, gm, type, p, G) {
   if (type === "fight.wall" || type === "fight.fog" || type === "fight.light") return mapTools(camp, cid, gm, type, p, G);
   if (type === "fight.senses") return gmSenses(camp, gm, p, G);
@@ -527,6 +539,7 @@ function apply(camp, cid, gm, type, p, G) {
       snapshot(camp, `${G.shownName(camp, { charId: ch.id, name: ch.name })} used ${r.res.name}`);
       Object.assign(ch, { resources: r.ch.resources, force: r.ch.force, tech: r.ch.tech, hitDiceUsed: r.ch.hitDiceUsed });
       G.addChat(camp, { system: true, fight: true, text: `${G.shownName(camp, { charId: ch.id, name: ch.name })} uses ${r.res.name}: ${r.res.max - r.res.used} of ${r.res.max} left.` });
+      if (r.res.key === "second-wind") secondWind(camp, cid, ch, G);   // it heals, not only counts (#65 reel note)
       return {};
     }
     case "fight.resource": { // add, change or remove one of a character's own resources (its owner or the GM)
