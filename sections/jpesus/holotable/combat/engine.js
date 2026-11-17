@@ -289,6 +289,66 @@
     return { ok: false, why: `${t.name} is ${feet} ft away: out of ${ab.range ? 'range' : 'reach'}.` };
   }
 
+  /* ---------------- measuring and areas (issue #70) ---------------- */
+  // Points are in squares and may sit on a corner or a centre (x.0 or x.5). A square is inside a template when its
+  // centre is. Cones open to the same width as their length (a half-angle whose tangent is 1/2); spheres and
+  // cylinders are a radius around the point; cubes run from the point away from the caster; lines have a width.
+  const HALF_CONE = Math.atan(0.5);
+  function ruler(a, b) { // feet between two points, by the same diagonal rule as movement
+    return Math.max(Math.abs(Math.floor(b.x) - Math.floor(a.x)), Math.abs(Math.floor(b.y) - Math.floor(a.y))) * FT;
+  }
+  function areaSquares(area, origin, aim) {
+    const n = Math.max(1, Math.round((area.size || FT) / FT)), out = [];
+    const dx = aim.x - origin.x, dy = aim.y - origin.y, len = Math.hypot(dx, dy) || 1, ux = dx / len, uy = dy / len;
+    const box = (x0, y0, x1, y1, test) => {
+      for (let x = Math.floor(x0); x <= Math.ceil(x1); x++) for (let y = Math.floor(y0); y <= Math.ceil(y1); y++) if (test(x + 0.5, y + 0.5)) out.push([x, y]);
+    };
+    if (area.shape === 'sphere' || area.shape === 'cylinder') {
+      box(origin.x - n - 1, origin.y - n - 1, origin.x + n, origin.y + n, (cx, cy) => Math.hypot(cx - origin.x, cy - origin.y) <= n + 1e-9);
+    } else if (area.shape === 'cube') {
+      const sx = dx >= 0 ? 1 : -1, sy = dy >= 0 ? 1 : -1;
+      const x0 = Math.round(origin.x), y0 = Math.round(origin.y);
+      box(Math.min(x0, x0 + sx * n), Math.min(y0, y0 + sy * n), Math.max(x0, x0 + sx * n) - 1, Math.max(y0, y0 + sy * n) - 1, () => true);
+    } else if (area.shape === 'cone') {
+      box(origin.x - n - 1, origin.y - n - 1, origin.x + n, origin.y + n, (cx, cy) => {
+        const vx = cx - origin.x, vy = cy - origin.y, d = Math.hypot(vx, vy);
+        return d > 0 && d <= n + 1e-9 && Math.acos(Math.max(-1, Math.min(1, (vx * ux + vy * uy) / d))) <= HALF_CONE + 1e-9;
+      });
+    } else if (area.shape === 'line') {
+      const half = Math.max(1, Math.round((area.width || FT) / FT)) / 2;
+      box(origin.x - n - 1, origin.y - n - 1, origin.x + n, origin.y + n, (cx, cy) => {
+        const vx = cx - origin.x, vy = cy - origin.y, along = vx * ux + vy * uy;
+        return along > 0 && along <= n + 1e-9 && Math.abs(vx * uy - vy * ux) <= half + 1e-9;
+      });
+    }
+    return out;
+  }
+  // where an area starts: the point aimed at (it must be in range), or the caster's edge toward the aim (cones, lines)
+  function areaOrigin(world, u, ab, point) {
+    const size = u.size || 1, cx = u.x + size / 2, cy = u.y + size / 2;
+    if (ab.area.from === 'point') {
+      const feet = Math.max(0, squaresBetween(u, { x: Math.floor(point.x), y: Math.floor(point.y), size: 1 }) * FT);
+      const reach = ab.range ? ab.range[1] : ab.reach || 0;
+      if (feet > reach) return { ok: false, why: `That point is ${feet} ft away: out of range (${reach} ft).` };
+      return { ok: true, origin: { x: point.x, y: point.y }, aim: point };
+    }
+    const dx = point.x - cx, dy = point.y - cy, len = Math.hypot(dx, dy) || 1;
+    return { ok: true, origin: { x: cx + (dx / len) * size / 2, y: cy + (dy / len) * size / 2 }, aim: { x: cx + dx * 10, y: cy + dy * 10 } };
+  }
+  // the squares and the combatants an area ability would catch, aimed at a point
+  function areaHits(world, unitId, ab, point) {
+    const u = world.units[unitId];
+    if (!u || !ab.area || !point || !Number.isFinite(+point.x) || !Number.isFinite(+point.y)) return { ok: false, why: 'Pick where to aim it.' };
+    const o = areaOrigin(world, u, ab, { x: +point.x, y: +point.y });
+    if (!o.ok) return o;
+    const squares = areaSquares(ab.area, o.origin, o.aim), set = new Set(squares.map(([x, y]) => `${x},${y}`));
+    const caught = Object.values(world.units).filter((t) => !t.down && (ab.area.from === 'point' || t.id !== u.id) && (() => {
+      for (let x = t.x; x < t.x + (t.size || 1); x++) for (let y = t.y; y < t.y + (t.size || 1); y++) if (set.has(`${x},${y}`)) return true;
+      return false;
+    })());
+    return { ok: true, squares, units: caught.map((t) => t.id), origin: o.origin };
+  }
+
   /* ---------------- turns: the turn budget is resources too, refilled at the start of the unit's own turn ---------------- */
   const turnKey = (world) => `${world.round}:${world.turnId}`;
   const TURN = ['move', 'action', 'bonus', 'reaction'];
@@ -365,21 +425,28 @@
           const p = (me.pools || {})[pool];
           if (!p || p.max - p.used < n) return no(`Not enough ${p ? p.name : pool}: ${n} needed${p ? `, ${p.max - p.used} left` : ''}.`);
         }
-        const ids = ab.targets === 'self' ? [me.id] : (Array.isArray(act.targets) ? act.targets : [act.target]).filter(Boolean).map(String);
-        const max = ab.targets === 'self' ? 1 : ab.targets === 'area' ? 40 : ab.targets;
-        if (!ids.length) return no('Pick a target.');
-        if (new Set(ids).size !== ids.length || ids.length > max) return no(`${ab.name} affects ${max === 1 ? 'one target' : `up to ${max} targets`}.`);
-        for (const id of ids) {
-          const t = w.units[id];
-          if (!t) return no('No such target.');
-          const r = inReachOf(w, me, t, ab);
-          if (!r.ok) return no(r.why);
+        let ids;
+        if (ab.area) {   // everyone the template catches, aimed at a point
+          const hits = areaHits(w, me.id, ab, act.point);
+          if (!hits.ok) return no(hits.why);
+          ids = hits.units;
+        } else {
+          ids = ab.targets === 'self' ? [me.id] : (Array.isArray(act.targets) ? act.targets : [act.target]).filter(Boolean).map(String);
+          const max = ab.targets === 'self' ? 1 : ab.targets;
+          if (!ids.length) return no('Pick a target.');
+          if (new Set(ids).size !== ids.length || ids.length > max) return no(`${ab.name} affects ${max === 1 ? 'one target' : `up to ${max} targets`}.`);
+          for (const id of ids) {
+            const t = w.units[id];
+            if (!t) return no('No such target.');
+            const r = inReachOf(w, me, t, ab);
+            if (!r.ok) return no(r.why);
+          }
         }
         // pay first: the turn slot and the points
         if (slot !== 'free') w.spent[me.id][slot] += 1;
         for (const [pool, n] of Object.entries(cost)) if (n) me.pools[pool] = Object.assign({}, me.pools[pool], { used: me.pools[pool].used + n });
         const costText = Object.entries(cost).filter(([, n]) => n).map(([pool, n]) => `${n} ${(me.pools[pool] || {}).name || pool}`).join(', ');
-        const log = [{ text: `${me.name} uses ${ab.name}${up ? ` at level ${ab.level + up}` : ''}${costText ? ` (${costText})` : ''}.` }], events = [];
+        const log = [{ text: `${me.name} uses ${ab.name}${up ? ` at level ${ab.level + up}` : ''}${costText ? ` (${costText})` : ''}.` }], events = [];   // never says who or how many: a hidden creature may be among them
         const extra = up && ab.upcast ? Array.from({ length: up }, () => ab.upcast.damage).join('+') : '';
         const dmgExpr = (crit) => ab.damage.map((d) => diceExpr(crit ? doubleDice(d.dice) : d.dice, d.add)).join('+') + (extra ? '+' + (crit ? doubleDice(extra) : extra) : '');
         const dtype = (ab.damage[0] || {}).type || '';
@@ -395,13 +462,13 @@
             const expr = (adv && !dis ? '2d20kh1' : dis && !adv ? '2d20kl1' : '1d20') + sgn(ab.attack.bonus);
             const r = roll(expr);
             crit = r.nat === 20; hit = crit || (r.nat !== 1 && r.total >= t.ac);
-            log.push({ kind: 'attack', roll: r, expr, text: `${ab.name} against ${t.name}${dis && !adv && tilts.length ? ` (disadvantage: ${tilts.join(', ')})` : ''}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : 'a miss.'}` });
+            log.push({ unit: t.id, kind: 'attack', roll: r, expr, text: `${ab.name} against ${t.name}${dis && !adv && tilts.length ? ` (disadvantage: ${tilts.join(', ')})` : ''}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : 'a miss.'}` });
           } else if (ab.save) {
             const bonus = (t.saves || {})[ab.save.ability];
             const r = roll('1d20' + sgn(+bonus || 0));
             const saved = r.total >= ab.save.dc;
             hit = !saved || ab.save.onSave === 'half'; half = saved && ab.save.onSave === 'half';
-            log.push({ kind: 'save', roll: r, expr: '1d20' + sgn(+bonus || 0), text: `${t.name} makes a ${ab.save.ability.toUpperCase()} save against DC ${ab.save.dc}${bonus == null ? ' (no save bonus known)' : ''}: ${r.total}, ${saved ? 'a success' : 'a failure'}.` });
+            log.push({ unit: t.id, kind: 'save', roll: r, expr: '1d20' + sgn(+bonus || 0), text: `${t.name} makes a ${ab.save.ability.toUpperCase()} save against DC ${ab.save.dc}${bonus == null ? ' (no save bonus known)' : ''}: ${r.total}, ${saved ? 'a success' : 'a failure'}.` });
           }
           if (!hit) { events.push({ kind: 'miss', unit: t.id }); continue; }
           if (ab.damage.length) {
@@ -409,14 +476,14 @@
             const d = roll(expr);
             const amount = Math.max(0, half ? Math.floor(d.total / 2) : d.total);
             const took = takeDamage(t, amount);
-            log.push({ kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${dtype ? ' ' + dtype : ''} damage${half ? ' (half, on a save)' : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 ? ' and drops to 0 hit points.' : '.'}` });
+            log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${dtype ? ' ' + dtype : ''} damage${half ? ' (half, on a save)' : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 ? ' and drops to 0 hit points.' : '.'}` });
             events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
           } else if (ab.heal) {
             const expr = diceExpr(ab.heal.dice, ab.heal.add);
             const d = roll(expr);
             const amount = Math.max(0, d.total);
             if (t.hp != null) { t.hp = t.maxHp != null ? Math.min(t.maxHp, t.hp + amount) : t.hp + amount; if (t.hp > 0) delete t.down; }
-            log.push({ kind: 'heal', roll: d, expr, text: `${t.name} regains ${amount} hit points.` });
+            log.push({ unit: t.id, kind: 'heal', roll: d, expr, text: `${t.name} regains ${amount} hit points.` });
             events.push({ kind: 'heal', unit: t.id, amount });
           } else events.push({ kind: 'hit', unit: t.id, amount: 0 });
         }
@@ -468,5 +535,6 @@
   }
 
   return { FT, TURN, squaresBetween, feetBetween, reachable, readRange, attacksOf, attackFromBehavior, REASONS, preview, budget, apply, takeDamage, buildWorld, turnKey,
-    cleanResources, resourcesOf, atLevel, spend, rest, powerNumbers, resolvePower, weaponAbility, abilitiesOf, inReachOf, cleanAbility, setPoolUsed };
+    cleanResources, resourcesOf, atLevel, spend, rest, powerNumbers, resolvePower, weaponAbility, abilitiesOf, inReachOf, cleanAbility, setPoolUsed,
+    ruler, areaSquares, areaHits };
 });

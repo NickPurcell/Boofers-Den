@@ -259,7 +259,13 @@ function apply(camp, cid, gm, type, p, G) {
       const cur = ini.entries[ini.turn];
       if (!ini.active || !cur) throw new G.Invalid("Combat hasn't started: start initiative first.");
       need(mayAct(camp, cid, gm, cur), "It's not your turn.");
-      const world = worldOf(camp, !gm);
+      // an area catches whoever is in it, hidden or not; only its rolls about a hidden one stay with the GM
+      const areaUse = type === "fight.use" && cur.charId && (() => {
+        const ch = camp.characters[cur.charId];
+        const ab = ch && E.abilitiesOf(ch, R, f.lib).find((a) => a.key === String(p.ability || ""));
+        return !!(ab && ab.area);
+      })();
+      const world = worldOf(camp, !gm && !areaUse);
       if (type === "fight.end" && !world.units[cur.id]) {      // a combatant with no token can still pass the turn
         snapshot(camp, `${cur.name} ends the turn`);
         G.applyAction(camp, cid, true, "init.next", {});
@@ -273,7 +279,8 @@ function apply(camp, cid, gm, type, p, G) {
         if (!ch) throw new G.Invalid("Creatures use their attacks for now.");
         const ability = E.abilitiesOf(ch, R, f.lib).find((a) => a.key === String(p.ability || ""));
         if (!ability) throw new G.Invalid("The table has no data for that ability on this sheet.");
-        act = { type: "use", unit: cur.id, ability, targets: Array.isArray(p.targets) ? p.targets.slice(0, 40).map(String) : [String(p.target || "")], upcast: clamp(int(p.upcast), 0, 9), adv: !!p.adv, dis: !!p.dis };
+        const point = p.point && Number.isFinite(+p.point.x) && Number.isFinite(+p.point.y) ? { x: clamp(+p.point.x, -500, 1000), y: clamp(+p.point.y, -500, 1000) } : null;
+        act = { type: "use", unit: cur.id, ability, point, targets: Array.isArray(p.targets) ? p.targets.slice(0, 40).map(String) : [String(p.target || "")], upcast: clamp(int(p.upcast), 0, 9), adv: !!p.adv, dis: !!p.dis };
       }
       else {
         let spec;
@@ -300,7 +307,12 @@ function apply(camp, cid, gm, type, p, G) {
         const msg = { from: G.playerName(camp, cid), fromId: cid, fight: true,
           roll: { total: line.roll.total, detail: line.roll.detail, nat: line.roll.nat == null ? null : line.roll.nat, expr: line.expr, label: str(line.text, 200), kind: line.kind } };
         if (ch) msg.charName = ch.name;
-        if (secret) { msg.to = ["@gm"]; msg.private = true; }
+        const aboutHidden = line.unit && hiddenEntry(camp, entry(line.unit) || {}, (world.units[line.unit] || {}).tokenId);
+        if (secret || aboutHidden) {
+          msg.to = ["@gm"]; msg.private = true;
+          // HoloTable shows a message to its sender too, so a line about a hidden creature can't come from the player
+          if (!gm) { msg.fromId = "@gm"; msg.from = "Combat (GM only)"; delete msg.charName; }
+        }
         G.addChat(camp, msg);
       }
       if (secret) {   // what everyone can see: the hit on someone they can see

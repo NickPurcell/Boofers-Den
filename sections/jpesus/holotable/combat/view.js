@@ -108,6 +108,7 @@
     if (!u || !spec) return [];
     if (spec.power) {
       const ab = spec.power;
+      if (ab.area) return [u];   // aimed at a point: always usable when the slot and the points are there
       return Object.values(w.units).filter((t) => (ab.targets === 'self' ? t.id === u.id : t.id !== u.id && (ab.heal ? t.side === u.side : t.side !== u.side) && !t.down) && E.inReachOf(w, u, t, ab).ok);
     }
     return Object.values(w.units).filter((t) => t.id !== u.id && t.side !== u.side && !t.down && E.preview(w, u.id, t.id, spec).legal);
@@ -129,6 +130,14 @@
     return { legal: true, html: `${line}${dmg ? `. ${esc(dmg)}` : ''}${cost ? ` · costs ${esc(cost)}` : ''}${lvl !== ab.level ? ` · at level ${lvl}` : ''}.` };
   }
 
+  // an area is aimed at a point: spheres, cylinders and cubes on a grid corner, cones and lines toward the pointer
+  const aimAt = (ab, gx, gy) => (ab.area.from === 'point' ? { x: Math.round(gx), y: Math.round(gy) } : { x: gx, y: gy });
+  function areaPreview() {
+    const spec = armedSpec(), u = cur();
+    if (!spec || !spec.power || !spec.power.area || !UI.aim || !u) return null;
+    return E.areaHits(world(), u.id, spec.power, UI.aim);
+  }
+
   /* ---------------- talking to the server ---------------- */
   async function send(type, payload) {
     if (UI.busy) return null;
@@ -138,9 +147,9 @@
   async function attack(targetId) {
     const spec = armedSpec(), u = cur();
     if (!spec || !u) return;
-    const r = spec.power ? await send('fight.use', { ability: spec.key, target: targetId, upcast: UI.upcast || 0, adv: UI.adv, dis: UI.dis })
+    const r = spec.power ? await send('fight.use', Object.assign({ ability: spec.key, upcast: UI.upcast || 0, adv: UI.adv, dis: UI.dis }, spec.power.area ? { point: UI.aim } : { target: targetId }))
       : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.key : { name: spec.name, bonus: spec.bonus, damage: spec.damage, type: spec.type, melee: spec.melee, range: spec.range } });
-    if (r) { UI.armed = null; UI.target = null; UI.adv = UI.dis = false; UI.upcast = 0; render(); }
+    if (r) { UI.armed = null; UI.target = null; UI.aim = null; UI.adv = UI.dis = false; UI.upcast = 0; render(); }
   }
 
   /* ---------------- the bar under the map ---------------- */
@@ -179,6 +188,7 @@
     let html = `<div class="ct-row"><span class="ct-turn">${f.active ? `Round ${+f.round || 1} · ` : ''}${who}${mine && !gm() ? ' <span class="ct-you">your turn</span>' : ''}</span>`;
     if (bud) html += `<span class="ct-chips">${chip(bud.moveLeft > 0, `Move ${bud.moveLeft}/${bud.speed} ft`, 'Movement left this turn')}${chip(bud.action, 'Action', 'One action a turn')}${chip(bud.bonus, 'Bonus action', 'One bonus action a turn')}${chip(bud.reaction, 'Reaction', 'One reaction between your turns')}</span>`;
     html += '<span class="spacer"></span>';
+    html += `<button class="btn small ghost ${UI.ruler ? 'primary' : ''}" data-ct="measure" aria-pressed="${!!UI.ruler}" title="Measure a distance on the map">📏 Measure</button>`;
     if (mine && u && f.active) html += '<button class="btn small amber" data-ct="end">End turn ⏭</button>';
     if (gm()) html += `<button class="btn small ghost" data-ct="undo" ${f.undo && f.undo.n ? '' : 'disabled'} title="${esc(f.undo && f.undo.last ? 'Undo: ' + f.undo.last : 'Nothing to undo')}">↶ Undo</button><button class="btn small ghost" data-ct="off" title="Turn the combat view off for everyone">Combat view off</button>`;
     html += '</div>';
@@ -210,7 +220,15 @@
       if (gm() && !u.charId) html += '<button class="btn small ghost" data-ct="custom">＋ Custom attack</button>';
       html += `<label class="ct-tog"><input type="checkbox" data-ct="adv" ${UI.adv ? 'checked' : ''}> Advantage</label><label class="ct-tog"><input type="checkbox" data-ct="dis" ${UI.dis ? 'checked' : ''}> Disadvantage</label></div>`;
       const spec = armedSpec();
-      if (spec && spec.power) {
+      if (spec && spec.power && spec.power.area) {
+        const ab = spec.power, hits = areaPreview();
+        const up = ab.upcast && ab.maxLevel > ab.level ? `<label class="ct-tog">Level <select data-ct="upcast">${Array.from({ length: ab.maxLevel - ab.level + 1 }, (_, i) => `<option value="${i}" ${UI.upcast === i ? 'selected' : ''}>${ab.level + i}</option>`).join('')}</select></label>` : '';
+        const what = `${ab.area.size} ft ${ab.area.shape}${ab.area.shape === 'line' ? ` (${ab.area.width} ft wide)` : ''}`;
+        const names = hits && hits.ok ? hits.units.map((id) => w.units[id].name) : [];
+        html += `<div class="ct-row ct-preview" aria-live="polite">${!hits ? `<span>${esc(ab.name)} (${esc(what)}): point at where it goes${ab.area.from === 'point' ? ` (up to ${ab.range ? ab.range[1] : ab.reach} ft away)` : ''}.</span>${up}<button class="btn tiny ghost" data-ct="disarm">Cancel</button>`
+          : !hits.ok ? `<span>${esc(hits.why)}</span>${up}`
+          : `<span>${esc(ab.name)}, ${esc(what)}: catches ${names.length ? `<b>${esc(names.join(', '))}</b>` : 'no one you can see'}${ab.save ? ` · DC ${ab.save.dc} ${ab.save.ability.toUpperCase()} save${ab.save.onSave === 'half' ? ', half on a success' : ''}` : ''}.</span>${up}<button class="btn small primary" data-ct="go">Use</button>`}</div>`;
+      } else if (spec && spec.power) {
         const ab = spec.power, self = ab.targets === 'self';
         const t = self ? u : UI.target && w.units[UI.target];
         const up = ab.upcast && ab.maxLevel > ab.level ? `<label class="ct-tog">Level <select data-ct="upcast">${Array.from({ length: ab.maxLevel - ab.level + 1 }, (_, i) => `<option value="${i}" ${UI.upcast === i ? 'selected' : ''}>${ab.level + i}</option>`).join('')}</select></label>` : '';
@@ -244,10 +262,11 @@
     if (k === 'pool') return poolModal(el.dataset.key);
     if (k === 'addres') return resourceModal();
     if (k === 'arm') { UI.armed = UI.armed === el.dataset.key ? null : el.dataset.key; UI.target = null; UI.upcast = 0; render(); return H.drawMap(); }
-    if (k === 'disarm') { UI.armed = UI.target = null; render(); return H.drawMap(); }
+    if (k === 'disarm') { UI.armed = UI.target = UI.aim = null; render(); return H.drawMap(); }
     if (k === 'adv' || k === 'dis') { UI[k] = el.checked; return render(); }
     if (k === 'teach') return teachModal();
-    if (k === 'go' && UI.target) return attack(UI.target);
+    if (k === 'go' && (UI.target || UI.aim)) return attack(UI.target);
+    if (k === 'measure') { UI.ruler = UI.ruler ? null : { a: null, b: null }; render(); return H.drawMap(); }
   }
 
   /* ---------------- teaching the table a power's numbers (issue #73) ---------------- */
@@ -350,7 +369,19 @@
   /* ---------------- on the map (app.js calls these) ---------------- */
   // pointer down: claims the click only when it's an attack on a target, or a player's own token on their turn
   function down(gx, gy, e) {
-    if (!F().on || !myTurn()) return false;
+    if (!F().on) return false;
+    if (UI.ruler) {   // two taps (or a click and a click): from here to there
+      if (!UI.ruler.a || UI.ruler.b) UI.ruler = { a: { x: gx, y: gy }, b: null, live: { x: gx, y: gy } };
+      else UI.ruler.b = { x: gx, y: gy };
+      H.drawMap(); return true;
+    }
+    if (!myTurn()) return false;
+    const spec = armedSpec();
+    if (spec && spec.power && spec.power.area) {
+      UI.aim = aimAt(spec.power, gx, gy); render(); H.drawMap();
+      if (e.pointerType === 'mouse') { const h = areaPreview(); if (h && h.ok) attack(null); }
+      return true;
+    }
     const t = unitAt(gx, gy), u = cur();
     if (UI.armed && t && t.id !== u.id) {
       const legal = targets(armedSpec()).some((x) => x.id === t.id);
@@ -373,7 +404,16 @@
     return true;
   }
   function hover(gx, gy) {
-    if (!UI.armed || !F().on || !myTurn()) return;
+    if (!F().on) return;
+    if (UI.ruler && UI.ruler.a && !UI.ruler.b) { UI.ruler.live = { x: gx, y: gy }; H.drawMap(); return; }
+    if (!myTurn()) return;
+    const spec = armedSpec();
+    if (spec && spec.power && spec.power.area) { const a = aimAt(spec.power, gx, gy); if (!UI.aim || a.x !== UI.aim.x || a.y !== UI.aim.y) { UI.aim = a; render(); H.drawMap(); } return; }
+    if (!UI.armed) {   // the cost of a lit square
+      const k = `${Math.floor(gx)},${Math.floor(gy)}`, c = reach()[k];
+      if ((c === undefined ? null : k) !== (UI.hoverSq && UI.hoverSq.k)) { UI.hoverSq = c === undefined ? null : { k, c }; H.drawMap(); }
+      return;
+    }
     const t = unitAt(gx, gy), id = t && t.id !== (cur() || {}).id ? t.id : null;
     if (id !== UI.target && (id || UI.target)) { UI.target = id; render(); H.drawMap(); }
   }
@@ -402,11 +442,33 @@
       ctx.setLineDash(dash ? [6 / z, 4 / z] : []); ctx.lineWidth = width / Math.min(1, z); ctx.strokeStyle = color; ctx.stroke(); ctx.setLineDash([]);
     };
     ctx.save();
-    if (myTurn() && UI.armed) {
+    const armedArea = (armedSpec() || {}).power && armedSpec().power.area;
+    if (myTurn() && UI.armed && !armedArea) {   // an area shows its template and catch instead
       const red = cssVar('--red', '#ef5350');
       for (const t of targets(armedSpec())) ring(t, alpha(red, 0.9), 2, t.id !== UI.target);
       const t = UI.target && w.units[UI.target];
       if (t) ring(t, '#ffffff', 3, false);
+    }
+    // the template of an area power being aimed, and who it catches
+    const hits = myTurn() ? areaPreview() : null;
+    if (hits && hits.ok) {
+      const red = cssVar('--red', '#ef5350');
+      ctx.fillStyle = alpha(red, 0.22); ctx.strokeStyle = alpha(red, 0.7); ctx.lineWidth = 1 / z;
+      for (const [x, y] of hits.squares) { ctx.fillRect(x * g, y * g, g, g); ctx.strokeRect(x * g, y * g, g, g); }
+      for (const id of hits.units) ring(w.units[id], '#ffffff', 2, false);
+    }
+    // the cost of the lit square under the pointer
+    if (UI.hoverSq && myTurn() && !UI.armed) {
+      const [x, y] = UI.hoverSq.k.split(',').map(Number);
+      label(ctx, `${UI.hoverSq.c} ft`, x * g + g / 2, y * g + g / 2, z, g);
+    }
+    // the ruler
+    const R0 = UI.ruler;
+    if (R0 && R0.a) {
+      const b = R0.b || R0.live || R0.a, ax = (Math.floor(R0.a.x) + 0.5) * g, ay = (Math.floor(R0.a.y) + 0.5) * g, bx = (Math.floor(b.x) + 0.5) * g, by = (Math.floor(b.y) + 0.5) * g;
+      ctx.strokeStyle = cssVar('--amber', '#ffb74d'); ctx.lineWidth = 3 / z; ctx.setLineDash([8 / z, 6 / z]);
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.setLineDash([]);
+      label(ctx, `${E.ruler(R0.a, b)} ft`, (ax + bx) / 2, (ay + by) / 2, z, g);
     }
     // floating results over tokens, for 1.6 s
     const tnow = performance.now();
@@ -425,6 +487,10 @@
       ctx.fillText(text, x, y);
     }
     ctx.restore();
+  }
+  function label(ctx, text, x, y, z, g) {
+    ctx.font = `700 ${Math.max(12 / z, g * 0.24)}px "Exo 2", "Segoe UI", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.lineWidth = 4 / z; ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(text, x, y); ctx.fillStyle = '#ffffff'; ctx.fillText(text, x, y);
   }
   let raf = 0;
   function animate() {

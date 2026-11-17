@@ -325,6 +325,44 @@ test("abilities: an attack roll, healing, and a creature whose save bonus isn't 
   assert.match(r.log[1].text, /no save bonus known/);
 });
 
+test("measuring: a ruler by the same diagonal rule as movement", () => {
+  assert.equal(E.ruler({ x: 0.5, y: 0.5 }, { x: 4.5, y: 2.5 }), 20);
+  assert.equal(E.ruler({ x: 3.2, y: 1.9 }, { x: 3.7, y: 1.1 }), 0, "the same square");
+});
+
+test("areas: the squares a template covers (centres inside)", () => {
+  const set = (sq) => new Set(sq.map(([x, y]) => `${x},${y}`));
+  const sphere = E.areaSquares({ shape: "sphere", size: 10 }, { x: 4, y: 4 }, { x: 5, y: 4 });
+  assert.equal(sphere.length, 12, "a 10 ft radius around a corner: 4×4 without its corners");
+  assert.ok(!set(sphere).has("2,2") && set(sphere).has("3,3"));
+  assert.equal(E.areaSquares({ shape: "line", size: 30, width: 5 }, { x: 1, y: 4.5 }, { x: 9, y: 4.5 }).length, 6);
+  assert.deepEqual([...set(E.areaSquares({ shape: "cube", size: 10 }, { x: 4, y: 4 }, { x: 6, y: 6 }))].sort(), ["4,4", "4,5", "5,4", "5,5"]);
+  const cone = set(E.areaSquares({ shape: "cone", size: 15 }, { x: 1, y: 4.5 }, { x: 9, y: 4.5 }));
+  assert.ok(cone.has("1,4") && cone.has("3,3") && cone.has("3,5") && !cone.has("4,4") && !cone.has("0,4"), "it widens away from the caster, and stops at 15 ft");
+});
+
+test("areas: an area power catches everyone in the template and each of them saves", () => {
+  const ch = consular();
+  const lib = { "mind shove": { use: "action", range: [60, 60], area: { shape: "sphere", size: 10, from: "point" }, save: { ability: "dex", dc: "power", onSave: "half" }, damage: [{ dice: "2d6", type: "fire" }] } };
+  const ab = E.abilitiesOf(ch, R, lib)[0];
+  const me = unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, pools: Object.fromEntries(E.resourcesOf(ch, R).map((r) => [r.key, r])) });
+  const a = unit({ id: "a", name: "A", side: "npc", x: 6, y: 6, saves: { dex: 1 } }), b = unit({ id: "b", name: "B", side: "npc", x: 7, y: 7, saves: { dex: 1 } });
+  const far = unit({ id: "c", name: "C", side: "npc", x: 12, y: 12 });
+  const w = world([me, a, b, far], "cass");
+  const hits = E.areaHits(w, "cass", ab, { x: 7, y: 7 });
+  assert.deepEqual(hits.units.sort(), ["a", "b"]);
+  assert.match(E.areaHits(w, "cass", ab, { x: 30, y: 30 }).why, /out of range/);
+  const d = dice({ total: 4, nat: 3 }, { total: 8 }, { total: 20, nat: 19 }, { total: 8 });
+  const r = E.apply(w, { type: "use", unit: "cass", ability: ab, point: { x: 7, y: 7 } }, d.roll);
+  assert.ok(r.ok, r.why);
+  assert.deepEqual([r.world.units.a.hp, r.world.units.b.hp, r.world.units.c.hp], [12, 16, 20], "a fails (8), b saves (4), c is outside");
+  assert.ok(r.log.slice(1).every((l) => l.unit), "every line about a target says which one");
+  // a cone from the caster leaves the caster out
+  const cone = E.abilitiesOf(ch, R, { "mind shove": { use: "action", area: { shape: "cone", size: 15, from: "self" }, save: { ability: "dex", dc: 10 }, damage: [{ dice: "1d6" }] } })[0];
+  const near = unit({ id: "n", name: "N", side: "npc", x: 1, y: 0 });
+  assert.deepEqual(E.areaHits(world([me, near], "cass"), "cass", cone, { x: 5.5, y: 0.5 }).units, ["n"]);
+});
+
 /* ---------------------------------------------------------------- the server's fight actions, through the API */
 const Module = require("module");
 const HoloFake = require("./holotable-fake-redis.js");
@@ -576,4 +614,22 @@ test("abilities through the API: the GM teaches the table a power; its caster us
   assert.ok(st.chat.some((m) => m.system && /Avery uses Mind Shove \(2 Force points\)/.test(m.text)));
   await gm.act("fight.undo", {});
   assert.equal((await gm.state()).characters[av.id].force.used, 0, "undo gives the points back");
+});
+
+test("areas through the API: a blast catches a hidden creature without telling the player", async () => {
+  const { gm, sam, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  let st = await sam.state();
+  const av = Object.values(st.characters).find((c) => c.name === "Avery");
+  await sam.act("char.save", { char: Object.assign({}, av, { classes: [{ name: "Consular", level: 5 }], abilities: Object.assign({}, av.abilities, { wis: 16 }),
+    powers: [{ name: "Blast Wave", level: 1, type: "force", alignment: "universal" }] }) });
+  await gm.act("fight.ability", { name: "Blast Wave", data: { use: "action", range: [60, 60], area: { shape: "sphere", size: 10, from: "point" }, save: { ability: "dex", dc: 30, onSave: "none" }, damage: [{ dice: "1d4+10" }] } });
+  // the hidden Lurker stands at (1,1), right next to Avery at (0,0); aim the blast at the corner between them
+  const r = await sam.act("fight.use", { ability: "pw:blast wave", point: { x: 1, y: 1 } });
+  assert.equal(r.code, 200, JSON.stringify(r.data));
+  const gv = await gm.state(), pv = await sam.state();
+  const lurker = gv.initiative.entries.find((e) => e.id === ids.lurker);
+  assert.ok(lurker.hp < 10, "the hidden creature was caught and took the damage");
+  assert.ok(gv.chat.some((m) => m.fight && m.private && /Lurker/.test(m.roll.label)), "the GM sees its save");
+  assert.ok(!JSON.stringify(pv).includes("Lurker") && !JSON.stringify(pv).includes(ids.lurker), "the player learns nothing of it");
 });
