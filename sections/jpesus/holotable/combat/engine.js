@@ -604,15 +604,18 @@
   // Greater Extra Attack: from Fighter 11, a Two- or Double-Weapon Fighting bonus action makes two attacks
   const bonusAttacksOf = (ch) => ((ch && ch.classes) || []).some((k) => String(k.name || '').trim().toLowerCase() === 'fighter' && +k.level >= 11) ? 2 : 1;
   // A creature's attacks per Attack action, from its stat block's Multiattack text: "makes three attacks: two with its
-  // claws and one with its bite" is 3, "attacks twice" is 2, "makes one bite attack and one slam attack" is 2.
-  // Which attacks it may combine isn't checked; the GM picks them.
+  // claws and one with its bite" is 3, "attacks twice" is 2, "makes one bite attack and one slam attack" is 2. Between
+  // alternatives ("two melee attacks or four ranged attacks") the largest counts. Which attacks it may combine, and
+  // conditions such as "if it has half its hit points or fewer", aren't checked; the GM picks.
   const COUNT_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, twice: 2, thrice: 3 };
   function multiattackOf(text) {
-    const t = String(text || '').slice(0, 2500);
-    const m = /\bmakes?\s+(one|two|three|four|five|six|\d)\b/i.exec(t) || /\battacks?\s+(twice|thrice)\b/i.exec(t) || /\b(two|three|four|five|six)\s+(?:\w+\s+){0,3}attacks\b/i.exec(t);
-    if (!m) return 1;
-    let n = COUNT_WORDS[m[1].toLowerCase()] || +m[1] || 1;
-    if (n === 1) n = Math.max(1, (t.match(/\bone\b[^,.;:]*?\battacks?\b/gi) || []).length);
+    const t = String(text || '').slice(0, 2500), num = (x) => COUNT_WORDS[x.toLowerCase()] || +x || 0;
+    let n = 0;
+    for (const m of t.matchAll(/\b(one|two|three|four|five|six|\d)\b(?=\s+(?:[\w-]+\s+){0,4}?attacks?\b)/gi)) n = Math.max(n, num(m[1]));
+    for (const m of t.matchAll(/\battacks?\s+(twice|thrice)\b/gi)) n = Math.max(n, num(m[1]));
+    const mk = /\bmakes?\s+(one|two|three|four|five|six|\d)\b/i.exec(t);
+    if (mk) n = Math.max(n, num(mk[1]));
+    if (n <= 1) n = Math.max(1, (t.match(/\bone\b[^,.;:]*?\battacks?\b/gi) || []).length);
     return clampN(n, 1, 6);
   }
   /* ---------------- bonus damage from class features (audit 5.9) ---------------- */

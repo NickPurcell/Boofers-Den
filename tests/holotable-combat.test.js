@@ -2599,6 +2599,11 @@ test("Extra Attack: attacks per Attack action by class level, the best class cou
   assert.equal(E.multiattackOf("The tank makes one stride attack, one repeater attack and one cannon attack."), 3);
   assert.equal(E.multiattackOf("The droid makes any combination of three tentacle attacks."), 3);
   assert.deepEqual([E.multiattackOf(""), E.multiattackOf(undefined), E.multiattackOf("The worm makes one bite attack and uses its gaze.")], [1, 1, 1]);
+  // between alternatives, the largest
+  assert.equal(E.multiattackOf("The trooper makes two melee attacks or four ranged attacks."), 4);
+  assert.equal(E.multiattackOf("The trooper makes two melee or three ranged attacks."), 3);
+  assert.equal(E.multiattackOf("The squad makes four rifle attacks, or two rifle attacks if it has half its hit points or fewer."), 4);
+  assert.equal(E.multiattackOf("The warlord can use one of Rally or Roar and then make one Slam, Saber, or Blaster attack; or he may make two attacks."), 2);
 });
 
 test("Extra Attack: the first attack takes the action, the rest of the Attack action don't, with movement between", () => {
