@@ -1324,15 +1324,20 @@ test("powers' attack rolls tilt for the same reasons as weapons: conditions, dod
   assert.deepEqual([d.asked[0].slice(0, 7), /advantage: Raider is restrained/.test(r.log[1].text)], ["2d20kh1", true]);
 });
 
-test("senses through the API: a creature's from its stat block stay the GM's; a character's are set by its owner", async () => {
+test("senses through the API: a creature's from its stat block stay the GM's; a character's are on its sheet, the GM's to set", async () => {
   const { gm, sam, rae, ids, avery } = await fight();
   await gm.act("fight.toggle", { on: true });
   assert.equal((await gm.act("fight.npc", { id: ids.raider, speed: 30, senses: ["blindsight 30 ft. (blind beyond this radius)", "passive Perception 12"] })).code, 200);
   assert.deepEqual((await gm.state()).fight.npcDefenses[ids.raider].senses, [{ kind: "blindsight", range: 30 }]);
   assert.ok(!JSON.stringify((await sam.state()).fight).includes("blindsight"), "a creature's senses aren't sent to players");
   assert.equal((await rae.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 60 }] })).code, 403);
-  assert.equal((await sam.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 60 }, { kind: "x-ray", range: 9 }] })).code, 200);
-  assert.deepEqual((await rae.state()).fight.defenses[avery].senses, [{ kind: "darkvision", range: 60 }]);
+  // a character's senses are on its sheet (#92) and the GM's (jpesus's ruling): the owner's save leaves them alone
+  assert.equal((await sam.act("fight.defenses", { charId: avery, resist: ["fire"], senses: [{ kind: "darkvision", range: 9999 }] })).code, 200, "the owner still saves resistances");
+  let st = await gm.state();
+  assert.deepEqual([st.characters[avery].senses, st.fight.defenses[avery].resist.map((x) => x.type)], [undefined, ["fire"]], "no senses from a player");
+  assert.equal((await gm.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 60 }, { kind: "x-ray", range: 9 }] })).code, 200);
+  st = await rae.state();
+  assert.deepEqual([st.characters[avery] && st.characters[avery].senses, st.fight.defenses[avery].senses], [[{ kind: "darkvision", range: 60 }], []], "the GM's go to the sheet; the combat view keeps no copy");
 });
 
 test("review #89 through the API: one diagonal step at a time is 5, 10, 5, 10 ft, kept between requests", async () => {
@@ -2169,12 +2174,12 @@ test("light under fog: the map's level, lights stopped by walls, darkvision and 
   assert.deepEqual(Object.keys(gv.fog).sort().filter((k) => k === "dark" || k === "dimLit"), ["dark", "dimLit"], "the GM sees where the light falls");
   await gm.act("fight.light", { op: "remove", id: light.id });
   await gm.act("fight.toggle", { on: true });
-  await sam.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 60 }] });
+  await gm.act("fight.senses", { op: "set", charId: avery, senses: [{ kind: "darkvision", range: 60 }] });
   sv = await sam.state();
   assert.ok(tokenOf(sv, "Raider"), "darkvision: seen in the dark");
   assert.deepEqual([sq(sv, "vis", 6, 0), sq(sv, "dim", 6, 0)], [1, 1], "darkness through darkvision is dim");
   // blindsight 10 ft only: the Raider far off is gone; moved next to Avery, it's perceived though its square isn't lit
-  await sam.act("fight.defenses", { charId: avery, senses: [{ kind: "blindsight", range: 10 }] });
+  await gm.act("fight.senses", { op: "set", charId: avery, senses: [{ kind: "blindsight", range: 10 }] });
   assert.equal(tokenOf(await sam.state(), "Raider"), undefined);
   await gm.act("token.move", { id: tokenOf(gv, "Raider").id, x: 2, y: 0 });
   sv = await sam.state();
@@ -2217,7 +2222,7 @@ test("the dark in a fight (#93 step 5): a creature its target can't see attacks 
   };
   assert.match(await swing(), /with advantage \(Raider is unseen in the dark\)/, "Avery can't see the Raider in the dark");
   // Avery's darkvision 60 ft sees it: no advantage
-  await sam.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 60 }] });
+  await gm.act("fight.senses", { op: "set", charId: avery, senses: [{ kind: "darkvision", range: 60 }] });
   assert.doesNotMatch(await swing(), /unseen in the dark/);
   // and the Raider can't see an unlit Avery without darkvision of its own: Avery's light out, the Raider attacks at disadvantage
   const L = (await gm.state()).map.light.lights[0];
@@ -2263,24 +2268,33 @@ test("creature casting through the API: a points pool holds up to 300 and is spe
   assert.deepEqual((await sam.state()).fight.npcRes, {}, "players never see a creature's casting");
 });
 
-test("the GM sees and sets every character's senses at any time, combat view on or off (coordinator's ruling, 17 Nov)", async () => {
+test("the GM sees and sets every character's senses at any time, view on or off; on the sheet, players can't; old copies move to the sheet", async () => {
   const { gm, sam, avery, bolt } = await fight();
-  assert.equal((await sam.act("fight.senses", { op: "get" })).code, 403, "the GM's table");
-  let r = await gm.act("fight.senses", { op: "get" });
-  assert.equal(r.code, 200);
-  assert.deepEqual([r.data.senses[avery], r.data.senses[bolt]], [[], []], "nothing set yet; reading writes nothing");
-  assert.equal((await gm.state()).fight, undefined, "the combat view stays off");
+  assert.equal((await sam.act("fight.senses", { op: "set", charId: avery, senses: [] })).code, 403, "the GM's");
+  assert.equal((await gm.act("fight.senses", { op: "get" })).code, 400, "no 'get': the GM's state has every sheet");
   assert.equal((await gm.act("fight.senses", { op: "set", charId: avery, senses: [{ kind: "darkvision", range: 60 }, { kind: "x-ray", range: 9 }] })).code, 200, "with the view off");
-  assert.equal((await gm.state()).fight, undefined, "still off");
-  r = await gm.act("fight.senses", { op: "get" });
-  assert.deepEqual(r.data.senses[avery], [{ kind: "darkvision", range: 60 }]);
-  // players still set their own (as they do HP and AC), and the GM's correction keeps their resistances
+  let gv = await gm.state();
+  assert.deepEqual([gv.fight, gv.characters[avery].senses, gv.characters[bolt].senses], [undefined, [{ kind: "darkvision", range: 60 }], undefined], "on the sheet; the view stays off");
+  // a player's save (sheet or Defences) never changes them
   await gm.act("fight.toggle", { on: true });
   await sam.act("fight.defenses", { charId: avery, resist: ["fire"], senses: [{ kind: "darkvision", range: 9999 }] });
-  assert.deepEqual((await gm.state()).fight.defenses[avery].senses, [{ kind: "darkvision", range: 9999 }], "a player's own sheet data");
-  await gm.act("fight.senses", { op: "set", charId: avery, senses: [{ kind: "darkvision", range: 60 }] });
-  const d = (await sam.state()).fight.defenses[avery];
-  assert.deepEqual([d.senses, d.resist.map((x) => x.type)], [[{ kind: "darkvision", range: 60 }], ["fire"]], "corrected; resistances kept");
+  const ch = (await sam.state()).characters[avery];
+  await sam.act("char.save", { char: Object.assign({}, ch, { senses: [{ kind: "truesight", range: 9999 }] }) });
+  gv = await gm.state();
+  assert.deepEqual([gv.characters[avery].senses, gv.fight.defenses[avery].resist.map((x) => x.type)], [[{ kind: "darkvision", range: 60 }], ["fire"]], "the GM's 60 stands; resistances saved");
+  await gm.act("fight.senses", { op: "set", charId: avery, senses: [] });
+  assert.equal((await gm.state()).characters[avery].senses, undefined, "an empty list takes them off");
   assert.equal((await gm.act("fight.senses", { op: "set", charId: "__proto__", senses: [] })).code, 400);
-  assert.equal((await sam.act("fight.senses", { op: "set", charId: avery, senses: [] })).code, 403);
+});
+
+test("senses the combat view kept before #92 move onto the sheet once, and the copy is emptied", async () => {
+  const Fight = require("../api/_holotable-fight.js");
+  const camp = { characters: { aaaaaa111111: { id: "aaaaaa111111", name: "A" }, bbbbbb222222: { id: "bbbbbb222222", name: "B", senses: [{ kind: "truesight", range: 30 }] } },
+    initiative: { entries: [], turn: 0, round: 1, active: false }, map: { tokens: [] },
+    fight: { on: true, defenses: { aaaaaa111111: { senses: [{ kind: "darkvision", range: 60 }] }, bbbbbb222222: { senses: [{ kind: "darkvision", range: 9999 }] } } } };
+  const G = { Invalid: Error, Forbidden: Error, addChat() {}, shownName: (c, e) => e.name };
+  try { Fight.apply(camp, "gm", true, "fight.npcres", { id: "nope", op: "use" }, G); } catch (e) { /* any combat action moves them first */ }
+  assert.deepEqual(camp.characters.aaaaaa111111.senses, [{ kind: "darkvision", range: 60 }], "moved onto a sheet that had none");
+  assert.deepEqual(camp.characters.bbbbbb222222.senses, [{ kind: "truesight", range: 30 }], "a sheet's own senses win");
+  assert.deepEqual([camp.fight.defenses.aaaaaa111111.senses, camp.fight.defenses.bbbbbb222222.senses], [[], []], "the copies are emptied");
 });
