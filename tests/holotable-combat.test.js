@@ -2235,3 +2235,25 @@ test("creature casting through the API: a points pool holds up to 300 and is spe
   assert.equal((await sam.act("fight.npcres", { id: ids.raider, op: "use", key: "force-points", n: 1 })).code, 403);
   assert.deepEqual((await sam.state()).fight.npcRes, {}, "players never see a creature's casting");
 });
+
+test("the GM sees and sets every character's senses at any time, combat view on or off (coordinator's ruling, 17 Nov)", async () => {
+  const { gm, sam, avery, bolt } = await fight();
+  assert.equal((await sam.act("fight.senses", { op: "get" })).code, 403, "the GM's table");
+  let r = await gm.act("fight.senses", { op: "get" });
+  assert.equal(r.code, 200);
+  assert.deepEqual([r.data.senses[avery], r.data.senses[bolt]], [[], []], "nothing set yet; reading writes nothing");
+  assert.equal((await gm.state()).fight, undefined, "the combat view stays off");
+  assert.equal((await gm.act("fight.senses", { op: "set", charId: avery, senses: [{ kind: "darkvision", range: 60 }, { kind: "x-ray", range: 9 }] })).code, 200, "with the view off");
+  assert.equal((await gm.state()).fight, undefined, "still off");
+  r = await gm.act("fight.senses", { op: "get" });
+  assert.deepEqual(r.data.senses[avery], [{ kind: "darkvision", range: 60 }]);
+  // players still set their own (as they do HP and AC), and the GM's correction keeps their resistances
+  await gm.act("fight.toggle", { on: true });
+  await sam.act("fight.defenses", { charId: avery, resist: ["fire"], senses: [{ kind: "darkvision", range: 9999 }] });
+  assert.deepEqual((await gm.state()).fight.defenses[avery].senses, [{ kind: "darkvision", range: 9999 }], "a player's own sheet data");
+  await gm.act("fight.senses", { op: "set", charId: avery, senses: [{ kind: "darkvision", range: 60 }] });
+  const d = (await sam.state()).fight.defenses[avery];
+  assert.deepEqual([d.senses, d.resist.map((x) => x.type)], [[{ kind: "darkvision", range: 60 }], ["fire"]], "corrected; resistances kept");
+  assert.equal((await gm.act("fight.senses", { op: "set", charId: "__proto__", senses: [] })).code, 400);
+  assert.equal((await sam.act("fight.senses", { op: "set", charId: avery, senses: [] })).code, 403);
+});

@@ -331,6 +331,7 @@
       const pools = Object.values(u.pools || {}).filter((r) => r.key !== 'hitdice');
       html += `<div class="ct-row ct-pools">${pools.map((r) => `<button class="ct-chip ct-pool ${r.used >= r.max ? 'spent' : ''}" data-ct="pool" data-key="${esc(r.key)}" title="${esc(r.name)}: ${r.max - r.used} of ${r.max} left${r.refill === 'short' ? ', back on a short or long rest' : r.refill === 'long' ? ', back on a long rest' : ''}">${esc(r.name)} ${r.max - r.used}/${r.max}${r.die ? ' ' + esc(r.die) : ''}</button>`).join('')}
         <button class="btn tiny ghost" data-ct="addres" title="Add a resource with a maximum (uses, or a pool of dice)">＋ Resource</button>
+        ${gm() ? '<button class="btn tiny ghost" data-ct="senses" title="Every character\'s senses at a glance">👁 Senses</button>' : ''}
         <button class="btn tiny ghost" data-ct="defs" title="Damage resistances, immunities and vulnerabilities, and senses">🛡 ${(() => { const d = (f.defenses || {})[u.charId] || {}; const n = (d.resist || []).length + (d.immune || []).length + (d.vuln || []).length; return n ? `Defences (${n})` : 'Defences'; })()}</button></div>`;
     }
     if (!f.active) html += `<div class="ct-row muted">${gm() ? 'Start initiative in the Combat tab to begin.' : 'Waiting for the GM to start initiative.'}</div>`;
@@ -423,6 +424,7 @@
     if (k === 'pool') return poolModal(el.dataset.key);
     if (k === 'addres') return resourceModal();
     if (k === 'defs') return defencesModal();
+    if (k === 'senses') return sensesTable();
     if (k === 'arm') { UI.armed = UI.armed === el.dataset.key ? null : el.dataset.key; UI.target = null; UI.upcast = 0; render(); return H.drawMap(); }
     if (k === 'disarm') { UI.armed = UI.target = UI.aim = null; render(); return H.drawMap(); }
     if (k === 'adv' || k === 'dis') { UI[k] = el.checked; return render(); }
@@ -493,6 +495,33 @@
   }
 
   /* ---------------- a character's damage defences (audit 5.10) ---------------- */
+  // Every character's senses, for the GM, at any time and with the combat view on or off: players set their own, as
+  // they do HP and AC, and the GM sees them all here and corrects any (under fog and light they decide what a player sees)
+  async function sensesTable() {
+    if (!gm()) return;
+    const got = await act('fight.senses', { op: 'get' });
+    if (!got || !got.senses) return;
+    const chars = Object.values(st().characters || {}).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    if (!chars.length) return H.toast('No characters at the table yet.');
+    const val = (id, k) => ((got.senses[id] || []).find((x) => x.kind === k) || {}).range || '';
+    const owner = (c) => ((st().players || {})[c.owner] || {}).name || '';
+    H.modal(`<h3>👁 Senses</h3>
+      <p class="muted">Every character's senses, in feet (blank for none). Players set their own in the combat view's Defences; you can correct any here. Under fog and light, they decide what each player sees.</p>
+      <table class="ct-senses"><tr><th></th>${E.SENSES.map((k) => `<th>${esc(k)}</th>`).join('')}</tr>
+        ${chars.map((c) => `<tr data-char="${esc(c.id)}"><td><b>${esc(c.name)}</b>${owner(c) ? ` <span class="muted">· ${esc(owner(c))}</span>` : ''}</td>${E.SENSES.map((k) => `<td><input type="number" min="0" max="9999" step="5" data-sense="${k}" value="${val(c.id, k)}" aria-label="${esc(c.name)} ${k}"></td>`).join('')}</tr>`).join('')}
+      </table>
+      <div class="row"><span class="spacer"></span><button class="btn" id="ctsCancel">Cancel</button><button class="btn primary" id="ctsOk">Save</button></div>`, (box) => {
+      $('#ctsCancel', box).onclick = H.closeModal;
+      $('#ctsOk', box).onclick = async () => {
+        const rows = [...box.querySelectorAll('tr[data-char]')].map((tr) => [tr.dataset.char, [...tr.querySelectorAll('input[data-sense]')].map((x) => ({ kind: x.dataset.sense, range: +x.value || 0 })).filter((x) => x.range > 0)]);
+        H.closeModal();
+        for (const [id, senses] of rows) {   // only the ones that changed, one after another
+          const was = (got.senses[id] || []).map((x) => `${x.kind}:${x.range}`).sort().join(), now = senses.map((x) => `${x.kind}:${x.range}`).sort().join();
+          if (was !== now) await act('fight.senses', { op: 'set', charId: id, senses });
+        }
+      };
+    });
+  }
   function defencesModal() {
     const u = cur();
     if (!u || !u.charId) return;
@@ -650,6 +679,7 @@
       wallBar.addEventListener('click', (e) => {
         const b = e.target.closest('[data-wb]'); if (!b) return;
         const a = b.dataset.wb;
+        if (a === 'senses') { sensesTable(); return; }
         if (a === 'fog' || a === 'shared' || a === 'reset') {   // fog of war (#93 step 4)
           const fog = (st().map || {}).fog || {};
           if (a === 'reset' && !confirm('Forget what the players have explored on this map?')) return;
@@ -676,6 +706,7 @@
           + `<select data-wb-radius title="Bright / dim radius in feet">${LIGHT_SIZES.map(([b, d, l]) => `<option value="${b}/${d}" ${UI.lightSize === `${b}/${d}` ? 'selected' : ''}>${l}</option>`).join('')}</select>`; })()}</span>
       <span class="ct-fogctl">${(() => { const fog = (st().map || {}).fog || {}; return `<button class="btn tiny ${fog.on ? 'primary' : 'ghost'}" data-wb="fog" aria-pressed="${!!fog.on}" title="Each player sees only what their characters can see through the walls; the rest of the map is dark">🌫 Fog ${fog.on ? 'on' : 'off'}</button>`
         + (fog.on ? `<button class="btn tiny ${fog.shared ? 'primary' : 'ghost'}" data-wb="shared" aria-pressed="${!!fog.shared}" title="Every player sees what any character sees">Shared sight</button><button class="btn tiny ghost" data-wb="reset">Reset explored</button>` : ''); })()}</span>
+      <button class="btn tiny ghost" data-wb="senses" title="Every character's senses: darkvision and the rest decide what each player sees under fog and light">👁 Senses</button>
       <button class="btn tiny" data-wb="done">Done</button>`;
   }
   document.addEventListener('click', (e) => {
