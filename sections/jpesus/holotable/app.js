@@ -410,9 +410,8 @@
         <div class="row wrap">${(ch.classes || []).map((k, i) => `
           <span class="row">${inp(`classes.${i}.name`, k.name, { ro, list: 'dlClasses', w: '110px' })}
           ${inp(`classes.${i}.level`, +k.level || 1, { ro, type: 'number', w: '58px' })}
-          ${inp(`classes.${i}.archetype`, k.archetype || '', { ro, ph: 'Archetype', w: '130px' })}${!ro ? `<button class="btn tiny ghost" data-act="pick-archetype" data-i="${i}" title="Choose a ${esc(k.name)} archetype from SW5e (adds its features)">◈</button>` : ''}
+          ${k.archetype ? `<span class="muted class-arch" title="${esc((R.CLASSES[k.name] || {}).arch || 'Archetype')}">${esc(k.archetype)}</span>` : ''}
           ${!ro && ch.classes.length > 1 ? `<button class="btn tiny ghost" data-act="del-class" data-i="${i}">✕</button>` : ''}</span>`).join('')}
-          ${!ro ? '<button class="btn tiny" data-act="add-class">＋ multiclass</button>' : ''}
         </div>
       </div>
       <div class="sheet-actions">
@@ -589,7 +588,6 @@
     switch (a) {
       case 'sub': S.sub = b.dataset.sub; renderSheet($('#sheet')); break;
       case 'dismiss-note': delete S.importNotes[ch.id]; renderSheet($('#sheet')); break;
-      case 'add-class': mutate(c => c.classes.push({ name: 'Fighter', level: 1, archetype: '' })); break;
       case 'del-class': mutate(c => c.classes.splice(i, 1)); break;
       case 'save-prof': mutate(c => { c.saves[b.dataset.ab] = !c.saves[b.dataset.ab]; }); break;
       case 'skill-prof': mutate(c => { const v = +(c.skills[b.dataset.sk] || 0); c.skills[b.dataset.sk] = v === 0 ? 1 : v === 1 ? 2 : 0; }); break;
@@ -654,7 +652,6 @@
       case 'pick-weapon': openEquipPicker(ch.id, { weapons: true }); break;
       case 'pick-species': HTB.openSpeciesPicker(ch.id); break;
       case 'pick-background': HTB.openBackgroundPicker(ch.id); break;
-      case 'pick-archetype': HTB.openArchetypePicker(ch.id, i); break;
       case 'pick-feature': HTB.openFeaturePicker(ch.id); break;
       case 'del': mutate(c => c[b.dataset.list].splice(i, 1)); break;
       case 'atk': { const at = ch.attacks[i]; roll(d20(R.attackBonus(ch, at)), `${at.name} — attack`, { d20: true, mode: rollModeFromEvent(e), charId: ch.id, kind: 'attack' }); break; }
@@ -937,6 +934,11 @@
     if (left + r.width > innerWidth - 8) left = x - r.width - pad;
     if (top + r.height > innerHeight - 8) top = Math.max(8, innerHeight - r.height - 8);
     tip.style.left = Math.max(8, left) + 'px'; tip.style.top = top + 'px';
+  }
+  function showTextTip(title, text, x, y) {
+    const t = String(text || '').trim();
+    tip.innerHTML = `<div class="hc-title">${esc(title)}</div>${t ? `<div class="hc-desc">${richText(t.length > 1200 ? t.slice(0, 1200) + '…' : t)}</div>` : '<div class="hc-desc muted">No description.</div>'}`;
+    tip.classList.remove('hidden'); placeTip(x, y);
   }
   function showFeatureTip(el, x, y) {
     const ch = selChar(); const f = ch && ch.features[+el.dataset.featureTip];
@@ -2032,14 +2034,14 @@
     if (!ch0) return;
     if (!pendingFor(charId)) return toast('The GM hasn\'t granted this character a level yet.', true);
     const W = resume || { cls: ch0.classes[0].name, newCls: '', archetype: '', hpMode: 'average', asiMode: 'two', a1: 'str', a2: 'dex', featName: '', featText: '', powers: [],
-      auto: [], autoKey: '', autoState: '', archList: [], featList: [] };
+      auto: [], autoKey: '', autoState: '', archList: [], archFor: '', archMenu: false, featList: [] };
     modal('<div id="wiz"></div>', box => {
       const wiz = $('#wiz', box);
       // SW5e's class/archetype features for the level being gained (fetched once per class/level/archetype)
       const suggest = () => {
         if (!window.HTB || S.st.sw5eBooks === false) return;
         const P = wizardPlan(charId, W);
-        const arch = (P.k && P.k.archetype) || W.archetype.trim();
+        const arch = (P.k && P.k.archetype) || (P.archDue ? W.archetype : '');
         const key = `${P.cls}|${P.newClassLevel}|${arch}`;
         if (!P.cls || key === W.autoKey) return;
         W.autoKey = key; W.autoState = 'loading'; W.auto = [];
@@ -2048,7 +2050,10 @@
           const have = new Set(S.st.characters[charId].features.map(f => String(f.name).toLowerCase()));
           W.auto = list.map(f => Object.assign(f, { have: have.has(f.name.toLowerCase()) })); W.autoState = 'ok'; draw();
         }).catch(err => { if (W.autoKey === key) { W.autoState = err.message; draw(); } });
-        HTB.archetypesOf(P.cls).then(a => { W.archList = a; draw(); }).catch(() => {});
+        if (P.archDue && W.archFor !== P.cls) {   // this class's archetypes (PHB and Expanded Content), with their descriptions
+          W.archFor = P.cls; W.archList = [];
+          HTB.list('archetypes').then(all => { if (W.archFor !== P.cls) return; W.archList = all.filter(a => a.cls.toLowerCase() === P.cls.toLowerCase()); draw(); }).catch(() => {});
+        }
       };
       if (window.HTB && S.st.sw5eBooks !== false) HTB.featNames().then(f => { W.featList = f; draw(); }).catch(() => {});
       const draw = () => { const a = document.activeElement, id = a && a.dataset && a.dataset.w, pos = a && a.selectionStart; wiz.innerHTML = wizardHtml(charId, W);
@@ -2065,9 +2070,16 @@
         }
         if (t.type === 'text' || t.tagName === 'TEXTAREA') W[f] = t.value;
       });
-      wiz.addEventListener('focusout', e => {   // a typed archetype or feat name: look up SW5e's text
+      // hovering an archetype in the menu shows its description
+      wiz.addEventListener('mouseover', e => {
+        const o = e.target.closest('[data-arch-tip]'); if (!o) return;
+        const a = (W.archList || []).find(x => x.n === o.dataset.archTip); if (!a) return;
+        showTextTip(a.n, a.text, e.clientX, e.clientY);
+      });
+      wiz.addEventListener('mousemove', e => { if (e.target.closest('[data-arch-tip]')) placeTip(e.clientX, e.clientY); });
+      wiz.addEventListener('mouseout', e => { const o = e.target.closest('[data-arch-tip]'); if (o && !o.contains(e.relatedTarget)) hideTip(); });
+      wiz.addEventListener('focusout', e => {   // a typed feat name: look up SW5e's text
         const f = e.target.dataset && e.target.dataset.w;
-        if (f === 'archetype') suggest();
         if (f === 'featName' && window.HTB && W.featName.trim() && !W.featText.trim()) HTB.featNamed(W.featName).then(x => { if (x && !W.featText.trim()) { W.featText = x.text; draw(); } }).catch(() => {});
       });
       wiz.addEventListener('change', e => {
@@ -2076,6 +2088,7 @@
         if (t.type === 'text' || t.tagName === 'TEXTAREA') return; // already saved on input; re-rendering here would eat a click
         if (f.startsWith('power.')) { const [, i] = f.split('.'); W.powers[+i].type = t.value; return; }
         W[f] = t.type === 'checkbox' ? t.checked : t.value;
+        if (f === 'cls' || f === 'newCls') { W.archetype = ''; W.archMenu = false; }
         render();
       });
       wiz.addEventListener('click', async e => {
@@ -2088,6 +2101,8 @@
             onAdd: pw => W.powers.push(pw), onDone: () => openWizard(charId, W) });
         }
         if (a === 'rm-power') { W.powers.splice(+b.dataset.i, 1); render(); }
+        if (a === 'arch-menu') { W.archMenu = !W.archMenu; draw(); }
+        if (a === 'arch') { hideTip(); W.archetype = b.dataset.n; W.archMenu = false; render(); }
         if (a === 'go') {
           const plan = wizardPlan(charId, W);
           if (plan.error) return toast(plan.error, true);
@@ -2110,9 +2125,12 @@
     const newClassLevel = (k ? n0(k.level) : 0) + 1;
     const before = ch.classes.reduce((a, x) => a + n0(x.level), 0);
     const due = asiDue(cls, newClassLevel);
+    const archDue = !!cls && newClassLevel === 3 && !(k && k.archetype);
+    const archTerm = (R.CLASSES[cls] || {}).arch || `${cls} archetype`;
     const asiOn = due;
     let asi = null, feat = null, error = null;
     if (!cls) error = 'Pick a class to level up.';
+    if (archDue && !W.archetype && (W.archList || []).length) error = error || `Pick your ${archTerm}.`;
     if (asiOn && W.asiMode === 'feat') { if (W.featName.trim()) feat = { name: W.featName.trim(), text: W.featText }; else error = error || 'Name the feat you picked.'; }
     else if (asiOn) {
       asi = W.asiMode === 'one' ? { [W.a1]: 2 } : { [W.a1]: 1, [W.a2]: 1 };
@@ -2122,6 +2140,7 @@
     const after = clone(ch);
     const kk = after.classes.find(x => x.name.toLowerCase() === String(cls).toLowerCase());
     if (kk) kk.level = newClassLevel; else after.classes.push({ name: cls, level: 1, archetype: '' });
+    if (kk && archDue && W.archetype) kk.archetype = W.archetype;
     if (asi) for (const [ab, v] of Object.entries(asi)) after.abilities[ab] = n0(after.abilities[ab]) + v;
     const hd = (R.CLASSES[cls] || {}).hd || 8;
     const oldCon = R.abilityMod(ch, 'con'), newCon = R.abilityMod(after, 'con');
@@ -2129,17 +2148,16 @@
     const avgGain = Math.max(1, hd / 2 + 1 + newCon) + retro;
     const maxGain = Math.max(1, hd + newCon) + retro;
     if (W.hpMode === 'max' && S.st.hpMax === false) W.hpMode = 'average';
-    const payload = { charId, className: cls, hpMode: W.hpMode, archetype: W.archetype.trim() || undefined, hitDie: hd,
+    const payload = { charId, className: cls, hpMode: W.hpMode, archetype: archDue && W.archetype ? W.archetype : undefined, hitDie: hd,
       asi: asi || undefined, feat: feat || undefined,
       features: (W.auto || []).filter(f => !f.have).map(f => ({ name: f.name, text: f.text })).slice(0, 20), powers: W.powers.filter(p => p.name.trim()).slice(0, 20) };
-    return { ch, after, cls, k, newClassLevel, before, due, asiOn, hd, oldCon, newCon, retro, avgGain, maxGain, payload, error };
+    return { ch, after, cls, k, newClassLevel, before, due, asiOn, archDue, archTerm, hd, oldCon, newCon, retro, avgGain, maxGain, payload, error };
   }
 
   function wizardHtml(charId, W) {
     const P = wizardPlan(charId, W), ch = P.ch;
     const ciB = R.casterInfo(ch), ciA = R.casterInfo(P.after);
     const others = Object.keys(R.CLASSES).filter(c => !ch.classes.some(k => k.name === c));
-    const needArch = P.newClassLevel >= 3 && !(P.k && P.k.archetype);
     const change = (label, a, b) => `<tr><td>${label}</td><td>${esc(a)}</td><td>${String(a) === String(b) ? '' : '→'}</td><td class="${String(a) === String(b) ? 'muted' : 'up'}">${esc(b)}</td></tr>`;
     const abilitySelect = (f, v) => `<select data-w="${f}">${R.ABILITIES.map(a => `<option value="${a.key}" ${a.key === v ? 'selected' : ''} ${n0(ch.abilities[a.key]) >= 20 ? 'disabled' : ''}>${a.name} (${n0(ch.abilities[a.key])})</option>`).join('')}</select>`;
     const pend = pendingFor(charId);
@@ -2151,8 +2169,13 @@
           <label class="choice ${W.cls === '__new' ? 'on' : ''}"><input type="radio" name="cls" data-w="cls" value="__new" ${W.cls === '__new' ? 'checked' : ''}><b>Multiclass</b><br><span class="muted">start a new class at 1</span></label></div>
         ${W.cls === '__new' ? `<div class="row" style="margin-top:6px"><select data-w="newCls"><option value="">Pick a class…</option>${others.map(c => `<option ${c === W.newCls ? 'selected' : ''}>${c}</option>`).join('')}</select>
           <span class="muted" style="font-size:12px">Multiclassing usually needs 13+ in the new class's key ability; check with your GM.</span></div>` : ''}
-        ${needArch && P.cls ? `<label style="margin-top:6px">Archetype for ${esc(P.cls)}<input data-w="archetype" type="text" list="wizArch" value="${esc(W.archetype)}" placeholder="Pick or type an archetype"></label>
-          <datalist id="wizArch">${(W.archList || []).map(a => `<option value="${esc(a)}">`).join('')}</datalist>` : ''}
+        ${P.archDue ? `<div class="arch-pick">
+          <p class="muted" style="margin:6px 0 4px">At ${esc(P.cls)} level 3 you choose your ${esc(P.archTerm)}. You choose it once, and it gives you features as you level.</p>
+          <div class="row wrap"><button class="btn small ${W.archetype ? '' : 'amber'}" data-wa="arch-menu" aria-expanded="${W.archMenu ? 'true' : 'false'}">${W.archetype ? 'Change' : 'Pick'} ${esc(P.archTerm)} ▾</button>
+            ${W.archetype ? `<span class="arch-chosen">✓ <b>${esc(W.archetype)}</b></span>` : ''}</div>
+          ${W.archMenu ? `<div class="arch-menu" role="listbox" aria-label="${esc(P.archTerm)}">${(W.archList || []).length
+            ? W.archList.map(a => `<button role="option" data-wa="arch" data-n="${esc(a.n)}" data-arch-tip="${esc(a.n)}" class="${a.n === W.archetype ? 'on' : ''}">${esc(a.n)}${a.src ? ` <span class="pp-tag" title="${a.src === 'EC' ? 'Expanded Content' : "Player's Handbook"}">${esc(a.src)}</span>` : ''}</button>`).join('')
+            : '<p class="muted" style="margin:4px">Loading the list…</p>'}</div>` : ''}</div>` : ''}
       </section>
       <section class="wiz-step"><h4><span class="step">2</span> Hit points <span class="muted" style="text-transform:none;letter-spacing:0">(d${P.hd}${P.newCon >= 0 ? ' + ' : ' − '}${Math.abs(P.newCon)} Con)</span></h4>
         <div class="choices">
@@ -2188,6 +2211,7 @@
         <table class="t summary">
           ${change('Level', P.before, P.before + 1)}
           ${change('Class', P.k ? `${P.k.name} ${n0(P.k.level)}` : '—', `${P.cls || '?'} ${P.newClassLevel}`)}
+          ${P.archDue ? change(P.archTerm, '—', W.archetype || 'not picked yet') : ''}
           ${change('Hit points (max)', n0(ch.hp.max), W.hpMode === 'roll' ? `${n0(ch.hp.max)} + roll` : n0(ch.hp.max) + (W.hpMode === 'max' ? P.maxGain : P.avgGain))}
           ${change('Hit dice', R.hitDiceSummary(ch), R.hitDiceSummary(P.after))}
           ${change('Proficiency bonus', R.fmt(R.profBonus(ch)), R.fmt(R.profBonus(P.after)))}

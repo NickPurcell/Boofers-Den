@@ -261,7 +261,8 @@ function applyLevelUp(camp, cid, gm, p) {
   ch.hp.current = num(ch.hp.current) + gain;
 
   k.level = int(k.level) + 1;
-  if (p.archetype) k.archetype = str(p.archetype, 60);
+  // an archetype is chosen once per class, on reaching class level 3 (every SW5e class picks it then)
+  if (p.archetype && k.level === 3 && !k.archetype) k.archetype = str(p.archetype, 60);
   ch.features = Array.isArray(ch.features) ? ch.features : [];
   ch.powers = Array.isArray(ch.powers) ? ch.powers : [];
   if (feat) ch.features.push({ name: feat, text: `Feat (level ${before + 1})` + (p.feat.text ? "\n" + str(p.feat.text, 4000) : "") });
