@@ -211,6 +211,37 @@
     return Object.entries(by).map(([d, n]) => n + 'd' + d).join(' + ') || (totalLevel(c) + 'd8');
   }
 
+  // Hit dice by size (audit 7.2): [{ die: 10, total: 3, used: 1, classes: ['Fighter 3'] }], largest first. The used
+  // counts are kept per size in hitDiceUsed ({ d10: 1, d6: 0 }); an old single number is read as that many of the
+  // largest dice, which is how the sheet spent them before.
+  function hitDice(c) {
+    const by = {};
+    for (const k of c.classes || []) {
+      const hd = (CLASSES[k.name] || {}).hd || +k.hd || 8, L = +k.level || 0;
+      if (!L) continue;
+      const d = by[hd] = by[hd] || { die: hd, total: 0, used: 0, classes: [] };
+      d.total += L; d.classes.push(`${k.name} ${L}`);
+    }
+    const list = Object.values(by).sort((a, b) => b.die - a.die);
+    if (!list.length) list.push({ die: 8, total: totalLevel(c), used: 0, classes: [] });
+    const u = c.hitDiceUsed;
+    if (u && typeof u === 'object') for (const d of list) d.used = Math.max(0, Math.min(d.total, +u['d' + d.die] || 0));
+    else { let n = Math.max(0, +u || 0); for (const d of list) { d.used = Math.min(d.total, n); n -= d.used; } }
+    return list;
+  }
+  // hitDiceUsed as stored: per die size ({ d10: 2, d6: 1 }, whole numbers 0-40) or an old single number. The one cleaner
+  // for every place that keeps it (the sheet, the combat view's undo), so none of them drops the per-die shape.
+  const cleanHitDiceUsed = u => u && typeof u === 'object' && !Array.isArray(u)
+    ? Object.fromEntries(Object.entries(u).filter(([k]) => /^d(4|6|8|10|12|20)$/.test(k)).map(([k, v]) => [k, Math.max(0, Math.min(40, parseInt(v, 10) || 0))]))
+    : (u === '' || u == null || !Number.isFinite(+u) ? 0 : +u);
+  const hitDiceUsedTotal = c => hitDice(c).reduce((n, d) => n + d.used, 0);
+  const hitDiceUsedOf = list => Object.fromEntries(list.map(d => ['d' + d.die, d.used]));
+  // Force Recovery (Consular, 1st level): on a short rest, half the consular level plus Wis or Cha (the better), at least 1
+  const forceRecovery = c => {
+    const k = (c.classes || []).find(x => x.name === 'Consular' && (+x.level || 0) >= 1);
+    return k ? Math.max(1, Math.floor((+k.level || 0) / 2) + Math.max(abilityMod(c, 'wis'), abilityMod(c, 'cha'))) : 0;
+  };
+
   function blankCharacter() {
     return {
       _format: 'holotable-sw5e', name: 'New Character', species: 'Human', background: '', alignment: '',
@@ -228,5 +259,5 @@
 
   root.SW5E = { ABILITIES, SKILLS, CLASSES, SPECIES, BACKGROUNDS, DAMAGE_TYPES, WEAPONS, CONDITIONS, REFERENCE,
     mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo, techOnShortRest,
-    attackBonus, damageExpr, critExpr, hitDiceSummary, blankCharacter };
+    attackBonus, damageExpr, critExpr, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter };
 })(typeof window !== 'undefined' ? window : globalThis);

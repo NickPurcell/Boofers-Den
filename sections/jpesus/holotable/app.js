@@ -367,6 +367,61 @@
     renderRoster();
     return act('char.save', { char: ch });
   }
+  // A short rest (audit 7.2, 7.4; issue #71): spend hit dice by size, each healing its roll + Con (at least 0), then
+  // finish it: resources that come back on a short rest, an Engineer's or a Scout's tech points, and a Consular's
+  // Force Recovery (once per long rest, kept as a tracked resource that the long rest gives back).
+  function shortRestDialog() {
+    const id = S.selected;
+    const draw = () => {
+      const ch = S.st.characters[id];
+      if (!ch) return '';
+      const con = R.abilityMod(ch, 'con'), fr = R.forceRecovery(ch);
+      const frUsed = (ch.resources || []).some(r => r.key === 'force-recovery' && r.used >= 1);
+      return `<h3>Short rest: ${esc(ch.name)}</h3>
+        <p class="muted">Each hit die heals its roll ${R.fmt(con)} (Con), at least 0. Hit points ${+ch.hp.current || 0} of ${+ch.hp.max || 0}.</p>
+        ${R.hitDice(ch).map(d => `<div class="row" style="margin:4px 0"><span>d${d.die}${d.classes.length ? ` · ${esc(d.classes.join(', '))}` : ''}: <b>${d.total - d.used}</b> of ${d.total} left</span><span class="spacer"></span>
+          <button class="btn small" data-hd="${d.die}" ${d.used >= d.total ? 'disabled' : ''}>Roll a d${d.die}</button></div>`).join('')}
+        ${fr ? `<label class="check" style="margin-top:8px"><input type="checkbox" id="srFR" ${frUsed ? 'disabled' : (+ch.force.used || 0) > 0 ? 'checked' : ''}>
+          Force Recovery: regain ${fr} force points${frUsed ? ' (used: it comes back after a long rest)' : ''}</label>` : ''}
+        ${R.techOnShortRest(ch) ? '<p class="muted">Finishing gives back all tech points (Engineer, Scout).</p>' : ''}
+        <div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn" id="srClose">Close</button><button class="btn primary" id="srDone">Finish the short rest</button></div>`;
+    };
+    modal(draw(), box => {
+      box.onclick = async e => {
+        const b = e.target.closest('[data-hd]');
+        if (b) {
+          const ch = S.st.characters[id], die = +b.dataset.hd;
+          const res = await roll(`1d${die}${R.fmt(R.abilityMod(ch, 'con'))}`, `Hit die (short rest)`, { charId: id });
+          if (!res) return;
+          mutate(c => {
+            const dice = R.hitDice(c), d = dice.find(x => x.die === die);
+            if (d && d.used < d.total) d.used++;
+            c.hitDiceUsed = R.hitDiceUsedOf(dice);
+            c.hp.current = Math.min(+c.hp.max, (+c.hp.current || 0) + Math.max(0, res.roll.total));
+          });
+          box.innerHTML = draw();
+          return;
+        }
+        if (e.target.id === 'srClose') return closeModal();
+        if (e.target.id === 'srDone') {
+          const ch = S.st.characters[id], fr = R.forceRecovery(ch);
+          const useFR = fr && $('#srFR', box) && $('#srFR', box).checked && !$('#srFR', box).disabled;
+          const tech = R.techOnShortRest(ch) && (+ch.tech.used || 0) > 0;
+          mutate(c => {
+            if (R.techOnShortRest(c)) c.tech.used = 0;
+            c.resources = (c.resources || []).map(r => r.refill === 'short' && r.used ? Object.assign({}, r, { used: 0 }) : r);
+            if (useFR) {
+              c.force.used = Math.max(0, (+c.force.used || 0) - fr);
+              const k = (c.resources || []).find(r => r.key === 'force-recovery');
+              if (k) k.used = 1; else c.resources = (c.resources || []).concat({ key: 'force-recovery', name: 'Force Recovery', max: 1, used: 1, refill: 'long' });
+            }
+          });
+          closeModal();
+          act('chat', { text: `*${ch.name} takes a short rest.${tech ? ' Tech points restored.' : ''}${useFR ? ` Force Recovery: ${fr} force points back.` : ''}*`, as: ch.name });
+        }
+      };
+    });
+  }
   function mutate(fn) {
     const ch = clone(selChar()); fn(ch); saveChar(ch); guarded('sheet', renderSheet);
   }
@@ -438,7 +493,7 @@
       <div class="stat"><div class="lbl">Proficiency</div><div class="val">${R.fmt(pb)}</div></div>
       <div class="stat"><div class="lbl">Passive Perc.</div><div class="val">${R.passive(ch, 'perception')}</div></div>
       <div class="stat"><div class="lbl">Hit Dice</div><div class="val" style="font-size:15px;padding-top:6px">${esc(R.hitDiceSummary(ch))}</div>
-        <div class="muted" style="font-size:11px">used ${inp('hitDiceUsed', +ch.hitDiceUsed || 0, { ro, type: 'number', w: '58px' })}</div></div>
+        <div class="muted" style="font-size:11px" title="${esc(R.hitDice(ch).map(d => `d${d.die}: ${d.used} of ${d.total} used`).join(' · '))}">used ${inp('hitDiceUsed', R.hitDiceUsedTotal(ch), { ro, type: 'number', w: '58px' })}</div></div>
       <div class="stat"><div class="lbl">Inspiration</div><div style="padding-top:6px">${inp('inspiration', ch.inspiration, { ro, type: 'checkbox' })}</div></div>
     </div>
     <div class="subtabs">${[['main', 'Abilities & Skills'], ['actions', 'Attacks & Powers'], ['gear', 'Features & Gear'], ['bio', 'Bio & Notes']]
@@ -610,24 +665,16 @@
         });
         break;
       }
-      case 'short-rest': {
-        const lvl = R.totalLevel(ch);
-        if ((+ch.hitDiceUsed || 0) >= lvl) return toast('No hit dice left — take a long rest.', true);
-        const hd = Math.max(...(ch.classes || []).map(k => (R.CLASSES[k.name] || {}).hd || 8));
-        const res = await roll(`1d${hd}${R.fmt(R.abilityMod(ch, 'con'))}`, 'Hit Die (short rest)', { charId: ch.id });
-        if (res) mutate(c => { c.hitDiceUsed = (+c.hitDiceUsed || 0) + 1; c.hp.current = Math.min(+c.hp.max, (+c.hp.current || 0) + Math.max(0, res.roll.total)); });
-        break;
-      }
-      case 'short-rest-done': {   // the rest itself: hit dice are spent with "Spend Hit Die"
-        const tech = R.techOnShortRest(ch) && (+ch.tech.used || 0) > 0;
-        if (tech) mutate(c => { c.tech.used = 0; });
-        act('chat', { text: `*${ch.name} takes a short rest.${tech ? ' Tech points restored.' : ''}*`, as: ch.name });
-        break;
-      }
+      case 'short-rest': case 'short-rest-done': shortRestDialog(); break;   // hit dice by size, then the rest itself (#71)
       case 'long-rest':
         mutate(c => {
           c.hp.current = +c.hp.max; c.hp.temp = 0; c.force.used = 0; c.tech.used = 0; c.deathSaves = { s: 0, f: 0 };
-          c.hitDiceUsed = Math.max(0, (+c.hitDiceUsed || 0) - Math.max(1, Math.floor(R.totalLevel(c) / 2)));
+          // half the total hit dice back (at least one), the largest first (audit 7.5)
+          const dice = R.hitDice(c); let back = Math.max(1, Math.floor(dice.reduce((n, d) => n + d.total, 0) / 2));
+          for (const d of dice) { const k = Math.min(d.used, back); d.used -= k; back -= k; }
+          c.hitDiceUsed = R.hitDiceUsedOf(dice);
+          // tracked resources that come back on a short or long rest (the combat view's tracker, 3.1), Force Recovery among them
+          c.resources = (c.resources || []).map(r => (r.refill === 'short' || r.refill === 'long') && r.used ? Object.assign({}, r, { used: 0 }) : r);
           c.exhaustion = Math.max(0, (+c.exhaustion || 0) - 1);
         });
         act('chat', { text: `*${ch.name} takes a long rest. HP, force & tech points restored.*`, as: ch.name });
@@ -1342,7 +1389,7 @@
       const start = prop ? { x: (t.x + t.w / 2) * g, y: (t.y + t.h / 2) * g } : { x: (t.x + sz / 2) * g, y: (t.y + sz / 2) * g };
       const c = q => (prop ? { x: (q.x + 0.5) * g, y: (q.y + 0.5) * g } : { x: (q.x + sz / 2) * g, y: (q.y + sz / 2) * g });
       const pts = [start, ...sc.path.map(c)];
-      const last = pts[pts.length - 1], amber = sc.when === 'combat' ? '#ef5350' : themeHex('amber', '#ffb74d');   // red: waits for combat
+      const last = pts[pts.length - 1], amber = sc.when === 'combat' ? themeHex('red', '#ef5350') : themeHex('amber', '#ffb74d');   // red: waits for combat
       ctx.save();
       ctx.strokeStyle = live ? amber : rgba(amber, 0.55); ctx.lineWidth = 3 / z; ctx.setLineDash([8 / z, 6 / z]);
       ctx.beginPath(); pts.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
@@ -1512,13 +1559,13 @@
       if (ch && ch.hp && +ch.hp.max) {
         const pct = Math.max(0, Math.min(1, ch.hp.current / ch.hp.max));
         ctx.fillStyle = '#300'; ctx.fillRect(px + 4, py + sz - 6, sz - 8, 4);
-        ctx.fillStyle = pct < .3 ? '#ef5350' : pct < .6 ? '#ffb74d' : '#66bb6a'; ctx.fillRect(px + 4, py + sz - 6, (sz - 8) * pct, 4);
+        ctx.fillStyle = pct < .3 ? themeHex('red', '#ef5350') : pct < .6 ? themeHex('amber', '#ffb74d') : themeHex('green', '#66bb6a'); ctx.fillRect(px + 4, py + sz - 6, (sz - 8) * pct, 4);
       }
       // a short label that fits under the token (so neighbours don't overlap); hover shows the full name
       ctx.font = `600 ${Math.max(11 / z, g * 0.2)}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
       const lab = shortLabel(t.name, sz - 4);
       if (t.nameHidden) ctx.globalAlpha = Math.min(ctx.globalAlpha, 0.55);   // the GM's reminder: players see "???"
-      ctx.lineWidth = 3 / z; ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.strokeText(lab, cx, py + sz + 1); ctx.fillStyle = t.nameHidden ? '#ffb74d' : '#fff'; ctx.fillText(lab, cx, py + sz + 1);
+      ctx.lineWidth = 3 / z; ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.strokeText(lab, cx, py + sz + 1); ctx.fillStyle = t.nameHidden ? themeHex('amber', '#ffb74d') : '#fff'; ctx.fillText(lab, cx, py + sz + 1);
       ctx.globalAlpha = 1;
     }
     if (window.HTC) HTC.over(ctx, g, z);    // combat view (targets, results)

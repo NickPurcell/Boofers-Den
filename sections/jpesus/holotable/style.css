@@ -403,7 +403,7 @@ h3 { font-size: 15px; color: var(--holo); text-shadow: 0 0 12px var(--glow); }
 /* ---- framed panels with corner brackets */
 .box, .card, .modal-box { position: relative; background: var(--plate); border: 1px solid color-mix(in srgb, var(--line) 80%, var(--trim)); border-radius: 3px;
   box-shadow: 0 6px 24px rgba(0,0,0,.25); }
-.box::before, .card::before, .modal-box::before { content: ""; position: absolute; inset: -1px; pointer-events: none; border-radius: 3px;
+.box::before, .card::before, .modal-box::before, .token-pop::before, .script-bar::before, .hover-card::before { content: ""; position: absolute; inset: -1px; pointer-events: none; border-radius: 3px;
   background:
     linear-gradient(var(--trim), var(--trim)) top left / 14px 2px, linear-gradient(var(--trim), var(--trim)) top left / 2px 14px,
     linear-gradient(var(--trim), var(--trim)) top right / 14px 2px, linear-gradient(var(--trim), var(--trim)) top right / 2px 14px,
@@ -612,11 +612,11 @@ table.t td:first-child input { min-width: 140px; }
 .lib-variant.on { border-color: var(--green); color: var(--green); }
 @media (max-width: 720px) { .lib-body { grid-template-columns: 1fr; } .lib-nav { max-height: 30vh; position: static; } }
 .statblock { border-top: 3px solid var(--amber); border-bottom: 3px solid var(--amber); padding: 8px 10px; background: color-mix(in srgb, var(--panel) 85%, var(--amber) 5%); line-height: 1.45; }
-.sb-name { font-family: 'Orbitron', sans-serif; font-size: 18px; color: var(--amber); }
+.sb-name { font-family: var(--display); font-size: 18px; color: var(--amber); }
 .sb-sub { font-style: italic; color: var(--muted); }
 .sb-rule { height: 2px; background: color-mix(in srgb, var(--amber) 60%, transparent); margin: 6px 0; }
 .sb-abil { display: grid; grid-template-columns: repeat(6, 1fr); text-align: center; gap: 4px; }
-.sb-head { font-family: 'Orbitron', sans-serif; color: var(--amber); border-bottom: 1px solid var(--amber); margin: 10px 0 4px; font-size: 14px; }
+.sb-head { font-family: var(--display); color: var(--amber); border-bottom: 1px solid var(--amber); margin: 10px 0 4px; font-size: 14px; }
 .sb-b { margin: 4px 0; }
 .sb-b p { margin: 2px 0; display: inline; }
 .sb-roll, [data-shiproll] { cursor: pointer; }
@@ -689,4 +689,17 @@ body.no-sw5e-books [data-sa="deploy-info"], body.no-sw5e-books .lib-bar { displa
 .enc-diff { gap: 10px; margin-top: 10px; font-size: 13px; align-items: baseline; }
 .enc-diff:empty { display: none; }
 .enc-rating { font-weight: 700; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); }
-.enc-easy { color: #66bb6a; } .enc-medium { color: #ffd54f; } .enc-hard { color: #ffb74d; } .enc-deadly { color: #ef5350; border-color: #ef5350; }
+.enc-easy { color: var(--green); } .enc-medium { color: color-mix(in srgb, var(--amber) 55%, var(--green)); } .enc-hard { color: var(--amber); } .enc-deadly { color: var(--red); border-color: var(--red); }
+
+/* ---- consistency pass: floating panels and bars look like the console's other panels (plate, trim, square-ish
+   corners), and their titles use the display font like every other panel title */
+.token-pop, .script-bar, .hover-card, .map-tip, .ct-bar .ct-preview {
+  background: var(--plate); border: 1px solid color-mix(in srgb, var(--line) 80%, var(--trim)); border-radius: 3px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+.token-pop > b:first-child, .script-bar > b:first-child { font-family: var(--display); font-size: 12px; letter-spacing: .06em; color: var(--holo); }
+.ct-bar .ct-turn { font-family: var(--display); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; color: var(--holo); }
+.ct-bar { background: linear-gradient(180deg, var(--bg2), var(--bg)); border-top-color: color-mix(in srgb, var(--trim) 35%, var(--line)); }
+/* the small inline labels ("px/sq 70") read the same in the movement bar and the GM's audio box as in the map tools */
+.script-bar label.mini, #gmAudio label.mini { flex-direction: row; align-items: center; gap: 4px; font-size: 11px; }
+.script-bar label.mini input[type=number] { width: 56px; }
+@media (max-width: 600px) { .ct-bar .ct-turn { font-size: 11px; letter-spacing: .04em; } }

@@ -113,7 +113,7 @@ function cleanSnap(x) {
       .map(([id, r]) => [id, { resources: E.cleanResources(r.resources),
         force: { max: plainObj(r.force).max == null || plainObj(r.force).max === "" ? "" : num(plainObj(r.force).max, 0, 999), used: num(plainObj(r.force).used, 0, 999) },
         tech: { max: plainObj(r.tech).max == null || plainObj(r.tech).max === "" ? "" : num(plainObj(r.tech).max, 0, 999), used: num(plainObj(r.tech).used, 0, 999) },
-        hitDiceUsed: num(r.hitDiceUsed, 0, 40),
+        hitDiceUsed: R.cleanHitDiceUsed(r.hitDiceUsed),   // the sheet's own cleaner: per die size or an old number
         deathSaves: { s: num(plainObj(r.deathSaves).s, 0, 3), f: num(plainObj(r.deathSaves).f, 0, 3) } }]),
   };
 }
@@ -675,4 +675,5 @@ function restored(g) {
   Object.assign(g.fight, { undo: [], events: [], pending: [] });
 }
 
-module.exports = { apply, view, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls: E.cleanWalls };
+module.exports = { apply, view, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls: E.cleanWalls,
+  cleanHitDiceUsed: R.cleanHitDiceUsed };   // for cleanChar: the sheet and the undo record clean hit dice the same way
