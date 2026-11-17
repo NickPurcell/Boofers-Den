@@ -1137,3 +1137,23 @@ test("token names: a hidden name on a token linked to a sheet hides the sheet fr
   await gm.act("token.update", { id: tok.id, fields: { nameHidden: false } });
   assert.equal((await p1.poll()).data.state.characters[id].name, "Darth Vexx", "back once revealed");
 });
+
+test("token names: chat's turn and leaving lines don't name a creature whose name is hidden (#90)", async () => {
+  const { gm, p1 } = await table();
+  await gm.act("token.add", { name: "Raider", x: 2, y: 2, nameHidden: true });
+  await gm.act("init.add", { name: "Raider", init: 15, hp: 20 });
+  await gm.act("init.add", { name: "Avery", init: 10, hp: 20 });
+  await gm.act("init.next", {});   // Avery (the order starts on the Raider, so "next" moves to Avery)
+  await gm.act("init.next", {});   // round 2: the Raider
+  const vexx = (await gm.act("char.save", { char: { name: "Darth Vexx" } })).data.id;
+  await gm.act("token.add", { charId: vexx, x: 4, y: 4 });
+  const tok = (await gm.poll()).data.state.map.tokens.find((t) => t.charId === vexx);
+  await gm.act("token.update", { id: tok.id, fields: { nameHidden: true } });
+  const before = (await p1.poll()).data.state.chat.length;   // "brought Darth Vexx" came earlier, before the name was hidden
+  await gm.act("char.delete", { id: vexx });
+  const chat = (await p1.poll()).data.state.chat.map((m) => m.text || "");
+  assert.ok(chat.includes("Round 1 - Avery's turn."), "names that aren't hidden still show");
+  assert.ok(chat.includes("Round 2 - ???'s turn."), "the turn line says ???");
+  assert.ok(!chat.some((t) => /Raider/.test(t)), "never the hidden name");
+  assert.deepEqual(chat.slice(before), ["An unknown character left the table."]);
+});
