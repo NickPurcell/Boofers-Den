@@ -1247,3 +1247,31 @@ test("class resources survive the server's sheet cleaning", async () => {
   const back = (await p1.poll()).data.state.characters[id];
   assert.deepEqual(R.resourceRows(back).map((r) => [r.key, r.max, r.die, r.used]), [["superiority", 3, "d6", 2], ["second-wind", 1, "", 0], ["action-surge", 1, "", 0]]);
 });
+
+test("props that block sight: GM-only flag, never sent to players, kept in backups, turned into sight segments", async () => {
+  const { gm, p1 } = await table();
+  const src = "/api/holotable?a=packone.1";
+  await gm.act("prop.add", { src, name: "Freighter", x: 4, y: 2, w: 2, h: 1, rot: 0 });
+  await gm.act("prop.add", { src, name: "Pillar", x: 10, y: 10, w: 1, h: 1, rot: 90 });
+  let props = (await gm.poll()).data.state.map.props;
+  const [ship, pillar] = props.map((x) => x.id);
+  assert.equal((await p1.act("prop.update", { id: ship, fields: { blocksSight: true } })).code, 403, "GM only");
+  await gm.act("prop.update", { id: ship, fields: { blocksSight: true } });
+  await gm.act("prop.update", { id: pillar, fields: { blocksSight: "yes" } });
+  props = (await gm.poll()).data.state.map.props;
+  assert.deepEqual(props.map((x) => x.blocksSight), [true, true]);
+  const pv = (await p1.poll()).data.state.map.props;
+  assert.ok(pv.every((x) => x.blocksSight === undefined), "players get the effect, never the flag");
+  // edges in grid squares: the freighter's rectangle, then the pillar (rotated 90°, still a 1×1 square)
+  const segs = G.propSightSegments((await gm.poll()).data.state.map);
+  assert.equal(segs.length, 8);
+  assert.deepEqual(segs.slice(0, 4).map((s) => [s.a, s.b]), [[[4, 2], [6, 2]], [[6, 2], [6, 3]], [[6, 3], [4, 3]], [[4, 3], [4, 2]]]);
+  const xs = segs.slice(4).flatMap((s) => [s.a[0], s.b[0]]), ys = segs.slice(4).flatMap((s) => [s.a[1], s.b[1]]);
+  assert.deepEqual([Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)], [10, 11, 10, 11]);
+  // switching it off removes it; a duplicate keeps it; a restore keeps it
+  await gm.act("prop.update", { id: pillar, fields: { blocksSight: false } });
+  await gm.act("prop.add", { src, name: "Freighter", x: 7, y: 2, w: 2, h: 1, blocksSight: true });
+  const g2 = G.cleanGame(JSON.parse(JSON.stringify((await gm.poll()).data.state)));
+  assert.deepEqual(g2.map.props.map((x) => !!x.blocksSight), [true, false, true]);
+  assert.equal(G.propSightSegments(g2.map).length, 8);
+});
