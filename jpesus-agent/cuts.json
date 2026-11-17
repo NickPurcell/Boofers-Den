@@ -1,0 +1,101 @@
+{
+ "t0": 1794955141.682,
+ "cuts": [
+  {
+   "from": 0.002000093460083008,
+   "to": 4.01200008392334,
+   "view": "gm",
+   "cap": "HoloTable · combat demo · a cantina in Mos Shuuta"
+  },
+  {
+   "from": 4.01200008392334,
+   "to": 10.021000146865845,
+   "view": "split",
+   "cap": "Exploring: fog of war — each player sees only what their own character can see"
+  },
+  {
+   "from": 10.021000146865845,
+   "to": 17.02300000190735,
+   "view": "split",
+   "cap": "Walls and a parked shuttle marked “Blocks sight” hide the back room. The bounty hunter's name is hidden: “???”"
+  },
+  {
+   "from": 17.02300000190735,
+   "to": 24.027000188827515,
+   "view": "gm",
+   "cap": "Talks go wrong. The GM starts combat: queued “⚔ when combat starts” moves play"
+  },
+  {
+   "from": 24.027000188827515,
+   "to": 30.088000059127808,
+   "view": "gm",
+   "cap": "Everyone rolls initiative; the GM's tracker rates the fight"
+  },
+  {
+   "from": 30.103000164031982,
+   "to": 35.10800004005432,
+   "view": "sam",
+   "cap": "Kira's turn: the squares she can reach light up; moving counts down her feet"
+  },
+  {
+   "from": 35.10899996757507,
+   "to": 42.34400010108948,
+   "view": "sam",
+   "cap": "She closes in and strikes with her lightsaber: the server rolls, damage floats up"
+  },
+  {
+   "from": 42.34400010108948,
+   "to": 49.16900014877319,
+   "view": "sam",
+   "cap": "End turn. The hunter breaks away — Kira gets an opportunity attack prompt"
+  },
+  {
+   "from": 49.16900014877319,
+   "to": 54.182000160217285,
+   "view": "sam",
+   "cap": "Reactions: she takes the attack"
+  },
+  {
+   "from": 54.182000160217285,
+   "to": 61.223999977111816,
+   "view": "gm",
+   "cap": "The GM runs the creature: its attacks come from its SW5e stat block"
+  },
+  {
+   "from": 61.22500014305115,
+   "to": 70.98200011253357,
+   "view": "gm",
+   "cap": "Rex's turn: class resources — Second Wind and Action Surge are tracked uses"
+  },
+  {
+   "from": 70.98200011253357,
+   "to": 77.98600006103516,
+   "view": "sam",
+   "cap": "The sniper takes aim at Kira… and she drops to 0 HP"
+  },
+  {
+   "from": 77.98600006103516,
+   "to": 86.43300008773804,
+   "view": "split",
+   "cap": "Unseen: the guard in the back room acts — only the GM's chat shows it (chat follows sight)"
+  },
+  {
+   "from": 86.43300008773804,
+   "to": 92.4539999961853,
+   "view": "sam",
+   "cap": "Round 2, Kira's turn: at 0 HP she rolls a death saving throw"
+  },
+  {
+   "from": 92.4539999961853,
+   "to": 97.48900008201599,
+   "view": "gm",
+   "cap": "The GM ends combat; the table goes back to exploring"
+  },
+  {
+   "from": 97.48900008201599,
+   "to": 101.49100017547607,
+   "view": "gm",
+   "cap": "Assets: SW Bendu & Stalitz, Echoes, Primal and Mos Shuuta props by Maveritchell (P. Thompson)"
+  }
+ ]
+}
