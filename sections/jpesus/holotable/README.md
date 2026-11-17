@@ -27,7 +27,7 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
   Channel the Force, Force Shield, Potent Aptitude and Ideal manifests. **Use** spends one, **+1** gives one back, rests
   refill them, and a die's name rolls it. The numbers follow the level; the combat view reads the same list. Below them,
   each class's table at its level (Rage Damage, Sneak Attack dice, Martial Arts die, aura and routine radius, and what's
-  known). `gen_classes.py` (in the PR) built the tables from SW5e's `/api/class`.
+  known). `tests/holotable_gen_classes.py` rebuilds the tables from SW5e's `/api/class`.
 - **Chat:** type `/` for a menu of commands that narrows as you type. After `/w`, it suggests player and character names.
   - `/r` (or `/roll`): roll dice.
   - `/gmr`: a secret roll only you and the GM see.
