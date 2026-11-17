@@ -626,7 +626,8 @@ function applyAction(camp, cid, gm, type, p) {
         ini.active = true; ini.turn++;
         if (ini.turn >= n) { ini.turn = 0; ini.round++; }
         const cur = ini.entries[ini.turn];
-        if (!cur.hidden) addChat(camp, { system: true, text: `Round ${ini.round} - ${shownName(camp, cur)}'s turn.` });   // "???" while the GM hides the name
+        // "???" while the GM hides the name; under fog, only to those who can see whose turn it is (#93, chat follows sight)
+        if (!cur.hidden) { const to = Fight.sightTo(camp, null, [cur.id]); addChat(camp, Object.assign({ system: true, text: `Round ${ini.round} - ${shownName(camp, cur)}'s turn.` }, to ? { to } : {})); }
       } else if (type === "init.prev" && n) {
         ini.turn--;
         if (ini.turn < 0) { ini.turn = n - 1; ini.round = Math.max(1, ini.round - 1); }
