@@ -135,10 +135,11 @@ const hiddenEntry = (camp, e, tokenId) => !!e.hidden || !!((camp.map.tokens || [
 // The engine's world. For a player (forPlayer) hidden combatants are not in it at all. With G, every unit carries the
 // name players are shown (HoloTable's shownName: "???" while the GM hides a token's name), so every line the engine
 // writes is fit for players; hidden combatants are never masked, so lines that go only to the GM keep their names.
-function worldOf(camp, forPlayer, G) {
+function worldOf(camp, forPlayer, G, cid) {
   const ini = camp.initiative, f = camp.fight || {};
   const ut = unitTokens(camp);
-  const entries = forPlayer ? ini.entries.filter((e) => !hiddenEntry(camp, e, ut[e.id])) : ini.entries;
+  const fog = forPlayer && cid ? fogFor(camp, cid) : null;   // fog of war: what this player's characters can't see isn't in their world either
+  const entries = forPlayer ? ini.entries.filter((e) => !hiddenEntry(camp, e, ut[e.id]) && !(fog && fog.entries.has(e.id))) : ini.entries;
   const cur = ini.entries[ini.turn];
   const w = E.buildWorld({
     characters: camp.characters, entries, active: ini.active, turnId: cur && entries.includes(cur) ? cur.id : null, round: ini.round,
@@ -491,6 +492,17 @@ function apply(camp, cid, gm, type, p, G) {
       if (list.length) camp.map.walls = list; else delete camp.map.walls;
       return {};
     }
+    case "fight.fog": {   // the GM switches fog of war on or off for this map, shares the party's sight, or resets what's explored (#93)
+      need(gm);
+      if (!f.on) throw new G.Invalid("The combat view is off.");
+      const fog = camp.map.fog = cleanFog(camp.map.fog) || { on: false, shared: false, size: "", explored: {} };
+      if (p.on !== undefined) fog.on = !!p.on;
+      if (p.shared !== undefined) fog.shared = !!p.shared;
+      if (p.reset) fog.explored = {};
+      G.addChat(camp, { system: true, fight: true, text: p.on !== undefined ? (fog.on ? "The GM brought down the fog: each of you sees what your characters see." : "The GM lifted the fog.")
+        : p.shared !== undefined ? (fog.shared ? "The party now shares its sight." : "Each of you sees only what your own characters see.") : "The GM reset what's been explored on this map." });
+      return {};
+    }
     case "fight.condition": {   // the DM puts a condition on a combatant (a level, a damage amount, who caused it) or takes it off
       need(gm);
       if (!f.on) throw new G.Invalid("The combat view is off.");
@@ -518,7 +530,7 @@ function apply(camp, cid, gm, type, p, G) {
         G.addChat(camp, { system: true, fight: true, text: str(`${G.shownName(camp, re)} lets ${against ? G.shownName(camp, against) : "them"} go.`, 200) });
         return {};
       }
-      const world = worldOf(camp, !gm, G);
+      const world = worldOf(camp, !gm, G, cid);
       let spec;
       if (re.charId) {
         const ch = camp.characters[re.charId];
@@ -550,7 +562,7 @@ function apply(camp, cid, gm, type, p, G) {
         const ab = ch && E.abilitiesOf(ch, R, f.lib).find((a) => a.key === String(p.ability || ""));
         return !!(ab && ab.area);
       })();
-      const world = worldOf(camp, !gm && !areaUse, G);
+      const world = worldOf(camp, !gm && !areaUse, G, cid);
       if (type === "fight.end" && !world.units[cur.id]) {      // a combatant with no token can still pass the turn
         snapshot(camp, `${G.shownName(camp, cur)} ends the turn`);
         G.applyAction(camp, cid, true, "init.next", {});
@@ -611,8 +623,8 @@ function apply(camp, cid, gm, type, p, G) {
 function view(camp, cid, gm, shownName) {
   const f = camp.fight;
   if (!f || !f.on) return { on: false };
-  const ini = camp.initiative, ut = unitTokens(camp);
-  const seen = (e) => gm || !hiddenEntry(camp, e, ut[e.id]);
+  const ini = camp.initiative, ut = unitTokens(camp), fog = gm ? null : fogFor(camp, cid);
+  const seen = (e) => gm || (!hiddenEntry(camp, e, ut[e.id]) && !(fog && fog.entries.has(e.id)));
   const units = {};
   for (const e of ini.entries) {
     if (!ut[e.id] || !seen(e)) continue;
@@ -624,10 +636,11 @@ function view(camp, cid, gm, shownName) {
   }
   const cur = ini.entries[ini.turn];
   const turn = ini.active && cur && seen(cur) ? cur.id : null;
-  const world = worldOf(camp, !gm);
+  const world = worldOf(camp, !gm, null, cid);
   const evs = (Array.isArray(f.events) ? f.events : []).filter((ev) => gm || !ev.hidden).slice(-15);
   return {
     on: true, active: !!ini.active, round: ini.round, turn, units,
+    ...(fogOn(camp) ? { fog: fogView(camp, cid, gm, fog) } : {}),   // fog of war (#93 step 4): only while the GM has it on for this map
     budget: turn ? E.budget(world) : null,
     // only for combatants this viewer can see: a hidden one's id, turn or movement never reaches a player
     spent: Object.fromEntries(Object.entries(f.spent || {}).filter(([id]) => units[id])),
@@ -675,5 +688,88 @@ function restored(g) {
   Object.assign(g.fight, { undo: [], events: [], pending: [] });
 }
 
-module.exports = { apply, view, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls: E.cleanWalls,
+/* ---------------- fog of war (issue #93, step 4) ----------------
+   The GM switches it on for a map (map.fog.on, kept by the map, so each scene has its own). It applies while the
+   combat view is on. A player sees what their own characters' tokens see through the walls (the whole party's with
+   map.fog.shared); tokens outside that, and their tracker entries, aren't sent to them, and their world leaves those
+   combatants out, as it does hidden ones. Squares a player has seen stay "explored" (drawn dim) on that map until the
+   GM resets them. The GM sees everything, with what the players see between them outlined. */
+const PID = /^[a-z0-9]{6,40}$/;
+const sizeOf = (camp) => ({ cols: clamp(int(camp.map.cols, 20), 1, 400), rows: clamp(int(camp.map.rows, 15), 1, 400) });
+function cleanFog(x) {
+  if (!x || typeof x !== "object") return undefined;
+  const explored = {};
+  for (const [k, v] of Object.entries(plainObj(x.explored)).slice(0, 60)) if (PID.test(k) && typeof v === "string" && v.length <= 30000 && /^[A-Za-z0-9+/=]*$/.test(v)) explored[k] = v;
+  return { on: !!x.on, shared: !!x.shared, size: str(x.size, 12), explored };
+}
+const fogOn = (camp) => !!(camp.fight && camp.fight.on && camp.map && camp.map.fog && camp.map.fog.on);
+// whose eyes a player sees through: their own characters' tokens (and tokens they own), or with shared vision every character's
+function eyesOf(camp, cid) {
+  const chars = camp.characters || {}, shared = !!camp.map.fog.shared;
+  return (camp.map.tokens || []).filter((t) => !t.hidden && (t.charId && chars[t.charId] ? (shared || chars[t.charId].owner === cid) : t.owner === cid));
+}
+// the squares some tokens see, remembered for the last few boards asked about: the answer only changes when a wall,
+// a door, the board or one of those tokens does, and each player's screen asks every few seconds
+const SEEN_CACHE = new Map();
+function squaresSeen(camp, eyes) {
+  const { cols, rows } = sizeOf(camp);
+  const walls = (camp.map.walls || []).filter((w) => w.kind === "wall" || (w.kind === "door" && !w.open));
+  const key = JSON.stringify([cols, rows, eyes.map((t) => [t.x, t.y, t.size || 1]), walls.map((w) => [w.a, w.b])]);
+  let vis = SEEN_CACHE.get(key);
+  if (!vis) {
+    const units = Object.fromEntries(eyes.map((t, i) => ["e" + i, { id: "e" + i, x: +t.x || 0, y: +t.y || 0, size: clamp(int(t.size, 1), 1, 4) }]));
+    vis = E.visibleSquares({ walls, units }, Object.keys(units), cols, rows);
+    SEEN_CACHE.set(key, vis);
+    if (SEEN_CACHE.size > 40) SEEN_CACHE.delete(SEEN_CACHE.keys().next().value);
+  }
+  return vis;
+}
+// What fog hides from one player: null for the GM or with fog off; otherwise the squares they see and the tokens and
+// tracker entries they can't. A player's own tokens are never hidden from them.
+function fogFor(camp, cid) {
+  if (!fogOn(camp) || !cid) return null;
+  const { cols, rows } = sizeOf(camp), eyes = eyesOf(camp, cid), mine = new Set(eyes.map((t) => t.id));
+  const vis = squaresSeen(camp, eyes), tokens = new Set();
+  for (const t of camp.map.tokens || []) if (!mine.has(t.id) && !E.seenIn(vis, cols, rows, { x: +t.x || 0, y: +t.y || 0, size: clamp(int(t.size, 1), 1, 4) })) tokens.add(t.id);
+  const ut = unitTokens(camp), entries = new Set(camp.initiative.entries.filter((e) => ut[e.id] && tokens.has(ut[e.id])).map((e) => e.id));
+  return { vis, tokens, entries, cols, rows };
+}
+function exploredOf(camp, cid, cols, rows) {
+  const fog = camp.map.fog, packed = fog.size === `${cols}x${rows}` && (fog.explored || {})[cid];
+  return packed ? E.unpackSquares(packed, cols * rows) : new Uint8Array(cols * rows);
+}
+// what the browser draws: a player gets their visible and explored squares; the GM, what any player sees
+function fogView(camp, cid, gm, fog) {
+  const { cols, rows } = sizeOf(camp), on = { shared: !!camp.map.fog.shared, cols, rows };
+  if (!gm) {
+    const seen = exploredOf(camp, cid, cols, rows);
+    for (let i = 0; i < seen.length; i++) if (fog.vis[i]) seen[i] = 1;
+    return Object.assign(on, { vis: E.packSquares(fog.vis), seen: E.packSquares(seen) });
+  }
+  const any = new Uint8Array(cols * rows);
+  for (const pid of Object.keys(camp.players || {})) {
+    if ((camp.players[pid] || {}).role === "gm") continue;
+    const v = squaresSeen(camp, eyesOf(camp, pid));
+    for (let i = 0; i < any.length; i++) if (v[i]) any[i] = 1;
+  }
+  return Object.assign(on, { any: E.packSquares(any) });
+}
+// After every action (a token dragged, a door opened, a move in combat): what each player sees now joins what they
+// have explored on this map. Nothing is written while fog is off.
+function noteSeen(camp) {
+  if (!fogOn(camp)) return;
+  const { cols, rows } = sizeOf(camp), fog = camp.map.fog, size = `${cols}x${rows}`;
+  if (fog.size !== size) { fog.size = size; fog.explored = {}; }   // a resized board starts unexplored
+  for (const pid of Object.keys(camp.players || {})) {
+    if ((camp.players[pid] || {}).role === "gm") continue;
+    const eyes = eyesOf(camp, pid);
+    if (!eyes.length) continue;
+    const was = exploredOf(camp, pid, cols, rows), v = squaresSeen(camp, eyes);
+    let grew = false;
+    for (let i = 0; i < was.length; i++) if (v[i] && !was[i]) { was[i] = 1; grew = true; }
+    if (grew) fog.explored[pid] = E.packSquares(was);
+  }
+}
+
+module.exports = { apply, view, fogFor, cleanFog, noteSeen, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls: E.cleanWalls,
   cleanHitDiceUsed: R.cleanHitDiceUsed };   // for cleanChar: the sheet and the undo record clean hit dice the same way

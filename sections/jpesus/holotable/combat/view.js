@@ -720,7 +720,34 @@
   function cssVar(name, fallback) { const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return /^#[0-9a-f]{6}$/i.test(v) ? v : fallback; }
   const alpha = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
   // under the tokens: the squares you can reach
+  /* ---------------- fog of war (#93 step 4): the server sends each player their visible and explored squares ---------------- */
+  // drawn as a picture one pixel per square, scaled up without smoothing, and rebuilt only when the squares change
+  let fogPic = null;
+  function fogPicture(fog) {
+    const key = [fog.cols, fog.rows, fog.vis, fog.seen, fog.any].join('|');
+    if (fogPic && fogPic.key === key) return fogPic.canvas;
+    const n = fog.cols * fog.rows, c = document.createElement('canvas'); c.width = fog.cols; c.height = fog.rows;
+    const cx = c.getContext('2d'), im = cx.createImageData(fog.cols, fog.rows);
+    const shade = cssVar('--bg', '#05080d').replace('#', ''), rgb = [0, 2, 4].map((i) => parseInt(shade.slice(i, i + 2), 16) || 0);
+    const vis = fog.vis ? E.unpackSquares(fog.vis, n) : null, seen = fog.seen ? E.unpackSquares(fog.seen, n) : null, any = fog.any ? E.unpackSquares(fog.any, n) : null;
+    for (let i = 0; i < n; i++) {
+      // a player: black where never seen, dim where explored, clear where seen now; the GM: a light veil where no player sees
+      const a = any ? (any[i] ? 0 : 70) : vis[i] ? 0 : seen[i] ? 150 : 242;
+      im.data.set([rgb[0], rgb[1], rgb[2], a], i * 4);
+    }
+    cx.putImageData(im, 0, 0);
+    fogPic = { key, canvas: c };
+    return c;
+  }
+  function drawFog(ctx, g) {
+    const fog = F().fog;
+    if (!fog || !(fog.vis || fog.any)) return;
+    ctx.save(); ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(fogPicture(fog), 0, 0, fog.cols * g, fog.rows * g);
+    ctx.restore();
+  }
   function under(ctx, g, z) {
+    if (F().on) drawFog(ctx, g);
     if (!F().on || !myTurn()) return;
     const holo = cssVar('--holo', '#4fc3f7'), dim = UI.armed ? 0.45 : 1;   // fainter while an attack is picked
     ctx.save();
