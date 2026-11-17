@@ -2097,8 +2097,18 @@ test("under fog a player's drag can't cross a wall (#93): refused with 'A wall i
   // the GM's drags are never checked
   await gm.act("fight.wall", { op: "door", id: door.id, open: false });
   assert.equal((await gm.act("token.move", { id: avery, x: 0, y: 0 })).code, 200);
+  // review of #125: no way round a wall's end off the board, and no jump far off it (the board's edge is a wall too)
+  await gm.act("map.settings", { cols: 20, rows: 12 });
+  await gm.act("fight.wall", { op: "clear" });
+  await gm.act("fight.wall", { op: "add", a: [10, 0], b: [10, 12] });
+  await gm.act("token.move", { id: avery, x: 2, y: 5 });
+  for (const [x, y] of [[14, 5], [14, -1], [10, -1], [1000, 1000], [-3, 5]]) {
+    const r2 = await sam.act("token.move", { id: avery, x, y });
+    assert.equal(r2.code, 400, `a drag to (${x},${y}) is refused`);
+  }
+  assert.deepEqual([tokenOf(await gm.state(), "Avery").x, tokenOf(await gm.state(), "Avery").y], [2, 5], "still where it was");
   // objects that block sight don't stop a drag
-  const crate = (await gm.act("prop.add", { src: "/api/holotable?a=packone.1", x: 1, y: 0, w: 1, h: 2 })).data.id;
+  const crate = (await gm.act("prop.add", { src: "/api/holotable?a=packone.1", x: 3, y: 4, w: 1, h: 3 })).data.id;
   await gm.act("prop.update", { id: crate, fields: { blocksSight: true } });
-  assert.equal((await sam.act("token.move", { id: avery, x: 2, y: 0 })).code, 200, "a player can climb over the crates");
+  assert.equal((await sam.act("token.move", { id: avery, x: 5, y: 5 })).code, 200, "a player can climb over the crates");
 });
