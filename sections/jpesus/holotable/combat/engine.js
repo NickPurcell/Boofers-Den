@@ -535,6 +535,8 @@
     for (const row of (rules && rules.classTableAt ? rules.classTableAt(ch) : [])) for (const [h, v] of row.cols) {
       if (h === 'Sneak Attack' && /^\d+d\d+$/i.test(String(v))) out.sneak = String(v);
       if (h === 'Rage Damage' && /^\+?\d+$/.test(String(v))) out.rage = +String(v).replace('+', '');
+      if (h === 'Focused Strikes' && /^\d+d8$/i.test(String(v))) out.fes = parseInt(v, 10);          // Force-Empowered Strikes: up to N d8s
+      if (h === 'Kinetic Combat' && /^d\d+$/i.test(String(v))) out.kinetic = String(v).toLowerCase();  // Double Strike: one Kinetic Combat die
     }
     return out;
   }
@@ -548,6 +550,12 @@
       if (mode === 'adv' || (helper && mode !== 'dis')) out.push({ key: 'sneak', name: 'Sneak Attack', dice: r.sneak });
     }
     if (r.rage && attack.weapon && !ranged && attack.abil === 'str' && effectsOf(a).some(([, e]) => e.rage)) out.push({ key: 'rage', name: 'Rage', flat: r.rage });
+    // these cost force points, so they're the attacker's choice (opt-in): Force-Empowered Strikes (Guardian) on a melee
+    // weapon hit, 1d8 a point up to the Focused Strikes column; Double Strike (Sentinel) on a weapon hit, 1 point for a
+    // Kinetic Combat die, once a turn
+    const fp = (a.pools || {}).force, left = fp ? fp.max - fp.used : 0;
+    if (r.fes && attack.weapon && !ranged && left > 0) out.push({ key: 'fes', name: 'Force-Empowered Strikes', perPoint: '1d8', max: Math.min(r.fes, left), optIn: true });
+    if (r.kinetic && attack.weapon && left > 0 && !spentOf(world, a.id).double) out.push({ key: 'double', name: 'Double Strike', dice: '1' + r.kinetic, cost: 1, optIn: true });
     return out;
   }
   function preview(world, actorId, targetId, attack, opts = {}) {
@@ -825,7 +833,7 @@
   /* ---------------- turns: the turn budget is resources too, refilled at the start of the unit's own turn ---------------- */
   const turnKey = (world) => `${world.round}:${world.turnId}`;
   const TURN = ['move', 'action', 'bonus', 'reaction'];
-  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0 });
+  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0 });
   function spentOf(world, id) {
     const s = (world.spent || {})[id];
     return s && (id !== world.turnId || s.key === turnKey(world)) ? Object.assign(blank(s.key), s) : blank(id === world.turnId ? turnKey(world) : '');
@@ -895,7 +903,7 @@
       }
       case 'attack': {
         if (!b.action) return no(`${me.name} has already used the action this turn.`);
-        const s = strike(w, me, act.target, act.attack, { adv: !!act.adv, dis: !!act.dis, no: act.no || [] }, roll, '');
+        const s = strike(w, me, act.target, act.attack, { adv: !!act.adv, dis: !!act.dis, no: act.no || [], add: act.add || {} }, roll, '');
         if (!s.ok) return s;
         w.spent[me.id].action += 1;
         return { ok: true, world: w, log: s.log, events: s.events };
@@ -1094,7 +1102,16 @@
     if (!hit) { events.push({ kind: 'miss', unit: t.id }); return { ok: true, log, events }; }
     const base = !crit ? attack.damage : variant(w, 'Crueler Criticals') ? cruel(attack.damage) : attack.crit || attack.damage;
     // bonus damage from class features (audit 5.9); a rider the attacker turned down (opts.no) isn't added
-    const riders = (pv.riders || []).filter((x) => !((opts.no || []).includes(x.key)));
+    const add = opts.add || {}, fp = (me.pools || {}).force;
+    const riders = (pv.riders || []).filter((x) => !((opts.no || []).includes(x.key))).map((x) => {
+      if (!x.optIn) return x;
+      if (x.key === 'fes') { const n = Math.max(0, Math.min(x.max, Math.round(+add.fes || 0))); return n ? Object.assign({}, x, { dice: `${n}d8`, points: n }) : null; }
+      if (x.key === 'double') return add.double ? Object.assign({}, x, { points: 1 }) : null;
+      return null;
+    }).filter(Boolean);
+    const paid = riders.reduce((n, x) => n + (x.points || 0), 0);
+    if (paid && fp) fp.used = Math.min(fp.max, fp.used + paid);   // the force points go on the hit
+    if (riders.some((x) => x.key === 'double')) w.spent[me.id] = Object.assign(spentOf(w, me.id), { double: 1 });   // once a turn
     const expr = base + riders.map((x) => (x.dice ? '+' + (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat)).join('');
     if (riders.some((x) => x.key === 'sneak')) w.spent[me.id] = Object.assign(spentOf(w, me.id), { sneak: 1 });   // once per turn
     const d = roll(expr);
@@ -1102,7 +1119,7 @@
     const df = defended(t, Math.max(0, d.total) + corr, String(attack.type || '').toLowerCase(), attack.enhanced ? 'enhanced' : 'weapon');
     const amount = df.amount;
     const took = takeDamage(t, amount);
-    log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${riders.length ? ` (with ${riders.map((x) => `${x.name} ${x.dice ? (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat}`).join(', ')})` : ''}${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
+    log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${riders.length ? ` (with ${riders.map((x) => `${x.name} ${x.dice ? (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat}${x.points ? `, ${x.points} force point${x.points === 1 ? '' : 's'}` : ''}`).join('; ')})` : ''}${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
     fallen(t, took, crit, log);
     events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
     concentrationCheck(w, t, amount, roll, log);
