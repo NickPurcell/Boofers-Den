@@ -258,7 +258,7 @@ test("turn budget: each unit's own turn refills its movement, action, bonus acti
   const hers = Object.assign({}, w, { turnId: "ava", round: 2 });
   assert.deepEqual([E.budget(hers).reaction, E.budget(hers).moveLeft, E.budget(hers).action], [true, 30, true]);
   const r = E.apply(hers, { type: "move", unit: "ava", x: 2, y: 0 }, dice().roll);
-  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0 });
+  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0 });
 });
 
 // a level-3 Consular with two powers; the table has data for one of them (numbers invented for the test)
@@ -2656,4 +2656,98 @@ test("Extra Attack through the API: a level 5 Fighter attacks twice; a creature'
   assert.equal((await gm.state()).fight.budget.attacks, 1);
   assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: claw, multi: 2 })).code, 200);
   assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: claw })).code, 400, "its Multiattack is two");
+});
+
+/* ---------------------------------------------------------------- Two- and Double-Weapon Fighting (audit 5.8) */
+test("Two- and Double-Weapon Fighting: the off-hand numbers from the sheet, and the styles that change them", () => {
+  const sheet = (features) => ({ classes: [{ name: "Fighter", level: 5 }], abilities: { str: 10, dex: 16, con: 10, int: 10, wis: 10, cha: 10 }, features,
+    attacks: [{ name: "Doubleshoto", ab: "finesse", damage: "1d6", type: "energy", props: "Double (1d6 energy), finesse, light, luminous" },
+      { name: "Vibroknife", ab: "finesse", damage: "1d4", type: "kinetic", props: "Finesse, Light, Thrown (20/60)", magic: 1 },
+      { name: "Doublesaber", ab: "finesse", damage: "1d8", type: "energy", props: "Double (1d8 energy), finesse, luminous" },
+      { name: "Vibrosword", ab: "str", damage: "1d8", type: "kinetic", props: "Versatile (1d10)" }] });
+  const pick = (ch) => E.attacksOf(ch, R).map((a) => [a.name, a.light || false, a.offDamage || null, a.endDamage || null, a.endBonus == null ? null : a.endBonus]);
+  assert.deepEqual(pick(sheet([])), [
+    ["Doubleshoto", true, "1d6", "1d6+3", 3],         // the other end: its own die with the modifier, the attack roll without it
+    ["Vibroknife", true, "1d4+1", null, null],        // off-hand: no Dex on damage, the +1 enhancement stays
+    ["Doublesaber", false, null, null, null],         // double but not light: no Double-Weapon Fighting
+    ["Vibrosword", false, null, null, null]]);
+  assert.deepEqual(pick(sheet([{ name: "Dual Wield Style" }])).map((x) => x[2]), ["1d6+3", "1d4+4", null, null], "Dual Wield: the modifier on off-hand damage");
+  assert.deepEqual(pick(sheet([{ name: "Fighting Style: Twin-Blade" }])).map((x) => x[4]), [6, null, null, null], "Twin-Blade: the modifier on the other end's attack roll");
+  assert.deepEqual(E.stylesOf({ features: [{ name: "Split Style" }] }), { twfDamage: true, dwfAttack: true });
+  assert.deepEqual(E.stylesOf({ features: [{ name: "Duelist Style" }] }), { twfDamage: false, dwfAttack: false });
+  const weak = Object.assign(sheet([]), { abilities: { str: 6, dex: 6, con: 10, int: 10, wis: 10, cha: 10 } });
+  assert.deepEqual(pick(weak).slice(0, 2).map((x) => [x[2], x[4]]), [["1d6-2", 1], ["1d4-1", null]], "a negative modifier always counts (on the roll: -2 + 3 proficiency)");
+});
+
+test("Two- and Double-Weapon Fighting: a bonus action attack after the Attack action, with the right weapon", () => {
+  const ch = { classes: [{ name: "Fighter", level: 5 }], abilities: { str: 10, dex: 16, con: 10, int: 10, wis: 10, cha: 10 },
+    attacks: [{ name: "Doubleshoto", ab: "finesse", damage: "1d6", type: "energy", props: "Double (1d6 energy), finesse, light" },
+      { name: "Vibroknife", ab: "finesse", damage: "1d4", type: "kinetic", props: "Finesse, Light" },
+      { name: "Vibrosword", ab: "str", damage: "1d8", type: "kinetic", props: "" }] };
+  const [shoto, knife, sword] = E.attacksOf(ch, R);
+  const me = () => unit({ id: "ft", name: "Fenn", side: "pc", x: 0, y: 0, attacks: 1, offhands: 1 });
+  const r1 = () => unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 90, maxHp: 90 });
+  const hit = () => dice({ total: 15, nat: 12 }, { total: 4 });
+  // nothing before the Attack action
+  assert.equal(E.offhandOf(world([me(), r1()], "ft"), me(), knife).why, "Fenn takes the Attack action first, with a light weapon.");
+  // Two-Weapon Fighting: the shoto in the Attack action, then the knife as a bonus action, no Dex on its damage
+  let r = E.apply(world([me(), r1()], "ft"), { type: "attack", unit: "ft", target: "r1", attack: knife }, hit().roll);
+  assert.deepEqual([r.world.spent.ft.lt, r.world.spent.ft.dw], [2, 0]);
+  assert.equal(E.offhandOf(r.world, r.world.units.ft, knife).why, "Two-Weapon Fighting takes a different light weapon from the one Fenn attacked with.");
+  assert.equal(E.offhandOf(r.world, r.world.units.ft, sword).why, "Vibrosword isn't a light weapon.");
+  assert.equal(E.offhandOf(r.world, r.world.units.ft, shoto).spec.name, "Doubleshoto (off-hand)", "a different light weapon");
+  let d = hit();
+  r = E.apply(r.world, { type: "attack", unit: "ft", target: "r1", attack: shoto, offhand: true }, d.roll);
+  assert.equal(r.ok, true, r.why);
+  assert.deepEqual([d.asked[0], d.asked[1], E.budget(r.world).bonus], ["1d20+6", "1d6", false], "+6 to hit; 1d6 damage without +3");
+  assert.match(r.log[0].text, /Doubleshoto \(off-hand\)/);
+  assert.equal(E.apply(r.world, { type: "attack", unit: "ft", target: "r1", attack: knife, offhand: true }, hit().roll).why, "Fenn has made its bonus attack this turn.");
+  // Double-Weapon Fighting: the shoto in the Attack action, then its other end; the modifier off the attack roll
+  r = E.apply(world([me(), r1()], "ft"), { type: "attack", unit: "ft", target: "r1", attack: shoto }, hit().roll);
+  d = hit();
+  r = E.apply(r.world, { type: "attack", unit: "ft", target: "r1", attack: shoto, offhand: true }, d.roll);
+  assert.deepEqual([r.ok, d.asked[0], d.asked[1]], [true, "1d20+3", "1d6+3"]);
+  assert.match(r.log[0].text, /Doubleshoto \(other end\)/);
+  // the Attack action with a heavy, not light, weapon: no bonus attack
+  r = E.apply(world([me(), r1()], "ft"), { type: "attack", unit: "ft", target: "r1", attack: sword }, hit().roll);
+  assert.equal(E.offhandOf(r.world, r.world.units.ft, knife).why, "Fenn didn't attack with a light weapon this turn.");
+  // the bonus action spent on something else
+  r = E.apply(world([me(), r1()], "ft"), { type: "attack", unit: "ft", target: "r1", attack: knife }, hit().roll);
+  r.world.spent.ft.bonus = 1;
+  assert.equal(E.offhandOf(r.world, r.world.units.ft, shoto).why, "Fenn has already used the bonus action this turn.");
+  // a Fighter from 11th level: two bonus attacks for one bonus action
+  const f11 = unit({ id: "ft", name: "Fenn", side: "pc", x: 0, y: 0, attacks: 3, offhands: 2 });
+  r = E.apply(world([f11, r1()], "ft"), { type: "attack", unit: "ft", target: "r1", attack: knife }, hit().roll);
+  r = E.apply(r.world, { type: "attack", unit: "ft", target: "r1", attack: shoto, offhand: true }, hit().roll);
+  r = E.apply(r.world, { type: "attack", unit: "ft", target: "r1", attack: shoto, offhand: true }, hit().roll);
+  assert.equal(r.ok, true, "the second");
+  assert.deepEqual([r.world.spent.ft.off, r.world.spent.ft.bonus], [2, 1]);
+  assert.equal(E.offhandOf(r.world, r.world.units.ft, shoto).why, "Fenn has made both bonus attacks this turn.");
+  assert.equal(E.budget(r.world).attacks, 2, "the Attack action's other attacks are still there");
+  // creatures don't
+  const cr = unit({ id: "cr", name: "Krayt", side: "npc", x: 0, y: 0 });
+  assert.equal(E.apply(world([cr, r1()], "cr"), { type: "attack", unit: "cr", target: "r1", attack: knife, offhand: true }, hit().roll).ok, false);
+});
+
+test("Two-Weapon Fighting through the API: the server works out the off-hand attack from the sheet", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { attacks: [
+    { name: "Vibroknife", ab: "finesse", damage: "1d4", type: "kinetic", props: "Finesse, Light" },
+    { name: "Shortblade", ab: "finesse", damage: "1d6", type: "kinetic", props: "Finesse, Light" },
+    { name: "Vibrosword", ab: "str", damage: "1d8", type: "kinetic", props: "" }] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "2", offhand: true })).code, 400, "not before the Attack action");
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0" })).code, 200);
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "2", offhand: true })).code, 400, "not a light weapon");
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0", offhand: true })).code, 400, "not the same weapon");
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: { name: "Fake", bonus: 40, damage: "9d12", melee: 5, light: true, offDamage: "9d12" }, offhand: true })).code, 400, "a character's attack comes from its sheet");
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "1", offhand: true })).code, 200);
+  st = await sam.state();
+  assert.deepEqual([st.fight.budget.action, st.fight.budget.bonus], [false, false]);
+  const rolls = st.chat.filter((m) => m.fight && m.roll).map((m) => m.roll);
+  const at = rolls.findIndex((x) => /Shortblade \(off-hand\)/.test(x.label || ""));
+  assert.ok(at >= 0, "the off-hand attack is in the log");
+  if (/a hit|critical/.test(rolls[at].label)) assert.match(rolls[at + 1].expr, /^[12]d6$/, "no Dex on the off-hand damage");
 });

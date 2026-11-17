@@ -65,7 +65,11 @@
       const powers = E.abilitiesOf(ch, R, F().lib || {}).filter((a) => a.kind === 'power' || a.kind === 'volley').map((ab) => ({ key: ab.key, name: ab.name, power: ab,
         bonus: ab.attack ? ab.attack.bonus : null, damage: ab.damage.map((d) => d.dice + (d.add ? sgn(d.add) : '')).join('+') || (ab.heal ? 'heal ' + ab.heal.dice : ''),
         type: (ab.damage[0] || {}).type || '', melee: ab.reach || 0, range: ab.range, crit: '' }));
-      return weapons.concat(powers);
+      // after the Attack action: a bonus action attack with the off-hand light weapon, or a double weapon's other end (5.8)
+      const w = world(), me = w && w.units[u.id];
+      const offs = me ? weapons.map((a) => ({ a, o: E.offhandOf(w, me, a) })).filter((x) => x.o.spec)
+        .map(({ a, o }) => Object.assign({}, o.spec, { key: 'off:' + a.key, base: a.key, offhand: o.kind })) : [];
+      return weapons.concat(offs, powers);
     }
     if (!gm()) return [];
     const known = UI.npc[u.id];
@@ -202,7 +206,7 @@
     const spec = armedSpec(), u = cur();
     if (!spec || !u) return;
     const r = spec.power ? await send('fight.use', Object.assign({ ability: spec.key, upcast: UI.upcast || 0, adv: UI.adv, dis: UI.dis }, spec.power.area ? { point: UI.aim } : { target: targetId }))
-      : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.key : specOut(spec), no: UI.noRiders || [], add: UI.addRiders || {}, twoHands: !!UI.twoHands,
+      : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.base || spec.key : specOut(spec), offhand: !!spec.offhand, no: UI.noRiders || [], add: UI.addRiders || {}, twoHands: !!UI.twoHands,
         multi: u.charId ? undefined : (UI.npc[u.id] || {}).multi || 1 });
     if (r) { UI.armed = null; UI.target = null; UI.aim = null; UI.adv = UI.dis = false; UI.upcast = 0; UI.noRiders = []; UI.addRiders = {}; render(); }
   }
@@ -350,9 +354,9 @@
       html += '<div class="ct-row ct-actions" role="group" aria-label="Attacks">';
       for (const a of atks) {
         const n = targets(a).length;
-        const slot = a.power ? a.power.use : 'action';
+        const slot = a.power ? a.power.use : a.offhand ? 'bonus' : 'action';
         const lim = !u.charId && a.res && ((f.npcRes || {})[u.id] || []).find((r) => r.key === a.res);
-        const slotSpent = (bud && slot !== 'free' && !bud[slot] && !(slot === 'action' && !a.power && bud.attacks)) || (lim && lim.used >= lim.max);   // a weapon attack: also the rest of an Attack action (#139)
+        const slotSpent = (bud && slot !== 'free' && !bud[slot] && !a.offhand && !(slot === 'action' && !a.power && bud.attacks)) || (lim && lim.used >= lim.max);   // a weapon attack: also the rest of an Attack action (#139)
         const pool = a.power && Object.entries(a.power.cost || {})[0];
         const poorly = pool && (!u.pools[pool[0]] || u.pools[pool[0]].max - u.pools[pool[0]].used < pool[1]);
         const off = slotSpent || !n || poorly;
