@@ -1389,7 +1389,7 @@
       const start = prop ? { x: (t.x + t.w / 2) * g, y: (t.y + t.h / 2) * g } : { x: (t.x + sz / 2) * g, y: (t.y + sz / 2) * g };
       const c = q => (prop ? { x: (q.x + 0.5) * g, y: (q.y + 0.5) * g } : { x: (q.x + sz / 2) * g, y: (q.y + sz / 2) * g });
       const pts = [start, ...sc.path.map(c)];
-      const last = pts[pts.length - 1], amber = sc.when === 'combat' ? '#ef5350' : themeHex('amber', '#ffb74d');   // red: waits for combat
+      const last = pts[pts.length - 1], amber = sc.when === 'combat' ? themeHex('red', '#ef5350') : themeHex('amber', '#ffb74d');   // red: waits for combat
       ctx.save();
       ctx.strokeStyle = live ? amber : rgba(amber, 0.55); ctx.lineWidth = 3 / z; ctx.setLineDash([8 / z, 6 / z]);
       ctx.beginPath(); pts.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
@@ -1559,13 +1559,13 @@
       if (ch && ch.hp && +ch.hp.max) {
         const pct = Math.max(0, Math.min(1, ch.hp.current / ch.hp.max));
         ctx.fillStyle = '#300'; ctx.fillRect(px + 4, py + sz - 6, sz - 8, 4);
-        ctx.fillStyle = pct < .3 ? '#ef5350' : pct < .6 ? '#ffb74d' : '#66bb6a'; ctx.fillRect(px + 4, py + sz - 6, (sz - 8) * pct, 4);
+        ctx.fillStyle = pct < .3 ? themeHex('red', '#ef5350') : pct < .6 ? themeHex('amber', '#ffb74d') : themeHex('green', '#66bb6a'); ctx.fillRect(px + 4, py + sz - 6, (sz - 8) * pct, 4);
       }
       // a short label that fits under the token (so neighbours don't overlap); hover shows the full name
       ctx.font = `600 ${Math.max(11 / z, g * 0.2)}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
       const lab = shortLabel(t.name, sz - 4);
       if (t.nameHidden) ctx.globalAlpha = Math.min(ctx.globalAlpha, 0.55);   // the GM's reminder: players see "???"
-      ctx.lineWidth = 3 / z; ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.strokeText(lab, cx, py + sz + 1); ctx.fillStyle = t.nameHidden ? '#ffb74d' : '#fff'; ctx.fillText(lab, cx, py + sz + 1);
+      ctx.lineWidth = 3 / z; ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.strokeText(lab, cx, py + sz + 1); ctx.fillStyle = t.nameHidden ? themeHex('amber', '#ffb74d') : '#fff'; ctx.fillText(lab, cx, py + sz + 1);
       ctx.globalAlpha = 1;
     }
     if (window.HTC) HTC.over(ctx, g, z);    // combat view (targets, results)

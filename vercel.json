@@ -4,5 +4,8 @@
   ],
   "functions": {
     "api/hang-page.js": { "includeFiles": "hang/index.html" }
+  },
+  "git": {
+    "deploymentEnabled": { "**": false, "main": true, "experimental": true }
   }
 }
