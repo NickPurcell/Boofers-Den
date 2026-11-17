@@ -74,6 +74,13 @@
   // size half, larger three-quarters. Only the most protective degree counts.
   const COVER = [null, { name: 'one-quarter', bonus: 2 }, { name: 'half', bonus: 3 }, { name: 'three-quarters', bonus: 5 }, { name: 'total', bonus: null }];
   const corners = (u) => { const s = u.size || 1, e = 0.05; return [[u.x + e, u.y + e], [u.x + s - e, u.y + e], [u.x + e, u.y + s - e], [u.x + s - e, u.y + s - e]]; };
+  // cover from a point (an area's origin) for a Dex save: the same lines, from that one point
+  function coverFrom(world, p, t) {
+    const walls = (world.walls || []).filter(blocksSight);
+    if (!walls.length || !p || !t) return null;
+    const deg = corners(t).filter((q) => !clear(walls, [p.x, p.y], q, () => true)).length;
+    return deg && deg < 4 ? COVER[deg] : null;
+  }
   function coverOf(world, a, t) {
     const walls = (world.walls || []).filter(blocksSight);
     if (!(world.walls || []).length || !a || !t || a.id === t.id) return null;
@@ -531,7 +538,11 @@
     if (!u || !ab.area || !point || !Number.isFinite(+point.x) || !Number.isFinite(+point.y)) return { ok: false, why: 'Pick where to aim it.' };
     const o = areaOrigin(world, u, ab, { x: +point.x, y: +point.y });
     if (!o.ok) return o;
-    const squares = areaSquares(ab.area, o.origin, o.aim), set = new Set(squares.map(([x, y]) => `${x},${y}`));
+    // walls stop an area: a square with no clear straight line from the origin isn't in it (SW5e: an area spreads in
+    // straight lines from its point of origin). Walls, windows and closed doors stop it.
+    const stops = (world.walls || []).filter(blocksMove);
+    const squares = areaSquares(ab.area, o.origin, o.aim).filter(([x, y]) => !stops.length || clear(stops, [o.origin.x, o.origin.y], [x + 0.5, y + 0.5], () => true));
+    const set = new Set(squares.map(([x, y]) => `${x},${y}`));
     const caught = Object.values(world.units).filter((t) => !t.down && (ab.area.from === 'point' || t.id !== u.id) && (() => {
       for (let x = t.x; x < t.x + (t.size || 1); x++) for (let y = t.y; y < t.y + (t.size || 1); y++) if (set.has(`${x},${y}`)) return true;
       return false;
@@ -640,11 +651,11 @@
           const p = (me.pools || {})[pool];
           if (!p || p.max - p.used < n) return no(`Not enough ${p ? p.name : pool}: ${n} needed${p ? `, ${p.max - p.used} left` : ''}.`);
         }
-        let ids;
+        let ids, origin = null;
         if (ab.area) {   // everyone the template catches, aimed at a point
           const hits = areaHits(w, me.id, ab, act.point);
           if (!hits.ok) return no(hits.why);
-          ids = hits.units;
+          ids = hits.units; origin = hits.origin;
         } else {
           ids = ab.targets === 'self' ? [me.id] : (Array.isArray(act.targets) ? act.targets : [act.target]).filter(Boolean).map(String);
           const max = ab.targets === 'self' ? 1 : ab.targets;
@@ -691,8 +702,8 @@
             const fail = effectsOf(t).find(([, e]) => (e.autoFail || []).includes(ab.save.ability));
             const sdis = effectsOf(t).some(([, e]) => (e.saveDis || []).includes(ab.save.ability));
             const sadv = ab.save.ability === 'dex' && dodging(w, t);
-            // cover helps a Dex save against a power aimed at the target (areas: a later step on #93)
-            const scv = ab.save.ability === 'dex' && !ab.area && t.id !== me.id ? coverOf(w, me, t) : null;
+            // cover helps a Dex save: from the caster for a power aimed at the target, from the origin for an area
+            const scv = ab.save.ability !== 'dex' || t.id === me.id ? null : ab.area ? coverFrom(w, origin, t) : coverOf(w, me, t);
             const sexpr = (sdis && !sadv ? '2d20kl1' : sadv && !sdis ? '2d20kh1' : '1d20') + sgn((+bonus || 0) - weakPenalty(t, ab.save.ability) + (scv ? scv.bonus || 0 : 0));
             const r = roll(sexpr);
             const saved = !fail && r.total >= ab.save.dc;

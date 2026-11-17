@@ -1565,3 +1565,22 @@ test("review #94: a reaction prompt survives the tracker's index moving, and lap
   assert.equal(r.code, 200, JSON.stringify(r.data));
   assert.ok(!(await sam.state()).chat.some((m) => /lets Avery go|Waiting for Raider/.test(m.text || "")));
 });
+
+test("areas stopped by walls (issue #93, step 3): no clear line from the origin, not in the area; cover from the origin helps a Dex save", () => {
+  const ch = consular();
+  const lib = { "blast wave": { use: "action", range: [60, 60], area: { shape: "sphere", size: 15, from: "point" }, save: { ability: "dex", dc: 14, onSave: "half" }, damage: [{ dice: "2d6", type: "fire" }] } };
+  const ab = E.abilitiesOf(Object.assign({}, ch, { powers: [{ name: "Blast Wave", level: 1, type: "force", alignment: "universal" }] }), R, lib)[0];
+  const me = unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, pools: Object.fromEntries(E.resourcesOf(ch, R).map((x) => [x.key, x])) });
+  const near = unit({ id: "r1", name: "Raider", side: "npc", x: 5, y: 5 }), behind = unit({ id: "r2", name: "Scout", side: "npc", x: 8, y: 5 });
+  const open = world([me, near, behind], "cass");
+  assert.deepEqual(E.areaHits(open, "cass", ab, { x: 6, y: 6 }).units.sort(), ["r1", "r2"]);
+  const walled = world([me, near, behind], "cass", { walls: [{ a: [7.5, -9], b: [7.5, 20], kind: "wall" }] });
+  assert.deepEqual(E.areaHits(walled, "cass", ab, { x: 6, y: 6 }).units, ["r1"], "the Scout is behind the wall");
+  // a half wall across part of the Raider's square: a Dex save with cover from the origin
+  const partial = world([me, near], "cass", { walls: [{ a: [5.2, 5.6], b: [5.2, 6.2], kind: "wall" }] });   // hides one of its corners from the origin
+  const d = dice({ total: 10, nat: 10 }, { total: 6 });
+  const r = E.apply(partial, { type: "use", unit: "cass", ability: ab, point: { x: 7, y: 4 } }, d.roll);
+  assert.ok(r.ok, r.why);
+  const save = r.log.find((l) => l.kind === "save");
+  assert.match(save.text, /one-quarter cover, \+2\)/, save.text);
+});
