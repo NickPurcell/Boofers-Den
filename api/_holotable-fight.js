@@ -216,13 +216,15 @@ function writeBack(camp, cid, before, after, G) {
 // save-ends effects roll their save. Done at the next combat action, never on a read, so a poll changes nothing.
 function tick(camp, cid, G) {
   const f = camp.fight, ini = camp.initiative, cur = ini.entries[ini.turn];
-  const key = ini.active && cur ? `${ini.round}:${cur.id}` : "";
-  if (!key || key === f.lastTurn) return;
-  const prevId = (f.lastTurn || "").split(":")[1] || null;
+  const key = ini.active && cur ? `${ini.round}:${cur.id}:${ini.turn}` : "";
+  if (!key || key.split(":").slice(0, 2).join(":") === (f.lastTurn || "").split(":").slice(0, 2).join(":")) return;
+  const [lr, prevId, lt] = (f.lastTurn || "").split(":");
   f.lastTurn = key;
+  // the tracker stepped back (Prev): nothing ends, nothing is saved against; the DM undoes or edits what should come back
+  if (lt !== undefined && (ini.round < +lr || (ini.round === +lr && ini.turn < +lt))) return;
   if (!f.effects.length && !Object.keys(f.conc).length) return;
   const before = worldOf(camp, false);
-  const r = E.turnPassed(before, prevId, cur.id, (expr) => G.rollDice(expr));
+  const r = E.turnPassed(before, prevId || null, cur.id, (expr) => G.rollDice(expr));
   writeBack(camp, cid, before, r.world, G);
   for (const line of r.log) {
     const hidden = line.unit && hiddenEntry(camp, ini.entries.find((e) => e.id === line.unit) || {}, (before.units[line.unit] || {}).tokenId);
@@ -444,4 +446,12 @@ function view(camp, cid, gm) {
   };
 }
 
-module.exports = { apply, view, unitTokens, worldOf, state, cleanResources: E.cleanResources };
+// For the tracker's own Next and Prev (proposed on issue #72, not wired in): called right after HoloTable moves the
+// turn, so effects end the moment the turn passes instead of at the next combat step. Does nothing while the view is off.
+function turned(camp, cid, G) {
+  if (!camp.fight || !camp.fight.on) return;
+  state(camp);
+  tick(camp, cid, G);
+}
+
+module.exports = { apply, view, unitTokens, worldOf, state, turned, cleanResources: E.cleanResources };

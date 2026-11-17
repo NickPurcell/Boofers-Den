@@ -852,3 +852,52 @@ test("standing up through the API: a prone character stands for half its speed",
   assert.deepEqual([st.initiative.entries.find((e) => e.id === ids.avery).conditions, st.fight.budget.moveLeft], [[], 15]);
   assert.equal((await sam.act("fight.stand", {})).code, 400, "not prone any more");
 });
+
+test("the tracker's Prev never ends an effect: only moving forward does", async () => {
+  const { gm, sam, rae, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  let st = await sam.state();
+  const av = Object.values(st.characters).find((c) => c.name === "Avery");
+  await sam.act("char.save", { char: Object.assign({}, av, { classes: [{ name: "Consular", level: 3 }], abilities: Object.assign({}, av.abilities, { wis: 16 }),
+    powers: [{ name: "Hold", level: 1, type: "force", alignment: "universal" }] }) });
+  await gm.act("fight.ability", { name: "Hold", data: { use: "action", range: [60, 60], save: { ability: "wis", dc: 40 }, applies: [{ condition: "Restrained", until: { ends: "start", of: "self", rounds: 1 } }] } });
+  assert.equal((await sam.act("fight.use", { ability: "pw:hold", target: ids.raider })).code, 200);
+  await sam.act("fight.end", {});                        // the Raider's turn
+  await gm.act("init.prev", {});                         // back to Avery's turn, going backwards
+  assert.equal((await sam.act("fight.end", {})).code, 200, "Avery's turn action sees the step back first");
+  st = await gm.state();
+  assert.deepEqual(st.initiative.entries.find((e) => e.id === ids.raider).conditions, ["Restrained"], "still restrained after Prev");
+  await gm.act("fight.end", {}); await rae.act("fight.end", {}); await gm.act("fight.end", {});   // Raider, Bolt, Lurker
+  st = await gm.state();
+  assert.deepEqual([st.initiative.round, st.initiative.entries[st.initiative.turn].name], [2, "Avery"]);
+  assert.deepEqual(st.initiative.entries.find((e) => e.id === ids.raider).conditions, [], "ends at the start of Avery's next turn");
+});
+
+test("the proposed tracker hook (issue #72): with it, the tracker's Next ends an effect straight away", async () => {
+  const Game = require("../api/_holotable-game.js"), Fight = require("../api/_holotable-fight.js");
+  const orig = Game.applyAction;
+  // the one line proposed for init.next / init.prev in _holotable-game.js, simulated around the handler's call
+  Game.applyAction = (camp, pid, gm, type, p) => { const out = orig(camp, pid, gm, type, p);
+    if (type === "init.next" || type === "init.prev") Fight.turned(camp, pid, Game); return out; };
+  try {
+    const { gm, sam, ids } = await fight();
+    await gm.act("fight.toggle", { on: true });
+    let st = await sam.state();
+    const av = Object.values(st.characters).find((c) => c.name === "Avery");
+    await sam.act("char.save", { char: Object.assign({}, av, { classes: [{ name: "Consular", level: 3 }], abilities: Object.assign({}, av.abilities, { wis: 16 }),
+      powers: [{ name: "Hold", level: 1, type: "force", alignment: "universal" }] }) });
+    await gm.act("fight.ability", { name: "Hold", data: { use: "action", range: [60, 60], save: { ability: "wis", dc: 40 }, applies: [{ condition: "Restrained", until: { ends: "end", of: "target", rounds: 1 } }] } });
+    assert.equal((await sam.act("fight.use", { ability: "pw:hold", target: ids.raider })).code, 200);
+    await gm.act("init.next", {});                       // the Raider's turn, from the tracker
+    await gm.act("init.prev", {}); await gm.act("init.next", {});   // a slip back and forth ends nothing
+    assert.deepEqual((await gm.state()).initiative.entries.find((e) => e.id === ids.raider).conditions, ["Restrained"]);
+    await gm.act("init.next", {});                       // the Raider's turn ends: gone now, with no combat step
+    st = await sam.state();
+    assert.deepEqual(st.initiative.entries.find((e) => e.id === ids.raider).conditions, []);
+    assert.ok(st.chat.some((m) => m.system && /Raider is no longer restrained/.test(m.text)));
+    await gm.act("fight.toggle", { on: false });
+    await gm.act("init.update", { id: ids.raider, fields: { conditions: ["Prone"] } });
+    await gm.act("init.next", {});                       // view off: the hook does nothing
+    assert.deepEqual((await gm.state()).initiative.entries.find((e) => e.id === ids.raider).conditions, ["Prone"]);
+  } finally { Game.applyAction = orig; }
+});
