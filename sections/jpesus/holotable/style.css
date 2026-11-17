@@ -703,3 +703,12 @@ body.no-sw5e-books [data-sa="deploy-info"], body.no-sw5e-books .lib-bar { displa
 .script-bar label.mini, #gmAudio label.mini { flex-direction: row; align-items: center; gap: 4px; font-size: 11px; }
 .script-bar label.mini input[type=number] { width: 56px; }
 @media (max-width: 600px) { .ct-bar .ct-turn { font-size: 11px; letter-spacing: .04em; } }
+/* class resources on the sheet */
+.res-row { gap: 8px; align-items: center; flex-wrap: wrap; }
+.res-row .nm { flex: 1 1 140px; min-width: 0; }
+.res-row .bonus { width: auto; min-width: 36px; }
+.res-row .dots .dot { width: 10px; height: 10px; }
+.res-refill { font-size: 11px; min-width: 64px; text-align: right; }
+.class-tbl { font-size: 12px; margin-top: 8px; line-height: 1.6; }
+.class-tbl b { font-family: var(--display); font-size: 11px; letter-spacing: .06em; color: var(--holo); margin-right: 6px; }
+.res-row .dot.on { background: var(--holo); border-color: var(--holo); }

@@ -257,7 +257,47 @@
     };
   }
 
+  // ---- class tables (audit 3.2-3.11), generated from SW5e's class data (/api/class, levelChanges) by
+  // gen_classes.py: each class's table columns by level (spell-point columns are left to casterInfo), and the
+  // spendable uses each class gets, in the combat view's resource shape (max / die read at the class level).
+  const CLASS_TABLE = {"Berserker":{"Rages":["2","2","3","3","3","4","4","4","4","4","4","5","5","5","5","5","6","6","6","Unlimited"],"Rage Damage":["+2","+2","+2","+2","+2","+2","+2","+2","+3","+3","+3","+3","+4","+4","+4","+4","+5","+5","+5","+5"],"Berserker Instincts":["","2","2","2","2","2","3","3","3","3","3","3","4","4","4","4","5","5","5","5"]},"Consular":{"Force Powers Known":["9","11","13","15","17","19","21","23","25","26","28","29","31","32","34","35","37","38","39","40"],"Force-Empowered Casting Options":["","2","2","2","2","2","2","2","3","3","3","3","3","3","3","3","4","4","4","4"]},"Engineer":{"Tech Powers Known":["6","7","9","10","12","13","15","16","18","19","21","22","23","24","25","26","27","28","29","30"],"Potent Aptitude":["d4","d4","d4","d4","d6","d6","d6","d6","d8","d8","d8","d8","d10","d10","d10","d10","d12","d12","d12","d12"],"Modification Slots":["","","4","4","5","5","5","5","6","6","7","7","8","8","8","8","9","9","9","9"]},"Fighter":{"Maneuvers Known":["","1","2","2","4","4","5","5","6","6","7","7","9","9","10","10","11","11","12","12"],"Superiority Dice Quantity":["","2","2","2","3","3","3","3","4","4","4","4","5","5","5","5","6","6","6","6"],"Superiority Dice Size":["","d4","d4","d4","d6","d6","d6","d6","d8","d8","d8","d8","d10","d10","d10","d10","d12","d12","d12","d12"],"Strategies Known":["","","1","1","1","1","2","2","2","2","2","2","3","3","3","3","4","4","4","4"]},"Guardian":{"Force Powers Known":["5","7","9","10","12","13","14","15","17","18","19","20","22","23","24","25","27","28","29","30"],"Focused Strikes":["","2d8","2d8","2d8","3d8","3d8","3d8","3d8","4d8","4d8","4d8","4d8","5d8","5d8","5d8","5d8","6d8","6d8","6d8","6d8"],"Auras Known":["","","1","1","1","1","1","1","1","2","2","2","2","2","2","2","2","3","3","3"],"Aura Radius":["","","5 ft.","5 ft.","5 ft.","5 ft.","5 ft.","5 ft.","15 ft.","15 ft.","15 ft.","15 ft.","15 ft.","15 ft.","15 ft.","15 ft.","30 ft.","30 ft.","30 ft.","30 ft."]},"Monk":{"Martial Arts":["d4","d4","d4","d4","d6","d6","d6","d6","d8","d8","d8","d8","d10","d10","d10","d10","d12","d12","d12","d12"],"Focus Points":["","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17","18","19","20"],"Monastic Vows":["","2","2","2","2","2","3","3","3","3","3","3","4","4","4","4","5","5","5","5"],"Unarmored Movement":["","","+10 ft.","+10 ft.","+15 ft.","+15 ft.","+15 ft.","+15 ft.","+20 ft.","+20 ft.","+20 ft.","+20 ft.","+25 ft.","+25 ft.","+25 ft.","+25 ft.","+30 ft.","+30 ft.","+30 ft.","+30 ft."]},"Operative":{"Sneak Attack":["1d6","1d6","2d6","2d6","3d6","3d6","4d6","4d6","5d6","5d6","6d6","6d6","7d6","7d6","8d6","8d6","9d6","9d6","10d6","10d6"],"Operative Exploits":["","2","2","2","2","2","3","3","3","3","3","3","4","4","4","4","5","5","5","5"]},"Scholar":{"Maneuvers Known":["1","2","4","5","6","7","9","10","11","12","14","15","16","17","19","20","21","22","23","24"],"Superiority Dice Quantity":["3","3","4","4","5","5","6","6","7","7","8","8","9","9","10","10","11","11","12","12"],"Superiority Dice Size":["d4","d4","d4","d4","d6","d6","d6","d6","d8","d8","d8","d8","d10","d10","d10","d10","d12","d12","d12","d12"],"Discoveries":["","2","4","4","5","5","5","5","6","6","7","7","8","8","8","8","9","9","9","9"]},"Scout":{"Ranger's Quarry":["d4","d4","d4","d4","d6","d6","d6","d6","d8","d8","d8","d8","d10","d10","d10","d10","d12","d12","d12","d12"],"Tech Powers Known":["","4","5","6","7","8","9","10","12","13","14","15","16","17","18","19","20","21","22","23"],"Routines Known":["","","1","1","1","1","2","2","2","2","2","2","2","2","3","3","3","3","3","3"],"Routine Radius":["","","5 ft.","5 ft.","5 ft.","5 ft.","5 ft.","5 ft.","15 ft.","15 ft.","15 ft.","15 ft.","15 ft.","15 ft.","15 ft.","15 ft.","30 ft.","30 ft.","30 ft.","30 ft."]},"Sentinel":{"Force Powers Known":["7","9","11","13","15","17","18","19","21","22","24","25","26","28","29","30","32","33","34","35"],"Kinetic Combat":["","d4","d4","d4","d6","d6","d6","d6","d8","d8","d8","d8","d10","d10","d10","d10","d12","d12","d12","d12"],"Ideals Known":["","2","2","2","2","3","3","3","3","3","4","4","4","4","4","4","4","4","4","4"],"Ideal Manifests":["","2","2","2","2","2","2","2","3","3","3","3","3","3","3","3","4","4","4","4"]}};
+  const CLASS_RESOURCES = {"Berserker":[{"key":"rage","name":"Rages","max":{"class":"Berserker","levels":[2,2,3,3,3,4,4,4,4,4,4,5,5,5,5,5,6,6,6,99]},"refill":"long"}],"Consular":[{"key":"force-shield","name":"Force Shield","max":{"class":"Consular","levels":[0,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,6,6,6,6]},"refill":"long"}],"Engineer":[{"key":"potent-aptitude","name":"Potent Aptitude","max":{"class":"Engineer","levels":[2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,6,6,6,6]},"die":{"class":"Engineer","levels":["d4","d4","d4","d4","d6","d6","d6","d6","d8","d8","d8","d8","d10","d10","d10","d10","d12","d12","d12","d12"]},"refill":"short"}],"Fighter":[{"key":"superiority","name":"Superiority dice","max":{"class":"Fighter","levels":[0,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,6,6,6,6]},"die":{"class":"Fighter","levels":["","d4","d4","d4","d6","d6","d6","d6","d8","d8","d8","d8","d10","d10","d10","d10","d12","d12","d12","d12"]},"refill":"short"},{"key":"second-wind","name":"Second Wind","max":{"class":"Fighter","levels":[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]},"refill":"short"},{"key":"action-surge","name":"Action Surge","max":{"class":"Fighter","levels":[0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2]},"refill":"short"},{"key":"indomitable","name":"Indomitable","max":{"class":"Fighter","levels":[0,0,0,0,0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3]},"refill":"long"}],"Guardian":[{"key":"channel-the-force","name":"Channel the Force","max":{"class":"Guardian","levels":[2,2,2,2,3,3,3,3,4,4,4,4,5,5,5,5,6,6,6,6]},"refill":"short"}],"Monk":[{"key":"focus","name":"Focus points","max":{"class":"Monk","levels":[0,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20]},"refill":"short"}],"Scholar":[{"key":"superiority-scholar","name":"Superiority dice (Scholar)","max":{"class":"Scholar","levels":[3,3,4,4,5,5,6,6,7,7,8,8,9,9,10,10,11,11,12,12]},"die":{"class":"Scholar","levels":["d4","d4","d4","d4","d6","d6","d6","d6","d8","d8","d8","d8","d10","d10","d10","d10","d12","d12","d12","d12"]},"refill":"short"}],"Sentinel":[{"key":"ideal-manifests","name":"Ideal manifests","max":{"class":"Sentinel","levels":[0,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,4,4,4,4]},"refill":"long"}]};
+  const classOf = name => Object.keys(CLASS_TABLE).find(k => k.toLowerCase() === String(name || '').trim().toLowerCase());
+  const levelIn = (c, cls) => { const k = (c.classes || []).find(x => classOf(x.name) === classOf(cls)); return k ? +k.level || 0 : 0; };
+  // a resource's max or die at the character's level in its class (plain values pass through)
+  const resAt = (c, v) => {
+    if (v == null || typeof v !== 'object') return v;
+    const L = Math.min(20, levelIn(c, v.class));
+    return L >= 1 && Array.isArray(v.levels) ? v.levels[L - 1] : null;
+  };
+  const classPresets = c => (c.classes || []).flatMap(k => CLASS_RESOURCES[classOf(k.name)] || []);
+  // the class uses this character has at its level but hasn't added yet
+  const missingClassResources = c => {
+    const have = new Set((c.resources || []).map(r => r.key));
+    return classPresets(c).filter(p => !have.has(p.key) && (+resAt(c, p.max) || 0) > 0);
+  };
+  // the resource list with the class uses added: every existing resource and its used count stays; class ones take
+  // the current table (so a fix to the data reaches old sheets)
+  function withClassResources(c) {
+    const by = new Map(classPresets(c).map(p => [p.key, p]));
+    const kept = (c.resources || []).map(r => (by.has(r.key) ? Object.assign({}, by.get(r.key), { used: +r.used || 0 }) : r));
+    const have = new Set(kept.map(r => r.key));
+    return kept.concat(missingClassResources(c).filter(p => !have.has(p.key)).map(p => Object.assign({}, p, { used: 0 })));
+  }
+  // the resources as numbers for the sheet: index in c.resources, max and die at this level, used (kept within max)
+  const resourceRows = c => (c.resources || []).map((r, i) => {
+    const max = +resAt(c, r.max) || 0;
+    return { i, key: r.key, name: r.name || r.key, max, die: resAt(c, r.die) || '', used: Math.max(0, Math.min(max, +r.used || 0)), refill: r.refill };
+  }).filter(r => r.max > 0);
+  // each class's table values at its level (Rage Damage +2, Sneak Attack 3d6, Martial Arts d6...), blanks left out
+  const classTableAt = c => (c.classes || []).map(k => {
+    const cls = classOf(k.name), L = Math.min(20, +k.level || 0);
+    if (!cls || L < 1) return null;
+    return { cls, level: L, cols: Object.entries(CLASS_TABLE[cls]).map(([h, v]) => [h, v[L - 1]]).filter(([, v]) => v) };
+  }).filter(Boolean);
+
   root.SW5E = { ABILITIES, SKILLS, CLASSES, SPECIES, BACKGROUNDS, DAMAGE_TYPES, WEAPONS, CONDITIONS, REFERENCE,
     mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo, techOnShortRest,
-    attackBonus, damageExpr, critExpr, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter };
+    attackBonus, damageExpr, critExpr, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
+    CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt };
 })(typeof window !== 'undefined' ? window : globalThis);
