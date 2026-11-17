@@ -229,6 +229,11 @@
     else { let n = Math.max(0, +u || 0); for (const d of list) { d.used = Math.min(d.total, n); n -= d.used; } }
     return list;
   }
+  // hitDiceUsed as stored: per die size ({ d10: 2, d6: 1 }, whole numbers 0-40) or an old single number. The one cleaner
+  // for every place that keeps it (the sheet, the combat view's undo), so none of them drops the per-die shape.
+  const cleanHitDiceUsed = u => u && typeof u === 'object' && !Array.isArray(u)
+    ? Object.fromEntries(Object.entries(u).filter(([k]) => /^d(4|6|8|10|12|20)$/.test(k)).map(([k, v]) => [k, Math.max(0, Math.min(40, parseInt(v, 10) || 0))]))
+    : (u === '' || u == null || !Number.isFinite(+u) ? 0 : +u);
   const hitDiceUsedTotal = c => hitDice(c).reduce((n, d) => n + d.used, 0);
   const hitDiceUsedOf = list => Object.fromEntries(list.map(d => ['d' + d.die, d.used]));
   // Force Recovery (Consular, 1st level): on a short rest, half the consular level plus Wis or Cha (the better), at least 1
@@ -254,5 +259,5 @@
 
   root.SW5E = { ABILITIES, SKILLS, CLASSES, SPECIES, BACKGROUNDS, DAMAGE_TYPES, WEAPONS, CONDITIONS, REFERENCE,
     mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo, techOnShortRest,
-    attackBonus, damageExpr, critExpr, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, forceRecovery, blankCharacter };
+    attackBonus, damageExpr, critExpr, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter };
 })(typeof window !== 'undefined' ? window : globalThis);
