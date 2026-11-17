@@ -166,6 +166,28 @@ function cleanChar(ch) {
   return out;
 }
 
+// Tokens whose name the GM is hiding, looked up by sheet ("c:<charId>") or, for loose tokens, by name
+// ("n:<name>"). The value is the token's id, or null when two loose tokens share the name.
+function unknownNames(camp) {
+  const m = new Map();
+  for (const t of ((camp.map && camp.map.tokens) || [])) {
+    if (!t.nameHidden || t.hidden) continue;
+    const k = t.charId ? "c:" + t.charId : "n:" + t.name;
+    m.set(k, m.has(k) ? null : t.id);
+  }
+  return m;
+}
+// undefined: this initiative entry isn't masked; otherwise the masked token's id (or null)
+function unknownTokenFor(unk, e) {
+  const k = e && (e.charId ? "c:" + e.charId : "n:" + e.name);
+  return k && unk.has(k) ? unk.get(k) : undefined;
+}
+// The name players are shown for an initiative entry: "???" while the GM hides its token's name.
+// For anything players can read (chat lines, the combat view); GM-only text keeps the real name.
+function shownName(camp, entry) {
+  return unknownTokenFor(unknownNames(camp), entry) === undefined ? (entry && entry.name) || "" : "???";
+}
+
 // A sheet whose token's name the GM is hiding isn't sent to other players at all (its name, photo and
 // numbers would give it away); the player who owns it still gets it.
 function sheetsFor(camp, cid) {
@@ -187,14 +209,10 @@ function viewFor(camp, cid, gm, online) {
   if (!gm) {
     // tokens whose name the GM hasn't revealed yet: players get "???" and no sheet link, and the
     // matching initiative entries are masked the same way (tok tells the client which token is up)
-    const unk = map.tokens.filter((t) => t.nameHidden && !t.hidden);
-    const byChar = new Map(unk.filter((t) => t.charId).map((t) => [t.charId, t.id]));
-    const byName = new Map();
-    for (const t of unk) if (!t.charId) byName.set(t.name, byName.has(t.name) ? null : t.id);
-    if (unk.length) ini.entries = ini.entries.map((e) => {
-      const hit = e.charId ? byChar.has(e.charId) : byName.has(e.name);
-      if (!hit) return e;
-      const tok = e.charId ? byChar.get(e.charId) : byName.get(e.name);
+    const unk = unknownNames(camp);
+    if (unk.size) ini.entries = ini.entries.map((e) => {
+      const tok = unknownTokenFor(unk, e);
+      if (tok === undefined) return e;
       return Object.assign({}, e, { name: "???", charId: null, sb: undefined, hp: null, maxHp: null, tok: tok || undefined });
     });
     map.tokens = map.tokens.filter((t) => !t.hidden).map((t) => {
@@ -892,6 +910,6 @@ function cleanGame(g) {
 
 module.exports = {
   cleanGame,
-  rollDice, blankCampaign, playerName, addChat, viewFor, applyAction, validImg, validColor, cleanChar, cleanShip, rid,
+  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, applyAction, validImg, validColor, cleanChar, cleanShip, rid,
   Forbidden, Invalid, IMG_PREFIX,
 };

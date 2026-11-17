@@ -1052,6 +1052,15 @@ test("token names: the GM can hide a name; players get ??? (and no sheet link), 
   assert.equal(pv.initiative.entries.find((x) => x.init === 18).name, "Grand Inquisitor");
 });
 
+test("token names: shownName gives other code (chat lines, the combat view) the name players see", () => {
+  const camp = { map: { tokens: [{ id: "t1", name: "Grand Inquisitor", nameHidden: true }, { id: "t2", name: "Vexx", charId: "c1", nameHidden: true }, { id: "t3", name: "Rook" }] } };
+  assert.equal(G.shownName(camp, { name: "Grand Inquisitor" }), "???");
+  assert.equal(G.shownName(camp, { name: "Darth Vexx", charId: "c1" }), "???", "matched by sheet, whatever the entry is called");
+  assert.equal(G.shownName(camp, { name: "Rook" }), "Rook");
+  camp.map.tokens[0].hidden = true;
+  assert.equal(G.shownName(camp, { name: "Grand Inquisitor" }), "Grand Inquisitor", "a token hidden outright masks nothing (its entry is hidden on its own)");
+});
+
 // Table audio: the GM uploads a track in 1 MiB parts; everyone streams it by byte range; the GM controls playback.
 test("table audio: GM-only uploads in order, checked by content, streamed in ranges, counted against storage", async () => {
   const { gm, p1 } = await table();
