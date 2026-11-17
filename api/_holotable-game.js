@@ -318,21 +318,42 @@ function applyAction(camp, cid, gm, type, p) {
         return {};
       }
       if (/^\/(gmr|gr) /.test(low)) { doRoll(camp, cid, text.split(" ").slice(1).join(" ").trim(), "GM roll", null, true); return {}; }
-      if (low.startsWith("/w ")) {
-        const rest = text.slice(3).trim();
-        const names = [...new Set(Object.values(camp.players).map((x) => x.name || ""))].sort((a, b) => b.length - a.length);
-        let target = names.find((n) => n && rest.toLowerCase().startsWith(n.toLowerCase()));
-        let ids, body;
-        if (target) {
-          ids = Object.keys(camp.players).filter((id) => (camp.players[id].name || "").toLowerCase() === target.toLowerCase());
-          body = rest.slice(target.length);
-        } else if (rest.toLowerCase().startsWith("gm ")) { ids = ["@gm"]; body = rest.slice(3); target = "GM"; }
-        else throw new Invalid("No player by that name. Use /w <name> <message>");
-        addChat(camp, { from: playerName(camp, cid), fromId: cid, text: body.trim(), to: [...new Set([...ids, cid])], private: true, whisperTo: target });
+      // /w <player name | character name | gm> <message>: the longest name that matches wins, so
+      // "Kira Vos" beats "Kira". Whispering a character reaches whoever plays it (the GM sees all whispers).
+      if (/^\/(w|whisper|msg|tell) /.test(low)) {
+        const rest = text.slice(text.indexOf(" ") + 1).trim();
+        const targets = [];
+        for (const [id, pl] of Object.entries(camp.players)) if (pl && pl.name) targets.push({ name: pl.name, ids: [id], label: pl.name });
+        for (const ch of Object.values(camp.characters)) {
+          if (ch && ch.name && ch.owner) targets.push({ name: ch.name, ids: [ch.owner], label: `${ch.name} (${playerName(camp, ch.owner)})` });
+        }
+        targets.push({ name: "gm", ids: ["@gm"], label: "GM" });
+        targets.sort((x, y) => y.name.length - x.name.length);
+        const lowRest = rest.toLowerCase();
+        const t = targets.find((x) => lowRest.startsWith(x.name.toLowerCase()) && /^(\s|$)/.test(rest.slice(x.name.length)));
+        if (!t) throw new Invalid("No player or character by that name. Use /w <name> <message>");
+        const body = rest.slice(t.name.length).trim();
+        if (!body) throw new Invalid(`What do you want to whisper to ${t.label}?`);
+        addChat(camp, { from: playerName(camp, cid), fromId: cid, text: body, to: [...new Set([...t.ids, cid])], private: true, whisperTo: t.label,
+          as: str(p.as, 80) || null });
         return {};
       }
-      if (low.startsWith("/me ")) { addChat(camp, { from: playerName(camp, cid), fromId: cid, text: text.slice(4), emote: true }); return {}; }
+      // /yell: a loud message for everyone at the table (shown big, with a pop-up on every screen)
+      if (/^\/(y|yell|shout) /.test(low)) {
+        const body = text.slice(text.indexOf(" ") + 1).trim();
+        if (body) addChat(camp, { from: playerName(camp, cid), fromId: cid, text: str(body, 500), yell: true, as: str(p.as, 80) || null });
+        return {};
+      }
+      // /ooc: out-of-character table talk
+      if (/^\/(ooc|o) /.test(low)) {
+        const body = text.slice(text.indexOf(" ") + 1).trim();
+        if (body) addChat(camp, { from: playerName(camp, cid), fromId: cid, text: body, ooc: true });
+        return {};
+      }
+      if (low.startsWith("/me ")) { addChat(camp, { from: str(p.as, 80) || playerName(camp, cid), fromId: cid, text: text.slice(4), emote: true }); return {}; }
       if (low.startsWith("/desc ") && gm) { addChat(camp, { from: "Narrator", fromId: cid, text: text.slice(6), narration: true }); return {}; }
+      if (low.startsWith("/desc ")) throw new Invalid("Only the GM can narrate with /desc.");
+      if (/^\/\S/.test(text)) throw new Invalid(`Unknown command ${text.split(/\s/)[0]}. Type / to see the list.`);
       addChat(camp, { from: playerName(camp, cid), fromId: cid, text, as: str(p.as, 80) || null });
       return {};
     }

@@ -482,3 +482,25 @@ test("pack batches: written in one round trip, and a retried batch isn't added t
     assert.equal((await gm.post("packadd", { packId, seq: 1, items: items.slice(0, 1) })).data.count, 3);
   } finally { db.pipeline = realPipe; }
 });
+
+test("chat: whisper a character (reaches whoever plays it), yell to everyone, out-of-character talk", async () => {
+  const { gm, p1, p2 } = await table();
+  await p1.act("char.save", { char: { name: "Kira Vos" } });
+  await p2.act("char.save", { char: { name: "Kira" } });            // a shorter name that is a prefix of the first
+  assert.equal((await gm.act("chat", { text: "/w Kira Vos meet me at the cantina" })).code, 200);
+  assert.equal((await gm.act("chat", { text: "/whisper kira the droid is a spy" })).code, 200);
+  const sam = (await p1.poll()).data.state.chat, rae = (await p2.poll()).data.state.chat;
+  assert.ok(sam.some((m) => m.text === "meet me at the cantina" && m.whisperTo === "Kira Vos (Sam)"), "longest name wins: Kira Vos's player gets it");
+  assert.ok(!rae.some((m) => m.text === "meet me at the cantina"));
+  assert.ok(rae.some((m) => m.text === "the droid is a spy" && m.whisperTo === "Kira (Rae)"));
+  assert.ok(!sam.some((m) => m.text === "the droid is a spy"));
+  assert.equal((await p1.act("chat", { text: "/w Nobody hi" })).code, 400);
+  assert.equal((await p1.act("chat", { text: "/w Rae" })).code, 400, "an empty whisper is refused");
+  await p1.act("chat", { text: "/yell Incoming fighters!", as: "Kira Vos" });
+  await p2.act("chat", { text: "/ooc brb, pizza" });
+  const all = (await gm.poll()).data.state.chat;
+  assert.ok(all.some((m) => m.yell && m.text === "Incoming fighters!" && m.as === "Kira Vos" && !m.to));
+  assert.ok(all.some((m) => m.ooc && m.text === "brb, pizza"));
+  assert.equal((await p1.act("chat", { text: "/desc the room darkens" })).code, 400, "only the GM narrates");
+  assert.match((await p1.act("chat", { text: "/frobnicate" })).data.error, /Unknown command/);
+});

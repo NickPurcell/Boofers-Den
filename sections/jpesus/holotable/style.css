@@ -514,3 +514,29 @@ input:disabled, select:disabled, textarea:disabled { box-shadow: none; backgroun
 table.t td:first-child input { min-width: 140px; }
 
 @media (max-width: 600px) { .layout { grid-template-rows: auto minmax(0, 1fr) 230px; } }
+
+/* ---------------- chat command menu, yells, out-of-character */
+.chat-form { position: relative; }
+.cmd-menu { position: absolute; left: 8px; right: 8px; bottom: calc(100% - 4px); max-height: 300px; overflow: auto; z-index: 30;
+  background: var(--plate); border: 1px solid color-mix(in srgb, var(--holo) 45%, var(--line)); box-shadow: 0 -8px 24px rgba(0,0,0,.35); }
+.cm-item { padding: 6px 10px; cursor: pointer; border-left: 3px solid transparent; }
+.cm-item.on, .cm-item:hover { background: color-mix(in srgb, var(--holo) 14%, var(--panel2)); border-left-color: var(--holo); }
+.cm-cmd { font-family: var(--mono); color: var(--text); }
+.cm-cmd b { color: var(--holo); }
+.cm-args { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.cm-desc { font-size: 12px; color: var(--muted); }
+.cm-gm { font-size: 10px; padding: 0 5px; border: 1px solid var(--amber); color: var(--amber); }
+.msg.yell { box-shadow: inset 3px 0 0 var(--red), 0 0 14px color-mix(in srgb, var(--red) 18%, transparent);
+  background: linear-gradient(90deg, color-mix(in srgb, var(--red) 14%, var(--panel2)), var(--panel)); }
+.msg.yell .yell-text { font-family: var(--display); font-size: 16px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--text); }
+.msg.ooc { background: transparent; box-shadow: none; color: var(--muted); font-size: 13px; }
+.ooc-tag { font-family: var(--display); font-size: 9px; letter-spacing: .1em; padding: 1px 5px; border: 1px solid var(--line); color: var(--muted); }
+.yell-pop { position: fixed; top: 70px; left: 50%; transform: translateX(-50%); z-index: 80; max-width: min(640px, calc(100vw - 32px));
+  padding: 12px 20px; text-align: center; display: flex; flex-direction: column; gap: 2px; pointer-events: none;
+  background: var(--plate); box-shadow: inset 0 0 0 2px var(--red), 0 0 30px color-mix(in srgb, var(--red) 35%, transparent);
+  clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); animation: yellIn .25s ease-out; }
+.yell-pop .who { font-family: var(--display); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--red); }
+.yell-pop .text { font-family: var(--display); font-size: 20px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; overflow-wrap: anywhere; }
+.yell-pop.out { opacity: 0; transition: opacity .5s; }
+@keyframes yellIn { from { transform: translate(-50%, -12px) scale(.96); opacity: 0; } to { transform: translate(-50%, 0) scale(1); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .yell-pop { animation: none; } }

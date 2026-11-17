@@ -22,7 +22,16 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
   Uploading the same character again updates it, keeping its photos and current HP.
 - **Profile and token photos** for each character.
 - **Click-to-roll:** checks, saves, skills, attacks and damage, rolled on the server.
-- **Chat:** whispers, secret GM rolls, `/r 2d20kh1+5`.
+- **Chat:** type `/` for a menu of commands that narrows as you type. After `/w`, it suggests player and character names.
+  - `/r` (or `/roll`): roll dice.
+  - `/gmr`: a secret roll only you and the GM see.
+  - `/w` (or `/whisper`, `/tell`, `/msg`): whisper a player, or a character, which reaches whoever plays it.
+  - `/yell` (or `/y`, `/shout`): a loud message with a pop-up on every screen.
+  - `/me`: describe what your character does.
+  - `/ooc`: out-of-character talk.
+  - `/init`: roll initiative.
+  - `/desc` and `/clear`: GM only.
+  - `/help`: show every command.
 - **Combat tracker:** initiative, HP, conditions, hidden NPCs.
 - **Battle map:** an endless grid of 70 px squares (the usual VTT size) that fills the map pane.
   - Drag empty space to pan, and scroll or pinch to zoom. The **−**, **100%**, **+** and **Fit** buttons reset the view.

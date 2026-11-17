@@ -900,7 +900,11 @@
     if (!S.st || S.tab !== 'map') return;
     const mp = S.st.map, g = mp.gridSize, W = mp.cols * g, H = mp.rows * g, dpr = window.devicePixelRatio || 1;
     const { w: vw, h: vh } = viewSize();
-    if (!CAM.ready) { CAM.ready = true; fitBoard(); if (CAM.z < 0.7) { CAM.z = 1; CAM.x = 40; CAM.y = 40; } return; }
+    if (!CAM.ready) {   // first open: fit the board, but never start smaller than 70% (then start at 100%, top-left)
+      CAM.ready = true; fitBoard();
+      if (CAM.z < 0.7) { CAM.z = 1; CAM.x = 40; CAM.y = 40; saveCam(); updateZoomLabel(); drawMap(); }
+      return;
+    }
     if (canvas.width !== Math.round(vw * dpr) || canvas.height !== Math.round(vh * dpr)) {
       canvas.width = Math.round(vw * dpr); canvas.height = Math.round(vh * dpr);
       canvas.style.width = vw + 'px'; canvas.style.height = vh + 'px';
@@ -1420,7 +1424,7 @@
     if (m.levelup) return `<div class="msg lvl">${md(m.text)}</div>`;
     if (m.system) return `<div class="msg sys">${md(m.text)}</div>`;
     const who = m.as ? `${esc(m.as)} <span class="muted" style="font-weight:400">(${esc(m.from)})</span>` : m.charName ? `${esc(m.charName)} <span class="muted" style="font-weight:400">(${esc(m.from)})</span>` : esc(m.from);
-    const priv = m.private ? `<div class="tag">${m.roll ? '🔒 GM-only roll' : m.fromId === clientId ? '🔒 whisper to ' + esc(m.whisperTo || 'GM') : '🔒 whisper'}</div>` : '';
+    const priv = m.private ? `<div class="tag">${m.roll ? '🔒 GM-only roll' : '🔒 whisper to ' + esc(m.whisperTo || 'GM')}</div>` : '';
     if (m.roll) {
       const r = m.roll, crit = r.nat === 20 && r.kind !== 'damage', fumble = r.nat === 1 && r.kind !== 'damage';
       const detail = esc(r.detail).replace(/~(\d+)~/g, '<del>$1</del>');
@@ -1428,31 +1432,166 @@
         <div class="roll ${crit ? 'crit' : ''} ${fumble ? 'fumble' : ''}"><div class="label">${esc(r.label || r.expr)}${crit ? ' — NATURAL 20!' : fumble ? ' — natural 1' : ''}</div>
         <div class="total">${n0(r.total)}</div><div class="detail">${esc(r.expr)} → ${detail}</div></div></div>`;
     }
+    if (m.yell) return `<div class="msg yell"><div class="who">📣 ${who} yells${t}</div><div class="yell-text">${md(m.text)}</div></div>`;
+    if (m.ooc) return `<div class="msg ooc"><span class="ooc-tag">OOC</span> <b>${esc(m.from)}:</b> ${md(m.text)}</div>`;
     if (m.narration) return `<div class="msg narr">${md(m.text)}</div>`;
     if (m.emote) return `<div class="msg emote">* ${esc(m.from)} ${md(m.text)}</div>`;
     return `<div class="msg ${m.private ? 'priv' : ''}"><div class="who">${who}${t}</div>${priv}<div>${md(m.text)}</div></div>`;
+  }
+  // a yell also pops up on everyone else's screen for a moment
+  function showYell(m) {
+    const el = document.createElement('div');
+    el.className = 'yell-pop'; el.setAttribute('role', 'alert');
+    el.innerHTML = `<span class="who">📣 ${esc(m.as || m.from)} yells</span><span class="text">${esc(m.text)}</span>`;
+    document.body.appendChild(el);
+    setTimeout(() => el.classList.add('out'), 3800);
+    setTimeout(() => el.remove(), 4400);
   }
   function renderChat() {
     const log = $('#chatLog'), msgs = S.st.chat;
     const last = msgs.length ? msgs[msgs.length - 1].id : null;
     if (last === S.lastChatId && log.childElementCount === msgs.length) return;
+    if (S.lastChatId !== null) {  // new since last time (not on first load): pop up other people's yells
+      const i = msgs.findIndex(m => m.id === S.lastChatId);
+      for (const m of msgs.slice(i + 1)) if (m.yell && m.fromId !== clientId) showYell(m);
+    }
     const atBottom = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
     log.innerHTML = msgs.map(renderMsg).join('');
     if (atBottom || S.lastChatId === null || (msgs.length && msgs[msgs.length - 1].fromId === clientId)) log.scrollTop = log.scrollHeight;
     S.lastChatId = last;
   }
+
+  // ---- chat commands: type "/" for a menu that narrows as you type; names are suggested for whispers
+  const COMMANDS = [
+    { cmd: '/r', alias: ['/roll'], args: '<dice> [# label]', desc: 'Roll dice for everyone to see', ex: '/r 1d20+5 # Stealth' },
+    { cmd: '/gmr', alias: ['/gr'], args: '<dice>', desc: 'Secret roll that only you and the GM see', ex: '/gmr 1d20' },
+    { cmd: '/w', alias: ['/whisper', '/tell', '/msg'], args: '<player or character> <message>', desc: 'Whisper privately to a player or a character', ex: '/w Kira Vos meet me at the hangar', target: true },
+    { cmd: '/yell', alias: ['/y', '/shout'], args: '<message>', desc: 'Yell to everyone at the table, with a pop-up on every screen', ex: '/yell Incoming fighters!' },
+    { cmd: '/me', args: '<action>', desc: 'Describe what your character does', ex: '/me draws her blaster' },
+    { cmd: '/ooc', alias: ['/o'], args: '<message>', desc: 'Out-of-character table talk', ex: '/ooc brb, getting snacks' },
+    { cmd: '/init', args: '', desc: 'Roll initiative for your selected character', client: true },
+    { cmd: '/desc', args: '<text>', desc: 'Narrate the scene (GM)', ex: '/desc The cantina falls silent.', gm: true },
+    { cmd: '/clear', args: '', desc: 'Clear the chat log for everyone (GM)', gm: true, client: true },
+    { cmd: '/help', args: '', desc: 'Show every chat command', client: true },
+  ];
+  const cmdFor = word => COMMANDS.find(c => c.cmd === word || (c.alias || []).includes(word));
+  const CM = { items: [], sel: 0, open: false };
+  function whisperTargets() {
+    const out = isGM() ? [] : [{ name: 'gm', label: 'GM', sub: 'the Game Master' }];
+    for (const [id, p] of Object.entries(S.st.players)) if (p && p.name && id !== clientId) out.push({ name: p.name, label: p.name, sub: p.role === 'gm' ? 'GM' : 'player' });
+    for (const ch of chars()) if (ch.owner !== clientId) out.push({ name: ch.name, label: ch.name, sub: `${(S.st.players[ch.owner] || {}).name || 'someone'}'s character` });
+    return out;
+  }
+  // what the menu should show for the text typed so far
+  function menuItems(v) {
+    if (!S.st || !v.startsWith('/')) return [];
+    const sp = v.indexOf(' ');
+    if (sp < 0) {   // still typing the command word
+      const typed = v.toLowerCase();
+      // every command word that starts with what's typed, aliases included (so /r lists /r and /roll)
+      return COMMANDS.filter(c => !c.gm || isGM())
+        .flatMap(c => [c.cmd, ...(c.alias || [])].filter(w => w.startsWith(typed)).map(hit => ({ c, hit })))
+        .sort((a, b) => a.hit.length - b.hit.length || a.hit.localeCompare(b.hit))
+        .map(({ c, hit }) => ({ kind: 'cmd', insert: hit + (c.args ? ' ' : ''), c, hit, typed }));
+    }
+    const c = cmdFor(v.slice(0, sp).toLowerCase());
+    if (!c || !c.target) return [];
+    const rest = v.slice(sp + 1);
+    const lowRest = rest.toLowerCase();
+    // stop suggesting once a full name has been typed and the message has started
+    if (whisperTargets().some(t => lowRest.startsWith(t.name.toLowerCase() + ' '))) return [];
+    return whisperTargets().filter(t => t.name.toLowerCase().startsWith(lowRest))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map(t => ({ kind: 'name', insert: v.slice(0, sp + 1) + t.name + ' ', t, typed: rest }));
+  }
+  function renderMenu() {
+    const box = $('#cmdMenu');
+    if (!CM.open || !CM.items.length) { box.classList.add('hidden'); return; }
+    box.classList.remove('hidden');
+    box.innerHTML = CM.items.map((it, i) => {
+      const on = i === CM.sel ? ' on' : '';
+      if (it.kind === 'cmd') {
+        const c = it.c, n = it.typed.length;
+        const shown = `<b>${esc(it.hit.slice(0, n))}</b>${esc(it.hit.slice(n))}`;
+        return `<div class="cm-item${on}" role="option" aria-selected="${i === CM.sel}" data-i="${i}"><span class="cm-cmd">${shown}</span> <span class="cm-args">${esc(c.args)}</span>
+          <div class="cm-desc">${esc(c.desc)}${it.hit !== c.cmd ? ` <span class="muted">(same as ${esc(c.cmd)})</span>` : ''}${c.gm ? ' <span class="cm-gm">GM</span>' : ''}</div></div>`;
+      }
+      const n = it.typed.length;
+      return `<div class="cm-item${on}" role="option" aria-selected="${i === CM.sel}" data-i="${i}"><span class="cm-cmd"><b>${esc(it.t.label.slice(0, n))}</b>${esc(it.t.label.slice(n))}</span>
+        <div class="cm-desc">${esc(it.t.sub)}</div></div>`;
+    }).join('');
+    const selEl = box.querySelector('.cm-item.on'); if (selEl) selEl.scrollIntoView({ block: 'nearest' });
+  }
+  function updateMenu() {
+    const v = $('#chatInput').value;
+    const items = menuItems(v);
+    const sameList = CM.items.length === items.length && CM.items.every((x, i) => x.insert === items[i].insert);
+    CM.items = items; CM.open = items.length > 0;
+    if (!sameList) CM.sel = 0;
+    renderMenu();
+  }
+  function acceptMenu(i = CM.sel) {
+    const it = CM.items[i]; if (!it) return;
+    const input = $('#chatInput');
+    input.value = it.insert; input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+    updateMenu();
+  }
+  function showHelp() {
+    modal(`<h3>💬 Chat commands</h3>
+      <p class="muted" style="margin:0">Type <code>/</code> in the chat box for a menu that narrows as you type. Arrow keys pick one; Tab or Enter fills it in.</p>
+      <table class="t"><tbody>${COMMANDS.filter(c => !c.gm || isGM()).map(c => `<tr><td style="white-space:nowrap"><code>${esc(c.cmd)}</code>${(c.alias || []).map(a => ` <code class="muted">${esc(a)}</code>`).join('')}</td>
+        <td>${esc(c.desc)}${c.ex ? `<br><span class="muted" style="font-size:12px">e.g. <code>${esc(c.ex)}</code></span>` : ''}</td></tr>`).join('')}</tbody></table>
+      <div class="row"><span class="spacer"></span><button class="btn primary" id="helpOk">Got it</button></div>`, box => { $('#helpOk', box).onclick = closeModal; });
+  }
+  async function rollMyInitiative(mode) {
+    const ch = selChar();
+    const mine = ch && canEdit(ch) ? ch : chars().find(c => c.owner === clientId);
+    if (!mine) { toast('Pick or create your character first.', true); return false; }
+    const bonus = R.initiative(mine);
+    let expr = '1d20' + (bonus >= 0 ? '+' : '') + bonus;
+    if (mode === 'adv') expr = expr.replace('1d20', '2d20kh1'); if (mode === 'dis') expr = expr.replace('1d20', '2d20kl1');
+    return !!(await act('init.add', { charId: mine.id, name: mine.name, bonus, expr }));
+  }
   $('#chatForm').addEventListener('submit', async e => {
     e.preventDefault();
     const input = $('#chatInput'), text = input.value.trim(); if (!text) return;
     S.chatHist.unshift(text); S.chatHistIdx = -1;
+    CM.open = false; renderMenu();
+    const word = text.split(/\s/)[0].toLowerCase(), c = cmdFor(word);
+    if (c && c.client) {           // handled right here, not sent as chat
+      input.value = '';
+      if (c.cmd === '/help') showHelp();
+      if (c.cmd === '/init') { if (await rollMyInitiative(S.rollMode)) toast('Initiative rolled; see the Combat tab'); }
+      if (c.cmd === '/clear' && confirm('Clear the chat log for everyone?')) act('chat.clear');
+      return;
+    }
     input.value = '';
     const sc = selChar();
-    const res = await act('chat', { text, as: sc && sc.owner === clientId && !text.startsWith('/') ? sc.name : '' });
+    const speaksAs = sc && sc.owner === clientId ? sc.name : '';   // talk, yells, whispers and emotes come from your character
+    const res = await act('chat', { text, as: !text.startsWith('/') || /^\/(w|whisper|tell|msg|y|yell|shout|me) /i.test(text) ? speaksAs : '' });
     if (!res) input.value = text;
   });
+  $('#chatInput').addEventListener('input', updateMenu);
+  $('#chatInput').addEventListener('blur', () => setTimeout(() => { CM.open = false; renderMenu(); }, 150));
   $('#chatInput').addEventListener('keydown', e => {
+    if (CM.open && CM.items.length) {
+      if (e.key === 'ArrowDown') { CM.sel = (CM.sel + 1) % CM.items.length; renderMenu(); e.preventDefault(); return; }
+      if (e.key === 'ArrowUp') { CM.sel = (CM.sel - 1 + CM.items.length) % CM.items.length; renderMenu(); e.preventDefault(); return; }
+      if (e.key === 'Tab') { acceptMenu(); e.preventDefault(); return; }
+      if (e.key === 'Enter') {
+        const it = CM.items[CM.sel];
+        // Enter fills in the highlighted choice, unless that's exactly what's typed already (then it sends)
+        if (it && it.insert.trim() !== e.target.value.trim()) { acceptMenu(); e.preventDefault(); return; }
+      }
+      if (e.key === 'Escape') { CM.open = false; renderMenu(); e.preventDefault(); e.stopPropagation(); return; }
+    }
     if (e.key === 'ArrowUp' && S.chatHist.length) { S.chatHistIdx = Math.min(S.chatHist.length - 1, S.chatHistIdx + 1); e.target.value = S.chatHist[S.chatHistIdx]; e.preventDefault(); }
     if (e.key === 'ArrowDown') { S.chatHistIdx = Math.max(-1, S.chatHistIdx - 1); e.target.value = S.chatHistIdx < 0 ? '' : S.chatHist[S.chatHistIdx]; e.preventDefault(); }
+  });
+  $('#cmdMenu').addEventListener('mousedown', e => {   // mousedown, so the input doesn't lose focus first
+    const it = e.target.closest('.cm-item'); if (!it) return;
+    e.preventDefault(); acceptMenu(+it.dataset.i);
   });
   $('#quickDice').innerHTML = [4, 6, 8, 10, 12, 20, 100].map(d => `<button type="button" data-d="${d}" title="Roll 1d${d}">d${d}</button>`).join('');
   $('#quickDice').addEventListener('click', e => {
