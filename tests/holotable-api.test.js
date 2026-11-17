@@ -1197,3 +1197,41 @@ test("combat-start movements: they wait through scene changes, then play when co
   await gm.act("fight.toggle", { on: false }); await gm.act("fight.toggle", { on: true });
   assert.equal((await gm.poll()).data.state.sceneFx.n, n);
 });
+
+test("the GM removes a stale player record: GM only, never one who owns a character, never themselves; nothing breaks", async () => {
+  const { gm, p1, p2 } = await table();
+  const stale = browser();
+  await stale.login(PLAYER_PW, "Clawcius check");
+  const staleId = (await stale.call("GET", { op: "me" })).data.you, samId = (await p1.call("GET", { op: "me" })).data.you;
+  const gmId = (await gm.call("GET", { op: "me" })).data.you;
+  await stale.act("chat", { text: "testing, ignore me" });
+  // a fully populated table around it: Sam's character in initiative with a token, a scene, a handout
+  const kira = (await p1.act("char.save", { char: { name: "Kira", hp: { max: 20, current: 20 } } })).data.id;
+  await p1.act("token.add", { charId: kira, x: 1, y: 1 });
+  await p1.act("init.add", { charId: kira, name: "Kira", init: 12 });
+  await gm.act("init.add", { name: "Raider", init: 9, hp: 10 });
+  await gm.act("init.start", {});
+  await gm.act("scene.saveAs", { name: "Cantina" });
+  await gm.act("handout.save", { handout: { title: "Map", text: "x", shared: true } });
+  const players = async () => Object.keys((await gm.poll()).data.state.players);
+  assert.ok((await players()).includes(staleId));
+
+  assert.equal((await p2.act("player.remove", { id: staleId })).code, 403, "a player can't remove anyone");
+  const owns = await gm.act("player.remove", { id: samId });
+  assert.deepEqual([owns.code, /still owns Kira/.test(owns.data.error)], [400, true], "not while they own a character");
+  assert.equal((await gm.act("player.remove", { id: gmId })).code, 400, "not yourself");
+  for (const id of ["__proto__", "constructor", "", "nobody123"]) assert.equal((await gm.act("player.remove", { id })).code, 400, id);
+  assert.equal((await gm.act("player.remove", { id: staleId })).code, 200);
+  let st = (await gm.poll()).data.state;
+  assert.ok(!(staleId in st.players) && samId in st.players && st.characters[kira].owner === samId, "only that record goes");
+  assert.ok(st.chat.some((m) => m.from === "Clawcius check" && m.text === "testing, ignore me"), "chat keeps the name it was written with");
+  // a full round trip still works, and still without the record
+  const file = JSON.parse((await gm.call("GET", { op: "export" })).data);
+  assert.equal((await gm.post("restore", { campaign: file })).code, 200);
+  st = (await gm.poll()).data.state;
+  assert.deepEqual([staleId in st.players, st.initiative.entries.length, st.scenes.length, st.handouts.length, st.characters[kira].owner], [false, 2, 1, 1, samId]);
+  // someone still signed in just comes back as the same person, with no error
+  assert.equal((await stale.poll()).code, 200);
+  assert.equal((await stale.act("chat", { text: "back" })).code, 200);
+  assert.equal((await gm.poll()).data.state.players[staleId].name, "Clawcius check");
+});
