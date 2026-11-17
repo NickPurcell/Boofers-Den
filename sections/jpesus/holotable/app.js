@@ -454,7 +454,9 @@
             <span class="muted">temp</span>${inp('hp.temp', +ch.hp.temp || 0, { ro, type: 'number', w: '60px' })}</div>
           ${!ro ? `<div class="row hp-adjust" style="margin-top:8px"><input id="hpDelta" placeholder="-7 or +5">
             <button class="btn small danger" data-act="hp" data-sign="-1">Damage</button><button class="btn small" data-act="hp" data-sign="1" style="color:var(--green)">Heal</button></div>
-          <div class="row" style="margin-top:8px"><button class="btn small" data-act="short-rest">Spend Hit Die</button><button class="btn small" data-act="long-rest">Long Rest</button></div>` : ''}
+          <div class="row" style="margin-top:8px"><button class="btn small" data-act="short-rest">Spend Hit Die</button>
+            <button class="btn small" data-act="short-rest-done" title="${R.techOnShortRest(ch) ? 'Regain all tech points (Engineer/Scout). Spend Hit Dice to heal.' : 'Spend Hit Dice to heal during it.'}">Short Rest</button>
+            <button class="btn small" data-act="long-rest">Long Rest</button></div>` : ''}
           <h4 style="margin-top:12px">Death Saves</h4>
           <div class="row"><span class="muted">Successes</span><span class="dots">${[1, 2, 3].map(n => `<span class="dot s ${ch.deathSaves.s >= n ? 'on' : ''}" data-act="ds" data-k="s" data-n="${n}"></span>`).join('')}</span>
             <span class="muted">Failures</span><span class="dots">${[1, 2, 3].map(n => `<span class="dot f ${ch.deathSaves.f >= n ? 'on' : ''}" data-act="ds" data-k="f" data-n="${n}"></span>`).join('')}</span>
@@ -462,7 +464,7 @@
           <h4 style="margin-top:12px">Conditions</h4>
           <div>${(ch.conditions || []).map((c, i) => `<span class="chip" title="${esc(R.CONDITIONS[c] || '')}">${esc(c)}${!ro ? `<button data-act="rm-cond" data-i="${i}">✕</button>` : ''}</span>`).join('') || '<span class="muted">None</span>'}
             ${!ro ? `<select data-act-change="add-cond"><option value="">+ add…</option>${Object.keys(R.CONDITIONS).map(c => `<option>${c}</option>`).join('')}</select>` : ''}</div>
-          <div class="row" style="margin-top:8px"><span class="muted">Exhaustion</span>${inp('exhaustion', +ch.exhaustion || 0, { ro, type: 'number', w: '56px' })}</div>
+          <div class="row" style="margin-top:8px" title="${esc(R.CONDITIONS.Exhaustion)}"><span class="muted">Exhaustion ⓘ</span>${inp('exhaustion', +ch.exhaustion || 0, { ro, type: 'number', w: '56px' })}</div>
         </div>
         <div class="box"><h4>Saving Throws</h4><div class="list-rows">${R.ABILITIES.map(a => {
           const b = R.saveBonus(ch, a.key);
@@ -610,6 +612,12 @@
         const hd = Math.max(...(ch.classes || []).map(k => (R.CLASSES[k.name] || {}).hd || 8));
         const res = await roll(`1d${hd}${R.fmt(R.abilityMod(ch, 'con'))}`, 'Hit Die (short rest)', { charId: ch.id });
         if (res) mutate(c => { c.hitDiceUsed = (+c.hitDiceUsed || 0) + 1; c.hp.current = Math.min(+c.hp.max, (+c.hp.current || 0) + Math.max(0, res.roll.total)); });
+        break;
+      }
+      case 'short-rest-done': {   // the rest itself: hit dice are spent with "Spend Hit Die"
+        const tech = R.techOnShortRest(ch) && (+ch.tech.used || 0) > 0;
+        if (tech) mutate(c => { c.tech.used = 0; });
+        act('chat', { text: `*${ch.name} takes a short rest.${tech ? ' Tech points restored.' : ''}*`, as: ch.name });
         break;
       }
       case 'long-rest':
