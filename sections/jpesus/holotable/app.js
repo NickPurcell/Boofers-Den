@@ -1724,9 +1724,11 @@
     }
     const t = S.st.map.tokens.find(t => t.id === d.id);
     if (t && d.moved) {
+      const was = [t.x, t.y];
       t.x = Math.max(TOK_MIN, Math.min(TOK_MAX, Math.round(d.px / g)));
       t.y = Math.max(TOK_MIN, Math.min(TOK_MAX, Math.round(d.py / g)));
-      act('token.move', { id: t.id, x: t.x, y: t.y });
+      // refused (under fog, a wall in the way, #93): back where it was now, not at the next poll
+      act('token.move', { id: t.id, x: t.x, y: t.y }).then(r => { if (r === null) { [t.x, t.y] = was; drawMap(); } });
     } else if (t) showTokenPop(t, e);
     drawMap();
   };

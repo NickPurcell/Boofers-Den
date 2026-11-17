@@ -2075,6 +2075,44 @@ test("fog of war (review of #113): an unseen creature's move, hit or heal sends 
   assert.ok((await sam.state()).fight.events.some((e) => e.token === raider), "in sight: the move shows");
 });
 
+test("under fog a player's drag can't cross a wall (#93): refused with 'A wall is in the way'; around through a door is fine; the GM and fog-off are unchanged", async () => {
+  const { gm, sam } = await fight();
+  const st0 = await gm.state(), avery = tokenOf(st0, "Avery").id;
+  // a wall down x = 3 with a closed door at y 2-3; Avery at (0,0)
+  await gm.act("fight.wall", { op: "add", a: [3, 0], b: [3, 2] });
+  await gm.act("fight.wall", { op: "add", a: [3, 2], b: [3, 3], kind: "door" });
+  await gm.act("fight.wall", { op: "add", a: [3, 3], b: [3, 16] });
+  assert.equal((await sam.act("token.move", { id: avery, x: 5, y: 0 })).code, 200, "fog off: drags as before");
+  await gm.act("token.move", { id: avery, x: 0, y: 0 });
+  await gm.act("fight.fog", { on: true });
+  const r = await sam.act("token.move", { id: avery, x: 5, y: 0 });
+  assert.equal(r.code, 400);
+  assert.match(JSON.stringify(r.data), /A wall is in the way/);
+  assert.equal(tokenOf(await gm.state(), "Avery").x, 0, "it stays put");
+  assert.equal((await sam.act("token.move", { id: avery, x: 2, y: 9 })).code, 200, "anywhere on this side, however far");
+  // the door open: through it, to the far side
+  const door = (await gm.state()).map.walls.find((w) => w.kind === "door");
+  await gm.act("fight.wall", { op: "door", id: door.id, open: true });
+  assert.equal((await sam.act("token.move", { id: avery, x: 8, y: 12 })).code, 200, "around through the open door");
+  // the GM's drags are never checked
+  await gm.act("fight.wall", { op: "door", id: door.id, open: false });
+  assert.equal((await gm.act("token.move", { id: avery, x: 0, y: 0 })).code, 200);
+  // review of #125: no way round a wall's end off the board, and no jump far off it (the board's edge is a wall too)
+  await gm.act("map.settings", { cols: 20, rows: 12 });
+  await gm.act("fight.wall", { op: "clear" });
+  await gm.act("fight.wall", { op: "add", a: [10, 0], b: [10, 12] });
+  await gm.act("token.move", { id: avery, x: 2, y: 5 });
+  for (const [x, y] of [[14, 5], [14, -1], [10, -1], [1000, 1000], [-3, 5]]) {
+    const r2 = await sam.act("token.move", { id: avery, x, y });
+    assert.equal(r2.code, 400, `a drag to (${x},${y}) is refused`);
+  }
+  assert.deepEqual([tokenOf(await gm.state(), "Avery").x, tokenOf(await gm.state(), "Avery").y], [2, 5], "still where it was");
+  // objects that block sight don't stop a drag
+  const crate = (await gm.act("prop.add", { src: "/api/holotable?a=packone.1", x: 3, y: 4, w: 1, h: 3 })).data.id;
+  await gm.act("prop.update", { id: crate, fields: { blocksSight: true } });
+  assert.equal((await sam.act("token.move", { id: avery, x: 5, y: 5 })).code, 200, "a player can climb over the crates");
+});
+
 test("objects that block sight (#110): they hide under fog and give cover like walls, never stop a move; players get no segments", async () => {
   const { gm, sam, ids } = await fight();
   await gm.act("fight.toggle", { on: true });
