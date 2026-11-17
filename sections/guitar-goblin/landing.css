@@ -508,3 +508,10 @@ body {
 .door.japantrip .door-art svg { width: 100%; height: 100%; display: block; }
 .door.japantrip .door-title { color: #f3a08c; }
 .door.japantrip .door-go { color: #ffd98a; }
+
+/* HoloTable against SW5e: an audit, as a little checklist on paper. */
+.door.holoaudit:hover { border-color: rgba(31,111,60,.65); box-shadow: 0 28px 70px -30px rgba(31,111,60,.5); }
+.door.holoaudit .door-art { background: #f6f1e7; }
+.door.holoaudit .door-art svg { width: 100%; height: 100%; display: block; }
+.door.holoaudit .door-title { color: #9fe0b4; }
+.door.holoaudit .door-go { color: #ffd98a; }
