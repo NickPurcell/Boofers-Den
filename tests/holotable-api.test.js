@@ -1235,3 +1235,15 @@ test("the GM removes a stale player record: GM only, never one who owns a charac
   assert.equal((await stale.act("chat", { text: "back" })).code, 200);
   assert.equal((await gm.poll()).data.state.players[staleId].name, "Clawcius check");
 });
+
+test("class resources survive the server's sheet cleaning", async () => {
+  const { p1 } = await table();
+  require("../sections/jpesus/holotable/rules.js");
+  const R = globalThis.SW5E;
+  const ch = { name: "Vex", classes: [{ name: "Fighter", level: 5 }] };
+  ch.resources = R.withClassResources(ch);
+  ch.resources[0].used = 2;
+  const id = (await p1.act("char.save", { char: ch })).data.id;
+  const back = (await p1.poll()).data.state.characters[id];
+  assert.deepEqual(R.resourceRows(back).map((r) => [r.key, r.max, r.die, r.used]), [["superiority", 3, "d6", 2], ["second-wind", 1, "", 0], ["action-surge", 1, "", 0]]);
+});
