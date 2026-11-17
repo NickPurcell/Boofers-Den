@@ -1029,3 +1029,25 @@ test("restore round trip: a fully populated table comes back the same, from the 
   assert.equal((await gm.act("scene.load", { id: desertId })).code, 200);
   assert.equal((await gm.poll()).data.state.sceneFx.moves.length, 2);
 });
+
+test("token names: the GM can hide a name; players get ??? (and no sheet link), in initiative too", async () => {
+  const { gm, p1 } = await table();
+  await gm.act("token.add", { name: "Grand Inquisitor", x: 3, y: 3, nameHidden: true });
+  await gm.act("token.add", { name: "Stormtrooper", x: 4, y: 3 });
+  await gm.act("init.add", { name: "Grand Inquisitor", init: 18, hp: 90 });
+  assert.equal((await p1.act("token.add", { name: "Me", nameHidden: true })).code, 403, "players can't place loose tokens");
+  let gv = (await gm.poll()).data.state;
+  const inq = gv.map.tokens.find((t) => t.name === "Grand Inquisitor");
+  assert.equal(inq.nameHidden, true, "the GM still sees the name, marked hidden");
+  let pv = (await p1.poll()).data.state;
+  assert.deepEqual(pv.map.tokens.map((t) => t.name), ["???", "Stormtrooper"]);
+  assert.equal(pv.map.tokens[0].nameHidden, undefined);
+  const e = pv.initiative.entries.find((x) => x.init === 18);
+  assert.equal(e.name, "???"); assert.equal(e.tok, inq.id, "the client can still ring the right token");
+  assert.ok(!JSON.stringify(pv).includes("Inquisitor"), "the name isn't sent to players anywhere");
+  assert.equal((await p1.act("token.update", { id: inq.id, fields: { nameHidden: false } })).code, 403);
+  await gm.act("token.update", { id: inq.id, fields: { nameHidden: false } });
+  pv = (await p1.poll()).data.state;
+  assert.equal(pv.map.tokens[0].name, "Grand Inquisitor", "revealed");
+  assert.equal(pv.initiative.entries.find((x) => x.init === 18).name, "Grand Inquisitor");
+});

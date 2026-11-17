@@ -38,6 +38,11 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
   - Drag empty space to pan, and scroll or pinch to zoom. The **−**, **100%**, **+** and **Fit** buttons reset the view.
   - The board, where the background image sits, is outlined.
   - Tokens, plus Dungeondraft packs or zips of images placed as props, tokens or floors.
+  - **Token names:** each token shows a short label that fits its own square (the full name, the first name, or the
+    initials), so neighbours never overlap. Hover a token for its full name.
+  - **Unknown names (GM):** click a token and choose "Hide name from players" (or tick "hide their names" when adding
+    NPCs). Players then see "???" on the map and in initiative, and the real name and sheet link never reach their
+    browser. The GM sees the label dimmed in amber until it's revealed.
 - **Power tooltips:** hover any force or tech power for its cost, save DC, attack bonus, casting details and description.
   Use ✎ to write or edit a description.
 - **Power pickers:** **＋ force power** and **＋ tech power** open the whole SW5e list. Filter by level (0–9), by name, and,

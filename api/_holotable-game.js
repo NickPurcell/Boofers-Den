@@ -174,7 +174,26 @@ function viewFor(camp, cid, gm, online) {
       .map((e) => Object.assign({}, e, e.npc ? { hp: null, maxHp: null, sb: undefined } : {}));
   }
   const map = Object.assign({}, camp.map);
-  if (!gm) map.tokens = map.tokens.filter((t) => !t.hidden).map((t) => (t.moves ? Object.assign({}, t, { moves: undefined }) : t));
+  if (!gm) {
+    // tokens whose name the GM hasn't revealed yet: players get "???" and no sheet link, and the
+    // matching initiative entries are masked the same way (tok tells the client which token is up)
+    const unk = map.tokens.filter((t) => t.nameHidden && !t.hidden);
+    const byChar = new Map(unk.filter((t) => t.charId).map((t) => [t.charId, t.id]));
+    const byName = new Map();
+    for (const t of unk) if (!t.charId) byName.set(t.name, byName.has(t.name) ? null : t.id);
+    if (unk.length) ini.entries = ini.entries.map((e) => {
+      const hit = e.charId ? byChar.has(e.charId) : byName.has(e.name);
+      if (!hit) return e;
+      const tok = e.charId ? byChar.get(e.charId) : byName.get(e.name);
+      return Object.assign({}, e, { name: "???", charId: null, sb: undefined, hp: null, maxHp: null, tok: tok || undefined });
+    });
+    map.tokens = map.tokens.filter((t) => !t.hidden).map((t) => {
+      if (!t.moves && !t.nameHidden) return t;
+      const v = Object.assign({}, t, { moves: undefined });
+      if (t.nameHidden) Object.assign(v, { name: "???", charId: null, nameHidden: undefined });
+      return v;
+    });
+  }
   if (!gm) map.props = (map.props || []).map((x) => (x.moves ? Object.assign({}, x, { moves: undefined }) : x));
   const shown = new Set([...map.tokens.map((t) => t.id), ...(map.props || []).map((x) => x.id)]);
   const fxView = camp.sceneFx ? Object.assign({}, camp.sceneFx, { moves: (camp.sceneFx.moves || []).filter((m) => shown.has(m.id)) }) : null;
@@ -557,7 +576,7 @@ function applyAction(camp, cid, gm, type, p) {
       mp.tokens.push({
         id: rid(), name: str(p.name || ch.name || "Token", 40), color: validColor(p.color || ch.color),
         x: clamp(int(p.x, 1), -500, 1000), y: clamp(int(p.y, 1), -500, 1000), size: clamp(int(p.size, 1), 1, 4),
-        charId, owner: cid, hidden: !!p.hidden && gm, img: validImg(p.img),
+        charId, owner: cid, hidden: !!p.hidden && gm, img: validImg(p.img), nameHidden: !!p.nameHidden && gm,
       });
       return {};
     }
@@ -594,6 +613,7 @@ function applyAction(camp, cid, gm, type, p) {
       if ("color" in f) t.color = validColor(f.color);
       if ("size" in f) t.size = clamp(int(f.size, 1), 1, 4);
       if ("hidden" in f && gm) t.hidden = !!f.hidden;
+      if ("nameHidden" in f && gm) t.nameHidden = !!f.nameHidden;
       if ("img" in f) t.img = validImg(f.img);
       return {};
     }
@@ -797,7 +817,7 @@ function cleanMap(g, raw) {
     gridSize: clamp(int(m.gridSize, 70), 5, 200), gridV2: true, cols: clamp(int(m.cols, 24), 5, 200), rows: clamp(int(m.rows, 16), 5, 200), showGrid: m.showGrid !== false,
     tokens: (Array.isArray(m.tokens) ? m.tokens : []).slice(0, 300).filter((t) => t && typeof t === "object").map((t) => ({
       id: /^[a-z0-9]{6,20}$/.test(t.id || "") ? t.id : rid(), name: str(t.name, 40), color: validColor(t.color), x: clamp(int(t.x), -500, 1000), y: clamp(int(t.y), -500, 1000),
-      size: clamp(int(t.size, 1), 1, 4), charId: g.characters[t.charId] ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, img: validImg(t.img), moves: cleanMoves(t.moves) })),
+      size: clamp(int(t.size, 1), 1, 4), charId: g.characters[t.charId] ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, nameHidden: !!t.nameHidden, img: validImg(t.img), moves: cleanMoves(t.moves) })),
     props: (Array.isArray(m.props) ? m.props : []).slice(0, 1500).filter((p) => p && validImg(p.src)).map((p) => ({
       id: /^[a-z0-9]{6,20}$/.test(p.id || "") ? p.id : rid(), src: p.src, name: str(p.name, 60), x: n(p.x, 0), y: n(p.y, 0), w: n(p.w, 1), h: n(p.h, 1), rot: n(p.rot, 0), moves: cleanMoves(p.moves) })),
     sceneId: /^[a-z0-9]{6,20}$/.test(m.sceneId || "") ? m.sceneId : undefined,
