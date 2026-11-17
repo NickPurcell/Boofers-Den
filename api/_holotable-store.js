@@ -37,7 +37,11 @@ const Redis = require("ioredis");
 
 const URL = process.env.REDIS_URL || process.env.KV_URL || process.env.UPSTASH_REDIS_URL || null;
 // Preview deployments share production's Redis, so they keep to their own prefix.
-const NS = process.env.VERCEL_ENV && process.env.VERCEL_ENV !== "production" ? "htpv" : "ht";
+// STAGING ONLY, never merged to main: the crew's `staging` branch is a preview, so it would share the
+// htpv: table with `experimental`; it gets its own, htst:, so tests there never touch that table.
+// Production is "ht" exactly as before, and every other preview "htpv".
+const NS = process.env.VERCEL_ENV && process.env.VERCEL_ENV !== "production"
+  ? (process.env.VERCEL_GIT_COMMIT_REF === "staging" ? "htst" : "htpv") : "ht";
 const K = {
   camp: (c) => `${NS}:camp:${c}`,
   ver: (c) => `${NS}:ver:${c}`,
