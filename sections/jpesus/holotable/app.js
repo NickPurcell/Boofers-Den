@@ -496,6 +496,9 @@
         <div class="muted" style="font-size:11px" title="${esc(R.hitDice(ch).map(d => `d${d.die}: ${d.used} of ${d.total} used`).join(' · '))}">used ${inp('hitDiceUsed', R.hitDiceUsedTotal(ch), { ro, type: 'number', w: '58px' })}</div></div>
       <div class="stat"><div class="lbl">Inspiration</div><div style="padding-top:6px">${inp('inspiration', ch.inspiration, { ro, type: 'checkbox' })}</div></div>
     </div>
+    <div class="senses-row" title="What this character perceives in the dark or unseen. Choosing a species sets them; only the GM changes them by hand.">
+      <span class="lbl">Senses</span> <span>${esc(R.sensesText(ch.senses)) || '<span class="muted">none (normal sight)</span>'}</span>
+      ${isGM() ? '<button class="btn tiny ghost" data-act="senses" title="Set the senses of this character (GM)">✎</button>' : ''}</div>
     <div class="subtabs">${[['main', 'Abilities & Skills'], ['actions', 'Attacks & Powers'], ['gear', 'Features & Gear'], ['bio', 'Bio & Notes']]
       .map(([k, t]) => `<button data-act="sub" data-sub="${k}" class="${sub === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
 
@@ -742,6 +745,13 @@
         const row = R.resourceRows(c).find(x => x.i === i), max = row ? row.max : 0;
         r.used = Math.max(0, Math.min(max, (+r.used || 0) + (a === 'res-use' ? 1 : -1)));
       }); break;
+      case 'senses': {   // the GM sets senses by hand (players' sheets get them from their species)
+        if (!isGM()) return;
+        const t = prompt('Senses, e.g. "darkvision 60, blindsight 30" (empty for none):', R.cleanSenses(ch.senses).map(x => `${x.kind} ${x.range}`).join(', '));
+        if (t === null) break;
+        mutate(c => { const v = R.parseSenses(t); if (v.length) c.senses = v; else delete c.senses; });
+        break;
+      }
       case 'power-desc': {
         const pw = ch.powers[i];
         modal(`<h3>✎ ${esc(pw.name || 'Power')}</h3>

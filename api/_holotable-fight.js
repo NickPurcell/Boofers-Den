@@ -799,6 +799,8 @@ function litOf(camp) {
 // a token's senses: a character's from the combat view's defences (until #92 puts them on the sheet)
 function sensesOf(camp, t) {
   const f = camp.fight || {};
+  const ch = t && t.charId && Object.prototype.hasOwnProperty.call(camp.characters || {}, t.charId) ? camp.characters[t.charId] : null;
+  if (ch && Array.isArray(ch.senses) && ch.senses.length) return ch.senses;   // the sheet's (#92), the GM's to set
   return (t && t.charId && plainObj((f.defenses || {})[t.charId]).senses) || [];
 }
 const senseRange = (camp, t, kinds) => Math.max(0, ...sensesOf(camp, t).filter((x) => x && kinds.includes(x.kind)).map((x) => +x.range || 0));

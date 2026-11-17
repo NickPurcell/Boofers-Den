@@ -237,6 +237,18 @@ async function sw5eRoomFor(r, name, bytes) {
 }
 
 // The cached list as a JSON string, or null when it isn't available right now (caller answers 503).
+// species name (lower case) -> its senses, built once per instance from the cached species list
+let SPECIES_SENSES_MAP = null, SPECIES_SENSES_AT = 0;
+async function speciesSenses(r, name) {
+  if (!SPECIES_SENSES_MAP || Date.now() - SPECIES_SENSES_AT > 10 * 60 * 1000) {   // rebuilt at most every 10 minutes
+    SPECIES_SENSES_MAP = null; SPECIES_SENSES_AT = Date.now();
+    const raw = await sw5eList(r, "species").catch(() => null);
+    if (!raw) return null;
+    let list = []; try { list = JSON.parse(raw); } catch { return null; }
+    SPECIES_SENSES_MAP = new Map(list.map((s) => [String(s.n || "").toLowerCase(), globalThis.SW5E.sensesFromTraits(s.traits)]));
+  }
+  return SPECIES_SENSES_MAP.get(String(name || "").trim().toLowerCase()) || [];
+}
 async function sw5eList(r, name) {
   const cfg = SW5E_LISTS[name], key = cfg.key(), failKey = S.K.sw5eFail(name), lockKey = S.K.sw5eLock(name);
   let raw = await r.get(key);
@@ -439,6 +451,11 @@ async function handlePost(req, res, q, b, ses) {
 
   if (op === "action") {
     let result, drop;
+    // a player choosing a species gets that species' senses, looked up here from SW5e's list (the client can't set them)
+    if (!gm && String(b.type || "") === "char.save" && b.payload && b.payload.char && b.payload.char.species) {
+      const ss = await speciesSenses(r, b.payload.char.species);
+      if (ss) b.payload = Object.assign({}, b.payload, { [G.SPECIES_SENSES]: ss });
+    }
     const err = await S.withLock(GAME, async () => {
       const camp = await loadGame();
       const pl = camp.players[ses.pid] || (camp.players[ses.pid] = { name: ses.name });
@@ -1007,3 +1024,4 @@ module.exports = async function handler(req, res) {
 };
 module.exports.SW5E_BOOKS = SW5E_BOOKS;   // tests switch the books off and on
 module.exports.SW5E_TOTAL_MAX = SW5E_TOTAL_MAX;
+module.exports.resetSpeciesSenses = () => { SPECIES_SENSES_MAP = null; };   // tests: forget the species list read so far
