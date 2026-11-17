@@ -516,7 +516,7 @@
   /* ---------------- turns: the turn budget is resources too, refilled at the start of the unit's own turn ---------------- */
   const turnKey = (world) => `${world.round}:${world.turnId}`;
   const TURN = ['move', 'action', 'bonus', 'reaction'];
-  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0 });
+  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0 });
   function spentOf(world, id) {
     const s = (world.spent || {})[id];
     return s && (id !== world.turnId || s.key === turnKey(world)) ? Object.assign(blank(s.key), s) : blank(id === world.turnId ? turnKey(world) : '');
@@ -567,7 +567,8 @@
     if (!u) return no('That combatant is not on the map.');
     if (act.unit !== world.turnId) return no(`It's not ${u.name}'s turn.`);
     const w = fresh(world), me = w.units[u.id], b = budget(w);
-    if (act.type !== 'end' && act.type !== 'move' && INCAPACITATING(me)) return no(`${me.name} is ${String((has(me, 'noActions') || [''])[0]).toLowerCase()} and can't act.`);
+    if (isDead(me) && act.type !== 'end') return no(`${me.name} is dead.`);
+    if (act.type !== 'end' && act.type !== 'move' && act.type !== 'deathsave' && INCAPACITATING(me)) return no(`${me.name} is ${String((has(me, 'noActions') || [''])[0]).toLowerCase()} and can't act.`);
     switch (act.type) {
       case 'move': {
         const x = Math.round(+act.x), y = Math.round(+act.y);
@@ -687,7 +688,8 @@
             const df = defended(t, raw, String(dtype || '').toLowerCase(), ab.kind === 'weapon' ? 'weapon' : 'power');
             const amount = df.amount;
             const took = takeDamage(t, amount);
-            log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${dtype ? ' ' + dtype : ''} damage${half ? ' (half, on a save)' : ''}${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 ? ' and drops to 0 hit points.' : '.'}` });
+            log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${dtype ? ' ' + dtype : ''} damage${half ? ' (half, on a save)' : ''}${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
+            fallen(t, took, crit, log);
             events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
             concentrationCheck(w, t, amount, roll, log);
           } else if (ab.heal) {
@@ -695,8 +697,11 @@
             const d = roll(expr);
             const amount = Math.max(0, has(t, 'weakened') ? Math.floor(d.total / 2) : d.total);   // weakened: healing halved
             const top = t.maxHp == null ? null : (+t.exhaustion || 0) >= 4 ? Math.floor(t.maxHp / 2) : t.maxHp;   // exhaustion 4: maximum halved
+            if (isDead(t)) { log.push({ unit: t.id, kind: 'heal', roll: d, expr, text: `${t.name} is dead: healing doesn't bring it back.` }); continue; }
+            const was0 = t.hp === 0;
             if (t.hp != null) { t.hp = top != null ? Math.max(t.hp, Math.min(top, t.hp + amount)) : t.hp + amount; if (t.hp > 0) delete t.down; }
-            log.push({ unit: t.id, kind: 'heal', roll: d, expr, text: `${t.name} regains ${amount} hit points.` });
+            if (was0 && t.hp > 0 && t.side === 'pc') { t.deathSaves = { s: 0, f: 0 }; t.conditions = (t.conditions || []).filter((c) => c !== 'Unconscious'); }
+            log.push({ unit: t.id, kind: 'heal', roll: d, expr, text: `${t.name} regains ${amount} hit points${was0 && t.hp > 0 && t.side === 'pc' ? ' and wakes' : ''}.` });
             events.push({ kind: 'heal', unit: t.id, amount });
           } else events.push({ kind: 'hit', unit: t.id, amount: 0 });
         }
@@ -721,8 +726,19 @@
         t.conditions = t.conditions.filter((c) => c !== 'Ignited');
         return { ok: true, world: w, log: [{ unit: t.id, text: t.id === me.id ? `${me.name} puts out the flames.` : `${me.name} puts out the flames on ${t.name}.` }], events: [] };
       }
-      case 'end':
-        return { ok: true, world: w, log: [{ text: `${me.name} ends the turn.` }], events: [], endTurn: true };
+      case 'deathsave': {
+        if (!isDying(me)) return no(`${me.name} isn't dying.`);
+        if (w.spent[me.id].ds) return no(`${me.name} has already made this turn's death save.`);
+        const log = [];
+        deathSave(me, roll, log);
+        w.spent[me.id].ds = 1;
+        return { ok: true, world: w, log, events: [] };
+      }
+      case 'end': {
+        const log = [{ text: `${me.name} ends the turn.` }];
+        if (isDying(me) && !w.spent[me.id].ds) { deathSave(me, roll, log); w.spent[me.id].ds = 1; }   // the save that starts a dying character's turn
+        return { ok: true, world: w, log, events: [], endTurn: true };
+      }
       default:
         return no('Unknown combat action.');
     }
@@ -748,7 +764,8 @@
     const df = defended(t, Math.max(0, d.total) + corr, String(attack.type || '').toLowerCase(), attack.enhanced ? 'enhanced' : 'weapon');
     const amount = df.amount;
     const took = takeDamage(t, amount);
-    log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 ? ' and drops to 0 hit points.' : '.'}` });
+    log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
+    fallen(t, took, crit, log);
     events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
     concentrationCheck(w, t, amount, roll, log);
     return { ok: true, log, events };
@@ -894,7 +911,8 @@
       const d = roll(burn);
       const df = defended(burning, Math.max(0, d.total), 'fire', 'other');
       const took = takeDamage(burning, df.amount);
-      log.push({ unit: burning.id, kind: 'damage', roll: d, expr: burn, text: `${burning.name} burns for ${df.amount} fire damage${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${burning.hp != null && burning.hp <= 0 ? ' and drops to 0 hit points.' : '.'}` });
+      log.push({ unit: burning.id, kind: 'damage', roll: d, expr: burn, text: `${burning.name} burns for ${df.amount} fire damage${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${burning.hp != null && burning.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
+      fallen(burning, took, false, log);
       concentrationCheck(w, burning, df.amount, roll, log);
     }
     // incapacitated casters stop concentrating
@@ -931,11 +949,47 @@
   }
   // temporary hit points go first; hit points stop at 0; a creature whose hit points aren't known just takes the hit
   function takeDamage(t, amount) {
-    const fromTemp = Math.min(Math.max(0, +t.temp || 0), amount);
+    const fromTemp = Math.min(Math.max(0, +t.temp || 0), amount), before = t.hp;
     t.temp = (+t.temp || 0) - fromTemp;
     if (t.hp != null) t.hp = Math.max(0, t.hp - (amount - fromTemp));
     if (t.hp === 0) t.down = true;
-    return { fromTemp };
+    return { fromTemp, before, hurt: amount - fromTemp, over: before == null ? 0 : Math.max(0, amount - fromTemp - before) };
+  }
+  /* ---------------- 0 hit points (audit 7.6), SW5e chapter 9 in our words ---------------- */
+  // A character brought to 0 falls unconscious (and prone), unless the damage left over is at least its hit point
+  // maximum: then it dies outright. Damage while at 0 is a death save failure (two on a critical hit), or death if
+  // it is at least the maximum, and a stable character starts dying again. Death saves live where the sheet keeps
+  // them: { s, f }; three successes is stable, three failures is dead. Creatures drop as before (the GM decides).
+  const saves0 = (t) => (t.deathSaves = { s: +((t.deathSaves || {}).s) || 0, f: +((t.deathSaves || {}).f) || 0 });
+  const isDead = (t) => t.side === 'pc' && t.hp === 0 && +((t.deathSaves || {}).f) >= 3;
+  const isStable = (t) => t.side === 'pc' && t.hp === 0 && !isDead(t) && +((t.deathSaves || {}).s) >= 3;
+  const isDying = (t) => t.side === 'pc' && t.hp === 0 && !isDead(t) && !isStable(t);
+  function fallen(t, took, crit, log) {
+    if (t.side !== 'pc' || t.hp == null || t.hp > 0 || !(took.hurt > 0)) return;
+    const ds = saves0(t), max = +t.maxHp || 0;
+    if (ds.f >= 3) return;
+    if (took.before > 0) {
+      if (max && took.over >= max) { ds.f = 3; log.push({ unit: t.id, text: `${t.name} is killed outright: the damage left over is at least ${t.name}'s hit point maximum.` }); return; }
+      ds.s = 0; ds.f = 0;
+      t.conditions = Array.from(new Set((t.conditions || []).concat('Unconscious', 'Prone')));
+      log.push({ unit: t.id, text: `${t.name} falls unconscious.` });
+      return;
+    }
+    if (max && took.hurt >= max) { ds.f = 3; log.push({ unit: t.id, text: `${t.name} dies: damage at 0 hit points that is at least the hit point maximum.` }); return; }
+    if (ds.s >= 3) ds.s = 0;   // stable no longer
+    ds.f = Math.min(3, ds.f + (crit ? 2 : 1));
+    log.push({ unit: t.id, text: `${t.name} takes damage at 0 hit points: ${crit ? 'two death save failures' : 'a death save failure'}${ds.f >= 3 ? `. ${t.name} dies.` : ` (${ds.f} of 3).`}` });
+  }
+  // a death save at the start of the dying character's turn: 10 or more succeeds, a 1 is two failures, a 20 is 1 hit point
+  function deathSave(t, roll, log) {
+    const ds = saves0(t), r = roll('1d20');
+    const nat = r.nat == null ? r.total : r.nat;
+    let text;
+    if (nat >= 20) { t.hp = 1; delete t.down; ds.s = 0; ds.f = 0; t.conditions = (t.conditions || []).filter((c) => c !== 'Unconscious'); text = `a 20: ${t.name} regains 1 hit point and wakes.`; }
+    else if (nat <= 1) { ds.f = Math.min(3, ds.f + 2); text = `a 1: two failures${ds.f >= 3 ? `. ${t.name} dies.` : ` (${ds.f} of 3).`}`; }
+    else if (r.total >= 10) { ds.s = Math.min(3, ds.s + 1); text = ds.s >= 3 ? `a success: ${t.name} is stable.` : `a success (${ds.s} of 3).`; }
+    else { ds.f = Math.min(3, ds.f + 1); text = `a failure${ds.f >= 3 ? `. ${t.name} dies.` : ` (${ds.f} of 3).`}`; }
+    log.push({ unit: t.id, kind: 'save', roll: r, expr: '1d20', text: `${t.name} makes a death save: ${r.total}, ${text}` });
   }
 
   // walls as stored on a map: checked, rounded to 0.01 of a square, at most 2000
@@ -968,6 +1022,7 @@
         pools: ch ? Object.fromEntries(resourcesOf(ch, rules).map((r) => [r.key, r])) : {},
         conditions: Array.from(new Set([].concat(e.conditions || [], ch ? ch.conditions || [] : []))),
         exhaustion: ch ? +ch.exhaustion || 0 : 0,
+        deathSaves: ch ? { s: +((ch.deathSaves || {}).s) || 0, f: +((ch.deathSaves || {}).f) || 0 } : null,
         ...(() => { const d = ch ? (table.defenses || {})[e.charId] || {} : (table.npcStats || {})[e.id] || {};
           return { resist: d.resist || [], immune: d.immune || [], vuln: d.vuln || [], condImmune: d.condImmune || [],
             senses: cleanSenses(ch && Array.isArray(ch.senses) && ch.senses.length ? ch.senses : d.senses) }; })(),
@@ -987,5 +1042,5 @@
     cleanResources, resourcesOf, atLevel, spend, rest, powerNumbers, resolvePower, weaponAbility, abilitiesOf, inReachOf, cleanAbility, setPoolUsed,
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
-    SENSES, readSenses, cleanSenses, senseFor, reasons, crosses, sees, cleanWalls, WALL_KINDS };
+    SENSES, readSenses, cleanSenses, senseFor, reasons, crosses, sees, cleanWalls, WALL_KINDS, isDead, isStable, isDying };
 });
