@@ -537,7 +537,8 @@
     H.modal(`<h3>${esc(u.name)}: defences and senses</h3>
       <p class="muted">Applied when ${esc(u.name)} takes damage in the combat view: resisted is halved, immune is ignored, vulnerable is doubled.</p>
       ${row('resist', 'Resistant to')}${row('immune', 'Immune to')}${row('vuln', 'Vulnerable to')}
-      <div class="lbl">Senses, in feet (blank for none)${gm() ? '' : ' <span class="muted">· the GM sets these</span>'}</div><div class="row2">${E.SENSES.map((k) => `<label>${k} <input type="number" min="0" max="9999" step="5" data-sense="${k}" value="${sense(k)}" ${gm() ? '' : 'disabled'}></label>`).join('')}</div>
+      ${gm() ? `<div class="lbl">Senses, in feet (blank for none)</div><div class="row2">${E.SENSES.map((k) => `<label>${k} <input type="number" min="0" max="9999" step="5" data-sense="${k}" value="${sense(k)}"></label>`).join('')}</div>`
+        : `<div class="lbl">Senses <span class="muted">· the GM sets these</span></div><p>${esc((R && R.sensesText ? R.sensesText(sheet.senses) : '') || 'None')}</p>`}
       <div class="row"><span class="spacer"></span><button class="btn" id="ctdCancel">Cancel</button><button class="btn primary" id="ctdOk">Save</button></div>`, (box) => {
       $('#ctdCancel', box).onclick = H.closeModal;
       $('#ctdOk', box).onclick = async () => {
