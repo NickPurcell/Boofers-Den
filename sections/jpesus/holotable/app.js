@@ -684,7 +684,7 @@
       const canHp = gm || (ch && ch.owner === clientId);
       const hp = en.hp == null ? '' : `${en.hp}`;
       return `<div class="init-row ${ini.active && i === ini.turn ? 'cur' : ''} ${en.hidden ? 'hid' : ''}" data-id="${esc(en.id)}">
-        <div class="init">${gm ? `<input type="number" value="${n0(en.init)}" data-cf="init">` : Math.round(n0(en.init))}</div>
+        <div class="init${gm ? ' gm-init' : ''}">${gm ? `<input type="number" value="${n0(en.init)}" data-cf="init" aria-label="Initiative for ${esc(en.name)}"><span class="init-step"><button type="button" data-cact="init-up" title="Raise initiative by 1" aria-label="Raise initiative for ${esc(en.name)}">▲</button><button type="button" data-cact="init-down" title="Lower initiative by 1" aria-label="Lower initiative for ${esc(en.name)}">▼</button></span>` : Math.round(n0(en.init))}</div>
         <div><b>${esc(en.name)}</b>${en.hidden ? ' <span class="muted">(hidden)</span>' : ''}${ch ? ` <span class="muted">· ${esc((S.st.players[ch.owner] || {}).name || '')}</span>` : ''}
           <div>${(en.conditions || []).map((c, ci) => `<span class="chip" title="${esc(R.CONDITIONS[c] || '')}">${esc(c)}${gm || canHp ? `<button data-cact="rm-cond" data-ci="${ci}">✕</button>` : ''}</span>`).join('')}
           ${gm || canHp ? `<select data-cf="add-cond" style="font-size:12px;padding:1px 4px"><option value="">+ condition</option>${Object.keys(R.CONDITIONS).map(c => `<option>${c}</option>`).join('')}</select>` : ''}</div></div>
@@ -704,6 +704,11 @@
     if (a === 'clear' && confirm('End combat and clear the initiative order?')) act('init.clear');
     if (a === 'remove') act('init.remove', { id });
     if (a === 'hide') act('init.update', { id, fields: { hidden: !en.hidden } });
+    if (a === 'init-up' || a === 'init-down') { // GM's fixed ▲/▼ beside the number: step by 1 from what the field shows
+      const box = row.querySelector('[data-cf="init"]'), v = n0(box.value) + (a === 'init-up' ? 1 : -1);
+      box.value = v;
+      act('init.update', { id, fields: { init: v } });
+    }
     if (a === 'rm-cond') { const c = (en.conditions || []).slice(); c.splice(+b.dataset.ci, 1); act('init.update', { id, fields: { conditions: c } }); }
     if (a === 'roll-init') {
       const ch = S.st.characters[b.dataset.id], bonus = R.initiative(ch), mode = rollModeFromEvent(e);
