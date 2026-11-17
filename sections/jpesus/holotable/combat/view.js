@@ -22,11 +22,11 @@
     const w = E.buildWorld({
       characters: s.characters, entries: s.initiative.entries, active: f.active, turnId: f.turn, round: f.round, tokens: s.map.tokens,
       unitTokens: Object.fromEntries(Object.entries(f.units || {}).map(([id, u]) => [id, u.token])), npcSpeed: f.npcSpeed,
-      spent: f.spent, defenses: f.defenses || {}, effects: f.effects || [], conc: f.conc || {}, walls: (s.map && s.map.walls) || [],
+      spent: f.spent, defenses: f.defenses || {}, effects: f.effects || [], conc: f.conc || {}, walls: (s.map && s.map.walls) || [], variants: s.variants || [],
       npcStats: Object.fromEntries(Array.from(new Set(Object.keys(f.npcDefenses || {}).concat(Object.keys(f.npcBody || {})))).map((k) => [k,
         Object.assign({ saves: (f.npcSaves || {})[k] || {}, mods: (f.npcMods || {})[k] || {} }, (f.npcDefenses || {})[k] || {}, (f.npcBody || {})[k] || {})])),
     }, R);
-    for (const [id, u] of Object.entries(f.units || {})) if (w.units[id] && u.down) w.units[id].down = true;
+    for (const [id, u] of Object.entries(f.units || {})) { if (w.units[id] && u.down) w.units[id].down = true; if (w.units[id] && u.hidden) w.units[id].hidden = true; }
     UI.cache = { st: s, w, reach: null };
     return w;
   }
@@ -246,6 +246,7 @@
         const down = e.hp != null && +e.hp <= 0, cur = e.id === f.turn, n = (e.conditions || []).length;
         return `<span class="ct-ord ${cur ? 'cur' : ''} ${down ? 'down' : ''}" title="${esc(e.name)}${n ? ': ' + esc(e.conditions.join(', ')) : ''}">${esc(e.name)}${n ? ` <b>${n}</b>` : ''}</span>`;
       }).join('<span class="ct-sep" aria-hidden="true">›</span>')}<span class="spacer"></span>
+        ${(() => { const on = ['Flanking', 'Compound Advantage', 'Crueler Criticals', 'Critical Saving Throws'].filter((v) => (s.variants || []).includes(v)); return on.length ? `<span class="muted ct-variants" title="SW5e variant rules this table uses that change the combat view's arithmetic">${esc(on.join(' · '))}</span>` : ''; })()}
         <button class="btn tiny ghost ${UI.log ? 'primary' : ''}" data-ct="log" aria-pressed="${!!UI.log}" title="The last combat lines">📜 Log</button></div>`;
       if (UI.log) {
         const lines = (s.chat || []).filter((m) => m.fight).slice(-8);
@@ -365,7 +366,7 @@
         const pv = t && E.preview(w, u.id, t.id, spec, { adv: UI.adv, dis: UI.dis });
         html += `<div class="ct-row ct-preview" aria-live="polite">${!t ? `<span>${esc(spec.name)}: pick a target on the map (lit in red).</span><button class="btn tiny ghost" data-ct="disarm">Cancel</button>`
           : !pv.legal ? `<span>${esc(pv.why)}</span>`
-          : `<span><b>${esc(t.name)}</b>, ${pv.feet} ft: you need <b>${pv.need}+</b> on the d20 (${Math.round(pv.chance * 100)}%)${pv.mode !== 'normal' ? ` · ${pv.mode === 'adv' ? 'advantage' : 'disadvantage'}: ${esc(pv.tilts.map((x) => x.text).join(', '))}` : ''}${pv.weak ? ` · weakened: −${pv.weak}` : ''}${(pv.notes || []).length ? ` · ${esc(pv.notes.join('; '))}` : ''}. Hit: ${esc(spec.damage)}${spec.type ? ' ' + esc(spec.type) : ''}.</span>
+          : `<span><b>${esc(t.name)}</b>, ${pv.feet} ft: you need <b>${pv.need}+</b> on the d20 (${Math.round(pv.chance * 100)}%)${pv.mode !== 'normal' ? ` · ${E.modeName(pv)}: ${esc(pv.tilts.map((x) => x.text).join(', '))}` : ''}${pv.weak ? ` · weakened: −${pv.weak}` : ''}${(pv.notes || []).length ? ` · ${esc(pv.notes.join('; '))}` : ''}. Hit: ${esc(spec.damage)}${spec.type ? ' ' + esc(spec.type) : ''}.</span>
              <button class="btn small primary" data-ct="go">Attack</button>`}</div>`;
       } else if (bud && bud.moveLeft > 0) html += `<div class="ct-row muted ct-hint">Tap a lit square to move there, or pick an attack.</div>`;
     }
@@ -602,7 +603,7 @@
         await act('map.bg', { url: up.url });
       }
       await act('map.settings', { cols: Math.max(5, Math.min(200, Math.round(+size.x))), rows: Math.max(5, Math.min(200, Math.round(+size.y))) });
-      await send('fight.wall', { op: 'set', walls: walls.slice(0, 2000) });
+      await wallSend({ op: 'set', walls: walls.slice(0, 2000) });
       toast(`Imported ${file.name}: ${Math.min(2000, walls.length)} walls and doors${walls.length > 2000 ? ' (the first 2000)' : ''}.`);
     } catch (err) { toast(err.message || "Couldn't import that file.", true); }
   }
@@ -615,14 +616,16 @@
   function renderWallBar() {
     if (!wallBar) {
       wallBar = document.createElement('div');
-      wallBar.className = 'script-bar ct-wallbar hidden';
-      $('#mapWrap').appendChild(wallBar);
+      wallBar.className = 'ct-wallbar hidden';
+      // a row of its own between the map tools and the map, so it never covers any of the board
+      const pane = $('#pane-map'), body = pane && pane.querySelector('.map-body');
+      if (body) pane.insertBefore(wallBar, body); else $('#mapWrap').appendChild(wallBar);
       wallBar.addEventListener('change', (e) => { const f = e.target.matches('[data-wb-file]') && e.target.files[0]; if (f) importUvtt(f).finally(() => { e.target.value = ''; }); });
       wallBar.addEventListener('click', (e) => {
         const b = e.target.closest('[data-wb]'); if (!b) return;
         const a = b.dataset.wb;
         if (a === 'done') UI.walls = null;
-        else if (a === 'clear') { if (confirm('Remove every wall, door and window from this map?')) send('fight.wall', { op: 'clear' }); return; }
+        else if (a === 'clear') { if (confirm('Remove every wall, door and window from this map?')) wallSend({ op: 'clear' }); return; }
         else UI.walls = { mode: a, from: null };
         renderWallBar(); render(); H.drawMap();
       });
@@ -655,13 +658,17 @@
     }
     return best;
   };
+  // wall edits go out one after another, never dropped: a GM draws faster than a save comes back from real hosting
+  // (the one-at-a-time guard on other actions would swallow the next segment)
+  let wallChain = Promise.resolve();
+  const wallSend = (p) => (wallChain = wallChain.then(() => act('fight.wall', p)).catch(() => null));
   function wallClick(gx, gy) {
     const T = UI.walls, pt = [Math.round(gx), Math.round(gy)];
-    if (T.mode === 'erase') { const wl = nearestWall(gx, gy); if (wl) send('fight.wall', { op: 'remove', id: wl.id }); return; }
-    if (T.mode === 'toggle') { const wl = nearestWall(gx, gy, ['door']); if (wl) send('fight.wall', { op: 'door', id: wl.id, open: !wl.open }); return; }
+    if (T.mode === 'erase') { const wl = nearestWall(gx, gy); if (wl) wallSend({ op: 'remove', id: wl.id }); return; }
+    if (T.mode === 'toggle') { const wl = nearestWall(gx, gy, ['door']); if (wl) wallSend({ op: 'door', id: wl.id, open: !wl.open }); return; }
     if (!T.from) { T.from = pt; H.drawMap(); return; }
     if (T.from[0] === pt[0] && T.from[1] === pt[1]) { T.from = null; H.drawMap(); return; }
-    send('fight.wall', { op: 'add', a: T.from, b: pt, kind: T.mode });
+    wallSend({ op: 'add', a: T.from, b: pt, kind: T.mode });
     T.from = T.mode === 'wall' ? pt : null;
     H.drawMap();
   }
