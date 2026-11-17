@@ -211,11 +211,12 @@
     if (bud) html += `<span class="ct-chips">${chip(bud.moveLeft > 0, `Move ${bud.moveLeft}/${bud.total == null ? bud.speed : bud.total} ft`, bud.dash ? 'Movement left this turn (with Dash)' : 'Movement left this turn')}${chip(bud.action, 'Action', 'One action a turn')}${chip(bud.bonus, 'Bonus action', 'One bonus action a turn')}${chip(bud.reaction, 'Reaction', 'One reaction between your turns')}</span>`;
     html += '<span class="spacer"></span>';
     html += `<button class="btn small ghost ${UI.ruler ? 'primary' : ''}" data-ct="measure" aria-pressed="${!!UI.ruler}" title="Measure a distance on the map">📏 Measure</button>`;
-    if (mine && u && f.active && (u.conditions || []).includes('Prone')) html += `<button class="btn small" data-ct="stand" title="Standing up costs half your speed">Stand up (${Math.ceil((bud ? bud.speed : 30) / 2 / 5) * 5} ft)</button>`;
+    if (mine && u && f.active && (u.conditions || []).includes('Prone') && bud && bud.speed > 0) html += `<button class="btn small" data-ct="stand" title="Standing up costs half your speed">Stand up (${Math.ceil((bud ? bud.speed : 30) / 2 / 5) * 5} ft)</button>`;
     if (mine && u && f.active && bud && bud.action) for (const o of Object.values(w.units)) {
       if (!(o.conditions || []).includes('Ignited') || (o.id !== u.id && E.feetBetween(u, o) > E.FT)) continue;
       html += `<button class="btn small" data-ct="douse" data-id="${esc(o.id)}" title="Takes your action">🔥 Put out the flames${o.id === u.id ? '' : ` on ${esc(o.name)}`}</button>`;
     }
+    if (mine && u && f.active && E.isDying(u) && !E.spentOf(w, u.id).ds) html += '<button class="btn small primary" data-ct="deathsave" title="At 0 hit points: 10 or more succeeds, a 1 counts twice, a 20 brings you back with 1 hit point">🎲 Death save</button>';
     if (mine && u && f.active) html += '<button class="btn small amber" data-ct="end">End turn ⏭</button>';
     if (gm()) html += `<button class="btn small ghost" data-ct="undo" ${f.undo && f.undo.n ? '' : 'disabled'} title="${esc(f.undo && f.undo.last ? 'Undo: ' + f.undo.last : 'Nothing to undo')}">↶ Undo</button><button class="btn small ghost" data-ct="off" title="Turn the combat view off for everyone">Combat view off</button>`;
     html += '</div>';
@@ -247,7 +248,8 @@
     }
     // the current combatant's conditions (how long each lasts) and what it is concentrating on
     const flags = u ? E.spentOf(w, u.id) : {};
-    if (f.active && u && ((u.conditions || []).length || (f.conc || {})[u.id] || flags.dodge || flags.disengage || (u.senses || []).length || gm())) {
+    const at0 = u && u.side === 'pc' && u.hp === 0;
+    if (f.active && u && ((u.conditions || []).length || (f.conc || {})[u.id] || flags.dodge || flags.disengage || (u.senses || []).length || at0 || gm())) {
       const efs = (f.effects || []).filter((ef) => ef.unit === u.id);
       // what the chip says beyond the name: its level, its fire damage, who caused it, or that the DM hasn't set one
       const detail = (c) => {
@@ -266,6 +268,11 @@
         return ` (${ef.save ? `${ef.save.ability.toUpperCase()} save DC ${ef.save.dc} at the end of its turns` : `until the ${ef.ends} of ${whose} ${ef.rounds > 1 ? `turn, ${ef.rounds} rounds` : 'next turn'}`}${ef.conc ? ', while concentrating' : ''})`;
       };
       html += `<div class="ct-row ct-conds">${(u.conditions || []).map((c) => `<span class="ct-chip ct-cond" title="${esc((R.CONDITIONS || {})[c] || c)}${esc(until(c))}">${esc(c)}${esc(detail(c))}${E.CONDITION_EFFECTS[c] ? '' : ' <span class="muted">(no automatic effect yet)</span>'}${esc(until(c))}${gm() ? ` <button class="ct-x" data-ct="uncond" data-c="${esc(c)}" title="Take ${esc(c.toLowerCase())} off ${esc(u.name)}" aria-label="Take ${esc(c.toLowerCase())} off">✕</button>` : ''}</span>`).join('')}
+        ${at0 ? (() => {
+          const ds = u.deathSaves || { s: 0, f: 0 }, dots = (n, ch) => Array.from({ length: 3 }, (_, i) => (i < n ? ch : '·')).join('');
+          return E.isDead(u) ? '<span class="ct-chip ct-cond">💀 Dead</span>' : E.isStable(u) ? '<span class="ct-chip">Stable at 0 hit points</span>'
+            : `<span class="ct-chip ct-cond" title="Death saves: successes, then failures">Dying · ${dots(ds.s, '✓')} ${dots(ds.f, '✗')}</span>`;
+        })() : ''}
         ${(u.senses || []).map((x) => `<span class="ct-chip ct-sense" title="${esc(SENSE_HINT[x.kind] || '')}">👁 ${esc(x.kind)} ${x.range} ft</span>`).join('')}
         ${flags.dodge ? '<span class="ct-chip" title="Attacks against it at disadvantage, Dex saves at advantage, until its next turn">Dodging</span>' : ''}
         ${flags.disengage ? '<span class="ct-chip" title="Leaving a reach provokes no opportunity attack this turn">Disengaged</span>' : ''}
@@ -346,6 +353,7 @@
     if (k === 'stand') return send('fight.stand', {});
     if (k === 'douse') return send('fight.douse', { target: el.dataset.id });
     if (k === 'common') return send('fight.common', { key: el.dataset.key });
+    if (k === 'deathsave') return send('fight.deathsave', {});
     if (k === 'log') { UI.log = !UI.log; return render(); }
     if (k === 'letgo') return send('fight.react', { id: el.dataset.id, take: false });
     if (k === 'react') {

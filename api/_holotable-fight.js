@@ -47,7 +47,7 @@ function state(camp) {
     // what each unit has spent of its turn (movement in feet, action, bonus action, reaction), since its turn began
     spent: Object.fromEntries(Object.entries(plainObj(f.spent)).filter(([k, v]) => ID.test(k) && v && typeof v === "object")
       .map(([k, v]) => [k, { key: str(v.key, 40), move: clamp(int(v.move), 0, 1000), action: clamp(int(v.action), 0, 9), bonus: clamp(int(v.bonus), 0, 9), reaction: clamp(int(v.reaction), 0, 9), diag: v.diag ? 1 : 0,
-        dash: clamp(int(v.dash), 0, 9), disengage: v.disengage ? 1 : 0, dodge: v.dodge ? 1 : 0 }])),
+        dash: clamp(int(v.dash), 0, 9), disengage: v.disengage ? 1 : 0, dodge: v.dodge ? 1 : 0, ds: v.ds ? 1 : 0 }])),
     // reactions waiting for an answer: an opportunity attack someone may take (the turn waits until it's answered)
     pending: (Array.isArray(f.pending) ? f.pending : []).slice(0, 12).map(cleanPending).filter(Boolean),
     undo: (Array.isArray(f.undo) ? f.undo : []).filter((x) => x && typeof x === "object").slice(-UNDO_MAX).map(cleanSnap),
@@ -102,7 +102,8 @@ function cleanSnap(x) {
       .map(([id, r]) => [id, { resources: E.cleanResources(r.resources),
         force: { max: plainObj(r.force).max == null || plainObj(r.force).max === "" ? "" : num(plainObj(r.force).max, 0, 999), used: num(plainObj(r.force).used, 0, 999) },
         tech: { max: plainObj(r.tech).max == null || plainObj(r.tech).max === "" ? "" : num(plainObj(r.tech).max, 0, 999), used: num(plainObj(r.tech).used, 0, 999) },
-        hitDiceUsed: num(r.hitDiceUsed, 0, 40) }]),
+        hitDiceUsed: num(r.hitDiceUsed, 0, 40),
+        deathSaves: { s: num(plainObj(r.deathSaves).s, 0, 3), f: num(plainObj(r.deathSaves).f, 0, 3) } }]),
   };
 }
 
@@ -172,7 +173,7 @@ function snapshot(camp, label) {
     spent: JSON.parse(JSON.stringify(f.spent || {})),
     effects: JSON.parse(JSON.stringify(f.effects || [])), conc: Object.assign({}, f.conc), lastTurn: f.lastTurn || "", pending: JSON.parse(JSON.stringify(f.pending || [])),
     conds: ini.entries.map((e) => [e.id, (e.conditions || []).slice(), e.charId && camp.characters[e.charId] ? (camp.characters[e.charId].conditions || []).slice() : null]),
-    chars: Object.values(camp.characters).map((c) => [c.id, JSON.parse(JSON.stringify({ resources: c.resources || [], force: c.force, tech: c.tech, hitDiceUsed: c.hitDiceUsed }))]),
+    chars: Object.values(camp.characters).map((c) => [c.id, JSON.parse(JSON.stringify({ resources: c.resources || [], force: c.force, tech: c.tech, hitDiceUsed: c.hitDiceUsed, deathSaves: c.deathSaves }))]),
     tokens: (camp.map.tokens || []).filter((t) => tok.has(t.id)).map((t) => [t.id, t.x, t.y]),
     hp: ini.entries.map((e) => [e.id, e.hp, e.charId && camp.characters[e.charId] ? [camp.characters[e.charId].hp.current, camp.characters[e.charId].hp.temp] : null]),
   });
@@ -213,6 +214,9 @@ function writeBack(camp, cid, before, after, G) {
     if (a.x !== b.x || a.y !== b.y) G.applyAction(camp, cid, true, "token.move", { id: a.tokenId, x: a.x, y: a.y });
     if (a.hp !== b.hp && a.hp != null) G.applyAction(camp, cid, true, "init.update", { id, fields: { hp: a.hp } });
     if (a.temp !== b.temp && a.charId && camp.characters[a.charId]) camp.characters[a.charId].hp.temp = a.temp;
+    // death saves go back where the sheet keeps them
+    if (a.charId && camp.characters[a.charId] && a.deathSaves && JSON.stringify(a.deathSaves) !== JSON.stringify(b.deathSaves))
+      camp.characters[a.charId].deathSaves = { s: clamp(int(a.deathSaves.s), 0, 3), f: clamp(int(a.deathSaves.f), 0, 3) };
     // points spent by an ability go back where the sheet keeps them
     if (a.charId && camp.characters[a.charId]) {
       for (const [key, pool] of Object.entries(a.pools || {})) {
@@ -453,7 +457,7 @@ function apply(camp, cid, gm, type, p, G) {
       report(camp, cid, gm, G, re, world, r, false);
       return {};
     }
-    case "fight.move": case "fight.attack": case "fight.end": case "fight.use": case "fight.stand": case "fight.douse": case "fight.common": {
+    case "fight.move": case "fight.attack": case "fight.end": case "fight.use": case "fight.stand": case "fight.douse": case "fight.common": case "fight.deathsave": {
       if (!f.on) throw new G.Invalid("The combat view is off.");
       const cur = ini.entries[ini.turn];
       if (!ini.active || !cur) throw new G.Invalid("Combat hasn't started: start initiative first.");
@@ -483,6 +487,7 @@ function apply(camp, cid, gm, type, p, G) {
       else if (type === "fight.stand") act = { type: "stand", unit: cur.id };
       else if (type === "fight.douse") act = { type: "douse", unit: cur.id, target: String(p.target || "") };
       else if (type === "fight.common") act = { type: "common", unit: cur.id, key: String(p.key || "") };
+      else if (type === "fight.deathsave") act = { type: "deathsave", unit: cur.id };
       else if (type === "fight.use") {
         const ch = cur.charId && camp.characters[cur.charId];
         if (!ch) throw new G.Invalid("Creatures use their attacks for now.");
@@ -502,7 +507,7 @@ function apply(camp, cid, gm, type, p, G) {
       }
       const r = E.apply(world, act, (expr) => G.rollDice(expr));
       if (!r.ok) throw new G.Invalid(r.why);
-      const label = type === "fight.common" ? `${G.shownName(camp, cur)} took ${String(p.key || "an action")}` : type === "fight.douse" ? `${G.shownName(camp, cur)} put out flames` : type === "fight.stand" ? `${G.shownName(camp, cur)} stood up` : type === "fight.move" ? `${G.shownName(camp, cur)} moved` : type === "fight.end" ? `${G.shownName(camp, cur)} ended the turn` : type === "fight.use" ? `${G.shownName(camp, cur)} used ${act.ability.name}` : `${G.shownName(camp, cur)}'s attack`;
+      const label = type === "fight.deathsave" ? `${G.shownName(camp, cur)}'s death save` : type === "fight.common" ? `${G.shownName(camp, cur)} took ${String(p.key || "an action")}` : type === "fight.douse" ? `${G.shownName(camp, cur)} put out flames` : type === "fight.stand" ? `${G.shownName(camp, cur)} stood up` : type === "fight.move" ? `${G.shownName(camp, cur)} moved` : type === "fight.end" ? `${G.shownName(camp, cur)} ended the turn` : type === "fight.use" ? `${G.shownName(camp, cur)} used ${act.ability.name}` : `${G.shownName(camp, cur)}'s attack`;
       snapshot(camp, label);
       writeBack(camp, cid, world, r.world, G);
       report(camp, cid, gm, G, cur, world, r, type === "fight.move" || type === "fight.end");

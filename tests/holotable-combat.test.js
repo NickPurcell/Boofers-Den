@@ -255,7 +255,7 @@ test("turn budget: each unit's own turn refills its movement, action, bonus acti
   const hers = Object.assign({}, w, { turnId: "ava", round: 2 });
   assert.deepEqual([E.budget(hers).reaction, E.budget(hers).moveLeft, E.budget(hers).action], [true, 30, true]);
   const r = E.apply(hers, { type: "move", unit: "ava", x: 2, y: 0 }, dice().roll);
-  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0 });
+  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0 });
 });
 
 // a level-3 Consular with two powers; the table has data for one of them (numbers invented for the test)
@@ -1340,6 +1340,70 @@ test("review #89 through the API: one diagonal step at a time is 5, 10, 5, 10 ft
   }
   assert.deepEqual(left, [25, 15, 10, 0]);
   assert.equal((await sam.act("fight.move", { x: 5, y: 5 })).code, 400);
+});
+
+/* ---------------------------------------------------------------- 0 hit points (audit 7.6) */
+test("0 hit points: a character falls unconscious, or dies outright from damage left over at its maximum; creatures just drop", () => {
+  const ava = (o) => unit(Object.assign({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0, hp: 6, maxHp: 12, deathSaves: { s: 1, f: 1 } }, o));
+  const r1 = (o) => unit(Object.assign({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0 }, o));
+  let r = E.apply(world([ava(), r1()], "r1"), { type: "attack", unit: "r1", target: "ava", attack: blade }, dice({ total: 18, nat: 13 }, { total: 9 }).roll);
+  assert.deepEqual([r.world.units.ava.hp, r.world.units.ava.conditions, r.world.units.ava.deathSaves], [0, ["Unconscious", "Prone"], { s: 0, f: 0 }]);
+  assert.equal(r.log[2].text, "Avery falls unconscious.");
+  r = E.apply(world([ava(), r1()], "r1"), { type: "attack", unit: "r1", target: "ava", attack: blade }, dice({ total: 18, nat: 13 }, { total: 18 }).roll);
+  assert.deepEqual([r.world.units.ava.deathSaves.f, E.isDead(r.world.units.ava)], [3, true], "6 to 0 with 12 left over: dead");
+  r = E.apply(world([ava(), r1({ hp: 5 })], "ava"), { type: "attack", unit: "ava", target: "r1", attack: blade }, dice({ total: 18, nat: 13 }, { total: 9 }).roll);
+  assert.deepEqual([r.world.units.r1.hp, r.world.units.r1.conditions || []], [0, []], "a creature at 0 is the GM's to call");
+});
+
+test("0 hit points: damage while dying is a failure, two on a critical; at the maximum it kills; a stable character starts dying again", () => {
+  const down = (o) => unit(Object.assign({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0, hp: 0, maxHp: 12, deathSaves: { s: 1, f: 0 }, conditions: ["Unconscious", "Prone"] }, o));
+  const r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0 }), far = unit({ id: "r1", name: "Raider", side: "npc", x: 4, y: 0 });
+  let r = E.apply(world([down(), far], "r1"), { type: "attack", unit: "r1", target: "ava", attack: rifle }, dice({ total: 25, nat: 13 }, { total: 3 }).roll);
+  assert.deepEqual(r.world.units.ava.deathSaves, { s: 1, f: 1 }, "a hit from 20 ft: one failure");
+  r = E.apply(world([down(), r1], "r1"), { type: "attack", unit: "r1", target: "ava", attack: blade }, dice({ total: 25, nat: 13 }, { total: 3 }).roll);
+  assert.deepEqual(r.world.units.ava.deathSaves, { s: 1, f: 2 }, "a hit from within 5 ft on the unconscious is a critical: two failures");
+  r = E.apply(world([down(), far], "r1"), { type: "attack", unit: "r1", target: "ava", attack: rifle }, dice({ total: 25, nat: 13 }, { total: 12 }).roll);
+  assert.equal(E.isDead(r.world.units.ava), true);
+  r = E.apply(world([down({ deathSaves: { s: 3, f: 1 } }), far], "r1"), { type: "attack", unit: "r1", target: "ava", attack: rifle }, dice({ total: 25, nat: 13 }, { total: 2 }).roll);
+  assert.deepEqual(r.world.units.ava.deathSaves, { s: 0, f: 2 }, "stable no longer");
+});
+
+test("0 hit points: the death save on the dying character's turn; End turn rolls it if forgotten; healing wakes, but not the dead", () => {
+  const down = (o) => unit(Object.assign({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0, hp: 0, maxHp: 12, deathSaves: { s: 2, f: 2 }, conditions: ["Unconscious", "Prone"] }, o));
+  const save = (n, o) => E.apply(world([down(o)], "ava"), { type: "deathsave", unit: "ava" }, dice({ total: n, nat: n }).roll);
+  assert.deepEqual([save(12).world.units.ava.deathSaves, save(12).log[0].text], [{ s: 3, f: 2 }, "Avery makes a death save: 12, a success: Avery is stable."]);
+  assert.equal(E.isDead(save(4).world.units.ava), true);
+  assert.deepEqual(save(1, { deathSaves: { s: 0, f: 0 } }).world.units.ava.deathSaves, { s: 0, f: 2 });
+  const twenty = save(20).world.units.ava;
+  assert.deepEqual([twenty.hp, twenty.conditions, twenty.deathSaves], [1, ["Prone"], { s: 0, f: 0 }]);
+  const once = save(12, { deathSaves: { s: 0, f: 0 } });
+  assert.match(E.apply(once.world, { type: "deathsave", unit: "ava" }, dice().roll).why, /already made this turn's death save/);
+  assert.equal(E.apply(world([down()], "ava"), { type: "attack", unit: "ava", target: "x", attack: blade }, dice().roll).ok, false, "unconscious: no attack");
+  const ended = E.apply(world([down({ deathSaves: { s: 0, f: 0 } })], "ava"), { type: "end", unit: "ava" }, dice({ total: 15, nat: 15 }).roll);
+  assert.deepEqual([ended.world.units.ava.deathSaves, ended.log[1].text], [{ s: 1, f: 0 }, "Avery makes a death save: 15, a success (1 of 3)."]);
+  // healing: wakes the dying, not the dead
+  const ch = consular();
+  const heal = E.abilitiesOf(ch, R, { "mind shove": { use: "action", range: [30, 30], heal: { dice: "1d4" } } })[0];
+  const cass = unit({ id: "cass", name: "Cass", side: "pc", x: 1, y: 0, pools: Object.fromEntries(E.resourcesOf(ch, R).map((x) => [x.key, x])) });
+  let r = E.apply(world([down(), cass], "cass"), { type: "use", unit: "cass", ability: heal, target: "ava" }, dice({ total: 3 }).roll);
+  assert.deepEqual([r.world.units.ava.hp, r.world.units.ava.conditions, r.world.units.ava.deathSaves, r.log[1].text], [3, ["Prone"], { s: 0, f: 0 }, "Avery regains 3 hit points and wakes."]);
+  r = E.apply(world([down({ deathSaves: { s: 0, f: 3 } }), cass], "cass"), { type: "use", unit: "cass", ability: heal, target: "ava" }, dice({ total: 3 }).roll);
+  assert.equal(r.world.units.ava.hp, 0);
+});
+
+test("0 hit points through the API: the death saves land on the sheet, and undo takes them back", async () => {
+  const { gm, sam, avery } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hp: { max: 20, current: 0, temp: 0 }, conditions: ["Unconscious"] }) });
+  assert.equal((await sam.act("fight.attack", { target: "x", attack: "0" })).code, 400, "unconscious");
+  assert.equal((await sam.act("fight.deathsave", {})).code, 200);
+  st = await sam.state();
+  const ds = st.characters[avery].deathSaves;
+  assert.equal(ds.s + ds.f + (st.characters[avery].hp.current > 0 ? 1 : 0) >= 1, true, "a success, a failure (or two), or a 20");
+  assert.equal((await sam.act("fight.deathsave", {})).code, 400, "one a turn");
+  await gm.act("fight.undo", {});
+  assert.deepEqual((await sam.state()).characters[avery].deathSaves, { s: 0, f: 0 });
 });
 
 test("review #94: a reaction prompt survives the tracker's index moving, and lapses once either side is hidden", async () => {
