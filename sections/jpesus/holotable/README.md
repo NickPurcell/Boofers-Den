@@ -22,6 +22,12 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
   Uploading the same character again updates it, keeping its photos and current HP.
 - **Profile and token photos** for each character.
 - **Click-to-roll:** checks, saves, skills, attacks and damage, rolled on the server.
+- **Class resources** (Attacks & Powers page): "＋ Add …" fills in the uses a character's classes give at its level,
+  from SW5e's class tables: Rages, Superiority dice (count and die), Second Wind, Action Surge, Indomitable, Focus points,
+  Channel the Force, Force Shield, Potent Aptitude and Ideal manifests. **Use** spends one, **+1** gives one back, rests
+  refill them, and a die's name rolls it. The numbers follow the level; the combat view reads the same list. Below them,
+  each class's table at its level (Rage Damage, Sneak Attack dice, Martial Arts die, aura and routine radius, and what's
+  known). `gen_classes.py` (in the PR) built the tables from SW5e's `/api/class`.
 - **Chat:** type `/` for a menu of commands that narrows as you type. After `/w`, it suggests player and character names.
   - `/r` (or `/roll`): roll dice.
   - `/gmr`: a secret roll only you and the GM see.
