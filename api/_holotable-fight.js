@@ -146,9 +146,11 @@ function worldOf(camp, forPlayer, G, cid) {
     tokens: camp.map.tokens, unitTokens: ut, spent: f.spent || {}, effects: f.effects || [], conc: f.conc || {},
     npcSpeed: Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v.speed : v])),
     npcStats: Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v : {}])),
-    defenses: f.defenses || {}, walls: (camp.map && camp.map.walls) || [],
+    defenses: f.defenses || {}, walls: (camp.map && camp.map.walls) || [], variants: camp.variants || [],
   }, R);
   if (G && G.shownName) for (const e of entries) if (w.units[e.id]) w.units[e.id].name = G.shownName(camp, e);
+  // the GM's world keeps hidden combatants; the engine is told which they are, so they never count toward what a public line says (Flanking)
+  if (!forPlayer) for (const e of entries) if (w.units[e.id] && hiddenEntry(camp, e, ut[e.id])) w.units[e.id].hidden = true;
   return w;
 }
 
@@ -472,12 +474,14 @@ function apply(camp, cid, gm, type, p, G) {
     case "fight.wall": {   // the GM draws, erases, opens and closes walls on the map (issue #93); players never receive them
       need(gm);
       if (!f.on) throw new G.Invalid("The combat view is off.");
-      let list = E.cleanWalls(camp.map.walls);
+      let list = cleanWalls(camp.map.walls);
       if (p.op === "add") {
         const [w] = E.cleanWalls([{ id: require("crypto").randomBytes(5).toString("hex"), a: p.a, b: p.b, kind: p.kind || "wall", open: false }]);
         if (!w) throw new G.Invalid("A wall needs two different ends.");
         if (list.length >= 2000) throw new G.Invalid("That's the most walls one map can have (2000).");
         list.push(w);
+      } else if ((p.op === "remove" || p.op === "door") && !String(p.id || "")) {
+        throw new G.Invalid("Which wall?");
       } else if (p.op === "remove") {
         list = list.filter((w) => w.id !== String(p.id || ""));
       } else if (p.op === "door") {
@@ -633,6 +637,7 @@ function view(camp, cid, gm, shownName) {
     // a character whose name the GM is hiding looks like any creature to other players, as HoloTable's own view has it
     const masked = !gm && shownName && shownName(camp, e) !== e.name && !(ch && ch.owner === cid);
     units[e.id] = { token: ut[e.id], side: e.charId && !masked ? "pc" : "npc", mine: !!ch && ch.owner === cid, down: hp != null && hp <= 0 };
+    if (gm && hiddenEntry(camp, e, ut[e.id])) units[e.id].hidden = true;   // for the GM's previews (Flanking); players never get these units
   }
   const cur = ini.entries[ini.turn];
   const turn = ini.active && cur && seen(cur) ? cur.id : null;
@@ -771,5 +776,17 @@ function noteSeen(camp) {
   }
 }
 
-module.exports = { apply, view, fogFor, cleanFog, noteSeen, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls: E.cleanWalls,
+// walls as a map keeps them: checked by the engine, and every one with its own id (a restored or hand-made map may bring
+// walls with none, or the same one twice; erasing or opening by id must only ever touch one)
+function cleanWalls(list) {
+  const seen = new Set();
+  return E.cleanWalls(list).map((w) => {
+    let id = w.id;
+    while (!id || seen.has(id)) id = require("crypto").randomBytes(5).toString("hex");
+    seen.add(id);
+    return id === w.id ? w : Object.assign({}, w, { id });
+  });
+}
+
+module.exports = { apply, view, fogFor, cleanFog, noteSeen, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
   cleanHitDiceUsed: R.cleanHitDiceUsed };   // for cleanChar: the sheet and the undo record clean hit dice the same way
