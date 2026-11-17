@@ -41,6 +41,8 @@ const K = {
   secret: () => `${NS}:secret`,                 // random session-signing secret, made once; never sent anywhere
   powers: () => `${NS}:powers`,                 // the SW5e power list, fetched from SW5e's own API and cached for a week
   equipment: (set) => `${NS}:equip:${set}`,      // SW5e standard gear / enhanced items, fetched and cached the same way
+  sw5e: (name) => `${NS}:sw5e:list:${name}`,     // the other SW5e lists (species, feats, monsters, rules...), cached the same way
+  sw5eSizes: () => `${NS}:sw5e:sizes`,          // bytes cached per SW5e list, for the total cap
   sw5eLock: (name) => `${NS}:sw5e:lock:${name}`,  // short marker: one request at a time fetches that SW5e list
   sw5eFail: (name) => `${NS}:sw5e:fail:${name}`,  // set for a minute after a failed fetch, so SW5e isn't called again
 };

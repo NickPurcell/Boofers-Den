@@ -587,6 +587,60 @@ table.t td:first-child input { min-width: 140px; }
 .pp-rar-artifact { color: var(--red); border-color: color-mix(in srgb, var(--red) 50%, var(--line)); }
 .pp-align-menu { max-height: 280px; overflow: auto; }
 
-/* TEMPORARY HOLD (Boofers-Den #55): the SW5e pickers are hidden until the site owner OKs the server calling
-   SW5e's API. "custom" still adds powers, items and weapons by hand. Reverting this commit shows them again. */
-[data-act="pick-power"], [data-act="pick-equip"], [data-act="pick-weapon"] { display: none !important; }
+/* ---------------- SW5e books: pick buttons, rulebook library, stat blocks, starships */
+.pick-wrap { display: inline-flex; align-items: center; gap: 2px; }
+.mon-add { display: flex; gap: 4px; align-items: center; }
+.mon-add input { width: 52px; }
+.wiz-auto { display: block; margin: 2px 0; }
+.lib-bar .chip { cursor: pointer; }
+.lib-body { display: grid; grid-template-columns: minmax(170px, 230px) 1fr; gap: 14px; margin-top: 10px; align-items: start; }
+.lib-nav { display: flex; flex-direction: column; gap: 2px; max-height: 75vh; overflow: auto; position: sticky; top: 0; }
+.lib-nav button { text-align: left; background: none; border: 1px solid transparent; color: var(--text); padding: 5px 8px; border-radius: 4px; cursor: pointer; font: inherit; font-size: 13px; }
+.lib-nav button:hover { border-color: var(--line); }
+.lib-nav button.on { background: color-mix(in srgb, var(--holo) 18%, transparent); border-color: var(--holo); }
+.lib-on { font-size: 10px; color: var(--green); text-transform: uppercase; letter-spacing: .05em; }
+.lib-page { min-width: 0; line-height: 1.5; }
+.lib-page .md-table { overflow-x: auto; margin: 8px 0; }
+.lib-page h1, .lib-page h2, .lib-page h3, .lib-page h4, .lib-page h5, .lib-page h6 { color: var(--holo); margin: 16px 0 6px; }
+.lib-page .md-quote, .pp-desc .md-quote { border-left: 3px solid var(--amber); margin: 8px 0; padding: 4px 12px; background: color-mix(in srgb, var(--amber) 7%, transparent); }
+.lib-title { margin-top: 0 !important; }
+.lib-toc { margin-bottom: 10px; }
+.lib-toc a { display: block; color: var(--text); text-decoration: none; padding: 1px 0; }
+.lib-toc a:hover { color: var(--holo); }
+.lib-toc-2 { padding-left: 12px !important; } .lib-toc-3 { padding-left: 24px !important; font-size: 13px; }
+.lib-variant { padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 10px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.lib-variant.on { border-color: var(--green); color: var(--green); }
+@media (max-width: 720px) { .lib-body { grid-template-columns: 1fr; } .lib-nav { max-height: 30vh; position: static; } }
+.statblock { border-top: 3px solid var(--amber); border-bottom: 3px solid var(--amber); padding: 8px 10px; background: color-mix(in srgb, var(--panel) 85%, var(--amber) 5%); line-height: 1.45; }
+.sb-name { font-family: 'Orbitron', sans-serif; font-size: 18px; color: var(--amber); }
+.sb-sub { font-style: italic; color: var(--muted); }
+.sb-rule { height: 2px; background: color-mix(in srgb, var(--amber) 60%, transparent); margin: 6px 0; }
+.sb-abil { display: grid; grid-template-columns: repeat(6, 1fr); text-align: center; gap: 4px; }
+.sb-head { font-family: 'Orbitron', sans-serif; color: var(--amber); border-bottom: 1px solid var(--amber); margin: 10px 0 4px; font-size: 14px; }
+.sb-b { margin: 4px 0; }
+.sb-b p { margin: 2px 0; display: inline; }
+.sb-roll, [data-shiproll] { cursor: pointer; }
+.sb-roll:hover { color: var(--holo); }
+.ship-top { margin-bottom: 10px; }
+.ship-sheet > .row input[data-sp="name"] { font-size: 18px; font-weight: 600; min-width: 200px; }
+.ship-abil { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.ship-abil .stat input[type=number] { width: 64px; }
+.ship-dmg { margin-top: 8px; gap: 6px; }
+.ship-skills .lr .ab { text-transform: uppercase; }
+@media (max-width: 720px) { .ship-abil { grid-template-columns: repeat(2, 1fr); } .sb-abil { grid-template-columns: repeat(3, 1fr); } }
+#ships .t select { min-width: 120px; }
+#ships .t td { vertical-align: middle; }
+.hover-card h4, .hover-card h5, .hover-card h6 { margin: 6px 0 2px; color: var(--holo); }
+.hover-card p { margin: 4px 0; }
+.hover-card .md-table { overflow: hidden; }
+.wiz-feats { margin: 2px 0 8px; padding-left: 18px; }
+.wiz-feats li { cursor: help; }
+.wiz-sub { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+.wiz-power { gap: 6px; margin-bottom: 4px; align-items: center; }
+.lib-credit { font-size: 12px; margin: 6px 0 0; }
+.power-picker a, .lib-bar a, .lib-credit a { color: var(--holo); }
+/* when the site switches the SW5e books off (HOLOTABLE_SW5E_BOOKS=off), hide what needs them */
+body.no-sw5e-books [data-act="pick-species"], body.no-sw5e-books [data-act="pick-background"], body.no-sw5e-books [data-act="pick-archetype"],
+body.no-sw5e-books [data-act="pick-feature"], body.no-sw5e-books [data-cact="add-creature"], body.no-sw5e-books [data-cact="statblock"],
+body.no-sw5e-books [data-sa="pick-equip"], body.no-sw5e-books [data-sa="pick-mod"], body.no-sw5e-books [data-sa="rules"],
+body.no-sw5e-books [data-sa="deploy-info"], body.no-sw5e-books .lib-bar { display: none !important; }
