@@ -610,7 +610,7 @@
   // The GM's wall tool lives in the map tools beside "＋ Token" (app.js asks for its button) while the combat view is on,
   // with its own small bar over the map, like the 🎬 movement bar.
   function wallsButton() {
-    return gm() && F().on ? `<button class="btn small ${UI.walls ? 'primary' : ''}" data-ct-walls="1" aria-pressed="${!!UI.walls}" title="Draw walls, doors and windows: they block movement, sight and areas in the combat view (players never receive them)">🧱 Walls</button>` : '';
+    return gm() ? `<button class="btn small ${UI.walls ? 'primary' : ''}" data-ct-walls="1" aria-pressed="${!!UI.walls}" title="Draw walls, doors and windows: they block movement, sight and areas in the combat view (players never receive them)">🧱 Walls</button>` : '';
   }
   let wallBar = null;
   function renderWallBar() {
@@ -624,13 +624,19 @@
       wallBar.addEventListener('click', (e) => {
         const b = e.target.closest('[data-wb]'); if (!b) return;
         const a = b.dataset.wb;
+        if (a === 'fog' || a === 'shared' || a === 'reset') {   // fog of war (#93 step 4)
+          const fog = (st().map || {}).fog || {};
+          if (a === 'reset' && !confirm('Forget what the players have explored on this map?')) return;
+          wallSend(a === 'fog' ? { on: !fog.on } : a === 'shared' ? { shared: !fog.shared } : { reset: true }, 'fight.fog');
+          return;
+        }
         if (a === 'done') UI.walls = null;
         else if (a === 'clear') { if (confirm('Remove every wall, door and window from this map?')) wallSend({ op: 'clear' }); return; }
         else UI.walls = { mode: a, from: null };
         renderWallBar(); render(); H.drawMap();
       });
     }
-    if (UI.walls && !(gm() && F().on)) UI.walls = null;
+    if (UI.walls && !gm()) UI.walls = null;
     wallBar.classList.toggle('hidden', !UI.walls);
     if (!UI.walls) { wallBar.innerHTML = ''; return; }
     const n = ((st().map || {}).walls || []).length, T = UI.walls;
@@ -638,6 +644,8 @@
       <span class="muted" title="${T.mode === 'wall' ? 'Click corner to corner; Esc or the same corner again ends a run' : T.mode === 'door' || T.mode === 'window' ? 'Click its two ends' : 'Click next to one'}">${n} on this map</span>
       ${n ? '<button class="btn tiny ghost" data-wb="clear">Clear walls</button>' : ''}
       <label class="btn tiny ghost" title="Dungeondraft's export for other tabletops (Universal VTT): the picture, the board size, its walls and doors">Import .dd2vtt<input type="file" accept=".dd2vtt,.uvtt,.df2vtt,application/json" data-wb-file hidden></label>
+      <span class="ct-fogctl">${(() => { const fog = (st().map || {}).fog || {}; return `<button class="btn tiny ${fog.on ? 'primary' : 'ghost'}" data-wb="fog" aria-pressed="${!!fog.on}" title="Each player sees only what their characters can see through the walls; the rest of the map is dark">🌫 Fog ${fog.on ? 'on' : 'off'}</button>`
+        + (fog.on ? `<button class="btn tiny ${fog.shared ? 'primary' : 'ghost'}" data-wb="shared" aria-pressed="${!!fog.shared}" title="Every player sees what any character sees">Shared sight</button><button class="btn tiny ghost" data-wb="reset">Reset explored</button>` : ''); })()}</span>
       <button class="btn tiny" data-wb="done">Done</button>`;
   }
   document.addEventListener('click', (e) => {
@@ -661,7 +669,7 @@
   // wall edits go out one after another, never dropped: a GM draws faster than a save comes back from real hosting
   // (the one-at-a-time guard on other actions would swallow the next segment)
   let wallChain = Promise.resolve();
-  const wallSend = (p) => (wallChain = wallChain.then(() => act('fight.wall', p)).catch(() => null));
+  const wallSend = (p, type) => (wallChain = wallChain.then(() => act(type || 'fight.wall', p)).catch(() => null));
   function wallClick(gx, gy) {
     const T = UI.walls, pt = [Math.round(gx), Math.round(gy)];
     if (T.mode === 'erase') { const wl = nearestWall(gx, gy); if (wl) wallSend({ op: 'remove', id: wl.id }); return; }
@@ -674,8 +682,8 @@
   }
   addEventListener('keydown', (e) => { if (e.key === 'Escape' && UI.walls && UI.walls.from) { UI.walls.from = null; H.drawMap(); } });
   function down(gx, gy, e) {
+    if (UI.walls && gm()) { wallClick(gx, gy); return true; }   // the wall tool works with the combat view off too
     if (!F().on) return false;
-    if (UI.walls && gm()) { wallClick(gx, gy); return true; }
     if (UI.ruler) {   // two taps (or a click and a click): from here to there
       if (!UI.ruler.a || UI.ruler.b) UI.ruler = { a: { x: gx, y: gy }, b: null, live: { x: gx, y: gy } };
       else UI.ruler.b = { x: gx, y: gy };
@@ -710,8 +718,8 @@
     return true;
   }
   function hover(gx, gy) {
-    if (!F().on) return;
     if (UI.walls && gm()) { UI.walls.live = [Math.round(gx), Math.round(gy)]; if (UI.walls.from) H.drawMap(); return; }
+    if (!F().on) return;
     if (UI.ruler && UI.ruler.a && !UI.ruler.b) { UI.ruler.live = { x: gx, y: gy }; H.drawMap(); return; }
     if (!myTurn()) return;
     const spec = armedSpec();
@@ -727,7 +735,34 @@
   function cssVar(name, fallback) { const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim(); return /^#[0-9a-f]{6}$/i.test(v) ? v : fallback; }
   const alpha = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
   // under the tokens: the squares you can reach
+  /* ---------------- fog of war (#93 step 4): the server sends each player their visible and explored squares ---------------- */
+  // drawn as a picture one pixel per square, scaled up without smoothing, and rebuilt only when the squares change
+  let fogPic = null;
+  function fogPicture(fog) {
+    const key = [fog.cols, fog.rows, fog.vis, fog.seen, fog.any].join('|');
+    if (fogPic && fogPic.key === key) return fogPic.canvas;
+    const n = fog.cols * fog.rows, c = document.createElement('canvas'); c.width = fog.cols; c.height = fog.rows;
+    const cx = c.getContext('2d'), im = cx.createImageData(fog.cols, fog.rows);
+    const shade = cssVar('--bg', '#05080d').replace('#', ''), rgb = [0, 2, 4].map((i) => parseInt(shade.slice(i, i + 2), 16) || 0);
+    const vis = fog.vis ? E.unpackSquares(fog.vis, n) : null, seen = fog.seen ? E.unpackSquares(fog.seen, n) : null, any = fog.any ? E.unpackSquares(fog.any, n) : null;
+    for (let i = 0; i < n; i++) {
+      // a player: black where never seen, dim where explored, clear where seen now; the GM: a light veil where no player sees
+      const a = any ? (any[i] ? 0 : 70) : vis[i] ? 0 : seen[i] ? 150 : 250;
+      im.data.set([rgb[0], rgb[1], rgb[2], a], i * 4);
+    }
+    cx.putImageData(im, 0, 0);
+    fogPic = { key, canvas: c };
+    return c;
+  }
+  function drawFog(ctx, g) {
+    const fog = st().fog;   // the map's fog (#93): sent at the top of the state, combat view or not
+    if (!fog || !(fog.vis || fog.any)) return;
+    ctx.save(); ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(fogPicture(fog), 0, 0, fog.cols * g, fog.rows * g);
+    ctx.restore();
+  }
   function under(ctx, g, z) {
+    drawFog(ctx, g);
     if (!F().on || !myTurn()) return;
     const holo = cssVar('--holo', '#4fc3f7'), dim = UI.armed ? 0.45 : 1;   // fainter while an attack is picked
     ctx.save();
@@ -745,9 +780,26 @@
   // two letters for a condition on a token's badge (the chip in the bar and the token's tooltip have the full name)
   const ABBR = { Incapacitated: 'Ic', Invisible: 'Iv', Petrified: 'Pe', Paralyzed: 'Pa', Poisoned: 'Po', Deafened: 'De', Diseased: 'Di', Stunned: 'St', Slowed: 'Sl', Shocked: 'Sh' };
   const abbr = (c) => ABBR[c] || String(c).slice(0, 2);
+  // the GM's walls (wall, door: a gap when open, window), and the segment being drawn; with the combat view on or off
+  function drawWalls(ctx, g, z) {
+    const walls = gm() ? ((st().map || {}).walls || []) : [];
+    if (walls.length || (UI.walls && gm())) {
+      const lw = (UI.walls ? 5 : 3) / Math.min(1, z);
+      for (const wl of walls) {
+        ctx.beginPath(); ctx.moveTo(wl.a[0] * g, wl.a[1] * g); ctx.lineTo(wl.b[0] * g, wl.b[1] * g);
+        ctx.lineWidth = lw; ctx.setLineDash(wl.kind === 'window' ? [6 / z, 5 / z] : wl.kind === 'door' && wl.open ? [3 / z, 9 / z] : []);
+        ctx.strokeStyle = wl.kind === 'door' ? '#c8935a' : wl.kind === 'window' ? '#8fd3ff' : alpha('#ffffff', UI.walls ? 0.95 : 0.6);
+        ctx.stroke(); ctx.setLineDash([]);
+      }
+      if (UI.walls && UI.walls.from && UI.walls.live) {
+        ctx.beginPath(); ctx.moveTo(UI.walls.from[0] * g, UI.walls.from[1] * g); ctx.lineTo(UI.walls.live[0] * g, UI.walls.live[1] * g);
+        ctx.lineWidth = lw; ctx.strokeStyle = alpha(cssVar('--amber', '#ffb74d'), 0.9); ctx.setLineDash([8 / z, 6 / z]); ctx.stroke(); ctx.setLineDash([]);
+      }
+    }
+  }
   function over(ctx, g, z) {
     const f = F();
-    if (!f.on) return;
+    if (!f.on) { ctx.save(); drawWalls(ctx, g, z); ctx.restore(); return; }   // walls and fog are the map's (#93), the rest is the combat view's
     const w = world();
     const ring = (u, color, width, dash) => {
       const s = (u.size || 1) * g, cx = u.x * g + s / 2, cy = u.y * g + s / 2;
@@ -783,21 +835,7 @@
       ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke(); ctx.setLineDash([]);
       label(ctx, `${E.ruler(R0.a, b)} ft`, (ax + bx) / 2, (ay + by) / 2, z, g);
     }
-    // walls (the GM's map only): wall, door (a gap when open), window
-    const walls = gm() ? ((st().map || {}).walls || []) : [];
-    if (walls.length || (UI.walls && gm())) {
-      const lw = (UI.walls ? 5 : 3) / Math.min(1, z);
-      for (const wl of walls) {
-        ctx.beginPath(); ctx.moveTo(wl.a[0] * g, wl.a[1] * g); ctx.lineTo(wl.b[0] * g, wl.b[1] * g);
-        ctx.lineWidth = lw; ctx.setLineDash(wl.kind === 'window' ? [6 / z, 5 / z] : wl.kind === 'door' && wl.open ? [3 / z, 9 / z] : []);
-        ctx.strokeStyle = wl.kind === 'door' ? '#c8935a' : wl.kind === 'window' ? '#8fd3ff' : alpha('#ffffff', UI.walls ? 0.95 : 0.6);
-        ctx.stroke(); ctx.setLineDash([]);
-      }
-      if (UI.walls && UI.walls.from && UI.walls.live) {
-        ctx.beginPath(); ctx.moveTo(UI.walls.from[0] * g, UI.walls.from[1] * g); ctx.lineTo(UI.walls.live[0] * g, UI.walls.live[1] * g);
-        ctx.lineWidth = lw; ctx.strokeStyle = alpha(cssVar('--amber', '#ffb74d'), 0.9); ctx.setLineDash([8 / z, 6 / z]); ctx.stroke(); ctx.setLineDash([]);
-      }
-    }
+    drawWalls(ctx, g, z);
     // status on the tokens (audit 8.10): conditions as badges, concentration as an amber ring, and a creature's hit
     // points as a bar for the GM only (players never get a creature's hit points)
     for (const u of Object.values(w.units)) {

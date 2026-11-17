@@ -1546,6 +1546,7 @@
       const im = img(p.src);
       ctx.save(); ctx.translate(px + w / 2, py + h / 2); ctx.rotate(((ap && ap.rot !== undefined ? ap.rot : p.rot) || 0) * Math.PI / 180);
       if (im) ctx.drawImage(im, -w / 2, -h / 2, w, h); else { ctx.fillStyle = MC.ghost; ctx.fillRect(-w / 2, -h / 2, w, h); }
+      if (p.blocksSight && isGM() && M.selProp !== p.id) { ctx.strokeStyle = rgba(themeHex('holo', '#4fc3f7'), 0.7); ctx.lineWidth = 2 / z; ctx.setLineDash([2 / z, 3 / z]); ctx.strokeRect(-w / 2, -h / 2, w, h); ctx.setLineDash([]); }
       if (M.selProp === p.id) { ctx.strokeStyle = themeHex('amber', '#ffb74d'); ctx.lineWidth = 2 / z; ctx.setLineDash([6 / z, 4 / z]); ctx.strokeRect(-w / 2, -h / 2, w, h); }
       ctx.restore();
     }
@@ -1748,6 +1749,7 @@
       <div class="row"><button class="btn small" data-pp="smaller">− smaller</button><button class="btn small" data-pp="bigger">＋ bigger</button></div>
       <div class="row"><button class="btn small" data-pp="front">To front</button><button class="btn small" data-pp="back">To back</button></div>
       <button class="btn small" data-pp="dup">Duplicate</button>
+      <button class="btn small ${p.blocksSight ? 'primary' : ''}" data-pp="sight" aria-pressed="${!!p.blocksSight}" title="Characters can't see through or past this piece when the fog of war is on (walls and doors already block sight)">👁 Blocks sight${p.blocksSight ? ' ✓' : ''}</button>
       <button class="btn small" data-pp="script" title="Waypoints this piece follows after the next scene change">🎬 Scene movement${p.moves ? ' ✓' : ''}…</button>
       <button class="btn small danger" data-pp="remove">Remove</button>
       <span class="muted" style="font-size:11px">Drag to move · hold Alt to place freely</span>`;
@@ -1757,6 +1759,7 @@
       if (a === 'rl' || a === 'rr') f.rot = ((p.rot || 0) + (a === 'rr' ? 45 : -45) + 360) % 360;
       if (a === 'smaller' || a === 'bigger') { const k = a === 'bigger' ? 1.25 : 0.8; f.w = p.w * k; f.h = p.h * k; f.x = p.x + (p.w - f.w) / 2; f.y = p.y + (p.h - f.h) / 2; }
       if (Object.keys(f).length) { Object.assign(p, f); act('prop.update', { id: p.id, fields: f }); drawMap(); return; }
+      if (a === 'sight') { p.blocksSight = !p.blocksSight; act('prop.update', { id: p.id, fields: { blocksSight: p.blocksSight } }); drawMap(); }
       if (a === 'front' || a === 'back') act('prop.order', { id: p.id, dir: a });
       if (a === 'dup') act('prop.add', { ...p, moves: undefined, x: p.x + 0.5, y: p.y + 0.5 });
       if (a === 'script') { M.selProp = null; startScript(p, 'prop'); }
