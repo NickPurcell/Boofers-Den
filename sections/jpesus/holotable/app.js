@@ -170,7 +170,7 @@
     }
     // the GM changed the scene: wipe from the old board to the new one (snapshot taken before redrawing)
     const fx = st.sceneFx;
-    if (fx && S.fxSeen !== undefined && fx.n !== S.fxSeen) startWipe(fx.k);
+    if (fx && S.fxSeen !== undefined && fx.n !== S.fxSeen) playSceneFx(fx);
     S.fxSeen = fx ? fx.n : null;
     S.st = st;
     document.body.classList.toggle('is-gm', !!st.isGM);
@@ -1108,6 +1108,7 @@
         <label class="mini">rows <input type="number" value="${n0(mp.rows)}" data-mset="rows"></label>
         <label class="toggle"><input type="checkbox" data-mset="showGrid" ${mp.showGrid ? 'checked' : ''}> grid</label>
         <button class="btn small" data-mact="npc">＋ Token</button>
+        ${mp.tokens.some(t => t.moves) || (mp.props || []).some(x => x.moves) ? '<button class="btn small amber" data-mact="play-moves" title="Play the scene movements on this board now, for everyone">▶ Play movements</button>' : ''}
         <input type="file" id="bgFile" accept="image/*" hidden>` : '<span class="muted">Drag your token to move it · drag empty space to pan · scroll to zoom</span>'}`;
   }
   $('#mapTools').addEventListener('click', async e => {
@@ -1122,6 +1123,7 @@
       await act('token.add', { charId: S.selected, x: Math.floor((w / 2 - CAM.x) / CAM.z / g), y: Math.floor((h / 2 - CAM.y) / CAM.z / g) });
     }
     if (a.startsWith('scene-')) return sceneAction(a);
+    if (a === 'play-moves') { const r = await act('scene.play'); if (r) toast(`${r.moved} piece${r.moved > 1 ? 's' : ''} moving`); }
     if (a === 'assets') { A.open = !A.open; renderMapTools(); renderDrawer(); requestAnimationFrame(drawMap); }
     if (a === 'bg') $('#bgFile').click();
     if (a === 'clear-bg') act('map.bg', { url: null });
@@ -1177,8 +1179,9 @@
     if (v === 'on' || v === 'off') return v === 'on';
     return !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
   };
-  function startWipe(kind) {
-    if (S.tab !== 'map' || !canvas.width || !canvas.height || !wipesOn()) return;
+  // Returns false when no wipe plays; otherwise calls onDone once the old board is gone.
+  function startWipe(kind, onDone) {
+    if (S.tab !== 'map' || !canvas.width || !canvas.height || !wipesOn() || document.hidden) return false;
     const old = document.createElement('canvas');
     old.width = canvas.width; old.height = canvas.height;
     old.getContext('2d').drawImage(canvas, 0, 0);
@@ -1188,25 +1191,159 @@
     paintWipe(w, old, kind, 0);
     wipeCanvas.classList.add('on');
     const id = ++WIPE.id, waitFrom = performance.now();
+    let done = false;
+    const finish = () => { if (done) return; done = true; wipeCanvas.classList.remove('on'); if (onDone) onDone(); };
     const go = () => {
-      if (id !== WIPE.id) return;
+      if (id !== WIPE.id) return finish();
       // give the new scene's background a moment to load (at most 1.5 s) so the wipe reveals it, not a blank board
       const bg = S.st && imgUrl(S.st.map.bgUrl);
       if (bg && !(S.mapImg && S.mapImg.complete && S.mapImg.src.endsWith(bg)) && performance.now() - waitFrom < 1500) return setTimeout(go, 60);
       const t0 = performance.now();
       const frame = t => {
-        if (id !== WIPE.id) return;
+        if (id !== WIPE.id || done) return;
         const p = Math.min(1, (t - t0) / WIPE_MS), e = p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
         paintWipe(w, old, kind, e);
-        if (p < 1) requestAnimationFrame(frame); else wipeCanvas.classList.remove('on');
+        if (p < 1) requestAnimationFrame(frame); else finish();
       };
       requestAnimationFrame(frame);
       // never leave the old scene covering the new one (e.g. a background tab where animation frames pause)
-      setTimeout(() => { if (id === WIPE.id) { WIPE.id++; wipeCanvas.classList.remove('on'); } }, WIPE_MS + 400);
+      setTimeout(() => { if (id === WIPE.id && !done) { WIPE.id++; finish(); } }, WIPE_MS + 400);
     };
-    if (document.hidden) { wipeCanvas.classList.remove('on'); return; }
     setTimeout(go, 80);
+    return true;
   }
+
+  // --------------------------------------------------------------------------- scene movements
+  // After a scene change (or the GM's ▶ Play), scripted pieces walk their waypoints for everyone. The server has
+  // already put them where they end; here each one is drawn along its path from where it started.
+  const ANIM = { pos: {}, id: 0 };
+  const MOVE_SPEED = 4;   // squares per second
+  function playSceneFx(fx) {
+    const moves = (fx.moves || []).filter(m => m && m.from && Array.isArray(m.path) && m.path.length);
+    const animate = moves.length && S.tab === 'map' && !document.hidden;
+    if (animate) for (const m of moves) ANIM.pos[m.id] = { x: n0(m.from.x), y: n0(m.from.y) };   // start spots, under the wipe
+    const go = () => (animate ? startMoves(moves) : null);
+    if (fx.k >= 0 && startWipe(fx.k, go)) return;
+    go();
+  }
+  function startMoves(moves) {
+    const id = ++ANIM.id;
+    const plans = moves.map(m => {
+      const pts = [m.from, ...m.path].map(q => ({ x: n0(q.x), y: n0(q.y) })), segs = [];
+      let total = 0;
+      for (let i = 1; i < pts.length; i++) { const d = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y); segs.push(d); total += d; }
+      // asset pieces that "face their path" turn by however much each leg's heading differs from the first leg's
+      const heads = segs.map((d, i) => Math.atan2(pts[i + 1].y - pts[i].y, pts[i + 1].x - pts[i].x) * 180 / Math.PI);
+      const first = heads.find((h, i) => segs[i] > 0);
+      const rots = m.face && first !== undefined ? heads.map((h, i) => (segs[i] > 0 ? n0(m.rot0) + h - first : null)) : null;
+      if (rots) for (let i = 0; i < rots.length; i++) if (rots[i] === null) rots[i] = i ? rots[i - 1] : n0(m.rot0);
+      return { id: m.id, pts, segs, total, rots, rot0: n0(m.rot0), start: Math.min(20, n0(m.delay)) * 1000, dur: Math.max(300, total / MOVE_SPEED * 1000) };
+    });
+    const end = Math.max(...plans.map(q => q.start + q.dur)), t0 = performance.now();
+    const stop = () => { if (id !== ANIM.id) return; ANIM.id++; ANIM.pos = {}; drawMap(); };
+    const frame = now => {
+      if (id !== ANIM.id) return;
+      const el = now - t0;
+      for (const q of plans) {
+        const f = Math.max(0, Math.min(1, (el - q.start) / q.dur));
+        let d = f * q.total, i = 0;
+        while (i < q.segs.length - 1 && d > q.segs[i]) { d -= q.segs[i]; i++; }
+        const a = q.pts[i], b = q.pts[i + 1] || a, k = q.segs[i] ? Math.min(1, d / q.segs[i]) : 1;
+        const at = { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k };
+        if (q.rots) {   // ease into each new heading over the first part of the leg
+          const prev = i ? q.rots[i - 1] : q.rots[0], next = q.rots[i];
+          const turn = ((next - prev + 540) % 360) - 180, ease = Math.min(1, k / 0.35);
+          at.rot = prev + turn * (f >= 1 ? 1 : ease);
+        }
+        ANIM.pos[q.id] = at;
+      }
+      drawMap();
+      if (el < end) requestAnimationFrame(frame); else stop();
+    };
+    requestAnimationFrame(frame);
+    setTimeout(stop, end + 1500);   // in case animation frames are paused
+  }
+
+  // The GM records a token's movement by clicking squares (waypoints), then picks an exit and a delay.
+  const scriptBar = document.createElement('div');
+  scriptBar.className = 'script-bar hidden';
+  $('#mapWrap').appendChild(scriptBar);
+  const EXIT_NAMES = { '': 'stays on the board', n: '↑ off the top', s: '↓ off the bottom', e: '→ off the right', w: '← off the left' };
+  function startScript(t, kind = 'token') {
+    const m = t.moves || {};
+    M.script = { kind, id: t.id, name: t.name || (kind === 'prop' ? 'Asset' : 'Token'), path: (m.path || []).map(q => ({ x: q.x, y: q.y })),
+      exit: m.exit || '', delay: n0(m.delay), face: !!m.face };
+    renderScriptBar(); drawMap();
+  }
+  function renderScriptBar() {
+    const sc = M.script;
+    scriptBar.classList.toggle('hidden', !sc);
+    if (!sc) { scriptBar.innerHTML = ''; return; }
+    scriptBar.innerHTML = `<b>🎬 ${esc(sc.name || 'Token')}</b><span class="muted">Click squares to add waypoints (${sc.path.length}/12).</span>
+      <label class="mini">Then <select data-sb="exit">${Object.entries(EXIT_NAMES).map(([k, v]) => `<option value="${k}" ${k === sc.exit ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+      <label class="mini">Wait <input type="number" min="0" max="20" step="0.5" value="${n0(sc.delay)}" data-sb="delay"> s</label>
+      ${sc.kind === 'prop' ? `<label class="toggle" title="Point the piece along its first leg; it turns at each waypoint as it goes"><input type="checkbox" data-sb="face" ${sc.face ? 'checked' : ''}> Turn to face its path</label>` : ''}
+      <button class="btn tiny" data-sb="undo" ${sc.path.length ? '' : 'disabled'}>Undo</button><button class="btn tiny ghost" data-sb="clear">Clear</button>
+      <button class="btn tiny primary" data-sb="save">Save</button><button class="btn tiny ghost" data-sb="cancel">Cancel</button>`;
+  }
+  scriptBar.addEventListener('click', async e => {
+    const a = e.target.dataset.sb, sc = M.script; if (!a || !sc) return;
+    if (a === 'undo') sc.path.pop();
+    if (a === 'clear') { sc.path = []; sc.exit = ''; }
+    if (a === 'cancel') M.script = null;
+    if (a === 'save') {
+      const has = sc.path.length || sc.exit;
+      if (await act(sc.kind === 'prop' ? 'prop.script' : 'token.script', { id: sc.id, moves: has ? { path: sc.path, exit: sc.exit, delay: sc.delay, face: sc.face } : null })) {
+        toast(has ? `${sc.name}'s movement saved. It plays when this scene is next loaded, or with ▶ Play movements.` : `${sc.name}'s movement cleared`);
+        M.script = null;
+      }
+    }
+    renderScriptBar(); drawMap();
+  });
+  scriptBar.addEventListener('change', e => {
+    const a = e.target.dataset.sb, sc = M.script; if (!sc) return;
+    if (a === 'exit') sc.exit = e.target.value;
+    if (a === 'delay') sc.delay = Math.max(0, Math.min(20, n0(e.target.value)));
+    if (a === 'face') sc.face = e.target.checked;
+    drawMap();
+  });
+  // GM only: dashed paths for every scripted token (and the one being recorded)
+  function drawScripts(g, z) {
+    const mp = S.st.map, list = [];
+    for (const t of [...mp.tokens, ...(mp.props || [])]) {
+      const sc = M.script && M.script.id === t.id ? M.script : t.moves;
+      if (sc && (sc.path.length || sc.exit)) list.push([t, sc, M.script && M.script.id === t.id]);
+    }
+    for (const [t, sc, live] of list) {
+      const prop = t.w !== undefined, sz = t.size || 1;
+      const start = prop ? { x: (t.x + t.w / 2) * g, y: (t.y + t.h / 2) * g } : { x: (t.x + sz / 2) * g, y: (t.y + sz / 2) * g };
+      const c = q => (prop ? { x: (q.x + 0.5) * g, y: (q.y + 0.5) * g } : { x: (q.x + sz / 2) * g, y: (q.y + sz / 2) * g });
+      const pts = [start, ...sc.path.map(c)];
+      const last = pts[pts.length - 1], amber = themeHex('amber', '#ffb74d');
+      ctx.save();
+      ctx.strokeStyle = live ? amber : rgba(amber, 0.55); ctx.lineWidth = 3 / z; ctx.setLineDash([8 / z, 6 / z]);
+      ctx.beginPath(); pts.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+      let tip = null;
+      if (sc.exit) {   // an arrow off the edge of the board
+        const W = mp.cols * g, H = mp.rows * g;
+        tip = { n: { x: last.x, y: -g }, s: { x: last.x, y: H + g }, w: { x: -g, y: last.y }, e: { x: W + g, y: last.y } }[sc.exit];
+        if (tip) ctx.lineTo(tip.x, tip.y);
+      }
+      ctx.stroke(); ctx.setLineDash([]);
+      if (tip) {
+        const ang = Math.atan2(tip.y - last.y, tip.x - last.x), L = 14 / z;
+        ctx.fillStyle = live ? amber : rgba(amber, 0.55); ctx.beginPath();
+        ctx.moveTo(tip.x, tip.y); ctx.lineTo(tip.x - L * Math.cos(ang - 0.5), tip.y - L * Math.sin(ang - 0.5)); ctx.lineTo(tip.x - L * Math.cos(ang + 0.5), tip.y - L * Math.sin(ang + 0.5)); ctx.fill();
+      }
+      pts.slice(1).forEach((q, i) => {
+        ctx.beginPath(); ctx.arc(q.x, q.y, 10 / z, 0, Math.PI * 2); ctx.fillStyle = live ? amber : rgba(amber, 0.55); ctx.fill();
+        ctx.fillStyle = '#111'; ctx.font = `bold ${11 / z}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(i + 1), q.x, q.y + 0.5 / z);
+      });
+      if (n0(sc.delay)) { ctx.fillStyle = amber; ctx.font = `600 ${11 / z}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.fillText(`🎬 after ${n0(sc.delay)} s`, pts[0].x, pts[0].y - ((prop ? t.h : sz) * g) / 2 - 8 / z); }
+      ctx.restore();
+    }
+  }
+
   // Draw the old board with the part already wiped (progress e, 0..1) cut away.
   function paintWipe(w, old, kind, e) {
     const W = wipeCanvas.width, H = wipeCanvas.height, soft = Math.max(W, H) * 0.05;
@@ -1307,9 +1444,10 @@
     // props
     for (const p of mp.props || []) {
       const drag = M.drag && M.drag.prop === p.id;
-      const px = drag ? M.drag.px : p.x * g, py = drag ? M.drag.py : p.y * g, w = p.w * g, h = p.h * g;
+      const ap = ANIM.pos[p.id];   // mid scene-movement
+      const px = drag ? M.drag.px : (ap ? ap.x : p.x) * g, py = drag ? M.drag.py : (ap ? ap.y : p.y) * g, w = p.w * g, h = p.h * g;
       const im = img(p.src);
-      ctx.save(); ctx.translate(px + w / 2, py + h / 2); ctx.rotate((p.rot || 0) * Math.PI / 180);
+      ctx.save(); ctx.translate(px + w / 2, py + h / 2); ctx.rotate(((ap && ap.rot !== undefined ? ap.rot : p.rot) || 0) * Math.PI / 180);
       if (im) ctx.drawImage(im, -w / 2, -h / 2, w, h); else { ctx.fillStyle = MC.ghost; ctx.fillRect(-w / 2, -h / 2, w, h); }
       if (M.selProp === p.id) { ctx.strokeStyle = themeHex('amber', '#ffb74d'); ctx.lineWidth = 2 / z; ctx.setLineDash([6 / z, 4 / z]); ctx.strokeRect(-w / 2, -h / 2, w, h); }
       ctx.restore();
@@ -1319,11 +1457,13 @@
       const st = A.stamp, im = img(st.src);
       if (im) { ctx.globalAlpha = 0.6; const w = st.w * g, h = st.h * g; ctx.drawImage(im, A.hover.x - w / 2, A.hover.y - h / 2, w, h); ctx.globalAlpha = 1; }
     }
+    if (isGM()) drawScripts(g, z);
     // tokens
     const ini = S.st.initiative, cur = ini.active && ini.entries[ini.turn];
     for (const t of mp.tokens) {
       const drag = M.drag && M.drag.id === t.id;
-      const px = drag ? M.drag.px : t.x * g, py = drag ? M.drag.py : t.y * g, sz = (t.size || 1) * g, r = sz / 2 - 3;
+      const ap = ANIM.pos[t.id];   // mid scene-movement
+      const px = drag ? M.drag.px : (ap ? ap.x : t.x) * g, py = drag ? M.drag.py : (ap ? ap.y : t.y) * g, sz = (t.size || 1) * g, r = sz / 2 - 3;
       const cx = px + sz / 2, cy = py + sz / 2;
       ctx.globalAlpha = t.hidden ? 0.45 : 1;
       const isCur = cur && ((cur.charId && cur.charId === t.charId) || (!cur.charId && cur.name === t.name));
@@ -1382,6 +1522,11 @@
     if (e.button === 1) { e.preventDefault(); M.drag = { pan: true, sx: e.clientX, sy: e.clientY, cx: CAM.x, cy: CAM.y, moved: false }; capture(e); return; }
     if (e.button !== 0) return;
     const { x, y } = mapXY(e), g = S.st.map.gridSize;
+    if (M.script) {          // recording a scene movement: each click is the next waypoint
+      if (M.script.path.length >= 12) return toast('That\'s the most waypoints for one piece (12).', true);
+      M.script.path.push({ x: Math.floor(x / g), y: Math.floor(y / g) });
+      renderScriptBar(); drawMap(); return;
+    }
     if (A.stamp) {           // place from the asset browser
       const st = A.stamp;
       if (st.mode === 'token') {
@@ -1468,6 +1613,7 @@
       <div class="row"><button class="btn small" data-pp="smaller">− smaller</button><button class="btn small" data-pp="bigger">＋ bigger</button></div>
       <div class="row"><button class="btn small" data-pp="front">To front</button><button class="btn small" data-pp="back">To back</button></div>
       <button class="btn small" data-pp="dup">Duplicate</button>
+      <button class="btn small" data-pp="script" title="Waypoints this piece follows after the next scene change">🎬 Scene movement${p.moves ? ' ✓' : ''}…</button>
       <button class="btn small danger" data-pp="remove">Remove</button>
       <span class="muted" style="font-size:11px">Drag to move · hold Alt to place freely</span>`;
     pop.addEventListener('click', ev => {
@@ -1477,7 +1623,8 @@
       if (a === 'smaller' || a === 'bigger') { const k = a === 'bigger' ? 1.25 : 0.8; f.w = p.w * k; f.h = p.h * k; f.x = p.x + (p.w - f.w) / 2; f.y = p.y + (p.h - f.h) / 2; }
       if (Object.keys(f).length) { Object.assign(p, f); act('prop.update', { id: p.id, fields: f }); drawMap(); return; }
       if (a === 'front' || a === 'back') act('prop.order', { id: p.id, dir: a });
-      if (a === 'dup') act('prop.add', { ...p, x: p.x + 0.5, y: p.y + 0.5 });
+      if (a === 'dup') act('prop.add', { ...p, moves: undefined, x: p.x + 0.5, y: p.y + 0.5 });
+      if (a === 'script') { M.selProp = null; startScript(p, 'prop'); }
       if (a === 'remove') { act('prop.remove', { id: p.id }); M.selProp = null; }
       closeTokenPop();
     });
@@ -1492,7 +1639,8 @@
       <label>Size<select data-tp="size">${[1, 2, 3, 4].map(n => `<option ${n === (t.size || 1) ? 'selected' : ''} value="${n}">${['Medium/Small', 'Large', 'Huge', 'Gargantuan'][n - 1]}</option>`).join('')}</select></label>
       ${isGM() && A.sel ? `<button class="btn small" data-tp="img">Use selected asset as image</button>` : ''}
       ${t.img ? '<button class="btn small ghost" data-tp="noimg">Remove image</button>' : ''}
-      ${isGM() ? `<button class="btn small" data-tp="hide">${t.hidden ? 'Reveal to players' : 'Hide from players'}</button>` : ''}
+      ${isGM() ? `<button class="btn small" data-tp="hide">${t.hidden ? 'Reveal to players' : 'Hide from players'}</button>
+        <button class="btn small" data-tp="script" title="Waypoints this piece follows after the next scene change">🎬 Scene movement${t.moves ? ' ✓' : ''}…</button>` : ''}
       <button class="btn small danger" data-tp="remove">Remove token</button>` : ''}
       <button class="btn small ghost" data-tp="close">Close</button>`;
     pop.addEventListener('click', ev => {
@@ -1502,7 +1650,8 @@
       if (a === 'img') act('token.update', { id: t.id, fields: { img: A.sel.src } });
       if (a === 'noimg') act('token.update', { id: t.id, fields: { img: null } });
       if (a === 'sheet') { S.selected = t.charId; setTab('sheet'); renderAll(); }
-      if (['remove', 'hide', 'sheet', 'close', 'img', 'noimg'].includes(a)) closeTokenPop();
+      if (a === 'script') startScript(t);
+      if (['remove', 'hide', 'sheet', 'close', 'img', 'noimg', 'script'].includes(a)) closeTokenPop();
     });
     pop.addEventListener('change', ev => {
       const a = ev.target.dataset.tp;
@@ -2327,6 +2476,7 @@
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
     closeModal(); closeTokenPop();
+    if (M.script) { M.script = null; renderScriptBar(); drawMap(); }
     if (A.stamp) stopStamp();
     if (M.selProp) { M.selProp = null; drawMap(); }
   });

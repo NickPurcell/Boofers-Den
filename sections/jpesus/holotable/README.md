@@ -53,6 +53,12 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
   - **Screen wipes:** every scene change plays a random film-style wipe for the whole table (left, right, down, up,
     diagonal, clock, iris or barn doors; the server picks it, so everyone sees the same one). They follow each device's
     "reduce motion" setting by default, and anyone can switch them on or off for themselves in the 🎨 menu.
+  - **Scene movements (like keyframes):** click a token or an asset piece (a speeder, say), then "🎬 Scene movement…",
+    and click squares to lay out up to 12
+    waypoints. Optionally pick an exit off one edge of the board and a start delay. The paths show only to the GM, as
+    dashed lines. They play once, for everyone, right after that scene is loaded (after the wipe), and the pieces stay
+    where they end. "▶ Play movements" plays the current board's movements without a wipe. Asset pieces can also "turn
+    to face their path": point the piece along its first leg and it turns at each waypoint as it goes.
   - **The other buttons:** Save, Save as new, New blank, Rename and Delete. A table can keep up to 30 scenes.
   - **Images:** an uploaded image is deleted only once nothing on the table, saved scenes included, uses it.
 - **Level ups:** the GM grants a level to the party or to chosen characters. Each player gets a pop-up and a guided wizard:

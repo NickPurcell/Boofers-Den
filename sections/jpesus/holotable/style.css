@@ -656,3 +656,9 @@ body.no-sw5e-books [data-sa="deploy-info"], body.no-sw5e-books .lib-bar { displa
 /* scene-change screen wipe: an overlay of the old board, wiped away over the new one */
 #wipeCanvas { position: absolute; inset: 0; pointer-events: none; display: none; z-index: 3; }
 #wipeCanvas.on { display: block; }
+/* GM: recording a token's scene movement */
+.script-bar { position: absolute; top: 8px; left: 50%; transform: translateX(-50%); z-index: 4; display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+  max-width: calc(100% - 16px); padding: 8px 12px; border: 1px solid var(--amber); border-radius: 8px; background: color-mix(in srgb, var(--panel) 92%, transparent);
+  box-shadow: 0 4px 18px #0008; font-size: 13px; }
+.script-bar.hidden { display: none; }
+.script-bar input[type=number] { width: 56px; }
