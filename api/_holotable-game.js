@@ -146,7 +146,9 @@ function cleanChar(ch) {
     skillMisc: Object.fromEntries(Object.entries(ch.skillMisc || {}).slice(0, 40).filter(([k]) => /^[a-zA-Z]{1,30}$/.test(k)).map(([k, v]) => [k, numOr(v, 0)])),
     saveMisc: nums(ch.saveMisc, ABILS, 0),
     ac: numOr(ch.ac, 10), speed: numOr(ch.speed, 30),
-    hp: nums(ch.hp, ["max", "current", "temp"], 0), hitDiceUsed: numOr(ch.hitDiceUsed, 0),
+    hp: nums(ch.hp, ["max", "current", "temp"], 0), hitDiceUsed: ch.hitDiceUsed && typeof ch.hitDiceUsed === "object" && !Array.isArray(ch.hitDiceUsed)   // per die size (audit 7.2), or an old single number
+      ? Object.fromEntries(Object.entries(ch.hitDiceUsed).filter(([k]) => /^d(4|6|8|10|12|20)$/.test(k)).map(([k, v]) => [k, clamp(int(v), 0, 40)]))
+      : numOr(ch.hitDiceUsed, 0),
     deathSaves: { s: clamp(int((ch.deathSaves || {}).s), 0, 3), f: clamp(int((ch.deathSaves || {}).f), 0, 3) },
     initMisc: numOr(ch.initMisc, 0), profOverride: optNum(ch.profOverride),
     force: { max: optNum((ch.force || {}).max), used: numOr((ch.force || {}).used, 0) },
