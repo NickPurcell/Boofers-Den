@@ -252,6 +252,79 @@ test("turn budget: each unit's own turn refills its movement, action, bonus acti
   assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0 });
 });
 
+// a level-3 Consular with two powers; the table has data for one of them (numbers invented for the test)
+const consular = () => ({ name: "Cass", classes: [{ name: "Consular", level: 3 }], abilities: { str: 8, dex: 12, con: 12, int: 10, wis: 16, cha: 12 },
+  force: { max: "", used: 0 }, tech: { max: "", used: 0 }, hp: { max: 18, current: 18, temp: 0 }, attacks: [],
+  powers: [{ name: "Mind Shove", level: 1, type: "force", alignment: "universal" }, { name: "Unknown Art", level: 1, type: "force" }] });
+const SHOVE = { use: "action", range: [60, 60], save: { ability: "str", dc: "power", onSave: "half" }, damage: [{ dice: "2d6", type: "force" }], upcast: { damage: "1d6" } };
+
+test("abilities: a power's cost, DC and attack come from HoloTable's own caster arithmetic", () => {
+  const ch = consular(), ci = R.casterInfo(ch);
+  const n = E.powerNumbers(ch, ch.powers[0], R);
+  assert.deepEqual([n.pool, n.cost, n.dc, n.atk], ["force", 2, Math.max(ci.lightDC, ci.darkDC), Math.max(ci.lightAtk, ci.darkAtk)], "level 1: 2 points; universal: the better side");
+  assert.equal(E.powerNumbers(ch, { level: 0, type: "tech" }, R).cost, 0, "at-will is free");
+  assert.equal(E.powerNumbers(ch, { level: 2, type: "force", alignment: "dark" }, R).dc, ci.darkDC);
+  const abs = E.abilitiesOf(ch, R, { "mind shove": SHOVE });
+  assert.deepEqual(abs.map((a) => a.name), ["Mind Shove"], "a power with no data isn't offered (it still works from the sheet)");
+  assert.deepEqual([abs[0].save.dc, abs[0].cost, abs[0].range], [n.dc, { force: 2 }, [60, 60]]);
+});
+
+test("abilities: data is checked field by field", () => {
+  assert.equal(E.cleanAbility({ damage: [{ dice: "1d6;drop" }] }), null);
+  assert.equal(E.cleanAbility(null), null);
+  const c = E.cleanAbility({ use: "sometimes", targets: 99, save: { ability: "luck" }, damage: [{ dice: "3d8+2", type: "Fire!" }], range: [30, 10] });
+  assert.deepEqual([c.use, c.targets, c.save, c.damage[0], c.range], ["action", 10, null, { dice: "3d8+2", add: null, type: "fire" }, [30, 30]]);
+});
+
+test("abilities: a save for half, paid from the pool, refused when the turn or the points can't cover it", () => {
+  const ch = consular();
+  const ab = E.abilitiesOf(ch, R, { "mind shove": SHOVE })[0];
+  const me = unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, pools: Object.fromEntries(E.resourcesOf(ch, R).map((r) => [r.key, r])) });
+  const raider = unit({ id: "r1", name: "Raider", side: "npc", x: 5, y: 0, hp: 20, saves: { str: 2 } });
+  const w = world([me, raider], "cass");
+  // save succeeds: half of 9
+  let d = dice({ total: 15, nat: 13 }, { total: 9 });
+  let r = E.apply(w, { type: "use", unit: "cass", ability: ab, target: "r1" }, d.roll);
+  assert.ok(r.ok, r.why);
+  assert.deepEqual(d.asked, ["1d20+2", "2d6"]);
+  assert.deepEqual([r.world.units.r1.hp, r.world.units.cass.pools.force.used, E.budget(r.world).action], [16, 2, false]);
+  assert.match(r.log[0].text, /Cass uses Mind Shove \(2 Force points\)/);
+  assert.match(r.log[1].text, /STR save against DC \d+: 15, a success/);
+  assert.match(r.log[2].text, /takes 4 force damage \(half, on a save\)/);
+  assert.equal(E.apply(r.world, { type: "use", unit: "cass", ability: ab, target: "r1" }, dice().roll).ok, false, "the action is spent");
+  // cast at level 2: one more point and one more die; refused above the caster's max level or beyond the pool
+  d = dice({ total: 3, nat: 1 }, { total: 12 });
+  r = E.apply(w, { type: "use", unit: "cass", ability: ab, target: "r1", upcast: 1 }, d.roll);
+  assert.deepEqual([d.asked[1], r.world.units.cass.pools.force.used], ["2d6+1d6", 3]);
+  assert.match(E.apply(w, { type: "use", unit: "cass", ability: ab, target: "r1", upcast: 5 }, dice().roll).why, /up to level/);
+  assert.match(E.apply(w, { type: "use", unit: "cass", ability: Object.assign({}, ab, { level: ab.maxLevel + 1 }), target: "r1" }, dice().roll).why, /up to level/, "a power above the caster's level, even without casting it higher");
+  const broke = world([Object.assign({}, me, { pools: { force: Object.assign({}, me.pools.force, { used: me.pools.force.max - 1 }) } }), raider], "cass");
+  assert.match(E.apply(broke, { type: "use", unit: "cass", ability: ab, target: "r1" }, dice().roll).why, /Not enough Force points: 2 needed, 1 left/);
+  assert.match(E.apply(world([me, Object.assign({}, raider, { x: 20 })], "cass"), { type: "use", unit: "cass", ability: ab, target: "r1" }, dice().roll).why, /out of range/);
+  assert.match(E.apply(w, { type: "use", unit: "cass", ability: ab, targets: ["r1", "r1"] }, dice().roll).why, /one target/);
+});
+
+test("abilities: an attack roll, healing, and a creature whose save bonus isn't known", () => {
+  const ch = consular();
+  const lib = { "mind shove": { use: "bonus", reach: 5, attack: { bonus: "power" }, damage: [{ dice: "1d8", add: "wis", type: "force" }] }, "unknown art": { use: "action", range: [30, 30], heal: { dice: "1d4", add: "wis" } } };
+  const [strike, mend] = E.abilitiesOf(ch, R, lib);
+  const me = unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, pools: Object.fromEntries(E.resourcesOf(ch, R).map((r) => [r.key, r])) });
+  const pal = unit({ id: "pal", name: "Pal", side: "pc", x: 2, y: 0, hp: 5, maxHp: 20 });
+  const raider = unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, ac: 10 });
+  let d = dice({ total: 20, nat: 20 }, { total: 13 });
+  let r = E.apply(world([me, pal, raider], "cass"), { type: "use", unit: "cass", ability: strike, target: "r1" }, d.roll);
+  assert.deepEqual(d.asked, [`1d20+${E.powerNumbers(ch, ch.powers[0], R).atk}`, "2d8+3"], "a critical doubles the dice, not the modifier");
+  assert.equal(E.budget(r.world).bonus, false, "it used the bonus action");
+  d = dice({ total: 6 });
+  r = E.apply(r.world, { type: "use", unit: "cass", ability: mend, target: "pal" }, d.roll);
+  assert.deepEqual([d.asked[0], r.world.units.pal.hp, r.events[0].kind], ["1d4+3", 11, "heal"]);
+  const shove = E.abilitiesOf(ch, R, { "mind shove": SHOVE })[0];
+  d = dice({ total: 8, nat: 8 }, { total: 7 });
+  r = E.apply(world([me, Object.assign({}, raider, { saves: {} })], "cass"), { type: "use", unit: "cass", ability: shove, target: "r1" }, d.roll);
+  assert.equal(d.asked[0], "1d20+0");
+  assert.match(r.log[1].text, /no save bonus known/);
+});
+
 /* ---------------------------------------------------------------- the server's fight actions, through the API */
 const Module = require("module");
 const HoloFake = require("./holotable-fake-redis.js");
@@ -474,4 +547,33 @@ test("combat view: a crafted fight state is reshaped before it is used", async (
   assert.deepEqual(f.events[0], { seq: 3, at: 0, kind: "move", token: null, amount: 9, feet: null, hidden: false });
   assert.deepEqual(Object.keys(f.spent), ["abcdefgh"]);
   assert.equal(f.spent.abcdefgh.move, 0);
+});
+
+test("abilities through the API: the GM teaches the table a power; its caster uses it; points come off the sheet", async () => {
+  const { gm, sam, rae, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  // Sam's Avery learns a power (a sheet save, as from the power picker)
+  let st = await sam.state();
+  const av = Object.values(st.characters).find((c) => c.name === "Avery");
+  await sam.act("char.save", { char: Object.assign({}, av, { classes: [{ name: "Consular", level: 3 }], abilities: Object.assign({}, av.abilities, { wis: 16 }),
+    powers: [{ name: "Mind Shove", level: 1, type: "force", alignment: "universal" }] }) });
+  assert.equal((await sam.act("fight.ability", { name: "Mind Shove", data: SHOVE })).code, 403, "the GM teaches the table");
+  assert.equal((await gm.act("fight.ability", { name: "Mind Shove", data: { damage: [{ dice: "lots" }] } })).code, 400);
+  assert.equal((await sam.act("fight.use", { ability: "pw:mind shove", target: ids.raider })).code, 400, "no data yet");
+  assert.equal((await gm.act("fight.ability", { name: "Mind Shove", data: SHOVE })).code, 200);
+  st = await sam.state();
+  assert.deepEqual(st.fight.lib["mind shove"].save, { ability: "str", dc: "power", onSave: "half" }, "everyone sees the table's data");
+  await gm.act("fight.npc", { id: ids.raider, speed: 30, saves: { str: 3 } });
+  assert.deepEqual((await gm.state()).fight.npcSaves[ids.raider], { str: 3 });
+  assert.deepEqual((await sam.state()).fight.npcSaves, {}, "players don't get creature saves");
+  assert.equal((await rae.act("fight.use", { ability: "pw:mind shove", target: ids.raider })).code, 403, "not Rae's turn");
+  const r = await sam.act("fight.use", { ability: "pw:mind shove", target: ids.raider });
+  assert.equal(r.code, 200, JSON.stringify(r.data));
+  st = await gm.state();
+  assert.equal(st.characters[av.id].force.used, 2, "two force points came off the sheet");
+  const save = st.chat.filter((m) => m.fight && m.roll && m.roll.kind === "save").at(-1);
+  assert.equal(save.roll.expr, "1d20+3", "the creature's STR save from its stat block");
+  assert.ok(st.chat.some((m) => m.system && /Avery uses Mind Shove \(2 Force points\)/.test(m.text)));
+  await gm.act("fight.undo", {});
+  assert.equal((await gm.state()).characters[av.id].force.used, 0, "undo gives the points back");
 });

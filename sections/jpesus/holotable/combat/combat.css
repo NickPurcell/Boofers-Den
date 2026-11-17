@@ -36,3 +36,9 @@
   .ct-hint { display: none; }
   .ct-preview { padding: 4px 6px; }
 }
+/* the combat view's own forms (power data, resources) */
+#modalBox .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+#modalBox label.check { flex-direction: row; align-items: center; gap: 6px; text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--text); }
+#modalBox label.check input { width: auto; margin: 0; }
+.ct-power b { color: var(--holo); }
+.ct-atk.primary.ct-power b { color: inherit; }

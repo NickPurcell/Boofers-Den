@@ -204,6 +204,91 @@
     return c;
   }
 
+  /* ---------------- abilities as data (issue #73) ---------------- */
+  // An ability, as the table stores it (the format posted on #73). Numbers that depend on the caster are written as
+  // references ("force", "tech", "weapon", an ability like "str") and resolved here for one character:
+  //   { key, name, kind, level, use: action|bonus|reaction|free, cost: { pool: n }, reach, range: [n, l], area,
+  //     targets: n|'self'|'area', attack: { bonus }, save: { ability, dc, onSave: half|none },
+  //     damage: [{ dice, add, type }], heal: { dice, add }, applies: [...], concentration, upcast: { damage } }
+  const ABILS = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
+  const USES = ['action', 'bonus', 'reaction', 'free'];
+  // A power's cost and numbers, as HoloTable's sheet works them out (app.js 'cast' and the power card): the cost is
+  // its level plus one (at-will: free); tech uses tech numbers; force uses the side it belongs to, universal the better.
+  function powerNumbers(ch, pw, rules) {
+    const ci = rules.casterInfo(ch), lvl = +pw.level || 0, tech = pw.type === 'tech';
+    const pick = (light, dark, t) => (tech ? t : pw.alignment === 'dark' ? dark : pw.alignment === 'light' ? light : Math.max(light, dark));
+    return { pool: tech ? 'tech' : 'force', cost: lvl ? lvl + 1 : 0, level: lvl, dc: pick(ci.lightDC, ci.darkDC, ci.techDC), atk: pick(ci.lightAtk, ci.darkAtk, ci.techAtk), maxLevel: tech ? ci.techMaxLevel : ci.forceMaxLevel };
+  }
+  // the table's data for a power, with this character's numbers filled in; null when the table has no data for it
+  function resolvePower(ch, pw, data, rules) {
+    if (!data) return null;
+    const n = powerNumbers(ch, pw, rules), mod = (ab) => (ABILS.includes(ab) ? rules.abilityMod(ch, ab) : +ab || 0);
+    const num = (v) => (v === 'force' || v === 'tech' || v === 'power' ? n.atk : v === 'weapon' ? n.atk : Number.isFinite(+v) ? +v : 0);
+    const dc = (v) => (v === 'force' || v === 'tech' || v === 'power' ? n.dc : Number.isFinite(+v) ? +v : n.dc);
+    return {
+      key: 'pw:' + String(pw.name).toLowerCase(), name: pw.name, kind: 'power', level: n.level, maxLevel: n.maxLevel,
+      use: USES.includes(data.use) ? data.use : 'action', cost: n.cost ? { [n.pool]: n.cost } : {}, pool: n.pool,
+      reach: data.reach == null ? null : +data.reach, range: Array.isArray(data.range) ? [+data.range[0], +data.range[1] || +data.range[0]] : null,
+      area: data.area || null, targets: data.targets === 'self' ? 'self' : data.targets === 'area' ? 'area' : Math.max(1, +data.targets || 1),
+      attack: data.attack ? { bonus: num(data.attack.bonus == null ? 'power' : data.attack.bonus) } : null,
+      save: data.save ? { ability: ABILS.includes(data.save.ability) ? data.save.ability : 'dex', dc: dc(data.save.dc), onSave: data.save.onSave === 'half' ? 'half' : 'none' } : null,
+      damage: (data.damage || []).map((d) => ({ dice: String(d.dice || ''), add: d.add == null ? 0 : mod(d.add), type: d.type || '' })).filter((d) => d.dice),
+      heal: data.heal && data.heal.dice ? { dice: String(data.heal.dice), add: data.heal.add == null ? 0 : mod(data.heal.add) } : null,
+      applies: Array.isArray(data.applies) ? data.applies : [], concentration: !!data.concentration,
+      upcast: data.upcast && data.upcast.damage ? { damage: String(data.upcast.damage) } : null,
+    };
+  }
+  // a weapon attack row as an ability (its arithmetic still comes from rules.js through attacksOf)
+  const weaponAbility = (a) => ({ key: 'atk:' + a.key, name: a.name, kind: 'weapon', use: 'action', cost: {}, reach: a.melee || null, range: a.range, targets: 1,
+    attack: { bonus: a.bonus }, save: null, damage: [{ dice: a.damage, add: 0, type: a.type }], crit: a.crit, applies: [], concentration: false });
+  // everything a character can use in the combat view: weapon attacks, and the powers on the sheet the table has data for
+  function abilitiesOf(ch, rules, library) {
+    const lib = library || {};
+    return attacksOf(ch, rules).map(weaponAbility)
+      .concat((ch.powers || []).map((pw) => resolvePower(ch, pw, lib[String(pw.name || '').toLowerCase()], rules)).filter(Boolean));
+  }
+  // ability data as the table keeps it: only the fields of the format, each checked; null if nothing usable is left
+  const DICE = /^(\d{0,2}d(4|6|8|10|12|20|100)|\d{1,3})([+-](\d{0,2}d(4|6|8|10|12|20|100)|\d{1,3})){0,5}$/i;
+  const SHAPES = ['cone', 'cube', 'cylinder', 'line', 'sphere'];
+  function cleanAbility(d) {
+    if (!d || typeof d !== 'object') return null;
+    const ft = (v) => (v == null || v === '' ? null : clampN(Math.round(+v) || 0, 0, 2000));
+    const ref = (v, extra) => (ABILS.includes(v) || extra.includes(v) ? v : Number.isFinite(+v) && v !== '' && v != null ? clampN(Math.round(+v), -10, 40) : null);
+    const dice = (v) => { const x = String(v || '').replace(/\s+/g, ''); return DICE.test(x) ? x : ''; };
+    const out = {
+      use: USES.includes(d.use) ? d.use : 'action',
+      reach: ft(d.reach), range: Array.isArray(d.range) && ft(d.range[0]) ? [ft(d.range[0]), Math.max(ft(d.range[0]), ft(d.range[1]) || 0)] : null,
+      area: d.area && SHAPES.includes(d.area.shape) ? { shape: d.area.shape, size: ft(d.area.size) || 5, width: ft(d.area.width) || 5, from: d.area.from === 'point' ? 'point' : 'self' } : null,
+      targets: d.targets === 'self' || d.targets === 'area' ? d.targets : clampN(Math.round(+d.targets) || 1, 1, 10),
+      attack: d.attack ? { bonus: ref(d.attack.bonus, ['power', 'force', 'tech', 'weapon']) ?? 'power' } : null,
+      save: d.save && ABILS.includes(d.save.ability) ? { ability: d.save.ability, dc: ref(d.save.dc, ['power', 'force', 'tech']) ?? 'power', onSave: d.save.onSave === 'half' ? 'half' : 'none' } : null,
+      damage: (Array.isArray(d.damage) ? d.damage : []).slice(0, 4).map((x) => ({ dice: dice(x && x.dice), add: x && ABILS.includes(x.add) ? x.add : null, type: String((x && x.type) || '').toLowerCase().replace(/[^a-z]/g, '').slice(0, 20) })).filter((x) => x.dice),
+      heal: d.heal && dice(d.heal.dice) ? { dice: dice(d.heal.dice), add: ABILS.includes(d.heal.add) ? d.heal.add : null } : null,
+      applies: (Array.isArray(d.applies) ? d.applies : []).slice(0, 4).filter((x) => x && x.condition).map((x) => ({ condition: String(x.condition).slice(0, 30),
+        until: x.until && typeof x.until === 'object' ? { ends: x.until.ends === 'start' ? 'start' : 'end', of: x.until.of === 'self' ? 'self' : 'target', rounds: clampN(Math.round(+x.until.rounds) || 1, 1, 100), save: !!x.until.save } : null })),
+      concentration: !!d.concentration,
+      upcast: d.upcast && dice(d.upcast.damage) ? { damage: dice(d.upcast.damage) } : null,
+    };
+    if (out.targets !== 'self' && !out.reach && !out.range && !out.area) out.reach = FT;
+    if (!out.attack && !out.save && !out.damage.length && !out.heal && !out.applies.length) return null;
+    return out;
+  }
+  // set one resource's used count where it lives (force points, tech points, hit dice, or the sheet's own list)
+  function setPoolUsed(ch, key, used, rules) {
+    const res = resourcesOf(ch, rules).find((r) => r.key === key);
+    return res ? withUsed(ch, res, clampN(Math.round(+used) || 0, 0, res.max)) : ch;
+  }
+  const diceExpr = (d, add) => (add ? `${d}${add > 0 ? '+' : ''}${add}` : d);
+  const doubleDice = (e) => e.replace(/(\d*)d(\d+)/gi, (_, n, s) => (2 * (+n || 1)) + 'd' + s);
+  // can this ability reach that target from here?
+  function inReachOf(world, a, t, ab) {
+    const feet = feetBetween(a, t);
+    if (ab.targets === 'self') return a.id === t.id ? { ok: true, feet: 0 } : { ok: false, why: `${ab.name} only affects its user.` };
+    if (ab.reach && feet <= ab.reach) return { ok: true, feet, melee: true };
+    if (ab.range && feet <= ab.range[1]) return { ok: true, feet, long: feet > ab.range[0] };
+    return { ok: false, why: `${t.name} is ${feet} ft away: out of ${ab.range ? 'range' : 'reach'}.` };
+  }
+
   /* ---------------- turns: the turn budget is resources too, refilled at the start of the unit's own turn ---------------- */
   const turnKey = (world) => `${world.round}:${world.turnId}`;
   const TURN = ['move', 'action', 'bonus', 'reaction'];
@@ -266,6 +351,77 @@
         events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
         return { ok: true, world: w, log, events };
       }
+      case 'use': {
+        // an ability from the table's data: its turn cost, its point cost, then an attack roll or a save for each target
+        const ab = act.ability;
+        if (!ab || !ab.name) return no('Pick an ability.');
+        const slot = ab.use || 'action';
+        if (slot !== 'free' && !b[slot]) return no(`${me.name} has already used the ${slot === 'bonus' ? 'bonus action' : slot} this turn.`);
+        const up = Math.max(0, Math.round(+act.upcast || 0));
+        if (ab.kind === 'power' && ab.level && ab.maxLevel != null && ab.level + up > ab.maxLevel) return no(ab.maxLevel ? `${me.name} can cast powers up to level ${ab.maxLevel}.` : `${me.name} can't cast leveled powers yet.`);
+        const cost = Object.assign({}, ab.cost || {});
+        if (up && ab.pool) cost[ab.pool] = (cost[ab.pool] || 0) + up;
+        for (const [pool, n] of Object.entries(cost)) {
+          const p = (me.pools || {})[pool];
+          if (!p || p.max - p.used < n) return no(`Not enough ${p ? p.name : pool}: ${n} needed${p ? `, ${p.max - p.used} left` : ''}.`);
+        }
+        const ids = ab.targets === 'self' ? [me.id] : (Array.isArray(act.targets) ? act.targets : [act.target]).filter(Boolean).map(String);
+        const max = ab.targets === 'self' ? 1 : ab.targets === 'area' ? 40 : ab.targets;
+        if (!ids.length) return no('Pick a target.');
+        if (new Set(ids).size !== ids.length || ids.length > max) return no(`${ab.name} affects ${max === 1 ? 'one target' : `up to ${max} targets`}.`);
+        for (const id of ids) {
+          const t = w.units[id];
+          if (!t) return no('No such target.');
+          const r = inReachOf(w, me, t, ab);
+          if (!r.ok) return no(r.why);
+        }
+        // pay first: the turn slot and the points
+        if (slot !== 'free') w.spent[me.id][slot] += 1;
+        for (const [pool, n] of Object.entries(cost)) if (n) me.pools[pool] = Object.assign({}, me.pools[pool], { used: me.pools[pool].used + n });
+        const costText = Object.entries(cost).filter(([, n]) => n).map(([pool, n]) => `${n} ${(me.pools[pool] || {}).name || pool}`).join(', ');
+        const log = [{ text: `${me.name} uses ${ab.name}${up ? ` at level ${ab.level + up}` : ''}${costText ? ` (${costText})` : ''}.` }], events = [];
+        const extra = up && ab.upcast ? Array.from({ length: up }, () => ab.upcast.damage).join('+') : '';
+        const dmgExpr = (crit) => ab.damage.map((d) => diceExpr(crit ? doubleDice(d.dice) : d.dice, d.add)).join('+') + (extra ? '+' + (crit ? doubleDice(extra) : extra) : '');
+        const dtype = (ab.damage[0] || {}).type || '';
+        for (const id of ids) {
+          const t = w.units[id];
+          let hit = true, crit = false, half = false;
+          if (ab.attack) {
+            const r0 = inReachOf(w, me, t, ab);
+            const tilts = [];
+            if (!r0.melee && r0.long) tilts.push('long range');
+            if (!r0.melee && Object.values(w.units).some((o) => o.id !== me.id && hostile(me, o) && !o.down && feetBetween(me, o) <= FT)) tilts.push('an enemy within 5 ft');
+            const adv = !!act.adv, dis = !!act.dis || tilts.length > 0;
+            const expr = (adv && !dis ? '2d20kh1' : dis && !adv ? '2d20kl1' : '1d20') + sgn(ab.attack.bonus);
+            const r = roll(expr);
+            crit = r.nat === 20; hit = crit || (r.nat !== 1 && r.total >= t.ac);
+            log.push({ kind: 'attack', roll: r, expr, text: `${ab.name} against ${t.name}${dis && !adv && tilts.length ? ` (disadvantage: ${tilts.join(', ')})` : ''}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : 'a miss.'}` });
+          } else if (ab.save) {
+            const bonus = (t.saves || {})[ab.save.ability];
+            const r = roll('1d20' + sgn(+bonus || 0));
+            const saved = r.total >= ab.save.dc;
+            hit = !saved || ab.save.onSave === 'half'; half = saved && ab.save.onSave === 'half';
+            log.push({ kind: 'save', roll: r, expr: '1d20' + sgn(+bonus || 0), text: `${t.name} makes a ${ab.save.ability.toUpperCase()} save against DC ${ab.save.dc}${bonus == null ? ' (no save bonus known)' : ''}: ${r.total}, ${saved ? 'a success' : 'a failure'}.` });
+          }
+          if (!hit) { events.push({ kind: 'miss', unit: t.id }); continue; }
+          if (ab.damage.length) {
+            const expr = dmgExpr(crit);
+            const d = roll(expr);
+            const amount = Math.max(0, half ? Math.floor(d.total / 2) : d.total);
+            const took = takeDamage(t, amount);
+            log.push({ kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${dtype ? ' ' + dtype : ''} damage${half ? ' (half, on a save)' : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 ? ' and drops to 0 hit points.' : '.'}` });
+            events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
+          } else if (ab.heal) {
+            const expr = diceExpr(ab.heal.dice, ab.heal.add);
+            const d = roll(expr);
+            const amount = Math.max(0, d.total);
+            if (t.hp != null) { t.hp = t.maxHp != null ? Math.min(t.maxHp, t.hp + amount) : t.hp + amount; if (t.hp > 0) delete t.down; }
+            log.push({ kind: 'heal', roll: d, expr, text: `${t.name} regains ${amount} hit points.` });
+            events.push({ kind: 'heal', unit: t.id, amount });
+          } else events.push({ kind: 'hit', unit: t.id, amount: 0 });
+        }
+        return { ok: true, world: w, log, events, spentPools: cost };
+      }
       case 'end':
         return { ok: true, world: w, log: [{ text: `${me.name} ends the turn.` }], events: [], endTurn: true };
       default:
@@ -300,6 +456,7 @@
         temp: ch ? +hp.temp || 0 : 0,
         speed: ch ? +ch.speed || 30 : +((table.npcSpeed || {})[e.id]) || 30,
         pools: ch ? Object.fromEntries(resourcesOf(ch, rules).map((r) => [r.key, r])) : {},
+        saves: ch && rules ? Object.fromEntries(ABILS.map((ab) => [ab, rules.saveBonus(ch, ab)])) : Object.assign({}, ((table.npcStats || {})[e.id] || {}).saves),
       };
       if (units[e.id].hp != null && units[e.id].hp <= 0) units[e.id].down = true;
     }
@@ -311,5 +468,5 @@
   }
 
   return { FT, TURN, squaresBetween, feetBetween, reachable, readRange, attacksOf, attackFromBehavior, REASONS, preview, budget, apply, takeDamage, buildWorld, turnKey,
-    cleanResources, resourcesOf, atLevel, spend, rest };
+    cleanResources, resourcesOf, atLevel, spend, rest, powerNumbers, resolvePower, weaponAbility, abilitiesOf, inReachOf, cleanAbility, setPoolUsed };
 });

@@ -43,10 +43,20 @@
   }
 
   /* ---------------- attacks: the sheet's, or the creature's stat block (GM) ---------------- */
+  // what the current combatant can do: a character's weapon attacks and the powers the table has data for;
+  // a creature's attacks from its stat block (GM). Weapons keep their own key (the attack row) for fight.attack.
   function attacks() {
     const u = cur();
     if (!u) return [];
-    if (u.charId) { const ch = st().characters[u.charId]; return ch ? E.attacksOf(ch, R) : []; }
+    if (u.charId) {
+      const ch = st().characters[u.charId];
+      if (!ch) return [];
+      const weapons = E.attacksOf(ch, R);
+      const powers = E.abilitiesOf(ch, R, F().lib || {}).filter((a) => a.kind === 'power').map((ab) => ({ key: ab.key, name: ab.name, power: ab,
+        bonus: ab.attack ? ab.attack.bonus : null, damage: ab.damage.map((d) => d.dice + (d.add ? sgn(d.add) : '')).join('+') || (ab.heal ? 'heal ' + ab.heal.dice : ''),
+        type: (ab.damage[0] || {}).type || '', melee: ab.reach || 0, range: ab.range, crit: '' }));
+      return weapons.concat(powers);
+    }
     if (!gm()) return [];
     const known = UI.npc[u.id];
     if (!known) loadCreature(u.id);
@@ -62,7 +72,12 @@
       const atks = m ? m.b.filter((b) => b.k === 'action').map(E.attackFromBehavior).filter(Boolean).map((a, i) => Object.assign(a, { key: 'sb' + i })) : [];
       UI.npc[id] = { attacks: atks };
       const sp = m && /(\d+)\s*f/.exec(m.speed || '');
-      if (sp && F().npcSpeed[id] == null && !UI.npcAsked[id]) { UI.npcAsked[id] = true; act('fight.npc', { id, speed: +sp[1] }); }
+      if (m && F().npcSpeed[id] == null && !UI.npcAsked[id]) {
+        // its speed and save bonuses: the ability modifier, or the bonus its stat block lists ("Dex +5")
+        const saves = Object.fromEntries(['str', 'dex', 'con', 'int', 'wis', 'cha'].map((ab) => [ab, Math.floor(((m.ab || {})[ab] - 10) / 2) || 0]));
+        for (const x of m.saves || []) { const mm = /^(str|dex|con|int|wis|cha)\w*\s*([+-]\d+)/i.exec(x); if (mm) saves[mm[1].toLowerCase()] = +mm[2]; }
+        UI.npcAsked[id] = true; act('fight.npc', { id, speed: sp ? +sp[1] : 30, saves });
+      }
       render(); H.drawMap();
     }).catch(() => { UI.npc[id] = { attacks: [] }; render(); });
   }
@@ -91,8 +106,28 @@
   const targets = (spec) => {
     const w = world(), u = cur();
     if (!u || !spec) return [];
+    if (spec.power) {
+      const ab = spec.power;
+      return Object.values(w.units).filter((t) => (ab.targets === 'self' ? t.id === u.id : t.id !== u.id && (ab.heal ? t.side === u.side : t.side !== u.side) && !t.down) && E.inReachOf(w, u, t, ab).ok);
+    }
     return Object.values(w.units).filter((t) => t.id !== u.id && t.side !== u.side && !t.down && E.preview(w, u.id, t.id, spec).legal);
   };
+  // the line shown before a power is used on someone
+  function powerPreview(w, u, t, ab) {
+    const r = E.inReachOf(w, u, t, ab);
+    if (!r.ok) return { legal: false, why: r.why };
+    const lvl = ab.level + (UI.upcast || 0), cost = Object.entries(ab.cost || {}).map(([k, n]) => `${n + (UI.upcast && k === ab.pool ? UI.upcast : 0)} ${k === 'force' ? 'FP' : k === 'tech' ? 'TP' : k}`).join(', ');
+    let line = `${t.id === u.id ? 'On yourself' : `<b>${esc(t.name)}</b>, ${r.feet} ft`}: `;
+    if (ab.attack) {
+      const pv = E.preview(w, u.id, t.id, { name: ab.name, bonus: ab.attack.bonus, damage: 'x', melee: ab.reach || 0, range: ab.range }, { adv: UI.adv, dis: UI.dis });
+      line += pv.legal ? `you need <b>${pv.need}+</b> on the d20 (${Math.round(pv.chance * 100)}%)` : esc(pv.why);
+    } else if (ab.save) {
+      const sb = (t.saves || {})[ab.save.ability];
+      line += `a DC ${ab.save.dc} ${ab.save.ability.toUpperCase()} save${sb == null ? '' : ` (${sgn(sb)}): it fails on ${Math.max(0, ab.save.dc - 1 - sb)} or less`}`;
+    } else line += ab.heal ? 'healing' : 'no roll';
+    const dmg = ab.damage.length ? ab.damage.map((d) => d.dice + (d.add ? sgn(d.add) : '') + (d.type ? ' ' + d.type : '')).join(' + ') + (UI.upcast && ab.upcast ? ` + ${UI.upcast}×${ab.upcast.damage}` : '') + (ab.save && ab.save.onSave === 'half' ? ', half on a save' : '') : ab.heal ? `${ab.heal.dice}${ab.heal.add ? sgn(ab.heal.add) : ''} hit points back` : '';
+    return { legal: true, html: `${line}${dmg ? `. ${esc(dmg)}` : ''}${cost ? ` · costs ${esc(cost)}` : ''}${lvl !== ab.level ? ` · at level ${lvl}` : ''}.` };
+  }
 
   /* ---------------- talking to the server ---------------- */
   async function send(type, payload) {
@@ -103,9 +138,9 @@
   async function attack(targetId) {
     const spec = armedSpec(), u = cur();
     if (!spec || !u) return;
-    const payload = { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.key : { name: spec.name, bonus: spec.bonus, damage: spec.damage, type: spec.type, melee: spec.melee, range: spec.range } };
-    const r = await send('fight.attack', payload);
-    if (r) { UI.armed = null; UI.target = null; UI.adv = UI.dis = false; render(); }
+    const r = spec.power ? await send('fight.use', { ability: spec.key, target: targetId, upcast: UI.upcast || 0, adv: UI.adv, dis: UI.dis })
+      : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.key : { name: spec.name, bonus: spec.bonus, damage: spec.damage, type: spec.type, melee: spec.melee, range: spec.range } });
+    if (r) { UI.armed = null; UI.target = null; UI.adv = UI.dis = false; UI.upcast = 0; render(); }
   }
 
   /* ---------------- the bar under the map ---------------- */
@@ -117,6 +152,7 @@
     bar.id = 'ctBar';
     $('#pane-map').appendChild(bar);
     bar.addEventListener('click', onBar);
+    bar.addEventListener('change', onBarChange);
     return bar;
   }
   function render() {
@@ -159,15 +195,30 @@
       html += '<div class="ct-row ct-actions" role="group" aria-label="Attacks">';
       for (const a of atks) {
         const n = targets(a).length;
-        const off = spent || !n;
-        html += `<button class="btn small ct-atk ${UI.armed === a.key ? 'primary' : ''}" data-ct="arm" data-key="${esc(a.key)}" ${off ? 'disabled' : ''} aria-pressed="${UI.armed === a.key}"
-          title="${esc(spent ? 'Your action is used this turn' : !n ? 'Nothing in reach or range' : 'Pick a target on the map')}">${esc(a.name)} <b>${sgn(a.bonus)}</b> <span class="muted">${esc(a.damage)}${a.type ? ' ' + esc(a.type) : ''} · ${a.range ? `${a.range[0]}/${a.range[1]} ft` : `${a.melee} ft`}</span></button>`;
+        const slot = a.power ? a.power.use : 'action';
+        const slotSpent = bud && slot !== 'free' && !bud[slot];
+        const pool = a.power && Object.entries(a.power.cost || {})[0];
+        const poorly = pool && (!u.pools[pool[0]] || u.pools[pool[0]].max - u.pools[pool[0]].used < pool[1]);
+        const off = slotSpent || !n || poorly;
+        const why = slotSpent ? `Your ${slot === 'bonus' ? 'bonus action' : slot} is used this turn` : poorly ? `Not enough ${pool[0] === 'force' ? 'force' : pool[0] === 'tech' ? 'tech' : pool[0]} points` : !n ? 'Nothing in reach or range' : a.power && a.power.targets === 'self' ? 'Use it on yourself' : 'Pick a target on the map';
+        const tag = a.power ? (a.power.attack ? sgn(a.power.attack.bonus) : a.power.save ? `DC ${a.power.save.dc}` : '') : sgn(a.bonus);
+        html += `<button class="btn small ct-atk ${a.power ? 'ct-power' : ''} ${UI.armed === a.key ? 'primary' : ''}" data-ct="arm" data-key="${esc(a.key)}" ${off ? 'disabled' : ''} aria-pressed="${UI.armed === a.key}"
+          title="${esc(why)}">${esc(a.name)} <b>${esc(tag)}</b> <span class="muted">${esc(a.damage)}${a.type ? ' ' + esc(a.type) : ''} · ${a.power && a.power.targets === 'self' ? 'self' : a.range ? `${a.range[0]}${a.range[1] !== a.range[0] ? '/' + a.range[1] : ''} ft` : `${a.melee} ft`}${pool ? ` · ${pool[1]} ${pool[0] === 'force' ? 'FP' : pool[0] === 'tech' ? 'TP' : pool[0]}` : ''}${slot !== 'action' ? ` · ${slot === 'bonus' ? 'bonus' : slot}` : ''}</span></button>`;
       }
+      if (gm() && u.charId) html += '<button class="btn small ghost" data-ct="teach" title="Give the table the numbers for one of this character\'s powers">＋ Power data</button>';
       if (!atks.length) html += `<span class="muted">${u.charId ? 'No weapon attacks on this sheet.' : UI.npc[u.id] && UI.npc[u.id].loading ? 'Reading the stat block…' : 'No attacks found in the stat block.'}</span>`;
       if (gm() && !u.charId) html += '<button class="btn small ghost" data-ct="custom">＋ Custom attack</button>';
       html += `<label class="ct-tog"><input type="checkbox" data-ct="adv" ${UI.adv ? 'checked' : ''}> Advantage</label><label class="ct-tog"><input type="checkbox" data-ct="dis" ${UI.dis ? 'checked' : ''}> Disadvantage</label></div>`;
       const spec = armedSpec();
-      if (spec) {
+      if (spec && spec.power) {
+        const ab = spec.power, self = ab.targets === 'self';
+        const t = self ? u : UI.target && w.units[UI.target];
+        const up = ab.upcast && ab.maxLevel > ab.level ? `<label class="ct-tog">Level <select data-ct="upcast">${Array.from({ length: ab.maxLevel - ab.level + 1 }, (_, i) => `<option value="${i}" ${UI.upcast === i ? 'selected' : ''}>${ab.level + i}</option>`).join('')}</select></label>` : '';
+        const pv = t && powerPreview(w, u, t, ab);
+        html += `<div class="ct-row ct-preview" aria-live="polite">${!t ? `<span>${esc(ab.name)}: pick a target on the map (lit).</span>${up}<button class="btn tiny ghost" data-ct="disarm">Cancel</button>`
+          : !pv.legal ? `<span>${esc(pv.why)}</span>` : `<span>${pv.html}</span>${up}<button class="btn small primary" data-ct="go">Use</button>`}</div>`;
+        if (self && !UI.target) UI.target = u.id;
+      } else if (spec) {
         const t = UI.target && w.units[UI.target];
         const pv = t && E.preview(w, u.id, t.id, spec, { adv: UI.adv, dis: UI.dis });
         html += `<div class="ct-row ct-preview" aria-live="polite">${!t ? `<span>${esc(spec.name)}: pick a target on the map (lit in red).</span><button class="btn tiny ghost" data-ct="disarm">Cancel</button>`
@@ -177,6 +228,10 @@
       } else if (bud && bud.moveLeft > 0) html += `<div class="ct-row muted ct-hint">Tap a lit square to move there, or pick an attack.</div>`;
     }
     b.innerHTML = html;
+  }
+  function onBarChange(e) {
+    const el = e.target.closest('[data-ct=upcast]');
+    if (el) { UI.upcast = +el.value || 0; render(); }
   }
   function onBar(e) {
     const el = e.target.closest('[data-ct]');
@@ -188,10 +243,72 @@
     if (k === 'custom') return customAttack();
     if (k === 'pool') return poolModal(el.dataset.key);
     if (k === 'addres') return resourceModal();
-    if (k === 'arm') { UI.armed = UI.armed === el.dataset.key ? null : el.dataset.key; UI.target = null; render(); return H.drawMap(); }
+    if (k === 'arm') { UI.armed = UI.armed === el.dataset.key ? null : el.dataset.key; UI.target = null; UI.upcast = 0; render(); return H.drawMap(); }
     if (k === 'disarm') { UI.armed = UI.target = null; render(); return H.drawMap(); }
     if (k === 'adv' || k === 'dis') { UI[k] = el.checked; return render(); }
+    if (k === 'teach') return teachModal();
     if (k === 'go' && UI.target) return attack(UI.target);
+  }
+
+  /* ---------------- teaching the table a power's numbers (issue #73) ---------------- */
+  const ABN = { strength: 'str', dexterity: 'dex', constitution: 'con', intelligence: 'int', wisdom: 'wis', charisma: 'cha' };
+  // a first guess from the description on the sheet: dice and damage type, the save, the range; the GM checks it
+  function suggest(pw) {
+    const t = String(pw.description || '') + ' ' + String(pw.notes || '');
+    const dmg = /(\d+d\d+)(?:\s*\+\s*your [a-z]+ modifier)?\s+([a-z]+)\s+damage/i.exec(t);
+    const sv = /(strength|dexterity|constitution|intelligence|wisdom|charisma) saving throw/i.exec(t);
+    const rg = /range[^0-9]{0,12}(\d+)\s*(?:feet|ft)/i.exec(t) || /within (\d+) feet/i.exec(t);
+    const up = /(?:higher level|each (?:slot )?level above)[^.]*?(\d+d\d+)/i.exec(t);
+    return {
+      use: /bonus action/i.test(t) ? 'bonus' : /reaction/i.test(t) && !/action/i.test(t.replace(/reaction/ig, '')) ? 'reaction' : 'action',
+      range: rg ? +rg[1] : /\bself\b/i.test(t) ? 'self' : 30,
+      roll: /power attack/i.test(t) ? 'attack' : sv ? 'save' : 'none', saveAb: sv ? ABN[sv[1].toLowerCase()] : 'dex', half: /half as much/i.test(t),
+      dice: dmg ? dmg[1] : '', type: dmg ? dmg[2].toLowerCase() : '', heal: /regains?.{0,30}hit points/i.test(t) && !dmg ? ((/(\d+d\d+)/.exec(t) || [])[1] || '') : '',
+      upcast: up ? up[1] : '', concentration: /concentration/i.test(t),
+    };
+  }
+  function teachModal() {
+    const u = cur(), ch = u && st().characters[u.charId];
+    if (!ch) return;
+    const lib = F().lib || {};
+    const pws = (ch.powers || []).filter((p) => p.name);
+    if (!pws.length) return toast(`${u.name} has no powers on the sheet.`, true);
+    const pick = pws.find((p) => !lib[p.name.toLowerCase()]) || pws[0];
+    const draw = (pw) => {
+      const have = lib[pw.name.toLowerCase()], g = suggest(pw);
+      const v = have ? { use: have.use, range: have.targets === 'self' ? 'self' : have.range ? have.range[0] : have.reach || 5, roll: have.attack ? 'attack' : have.save ? 'save' : 'none',
+        saveAb: have.save ? have.save.ability : 'dex', half: !!(have.save && have.save.onSave === 'half'), dice: (have.damage[0] || {}).dice || '', type: (have.damage[0] || {}).type || '',
+        heal: have.heal ? have.heal.dice : '', upcast: have.upcast ? have.upcast.damage : '', concentration: have.concentration } : g;
+      const opt = (val, cur, label) => `<option value="${val}" ${String(val) === String(cur) ? 'selected' : ''}>${label}</option>`;
+      H.modal(`<h3>Power data</h3>
+        <p class="muted">The numbers the combat view uses for one of ${esc(u.name)}'s powers. ${have ? 'The table already has data for this one.' : 'A first guess from its description on the sheet: check it before saving.'} Without data, a power still works from the sheet as before.</p>
+        <label>Power <select id="ctkPw">${pws.map((p) => opt(esc(p.name), pw.name, `${esc(p.name)}${lib[p.name.toLowerCase()] ? ' ✓' : ''}`)).join('')}</select></label>
+        <div class="row2"><label>Takes <select id="ctkUse">${opt('action', v.use, 'an action')}${opt('bonus', v.use, 'a bonus action')}${opt('reaction', v.use, 'a reaction')}</select></label>
+        <label>Range (ft), or "self" <input id="ctkRange" value="${esc(v.range)}"></label></div>
+        <div class="row2"><label>Roll <select id="ctkRoll">${opt('attack', v.roll, 'an attack roll')}${opt('save', v.roll, 'a saving throw')}${opt('none', v.roll, 'none')}</select></label>
+        <label>Save <select id="ctkSave">${['str', 'dex', 'con', 'int', 'wis', 'cha'].map((a) => opt(a, v.saveAb, a.toUpperCase())).join('')}</select></label></div>
+        <label class="check"><input type="checkbox" id="ctkHalf" ${v.half ? 'checked' : ''}> Half damage on a successful save</label>
+        <div class="row2"><label>Damage dice <input id="ctkDice" value="${esc(v.dice)}" placeholder="2d6"></label><label>Damage type <input id="ctkType" value="${esc(v.type)}" placeholder="force"></label></div>
+        <div class="row2"><label>Healing dice (instead of damage) <input id="ctkHeal" value="${esc(v.heal)}" placeholder="1d8"></label><label>Extra dice per level higher <input id="ctkUp" value="${esc(v.upcast)}" placeholder="1d6"></label></div>
+        <label class="check"><input type="checkbox" id="ctkConc" ${v.concentration ? 'checked' : ''}> Concentration</label>
+        <div class="row">${have ? '<button class="btn danger" id="ctkDel">Forget it</button>' : ''}<span class="spacer"></span><button class="btn" id="ctkCancel">Cancel</button><button class="btn primary" id="ctkOk">Save</button></div>`, (box) => {
+        $('#ctkPw', box).onchange = (e) => draw(pws.find((p) => p.name === e.target.value) || pw);
+        $('#ctkCancel', box).onclick = H.closeModal;
+        if (have) $('#ctkDel', box).onclick = async () => { H.closeModal(); await send('fight.ability', { name: pw.name, data: null }); };
+        $('#ctkOk', box).onclick = async () => {
+          const rg = $('#ctkRange', box).value.trim().toLowerCase(), roll = $('#ctkRoll', box).value;
+          const data = { use: $('#ctkUse', box).value, targets: rg === 'self' ? 'self' : 1, concentration: $('#ctkConc', box).checked,
+            range: rg !== 'self' && +rg > 5 ? [+rg, +rg] : null, reach: rg !== 'self' && +rg <= 5 ? 5 : null,
+            attack: roll === 'attack' ? { bonus: 'power' } : null, save: roll === 'save' ? { ability: $('#ctkSave', box).value, dc: 'power', onSave: $('#ctkHalf', box).checked ? 'half' : 'none' } : null,
+            damage: $('#ctkDice', box).value.trim() ? [{ dice: $('#ctkDice', box).value.trim(), type: $('#ctkType', box).value.trim() }] : [],
+            heal: $('#ctkHeal', box).value.trim() ? { dice: $('#ctkHeal', box).value.trim(), add: null } : null,
+            upcast: $('#ctkUp', box).value.trim() ? { damage: $('#ctkUp', box).value.trim() } : null };
+          H.closeModal();
+          await send('fight.ability', { name: pw.name, data });
+        };
+      });
+    };
+    draw(pick);
   }
 
   /* ---------------- resources (audit 3.1) ---------------- */
@@ -298,13 +415,13 @@
       const tok = st().map.tokens.find((t) => t.id === fl.token);
       if (!tok) continue;
       const p = (tnow - fl.t0) / 1600, s = (tok.size || 1) * g;
-      const text = fl.kind === 'miss' ? 'Miss' : fl.kind === 'crit' ? `Critical −${fl.amount}` : `−${fl.amount}`;
+      const text = fl.kind === 'miss' ? 'Miss' : fl.kind === 'heal' ? `+${fl.amount}` : fl.kind === 'crit' ? `Critical −${fl.amount}` : `−${fl.amount}`;
       ctx.globalAlpha = 1 - p * p;
       ctx.font = `700 ${Math.max(14 / z, g * 0.32)}px "Exo 2", "Segoe UI", sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
       ctx.lineWidth = 4 / z; ctx.strokeStyle = 'rgba(0,0,0,.85)';
       const x = tok.x * g + s / 2, y = tok.y * g - p * g * 0.6;
       ctx.strokeText(text, x, y);
-      ctx.fillStyle = fl.kind === 'miss' ? '#e0e0e0' : fl.kind === 'crit' ? cssVar('--amber', '#ffb74d') : '#ff6e6e';
+      ctx.fillStyle = fl.kind === 'miss' ? '#e0e0e0' : fl.kind === 'heal' ? '#7ee787' : fl.kind === 'crit' ? cssVar('--amber', '#ffb74d') : '#ff6e6e';
       ctx.fillText(text, x, y);
     }
     ctx.restore();

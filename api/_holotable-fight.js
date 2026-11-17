@@ -29,13 +29,20 @@ function state(camp) {
   camp.fight = {
     on: !!f.on,
     links: ids(f.links, (v) => typeof v === "string" && ID.test(v)),
-    npc: ids(f.npc, (v) => Number.isFinite(+v) && +v >= 0 && +v <= 200),
+    // a creature's numbers from its stat block (the GM's screen sends them): speed, and save bonuses
+    npc: Object.fromEntries(Object.entries(plainObj(f.npc)).filter(([k]) => ID.test(k)).map(([k, v]) => {
+      const o = typeof v === "object" && v ? v : { speed: v };
+      const saves = Object.fromEntries(Object.entries(plainObj(o.saves)).filter(([ab, n]) => ["str", "dex", "con", "int", "wis", "cha"].includes(ab) && Number.isFinite(+n)).map(([ab, n]) => [ab, clamp(int(n), -10, 30)]));
+      return [k, { speed: clamp(int(o.speed, 30), 0, 200), saves }];
+    })),
+    // the table's ability data, by power name (issue #73): the GM fills it in; a power without data works as before
+    lib: Object.fromEntries(Object.entries(plainObj(f.lib)).slice(0, 300).map(([k, v]) => [str(k, 80).toLowerCase(), E.cleanAbility(v)]).filter(([k, v]) => k && v)),
     // what each unit has spent of its turn (movement in feet, action, bonus action, reaction), since its turn began
     spent: Object.fromEntries(Object.entries(plainObj(f.spent)).filter(([k, v]) => ID.test(k) && v && typeof v === "object")
       .map(([k, v]) => [k, { key: str(v.key, 40), move: clamp(int(v.move), 0, 1000), action: clamp(int(v.action), 0, 9), bonus: clamp(int(v.bonus), 0, 9), reaction: clamp(int(v.reaction), 0, 9) }])),
     undo: (Array.isArray(f.undo) ? f.undo : []).filter((x) => x && typeof x === "object").slice(-UNDO_MAX).map(cleanSnap),
     events: (Array.isArray(f.events) ? f.events : []).filter((x) => x && typeof x === "object").slice(-EVENTS_MAX).map((ev) => ({
-      seq: int(ev.seq), at: +ev.at || 0, kind: ["move", "hit", "crit", "miss"].includes(ev.kind) ? ev.kind : "move",
+      seq: int(ev.seq), at: +ev.at || 0, kind: ["move", "hit", "crit", "miss", "heal"].includes(ev.kind) ? ev.kind : "move",
       token: typeof ev.token === "string" && ID.test(ev.token) ? ev.token : null, amount: ev.amount == null ? null : clamp(int(ev.amount), 0, 100000),
       feet: ev.feet == null ? null : clamp(int(ev.feet), 0, 1000), hidden: !!ev.hidden })),
     seq: int(f.seq),
@@ -85,7 +92,9 @@ function worldOf(camp, forPlayer) {
   const cur = ini.entries[ini.turn];
   return E.buildWorld({
     characters: camp.characters, entries, active: ini.active, turnId: cur && entries.includes(cur) ? cur.id : null, round: ini.round,
-    tokens: camp.map.tokens, unitTokens: ut, npcSpeed: f.npc || {}, spent: f.spent || {},
+    tokens: camp.map.tokens, unitTokens: ut, spent: f.spent || {},
+    npcSpeed: Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v.speed : v])),
+    npcStats: Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v : {}])),
   }, R);
 }
 
@@ -152,6 +161,14 @@ function writeBack(camp, cid, before, after, G) {
     if (a.x !== b.x || a.y !== b.y) G.applyAction(camp, cid, true, "token.move", { id: a.tokenId, x: a.x, y: a.y });
     if (a.hp !== b.hp && a.hp != null) G.applyAction(camp, cid, true, "init.update", { id, fields: { hp: a.hp } });
     if (a.temp !== b.temp && a.charId && camp.characters[a.charId]) camp.characters[a.charId].hp.temp = a.temp;
+    // points spent by an ability go back where the sheet keeps them
+    if (a.charId && camp.characters[a.charId]) {
+      for (const [key, pool] of Object.entries(a.pools || {})) {
+        if (!b.pools[key] || b.pools[key].used === pool.used) continue;
+        const ch = camp.characters[a.charId], next = E.setPoolUsed(ch, key, pool.used, R);
+        Object.assign(ch, { resources: next.resources, force: next.force, tech: next.tech, hitDiceUsed: next.hitDiceUsed });
+      }
+    }
   }
   f.spent = after.spent || {};
 }
@@ -167,11 +184,22 @@ function apply(camp, cid, gm, type, p, G) {
       G.addChat(camp, { system: true, text: f.on ? "The GM switched the combat view on." : "The GM switched the combat view off." });
       return {};
     }
-    case "fight.npc": {      // a creature's speed, from its stat block
+    case "fight.npc": {      // a creature's speed and save bonuses, from its stat block
       need(gm);
       const e = entry(p.id);
       if (!e || e.charId) throw new G.Invalid("No such creature.");
-      f.npc[e.id] = clamp(int(p.speed, 30), 0, 200);
+      f.npc[e.id] = { speed: clamp(int(p.speed, 30), 0, 200), saves: Object.fromEntries(Object.entries(plainObj(p.saves)).filter(([ab, n]) => ["str", "dex", "con", "int", "wis", "cha"].includes(ab) && Number.isFinite(+n)).map(([ab, n]) => [ab, clamp(int(n), -10, 30)])) };
+      return {};
+    }
+    case "fight.ability": {  // the GM teaches the table a power's numbers (or forgets them: data null)
+      need(gm);
+      const name = str(p.name, 80).trim().toLowerCase();
+      if (!name) throw new G.Invalid("Which power?");
+      if (p.data == null) { delete f.lib[name]; return {}; }
+      const data = E.cleanAbility(p.data);
+      if (!data) throw new G.Invalid("That ability needs an attack, a save, damage, healing or a condition.");
+      if (!f.lib[name] && Object.keys(f.lib).length >= 300) throw new G.Invalid("That's the most powers the table can hold data for (300).");
+      f.lib[name] = data;
       return {};
     }
     case "fight.link": {     // which token is this creature's (when names don't match)
@@ -226,7 +254,7 @@ function apply(camp, cid, gm, type, p, G) {
       G.addChat(camp, { system: true, text: `The GM undid the last combat step (${s.label}).` });
       return {};
     }
-    case "fight.move": case "fight.attack": case "fight.end": {
+    case "fight.move": case "fight.attack": case "fight.end": case "fight.use": {
       if (!f.on) throw new G.Invalid("The combat view is off.");
       const cur = ini.entries[ini.turn];
       if (!ini.active || !cur) throw new G.Invalid("Combat hasn't started: start initiative first.");
@@ -240,6 +268,13 @@ function apply(camp, cid, gm, type, p, G) {
       let act;
       if (type === "fight.move") act = { type: "move", unit: cur.id, x: p.x, y: p.y };
       else if (type === "fight.end") act = { type: "end", unit: cur.id };
+      else if (type === "fight.use") {
+        const ch = cur.charId && camp.characters[cur.charId];
+        if (!ch) throw new G.Invalid("Creatures use their attacks for now.");
+        const ability = E.abilitiesOf(ch, R, f.lib).find((a) => a.key === String(p.ability || ""));
+        if (!ability) throw new G.Invalid("The table has no data for that ability on this sheet.");
+        act = { type: "use", unit: cur.id, ability, targets: Array.isArray(p.targets) ? p.targets.slice(0, 40).map(String) : [String(p.target || "")], upcast: clamp(int(p.upcast), 0, 9), adv: !!p.adv, dis: !!p.dis };
+      }
       else {
         let spec;
         if (cur.charId) {
@@ -251,14 +286,17 @@ function apply(camp, cid, gm, type, p, G) {
       }
       const r = E.apply(world, act, (expr) => G.rollDice(expr));
       if (!r.ok) throw new G.Invalid(r.why);
-      const label = type === "fight.move" ? `${cur.name} moved` : type === "fight.end" ? `${cur.name} ended the turn` : `${cur.name}'s attack`;
+      const label = type === "fight.move" ? `${cur.name} moved` : type === "fight.end" ? `${cur.name} ended the turn` : type === "fight.use" ? `${cur.name} used ${act.ability.name}` : `${cur.name}'s attack`;
       snapshot(camp, label);
       writeBack(camp, cid, world, r.world, G);
       // the roll lines go to chat as rolls, the way HoloTable shows every roll; a hidden creature's go to the GM only
       const secret = hiddenEntry(camp, cur, unitTokens(camp)[cur.id]);
       const ch = cur.charId && camp.characters[cur.charId];
       for (const line of r.log) {
-        if (!line.roll) continue;
+        if (!line.roll) {   // an ability's opening line (what it costs) goes to chat too; moves and turn ends don't
+          if (type === "fight.use") G.addChat(camp, Object.assign({ system: true, text: str(line.text, 200) }, secret ? { to: ["@gm"], private: true } : {}));
+          continue;
+        }
         const msg = { from: G.playerName(camp, cid), fromId: cid, fight: true,
           roll: { total: line.roll.total, detail: line.roll.detail, nat: line.roll.nat == null ? null : line.roll.nat, expr: line.expr, label: str(line.text, 200), kind: line.kind } };
         if (ch) msg.charName = ch.name;
@@ -310,7 +348,9 @@ function view(camp, cid, gm) {
     spent: Object.fromEntries(Object.entries(f.spent || {}).filter(([id]) => units[id])),
     events: evs.map((ev) => ({ seq: ev.seq, at: ev.at, kind: ev.kind, token: ev.token, amount: ev.amount, feet: ev.feet })),
     undo: gm ? { n: (f.undo || []).length, last: ((f.undo || [])[(f.undo || []).length - 1] || {}).label || null } : null,
-    npcSpeed: gm ? f.npc || {} : {},
+    npcSpeed: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v.speed : v])) : {},
+    npcSaves: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, (v && v.saves) || {}])) : {},
+    lib: f.lib || {},
   };
 }
 
