@@ -6,9 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#f6f1e7" />
   <title>HoloTable against SW5e: what's done, what's missing</title>
-  <meta name="description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules at commit 4427cbe: 60 done, 38 partial, 60 missing, and the ten gaps that matter most." />
+  <meta name="description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules at commit 4427cbe: 63 done, 35 partial, 60 missing, and the ten gaps that matter most." />
   <meta property="og:title" content="HoloTable against SW5e: what's done, what's missing" />
-  <meta property="og:description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules at commit 4427cbe: 60 done, 38 partial, 60 missing, and the ten gaps that matter most." />
+  <meta property="og:description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules at commit 4427cbe: 63 done, 35 partial, 60 missing, and the ten gaps that matter most." />
   <link rel="stylesheet" href="audit.css" />
 </head>
 <body>
@@ -19,8 +19,8 @@
       <h1>HoloTable against SW5e <span>what a table needs to play the whole system, and what is there</span></h1>
       <p class="lead">This is a line-by-line check of <a href="https://boofers-den.vercel.app/sections/jpesus/holotable/">HoloTable</a>, the Star Wars 5e tabletop jpesus built on the Den, against what the SW5e rules ask of a table: making and levelling characters, class resources, powers, the sheet's arithmetic, gear, rests and conditions, combat on the map, the GM's side, starships, downtime, and the table itself. It describes HoloTable's code at commit <code>4427cbe</code> (17 Nov 2026, 08:01 PST), so anything changed since then is not counted. It is meant as a to-do list for the group, not a verdict.</p>
       <ul class="counts" aria-label="The 158 lines">
-        <li class="done"><b>60</b> <span aria-hidden="true">✓</span> done</li>
-        <li class="partial"><b>38</b> <span aria-hidden="true">◐</span> partial</li>
+        <li class="done"><b>63</b> <span aria-hidden="true">✓</span> done</li>
+        <li class="partial"><b>35</b> <span aria-hidden="true">◐</span> partial</li>
         <li class="missing"><b>60</b> <span aria-hidden="true">✗</span> missing</li>
       </ul>
     </header>
@@ -67,8 +67,8 @@
       </dl>
       <div class="filters" id="filters" hidden>
         <div class="fgroup" role="group" aria-label="Show by state">
-          <button type="button" data-f="state" data-v="done" aria-pressed="true">✓ Done 60</button>
-          <button type="button" data-f="state" data-v="partial" aria-pressed="true">◐ Partial 38</button>
+          <button type="button" data-f="state" data-v="done" aria-pressed="true">✓ Done 63</button>
+          <button type="button" data-f="state" data-v="partial" aria-pressed="true">◐ Partial 35</button>
           <button type="button" data-f="state" data-v="missing" aria-pressed="true">✗ Missing 60</button>
         </div>
         <div class="fgroup" role="group" aria-label="Show by how much it matters">
@@ -567,7 +567,7 @@
 <p class="nomatch" hidden>Nothing in this section matches the filters.</p>
 </details>
 <details class="sec" id="s-8">
-<summary><span class="sn">8.</span> <span class="st">Combat on the map</span> <span class="sc"><span class="tally">10 done · 3 partial · 2 missing</span><span class="shown" hidden></span></span></summary>
+<summary><span class="sn">8.</span> <span class="st">Combat on the map</span> <span class="sc"><span class="tally">12 done · 1 partial · 2 missing</span><span class="shown" hidden></span></span></summary>
 
 <ul class="items">
 <li class="item done" id="l-8-1" data-state="done" data-matters="every">
@@ -600,20 +600,20 @@
 <p class="text">Attacking a target: pick a token, roll against its AC, and apply the damage to its hit points (with its resistances). Today attacks roll to chat and the GM types the damage into the tracker.</p>
 <p class="ev">Evidence: <code>case 'atk'</code>/<code>'dmg'</code> (app.js:661–663); tracker HP input (app.js:1038). <strong>Since 17 Nov:</strong> in the combat view (#89, #94; on main, off until the GM switches it on), pick a target: the attack is rolled against its AC and the damage applied to its hit points, with its resistances, immunities and vulnerabilities.</p>
 </li>
-<li class="item partial" id="l-8-7" data-state="partial" data-matters="every">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">8.7</span> <span class="meta">stores · every session</span></p>
+<li class="item done" id="l-8-7" data-state="done" data-matters="every">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">8.7</span> <span class="meta">computes · every session</span></p>
 <p class="text">Hit points in the tracker: typed or ±n; a character's tracker HP ignores temporary HP.</p>
-<p class="ev">Evidence: app.js:1038–1043; <code>init.update</code> (_holotable-game.js:513).</p>
+<p class="ev">Evidence: app.js:1038–1043; <code>init.update</code> (_holotable-game.js:513). <strong>Since 17 Nov:</strong> the tracker's -n and the sheet's Damage spend temporary hit points first, on the server, and the tracker shows them as &quot;+5&quot; (#109).</p>
 </li>
 <li class="item done" id="l-8-8" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">8.8</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Cover (half, three-quarters, total). Reference text only.</p>
 <p class="ev">Evidence: rules.js:111. <strong>Since 17 Nov:</strong> the combat view (on main, off until the GM switches it on) (#102), on a map with walls: one-quarter, half, three-quarters and total cover from walls and creatures, to AC and Dex saves; total cover can't be targeted.</p>
 </li>
-<li class="item partial" id="l-8-9" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">8.9</span> <span class="meta">computes · sometimes</span></p>
+<li class="item done" id="l-8-9" data-state="done" data-matters="some">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">8.9</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Vision and light: darkvision, dim light and darkness, line of sight, fog of war, walls and doors. Dungeondraft wall and light art loads only as pictures.</p>
-<p class="ev">Evidence: no code; packs.js:12–15 sorts walls/lights into categories only. <strong>Since 17 Nov:</strong> the combat view (on main, off until the GM switches it on) (#102): walls, doors and windows drawn by the GM or imported from Dungeondraft (.dd2vtt), line of sight and movement worked out on the server, areas stopped by walls. Fog of war per player (#113), with the combat view off too (#114): each player sees only what their own characters see. Lighting and darkvision are in review (#119).</p>
+<p class="ev">Evidence: no code; packs.js:12–15 sorts walls/lights into categories only. <strong>Since 17 Nov:</strong> the combat view (on main, off until the GM switches it on) (#102): walls, doors and windows drawn by the GM or imported from Dungeondraft (.dd2vtt), line of sight and movement worked out on the server, areas stopped by walls. Fog of war per player (#113), with the combat view off too (#114): each player sees only what their own characters see; chat follows sight (#115); objects can block sight (#110, #116); a player's drag can't cross a wall (#125). Light: the map bright, dim or dark, lights the GM places or a .dd2vtt brings, darkvision, blindsight and tremorsense (#119), and attacks against what can't be seen in the dark (#120).</p>
 </li>
 <li class="item done" id="l-8-10" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">8.10</span> <span class="meta">computes · sometimes</span></p>
@@ -649,7 +649,7 @@
 <p class="nomatch" hidden>Nothing in this section matches the filters.</p>
 </details>
 <details class="sec" id="s-9">
-<summary><span class="sn">9.</span> <span class="st">The GM's side</span> <span class="sc"><span class="tally">10 done · 4 partial · 4 missing</span><span class="shown" hidden></span></span></summary>
+<summary><span class="sn">9.</span> <span class="st">The GM's side</span> <span class="sc"><span class="tally">11 done · 3 partial · 4 missing</span><span class="shown" hidden></span></span></summary>
 
 <ul class="items">
 <li class="item done" id="l-9-1" data-state="done" data-matters="every">
@@ -672,10 +672,10 @@
 <p class="text">A creature's saving throws and skills are listed but not clickable rolls.</p>
 <p class="ev">Evidence: <code>statBlock</code> <code>line('Saving Throws', …)</code> (books.js:332). <strong>Since 17 Nov:</strong> a creature's saves and skills roll from its stat block, GM-only (#96).</p>
 </li>
-<li class="item partial" id="l-9-5" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">9.5</span> <span class="meta">computes · sometimes</span></p>
+<li class="item done" id="l-9-5" data-state="done" data-matters="some">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">9.5</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Creature resources: legendary actions (21 of 271 creatures) and legendary resistance (20), recharge abilities (24), per-day uses (43), and creature force/tech casting (14). Text only; nothing counts or recharges.</p>
-<p class="ev">Evidence: no code. Counts from SW5e's <code>monster</code> data. <strong>Since 17 Nov:</strong> the combat view (on main, off until the GM switches it on) (#97) counts recharge abilities (rolled at the start of the creature's turn), per-day uses and legendary actions, GM-only. Creature force and tech casting isn't counted yet.</p>
+<p class="ev">Evidence: no code. Counts from SW5e's <code>monster</code> data. <strong>Since 17 Nov:</strong> the combat view (on main, off until the GM switches it on) (#97) counts recharge abilities (rolled at the start of the creature's turn), per-day uses and legendary actions, GM-only. Creature force and tech casting isn't counted yet. <strong>Since 17 Nov:</strong> creatures' force and tech points are a pool the GM spends a power's level + 1 at a time, and innate &quot;N/day each&quot; powers get their own counts (#124).</p>
 </li>
 <li class="item done" id="l-9-6" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">9.6</span> <span class="meta">computes · sometimes</span></p>
