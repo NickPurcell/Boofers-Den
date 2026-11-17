@@ -7,6 +7,7 @@
 // Players never get GM notes, hidden NPCs, NPC hit points or other people's whispers.
 
 const crypto = require("crypto");
+const Fight = require("./_holotable-fight.js");   // the combat view (fight.*), off until the GM switches it on
 
 const CHAT_LIMIT = 400;
 const rid = (n = 10) => crypto.randomBytes(16).toString("hex").slice(0, n);
@@ -150,6 +151,8 @@ function cleanChar(ch) {
     initMisc: numOr(ch.initMisc, 0), profOverride: optNum(ch.profOverride),
     force: { max: optNum((ch.force || {}).max), used: numOr((ch.force || {}).used, 0) },
     tech: { max: optNum((ch.tech || {}).max), used: numOr((ch.tech || {}).used, 0) },
+    // the combat view's resource tracker (audit 3.1): kept only on a sheet that has some, so other sheets are as before
+    ...(Array.isArray(ch.resources) && ch.resources.length ? { resources: Fight.cleanResources(ch.resources) } : {}),
     attacks: list(ch.attacks, 40, (a) => ({ name: s(a.name, 80), ab: ["str", "dex", "con", "int", "wis", "cha", "finesse"].includes(a.ab) ? a.ab : "str",
       damage: s(a.damage, 40), damageFull: a.damageFull ? s(a.damageFull, 60) : undefined, type: s(a.type, 30), props: s(a.props, 200),
       proficient: a.proficient !== false, magic: optNum(a.magic), bonus: optNum(a.bonus), noModDamage: !!a.noModDamage })),
@@ -237,6 +240,7 @@ function viewFor(camp, cid, gm, online) {
     audio: camp.audio ? Object.assign({}, camp.audio, { now: now() }) : null,   // "now" lets each screen line its clock up
     ships: (camp.ships || []).filter((x) => gm || !x.hidden),
     sceneFx: fxView,
+    ...(camp.fight && camp.fight.on ? { fight: Fight.view(camp, cid, gm) } : {}),   // the combat view, only while it is on
     scene: (camp.scenes || []).filter((x) => x.id === camp.activeScene).map((x) => ({ id: x.id, name: x.name }))[0] || null,
     scenes: gm ? (camp.scenes || []).map((x) => ({ id: x.id, name: x.name, savedAt: x.savedAt })) : null,
   };
@@ -411,6 +415,7 @@ function applyAction(camp, cid, gm, type, p) {
   const chars = camp.characters, ini = camp.initiative, mp = camp.map;
   mp.props = mp.props || [];
   const need = (ok, why = "GM only") => { if (!ok) throw new Forbidden(why); };
+  if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, applyAction, Forbidden, Invalid });
 
   switch (type) {
     // ---- characters
@@ -903,6 +908,7 @@ function cleanGame(g) {
   if (!g.scenes.some((x) => x.id === g.activeScene)) g.activeScene = null;
   const fx = g.sceneFx && typeof g.sceneFx === "object" ? g.sceneFx : null;
   g.sceneFx = fx && /^[a-f0-9]{6,20}$/.test(fx.n || "") ? { n: fx.n, k: clamp(int(fx.k), -1, SCENE_WIPES - 1) } : null;
+  if (g.fight !== undefined) Fight.restored(g);   // the combat view's own record, checked like a live one (absent: stays absent)
   g.levelUps = Object.fromEntries(Object.entries(g.levelUps || {}).filter(([id]) => g.characters[id])
     .map(([id, v]) => [id, { count: clamp(int((v || {}).count), 0, 20), grantId: rid(), at: now() }]).filter(([, v]) => v.count > 0));
   return g;
