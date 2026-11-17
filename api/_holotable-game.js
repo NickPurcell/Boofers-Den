@@ -646,7 +646,9 @@ function applyAction(camp, cid, gm, type, p) {
       const t = mp.tokens.find((x) => x.id === p.id);
       if (!t) return {};
       need(gm || t.owner === cid || (t.charId && chars[t.charId] && chars[t.charId].owner === cid), "not your token");
-      t.x = clamp(int(p.x, t.x), -500, 1000); t.y = clamp(int(p.y, t.y), -500, 1000);
+      const tx = clamp(int(p.x, t.x), -500, 1000), ty = clamp(int(p.y, t.y), -500, 1000);
+      if (!gm && !Fight.canWalk(camp, t, tx, ty)) throw new Invalid("A wall is in the way.");   // under fog, a player's drag can't peek through a wall (#93)
+      t.x = tx; t.y = ty;
       return {};
     }
     case "token.add": {
