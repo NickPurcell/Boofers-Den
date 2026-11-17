@@ -38,8 +38,21 @@ const nowS = () => Date.now() / 1000;
 function fail(res, code, error) { res.status(code).json({ error }); }
 
 // ---------------------------------------------------------------- sessions
-// The signing key comes from both passwords, so changing either one signs everybody out.
-const signingKey = () => crypto.createHash("sha256").update("holotable-session-v1\0" + gmPw() + "\0" + playerPw()).digest();
+// The signing key mixes a random secret that only the server knows (made once, kept at ht:secret)
+// with both passwords. Without the secret, a cookie gives no way to test password guesses offline
+// or to sign a session; including the passwords means changing either one still signs everybody out.
+let KEY = null;
+async function loadKey() {
+  const r = S.getClient();
+  let secret = await r.get(S.K.secret());
+  if (!secret) {
+    await r.set(S.K.secret(), crypto.randomBytes(32).toString("hex"), "NX");
+    secret = await r.get(S.K.secret());
+  }
+  if (!secret) throw new Error("no signing secret");
+  KEY = crypto.createHash("sha256").update("holotable-session-v2\0" + secret + "\0" + gmPw() + "\0" + playerPw()).digest();
+}
+const signingKey = () => { if (!KEY) throw new Error("signing key not loaded"); return KEY; };
 function sign(payload) {
   const body = Buffer.from(JSON.stringify(payload)).toString("base64url");
   return body + "." + crypto.createHmac("sha256", signingKey()).update(body).digest("base64url");
@@ -78,8 +91,19 @@ async function rateLimit(bucket, max, windowS) {
 async function hits(bucket) { return +((await S.getClient().get(S.K.rl(bucket))) || 0); }
 
 // ---------------------------------------------------------------- the game
+// If the game is gone but there are signs it existed (a version counter or backups), something
+// removed it, e.g. a full Redis evicting keys. Then changes are refused and the GM is offered a
+// restore, instead of a blank table being saved over what's left. A true first visit starts fresh.
+class Missing extends Error {}
+async function gameWasLost() {
+  const r = S.getClient();
+  return !!(await r.get(S.K.ver(GAME))) || (await r.llen(S.K.bk(GAME))) > 0;
+}
 async function loadGame() {
-  return (await S.getCampaign(GAME)) || G.blankCampaign("HoloTable");
+  const camp = await S.getCampaign(GAME);
+  if (camp) return camp;
+  if (await gameWasLost()) throw new Missing("The table's save is missing. GM: open the GM tab and restore the latest backup.");
+  return G.blankCampaign("HoloTable");
 }
 
 async function onlineList(camp) {
@@ -126,17 +150,20 @@ async function handleGet(req, res, q, ses) {
   if (op === "me") return res.status(200).json({ role: ses.role, name: ses.name, you: ses.pid });
 
   if (op === "poll") {
-    if (!(await r.get(S.K.ver(GAME)))) { // first visit ever: create the game
-      await S.withLock(GAME, async () => { if (!(await S.getCampaign(GAME))) await S.saveCampaign(G.blankCampaign("HoloTable")); });
+    if (!(await r.get(S.K.ver(GAME))) && !(await gameWasLost())) { // first visit ever: create the game
+      await S.withLock(GAME, async () => { if (!(await S.getCampaign(GAME)) && !(await gameWasLost())) await S.saveCampaign(G.blankCampaign("HoloTable")); });
     }
     await touchPresence(ses);
     const deadline = Date.now() + Math.min(POLL_MS, +q.wait || POLL_MS);
     for (;;) {
       const [v, lib] = await r.mget(S.K.ver(GAME), S.K.libver());
       if (String(v || 0) !== String(q.v || "")) {
-        const camp = await loadGame();
+        let camp, missing = false;
+        try { camp = await loadGame(); } catch (e) { if (!(e instanceof Missing)) throw e; camp = G.blankCampaign("HoloTable"); missing = true; }
         if (!camp.players[ses.pid]) camp.players[ses.pid] = { name: ses.name, role: ses.role }; // shown before their first save
-        return res.status(200).json({ v: String(v || 0), lib: String(lib || 0), state: G.viewFor(camp, ses.pid, gm, await onlineList(camp)) });
+        const state = G.viewFor(camp, ses.pid, gm, await onlineList(camp));
+        if (missing) state.missing = true;
+        return res.status(200).json({ v: String(v || 0), lib: String(lib || 0), state });
       }
       const left = deadline - Date.now();
       if (left <= 0) return res.status(200).json({ v: String(v || 0), lib: String(lib || 0), same: true });
@@ -247,7 +274,12 @@ async function handlePost(req, res, q, b, ses) {
   }
 
   if (op === "restore") { // the GM replaces the game with a backup file; the current game is kept as a backup first
-    const file = b.campaign || {};
+    let file = b.campaign || {};
+    if (b.backup !== undefined) {
+      const raw = await r.lindex(S.K.bk(GAME), Math.max(0, +b.backup | 0));
+      if (!raw) return fail(res, 404, "No such backup.");
+      file = Object.assign(JSON.parse(raw), { _format: "holotable-campaign", _images: {} });
+    }
     if (file._format !== "holotable-campaign" || !file.characters || typeof file.characters !== "object") return fail(res, 400, "That isn't a HoloTable backup file.");
     const images = file._images || {};
     for (const [id, data] of Object.entries(images).slice(0, 500)) {
@@ -277,6 +309,12 @@ async function handlePost(req, res, q, b, ses) {
 
   // ---- asset library (GM only; shared by the whole table)
   if (op === "packstart") {
+    for (const raw of Object.values((await r.hgetall(S.K.packs())) || {})) {
+      try {
+        const p = JSON.parse(raw);
+        if (!p.done && nowS() - (p.added || 0) > 3600) await removePack(p.id, JSON.parse((await r.get(S.K.pack(p.id))) || "[]").length, p.bytes);
+      } catch { /* skip */ }
+    }
     const name = String(b.name || "Asset pack").slice(0, 80);
     const id = (name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "pack") + "-" + crypto.randomBytes(3).toString("hex");
     const incoming = Math.max(0, +b.bytes || 0);
@@ -300,7 +338,11 @@ async function handlePost(req, res, q, b, ses) {
           if (S.sniff(buf) && buf.length <= MAX_IMAGE) items.push({ it, buf });
         }
         const bytes = items.reduce((s, x) => s + x.buf.length, 0);
-        await S.reserve(bytes);
+        try { await S.reserve(bytes); } catch (e) {
+          if (!(e instanceof S.Full)) throw e;
+          await removePack(id, list.length, summary.bytes);
+          return fail(res, 413, "The asset library is full, so this pack wasn't added. Delete a pack (or ask the site owner to raise HOLOTABLE_STORAGE_MB) and try again.");
+        }
         for (const { it, buf } of items) {
           if (list.length >= MAX_PACK_ITEMS) { await S.release(buf.length); continue; }
           await r.set(S.K.asset(id, list.length), buf);
@@ -325,29 +367,33 @@ async function handlePost(req, res, q, b, ses) {
     }
     // packdelete
     const list = JSON.parse((await r.get(S.K.pack(id))) || "[]");
-    for (let i = 0; i < list.length; i += 200) await r.del(...list.slice(i, i + 200).map((_, j) => S.K.asset(id, i + j)));
-    await r.del(S.K.pack(id));
-    await r.hdel(S.K.packs(), id);
-    await S.release(summary.bytes || 0);
-    await r.incr(S.K.libver());
+    await removePack(id, list.length, summary.bytes);
     return res.status(200).json({ ok: true });
   }
 
   return fail(res, 404, "unknown op");
 }
 
+async function removePack(id, count, bytes) {
+  const r = S.getClient();
+  for (let i = 0; i < count; i += 200) await r.del(...Array.from({ length: Math.min(200, count - i) }, (_, j) => S.K.asset(id, i + j)));
+  await r.del(S.K.pack(id));
+  await r.hdel(S.K.packs(), id);
+  await S.release(bytes || 0);
+  await r.incr(S.K.libver());
+}
+
 // ---------------------------------------------------------------- entry point
 async function login(req, res, b) {
   const ip = ipOf(req);
-  // slow guessing down: 10 wrong passwords per address per 15 minutes, 200 per hour for everyone
-  if ((await hits("loginfail:" + ip)) >= 10 || (await hits("loginfail:all")) >= 200) {
+  // slow guessing down: 10 wrong passwords per address per 15 minutes
+  if ((await hits("loginfail:" + ip)) >= 10) {
     return fail(res, 429, "Too many wrong passwords. Wait a few minutes and try again.");
   }
   const pw = String(b.password || "").slice(0, 200);
   const isGm = samePassword(pw, gmPw()), isPlayer = samePassword(pw, playerPw());
   if (!isGm && !isPlayer) {
     await rateLimit("loginfail:" + ip, 1e9, 900);
-    await rateLimit("loginfail:all", 1e9, 3600);
     return fail(res, 401, "That password isn't right.");
   }
   const role = isGm ? "gm" : "player";
@@ -356,11 +402,13 @@ async function login(req, res, b) {
   const prev = verify(cookieToken(req), true);
   const pid = prev ? prev.pid : crypto.randomBytes(12).toString("hex");
   setCookie(res, sign({ pid, role, name, exp: Math.floor(nowS() + SESSION_S) }), COOKIE_S);
-  await S.withLock(GAME, async () => {
-    const camp = await loadGame();
-    camp.players[pid] = { name, role };
-    await S.saveCampaign(camp);
-  });
+  try {
+    await S.withLock(GAME, async () => {
+      const camp = await loadGame();
+      camp.players[pid] = { name, role };
+      await S.saveCampaign(camp);
+    });
+  } catch (e) { if (!(e instanceof Missing)) throw e; } // signed in; the table shows the restore notice
   return res.status(200).json({ ok: true, role, name });
 }
 
@@ -369,6 +417,7 @@ module.exports = async function handler(req, res) {
   if (!S.URL) return fail(res, 503, "Storage is not configured (no REDIS_URL).");
   const q = req.query || {};
   try {
+    await loadKey();
     if (req.method === "POST") {
       // a custom header can't be sent cross-site without permission, so other sites can't post as you
       if ((req.headers || {})["x-holotable"] !== "1") return fail(res, 403, "missing X-HoloTable header");
@@ -394,6 +443,8 @@ module.exports = async function handler(req, res) {
   } catch (e) {
     if (e instanceof S.Busy) return fail(res, 503, e.message);
     if (e instanceof S.Full) return fail(res, 413, e.message);
+    if (e instanceof Missing) return fail(res, 409, e.message);
+    if (/\bOOM\b/.test(String(e && e.message))) return fail(res, 507, "The database is full, so that change wasn't saved. Delete an asset pack or old images, or ask the site owner to check the database plan.");
     if (e instanceof SyntaxError) return fail(res, 400, "bad JSON");
     console.error("holotable:", e && e.message);
     return fail(res, 500, "Something went wrong on the server.");

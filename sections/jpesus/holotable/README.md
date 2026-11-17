@@ -12,6 +12,7 @@ Set two environment variables in Vercel:
 | `HOLOTABLE_GM_PASSWORD` | the GM |
 
 Until both are set (and different from each other), the API refuses every request. Changing either one signs everybody out.
+Sessions are signed with a random secret the server creates once and keeps in Redis (`ht:secret`). Nobody has to configure it.
 
 Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded images and asset-pack art.
 
@@ -35,16 +36,21 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
 ## How it runs
 
 - **One function:** `api/holotable.js`, routed by `?op=`. The rules live in `_holotable-game.js` and storage in `_holotable-store.js`.
-- **Sign-in:** a password is exchanged for a signed (HMAC), expiring session in an HttpOnly cookie.
+- **Sign-in:** a password is exchanged for a signed (HMAC), expiring session in an HttpOnly cookie. The signing key mixes
+  the server-only secret with both passwords, so a cookie can't be used to test password guesses offline.
   - The session carries the person's id and role, and only the role decides who is GM.
   - Every read, write and image needs a session.
   - POSTs also need an `X-HoloTable: 1` header, which other sites can't send.
-  - Wrong passwords are rate-limited (10 per address per 15 minutes) and compared in constant time.
+  - Wrong passwords are limited to 10 per address per 15 minutes, with no shared limit anyone could trip for the whole group.
+    They're compared in constant time.
 - **Input cleaning:** the server cleans every character sheet and table edit. Numbers stay numbers, colours must be `#rrggbb`,
   and images must be ones uploaded to this table.
 - **Storage:** the project's Redis, under `ht:` keys (`htpv:` on preview deployments). Nothing touches Find time to hang's keys.
   - Uploaded images and pack art share the `HOLOTABLE_STORAGE_MB` cap.
   - The game document is capped at 1.5 MB, with 10 automatic backups kept.
+- **If the save goes missing** (for example, a full Redis evicting keys), changes are refused and everyone sees a notice.
+  The GM gets a one-click restore from the latest automatic backup, so a blank table is never saved over it.
+  A full database shows a clear "database is full" message.
 - **Live updates:** long-polling woken by Redis pub/sub. Each request waits up to 8 s, and hidden tabs stop polling.
 
 ## Local testing

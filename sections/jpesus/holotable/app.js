@@ -202,9 +202,20 @@
 
   // --------------------------------------------------------------------------- top bar
   function renderTop() {
+    const bar = $('#missingBar');
+    bar.classList.toggle('hidden', !S.st.missing);
+    if (S.st.missing) bar.innerHTML = isGM()
+      ? `⚠ The table's save is missing (the database may have been full). Nothing can be changed until it's restored.
+         <button class="btn small amber-fill" id="restoreLatest">Restore latest backup</button> <span class="muted">or pick one in the GM tab</span>`
+      : `⚠ The table's save is missing. The GM needs to restore a backup before play can continue.`;
     $('#campName').textContent = S.st.name;
     $('#online').innerHTML = S.st.online.map(o => `<span class="pill ${o.gm ? 'gm' : ''}">${esc(o.name)}${o.gm ? ' (GM)' : ''}</span>`).join('');
   }
+  $('#missingBar').addEventListener('click', async e => {
+    if (e.target.id !== 'restoreLatest') return;
+    if (!confirm('Restore the most recent automatic backup?')) return;
+    try { await post('restore', { backup: 0 }); toast('Table restored'); } catch (err) { toast(err.message, true); }
+  });
   $$('.rollmode button').forEach(b => b.addEventListener('click', () => {
     S.rollMode = b.dataset.mode; $$('.rollmode button').forEach(x => x.classList.toggle('on', x === b));
   }));

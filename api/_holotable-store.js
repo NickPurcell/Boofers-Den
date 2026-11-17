@@ -11,6 +11,7 @@
 //   ht:a:<id>:<n>      one asset image, raw bytes
 //   ht:libver          bumped when the library changes
 //   ht:rl:<bucket>     rate-limit counters
+//   ht:secret          random secret for signing sessions (only the server reads it)
 //   ht:bytes           total bytes of stored images and pack art, checked against the storage cap
 // Nothing here touches Find time to hang's hang:/hang2: keys. The game and images never expire:
 // it is meant to be picked up again next session. Size limits: images + packs <= HOLOTABLE_STORAGE_MB
@@ -36,6 +37,7 @@ const K = {
   libver: () => `${NS}:libver`,
   rl: (b) => `${NS}:rl:${b}`,
   bytes: () => `${NS}:bytes`,
+  secret: () => `${NS}:secret`,      // random session-signing secret, made once; never sent anywhere
 };
 const STORAGE_CAP = (+process.env.HOLOTABLE_STORAGE_MB || 250) * 1024 * 1024;
 const MAX_GAME_BYTES = 1.5 * 1024 * 1024;

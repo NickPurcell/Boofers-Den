@@ -15,6 +15,7 @@ class HoloFakeRedis extends FakeRedis {
   async getBuffer(k) { const v = this.kv.get(k); return v === undefined ? null : Buffer.isBuffer(v) ? v : Buffer.from(String(v)); }
   async mget(...ks) { return Promise.all(ks.flat().map((k) => this.get(k))); }
   async exists(k) { return this.kv.has(k) ? 1 : 0; }
+  async llen(k) { const l = this.kv.get(k); return Array.isArray(l) ? l.length : 0; }
   async lindex(k, i) { const l = this.kv.get(k) || []; return l[i] === undefined ? null : l[i]; }
   async hdel(k, ...fs) { const h = this.kv.get(k); let n = 0; for (const f of fs) if (h && h.delete(f)) n++; return n; }
   async publish(ch, msg) { this.bus.emit("msg", ch, msg); return 1; }

@@ -358,3 +358,90 @@ test("colour themes: each person saves their own; the GM theme is the GM's; colo
   const gmId = (await gm.call("GET", { op: "me" })).data.you;
   assert.equal((await gm.poll()).data.state.players[gmId].prefs.theme, "gm-green-silver");
 });
+
+test("the forge probe: knowing both passwords isn't enough to sign a session", async () => {
+  const { p1 } = await table();
+  const crypto = require("crypto");
+  const me = (await p1.call("GET", { op: "me" })).data.you;
+  // what a player could do offline before: rebuild the key from the passwords and sign a GM session
+  const forge = (key) => {
+    const body = Buffer.from(JSON.stringify({ pid: me, role: "gm", name: "x", exp: Math.floor(Date.now() / 1000) + 3600 })).toString("base64url");
+    return "ht_session=" + body + "." + crypto.createHmac("sha256", key).update(body).digest("base64url");
+  };
+  const v1 = crypto.createHash("sha256").update("holotable-session-v1\0" + GM_PW + "\0" + PLAYER_PW).digest();
+  const v2noSecret = crypto.createHash("sha256").update("holotable-session-v2\0\0" + GM_PW + "\0" + PLAYER_PW).digest();
+  for (const key of [v1, v2noSecret]) {
+    const evil = browser(); evil.cookie = forge(key);
+    assert.equal((await evil.poll()).code, 401, "a key from the passwords alone signs nothing");
+  }
+  // the secret lives only on the server, and is made once
+  const secret = await db.get(S.K.secret());
+  assert.match(secret, /^[a-f0-9]{64}$/);
+  await p1.poll();
+  assert.equal(await db.get(S.K.secret()), secret, "the secret is kept, not regenerated");
+  // and a player's own cookie can't be used to check password guesses: it doesn't verify under any password-only key
+  const [body, mac] = p1.cookie.split("=")[1].split(".");
+  assert.notEqual(crypto.createHmac("sha256", v1).update(body).digest("base64url"), mac);
+});
+
+test("changing a password still signs everyone out", async () => {
+  const { p1 } = await table();
+  assert.equal((await p1.poll()).code, 200);
+  const saved = process.env.HOLOTABLE_GM_PASSWORD;
+  process.env.HOLOTABLE_GM_PASSWORD = "new-gm-password";
+  try { assert.equal((await p1.poll()).code, 401); } finally { process.env.HOLOTABLE_GM_PASSWORD = saved; }
+  assert.equal((await p1.poll()).code, 200, "and changing it back restores the old sessions");
+});
+
+test("one address's wrong guesses don't lock anyone else out", async () => {
+  fresh();
+  for (let n = 0; n < 25; n++) { const b = browser(`10.7.${n}.1`); for (let i = 0; i < 10; i++) await b.login("wrong" + i, "x"); }
+  assert.equal((await browser("10.7.99.1").login(PLAYER_PW, "Sam")).code, 200, "250 failures from elsewhere don't block a new address");
+});
+
+test("a pack that runs out of room partway is removed and its space given back", async () => {
+  const { gm } = await table();
+  const before = await S.used();
+  const packId = (await gm.post("packstart", { name: "Too Big", bytes: 10 })).data.packId;
+  assert.equal((await gm.post("packadd", { packId, items: [{ n: "a", c: "props", data: PNG.toString("base64") }] })).code, 200);
+  await db.set(S.K.bytes(), String(S.STORAGE_CAP - 5));            // the library fills up mid-upload
+  const r = await gm.post("packadd", { packId, items: [{ n: "b", c: "props", data: PNG.toString("base64") }] });
+  assert.equal(r.code, 413);
+  assert.match(r.data.error, /library is full/);
+  assert.equal(await db.hget(S.K.packs(), packId), null, "the half pack is gone");
+  assert.equal(await db.get(S.K.asset(packId, 0)), null, "its images are gone");
+  assert.equal(+(await db.get(S.K.bytes())), S.STORAGE_CAP - 5 - PNG.length, "the first batch's space was released");
+  void before;
+});
+
+test("a missing save is never replaced by a blank table; the GM can restore", async () => {
+  const { gm, p1 } = await table();
+  await p1.act("char.save", { char: { name: "Kira" } });
+  // ten minutes of play later, the next change makes an automatic backup that includes Kira
+  const g = JSON.parse(await db.get(S.K.camp("main"))); g.lastBackup = 0; await db.set(S.K.camp("main"), JSON.stringify(g));
+  await p1.act("chat", { text: "onwards" });
+  await db.del(S.K.camp("main"));                                   // e.g. evicted by a full Redis
+  const st = (await p1.poll()).data.state;
+  assert.equal(st.missing, true);
+  assert.equal(Object.keys(st.characters).length, 0);
+  const r = await p1.act("char.save", { char: { name: "Rook" } });
+  assert.equal(r.code, 409);
+  assert.match(r.data.error, /restore/);
+  assert.equal(await db.get(S.K.camp("main")), null, "nothing was saved over it");
+  assert.equal((await gm.login(GM_PW, "Dee")).code, 200, "the GM can still sign in");
+  assert.equal((await gm.post("restore", { backup: 0 })).code, 200);
+  const back = (await p1.poll()).data.state;
+  assert.equal(back.missing, undefined);
+  assert.deepEqual(Object.values(back.characters).map((c) => c.name), ["Kira"]);
+});
+
+test("a full database says so", async () => {
+  const { p1 } = await table();
+  const realSet = db.set.bind(db);
+  db.set = async (k, ...rest) => { if (String(k).includes(":camp:")) throw new Error("OOM command not allowed when used memory > 'maxmemory'."); return realSet(k, ...rest); };
+  try {
+    const r = await p1.act("chat", { text: "hello" });
+    assert.equal(r.code, 507);
+    assert.match(r.data.error, /database is full/);
+  } finally { db.set = realSet; }
+});

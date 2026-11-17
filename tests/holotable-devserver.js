@@ -24,6 +24,14 @@ const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", "
 
 http.createServer(async (req, res) => {
   const u = new URL(req.url, "http://x");
+  // dev-only: simulate the save being evicted, to try the "missing save" banner and restore
+  if (u.pathname === "/__dev/drop-game" && req.method === "POST") {
+    const g = await db.get(S.K.camp("main"));
+    if (g) { const c = JSON.parse(g); c.lastBackup = 0; await db.set(S.K.camp("main"), JSON.stringify(c)); }
+    await db.del(S.K.camp("main"));
+    await S.bump("main");
+    return res.end("dropped");
+  }
   if (u.pathname === "/api/holotable") {
     const chunks = [];
     for await (const c of req) chunks.push(c);
