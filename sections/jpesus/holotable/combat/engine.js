@@ -266,6 +266,47 @@
     return { out, par, prev, at, start: key(u.x, u.y, start) };
   }
   const reachable = (world, unitId, feet) => search(world, unitId, feet).out;
+  // Can a token get from where it stands to (tx, ty) without crossing a wall, a window or a closed door, however far
+  // (issue #93: a player's drag under fog)? A walk over the squares of the board (and its own start and end), each
+  // step a straight line between square centres as in search(); walls are filed by the squares they touch, so a big
+  // map costs little. Other tokens never block it, and neither do objects that block only sight.
+  function walkable(walls, cols, rows, t, tx, ty) {
+    const stops = (walls || []).filter(blocksMove), s = Math.max(1, t.size || 1);
+    if (!stops.length || (t.x === tx && t.y === ty)) return true;
+    const X0 = Math.min(0, t.x, tx), Y0 = Math.min(0, t.y, ty), X1 = Math.max(cols - 1, t.x, tx), Y1 = Math.max(rows - 1, t.y, ty);
+    const W = X1 - X0 + 1, H = Y1 - Y0 + 1;
+    if (W * H > 250000) return true;   // far off any board: nothing sensible to check
+    const cell = (x, y) => (y - Y0) * W + (x - X0), files = new Map();
+    for (const w of stops) {
+      const ax = Math.floor(Math.min(w.a[0], w.b[0]) - 0.01), bx = Math.floor(Math.max(w.a[0], w.b[0]) + 0.01), ay = Math.floor(Math.min(w.a[1], w.b[1]) - 0.01), by = Math.floor(Math.max(w.a[1], w.b[1]) + 0.01);
+      for (let x = Math.max(X0, ax); x <= Math.min(X1, bx); x++) for (let y = Math.max(Y0, ay); y <= Math.min(Y1, by); y++) {
+        const k = cell(x, y); if (!files.has(k)) files.set(k, []); files.get(k).push(w);
+      }
+    }
+    // does a step cross a wall filed under any square its line passes over (no allocation: called for every step)
+    const walled = (p, q) => {
+      for (let x = Math.floor(Math.min(p[0], q[0])); x <= Math.floor(Math.max(p[0], q[0])); x++) for (let y = Math.floor(Math.min(p[1], q[1])); y <= Math.floor(Math.max(p[1], q[1])); y++) {
+        if (x < X0 || x > X1 || y < Y0 || y > Y1) continue;
+        const f = files.get(cell(x, y));
+        if (f) for (const w of f) if (crosses(p, q, w.a, w.b)) return true;
+      }
+      return false;
+    };
+    const seen = new Uint8Array(W * H), queue = [[t.x, t.y]];
+    seen[cell(t.x, t.y)] = 1;
+    while (queue.length) {
+      const [x, y] = queue.pop();
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+        const nx = x + dx, ny = y + dy;
+        if ((!dx && !dy) || nx < X0 || ny < Y0 || nx > X1 || ny > Y1 || seen[cell(nx, ny)]) continue;
+        const p = [x + s / 2, y + s / 2], q = [nx + s / 2, ny + s / 2];
+        if (walled(p, q)) continue;
+        if (nx === tx && ny === ty) return true;
+        seen[cell(nx, ny)] = 1; queue.push([nx, ny]);
+      }
+    }
+    return false;
+  }
   // the squares a move passes through, from where the unit stands to (x, y), by the cheapest way; null if out of reach
   function pathTo(world, unitId, feet, x, y) {
     const s = search(world, unitId, feet);
@@ -1293,5 +1334,5 @@
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
     SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf, d20, flankOf, fixedTotal, cruel, modeName,
-    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight };
+    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable };
 });

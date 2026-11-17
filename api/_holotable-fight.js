@@ -25,6 +25,8 @@ const int = (v, d = 0) => { const n = parseInt(v, 10); return Number.isFinite(n)
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const now = () => Date.now() / 1000;
 const plainObj = (o) => (o && typeof o === "object" && !Array.isArray(o) ? o : {});
+// a character by an id from a request or a stored record: the table's own only, never an inherited name ("__proto__") (#111)
+const charOf = (camp, id) => (typeof id === "string" && Object.prototype.hasOwnProperty.call(camp.characters || {}, id) ? camp.characters[id] : undefined);
 
 // The fight's own state, with its shape checked every time (a backup restore can bring anything back).
 function state(camp) {
@@ -222,7 +224,7 @@ function restore(camp, s) {
   if (i >= 0) ini.turn = i;
   ini.round = s.ini.round; ini.active = s.ini.active;
   f.spent = s.spent || {};
-  for (const [id, r] of s.chars || []) if (camp.characters[id]) Object.assign(camp.characters[id], r);
+  for (const [id, r] of s.chars || []) if (charOf(camp, id)) Object.assign(charOf(camp, id), r);
   if (Array.isArray(s.effects)) f.effects = s.effects;
   if (s.conc) f.conc = s.conc;
   if (typeof s.lastTurn === "string") f.lastTurn = s.lastTurn;
@@ -458,7 +460,7 @@ function apply(camp, cid, gm, type, p, G) {
       return {};
     }
     case "fight.defenses": { // a character's resistances, immunities and vulnerabilities (its owner or the GM)
-      const ch = camp.characters[p.charId];
+      const ch = charOf(camp, p.charId);
       if (!ch) throw new G.Invalid("No such character.");
       need(gm || ch.owner === cid, "not your character");
       const types = (v) => (Array.isArray(v) ? v : []).filter((x) => E.DAMAGE.includes(x)).map((type) => ({ type, only: null }));
@@ -496,7 +498,7 @@ function apply(camp, cid, gm, type, p, G) {
       return {};
     }
     case "fight.spend": {    // spend from a character's resource (its owner or the GM); undoable like a combat step
-      const ch = camp.characters[p.charId];
+      const ch = charOf(camp, p.charId);
       if (!ch) throw new G.Invalid("No such character.");
       need(gm || ch.owner === cid, "not your character");
       const r = E.spend(ch, String(p.key || ""), p.n == null ? 1 : p.n, R);
@@ -507,7 +509,7 @@ function apply(camp, cid, gm, type, p, G) {
       return {};
     }
     case "fight.resource": { // add, change or remove one of a character's own resources (its owner or the GM)
-      const ch = camp.characters[p.charId];
+      const ch = charOf(camp, p.charId);
       if (!ch) throw new G.Invalid("No such character.");
       need(gm || ch.owner === cid, "not your character");
       const list = E.cleanResources(ch.resources);
@@ -704,7 +706,7 @@ function view(camp, cid, gm, shownName) {
     npcDefenses: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, defences(plainObj(v))])) : {},
     // characters' own: as visible as their sheets (not a sheet whose token's name the GM is hiding, except to its owner)
     defenses: gm || !shownName ? f.defenses || {} : Object.fromEntries(Object.entries(f.defenses || {}).filter(([id]) => {
-      const c = camp.characters[id];
+      const c = charOf(camp, id);
       return c && (c.owner === cid || shownName(camp, { charId: id, name: c.name }) === c.name);
     })),
     lib: f.lib || {},
@@ -819,6 +821,15 @@ function squaresSeen(camp, eyes, noLight) {
   }
   return vis;
 }
+// A player's drag under fog (issue #93): only where the token can walk without crossing a wall, a window or a closed
+// door, however far; otherwise a drag would peek into the next room. The GM's drags, and maps without fog or walls,
+// aren't checked. Objects that block sight don't stop it: a player can climb over crates (the GM walls in what can't
+// be passed).
+function canWalk(camp, t, x, y) {
+  if (!fogOn(camp) || !t || !((camp.map.walls || []).length)) return true;
+  const { cols, rows } = sizeOf(camp);
+  return E.walkable(camp.map.walls, cols, rows, { x: int(t.x), y: int(t.y), size: clamp(int(t.size, 1), 1, 4) }, x, y);
+}
 // What fog hides from one player: null for the GM or with fog off; otherwise the squares they see and the tokens and
 // tracker entries they can't. A player's own tokens are never hidden from them. In the dark, a creature within a
 // character's blindsight or tremorsense (and not behind a wall from it) is still perceived, though its square isn't lit.
@@ -932,5 +943,5 @@ function cleanWalls(list) {
   });
 }
 
-module.exports = { apply, view, fogFor, fogView, cleanFog, cleanLight, noteSeen, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
+module.exports = { apply, view, canWalk, fogFor, fogView, cleanFog, cleanLight, noteSeen, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
   cleanHitDiceUsed: R.cleanHitDiceUsed };   // for cleanChar: the sheet and the undo record clean hit dice the same way
