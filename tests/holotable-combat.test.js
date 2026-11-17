@@ -1324,15 +1324,21 @@ test("powers' attack rolls tilt for the same reasons as weapons: conditions, dod
   assert.deepEqual([d.asked[0].slice(0, 7), /advantage: Raider is restrained/.test(r.log[1].text)], ["2d20kh1", true]);
 });
 
-test("senses through the API: a creature's from its stat block stay the GM's; a character's are set by its owner", async () => {
+test("senses through the API: a creature's from its stat block stay the GM's; a character's are set by the GM, seen by its owner", async () => {
   const { gm, sam, rae, ids, avery } = await fight();
   await gm.act("fight.toggle", { on: true });
   assert.equal((await gm.act("fight.npc", { id: ids.raider, speed: 30, senses: ["blindsight 30 ft. (blind beyond this radius)", "passive Perception 12"] })).code, 200);
   assert.deepEqual((await gm.state()).fight.npcDefenses[ids.raider].senses, [{ kind: "blindsight", range: 30 }]);
   assert.ok(!JSON.stringify((await sam.state()).fight).includes("blindsight"), "a creature's senses aren't sent to players");
   assert.equal((await rae.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 60 }] })).code, 403);
-  assert.equal((await sam.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 60 }, { kind: "x-ray", range: 9 }] })).code, 200);
+  assert.equal((await gm.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 60 }, { kind: "x-ray", range: 9 }] })).code, 200);
   assert.deepEqual((await rae.state()).fight.defenses[avery].senses, [{ kind: "darkvision", range: 60 }]);
+  // senses are the GM's to set (review of #119): the owner's save keeps them, whatever it sends, and still sets resistances
+  assert.equal((await sam.act("fight.defenses", { charId: avery, resist: ["fire"], senses: [{ kind: "darkvision", range: 9999 }, { kind: "truesight", range: 120 }] })).code, 200);
+  const d = (await rae.state()).fight.defenses[avery];
+  assert.deepEqual([d.senses, d.resist.map((x) => x.type)], [[{ kind: "darkvision", range: 60 }], ["fire"]]);
+  await sam.act("fight.defenses", { charId: avery, senses: [] });
+  assert.deepEqual((await gm.state()).fight.defenses[avery].senses, [{ kind: "darkvision", range: 60 }], "nor can the owner take them away");
 });
 
 test("review #89 through the API: one diagonal step at a time is 5, 10, 5, 10 ft, kept between requests", async () => {
@@ -2131,12 +2137,12 @@ test("light under fog: the map's level, lights stopped by walls, darkvision and 
   assert.deepEqual(Object.keys(gv.fog).sort().filter((k) => k === "dark" || k === "dimLit"), ["dark", "dimLit"], "the GM sees where the light falls");
   await gm.act("fight.light", { op: "remove", id: light.id });
   await gm.act("fight.toggle", { on: true });
-  await sam.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 60 }] });
+  await gm.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 60 }] });
   sv = await sam.state();
   assert.ok(tokenOf(sv, "Raider"), "darkvision: seen in the dark");
   assert.deepEqual([sq(sv, "vis", 6, 0), sq(sv, "dim", 6, 0)], [1, 1], "darkness through darkvision is dim");
   // blindsight 10 ft only: the Raider far off is gone; moved next to Avery, it's perceived though its square isn't lit
-  await sam.act("fight.defenses", { charId: avery, senses: [{ kind: "blindsight", range: 10 }] });
+  await gm.act("fight.defenses", { charId: avery, senses: [{ kind: "blindsight", range: 10 }] });
   assert.equal(tokenOf(await sam.state(), "Raider"), undefined);
   await gm.act("token.move", { id: tokenOf(gv, "Raider").id, x: 2, y: 0 });
   sv = await sam.state();
@@ -2179,7 +2185,7 @@ test("the dark in a fight (#93 step 5): a creature its target can't see attacks 
   };
   assert.match(await swing(), /with advantage \(Raider is unseen in the dark\)/, "Avery can't see the Raider in the dark");
   // Avery's darkvision 60 ft sees it: no advantage
-  await sam.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 60 }] });
+  await gm.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 60 }] });
   assert.doesNotMatch(await swing(), /unseen in the dark/);
   // and the Raider can't see an unlit Avery without darkvision of its own: Avery's light out, the Raider attacks at disadvantage
   const L = (await gm.state()).map.light.lights[0];

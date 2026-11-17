@@ -464,8 +464,10 @@ function apply(camp, cid, gm, type, p, G) {
       if (!ch) throw new G.Invalid("No such character.");
       need(gm || ch.owner === cid, "not your character");
       const types = (v) => (Array.isArray(v) ? v : []).filter((x) => E.DAMAGE.includes(x)).map((type) => ({ type, only: null }));
-      // senses: until the sheet has a field for them (audit 5.12, proposed on the queue), they live here
-      f.defenses[ch.id] = defences({ resist: types(p.resist), immune: types(p.immune), vuln: types(p.vuln), senses: p.senses });
+      // senses: until the sheet has a field for them (audit 5.12, #92), they live here. They're the GM's to set: under fog
+      // and lighting they decide what a player is shown, so a player's save keeps the senses the GM gave (review of #119)
+      const kept = plainObj((f.defenses || {})[ch.id]).senses || [];
+      f.defenses[ch.id] = defences({ resist: types(p.resist), immune: types(p.immune), vuln: types(p.vuln), senses: gm ? p.senses : kept });
       return {};
     }
     case "fight.ability": {  // the GM teaches the table a power's numbers (or forgets them: data null)
