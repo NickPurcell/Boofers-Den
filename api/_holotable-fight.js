@@ -30,8 +30,9 @@ function state(camp) {
     on: !!f.on,
     links: ids(f.links, (v) => typeof v === "string" && ID.test(v)),
     npc: ids(f.npc, (v) => Number.isFinite(+v) && +v >= 0 && +v <= 200),
-    turn: f.turn && typeof f.turn === "object" ? { key: str(f.turn.key, 40), moved: clamp(int(f.turn.moved), 0, 1000), action: !!f.turn.action, bonus: !!f.turn.bonus } : null,
-    reactions: ids(f.reactions, (v) => v === true),
+    // what each unit has spent of its turn (movement in feet, action, bonus action, reaction), since its turn began
+    spent: Object.fromEntries(Object.entries(plainObj(f.spent)).filter(([k, v]) => ID.test(k) && v && typeof v === "object")
+      .map(([k, v]) => [k, { key: str(v.key, 40), move: clamp(int(v.move), 0, 1000), action: clamp(int(v.action), 0, 9), bonus: clamp(int(v.bonus), 0, 9), reaction: clamp(int(v.reaction), 0, 9) }])),
     undo: (Array.isArray(f.undo) ? f.undo : []).filter((x) => x && typeof x === "object").slice(-UNDO_MAX),
     events: (Array.isArray(f.events) ? f.events : []).filter((x) => x && typeof x === "object").slice(-EVENTS_MAX),
     seq: int(f.seq),
@@ -61,8 +62,8 @@ function worldOf(camp, forPlayer) {
   const cur = ini.entries[ini.turn];
   return E.buildWorld({
     characters: camp.characters, entries, active: ini.active, turnId: cur && entries.includes(cur) ? cur.id : null, round: ini.round,
-    tokens: camp.map.tokens, unitTokens: ut, npcSpeed: f.npc || {}, turnState: f.turn, reactions: f.reactions,
-  });
+    tokens: camp.map.tokens, unitTokens: ut, npcSpeed: f.npc || {}, spent: f.spent || {},
+  }, R);
 }
 
 function mayAct(camp, cid, gm, entry) {
@@ -95,7 +96,8 @@ function snapshot(camp, label) {
   f.undo.push({
     label: str(label, 120), at: now(), seq: f.seq,
     ini: { turnId: (ini.entries[ini.turn] || {}).id || null, round: ini.round, active: ini.active },
-    turn: f.turn ? Object.assign({}, f.turn) : null, reactions: Object.assign({}, f.reactions),
+    spent: JSON.parse(JSON.stringify(f.spent || {})),
+    chars: Object.values(camp.characters).map((c) => [c.id, JSON.parse(JSON.stringify({ resources: c.resources || [], force: c.force, tech: c.tech, hitDiceUsed: c.hitDiceUsed }))]),
     tokens: (camp.map.tokens || []).filter((t) => tok.has(t.id)).map((t) => [t.id, t.x, t.y]),
     hp: ini.entries.map((e) => [e.id, e.hp, e.charId && camp.characters[e.charId] ? [camp.characters[e.charId].hp.current, camp.characters[e.charId].hp.temp] : null]),
   });
@@ -113,7 +115,8 @@ function restore(camp, s) {
   const i = ini.entries.findIndex((k) => k.id === s.ini.turnId);
   if (i >= 0) ini.turn = i;
   ini.round = s.ini.round; ini.active = s.ini.active;
-  f.turn = s.turn; f.reactions = s.reactions || {};
+  f.spent = s.spent || {};
+  for (const [id, r] of s.chars || []) if (camp.characters[id]) Object.assign(camp.characters[id], r);
   f.events = f.events.filter((ev) => ev.seq <= s.seq);
 }
 
@@ -127,8 +130,7 @@ function writeBack(camp, cid, before, after, G) {
     if (a.hp !== b.hp && a.hp != null) G.applyAction(camp, cid, true, "init.update", { id, fields: { hp: a.hp } });
     if (a.temp !== b.temp && a.charId && camp.characters[a.charId]) camp.characters[a.charId].hp.temp = a.temp;
   }
-  f.turn = after.turn;
-  f.reactions = after.reactions || {};
+  f.spent = after.spent || {};
 }
 
 function apply(camp, cid, gm, type, p, G) {
@@ -165,6 +167,32 @@ function apply(camp, cid, gm, type, p, G) {
       snapshot(camp, `set ${e.name}'s hit points`);
       if (p.hp !== undefined && p.hp !== null && p.hp !== "") G.applyAction(camp, cid, true, "init.update", { id: e.id, fields: { hp: clamp(int(p.hp), -1000, 100000) } });
       if (p.temp !== undefined && e.charId && camp.characters[e.charId]) camp.characters[e.charId].hp.temp = clamp(int(p.temp), 0, 100000);
+      return {};
+    }
+    case "fight.spend": {    // spend from a character's resource (its owner or the GM); undoable like a combat step
+      const ch = camp.characters[p.charId];
+      if (!ch) throw new G.Invalid("No such character.");
+      need(gm || ch.owner === cid, "not your character");
+      const r = E.spend(ch, String(p.key || ""), p.n == null ? 1 : p.n, R);
+      if (!r.ok) throw new G.Invalid(r.why);
+      snapshot(camp, `${ch.name} used ${r.res.name}`);
+      Object.assign(ch, { resources: r.ch.resources, force: r.ch.force, tech: r.ch.tech, hitDiceUsed: r.ch.hitDiceUsed });
+      G.addChat(camp, { system: true, text: `${ch.name} uses ${r.res.name}: ${r.res.max - r.res.used} of ${r.res.max} left.` });
+      return {};
+    }
+    case "fight.resource": { // add, change or remove one of a character's own resources (its owner or the GM)
+      const ch = camp.characters[p.charId];
+      if (!ch) throw new G.Invalid("No such character.");
+      need(gm || ch.owner === cid, "not your character");
+      const list = E.cleanResources(ch.resources);
+      const [res] = E.cleanResources([p.res]);
+      if (p.op === "remove") ch.resources = list.filter((x) => x.key !== String(p.key || ""));
+      else {
+        if (!res) throw new G.Invalid("A resource needs a name, a maximum and a key.");
+        const i = list.findIndex((x) => x.key === res.key);
+        if (i >= 0) list[i] = res; else if (list.length >= 30) throw new G.Invalid("That's the most resources one character can have (30)."); else list.push(res);
+        ch.resources = list;
+      }
       return {};
     }
     case "fight.undo": {
@@ -255,11 +283,11 @@ function view(camp, cid, gm) {
   return {
     on: true, active: !!ini.active, round: ini.round, turn, units,
     budget: turn ? E.budget(world) : null,
-    turnState: f.turn || null, reactions: f.reactions || {},
+    spent: f.spent || {},
     events: evs.map((ev) => ({ seq: ev.seq, at: ev.at, kind: ev.kind, token: ev.token, amount: ev.amount, feet: ev.feet })),
     undo: gm ? { n: (f.undo || []).length, last: ((f.undo || [])[(f.undo || []).length - 1] || {}).label || null } : null,
     npcSpeed: gm ? f.npc || {} : {},
   };
 }
 
-module.exports = { apply, view, unitTokens, worldOf, state };
+module.exports = { apply, view, unitTokens, worldOf, state, cleanResources: E.cleanResources };

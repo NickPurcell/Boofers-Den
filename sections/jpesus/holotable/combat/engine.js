@@ -20,6 +20,7 @@
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
   const FT = 5;                      // feet per square
+  const no = (why) => ({ ok: false, why });
   const clone = (o) => JSON.parse(JSON.stringify(o));
   const sgn = (n) => (n >= 0 ? '+' : '') + n;
 
@@ -124,32 +125,108 @@
     return { legal: true, feet, ranged, mode, tilts, need, chance, expr: (mode === 'adv' ? '2d20kh1' : mode === 'dis' ? '2d20kl1' : '1d20') + sgn(attack.bonus) };
   }
 
-  /* ---------------- turns ---------------- */
-  const turnKey = (world) => `${world.round}:${world.turnId}`;
-  // what the current turn has left; a new turn (a new key) starts fresh
-  function budget(world) {
-    const u = world.units[world.turnId];
-    const same = world.turn && world.turn.key === turnKey(world);
-    const t = same ? world.turn : { key: turnKey(world), moved: 0, action: false, bonus: false };
-    const speed = u ? Math.max(0, +u.speed || 0) : 0;
-    return {
-      key: t.key, moved: t.moved, speed, moveLeft: Math.max(0, speed - t.moved), action: !t.action, bonus: !t.bonus,
-      reaction: !same || !(world.reactions || {})[world.turnId],
-    };
+  /* ---------------- resources (audit 3.1) ---------------- */
+  // One shape for everything that has a maximum and is spent and refilled:
+  //   { key, name, max, die?, used, refill: 'turn' | 'short' | 'long' | 'manual' }
+  // max and die are a plain value or { class, levels: [20 values] } read at the character's level in that class
+  // ('total' = total level), so a level-up changes them with no code. Force points, tech points and hit dice stay
+  // where the sheet keeps them (force.used, tech.used, hitDiceUsed) and are read and written in place.
+  const REFILLS = ['turn', 'short', 'long', 'manual'];
+  const clampN = (v, a, b) => Math.max(a, Math.min(b, v));
+  const totalLevel = (ch) => (ch.classes || []).reduce((a, k) => a + (+k.level || 0), 0);
+  function levelIn(ch, cls) {
+    if (String(cls).toLowerCase() === 'total') return totalLevel(ch);
+    const k = (ch.classes || []).find((c) => String(c.name).toLowerCase() === String(cls).toLowerCase());
+    return k ? +k.level || 0 : 0;
   }
-  // a new turn starts with full movement, an action and a bonus action, and gives its unit its reaction back
+  function atLevel(ch, v) {
+    if (v == null || typeof v !== 'object') return v;
+    const L = Math.min(20, levelIn(ch, v.class));
+    return L >= 1 && Array.isArray(v.levels) ? v.levels[L - 1] : null;
+  }
+  // a resource list as the server keeps it: plain fields, bounded sizes, nothing else
+  function cleanResources(list) {
+    const lv = (v, ok) => (v && typeof v === 'object' && !Array.isArray(v)
+      ? { class: String(v.class || '').slice(0, 30), levels: (Array.isArray(v.levels) ? v.levels : []).slice(0, 20).map(ok) }
+      : ok(v));
+    const num = (x) => clampN(Math.round(+x) || 0, 0, 999);
+    const die = (x) => (/^d(4|6|8|10|12|20)$/.test(String(x || '')) ? String(x) : '');
+    return (Array.isArray(list) ? list : []).slice(0, 30).filter((r) => r && typeof r === 'object').map((r) => ({
+      key: String(r.key || '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 30), name: String(r.name || '').slice(0, 60),
+      max: lv(r.max, num), die: r.die ? lv(r.die, die) : undefined, used: num(r.used), refill: REFILLS.includes(r.refill) ? r.refill : 'manual',
+    })).filter((r) => r.key && !['force', 'tech', 'hitdice', 'move', 'action', 'bonus', 'reaction'].includes(r.key));
+  }
+  // every resource a character has, resolved to numbers for their level
+  function resourcesOf(ch, rules) {
+    const out = [];
+    for (const r of ch.resources || []) {
+      const max = +atLevel(ch, r.max) || 0;
+      if (!r.key || max <= 0) continue;
+      out.push({ key: r.key, name: r.name || r.key, max, die: atLevel(ch, r.die) || null, used: clampN(+r.used || 0, 0, max), refill: REFILLS.includes(r.refill) ? r.refill : 'manual', from: 'sheet' });
+    }
+    if (rules && rules.casterInfo) {
+      const ci = rules.casterInfo(ch);
+      const set = (o) => o && o.max !== '' && o.max != null;
+      const fm = set(ch.force) ? +ch.force.max : ci.forceMax, tm = set(ch.tech) ? +ch.tech.max : ci.techMax;
+      if (fm > 0) out.push({ key: 'force', name: 'Force points', max: fm, used: clampN(+(ch.force || {}).used || 0, 0, fm), refill: 'long', from: 'force' });
+      // tech points come back on a short rest too (audit 7.3)
+      if (tm > 0) out.push({ key: 'tech', name: 'Tech points', max: tm, used: clampN(+(ch.tech || {}).used || 0, 0, tm), refill: 'short', from: 'tech' });
+    }
+    const L = totalLevel(ch);
+    if (L > 0) out.push({ key: 'hitdice', name: 'Hit dice', max: L, used: clampN(+ch.hitDiceUsed || 0, 0, L), refill: 'long', regain: Math.max(1, Math.floor(L / 2)), from: 'hitdice' });
+    return out;
+  }
+  // write one resource's used count back where it lives (a new character; the one passed in is not changed)
+  function withUsed(ch, res, used) {
+    const c = clone(ch);
+    if (res.from === 'force') c.force = Object.assign({}, c.force, { used });
+    else if (res.from === 'tech') c.tech = Object.assign({}, c.tech, { used });
+    else if (res.from === 'hitdice') c.hitDiceUsed = used;
+    else c.resources = (c.resources || []).map((r) => (r.key === res.key ? Object.assign({}, r, { used }) : r));
+    return c;
+  }
+  function spend(ch, key, n, rules) {
+    const res = resourcesOf(ch, rules).find((r) => r.key === key);
+    n = Math.round(+n);
+    if (!res) return no(`No ${key} to spend.`);
+    if (!(n > 0)) return no('Spend at least one.');
+    if (res.used + n > res.max) return no(`Not enough ${res.name}: ${res.max - res.used} of ${res.max} left.`);
+    return { ok: true, ch: withUsed(ch, res, res.used + n), res: Object.assign({}, res, { used: res.used + n }) };
+  }
+  // a rest refills what each resource says: 'short' refills short; 'long' refills short and long (hit dice: half back)
+  function rest(ch, kind, rules) {
+    let c = ch;
+    for (const res of resourcesOf(ch, rules)) {
+      const due = res.refill === 'short' || (kind === 'long' && res.refill === 'long');
+      if (!due || !res.used) continue;
+      c = withUsed(c, res, res.regain ? Math.max(0, res.used - res.regain) : 0);
+    }
+    return c;
+  }
+
+  /* ---------------- turns: the turn budget is resources too, refilled at the start of the unit's own turn ---------------- */
+  const turnKey = (world) => `${world.round}:${world.turnId}`;
+  const TURN = ['move', 'action', 'bonus', 'reaction'];
+  function spentOf(world, id) {
+    const s = (world.spent || {})[id];
+    return s && (id !== world.turnId || s.key === turnKey(world)) ? s : { key: id === world.turnId ? turnKey(world) : '', move: 0, action: 0, bonus: 0, reaction: 0 };
+  }
+  // what a unit's turn has left (by default, the unit whose turn it is)
+  function budget(world, id) {
+    id = id || world.turnId;
+    const u = world.units[id], s = spentOf(world, id);
+    const speed = u ? Math.max(0, +u.speed || 0) : 0;
+    return { key: s.key, moved: s.move, speed, moveLeft: Math.max(0, speed - s.move), action: s.action < 1, bonus: s.bonus < 1, reaction: s.reaction < 1 };
+  }
+  // a new turn gives its unit full movement, an action, a bonus action and its reaction back
   function fresh(world) {
     const w = clone(world);
-    w.reactions = w.reactions || {};
-    if (!w.turn || w.turn.key !== turnKey(w)) {
-      w.turn = { key: turnKey(w), moved: 0, action: false, bonus: false };
-      delete w.reactions[w.turnId];
-    }
+    w.spent = w.spent || {};
+    if (w.turnId && (!w.spent[w.turnId] || w.spent[w.turnId].key !== turnKey(w))) w.spent[w.turnId] = { key: turnKey(w), move: 0, action: 0, bonus: 0, reaction: 0 };
     return w;
   }
 
   /* ---------------- applying one action ---------------- */
-  const no = (why) => ({ ok: false, why });
   function apply(world, act, roll) {
     if (!world.active) return no('Combat has not started: start initiative first.');
     const u = world.units[act.unit];
@@ -163,7 +240,7 @@
         if (x === me.x && y === me.y) return no('Already there.');
         const cost = reachable(w, me.id, b.moveLeft)[`${x},${y}`];
         if (cost === undefined) return no(b.moveLeft ? `${me.name} can't reach that square with ${b.moveLeft} ft of movement left.` : `${me.name} has no movement left this turn.`);
-        me.x = x; me.y = y; w.turn.moved += cost;
+        me.x = x; me.y = y; w.spent[me.id].move += cost;
         return { ok: true, world: w, log: [{ text: `${me.name} moves ${cost} ft.` }], events: [{ kind: 'move', unit: me.id, feet: cost }] };
       }
       case 'attack': {
@@ -176,7 +253,7 @@
         const r = roll(pv.expr);
         const nat = r.nat, crit = nat === 20, fumble = nat === 1;
         const hit = crit || (!fumble && r.total >= t.ac);
-        w.turn.action = true;
+        w.spent[me.id].action += 1;
         const tilt = pv.mode === 'normal' ? '' : ` with ${pv.mode === 'adv' ? 'advantage' : 'disadvantage'} (${pv.tilts.map((x) => x.text).join(', ')})`;
         const log = [{ kind: 'attack', roll: r, expr: pv.expr, text: `${me.name} attacks ${t.name} with ${attack.name}${tilt}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}` }];
         const events = [];
@@ -206,8 +283,8 @@
 
   /* ---------------- building a world from the table ---------------- */
   // table: { characters, entries (initiative, in order), active, turn (index) or turnId, round, tokens, unitTokens: { entryId: tokenId },
-  //          npcSpeed: { entryId: feet }, turnState, reactions }
-  function buildWorld(table) {
+  //          npcSpeed: { entryId: feet }, spent: { unitId: { key, move, action, bonus, reaction } } }
+  function buildWorld(table, rules) {
     const tokens = Object.fromEntries((table.tokens || []).map((t) => [t.id, t]));
     const units = {};
     for (const e of table.entries || []) {
@@ -222,15 +299,17 @@
         hp: ch ? +hp.current : e.hp == null || e.hp === '' ? null : +e.hp, maxHp: ch ? +hp.max : e.maxHp == null ? null : +e.maxHp,
         temp: ch ? +hp.temp || 0 : 0,
         speed: ch ? +ch.speed || 30 : +((table.npcSpeed || {})[e.id]) || 30,
+        pools: ch ? Object.fromEntries(resourcesOf(ch, rules).map((r) => [r.key, r])) : {},
       };
       if (units[e.id].hp != null && units[e.id].hp <= 0) units[e.id].down = true;
     }
     const cur = table.turnId !== undefined ? (table.entries || []).find((e) => e.id === table.turnId) : (table.entries || [])[table.turn];
     return {
       active: !!table.active && !!cur, round: table.round || 1, turnId: cur ? cur.id : null, units,
-      turn: table.turnState || null, reactions: table.reactions || {},
+      spent: table.spent || {},
     };
   }
 
-  return { FT, squaresBetween, feetBetween, reachable, readRange, attacksOf, attackFromBehavior, REASONS, preview, budget, apply, takeDamage, buildWorld, turnKey };
+  return { FT, TURN, squaresBetween, feetBetween, reachable, readRange, attacksOf, attackFromBehavior, REASONS, preview, budget, apply, takeDamage, buildWorld, turnKey,
+    cleanResources, resourcesOf, atLevel, spend, rest };
 });

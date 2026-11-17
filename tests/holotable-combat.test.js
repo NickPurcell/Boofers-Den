@@ -19,7 +19,7 @@ function dice(...results) {
 }
 const unit = (o) => Object.assign({ size: 1, temp: 0, speed: 30, ac: 13, hp: 20, maxHp: 20 }, o);
 function world(units, turnId, extra = {}) {
-  return Object.assign({ active: true, round: 1, turnId, units: Object.fromEntries(units.map((u) => [u.id, u])), turn: null, reactions: {} }, extra);
+  return Object.assign({ active: true, round: 1, turnId, units: Object.fromEntries(units.map((u) => [u.id, u])), spent: {} }, extra);
 }
 const blade = { name: "Vibroblade", bonus: 5, damage: "1d8+3", crit: "2d8+3", type: "kinetic", melee: 5, range: null };
 const rifle = { name: "Blaster rifle", bonus: 5, damage: "1d8+3", crit: "2d8+3", type: "energy", melee: 0, range: [100, 400] };
@@ -176,6 +176,80 @@ test("combat engine: a world from the table (initiative, tokens, sheets)", () =>
   assert.deepEqual([w.turnId, w.round, w.active], ["e2", 2, true]);
   assert.deepEqual([w.units.e1.ac, w.units.e1.hp, w.units.e1.temp, w.units.e1.speed, w.units.e1.owner, w.units.e1.side], [15, 18, 3, 35, "p1", "pc"]);
   assert.deepEqual([w.units.e2.ac, w.units.e2.hp, w.units.e2.speed, w.units.e2.size, w.units.e2.side], [13, 11, 40, 2, "npc"]);
+});
+
+test("resources: a maximum read at the character's level in a class, or a plain number", () => {
+  const ch = { classes: [{ name: "Fighter", level: 3 }, { name: "Scout", level: 2 }] };
+  const table = { class: "Fighter", levels: [0, 0, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6] };
+  assert.equal(E.atLevel(ch, table), 4);
+  assert.equal(E.atLevel(ch, { class: "total", levels: Array.from({ length: 20 }, (_, i) => i + 1) }), 5);
+  assert.equal(E.atLevel(ch, { class: "Monk", levels: table.levels }), null, "no levels in that class");
+  assert.equal(E.atLevel(ch, 3), 3);
+});
+
+test("resources: cleaned to plain, bounded fields; built-in keys can't be redefined", () => {
+  const c = E.cleanResources([
+    { key: "Second Wind!", name: "Second Wind", max: 1, used: 0, refill: "short" },
+    { key: "force", name: "Fake force", max: 99 },
+    { key: "dice", name: "Dice", max: { class: "Fighter", levels: ["4", 5, "x"] }, die: "d7", used: -3, refill: "sometimes" },
+    "junk", null,
+  ]);
+  assert.deepEqual(c, [
+    { key: "secondwind", name: "Second Wind", max: 1, die: undefined, used: 0, refill: "short" },
+    { key: "dice", name: "Dice", max: { class: "Fighter", levels: [4, 5, 0] }, die: "", used: 0, refill: "manual" },
+  ]);
+  assert.equal(E.cleanResources(Array.from({ length: 50 }, (_, i) => ({ key: "r" + i, max: 1 }))).length, 30);
+});
+
+const caster = () => ({ classes: [{ name: "Consular", level: 2 }], abilities: { str: 8, dex: 12, con: 12, int: 10, wis: 16, cha: 10 },
+  force: { max: "", used: 2 }, tech: { max: "", used: 0 }, hitDiceUsed: 1,
+  resources: [{ key: "focus", name: "Focus", max: 3, used: 1, refill: "short" }, { key: "boon", name: "Boon", max: 1, used: 1, refill: "long" }, { key: "luck", name: "Luck", max: 2, used: 2, refill: "manual" }] });
+
+test("resources: the sheet's own list plus force points, tech points and hit dice, read where they live", () => {
+  const ch = caster();
+  const res = Object.fromEntries(E.resourcesOf(ch, R).map((r) => [r.key, r]));
+  assert.equal(res.force.max, R.casterInfo(ch).forceMax, "force points from HoloTable's own caster arithmetic");
+  assert.deepEqual([res.force.used, res.force.refill], [2, "long"]);
+  assert.equal(res.tech, undefined, "no tech points for a Consular");
+  assert.deepEqual([res.hitdice.max, res.hitdice.used, res.hitdice.regain], [2, 1, 1]);
+  assert.deepEqual([res.focus.max, res.focus.used, res.focus.refill], [3, 1, "short"]);
+  const manual = Object.fromEntries(E.resourcesOf(Object.assign(caster(), { force: { max: 9, used: 0 } }), R).map((r) => [r.key, r]));
+  assert.equal(manual.force.max, 9, "a typed max overrides, as on the sheet");
+});
+
+test("resources: spending is checked and written back where the resource lives", () => {
+  const ch = caster();
+  let r = E.spend(ch, "force", 2, R);
+  assert.ok(r.ok);
+  assert.equal(r.ch.force.used, 4);
+  assert.equal(ch.force.used, 2, "the character passed in is not changed");
+  r = E.spend(ch, "focus", 2, R);
+  assert.equal(r.ch.resources.find((x) => x.key === "focus").used, 3);
+  assert.equal(E.spend(ch, "focus", 3, R).ok, false);
+  assert.match(E.spend(ch, "focus", 3, R).why, /Not enough Focus: 2 of 3 left/);
+  assert.equal(E.spend(ch, "hitdice", 1, R).ch.hitDiceUsed, 2);
+  assert.equal(E.spend(ch, "nothing", 1, R).ok, false);
+  assert.equal(E.spend(ch, "focus", 0, R).ok, false);
+});
+
+test("resources: a short rest refills short ones (and tech points); a long rest refills short and long, and half the hit dice", () => {
+  const ch = Object.assign(caster(), { classes: [{ name: "Engineer", level: 4 }], tech: { max: "", used: 3 }, hitDiceUsed: 4 });
+  const short = E.rest(ch, "short", R);
+  assert.deepEqual([short.resources.map((x) => x.used), short.tech.used, short.hitDiceUsed], [[0, 1, 2], 0, 4]);
+  const long = E.rest(ch, "long", R);
+  assert.deepEqual([long.resources.map((x) => x.used), long.tech.used, long.hitDiceUsed], [[0, 0, 2], 0, 2], "manual ones stay; 2 of 4 hit dice back");
+});
+
+test("turn budget: each unit's own turn refills its movement, action, bonus action and reaction", () => {
+  const ava = unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 });
+  const raider = unit({ id: "r1", name: "Raider", side: "npc", x: 9, y: 0 });
+  // Avery used her reaction during the Raider's turn (as a later reaction rule will record it): it stays used until her own turn
+  const w = world([ava, raider], "r1", { spent: { ava: { key: "1:ava", move: 30, action: 1, bonus: 0, reaction: 1 } } });
+  assert.deepEqual([E.budget(w, "ava").reaction, E.budget(w, "ava").moveLeft], [false, 0]);
+  const hers = Object.assign({}, w, { turnId: "ava", round: 2 });
+  assert.deepEqual([E.budget(hers).reaction, E.budget(hers).moveLeft, E.budget(hers).action], [true, 30, true]);
+  const r = E.apply(hers, { type: "move", unit: "ava", x: 2, y: 0 }, dice().roll);
+  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0 });
 });
 
 /* ---------------------------------------------------------------- the server's fight actions, through the API */
@@ -360,4 +434,28 @@ test("combat view: GM tools: set hit points, creature speed, link a token", asyn
   assert.equal((await gm.act("fight.link", { id: ids.raider, token: spare })).code, 200);
   assert.equal((await gm.state()).fight.units[ids.raider].token, spare);
   assert.equal((await gm.act("fight.link", { id: ids.raider, token: "nosuchtoken" })).code, 400);
+});
+
+test("resources through the API: owners and the GM spend and edit; undo puts the spend back; sheet saves keep them", async () => {
+  const { gm, sam, rae, avery } = await fight();
+  const res = { key: "secondwind", name: "Second Wind", max: 1, used: 0, refill: "short" };
+  assert.equal((await rae.act("fight.resource", { charId: avery, res })).code, 403, "not Rae's character");
+  assert.equal((await sam.act("fight.resource", { charId: avery, res })).code, 200);
+  assert.equal((await sam.act("fight.resource", { charId: avery, res: { key: "", name: "x", max: 1 } })).code, 400);
+  let st = await sam.state();
+  assert.deepEqual(st.characters[avery].resources, [{ key: "secondwind", name: "Second Wind", max: 1, used: 0, refill: "short" }]);
+  // a normal sheet save carries the list and the server keeps it
+  const ch = st.characters[avery];
+  await sam.act("char.save", { char: Object.assign({}, ch, { name: "Avery" }) });
+  assert.equal((await sam.state()).characters[avery].resources.length, 1);
+  assert.equal((await rae.act("fight.spend", { charId: avery, key: "secondwind" })).code, 403);
+  assert.equal((await sam.act("fight.spend", { charId: avery, key: "secondwind" })).code, 200);
+  assert.equal((await sam.act("fight.spend", { charId: avery, key: "secondwind" })).code, 400, "none left");
+  st = await gm.state();
+  assert.equal(st.characters[avery].resources[0].used, 1);
+  assert.match(st.chat.at(-1).text, /Avery uses Second Wind: 0 of 1 left/);
+  await gm.act("fight.undo", {});
+  assert.equal((await gm.state()).characters[avery].resources[0].used, 0);
+  assert.equal((await sam.act("fight.resource", { charId: avery, op: "remove", key: "secondwind" })).code, 200);
+  assert.deepEqual((await sam.state()).characters[avery].resources, []);
 });

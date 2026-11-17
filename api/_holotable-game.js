@@ -151,6 +151,7 @@ function cleanChar(ch) {
     initMisc: numOr(ch.initMisc, 0), profOverride: optNum(ch.profOverride),
     force: { max: optNum((ch.force || {}).max), used: numOr((ch.force || {}).used, 0) },
     tech: { max: optNum((ch.tech || {}).max), used: numOr((ch.tech || {}).used, 0) },
+    resources: Fight.cleanResources(ch.resources),   // experimental: the resource tracker (audit 3.1)
     attacks: list(ch.attacks, 40, (a) => ({ name: s(a.name, 80), ab: ["str", "dex", "con", "int", "wis", "cha", "finesse"].includes(a.ab) ? a.ab : "str",
       damage: s(a.damage, 40), damageFull: a.damageFull ? s(a.damageFull, 60) : undefined, type: s(a.type, 30), props: s(a.props, 200),
       proficient: a.proficient !== false, magic: optNum(a.magic), bonus: optNum(a.bonus), noModDamage: !!a.noModDamage })),

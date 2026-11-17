@@ -22,8 +22,8 @@
     const w = E.buildWorld({
       characters: s.characters, entries: s.initiative.entries, active: f.active, turnId: f.turn, round: f.round, tokens: s.map.tokens,
       unitTokens: Object.fromEntries(Object.entries(f.units || {}).map(([id, u]) => [id, u.token])), npcSpeed: f.npcSpeed,
-      turnState: f.turnState, reactions: f.reactions,
-    });
+      spent: f.spent,
+    }, R);
     for (const [id, u] of Object.entries(f.units || {})) if (w.units[id] && u.down) w.units[id].down = true;
     UI.cache = { st: s, w, reach: null };
     return w;
@@ -146,6 +146,12 @@
     if (mine && u && f.active) html += '<button class="btn small amber" data-ct="end">End turn ⏭</button>';
     if (gm()) html += `<button class="btn small ghost" data-ct="undo" ${f.undo && f.undo.n ? '' : 'disabled'} title="${esc(f.undo && f.undo.last ? 'Undo: ' + f.undo.last : 'Nothing to undo')}">↶ Undo</button><button class="btn small ghost" data-ct="off" title="Turn the combat view off for everyone">Combat view off</button>`;
     html += '</div>';
+    // the current character's resources (its owner and the GM): use one, or add one
+    if (f.active && u && u.charId && (mine || gm())) {
+      const pools = Object.values(u.pools || {}).filter((r) => r.key !== 'hitdice');
+      html += `<div class="ct-row ct-pools">${pools.map((r) => `<button class="ct-chip ct-pool ${r.used >= r.max ? 'spent' : ''}" data-ct="pool" data-key="${esc(r.key)}" title="${esc(r.name)}: ${r.max - r.used} of ${r.max} left${r.refill === 'short' ? ', back on a short or long rest' : r.refill === 'long' ? ', back on a long rest' : ''}">${esc(r.name)} ${r.max - r.used}/${r.max}${r.die ? ' ' + esc(r.die) : ''}</button>`).join('')}
+        <button class="btn tiny ghost" data-ct="addres" title="Add a resource with a maximum (uses, or a pool of dice)">＋ Resource</button></div>`;
+    }
     if (!f.active) html += `<div class="ct-row muted">${gm() ? 'Start initiative in the Combat tab to begin.' : 'Waiting for the GM to start initiative.'}</div>`;
     else if (mine && u) {
       const atks = attacks();
@@ -180,10 +186,48 @@
     if (k === 'undo') return send('fight.undo', {});
     if (k === 'end') { UI.armed = UI.target = null; return send('fight.end', {}); }
     if (k === 'custom') return customAttack();
+    if (k === 'pool') return poolModal(el.dataset.key);
+    if (k === 'addres') return resourceModal();
     if (k === 'arm') { UI.armed = UI.armed === el.dataset.key ? null : el.dataset.key; UI.target = null; render(); return H.drawMap(); }
     if (k === 'disarm') { UI.armed = UI.target = null; render(); return H.drawMap(); }
     if (k === 'adv' || k === 'dis') { UI[k] = el.checked; return render(); }
     if (k === 'go' && UI.target) return attack(UI.target);
+  }
+
+  /* ---------------- resources (audit 3.1) ---------------- */
+  function poolModal(key) {
+    const u = cur(), r = u && u.pools[key];
+    if (!r) return;
+    const own = r.from === 'sheet';
+    H.modal(`<h3>${esc(r.name)}</h3>
+      <p>${r.max - r.used} of ${r.max} left${r.die ? ` (${esc(r.die)})` : ''}. ${r.refill === 'short' ? 'Comes back on a short or a long rest.' : r.refill === 'long' ? 'Comes back on a long rest.' : r.refill === 'turn' ? 'Comes back at the start of each turn.' : 'Refilled by hand.'}</p>
+      <div class="row"><button class="btn primary" id="ctpUse" ${r.used >= r.max ? 'disabled' : ''}>Use one</button>
+        ${own ? '<button class="btn danger" id="ctpDel">Remove it</button>' : ''}<span class="spacer"></span><button class="btn" id="ctpClose">Close</button></div>`, (box) => {
+      $('#ctpClose', box).onclick = H.closeModal;
+      $('#ctpUse', box).onclick = async () => { H.closeModal(); await send('fight.spend', { charId: u.charId, key }); };
+      if (own) $('#ctpDel', box).onclick = async () => { if (!confirm(`Remove ${r.name} from ${u.name}?`)) return; H.closeModal(); await send('fight.resource', { charId: u.charId, op: 'remove', key }); };
+    });
+  }
+  function resourceModal() {
+    const u = cur();
+    if (!u || !u.charId) return;
+    H.modal(`<h3>New resource for ${esc(u.name)}</h3>
+      <p class="muted">Anything with a maximum that gets used up: uses of a feature, or a pool of dice.</p>
+      <label>Name <input id="ctrName" maxlength="60" placeholder="Second Wind"></label>
+      <label>Maximum <input id="ctrMax" type="number" min="1" max="999" value="1"></label>
+      <label>Die (for a pool of dice) <select id="ctrDie"><option value="">none</option>${['d4', 'd6', 'd8', 'd10', 'd12'].map((d) => `<option>${d}</option>`).join('')}</select></label>
+      <label>Comes back <select id="ctrRefill"><option value="short">on a short or long rest</option><option value="long">on a long rest</option><option value="turn">every turn</option><option value="manual">by hand</option></select></label>
+      <div class="row"><span class="spacer"></span><button class="btn" id="ctrCancel">Cancel</button><button class="btn primary" id="ctrOk">Add it</button></div>`, (box) => {
+      $('#ctrCancel', box).onclick = H.closeModal;
+      $('#ctrOk', box).onclick = async () => {
+        const name = $('#ctrName', box).value.trim();
+        if (!name) return toast('Give it a name.', true);
+        const res = { key: name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30), name, max: +$('#ctrMax', box).value || 1, used: 0,
+          die: $('#ctrDie', box).value || undefined, refill: $('#ctrRefill', box).value };
+        H.closeModal();
+        await send('fight.resource', { charId: u.charId, res });
+      };
+    });
   }
 
   /* ---------------- on the map (app.js calls these) ---------------- */

@@ -7,6 +7,8 @@
 .ct-you { color: var(--amber); font-weight: 700; margin-left: 4px; text-transform: uppercase; font-size: 12px; letter-spacing: .08em; }
 .ct-chips { display: flex; gap: 6px; flex-wrap: wrap; }
 .ct-chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--holo); color: var(--text); background: color-mix(in srgb, var(--holo) 12%, transparent); }
+.ct-pool { cursor: pointer; font: inherit; font-size: 12px; }
+.ct-pool:hover { border-color: var(--amber); }
 .ct-chip.spent { border-color: var(--line); color: var(--muted); background: transparent; text-decoration: line-through; }
 .ct-actions { gap: 6px; }
 .ct-atk { text-align: left; min-height: 36px; }
