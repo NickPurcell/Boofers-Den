@@ -1691,3 +1691,35 @@ test("walls through the API: a whole map's walls set at once (an import), checke
   assert.equal((await gm.act("fight.wall", { op: "set", walls: [] })).code, 200);
   assert.equal("walls" in (await gm.state()).map, false, "an empty set leaves no walls key");
 });
+
+/* ---------------------------------------------------------------- temporary HP in the tracker and the sheet (audit 8.7, issue #107) */
+test("damage from the tracker's -n and the sheet's Damage button: temporary HP first, on the server; +n and typed numbers as before", async () => {
+  const { gm, sam, rae, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hp: { max: 20, current: 20, temp: 5 } }) });
+  // the tracker: -8 takes the 5 temporary first, then 3
+  assert.equal((await sam.act("init.update", { id: ids.avery, fields: { damage: 8 } })).code, 200);
+  st = await gm.state();
+  assert.deepEqual([st.characters[avery].hp.current, st.characters[avery].hp.temp, st.initiative.entries.find((e) => e.id === ids.avery).hp], [17, 0, 17]);
+  // two hits at once from two screens: both count, neither overwrites the other
+  await Promise.all([gm.act("init.update", { id: ids.avery, fields: { damage: 4 } }), sam.act("char.damage", { id: avery, amount: 3 })]);
+  st = await gm.state();
+  assert.equal(st.characters[avery].hp.current, 10);
+  // the sheet's Damage with temporary HP; stops at 0
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hp: { max: 20, current: 10, temp: 2 } }) });
+  await sam.act("char.damage", { id: avery, amount: 50 });
+  st = await gm.state();
+  assert.deepEqual([st.characters[avery].hp.current, st.characters[avery].hp.temp], [0, 0]);
+  // only the owner or the GM
+  assert.equal((await rae.act("char.damage", { id: avery, amount: 1 })).code, 403);
+  assert.equal((await rae.act("init.update", { id: ids.avery, fields: { damage: 1 } })).code, 403);
+  // a creature just loses it; a typed number still sets HP
+  await gm.act("init.update", { id: ids.raider, fields: { damage: 8 } });
+  assert.equal((await gm.state()).initiative.entries.find((e) => e.id === ids.raider).hp, 30 - 8);
+  await gm.act("init.update", { id: ids.raider, fields: { hp: 25 } });
+  assert.equal((await gm.state()).initiative.entries.find((e) => e.id === ids.raider).hp, 25);
+  // nonsense amounts do nothing harmful
+  await gm.act("init.update", { id: ids.raider, fields: { damage: -40 } });
+  await gm.act("init.update", { id: ids.raider, fields: { damage: "x" } });
+  assert.equal((await gm.state()).initiative.entries.find((e) => e.id === ids.raider).hp, 25);
+});

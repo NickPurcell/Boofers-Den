@@ -423,6 +423,16 @@ function sortInit(ini) {
 }
 
 // Returns { result, images: [ids no longer used] } and may throw Forbidden / Invalid.
+// Damage on a character, against its hit points at this moment: temporary hit points go first, hit points stop at 0
+// (audit 8.7, issue #107). The sheet's Damage button and the tracker's -n both come here, as the combat view does in
+// its engine, so all three spend temporary HP the same way; the tracker rows for that character follow.
+function damageChar(camp, ch, amount) {
+  const d = clamp(int(amount), 0, 100000), hp = ch.hp = ch.hp || {}, temp = Math.max(0, +hp.temp || 0), fromTemp = Math.min(temp, d);
+  hp.temp = temp - fromTemp;
+  hp.current = Math.max(0, (+hp.current || 0) - (d - fromTemp));
+  for (const e of camp.initiative.entries) if (e.charId === ch.id) e.hp = hp.current;
+}
+
 function applyAction(camp, cid, gm, type, p) {
   p = p || {};
   const chars = camp.characters, ini = camp.initiative, mp = camp.map;
@@ -461,6 +471,13 @@ function applyAction(camp, cid, gm, type, p) {
       const old = ch[k];
       ch[k] = "";
       return { dropImages: [old] };
+    }
+    case "char.damage": {   // the sheet's Damage button: applied here, so a hit made on another screen at the same moment isn't overwritten
+      const ch = chars[p.id];
+      if (!ch) return {};
+      need(gm || ch.owner === cid, "not your character");
+      damageChar(camp, ch, p.amount);
+      return {};
     }
     case "char.delete": {
       const ch = chars[p.id];
@@ -578,6 +595,10 @@ function applyAction(camp, cid, gm, type, p) {
       if ("conditions" in f) e.conditions = (Array.isArray(f.conditions) ? f.conditions : []).slice(0, 20).map((c) => str(c, 30));
       if ("hidden" in f && gm) e.hidden = !!f.hidden;
       if ("hp" in f && e.charId && chars[e.charId]) (chars[e.charId].hp = chars[e.charId].hp || {}).current = numOr(f.hp, 0);
+      if ("damage" in f) {   // the tracker's -n: a character's temporary hit points first, on the server (#107); a creature just loses it
+        if (e.charId && chars[e.charId]) damageChar(camp, chars[e.charId], f.damage);
+        else if (e.hp != null) e.hp = Math.max(0, e.hp - clamp(int(f.damage), 0, 100000));
+      }
       if ("init" in f) sortInit(ini);
       return {};
     }
