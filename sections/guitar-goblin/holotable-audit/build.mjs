@@ -19,7 +19,7 @@ const MATTERS = { 'every session': 'every', sometimes: 'some', nicety: 'nice' };
 export function parse(md) {
   const audit = { title: '', commit: '', when: '', checked: [], sections: [], gaps: [], next: '', doneWell: [] };
   let mode = 'intro', section = null, inChecked = false;
-  md.split('\n').forEach((line, i) => {
+  md.replace(/\r\n?/g, '\n').split('\n').forEach((line, i) => {   // a Windows checkout may bring CRLF
     const where = `audit.md line ${i + 1}`;
     if (line.startsWith('# ')) { audit.title = line.slice(2).trim(); return; }
     const h2 = line.match(/^## (.+)$/);
@@ -204,7 +204,7 @@ if (isMain) {
   if (process.argv.includes('--check')) {
     let current = '';
     try { current = readFileSync(target, 'utf8'); } catch { /* missing counts as different */ }
-    if (current !== html) { console.error('index.html is not what audit.md makes: run node build.mjs'); process.exit(1); }
+    if (current.replace(/\r\n?/g, '\n') !== html) { console.error('index.html is not what audit.md makes: run node build.mjs'); process.exit(1); }
     console.log('index.html matches audit.md');
   } else {
     writeFileSync(target, html);

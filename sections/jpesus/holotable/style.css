@@ -662,3 +662,31 @@ body.no-sw5e-books [data-sa="deploy-info"], body.no-sw5e-books .lib-bar { displa
   box-shadow: 0 4px 18px #0008; font-size: 13px; }
 .script-bar.hidden { display: none; }
 .script-bar input[type=number] { width: 56px; }
+.map-tip { position: absolute; z-index: 3; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 12px; white-space: nowrap; box-shadow: 0 4px 12px #0008; }
+/* table audio */
+.audio-top.hidden { display: none; }
+.audio-now { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audio-now.on { color: var(--green); }
+.audio-pop { position: fixed; z-index: 60; width: 230px; display: flex; flex-direction: column; gap: 6px; }
+.audio-pop input[type=range] { width: 100%; }
+.au-now { padding: 8px; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 8px; }
+.au-list { max-height: 260px; overflow: auto; }
+.au-row { gap: 8px; padding: 3px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent); }
+.au-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 720px) { .audio-now { max-width: 120px; } }
+.au-note { font-size: 12px; margin: 8px 0 0; }
+/* phones: on the map tab, the map gets most of the screen. The roster and chat shrink, and the map tools
+   scroll sideways in one row instead of wrapping into several. */
+@media (max-width: 820px) {
+  body.on-map .layout { grid-template-rows: auto minmax(0, 1fr) 170px; }
+  body.on-map .roster { max-height: 64px; }
+  body.on-map .map-tools { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; }
+  body.on-map .map-tools > * { flex: none; }
+  body.on-map .map-tools .tool-break, body.on-map .map-tools .spacer { display: none; }
+}
+.sb-chip { margin: 1px 2px; }
+.sb-save { font-size: 12px; padding: 1px 4px; max-width: 74px; }
+.enc-diff { gap: 10px; margin-top: 10px; font-size: 13px; align-items: baseline; }
+.enc-diff:empty { display: none; }
+.enc-rating { font-weight: 700; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); }
+.enc-easy { color: #66bb6a; } .enc-medium { color: #ffd54f; } .enc-hard { color: #ffb74d; } .enc-deadly { color: #ef5350; border-color: #ef5350; }

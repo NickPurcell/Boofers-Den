@@ -132,6 +132,7 @@
         if (j.state) { S.v = j.v; onState(j.state); }
         if (lib !== null && j.lib !== lib && A.packs) { await loadPacks(); renderDrawer(); }
         lib = j.lib;
+        if (S.lib !== j.lib) { S.lib = j.lib; if (window.HTA) HTA.sync(); }   // the GM's track list changed
       } catch (err) {
         if (S.gen !== gen || document.hidden) continue;
         $('#conn').classList.remove('ok');
@@ -201,12 +202,14 @@
     guarded('combat', renderCombat);
     guarded('handouts', renderHandouts);
     guarded('gm', renderGM);
+    if (window.HTA) HTA.sync();   // table audio: keep this screen in step, refresh the GM's audio box
     if (window.HTB) {
       HTB.renderShipsSafe();
       const v = JSON.stringify(S.st.variants || []);
       if (v !== S.variantsSeen) { S.variantsSeen = v; if (!$('#rules .lib') && !($('#rulesSearch') || {}).value) renderRules(); }
     }
     renderMapTools(); loadMapBg(); drawMap();
+    if (window.HTC) HTC.render();   // combat view
     renderChat();
   }
 
@@ -354,6 +357,7 @@
     if (S.tab === 'gm' && !isGM()) S.tab = 'sheet';
     $$('#tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === S.tab));
     $$('.pane').forEach(p => p.classList.toggle('on', p.id === 'pane-' + S.tab));
+    document.body.classList.toggle('on-map', S.tab === 'map');   // phones give the map most of the screen
   }
   $('#tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setTab(b.dataset.tab); });
 
@@ -990,8 +994,10 @@
       <label class="toggle"><input type="checkbox" id="npcHidden"> hidden</label>
       <button class="btn primary" data-cact="add-npc">Add</button></div>
       <div class="row wrap" style="margin-top:6px"><label class="toggle"><input type="checkbox" id="npcToken" checked> also place map tokens</label>
+        <label class="toggle" title="Players see these tokens as ??? until you reveal them"><input type="checkbox" id="npcNameHidden"> hide their names</label>
         <label class="toggle" title="For SW5e creatures: roll each one's hit dice instead of taking the average"><input type="checkbox" id="npcRollHp"> roll creature HP</label>
-        <span class="spacer"></span><button class="btn small amber" data-cact="add-creature">☠ Add an SW5e creature…</button></div></div>`;
+        <span class="spacer"></span><button class="btn small amber" data-cact="add-creature">☠ Add an SW5e creature…</button></div></div>
+      <div class="enc-diff row wrap" id="encDiff" title="The creatures' XP, multiplied for their numbers, against the party's thresholds (SW5e's encounter-building rules)"></div>`;
     html += `<div class="init-list">${ini.entries.map((en, i) => {
       const ch = en.charId && S.st.characters[en.charId];
       const canHp = gm || (ch && ch.owner === clientId);
@@ -1003,9 +1009,10 @@
           ${gm || canHp ? `<select data-cf="add-cond" style="font-size:12px;padding:1px 4px"><option value="">+ condition</option>${Object.keys(R.CONDITIONS).map(c => `<option>${c}</option>`).join('')}</select>` : ''}</div></div>
         <div class="hp">${hp !== '' ? (canHp ? `HP <input data-cf="hp" value="${esc(hp)}" title="Type a number, or -7 / +5">` : `HP ${esc(hp)}`) + (en.maxHp != null ? ` <span class="muted">/ ${n0(en.maxHp)}</span>` : '') : ''}</div>
         <div class="muted">${en.ac != null ? 'AC ' + esc(en.ac) : ''}</div>
-        <div>${gm && en.sb ? `<button class="btn tiny" data-cact="statblock" title="${esc(en.sb)} stat block">📜</button> ` : ''}${gm ? `<button class="btn tiny" data-cact="hide" title="Toggle hidden">${en.hidden ? '👁' : '◌'}</button> <button class="btn tiny ghost" data-cact="remove">✕</button>` : ''}</div></div>`;
+        <div>${gm && en.sb ? `<button class="btn tiny" data-cact="statblock" title="${esc(en.sb)} stat block">📜</button> <select class="sb-save" data-cf="save" title="Roll this creature's saving throw (GM-only). Shift: advantage, Ctrl: disadvantage" aria-label="Roll a saving throw for ${esc(en.name)}"><option value="">Save…</option>${['str', 'dex', 'con', 'int', 'wis', 'cha'].map(k => `<option value="${k}">${k.toUpperCase()}</option>`).join('')}</select> ` : ''}${gm ? `<button class="btn tiny" data-cact="hide" title="Toggle hidden">${en.hidden ? '👁' : '◌'}</button> <button class="btn tiny ghost" data-cact="remove">✕</button>` : ''}</div></div>`;
     }).join('') || '<p class="muted">No combatants yet. Players: click “Roll initiative” on your sheet. GM: add enemies above.</p>'}</div>`;
     el.innerHTML = html;
+    if (gm && window.HTB) HTB.renderEncounter($('#encDiff'), ini.entries, S.st.characters, clientId);
   }
   $('#combat').addEventListener('click', async e => {
     const b = e.target.closest('[data-cact]'); if (!b) return;
@@ -1035,13 +1042,14 @@
       for (let k = 1; k <= count; k++) {
         const nm = count > 1 ? `${name} ${k}` : name;
         await act('init.add', { name: nm, bonus: +$('#npcBonus').value || 0, hp: +$('#npcHp').value || null, ac: +$('#npcAc').value || null, hidden: $('#npcHidden').checked });
-        if ($('#npcToken').checked) await act('token.add', { name: nm, color: '#ef5350', x: 2 * k, y: 2, hidden: $('#npcHidden').checked });
+        if ($('#npcToken').checked) await act('token.add', { name: nm, color: '#ef5350', x: 2 * k, y: 2, hidden: $('#npcHidden').checked, nameHidden: $('#npcNameHidden').checked });
       }
     }
   });
   $('#combat').addEventListener('change', e => {
     const t = e.target, cf = t.dataset.cf; if (!cf) return;
     const id = t.closest('.init-row').dataset.id, en = S.st.initiative.entries.find(x => x.id === id);
+    if (cf === 'save') { if (t.value && en && en.sb) HTB.rollCreatureSave(en.sb, t.value, en.name, e); t.value = ''; return; }
     if (cf === 'init') act('init.update', { id, fields: { init: +t.value || 0 } });
     if (cf === 'hp') {
       const v = t.value.trim(); let n;
@@ -1069,11 +1077,12 @@
   // The map is an endless grid you can pan (drag empty space, or middle-drag anywhere) and zoom
   // (mouse wheel, trackpad pinch, two-finger pinch, or the buttons). One square is 70 px at 100%,
   // like most VTTs. The board (cols x rows) is where the background image and floor are drawn.
-  const CAM = { x: 40, y: 40, z: 1, ready: false };
-  const ZMIN = 0.2, ZMAX = 3;
-  (() => { const c = store.get('holo.cam', null); if (c && isFinite(c.x) && isFinite(c.y) && isFinite(c.z)) Object.assign(CAM, c, { ready: true }); })();
-  let camSaveT;
-  const saveCam = () => { clearTimeout(camSaveT); camSaveT = setTimeout(() => store.set('holo.cam', { x: CAM.x, y: CAM.y, z: CAM.z }), 400); };
+  // The view always opens fitted to the board (whatever size the GM set), and refits when the board's size
+  // changes, the scene changes, or the screen resizes, unless this person has zoomed or panned since.
+  const CAM = { x: 40, y: 40, z: 1, ready: false, fitted: false, key: '' };
+  const ZMIN = 0.05, ZMAX = 3;
+  try { localStorage.removeItem('holo.cam'); } catch { /* storage blocked */ }   // the old saved camera isn't used any more
+  const saveCam = () => { CAM.fitted = false; };   // the person moved the view themselves
   function viewSize() { const w = $('#mapWrap'); return { w: w.clientWidth || 800, h: w.clientHeight || 600 }; }
   function zoomAt(sx, sy, factor) {
     const z = Math.max(ZMIN, Math.min(ZMAX, CAM.z * factor));
@@ -1082,9 +1091,10 @@
   }
   function fitBoard() {
     const mp = S.st.map, g = mp.gridSize, { w, h } = viewSize();
-    const z = Math.max(ZMIN, Math.min(ZMAX, Math.min((w - 40) / (mp.cols * g), (h - 40) / (mp.rows * g))));
+    const pad = Math.min(40, Math.round(Math.min(w, h) * 0.04));   // a small margin, smaller on phones
+    const z = Math.max(ZMIN, Math.min(ZMAX, Math.min((w - 2 * pad) / (mp.cols * g), (h - 2 * pad) / (mp.rows * g))));
     CAM.z = z; CAM.x = (w - mp.cols * g * z) / 2; CAM.y = (h - mp.rows * g * z) / 2;
-    saveCam(); drawMap(); updateZoomLabel();
+    CAM.fitted = true; CAM.ready = true; drawMap(); updateZoomLabel();
   }
   function updateZoomLabel() { const l = $('#zoomPct'); if (l) l.textContent = Math.round(CAM.z * 100) + '%'; }
 
@@ -1280,7 +1290,7 @@
   function startScript(t, kind = 'token') {
     const m = t.moves || {};
     M.script = { kind, id: t.id, name: t.name || (kind === 'prop' ? 'Asset' : 'Token'), path: (m.path || []).map(q => ({ x: q.x, y: q.y })),
-      exit: m.exit || '', delay: n0(m.delay), face: !!m.face };
+      exit: m.exit || '', delay: n0(m.delay), face: !!m.face, when: m.when === 'combat' ? 'combat' : 'scene' };
     renderScriptBar(); drawMap();
   }
   function renderScriptBar() {
@@ -1289,6 +1299,9 @@
     if (!sc) { scriptBar.innerHTML = ''; return; }
     scriptBar.innerHTML = `<b>🎬 ${esc(sc.name || 'Token')}</b><span class="muted">Click squares to add waypoints (${sc.path.length}/12).</span>
       <label class="mini">Then <select data-sb="exit">${Object.entries(EXIT_NAMES).map(([k, v]) => `<option value="${k}" ${k === sc.exit ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+      <label class="mini" title="When this movement plays">Plays <select data-sb="when">
+        <option value="scene" ${sc.when !== 'combat' ? 'selected' : ''}>after the next scene change</option>
+        <option value="combat" ${sc.when === 'combat' ? 'selected' : ''}>⚔ when combat starts</option></select></label>
       <label class="mini">Wait <input type="number" min="0" max="20" step="0.5" value="${n0(sc.delay)}" data-sb="delay"> s</label>
       ${sc.kind === 'prop' ? `<label class="toggle" title="Point the piece along its first leg; it turns at each waypoint as it goes"><input type="checkbox" data-sb="face" ${sc.face ? 'checked' : ''}> Turn to face its path</label>` : ''}
       <button class="btn tiny" data-sb="undo" ${sc.path.length ? '' : 'disabled'}>Undo</button><button class="btn tiny ghost" data-sb="clear">Clear</button>
@@ -1301,8 +1314,9 @@
     if (a === 'cancel') M.script = null;
     if (a === 'save') {
       const has = sc.path.length || sc.exit;
-      if (await act(sc.kind === 'prop' ? 'prop.script' : 'token.script', { id: sc.id, moves: has ? { path: sc.path, exit: sc.exit, delay: sc.delay, face: sc.face } : null })) {
-        toast(has ? `${sc.name}'s movement saved. It plays when this scene is next loaded, or with ▶ Play movements.` : `${sc.name}'s movement cleared`);
+      if (await act(sc.kind === 'prop' ? 'prop.script' : 'token.script', { id: sc.id, moves: has ? { path: sc.path, exit: sc.exit, delay: sc.delay, face: sc.face, when: sc.when } : null })) {
+        const plays = sc.when === 'combat' ? 'when combat starts (Start in initiative, or the combat view switched on)' : 'when this scene is next loaded';
+        toast(has ? `${sc.name}'s movement saved. It plays ${plays}, or with ▶ Play movements.` : `${sc.name}'s movement cleared`);
         M.script = null;
       }
     }
@@ -1313,6 +1327,7 @@
     if (a === 'exit') sc.exit = e.target.value;
     if (a === 'delay') sc.delay = Math.max(0, Math.min(20, n0(e.target.value)));
     if (a === 'face') sc.face = e.target.checked;
+    if (a === 'when') sc.when = e.target.value === 'combat' ? 'combat' : 'scene';
     drawMap();
   });
   // GM only: dashed paths for every scripted token (and the one being recorded)
@@ -1327,7 +1342,7 @@
       const start = prop ? { x: (t.x + t.w / 2) * g, y: (t.y + t.h / 2) * g } : { x: (t.x + sz / 2) * g, y: (t.y + sz / 2) * g };
       const c = q => (prop ? { x: (q.x + 0.5) * g, y: (q.y + 0.5) * g } : { x: (q.x + sz / 2) * g, y: (q.y + sz / 2) * g });
       const pts = [start, ...sc.path.map(c)];
-      const last = pts[pts.length - 1], amber = themeHex('amber', '#ffb74d');
+      const last = pts[pts.length - 1], amber = sc.when === 'combat' ? '#ef5350' : themeHex('amber', '#ffb74d');   // red: waits for combat
       ctx.save();
       ctx.strokeStyle = live ? amber : rgba(amber, 0.55); ctx.lineWidth = 3 / z; ctx.setLineDash([8 / z, 6 / z]);
       ctx.beginPath(); pts.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
@@ -1347,7 +1362,8 @@
         ctx.beginPath(); ctx.arc(q.x, q.y, 10 / z, 0, Math.PI * 2); ctx.fillStyle = live ? amber : rgba(amber, 0.55); ctx.fill();
         ctx.fillStyle = '#111'; ctx.font = `bold ${11 / z}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(i + 1), q.x, q.y + 0.5 / z);
       });
-      if (n0(sc.delay)) { ctx.fillStyle = amber; ctx.font = `600 ${11 / z}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.fillText(`🎬 after ${n0(sc.delay)} s`, pts[0].x, pts[0].y - ((prop ? t.h : sz) * g) / 2 - 8 / z); }
+      const cue = [sc.when === 'combat' ? '⚔ combat' : '', n0(sc.delay) ? `🎬 after ${n0(sc.delay)} s` : ''].filter(Boolean).join(' · ');
+      if (cue) { ctx.fillStyle = amber; ctx.font = `600 ${11 / z}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.fillText(cue, pts[0].x, pts[0].y - ((prop ? t.h : sz) * g) / 2 - 8 / z); }
       ctx.restore();
     }
   }
@@ -1417,10 +1433,11 @@
     if (!S.st || S.tab !== 'map') return;
     const mp = S.st.map, g = mp.gridSize, W = mp.cols * g, H = mp.rows * g, dpr = window.devicePixelRatio || 1;
     const { w: vw, h: vh } = viewSize();
-    if (!CAM.ready) {   // first open: fit the board, but never start smaller than 70% (then start at 100%, top-left)
-      CAM.ready = true; fitBoard();
-      if (CAM.z < 0.7) { CAM.z = 1; CAM.x = 40; CAM.y = 40; saveCam(); updateZoomLabel(); drawMap(); }
-      return;
+    const key = `${mp.cols}x${mp.rows}@${g}`;
+    if (key !== CAM.key) { CAM.key = key; CAM.ready = false; }   // first open, or the GM resized the board
+    if (!CAM.ready) {
+      if (!$('#mapWrap').clientWidth) return;   // not laid out yet; the resize observer draws again once it is
+      fitBoard(); return;
     }
     if (canvas.width !== Math.round(vw * dpr) || canvas.height !== Math.round(vh * dpr)) {
       canvas.width = Math.round(vw * dpr); canvas.height = Math.round(vh * dpr);
@@ -1466,6 +1483,7 @@
       if (im) { ctx.globalAlpha = 0.6; const w = st.w * g, h = st.h * g; ctx.drawImage(im, A.hover.x - w / 2, A.hover.y - h / 2, w, h); ctx.globalAlpha = 1; }
     }
     if (isGM()) drawScripts(g, z);
+    if (window.HTC) HTC.under(ctx, g, z);   // combat view (reachable squares)
     // tokens
     const ini = S.st.initiative, cur = ini.active && ini.entries[ini.turn];
     for (const t of mp.tokens) {
@@ -1474,7 +1492,7 @@
       const px = drag ? M.drag.px : (ap ? ap.x : t.x) * g, py = drag ? M.drag.py : (ap ? ap.y : t.y) * g, sz = (t.size || 1) * g, r = sz / 2 - 3;
       const cx = px + sz / 2, cy = py + sz / 2;
       ctx.globalAlpha = t.hidden ? 0.45 : 1;
-      const isCur = cur && ((cur.charId && cur.charId === t.charId) || (!cur.charId && cur.name === t.name));
+      const isCur = cur && (cur.tok ? cur.tok === t.id : (cur.charId && cur.charId === t.charId) || (!cur.charId && cur.name !== '???' && cur.name === t.name));
       if (isCur) { ctx.beginPath(); ctx.arc(cx, cy, r + 5, 0, Math.PI * 2); ctx.fillStyle = rgba(themeHex('amber', '#ffb74d'), 0.4); ctx.fill(); }
       ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = color(t.color); ctx.fill();
       const ch = t.charId && S.st.characters[t.charId];
@@ -1496,10 +1514,35 @@
         ctx.fillStyle = '#300'; ctx.fillRect(px + 4, py + sz - 6, sz - 8, 4);
         ctx.fillStyle = pct < .3 ? '#ef5350' : pct < .6 ? '#ffb74d' : '#66bb6a'; ctx.fillRect(px + 4, py + sz - 6, (sz - 8) * pct, 4);
       }
+      // a short label that fits under the token (so neighbours don't overlap); hover shows the full name
       ctx.font = `600 ${Math.max(11 / z, g * 0.2)}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.lineWidth = 3 / z; ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.strokeText(t.name, cx, py + sz + 1); ctx.fillStyle = '#fff'; ctx.fillText(t.name, cx, py + sz + 1);
+      const lab = shortLabel(t.name, sz - 4);
+      if (t.nameHidden) ctx.globalAlpha = Math.min(ctx.globalAlpha, 0.55);   // the GM's reminder: players see "???"
+      ctx.lineWidth = 3 / z; ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.strokeText(lab, cx, py + sz + 1); ctx.fillStyle = t.nameHidden ? '#ffb74d' : '#fff'; ctx.fillText(lab, cx, py + sz + 1);
       ctx.globalAlpha = 1;
     }
+    if (window.HTC) HTC.over(ctx, g, z);    // combat view (targets, results)
+  }
+  // the longest of: full name, first word, first word cut short, initials — that fits the token's width
+  function shortLabel(name, w) {
+    name = String(name || '').trim(); if (!name) return '';
+    const fits = s => ctx.measureText(s).width <= w;
+    if (fits(name)) return name;
+    const first = name.split(/\s+/)[0];
+    if (fits(first)) return first;
+    for (let n = first.length - 1; n >= 3; n--) if (fits(first.slice(0, n) + '…')) return first.slice(0, n) + '…';
+    return initials(name);
+  }
+  // hovering a token shows its full name
+  function mapTip(t, e) {
+    let tip = $('#mapTip');
+    if (!t) { if (tip) tip.remove(); return; }
+    if (!tip) { tip = document.createElement('div'); tip.id = 'mapTip'; tip.className = 'map-tip'; $('#mapWrap').appendChild(tip); }
+    const unknown = !isGM() && t.name === '???';
+    tip.innerHTML = unknown ? '<i>Name unknown</i>' : `${esc(t.name)}${isGM() && t.nameHidden ? '<span class="muted"> · name hidden from players</span>' : ''}`;
+    const r = $('#mapWrap').getBoundingClientRect();
+    tip.style.left = Math.min(e.clientX - r.left + 14, r.width - tip.offsetWidth - 4) + 'px';
+    tip.style.top = Math.max(4, e.clientY - r.top - 30) + 'px';
   }
   const canMove = t => isGM() || t.owner === clientId || (t.charId && S.st.characters[t.charId] && S.st.characters[t.charId].owner === clientId);
   function tokenAt(x, y) {
@@ -1530,6 +1573,7 @@
     if (e.button === 1) { e.preventDefault(); M.drag = { pan: true, sx: e.clientX, sy: e.clientY, cx: CAM.x, cy: CAM.y, moved: false }; capture(e); return; }
     if (e.button !== 0) return;
     const { x, y } = mapXY(e), g = S.st.map.gridSize;
+    if (!M.script && !A.stamp && window.HTC && HTC.down(x / g, y / g, e)) { drawMap(); return; }   // combat view
     if (M.script) {          // recording a scene movement: each click is the next waypoint
       if (M.script.path.length >= 12) return toast('That\'s the most waypoints for one piece (12).', true);
       M.script.path.push({ x: Math.floor(x / g), y: Math.floor(y / g) });
@@ -1571,7 +1615,13 @@
       pinch = { d, mx, my }; return;
     }
     if (A.stamp) { A.hover = mapXY(e); drawMap(); return; }
-    if (!M.drag) return;
+    if (!M.drag) {
+      const { x, y } = mapXY(e);
+      if (e.pointerType !== 'touch') mapTip(tokenAt(x, y), e);
+      if (window.HTC) HTC.hover(x / S.st.map.gridSize, y / S.st.map.gridSize, e);   // combat view
+      return;
+    }
+    mapTip(null);
     if (M.drag.pan) {
       const dx = e.clientX - M.drag.sx, dy = e.clientY - M.drag.sy;
       if (Math.abs(dx) + Math.abs(dy) > 3) M.drag.moved = true;
@@ -1580,7 +1630,7 @@
     const { x, y } = mapXY(e);
     M.drag.px = x - M.drag.ox; M.drag.py = y - M.drag.oy; M.drag.moved = true; drawMap();
   });
-  canvas.addEventListener('pointerleave', () => { if (A.stamp) { A.hover = null; drawMap(); } });
+  canvas.addEventListener('pointerleave', () => { mapTip(null); if (A.stamp) { A.hover = null; drawMap(); } });
   const endPointer = e => {
     touches.delete(e.pointerId);
     if (touches.size < 2) pinch = null;
@@ -1588,7 +1638,11 @@
     if (!M.drag) return;
     const d = M.drag, g = S.st.map.gridSize;
     M.drag = null;
-    if (d.pan) { if (d.moved) saveCam(); else { M.sel = null; M.selProp = null; drawMap(); } return; }
+    if (d.pan) {
+      if (d.moved) saveCam();
+      else { const { x, y } = mapXY(e); if (!(window.HTC && HTC.tap(x / g, y / g, e))) { M.sel = null; M.selProp = null; } drawMap(); }   // combat view
+      return;
+    }
     if (d.prop) {
       const p = (S.st.map.props || []).find(p => p.id === d.prop);
       if (p && d.moved) { p.x = snap(d.px / g, e); p.y = snap(d.py / g, e); act('prop.update', { id: p.id, fields: { x: p.x, y: p.y } }); }
@@ -1605,7 +1659,8 @@
   };
   canvas.addEventListener('pointerup', endPointer);
   canvas.addEventListener('pointercancel', endPointer);
-  if (window.ResizeObserver) new ResizeObserver(() => drawMap()).observe($('#mapWrap'));
+  // a rotated phone or resized window refits, unless this person has zoomed or panned since the last fit
+  if (window.ResizeObserver) new ResizeObserver(() => { if (CAM.fitted) CAM.ready = false; drawMap(); }).observe($('#mapWrap'));
   function closeTokenPop() { const p = $('.token-pop'); if (p) p.remove(); }
   function popAt(e) {
     const wrap = $('#mapWrap'), r = wrap.getBoundingClientRect();
@@ -1648,6 +1703,7 @@
       ${isGM() && A.sel ? `<button class="btn small" data-tp="img">Use selected asset as image</button>` : ''}
       ${t.img ? '<button class="btn small ghost" data-tp="noimg">Remove image</button>' : ''}
       ${isGM() ? `<button class="btn small" data-tp="hide">${t.hidden ? 'Reveal to players' : 'Hide from players'}</button>
+        <button class="btn small" data-tp="hidename" title="${t.nameHidden ? 'Players see this token as ???' : 'Players see the token but not who it is'}">${t.nameHidden ? 'Reveal name to players' : 'Hide name from players'}</button>
         <button class="btn small" data-tp="script" title="Waypoints this piece follows after the next scene change">🎬 Scene movement${t.moves ? ' ✓' : ''}…</button>` : ''}
       <button class="btn small danger" data-tp="remove">Remove token</button>` : ''}
       <button class="btn small ghost" data-tp="close">Close</button>`;
@@ -1655,11 +1711,12 @@
       const a = ev.target.dataset.tp;
       if (a === 'remove') act('token.remove', { id: t.id });
       if (a === 'hide') act('token.update', { id: t.id, fields: { hidden: !t.hidden } });
+      if (a === 'hidename') act('token.update', { id: t.id, fields: { nameHidden: !t.nameHidden } });
       if (a === 'img') act('token.update', { id: t.id, fields: { img: A.sel.src } });
       if (a === 'noimg') act('token.update', { id: t.id, fields: { img: null } });
       if (a === 'sheet') { S.selected = t.charId; setTab('sheet'); renderAll(); }
       if (a === 'script') startScript(t);
-      if (['remove', 'hide', 'sheet', 'close', 'img', 'noimg', 'script'].includes(a)) closeTokenPop();
+      if (['remove', 'hide', 'hidename', 'sheet', 'close', 'img', 'noimg', 'script'].includes(a)) closeTokenPop();
     });
     pop.addEventListener('change', ev => {
       const a = ev.target.dataset.tp;
@@ -1912,6 +1969,7 @@
           <button class="btn small ghost" id="restoreBtn">⇪ Restore a backup…</button><input type="file" id="restoreFile" accept=".json" hidden></div>
         <div id="backupList" style="margin-top:8px"></div>
       </div>
+      <div class="box" id="gmAudio"></div>
       <div class="box"><h4>GM notes <span class="muted" style="text-transform:none;letter-spacing:0">(only you can see these · autosaves)</span></h4>
         <textarea id="gmNotes" rows="18" placeholder="Session plan, NPCs, secrets, loot…">${esc(S.st.notes || '')}</textarea></div>
     </div>`;
@@ -2477,7 +2535,7 @@
   }
 
   // --------------------------------------------------------------------------- shared with books.js
-  window.HT = { S, $, $$, esc, n0, R, API, modal, closeModal, toast, act, mutate, isGM, chars, roll, rollModeFromEvent, setPath, renderRules, setTab };
+  window.HT = { S, $, $$, esc, n0, R, API, modal, closeModal, toast, act, post, mutate, isGM, chars, roll, rollModeFromEvent, setPath, renderRules, setTab, drawMap };
 
   // --------------------------------------------------------------------------- boot
   window.addEventListener('resize', () => drawMap());

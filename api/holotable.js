@@ -26,6 +26,13 @@ const POLL_MS = 8000;
 const ONLINE_S = 30;
 const MAX_IMAGE = 3 * 1024 * 1024;
 const MAX_PACK_ITEMS = 3000;
+// Table audio: the GM uploads music or ambience; it's stored in 1 MiB parts and streamed back in pieces,
+// because a Vercel function's request and response are each limited to about 4.5 MB.
+const AUDIO_PART = 1024 * 1024;
+const MAX_AUDIO = 30 * 1024 * 1024;     // one track
+const MAX_AUDIO_TRACKS = 60;
+const AUDIO_SEND = 4 * AUDIO_PART;      // at most this much per response; browsers ask for the rest by byte range
+const AUDIO_ID = /^au[a-f0-9]{12}$/;
 const SESSION_S = 30 * 24 * 3600;      // a session lasts 30 days
 const COOKIE_S = 180 * 24 * 3600;      // the cookie lingers longer, so logging in again keeps your characters
 
@@ -295,6 +302,34 @@ async function handleGet(req, res, q, ses) {
     return res.status(200).send(buf);
   }
 
+  if (q.aud) { // a table-audio track, in byte ranges (see AUDIO_SEND)
+    const id = String(q.aud);
+    const raw = AUDIO_ID.test(id) && (await r.hget(S.K.audios(), id));
+    const t = raw && JSON.parse(raw);
+    if (!t || !t.done) return fail(res, 404, "audio not found");
+    let start = 0, end = t.bytes - 1;
+    const m = /^bytes=(\d*)-(\d*)$/.exec(String((req.headers && req.headers.range) || ""));
+    if (m && (m[1] || m[2])) {
+      if (m[1]) { start = +m[1]; if (m[2]) end = Math.min(+m[2], t.bytes - 1); } else start = Math.max(0, t.bytes - +m[2]);
+    }
+    if (start >= t.bytes || start > end) { res.setHeader("Content-Range", `bytes */${t.bytes}`); return fail(res, 416, "range not satisfiable"); }
+    end = Math.min(end, start + AUDIO_SEND - 1);
+    const parts = [];
+    for (let n = Math.floor(start / AUDIO_PART); n <= Math.floor(end / AUDIO_PART); n++) {
+      const buf = await r.getBuffer(S.K.audioPart(id, n));
+      if (!buf) return fail(res, 404, "audio not found");
+      parts.push(buf);
+    }
+    const first = Math.floor(start / AUDIO_PART) * AUDIO_PART;
+    const body = Buffer.concat(parts).subarray(start - first, end - first + 1);
+    res.setHeader("Content-Type", t.type);
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Accept-Ranges", "bytes");
+    res.setHeader("Content-Range", `bytes ${start}-${end}/${t.bytes}`);
+    res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
+    return res.status(206).send(body);
+  }
+
   res.setHeader("Cache-Control", "no-store");
   const op = q.op;
 
@@ -347,6 +382,13 @@ async function handleGet(req, res, q, ses) {
     return res.status(200).send(raw);
   }
 
+  if (op === "audios") { // the GM's uploaded tracks
+    const list = Object.values((await r.hgetall(S.K.audios())) || {}).map((s) => { try { return JSON.parse(s); } catch { return null; } })
+      .filter((t) => t && t.done).map((t) => ({ id: t.id, name: t.name, bytes: t.bytes, type: t.type, added: t.added }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return res.status(200).json({ tracks: list, used: await S.used(), cap: S.STORAGE_CAP, maxTrack: MAX_AUDIO });
+  }
+
   if (op === "assets") {
     const h = (await r.hgetall(S.K.packs())) || {};
     const packs = Object.values(h).map((s) => { try { return JSON.parse(s); } catch { return null; } })
@@ -390,7 +432,7 @@ async function handlePost(req, res, q, b, ses) {
   const op = q.op;
   const r = S.getClient();
   const gm = ses.role === "gm";
-  if (!gm && (op === "restore" || op === "backups" || String(op).startsWith("pack"))) return fail(res, 403, "GM only");
+  if (!gm && (op === "restore" || op === "backups" || String(op).startsWith("pack") || String(op).startsWith("audio"))) return fail(res, 403, "GM only");
 
   if (op === "action") {
     let result, drop;
@@ -471,20 +513,86 @@ async function handlePost(req, res, q, b, ses) {
       const cur = await S.getCampaign(GAME);
       if (cur) { await r.lpush(S.K.bk(GAME), JSON.stringify(cur)); await r.ltrim(S.K.bk(GAME), 0, S.BACKUP_KEEP - 1); }
       const g = G.blankCampaign(file.name);
-      for (const k of ["name", "players", "chat", "initiative", "map", "notes", "handouts", "levelUps", "created"]) if (file[k] !== undefined) g[k] = file[k];
+      // every part of the game a backup holds (cleanGame checks each one below). sceneFx is left out on purpose:
+      // a restored table shouldn't replay the last scene change's wipe and movements.
+      for (const k of ["name", "players", "chat", "initiative", "map", "notes", "handouts", "levelUps", "created",
+        "scenes", "activeScene", "ships", "variants", "hpMax", "fight"]) if (file[k] !== undefined) g[k] = file[k];
       // everything coming back in goes through the same checks as a live edit
       g.characters = {};
       for (const [id, ch] of Object.entries(file.characters).slice(0, 60)) {
         if (!/^[a-z0-9]{6,20}$/.test(id) || !ch || typeof ch !== "object") continue;
         g.characters[id] = Object.assign(G.cleanChar(Object.assign({}, ch, { id })), { owner: String(ch.owner || "").slice(0, 40) });
       }
-      g.players = Object.fromEntries(Object.entries(g.players || {}).slice(0, 100).map(([id, p]) => [String(id).slice(0, 40), { name: String((p && p.name) || "Player").slice(0, 40) }]));
+      // players keep their name and colour theme; the role always comes from each person's signed session
+      const prefs = (p) => {
+        const pr = p && p.prefs;
+        if (!pr || typeof pr !== "object" || !/^[a-z0-9-]{1,40}$/.test(String(pr.theme || ""))) return undefined;
+        const custom = {};
+        for (const k of ["bg", "panel", "text", "holo", "amber"]) { const v = G.validColor((pr.custom || {})[k], null); if (v) custom[k] = v; }
+        return { theme: pr.theme, custom };
+      };
+      g.players = Object.fromEntries(Object.entries(g.players || {}).slice(0, 100).map(([id, p]) => [String(id).slice(0, 40),
+        Object.assign({ name: String((p && p.name) || "Player").slice(0, 40) }, prefs(p) ? { prefs: prefs(p) } : {})]));
       G.cleanGame(g);
       g.lastBackup = 0;
       G.addChat(g, { system: true, text: "The table was restored from a backup." });
       await S.saveCampaign(g);
     });
     return res.status(200).json({ ok: true });
+  }
+
+  // ---- table audio (GM only): start, add 1 MiB parts in order, finish; or delete
+  if (op === "audiostart") {
+    const all = (await r.hgetall(S.K.audios())) || {};
+    for (const raw of Object.values(all)) {   // uploads abandoned for an hour are cleared away
+      try { const t = JSON.parse(raw); if (!t.done && nowS() - (t.added || 0) > 3600) await removeAudio(t); } catch { /* skip */ }
+    }
+    if (Object.keys(all).length >= MAX_AUDIO_TRACKS) return fail(res, 413, `A table can keep up to ${MAX_AUDIO_TRACKS} tracks. Delete one first.`);
+    const bytes = Math.floor(+b.bytes || 0);
+    if (bytes < 12 || bytes > MAX_AUDIO) return fail(res, 413, `Audio files can be up to ${MAX_AUDIO / 1048576} MB.`);
+    if ((await S.used()) + bytes > S.STORAGE_CAP) return fail(res, 413, `Not enough room: ${Math.round((await S.used()) / 1048576)} of ${Math.round(S.STORAGE_CAP / 1048576)} MB used. Delete a track or an asset pack first.`);
+    const id = "au" + crypto.randomBytes(6).toString("hex");
+    const name = String(b.name || "Track").replace(/\.[a-z0-9]{2,5}$/i, "").slice(0, 80) || "Track";
+    await r.hset(S.K.audios(), id, JSON.stringify({ id, name, bytes, parts: 0, got: 0, type: null, done: false, added: nowS() }));
+    return res.status(200).json({ id, part: AUDIO_PART });
+  }
+  if (op === "audioadd" || op === "audiodone" || op === "audiodelete") {
+    const id = String(b.id || "");
+    const raw = AUDIO_ID.test(id) && (await r.hget(S.K.audios(), id));
+    if (!raw) return fail(res, 404, "no such track");
+    const t = JSON.parse(raw);
+    if (op === "audiodelete") { await removeAudio(t); await r.incr(S.K.libver()); return res.status(200).json({ ok: true }); }
+    if (t.done) return fail(res, 409, "that track is already finished");
+    if (op === "audioadd") {
+      return S.withLock("audio-" + id, async () => {
+        const fresh = JSON.parse((await r.hget(S.K.audios(), id)) || raw);
+        const seq = Math.floor(+b.seq);
+        if (seq < fresh.parts) return res.status(200).json({ ok: true, repeat: true });   // a retried part: already stored
+        if (seq !== fresh.parts) return fail(res, 400, "parts must arrive in order");
+        const buf = Buffer.from(String(b.data || ""), "base64");
+        const last = fresh.got + buf.length >= fresh.bytes;
+        if (!buf.length || buf.length > AUDIO_PART || (!last && buf.length !== AUDIO_PART) || fresh.got + buf.length > fresh.bytes) return fail(res, 400, "bad audio part");
+        if (seq === 0) {
+          fresh.type = S.sniffAudio(buf);
+          if (!fresh.type) { await removeAudio(fresh); return fail(res, 415, "That isn't an audio file HoloTable can play (MP3, OGG, WAV, FLAC, M4A or WebM)."); }
+        }
+        try { await S.reserve(buf.length); } catch (e) {
+          if (!(e instanceof S.Full)) throw e;
+          await removeAudio(fresh);
+          return fail(res, 413, e.message);
+        }
+        await r.set(S.K.audioPart(id, seq), buf);
+        fresh.parts += 1; fresh.got += buf.length;
+        await r.hset(S.K.audios(), id, JSON.stringify(fresh));
+        return res.status(200).json({ ok: true, got: fresh.got });
+      });
+    }
+    // audiodone
+    if (t.got !== t.bytes || !t.type) { await removeAudio(t); return fail(res, 400, "the upload didn't finish; try again"); }
+    t.done = true;
+    await r.hset(S.K.audios(), id, JSON.stringify(t));
+    await r.incr(S.K.libver());
+    return res.status(200).json({ ok: true, track: { id, name: t.name, bytes: t.bytes, type: t.type } });
   }
 
   // ---- asset library (GM only; shared by the whole table)
@@ -569,6 +677,13 @@ async function handlePost(req, res, q, b, ses) {
   }
 
   return fail(res, 404, "unknown op");
+}
+
+async function removeAudio(t) {
+  const r = S.getClient();
+  if (t.parts) await r.del(...Array.from({ length: t.parts }, (_, n) => S.K.audioPart(t.id, n)));
+  await r.hdel(S.K.audios(), t.id);
+  await S.release(t.got || 0);
 }
 
 async function removePack(id, count, bytes) {

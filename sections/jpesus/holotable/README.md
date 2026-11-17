@@ -36,8 +36,17 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
 - **Combat tracker:** initiative, HP, conditions, hidden NPCs.
 - **Battle map:** an endless grid of 70 px squares (the usual VTT size) that fills the map pane.
   - Drag empty space to pan, and scroll or pinch to zoom. The **−**, **100%**, **+** and **Fit** buttons reset the view.
+  - The map always opens fitted to the board, whatever size the GM has set. It refits when the GM changes the board's
+    size or the scene, and when the window resizes or a phone rotates, unless you've zoomed or panned since.
+  - On a phone, the map tab gives the map most of the screen: the roster and chat shrink, and the map tools scroll
+    sideways in one row.
   - The board, where the background image sits, is outlined.
   - Tokens, plus Dungeondraft packs or zips of images placed as props, tokens or floors.
+  - **Token names:** each token shows a short label that fits its own square (the full name, the first name, or the
+    initials), so neighbours never overlap. Hover a token for its full name.
+  - **Unknown names (GM):** click a token and choose "Hide name from players" (or tick "hide their names" when adding
+    NPCs). Players then see "???" on the map and in initiative, and the real name and sheet link never reach their
+    browser. The GM sees the label dimmed in amber until it's revealed.
 - **Power tooltips:** hover any force or tech power for its cost, save DC, attack bonus, casting details and description.
   Use ✎ to write or edit a description.
 - **Power pickers:** **＋ force power** and **＋ tech power** open the whole SW5e list. Filter by level (0–9), by name, and,
@@ -59,6 +68,9 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
     dashed lines. They play once, for everyone, right after that scene is loaded (after the wipe), and the pieces stay
     where they end. "▶ Play movements" plays the current board's movements without a wipe. Asset pieces can also "turn
     to face their path": point the piece along its first leg and it turns at each waypoint as it goes.
+  - **Movements for when combat starts (GM):** in the same bar, set "Plays" to "⚔ when combat starts". The path is drawn
+    red. It waits through scene changes, and plays the moment you press Start in initiative or switch the combat view on.
+    Say talks go wrong: the bounty hunter dives behind the crates and the sniper runs up to the balcony.
   - **The other buttons:** Save, Save as new, New blank, Rename and Delete. A table can keep up to 30 scenes.
   - **Images:** an uploaded image is deleted only once nothing on the table, saved scenes included, uses it.
 - **Level ups:** the GM grants a level to the party or to chosen characters. Each player gets a pop-up and a guided wizard:
@@ -85,7 +97,12 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
   - **Wretched Hives:** its gear and enhanced items are in the equipment picker, its feats in the feat list, its chapters
     (downtime, factions, tools and more) in the rulebook library.
   - **Scum and Villainy:** the GM's "☠ Add an SW5e creature" (Combat tab) adds any of its 271 creatures to initiative,
-    with AC, HP (average or rolled) and a map token. 📜 opens the stat block, and its attacks and damage roll GM-only.
+    with AC, HP (average or rolled) and a map token. 📜 opens the stat block, and its attacks, damage, saving throws, skills and
+    ability checks roll GM-only (shift-click for advantage, ctrl-click for disadvantage). The tracker's "Save…" menu
+    rolls a creature's save straight from its row: its listed bonus, or the plain modifier if it isn't proficient.
+  - **Encounter difficulty (GM):** above the initiative list, a meter rates the fight Easy, Medium, Hard or Deadly.
+    It uses SW5e's encounter-building rules: the creatures' XP, multiplied for how many there are, against the party's
+    thresholds. The party is the characters in initiative, or every player's character before anyone has rolled.
     Players never see which creature an NPC is.
   - **Starships of the Galaxy:** a Ships tab with ship sheets (size, tier, AC, hull and shield points, speed, hyperdrive,
     ship ability scores, saves and the 14 ship skills), crew with deployments and ranks, weapons that roll attack (Wis +
@@ -99,6 +116,11 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
 - **Colour themes (🎨):** each person picks their own look. Republic Command is the default, and there are 18 more themes in three groups: Light Side, Dark Side and
   Across the Galaxy. The GM also gets an exclusive Green & Silver theme. Anyone can then fine-tune five colours.
   The choice is saved with your account and follows you to other devices. Every theme passes a contrast check (themes.js).
+- **Table audio:** the GM uploads music or ambience (GM tab → Table audio; MP3, OGG, WAV, FLAC, M4A or WebM, up to
+  30 MB each, counted against the storage cap) and plays, pauses, loops or stops it for everyone. Every screen streams
+  the same file from this site and keeps itself in step with the GM. Nothing plays on a device until that person turns
+  table audio on there once ("🔈 Turn on table audio" in the top bar); after that, the ♪ button sets their own volume,
+  mutes it, or turns it off again. If a browser still waits for a click before playing sound, that button says so.
 - **GM tools:** handouts, GM notes, a backup file download, automatic backups, and restore.
 
 ## How it runs

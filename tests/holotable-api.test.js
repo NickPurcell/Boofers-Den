@@ -923,3 +923,277 @@ test("scene movements work for asset pieces too, and a speeder can turn to face 
   const after = st.map.props.find((x) => x.id === sp.id);
   assert.deepEqual([after.x, after.y, after.rot], [7.5, 13, 90], "it ends off the bottom edge, turned to face down");
 });
+
+// #79: restoring a save that has initiative entries used to throw (n is not defined) and answer 500.
+test("restore works when the saved table has people in initiative", async () => {
+  const { gm, p1 } = await table();
+  const kira = (await p1.act("char.save", { char: { name: "Kira", hp: { max: 20, current: 20 } } })).data.id;
+  await p1.act("init.add", { charId: kira, name: "Kira", init: 14 });
+  await gm.act("init.add", { name: "Trooper", init: "12", hp: 13 });
+  const file = JSON.parse((await gm.call("GET", { op: "export" })).data);
+  const fromFile = await gm.post("restore", { campaign: file });
+  assert.equal(fromFile.code, 200, "restore from a file");
+  const st = (await gm.poll()).data.state;
+  assert.deepEqual(st.initiative.entries.map((e) => [e.name, e.init]), [["Kira", 14], ["Trooper", 12]]);
+  assert.equal((await gm.post("restore", { backup: 0 })).code, 200, "restore the latest backup");
+});
+
+
+// #79 follow-up: one round trip on a fully populated table, so the next helper that moves out from under
+// cleanGame() / cleanMap() / cleanChar() / cleanShip() is caught by a test instead of a 500 at the table.
+test("restore round trip: a fully populated table comes back the same, from the file and from backup 0", async () => {
+  const { gm, p1, p2 } = await table();
+  const src = "/api/holotable?a=packone.1";
+  // characters, one with conditions and powers
+  const kira = (await p1.act("char.save", { char: { name: "Kira", classes: [{ name: "Sentinel", level: 3, archetype: "Path of Shadows" }],
+    hp: { max: 24, current: 17, temp: 3 }, conditions: ["Slowed", "Shocked"], exhaustion: 1,
+    powers: [{ name: "Force Push", level: 1, type: "force", alignment: "universal", description: "Shove." }],
+    features: [{ name: "Cloak of Shadows", text: "Archetype feature" }], equipment: [{ name: "Medpac", qty: 2 }] } })).data.id;
+  const rook = (await p2.act("char.save", { char: { name: "Rook", classes: [{ name: "Engineer", level: 2 }], tech: { max: "", used: 3 } } })).data.id;
+  // initiative: a character and a creature with HP, conditions and a stat-block id
+  await p1.act("init.add", { charId: kira, name: "Kira", init: 15 });
+  await gm.act("init.add", { name: "Death Trooper 1", init: 12, hp: 97, ac: 16, sb: "Death Trooper", hidden: true });
+  const trooper = (await gm.poll()).data.state.initiative.entries.find((e) => e.npc).id;
+  await gm.act("init.update", { id: trooper, fields: { hp: 80, conditions: ["Ignited"] } });
+  await gm.act("init.start", {});
+  // map: tokens and props with scene movements, saved as a scene, then a second scene on screen
+  await gm.act("map.settings", { cols: 20, rows: 12, showGrid: true });
+  await gm.act("token.add", { charId: kira, x: 3, y: 4 });
+  await gm.act("token.add", { name: "Vex", color: "#ef5350", x: 5, y: 4, hidden: true });
+  await gm.act("prop.add", { src, name: "Speeder", x: 1, y: 6, w: 2, h: 1, rot: 0 });
+  let mp = (await gm.poll()).data.state.map;
+  await gm.act("token.script", { id: mp.tokens.find((t) => t.name === "Vex").id, moves: { path: [{ x: 8, y: 4 }], exit: "e", delay: 1 } });
+  await gm.act("prop.script", { id: mp.props[0].id, moves: { path: [{ x: 9, y: 6 }], exit: "s", face: true } });
+  await gm.act("scene.saveAs", { name: "Desert base" });
+  await gm.act("scene.new", { name: "Cantina" });
+  await gm.act("token.add", { name: "Bartender", x: 6, y: 3 });
+  // a ship (party) and a hidden enemy ship
+  await p1.act("ship.save", { ship: { name: "Ebon Hawk", size: "Medium", tier: 2, ac: 15, hull: { current: 30, max: 40 }, shield: { current: 10, max: 20 },
+    abilities: { str: 14, wis: 12 }, skills: { boost: 1 }, crew: [{ charId: kira, deployment: "Pilot", rank: 2 }],
+    weapons: [{ name: "Quad laser", dmg: "2d4", type: "energy", atkMisc: 1 }], mods: [{ name: "Hyperdrive" }] } });
+  await gm.act("ship.save", { ship: { name: "Interdictor", hidden: true } });
+  // handouts, notes, variants, the max-HP switch, a level-up grant, chat with a whisper
+  await gm.act("handout.save", { handout: { title: "Holocron", text: "for the table", shared: true } });
+  await gm.act("handout.save", { handout: { title: "Twist", text: "GM eyes only", shared: false } });
+  await gm.act("notes.save", { notes: "the twist" });
+  await gm.act("variants.set", { variants: ["Flanking", "Called Shots"] });
+  await gm.act("settings.hpMax", { on: false });
+  await gm.act("levelup.grant", { charIds: [rook] });
+  await p1.act("chat", { text: "hello table" });
+  await gm.act("chat", { text: "/w Sam a secret for you" });
+  await p1.act("player.prefs", { theme: "jedi-temple", custom: { holo: "#00ffaa" } });
+
+  // what must survive, as the GM sees it (ids, grant tokens and timestamps aside)
+  const snapshot = (st) => ({
+    name: st.name, notes: st.notes, variants: st.variants, hpMax: st.hpMax,
+    characters: Object.values(st.characters).map((c) => ({ id: c.id, owner: c.owner, name: c.name, classes: c.classes, hp: c.hp, conditions: c.conditions,
+      exhaustion: c.exhaustion, powers: c.powers, features: c.features, equipment: c.equipment, tech: c.tech })).sort((a, b) => a.name.localeCompare(b.name)),
+    initiative: { active: st.initiative.active, round: st.initiative.round, turn: st.initiative.turn,
+      entries: st.initiative.entries.map((e) => ({ name: e.name, init: e.init, hp: e.hp, maxHp: e.maxHp, ac: e.ac, hidden: e.hidden, conditions: e.conditions, sb: e.sb, charId: e.charId })) },
+    map: { cols: st.map.cols, rows: st.map.rows, showGrid: st.map.showGrid, tokens: st.map.tokens.map((t) => ({ id: t.id, name: t.name, x: t.x, y: t.y, hidden: t.hidden, charId: t.charId, moves: t.moves })),
+      props: st.map.props.map((p) => ({ id: p.id, name: p.name, x: p.x, y: p.y, w: p.w, h: p.h, rot: p.rot, moves: p.moves })) },
+    scene: st.scene, scenes: st.scenes.map((s) => s.name),
+    ships: st.ships.map((s) => { const { updated, ...rest } = s; return rest; }),
+    handouts: st.handouts.map((h) => ({ title: h.title, text: h.text, shared: h.shared })),
+    levelUps: Object.fromEntries(Object.entries(st.levelUps).map(([id, v]) => [id, v.count])),
+    chat: st.chat.filter((m) => m.text !== "The table was restored from a backup.").map((m) => ({ from: m.from, text: m.text, to: m.to, private: m.private })),
+    players: Object.values(st.players).map((p) => ({ name: p.name, prefs: p.prefs })).sort((a, b) => a.name.localeCompare(b.name)),
+  });
+  const before = snapshot((await gm.poll()).data.state);
+  // the populated table really is populated
+  assert.equal(before.characters.length, 2); assert.equal(before.initiative.entries.length, 2); assert.equal(before.ships.length, 2);
+  assert.equal(before.handouts.length, 2); assert.deepEqual(before.scenes, ["Desert base", "Cantina"]);
+  assert.ok(before.chat.some((m) => m.to && m.text === "a secret for you"), "the whisper is there");
+  assert.ok(before.players.some((p) => p.prefs && p.prefs.theme === "jedi-temple"), "a player's colour theme is set");
+  // the saved scene keeps its scripted movements
+  const file = JSON.parse((await gm.call("GET", { op: "export" })).data);
+  const desert = file.scenes.find((s) => s.name === "Desert base").map;
+  assert.ok(desert.tokens.some((t) => t.moves) && desert.props.some((p) => p.moves && p.moves.face), "scene movements are in the save");
+
+  // 1. restore from the downloaded file, after changing things so we know the restore did something
+  await gm.act("notes.save", { notes: "changed my mind" });
+  await gm.act("variants.set", { variants: [] });
+  assert.equal((await gm.post("restore", { campaign: file })).code, 200, "restore from the file");
+  assert.deepEqual(snapshot((await gm.poll()).data.state), before, "everything is back after restoring the file");
+  // players still see only what they should
+  const pv = (await p1.poll()).data.state;
+  assert.equal(pv.handouts.length, 1); assert.equal(pv.ships.length, 1); assert.equal(pv.notes, null);
+  assert.ok(pv.map.tokens.every((t) => !t.moves && t.name !== "Vex"));
+
+  // 2. restore the latest automatic backup (the restore above kept the table as backup 0 first)
+  await gm.act("notes.save", { notes: "changed my mind again" });
+  assert.equal((await gm.post("restore", { backup: 0 })).code, 200, "restore backup 0");
+  assert.deepEqual(snapshot((await gm.poll()).data.state), before, "everything is back after restoring backup 0");
+  // and the restored table still plays: the saved scene loads and its movements play
+  const desertId = (await gm.poll()).data.state.scenes.find((s) => s.name === "Desert base").id;
+  assert.equal((await gm.act("scene.load", { id: desertId })).code, 200);
+  assert.equal((await gm.poll()).data.state.sceneFx.moves.length, 2);
+});
+
+test("token names: the GM can hide a name; players get ??? (and no sheet link), in initiative too", async () => {
+  const { gm, p1 } = await table();
+  await gm.act("token.add", { name: "Grand Inquisitor", x: 3, y: 3, nameHidden: true });
+  await gm.act("token.add", { name: "Stormtrooper", x: 4, y: 3 });
+  await gm.act("init.add", { name: "Grand Inquisitor", init: 18, hp: 90 });
+  assert.equal((await p1.act("token.add", { name: "Me", nameHidden: true })).code, 403, "players can't place loose tokens");
+  let gv = (await gm.poll()).data.state;
+  const inq = gv.map.tokens.find((t) => t.name === "Grand Inquisitor");
+  assert.equal(inq.nameHidden, true, "the GM still sees the name, marked hidden");
+  let pv = (await p1.poll()).data.state;
+  assert.deepEqual(pv.map.tokens.map((t) => t.name), ["???", "Stormtrooper"]);
+  assert.equal(pv.map.tokens[0].nameHidden, undefined);
+  const e = pv.initiative.entries.find((x) => x.init === 18);
+  assert.equal(e.name, "???"); assert.equal(e.tok, inq.id, "the client can still ring the right token");
+  assert.ok(!JSON.stringify(pv).includes("Inquisitor"), "the name isn't sent to players anywhere");
+  assert.equal((await p1.act("token.update", { id: inq.id, fields: { nameHidden: false } })).code, 403);
+  await gm.act("token.update", { id: inq.id, fields: { nameHidden: false } });
+  pv = (await p1.poll()).data.state;
+  assert.equal(pv.map.tokens[0].name, "Grand Inquisitor", "revealed");
+  assert.equal(pv.initiative.entries.find((x) => x.init === 18).name, "Grand Inquisitor");
+});
+
+test("token names: shownName gives other code (chat lines, the combat view) the name players see", () => {
+  const camp = { map: { tokens: [{ id: "t1", name: "Grand Inquisitor", nameHidden: true }, { id: "t2", name: "Vexx", charId: "c1", nameHidden: true }, { id: "t3", name: "Rook" }] } };
+  assert.equal(G.shownName(camp, { name: "Grand Inquisitor" }), "???");
+  assert.equal(G.shownName(camp, { name: "Darth Vexx", charId: "c1" }), "???", "matched by sheet, whatever the entry is called");
+  assert.equal(G.shownName(camp, { name: "Rook" }), "Rook");
+  camp.map.tokens[0].hidden = true;
+  assert.equal(G.shownName(camp, { name: "Grand Inquisitor" }), "Grand Inquisitor", "a token hidden outright masks nothing (its entry is hidden on its own)");
+});
+
+// Table audio: the GM uploads a track in 1 MiB parts; everyone streams it by byte range; the GM controls playback.
+test("table audio: GM-only uploads in order, checked by content, streamed in ranges, counted against storage", async () => {
+  const { gm, p1 } = await table();
+  const PART = 1024 * 1024;
+  // a fake MP3: an ID3 header, then filler, 2.5 parts long
+  const mp3 = Buffer.alloc(Math.floor(2.5 * PART));
+  mp3.write("ID3", 0, "latin1"); for (let i = 10; i < mp3.length; i++) mp3[i] = i % 251;
+  const usedBefore = (await gm.call("GET", { op: "audios" })).data.used;
+  for (const op of ["audiostart", "audioadd", "audiodone", "audiodelete"]) assert.equal((await p1.post(op, {})).code, 403, op);
+  assert.equal((await gm.post("audiostart", { name: "big.mp3", bytes: 40 * PART })).code, 413, "too big");
+  const st = (await gm.post("audiostart", { name: "Cantina Band.mp3", bytes: mp3.length })).data;
+  assert.match(st.id, /^au[a-f0-9]{12}$/); assert.equal(st.part, PART);
+  const part = (i) => mp3.subarray(i * PART, Math.min(mp3.length, (i + 1) * PART)).toString("base64");
+  assert.equal((await gm.post("audioadd", { id: st.id, seq: 1, data: part(1) })).code, 400, "parts arrive in order");
+  for (let i = 0; i < 3; i++) assert.equal((await gm.post("audioadd", { id: st.id, seq: i, data: part(i) })).code, 200);
+  assert.equal((await gm.post("audioadd", { id: st.id, seq: 1, data: part(1) })).data.repeat, true, "a retried part is ignored");
+  assert.equal((await gm.post("audiodone", { id: st.id })).code, 200);
+  const list = (await p1.call("GET", { op: "audios" })).data;
+  assert.deepEqual(list.tracks.map((t) => [t.name, t.bytes, t.type]), [["Cantina Band", mp3.length, "audio/mpeg"]]);
+  assert.equal(list.used - usedBefore, mp3.length, "counted against the storage cap");
+  // streaming: needs a session; ranges; never more than 4 MiB per response
+  assert.equal((await browser().call("GET", { aud: st.id })).code, 401);
+  let r = await p1.call("GET", { aud: st.id });
+  assert.equal(r.code, 206); assert.equal(r.headers["content-type"], "audio/mpeg");
+  assert.equal(r.headers["content-range"], `bytes 0-${mp3.length - 1}/${mp3.length}`);
+  assert.ok(Buffer.compare(r.data, mp3) === 0, "the whole small file comes back intact");
+  r = await p1.call("GET", { aud: st.id }, undefined, { range: `bytes=${PART - 5}-${PART + 4}` });
+  assert.equal(r.code, 206); assert.equal(r.headers["content-range"], `bytes ${PART - 5}-${PART + 4}/${mp3.length}`);
+  assert.ok(Buffer.compare(r.data, mp3.subarray(PART - 5, PART + 5)) === 0, "a range across two parts");
+  r = await p1.call("GET", { aud: st.id }, undefined, { range: "bytes=-10" });
+  assert.ok(Buffer.compare(r.data, mp3.subarray(mp3.length - 10)) === 0, "a suffix range");
+  assert.equal((await p1.call("GET", { aud: st.id }, undefined, { range: `bytes=${mp3.length}-` })).code, 416);
+  assert.equal((await p1.call("GET", { aud: "au000000000000" })).code, 404);
+  // not audio: refused on the first part, nothing kept
+  const bad = (await gm.post("audiostart", { name: "notes.txt", bytes: 100 })).data;
+  assert.equal((await gm.post("audioadd", { id: bad.id, seq: 0, data: Buffer.alloc(100, 65).toString("base64") })).code, 415);
+  assert.equal((await gm.call("GET", { op: "audios" })).data.tracks.length, 1);
+  // delete gives the space back
+  assert.equal((await gm.post("audiodelete", { id: st.id })).code, 200);
+  const after = (await gm.call("GET", { op: "audios" })).data;
+  assert.equal(after.tracks.length, 0); assert.equal(after.used, usedBefore);
+  assert.equal((await p1.call("GET", { aud: st.id })).code, 404);
+});
+
+test("table audio: the GM plays, pauses, loops and stops; everyone sees it with the server's clock", async () => {
+  const { gm, p1 } = await table();
+  const track = "au0123456789ab";
+  assert.equal((await p1.act("audio.play", { track, name: "x" })).code, 403, "GM only");
+  assert.equal((await gm.act("audio.play", { track: "../etc", name: "x" })).code, 400);
+  await gm.act("audio.play", { track, name: "Mos Eisley", pos: 12, loop: true, vol: 0.6 });
+  let au = (await p1.poll()).data.state.audio;
+  assert.deepEqual([au.track, au.name, au.playing, au.pos, au.loop, au.vol], [track, "Mos Eisley", true, 12, true, 0.6]);
+  assert.ok(Math.abs(au.now - au.at) < 5, "the view carries the server's time so screens can line up");
+  await gm.act("audio.pause", { pos: 30.5 });
+  au = (await p1.poll()).data.state.audio;
+  assert.deepEqual([au.playing, au.pos], [false, 30.5]);
+  await gm.act("audio.set", { loop: false, vol: 5 });
+  au = (await p1.poll()).data.state.audio;
+  assert.deepEqual([au.loop, au.vol], [false, 1], "volume is clamped");
+  await gm.act("audio.stop", {});
+  assert.equal((await p1.poll()).data.state.audio, null);
+});
+
+test("token names: a hidden name on a token linked to a sheet hides the sheet from other players", async () => {
+  const { gm, p1 } = await table();
+  const id = (await gm.act("char.save", { char: { name: "Darth Vexx" } })).data.id;
+  await gm.act("token.add", { charId: id, x: 2, y: 2 });
+  const tok = (await gm.poll()).data.state.map.tokens.find((t) => t.charId === id);
+  await gm.act("token.update", { id: tok.id, fields: { nameHidden: true } });
+  const pv = (await p1.poll()).data.state;
+  assert.equal(pv.characters[id], undefined, "the sheet isn't sent");
+  assert.ok(!JSON.stringify(Object.assign({}, pv, { chat: [] })).includes("Vexx"), "nor the name, outside the earlier chat line");
+  assert.ok((await gm.poll()).data.state.characters[id], "the GM keeps it");
+  await gm.act("token.update", { id: tok.id, fields: { nameHidden: false } });
+  assert.equal((await p1.poll()).data.state.characters[id].name, "Darth Vexx", "back once revealed");
+});
+
+test("token names: chat's turn and leaving lines don't name a creature whose name is hidden (#90)", async () => {
+  const { gm, p1 } = await table();
+  await gm.act("token.add", { name: "Raider", x: 2, y: 2, nameHidden: true });
+  await gm.act("init.add", { name: "Raider", init: 15, hp: 20 });
+  await gm.act("init.add", { name: "Avery", init: 10, hp: 20 });
+  await gm.act("init.next", {});   // Avery (the order starts on the Raider, so "next" moves to Avery)
+  await gm.act("init.next", {});   // round 2: the Raider
+  const vexx = (await gm.act("char.save", { char: { name: "Darth Vexx" } })).data.id;
+  await gm.act("token.add", { charId: vexx, x: 4, y: 4 });
+  const tok = (await gm.poll()).data.state.map.tokens.find((t) => t.charId === vexx);
+  await gm.act("token.update", { id: tok.id, fields: { nameHidden: true } });
+  const before = (await p1.poll()).data.state.chat.length;   // "brought Darth Vexx" came earlier, before the name was hidden
+  await gm.act("char.delete", { id: vexx });
+  const chat = (await p1.poll()).data.state.chat.map((m) => m.text || "");
+  assert.ok(chat.includes("Round 1 - Avery's turn."), "names that aren't hidden still show");
+  assert.ok(chat.includes("Round 2 - ???'s turn."), "the turn line says ???");
+  assert.ok(!chat.some((t) => /Raider/.test(t)), "never the hidden name");
+  assert.deepEqual(chat.slice(before), ["An unknown character left the table."]);
+});
+
+test("combat-start movements: they wait through scene changes, then play when combat starts (initiative or the combat view)", async () => {
+  const { gm, p1 } = await table();
+  await gm.act("map.settings", { cols: 20, rows: 12 });
+  await gm.act("token.add", { name: "Bounty Hunter", x: 5, y: 5 });
+  await gm.act("token.add", { name: "Sniper", x: 2, y: 2 });
+  await gm.act("token.add", { name: "Courier", x: 9, y: 9 });
+  const [bh, sn, co] = (await gm.poll()).data.state.map.tokens.map((t) => t.id);
+  await gm.act("token.script", { id: bh, moves: { path: [{ x: 7, y: 5 }, { x: 7, y: 8 }], when: "combat" } });
+  await gm.act("token.script", { id: co, moves: { path: [{ x: 10, y: 9 }], when: "nonsense" } });   // anything else: the next scene
+  let gv = (await gm.poll()).data.state.map.tokens;
+  assert.equal(gv[0].moves.when, "combat");
+  assert.equal(gv[2].moves.when, undefined, "cleaned to the usual scene trigger");
+  // a scene change plays only the scene movement
+  const cantina = (await gm.act("scene.saveAs", { name: "Cantina" })).data.id;
+  await gm.act("scene.new", { name: "Other" });
+  await gm.act("scene.load", { id: cantina });
+  gv = (await gm.poll()).data.state;
+  assert.deepEqual(gv.sceneFx.moves.map((m) => m.id), [co], "the courier moves; the bounty hunter waits for combat");
+  assert.equal(gv.map.tokens.find((t) => t.id === bh).moves.when, "combat");
+  // Start in initiative plays it, once, with no wipe; players see it move but never the script
+  await gm.act("init.add", { name: "Bounty Hunter", init: 14, hp: 30 });
+  assert.equal((await p1.poll()).data.state.map.tokens.find((t) => t.id === bh).moves, undefined);
+  await gm.act("init.start", {});
+  const pv = (await p1.poll()).data.state;
+  assert.equal(pv.sceneFx.k, -1, "no wipe");
+  assert.deepEqual(pv.sceneFx.moves, [{ id: bh, from: { x: 5, y: 5 }, path: [{ x: 7, y: 5 }, { x: 7, y: 8 }], delay: 0 }]);
+  assert.deepEqual([pv.map.tokens.find((t) => t.id === bh).x, pv.map.tokens.find((t) => t.id === bh).y], [7, 8]);
+  // the combat view's switch starts combat too
+  await gm.act("token.script", { id: sn, moves: { path: [{ x: 2, y: 0 }], when: "combat" } });
+  assert.equal((await p1.act("fight.toggle", { on: true })).code, 403);
+  await gm.act("fight.toggle", { on: true });
+  gv = (await gm.poll()).data.state;
+  assert.deepEqual(gv.sceneFx.moves.map((m) => m.id), [sn]);
+  assert.equal(gv.map.tokens.find((t) => t.id === sn).moves, undefined, "each plays once");
+  // switching it off and on again with nothing queued changes nothing
+  const n = gv.sceneFx.n;
+  await gm.act("fight.toggle", { on: false }); await gm.act("fight.toggle", { on: true });
+  assert.equal((await gm.poll()).data.state.sceneFx.n, n);
+});

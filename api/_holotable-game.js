@@ -7,6 +7,7 @@
 // Players never get GM notes, hidden NPCs, NPC hit points or other people's whispers.
 
 const crypto = require("crypto");
+const Fight = require("./_holotable-fight.js");   // the combat view (fight.*), off until the GM switches it on
 
 const CHAT_LIMIT = 400;
 const rid = (n = 10) => crypto.randomBytes(16).toString("hex").slice(0, n);
@@ -150,6 +151,8 @@ function cleanChar(ch) {
     initMisc: numOr(ch.initMisc, 0), profOverride: optNum(ch.profOverride),
     force: { max: optNum((ch.force || {}).max), used: numOr((ch.force || {}).used, 0) },
     tech: { max: optNum((ch.tech || {}).max), used: numOr((ch.tech || {}).used, 0) },
+    // the combat view's resource tracker (audit 3.1): kept only on a sheet that has some, so other sheets are as before
+    ...(Array.isArray(ch.resources) && ch.resources.length ? { resources: Fight.cleanResources(ch.resources) } : {}),
     attacks: list(ch.attacks, 40, (a) => ({ name: s(a.name, 80), ab: ["str", "dex", "con", "int", "wis", "cha", "finesse"].includes(a.ab) ? a.ab : "str",
       damage: s(a.damage, 40), damageFull: a.damageFull ? s(a.damageFull, 60) : undefined, type: s(a.type, 30), props: s(a.props, 200),
       proficient: a.proficient !== false, magic: optNum(a.magic), bonus: optNum(a.bonus), noModDamage: !!a.noModDamage })),
@@ -166,6 +169,38 @@ function cleanChar(ch) {
   return out;
 }
 
+// Tokens whose name the GM is hiding, looked up by sheet ("c:<charId>") or, for loose tokens, by name
+// ("n:<name>"). The value is the token's id, or null when two loose tokens share the name.
+function unknownNames(camp) {
+  const m = new Map();
+  for (const t of ((camp.map && camp.map.tokens) || [])) {
+    if (!t.nameHidden || t.hidden) continue;
+    const k = t.charId ? "c:" + t.charId : "n:" + t.name;
+    m.set(k, m.has(k) ? null : t.id);
+  }
+  return m;
+}
+// undefined: this initiative entry isn't masked; otherwise the masked token's id (or null)
+function unknownTokenFor(unk, e) {
+  const k = e && (e.charId ? "c:" + e.charId : "n:" + e.name);
+  return k && unk.has(k) ? unk.get(k) : undefined;
+}
+// The name players are shown for an initiative entry: "???" while the GM hides its token's name.
+// For anything players can read (chat lines, the combat view); GM-only text keeps the real name.
+function shownName(camp, entry) {
+  return unknownTokenFor(unknownNames(camp), entry) === undefined ? (entry && entry.name) || "" : "???";
+}
+
+// A sheet whose token's name the GM is hiding isn't sent to other players at all (its name, photo and
+// numbers would give it away); the player who owns it still gets it.
+function sheetsFor(camp, cid) {
+  const secret = new Set(((camp.map && camp.map.tokens) || []).filter((t) => t.nameHidden && t.charId).map((t) => t.charId));
+  if (!secret.size) return camp.characters;
+  const out = {};
+  for (const [id, c] of Object.entries(camp.characters || {})) if (!secret.has(id) || c.owner === cid) out[id] = c;
+  return out;
+}
+
 function viewFor(camp, cid, gm, online) {
   const chat = camp.chat.filter((m) => !m.to || gm || m.to.includes(cid) || m.fromId === cid);
   const ini = Object.assign({}, camp.initiative);
@@ -174,21 +209,38 @@ function viewFor(camp, cid, gm, online) {
       .map((e) => Object.assign({}, e, e.npc ? { hp: null, maxHp: null, sb: undefined } : {}));
   }
   const map = Object.assign({}, camp.map);
-  if (!gm) map.tokens = map.tokens.filter((t) => !t.hidden).map((t) => (t.moves ? Object.assign({}, t, { moves: undefined }) : t));
+  if (!gm) {
+    // tokens whose name the GM hasn't revealed yet: players get "???" and no sheet link, and the
+    // matching initiative entries are masked the same way (tok tells the client which token is up)
+    const unk = unknownNames(camp);
+    if (unk.size) ini.entries = ini.entries.map((e) => {
+      const tok = unknownTokenFor(unk, e);
+      if (tok === undefined) return e;
+      return Object.assign({}, e, { name: "???", charId: null, sb: undefined, hp: null, maxHp: null, tok: tok || undefined });
+    });
+    map.tokens = map.tokens.filter((t) => !t.hidden).map((t) => {
+      if (!t.moves && !t.nameHidden) return t;
+      const v = Object.assign({}, t, { moves: undefined });
+      if (t.nameHidden) Object.assign(v, { name: "???", charId: null, nameHidden: undefined });
+      return v;
+    });
+  }
   if (!gm) map.props = (map.props || []).map((x) => (x.moves ? Object.assign({}, x, { moves: undefined }) : x));
   const shown = new Set([...map.tokens.map((t) => t.id), ...(map.props || []).map((x) => x.id)]);
   const fxView = camp.sceneFx ? Object.assign({}, camp.sceneFx, { moves: (camp.sceneFx.moves || []).filter((m) => shown.has(m.id)) }) : null;
   return {
     name: camp.name, you: cid, isGM: !!gm, updated: camp.updated,
-    players: camp.players, online: online || [], characters: camp.characters,
+    players: camp.players, online: online || [], characters: gm ? camp.characters : sheetsFor(camp, cid),
     chat: chat.slice(-200), initiative: ini, map,
     notes: gm ? camp.notes : null,
     handouts: (camp.handouts || []).filter((h) => gm || h.shared),
     levelUps: camp.levelUps || {},
     variants: camp.variants || [],
     hpMax: camp.hpMax !== false,
+    audio: camp.audio ? Object.assign({}, camp.audio, { now: now() }) : null,   // "now" lets each screen line its clock up
     ships: (camp.ships || []).filter((x) => gm || !x.hidden),
     sceneFx: fxView,
+    ...(camp.fight && camp.fight.on ? { fight: Fight.view(camp, cid, gm, shownName) } : {}),   // the combat view, only while it is on
     scene: (camp.scenes || []).filter((x) => x.id === camp.activeScene).map((x) => ({ id: x.id, name: x.name }))[0] || null,
     scenes: gm ? (camp.scenes || []).map((x) => ({ id: x.id, name: x.name, savedAt: x.savedAt })) : null,
   };
@@ -215,11 +267,20 @@ const hitDieFor = (name, fallback) => HIT_DIE[String(name || "").toLowerCase()] 
 // The screen wipe everyone sees when the GM changes the scene: a fresh id (so each change plays once)
 // and one of the wipe styles the page knows (left, right, down, up, diagonal, clock, iris, barn doors).
 const SCENE_WIPES = 8;
+// Combat starts (Start in initiative, or the combat view switched on): the movements the GM queued for it play
+// now, without a wipe. Returns how many pieces move.
+function combatMoves(camp) {
+  const moves = playMoves(camp, "combat");
+  if (moves.length) camp.sceneFx = { n: rid(), k: -1, moves };
+  return moves.length;
+}
 const sceneWipe = (camp) => { camp.sceneFx = { n: rid(), k: crypto.randomInt(SCENE_WIPES) }; };
 
 // Scene movements: the GM gives a token (or an asset piece, like a speeder) a scripted path (grid waypoints, like keyframes), an optional exit off
-// one edge of the board, and a start delay. They play once, right after that scene is loaded (or when the GM
-// presses Play): the server moves the tokens to where they end up and tells every screen the path to animate.
+// one edge of the board, and a start delay. Each plays once: right after that scene is loaded, or (when: "combat")
+// the moment combat starts, when the GM presses Start in initiative or switches the combat view on. "▶ Play
+// movements" plays them all now. The server moves the pieces to where they end up and tells every screen the
+// path to animate.
 const EXITS = ["n", "s", "e", "w"];
 function cleanMoves(m) {
   if (!m || typeof m !== "object") return undefined;
@@ -229,13 +290,16 @@ function cleanMoves(m) {
   if (!path.length && !exit) return undefined;
   const out = { path, exit, delay: clamp(Math.round(num(m.delay) * 2) / 2, 0, 20) };
   if (m.face) out.face = true;   // asset pieces: turn to face the way they're going
+  if (m.when === "combat") out.when = "combat";   // waits for combat to start instead of the next scene change
   return out;
 }
-function playMoves(camp) {
+// when: "scene" plays the movements waiting for a scene change, "combat" those waiting for combat; none plays all
+const playsNow = (m, when) => !!m && (!when || (m.when === "combat" ? "combat" : "scene") === when);
+function playMoves(camp, when) {
   const mp = camp.map, out = [];
   for (const t of mp.tokens || []) {
     const m = t.moves;
-    if (!m) continue;
+    if (!playsNow(m, when)) continue;
     delete t.moves;                                   // each scripted move plays once
     const pts = (m.path || []).map((q) => ({ x: q.x, y: q.y }));
     const last = pts.length ? pts[pts.length - 1] : { x: t.x, y: t.y }, sz = t.size || 1;
@@ -249,7 +313,7 @@ function playMoves(camp) {
   const heading = (a, b) => Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
   for (const pr of mp.props || []) {
     const m = pr.moves;
-    if (!m) continue;
+    if (!playsNow(m, when)) continue;
     delete pr.moves;
     const pw = num(pr.w, 1), ph = num(pr.h, 1);
     const pts = (m.path || []).map((q) => ({ x: r3(q.x + 0.5 - pw / 2), y: r3(q.y + 0.5 - ph / 2) }));
@@ -363,6 +427,7 @@ function applyAction(camp, cid, gm, type, p) {
   const chars = camp.characters, ini = camp.initiative, mp = camp.map;
   mp.props = mp.props || [];
   const need = (ok, why = "GM only") => { if (!ok) throw new Forbidden(why); };
+  if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, applyAction, shownName, combatMoves, Forbidden, Invalid });
 
   switch (type) {
     // ---- characters
@@ -400,10 +465,11 @@ function applyAction(camp, cid, gm, type, p) {
       const ch = chars[p.id];
       if (!ch) return {};
       need(gm || ch.owner === cid, "not your character");
+      const said = shownName(camp, { charId: p.id, name: ch.name });   // before its token goes: a hidden name stays hidden
       delete chars[p.id];
       ini.entries = ini.entries.filter((e) => e.charId !== p.id);
       mp.tokens = mp.tokens.filter((t) => t.charId !== p.id);
-      addChat(camp, { system: true, text: `${ch.name} left the table.` });
+      addChat(camp, { system: true, text: `${said === "???" ? "An unknown character" : said} left the table.` });
       return { dropImages: [ch.image, ch.tokenImage] };
     }
     case "char.assign": {
@@ -524,13 +590,14 @@ function applyAction(camp, cid, gm, type, p) {
         ini.active = true; ini.turn++;
         if (ini.turn >= n) { ini.turn = 0; ini.round++; }
         const cur = ini.entries[ini.turn];
-        if (!cur.hidden) addChat(camp, { system: true, text: `Round ${ini.round} - ${cur.name}'s turn.` });
+        if (!cur.hidden) addChat(camp, { system: true, text: `Round ${ini.round} - ${shownName(camp, cur)}'s turn.` });   // "???" while the GM hides the name
       } else if (type === "init.prev" && n) {
         ini.turn--;
         if (ini.turn < 0) { ini.turn = n - 1; ini.round = Math.max(1, ini.round - 1); }
       } else if (type === "init.start") {
         Object.assign(ini, { active: true, turn: 0, round: 1 });
         addChat(camp, { system: true, text: "Combat begins! Roll initiative." });
+        combatMoves(camp);
       } else if (type === "init.clear") {
         Object.assign(ini, { entries: [], turn: 0, round: 1, active: false });
         addChat(camp, { system: true, text: "Combat has ended." });
@@ -557,7 +624,7 @@ function applyAction(camp, cid, gm, type, p) {
       mp.tokens.push({
         id: rid(), name: str(p.name || ch.name || "Token", 40), color: validColor(p.color || ch.color),
         x: clamp(int(p.x, 1), -500, 1000), y: clamp(int(p.y, 1), -500, 1000), size: clamp(int(p.size, 1), 1, 4),
-        charId, owner: cid, hidden: !!p.hidden && gm, img: validImg(p.img),
+        charId, owner: cid, hidden: !!p.hidden && gm, img: validImg(p.img), nameHidden: !!p.nameHidden && gm,
       });
       return {};
     }
@@ -594,6 +661,7 @@ function applyAction(camp, cid, gm, type, p) {
       if ("color" in f) t.color = validColor(f.color);
       if ("size" in f) t.size = clamp(int(f.size, 1), 1, 4);
       if ("hidden" in f && gm) t.hidden = !!f.hidden;
+      if ("nameHidden" in f && gm) t.nameHidden = !!f.nameHidden;
       if ("img" in f) t.img = validImg(f.img);
       return {};
     }
@@ -636,7 +704,7 @@ function applyAction(camp, cid, gm, type, p) {
       camp.map.sceneId = sc.id;
       camp.activeScene = sc.id;
       sceneWipe(camp);
-      camp.sceneFx.moves = playMoves(camp);
+      camp.sceneFx.moves = playMoves(camp, "scene");   // movements waiting for combat keep waiting
       addChat(camp, { system: true, text: `The scene changes: ${sc.name}.` });
       return {};
     }
@@ -760,6 +828,30 @@ function applyAction(camp, cid, gm, type, p) {
 
     // ---- which SW5e variant rules this table uses (the GM decides; everyone sees the list)
     case "variants.set": need(gm); camp.variants = cleanVariants(p.variants); return {};
+
+    // ---- table audio: the GM plays an uploaded track for everyone; each screen keeps itself in step
+    case "audio.play": {   // start (or resume) a track at a position
+      need(gm);
+      if (!/^au[a-f0-9]{12}$/.test(String(p.track || ""))) throw new Invalid("No such track.");
+      const cur = camp.audio || {};
+      camp.audio = { track: p.track, name: str(p.name, 80) || "Track", playing: true, pos: clamp(num(p.pos), 0, 86400), at: now(),
+        loop: "loop" in p ? !!p.loop : !!cur.loop, vol: "vol" in p ? clamp(num(p.vol, 1), 0, 1) : clamp(num(cur.vol, 1), 0, 1) };
+      return {};
+    }
+    case "audio.pause": {
+      need(gm);
+      if (!camp.audio) return {};
+      Object.assign(camp.audio, { playing: false, pos: clamp(num(p.pos), 0, 86400), at: now() });
+      return {};
+    }
+    case "audio.set": {    // loop and the table's master volume
+      need(gm);
+      if (!camp.audio) return {};
+      if ("loop" in p) camp.audio.loop = !!p.loop;
+      if ("vol" in p) camp.audio.vol = clamp(num(p.vol, 1), 0, 1);
+      return {};
+    }
+    case "audio.stop": need(gm); camp.audio = null; return {};
     // whether players may take the hit die's maximum when levelling (the GM's table rule)
     case "settings.hpMax": need(gm); camp.hpMax = !!p.on; return {};
 
@@ -797,13 +889,14 @@ function cleanMap(g, raw) {
     gridSize: clamp(int(m.gridSize, 70), 5, 200), gridV2: true, cols: clamp(int(m.cols, 24), 5, 200), rows: clamp(int(m.rows, 16), 5, 200), showGrid: m.showGrid !== false,
     tokens: (Array.isArray(m.tokens) ? m.tokens : []).slice(0, 300).filter((t) => t && typeof t === "object").map((t) => ({
       id: /^[a-z0-9]{6,20}$/.test(t.id || "") ? t.id : rid(), name: str(t.name, 40), color: validColor(t.color), x: clamp(int(t.x), -500, 1000), y: clamp(int(t.y), -500, 1000),
-      size: clamp(int(t.size, 1), 1, 4), charId: g.characters[t.charId] ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, img: validImg(t.img), moves: cleanMoves(t.moves) })),
+      size: clamp(int(t.size, 1), 1, 4), charId: g.characters[t.charId] ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, nameHidden: !!t.nameHidden, img: validImg(t.img), moves: cleanMoves(t.moves) })),
     props: (Array.isArray(m.props) ? m.props : []).slice(0, 1500).filter((p) => p && validImg(p.src)).map((p) => ({
       id: /^[a-z0-9]{6,20}$/.test(p.id || "") ? p.id : rid(), src: p.src, name: str(p.name, 60), x: n(p.x, 0), y: n(p.y, 0), w: n(p.w, 1), h: n(p.h, 1), rot: n(p.rot, 0), moves: cleanMoves(p.moves) })),
     sceneId: /^[a-z0-9]{6,20}$/.test(m.sceneId || "") ? m.sceneId : undefined,
   };
 }
 function cleanGame(g) {
+  const n = (v, d) => (Number.isFinite(+v) ? +v : d);   // initiative numbers (cleanMap has its own copy)
   g.map = cleanMap(g, g.map);
   const ini = g.initiative && typeof g.initiative === "object" ? g.initiative : {};
   g.initiative = {
@@ -819,6 +912,9 @@ function cleanGame(g) {
   g.chat = (Array.isArray(g.chat) ? g.chat : []).slice(-CHAT_LIMIT).filter((c) => c && typeof c === "object");
   g.notes = str(g.notes, 500000);
   g.variants = cleanVariants(g.variants);
+  const au = g.audio && typeof g.audio === "object" ? g.audio : null;
+  g.audio = au && /^au[a-f0-9]{12}$/.test(String(au.track || "")) ? { track: au.track, name: str(au.name, 80) || "Track", playing: !!au.playing,
+    pos: clamp(num(au.pos), 0, 86400), at: num(au.at, now()), loop: !!au.loop, vol: clamp(num(au.vol, 1), 0, 1) } : null;
   g.hpMax = g.hpMax !== false;
   g.ships = (Array.isArray(g.ships) ? g.ships : []).slice(0, MAX_SHIPS).filter((x) => x && typeof x === "object").map((x) => cleanShip(x, g.characters));
   g.scenes = (Array.isArray(g.scenes) ? g.scenes : []).slice(0, 30).filter((x) => x && typeof x === "object")
@@ -826,6 +922,7 @@ function cleanGame(g) {
   if (!g.scenes.some((x) => x.id === g.activeScene)) g.activeScene = null;
   const fx = g.sceneFx && typeof g.sceneFx === "object" ? g.sceneFx : null;
   g.sceneFx = fx && /^[a-f0-9]{6,20}$/.test(fx.n || "") ? { n: fx.n, k: clamp(int(fx.k), -1, SCENE_WIPES - 1) } : null;
+  if (g.fight !== undefined) Fight.restored(g);   // the combat view's own record, checked like a live one (absent: stays absent)
   g.levelUps = Object.fromEntries(Object.entries(g.levelUps || {}).filter(([id]) => g.characters[id])
     .map(([id, v]) => [id, { count: clamp(int((v || {}).count), 0, 20), grantId: rid(), at: now() }]).filter(([, v]) => v.count > 0));
   return g;
@@ -833,6 +930,6 @@ function cleanGame(g) {
 
 module.exports = {
   cleanGame,
-  rollDice, blankCampaign, playerName, addChat, viewFor, applyAction, validImg, validColor, cleanChar, cleanShip, rid,
+  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, applyAction, validImg, validColor, cleanChar, cleanShip, rid,
   Forbidden, Invalid, IMG_PREFIX,
 };
