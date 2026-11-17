@@ -2,6 +2,7 @@
  * The GM uploads music or ambience (stored on our own server, like images) and plays it for the whole table.
  * The server keeps what's playing (track, playing or paused, position, when, loop, master volume); every screen
  * plays the same file and keeps itself within a second or two of it. Each person sets their own volume or mutes.
+ * Nothing plays on a device until that person turns table audio on there once (remembered in their browser).
  * Uses the helpers app.js shares on window.HT. Nothing here loads from any other site.
  */
 (() => {
@@ -10,7 +11,7 @@
   const el = new Audio();
   el.preload = 'auto';
   const A = { tracks: null, lib: null, clock: 0, blocked: false, src: '', uploading: '' };
-  const me = { vol: 0.8, mute: false };
+  const me = { on: false, vol: 0.8, mute: false };   // on: this person has chosen to hear table audio on this device
   try { Object.assign(me, JSON.parse(localStorage.getItem('holo.audio') || '{}')); } catch { /* storage unavailable */ }
   const saveMe = () => { try { localStorage.setItem('holo.audio', JSON.stringify(me)); } catch { /* storage unavailable */ } };
   const url = id => `${H.API}?aud=${encodeURIComponent(id)}`;
@@ -29,7 +30,7 @@
     const st = H.S.st; if (!st) return;
     const au = st.audio;
     if (au && au.now) A.clock = n0(au.now) - Date.now() / 1000;
-    if (!au) { if (!el.paused) el.pause(); if (A.src) { el.removeAttribute('src'); el.load(); A.src = ''; } renderTop(); return; }
+    if (!au || !me.on) { if (!el.paused) el.pause(); if (A.src) { el.removeAttribute('src'); el.load(); A.src = ''; } renderTop(); return; }
     if (A.src !== au.track) { A.src = au.track; el.src = url(au.track); }
     el.loop = !!au.loop;
     el.volume = me.mute ? 0 : Math.max(0, Math.min(1, n0(au.vol) * me.vol));
@@ -56,12 +57,15 @@
     const au = H.S.st && H.S.st.audio;
     if (!au) { top.innerHTML = ''; top.classList.add('hidden'); return; }
     top.classList.remove('hidden');
-    top.innerHTML = A.blocked && au.playing
+    top.innerHTML = !me.on
+      ? `<button class="btn small ghost" data-au="enable" title="The GM is sharing audio. Nothing plays on this device until you turn it on.">🔈 Turn on table audio${au.playing ? ` (${esc(au.name)})` : ''}</button>`
+      : A.blocked && au.playing
       ? `<button class="btn small amber" data-au="unblock" title="Your browser waits for a click before playing sound">🔊 Tap to hear the table's audio</button>`
       : `<button class="btn small ghost audio-now ${au.playing ? 'on' : ''}" data-au="pop" title="Table audio: your volume">${me.mute ? '🔇' : '♪'} ${esc(au.name)}${au.playing ? '' : ' (paused)'}</button>`;
   }
   top.addEventListener('click', e => {
     const b = e.target.closest('[data-au]'); if (!b) return;
+    if (b.dataset.au === 'enable') { me.on = true; saveMe(); sync(); return; }
     if (b.dataset.au === 'unblock') { el.play().then(() => { A.blocked = false; sync(); }).catch(() => {}); return; }
     if (b.dataset.au === 'pop') {
       const old = $('.audio-pop'); if (old) { old.remove(); return; }
@@ -72,10 +76,12 @@
       pop.innerHTML = `<b>Table audio</b><span class="muted">${esc((H.S.st.audio || {}).name || '')}</span>
         <label>Your volume <input type="range" min="0" max="1" step="0.05" value="${me.vol}" data-aup="vol"></label>
         <label class="toggle"><input type="checkbox" data-aup="mute" ${me.mute ? 'checked' : ''}> Mute it for me</label>
+        <button class="btn tiny ghost" data-aup="off">Turn table audio off on this device</button>
         <span class="muted" style="font-size:11px">Only changes what you hear.</span>`;
       document.body.appendChild(pop);
       pop.addEventListener('input', ev => { if (ev.target.dataset.aup === 'vol') { me.vol = +ev.target.value; saveMe(); sync(); } });
       pop.addEventListener('change', ev => { if (ev.target.dataset.aup === 'mute') { me.mute = ev.target.checked; saveMe(); sync(); } });
+      pop.addEventListener('click', ev => { if (ev.target.dataset.aup === 'off') { me.on = false; saveMe(); pop.remove(); sync(); } });
       setTimeout(() => document.addEventListener('mousedown', function close(ev) { if (!pop.contains(ev.target) && !b.contains(ev.target)) { pop.remove(); document.removeEventListener('mousedown', close); } }), 0);
     }
   });
@@ -104,6 +110,7 @@
       <div class="au-list">${tracks.map(t => `<div class="row au-row"><span class="au-name">${esc(t.name)}</span><span class="muted">${mb(t.bytes)}</span><span class="spacer"></span>
         <button class="btn tiny ${au && au.track === t.id ? 'ghost' : 'primary'}" data-ag="play" data-id="${esc(t.id)}">${au && au.track === t.id ? 'Playing' : '▶ Play'}</button>
         <button class="btn tiny ghost" data-ag="del" data-id="${esc(t.id)}" title="Delete this track">✕</button></div>`).join('') || (A.tracks ? '<p class="muted">No tracks yet.</p>' : '<p class="muted">Loading…</p>')}</div>
+      <p class="muted au-note">Upload audio you made or are allowed to share. It's stored on the Den and played to everyone at the table.</p>
       <div class="row wrap" style="margin-top:8px"><button class="btn small" data-ag="upload">⇪ Upload audio…</button>
         <input type="file" id="auFile" accept="audio/*,.mp3,.ogg,.wav,.flac,.m4a,.webm" multiple hidden>
         <span class="muted" style="font-size:12px">${A.uploading ? esc(A.uploading) : `MP3, OGG, WAV, FLAC, M4A or WebM, up to ${n0(A.maxTrack || 31457280) / 1048576} MB each.${A.cap ? ` Storage: ${mb(A.used)} of ${mb(A.cap)}.` : ''}`}</span></div>`;

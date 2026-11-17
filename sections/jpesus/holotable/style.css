@@ -673,3 +673,4 @@ body.no-sw5e-books [data-sa="deploy-info"], body.no-sw5e-books .lib-bar { displa
 .au-row { gap: 8px; padding: 3px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent); }
 .au-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 720px) { .audio-now { max-width: 120px; } }
+.au-note { font-size: 12px; margin: 8px 0 0; }
