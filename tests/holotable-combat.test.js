@@ -258,7 +258,7 @@ test("turn budget: each unit's own turn refills its movement, action, bonus acti
   const hers = Object.assign({}, w, { turnId: "ava", round: 2 });
   assert.deepEqual([E.budget(hers).reaction, E.budget(hers).moveLeft, E.budget(hers).action], [true, 30, true]);
   const r = E.apply(hers, { type: "move", unit: "ava", x: 2, y: 0 }, dice().roll);
-  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0 });
+  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0 });
 });
 
 // a level-3 Consular with two powers; the table has data for one of them (numbers invented for the test)
@@ -2578,4 +2578,82 @@ test("Burst and Rapid through the API: offered beside the weapon, used as an act
   const save = (await gm.state()).chat.filter((m) => m.fight && m.roll && m.roll.kind === "save").pop();
   assert.match(save.roll.label, /DEX save against DC \d+/);
   assert.equal((await sam.act("fight.use", { ability: "rapid:0", target: ids.raider })).code, 400, "it's the action");
+});
+
+/* ---------------------------------------------------------------- Extra Attack and Multiattack (#139) */
+test("Extra Attack: attacks per Attack action by class level, the best class counting, and a creature's Multiattack", () => {
+  const per = (classes, features) => E.attacksPerAction({ classes, features });
+  assert.deepEqual([per([{ name: "Fighter", level: 4 }]), per([{ name: "Fighter", level: 5 }]), per([{ name: "Fighter", level: 11 }]), per([{ name: "Fighter", level: 20 }])], [1, 2, 3, 4]);
+  for (const c of ["Berserker", "Guardian", "Monk", "Scout", "Sentinel"]) assert.equal(per([{ name: c, level: 5 }]), 2, c);
+  assert.deepEqual([per([{ name: "Operative", level: 12 }]), per([{ name: "Consular", level: 20 }])], [1, 1]);
+  assert.equal(per([{ name: "Fighter", level: 5 }, { name: "Berserker", level: 5 }]), 2, "multiclassing doesn't add them up");
+  assert.equal(per([{ name: "Fighter", level: 11 }, { name: "Monk", level: 5 }]), 3, "the best one counts");
+  assert.deepEqual([per([{ name: "Engineer", level: 6, archetype: "Armormech Engineering" }]), per([{ name: "Engineer", level: 5, archetype: "Armormech Engineering" }])], [2, 1]);
+  assert.equal(per([{ name: "Operative", level: 3 }], [{ name: "Extra Attack", text: "" }]), 2, "a feature on the sheet");
+  assert.equal(E.attacksPerAction({}), 1);
+  // Multiattack, as SW5e's stat blocks word it
+  assert.equal(E.multiattackOf("The construct makes two attacks with its blaster cannon."), 2);
+  assert.equal(E.multiattackOf("The dragon can make three attacks: two with its claws and one with its bite."), 3);
+  assert.equal(E.multiattackOf("The spirit attacks twice with its saber."), 2);
+  assert.equal(E.multiattackOf("The slug makes one bite attack and one slam attack."), 2);
+  assert.equal(E.multiattackOf("The tank makes one stride attack, one repeater attack and one cannon attack."), 3);
+  assert.equal(E.multiattackOf("The droid makes any combination of three tentacle attacks."), 3);
+  assert.deepEqual([E.multiattackOf(""), E.multiattackOf(undefined), E.multiattackOf("The worm makes one bite attack and uses its gaze.")], [1, 1, 1]);
+});
+
+test("Extra Attack: the first attack takes the action, the rest of the Attack action don't, with movement between", () => {
+  const ft = unit({ id: "ft", name: "Fenn", side: "pc", x: 0, y: 0, attacks: 2 });
+  const r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 60, maxHp: 60 }), r2 = unit({ id: "r2", name: "Thug", side: "npc", x: 3, y: 0, hp: 60, maxHp: 60 });
+  const hit = () => dice({ total: 15, nat: 12 }, { total: 5 }).roll;
+  let r = E.apply(world([ft, r1, r2], "ft"), { type: "attack", unit: "ft", target: "r1", attack: blade }, hit());
+  assert.equal(r.ok, true);
+  let b = E.budget(r.world);
+  assert.deepEqual([b.action, b.attacks], [false, 1], "the action is taken; one attack left in it");
+  assert.equal(E.apply(r.world, { type: "common", unit: "ft", key: "dash" }, hit()).ok, false, "no Dash: the action went on attacking");
+  r = E.apply(r.world, { type: "move", unit: "ft", x: 2, y: 0 }, hit());
+  assert.equal(r.ok, true, "a move between attacks");
+  r = E.apply(r.world, { type: "attack", unit: "ft", target: "r2", attack: blade }, hit());
+  assert.equal(r.ok, true, "the second attack, at another target");
+  assert.deepEqual([E.budget(r.world).attacks, r.world.spent.ft.action], [0, 1]);
+  const again = E.apply(r.world, { type: "attack", unit: "ft", target: "r2", attack: blade }, hit());
+  assert.deepEqual([again.ok, again.why], [false, "Fenn has made every attack this action allows."]);
+  // one attack (no Extra Attack): as before
+  const one = E.apply(world([unit({ id: "ft", name: "Fenn", side: "pc", x: 0, y: 0 }), r1], "ft"), { type: "attack", unit: "ft", target: "r1", attack: blade }, hit());
+  assert.equal(E.budget(one.world).attacks, 0);
+  assert.equal(E.apply(one.world, { type: "attack", unit: "ft", target: "r1", attack: blade }, hit()).why, "Fenn has already used the action this turn.");
+  // the action spent on something else first: no attacks
+  const dashed = E.apply(world([ft, r1], "ft"), { type: "common", unit: "ft", key: "dash" }, hit());
+  assert.equal(E.apply(dashed.world, { type: "attack", unit: "ft", target: "r1", attack: blade }, hit()).why, "Fenn has already used the action this turn.");
+  // a creature: the count its Multiattack gives, sent with the attack; a character's count is never taken from a request
+  const cr = unit({ id: "cr", name: "Krayt", side: "npc", x: 0, y: 0 }), av = unit({ id: "av", name: "Avery", side: "pc", x: 1, y: 0, hp: 90, maxHp: 90 });
+  let c = E.apply(world([cr, av], "cr"), { type: "attack", unit: "cr", target: "av", attack: blade, multi: 3 }, hit());
+  assert.equal(E.budget(c.world).attacks, 2);
+  c = E.apply(c.world, { type: "attack", unit: "cr", target: "av", attack: blade, multi: 99 }, hit());
+  assert.equal(E.budget(c.world).attacks, 1, "the count is fixed by the first attack");
+  const pc = E.apply(world([unit({ id: "ft", name: "Fenn", side: "pc", x: 0, y: 0 }), r1], "ft"), { type: "attack", unit: "ft", target: "r1", attack: blade, multi: 4 }, hit());
+  assert.equal(E.budget(pc.world).attacks, 0, "multi is for creatures only");
+  // a new turn: a fresh Attack action
+  const later = Object.assign({}, r.world, { turnId: "ft", round: 2 });
+  assert.deepEqual([E.budget(later).action, E.budget(later).attacks], [true, 0]);
+});
+
+test("Extra Attack through the API: a level 5 Fighter attacks twice; a creature's Multiattack is the GM's", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { classes: [{ name: "Fighter", level: 5 }] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0" })).code, 200);
+  st = await sam.state();
+  assert.deepEqual([st.fight.budget.action, st.fight.budget.attacks], [false, 1]);
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "1", multi: 6 })).code, 200, "the second attack, with another weapon");
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0" })).code, 400, "two, not more");
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  st = await gm.state();
+  assert.equal(st.fight.turn, ids.raider);
+  const claw = { name: "Claw", bonus: 2, damage: "1d4", type: "kinetic", melee: 5 };
+  assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: claw, multi: 2 })).code, 200);
+  assert.equal((await gm.state()).fight.budget.attacks, 1);
+  assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: claw, multi: 2 })).code, 200);
+  assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: claw })).code, 400, "its Multiattack is two");
 });
