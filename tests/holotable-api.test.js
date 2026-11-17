@@ -1804,3 +1804,22 @@ test("Second Wind spent from the combat view heals 1d10 + fighter level", async 
   assert.ok(st.chat.some((m) => m.roll && m.roll.label === "Second Wind (healing)" && m.roll.expr === "1d10+5"));
   assert.equal((await p1.act("fight.spend", { charId: id, key: "second-wind" })).code, 400, "one use, then it's spent");
 });
+
+test("Second Wind by a character whose name the GM hides names nobody in players' chat (#140)", async () => {
+  const { gm, p1 } = await table();
+  require("../sections/jpesus/holotable/rules.js");
+  const R = globalThis.SW5E;
+  const ch = { name: "Darth Secret", classes: [{ name: "Fighter", level: 5 }], hp: { current: 10, max: 44 } };
+  ch.resources = R.withClassResources(ch);
+  const id = (await gm.act("char.save", { char: ch })).data.id;
+  await gm.act("token.add", { charId: id, x: 2, y: 2 });
+  const tok = (await gm.poll()).data.state.map.tokens.find((t) => t.charId === id);
+  await gm.act("token.update", { id: tok.id, fields: { nameHidden: true } });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await gm.act("fight.spend", { charId: id, key: "second-wind" })).code, 200);
+  const lines = (await p1.poll()).data.state.chat.filter((m) => (m.roll && /Second Wind/.test(m.roll.label)) || /Second Wind/.test(m.text || ""));
+  assert.equal(lines.length, 2, "the use and the roll both reach the player");
+  assert.ok(!JSON.stringify(lines).includes("Darth Secret"), JSON.stringify(lines));
+  const gmRoll = (await gm.poll()).data.state.chat.find((m) => m.roll && m.roll.label === "Second Wind (healing)");
+  assert.ok(gmRoll && gmRoll.roll.expr === "1d10+5");
+});
