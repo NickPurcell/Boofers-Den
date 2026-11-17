@@ -624,6 +624,12 @@
       wallBar.addEventListener('click', (e) => {
         const b = e.target.closest('[data-wb]'); if (!b) return;
         const a = b.dataset.wb;
+        if (a === 'fog' || a === 'shared' || a === 'reset') {   // fog of war (#93 step 4)
+          const fog = (st().map || {}).fog || {};
+          if (a === 'reset' && !confirm('Forget what the players have explored on this map?')) return;
+          wallSend(a === 'fog' ? { on: !fog.on } : a === 'shared' ? { shared: !fog.shared } : { reset: true }, 'fight.fog');
+          return;
+        }
         if (a === 'done') UI.walls = null;
         else if (a === 'clear') { if (confirm('Remove every wall, door and window from this map?')) wallSend({ op: 'clear' }); return; }
         else UI.walls = { mode: a, from: null };
@@ -638,6 +644,8 @@
       <span class="muted" title="${T.mode === 'wall' ? 'Click corner to corner; Esc or the same corner again ends a run' : T.mode === 'door' || T.mode === 'window' ? 'Click its two ends' : 'Click next to one'}">${n} on this map</span>
       ${n ? '<button class="btn tiny ghost" data-wb="clear">Clear walls</button>' : ''}
       <label class="btn tiny ghost" title="Dungeondraft's export for other tabletops (Universal VTT): the picture, the board size, its walls and doors">Import .dd2vtt<input type="file" accept=".dd2vtt,.uvtt,.df2vtt,application/json" data-wb-file hidden></label>
+      <span class="ct-fogctl">${(() => { const fog = (st().map || {}).fog || {}; return `<button class="btn tiny ${fog.on ? 'primary' : 'ghost'}" data-wb="fog" aria-pressed="${!!fog.on}" title="Each player sees only what their characters can see through the walls; the rest of the map is dark">🌫 Fog ${fog.on ? 'on' : 'off'}</button>`
+        + (fog.on ? `<button class="btn tiny ${fog.shared ? 'primary' : 'ghost'}" data-wb="shared" aria-pressed="${!!fog.shared}" title="Every player sees what any character sees">Shared sight</button><button class="btn tiny ghost" data-wb="reset">Reset explored</button>` : ''); })()}</span>
       <button class="btn tiny" data-wb="done">Done</button>`;
   }
   document.addEventListener('click', (e) => {
@@ -661,7 +669,7 @@
   // wall edits go out one after another, never dropped: a GM draws faster than a save comes back from real hosting
   // (the one-at-a-time guard on other actions would swallow the next segment)
   let wallChain = Promise.resolve();
-  const wallSend = (p) => (wallChain = wallChain.then(() => act('fight.wall', p)).catch(() => null));
+  const wallSend = (p, type) => (wallChain = wallChain.then(() => act(type || 'fight.wall', p)).catch(() => null));
   function wallClick(gx, gy) {
     const T = UI.walls, pt = [Math.round(gx), Math.round(gy)];
     if (T.mode === 'erase') { const wl = nearestWall(gx, gy); if (wl) wallSend({ op: 'remove', id: wl.id }); return; }
@@ -739,7 +747,7 @@
     const vis = fog.vis ? E.unpackSquares(fog.vis, n) : null, seen = fog.seen ? E.unpackSquares(fog.seen, n) : null, any = fog.any ? E.unpackSquares(fog.any, n) : null;
     for (let i = 0; i < n; i++) {
       // a player: black where never seen, dim where explored, clear where seen now; the GM: a light veil where no player sees
-      const a = any ? (any[i] ? 0 : 70) : vis[i] ? 0 : seen[i] ? 150 : 242;
+      const a = any ? (any[i] ? 0 : 70) : vis[i] ? 0 : seen[i] ? 150 : 250;
       im.data.set([rgb[0], rgb[1], rgb[2], a], i * 4);
     }
     cx.putImageData(im, 0, 0);

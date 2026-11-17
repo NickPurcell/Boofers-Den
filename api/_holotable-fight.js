@@ -667,7 +667,7 @@ function view(camp, cid, gm, shownName) {
     conc: Object.fromEntries(Object.entries(f.conc || {}).filter(([id]) => units[id])),
     // with walls on the map, the squares this viewer can move to on their own turn: their browser has no walls to work
     // them out with (players never receive walls)
-    reach: (camp.map.walls || []).length && turn && (gm || (units[turn] || {}).mine) ? E.reachable(world, turn, E.budget(world).moveLeft) : null,
+    reach: (camp.map.walls || []).length && turn && (gm || (units[turn] || {}).mine) ? fogReach(camp, cid, fog, E.reachable(world, turn, E.budget(world).moveLeft)) : null,
     // a creature's size and reach, for the ones this viewer can see (both show on the map anyway)
     npcBody: Object.fromEntries(Object.entries(f.npc || {}).filter(([k]) => units[k]).map(([k, v]) => [k, { sizeCat: v.sizeCat == null ? null : v.sizeCat, reach: v.reach || 5 }])),
     // reactions waiting: who may react to whom; `mine` when this viewer is the one to answer
@@ -742,6 +742,15 @@ function fogFor(camp, cid) {
 function exploredOf(camp, cid, cols, rows) {
   const fog = camp.map.fog, packed = fog.size === `${cols}x${rows}` && (fog.explored || {})[cid];
   return packed ? E.unpackSquares(packed, cols * rows) : new Uint8Array(cols * rows);
+}
+// under fog, a player's reachable squares are only those they see or have explored: the rest of the floor stays unknown
+function fogReach(camp, cid, fog, reach) {
+  if (!fog || !reach) return reach;
+  const seen = exploredOf(camp, cid, fog.cols, fog.rows);
+  return Object.fromEntries(Object.entries(reach).filter(([k]) => {
+    const [x, y] = k.split(",").map(Number), i = y * fog.cols + x;
+    return x >= 0 && y >= 0 && x < fog.cols && y < fog.rows && (fog.vis[i] || seen[i]);
+  }));
 }
 // what the browser draws: a player gets their visible and explored squares; the GM, what any player sees
 function fogView(camp, cid, gm, fog) {
