@@ -67,3 +67,4 @@
 .ct-wallbar.hidden { display: none; }
 .ct-wallbar > * { white-space: nowrap; flex: none; }
 .ct-fogctl { display: inline-flex; gap: 6px; align-items: center; margin-left: 4px; padding-left: 8px; border-left: 1px solid var(--line); }
+.ct-ptsn { width: 46px; font-size: 12px; padding: 1px 4px; margin-right: -2px; }
