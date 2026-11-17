@@ -125,7 +125,7 @@
     const lvl = ab.level + (UI.upcast || 0), cost = Object.entries(ab.cost || {}).map(([k, n]) => `${n + (UI.upcast && k === ab.pool ? UI.upcast : 0)} ${k === 'force' ? 'FP' : k === 'tech' ? 'TP' : k}`).join(', ');
     let line = `${t.id === u.id ? 'On yourself' : `<b>${esc(t.name)}</b>, ${r.feet} ft`}: `;
     if (ab.attack) {
-      const pv = E.preview(w, u.id, t.id, { name: ab.name, bonus: ab.attack.bonus, damage: 'x', melee: ab.reach || 0, range: ab.range }, { adv: UI.adv, dis: UI.dis });
+      const pv = E.preview(w, u.id, t.id, { name: ab.name, bonus: ab.attack.bonus, abil: ab.attack.abil, damage: 'x', melee: ab.reach || 0, range: ab.range }, { adv: UI.adv, dis: UI.dis });
       line += pv.legal ? `you need <b>${pv.need}+</b> on the d20 (${Math.round(pv.chance * 100)}%)` : esc(pv.why);
     } else if (ab.save) {
       const sb = (t.saves || {})[ab.save.ability];
@@ -202,7 +202,7 @@
     // off (the default): no bar and no change to the map's layout; the GM alone gets one small switch in its corner
     const sw = ensureSwitch();
     sw.hidden = f.on || !gm();
-    if (!f.on) { b.hidden = true; b.innerHTML = ''; return; }
+    if (!f.on) { b.hidden = true; b.innerHTML = ''; UI.floats = []; return; }
     b.hidden = false;
     const u = cur(), mine = myTurn(), bud = f.budget, w = world();
     const who = !f.active ? 'Combat hasn\'t started' : u ? `${esc(u.name)}'s turn` : f.turn ? 'A combatant not on the map' : 'Someone you can\'t see is acting';
@@ -396,10 +396,10 @@
       const v = have ? { use: have.use, range: have.targets === 'self' ? 'self' : have.range ? have.range[0] : have.reach || 5, roll: have.attack ? 'attack' : have.save ? 'save' : 'none',
         saveAb: have.save ? have.save.ability : 'dex', half: !!(have.save && have.save.onSave === 'half'), dice: (have.damage[0] || {}).dice || '', type: (have.damage[0] || {}).type || '',
         heal: have.heal ? have.heal.dice : '', upcast: have.upcast ? have.upcast.damage : '', concentration: have.concentration } : g;
-      const opt = (val, cur, label) => `<option value="${val}" ${String(val) === String(cur) ? 'selected' : ''}>${label}</option>`;
+      const opt = (val, cur, label) => `<option value="${esc(val)}" ${String(val) === String(cur) ? 'selected' : ''}>${label}</option>`;   // raw value compared, escaped when written
       H.modal(`<h3>Power data</h3>
         <p class="muted">The numbers the combat view uses for one of ${esc(u.name)}'s powers. ${have ? 'The table already has data for this one.' : 'A first guess from its description on the sheet: check it before saving.'} Without data, a power still works from the sheet as before.</p>
-        <label>Power <select id="ctkPw">${pws.map((p) => opt(esc(p.name), pw.name, `${esc(p.name)}${lib[p.name.toLowerCase()] ? ' ✓' : ''}`)).join('')}</select></label>
+        <label>Power <select id="ctkPw">${pws.map((p) => opt(p.name, pw.name, `${esc(p.name)}${lib[p.name.toLowerCase()] ? ' ✓' : ''}`)).join('')}</select></label>
         <div class="row2"><label>Takes <select id="ctkUse">${opt('action', v.use, 'an action')}${opt('bonus', v.use, 'a bonus action')}${opt('reaction', v.use, 'a reaction')}</select></label>
         <label>Range (ft), or "self" <input id="ctkRange" value="${esc(v.range)}"></label></div>
         <div class="row2"><label>Roll <select id="ctkRoll">${opt('attack', v.roll, 'an attack roll')}${opt('save', v.roll, 'a saving throw')}${opt('none', v.roll, 'none')}</select></label>
@@ -675,7 +675,8 @@
   let raf = 0;
   function animate() {
     if (raf) return;
-    const step = () => { H.drawMap(); raf = UI.floats.length ? requestAnimationFrame(step) : 0; };
+    // the loop prunes as it goes, so it stops by itself even when the map isn't drawn (another tab, the view off)
+    const step = () => { const t = performance.now(); UI.floats = UI.floats.filter((fl) => t - fl.t0 < 1600); H.drawMap(); raf = UI.floats.length && F().on ? requestAnimationFrame(step) : 0; };
     raf = requestAnimationFrame(step);
   }
 
