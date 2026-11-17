@@ -37,6 +37,8 @@ const K = {
   asset: (id, n) => `${NS}:a:${id}:${n}`,
   libver: () => `${NS}:libver`,
   rl: (b) => `${NS}:rl:${b}`,
+  audios: () => `${NS}:audios`,                     // hash id -> table-audio track summary JSON (GM's uploads)
+  audioPart: (id, n) => `${NS}:aud:${id}:${n}`,     // one 1 MiB part of a track, raw bytes
   bytes: () => `${NS}:bytes`,
   secret: () => `${NS}:secret`,                 // random session-signing secret, made once; never sent anywhere
   powers: () => `${NS}:powers`,                 // the SW5e power list, fetched from SW5e's own API and cached for a week
@@ -166,6 +168,20 @@ async function saveCampaign(camp) {
 }
 
 // ---- images
+// The audio formats browsers play, by their first bytes (never by the name or type the upload claims).
+function sniffAudio(buf) {
+  if (!buf || buf.length < 12) return null;
+  const s4 = buf.toString("latin1", 0, 4);
+  if (buf.toString("latin1", 0, 3) === "ID3") return "audio/mpeg";                     // MP3 with an ID3 tag
+  if (buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0) return ((buf[1] >> 1) & 3) === 0 ? "audio/aac" : "audio/mpeg";   // a bare MPEG / ADTS frame
+  if (s4 === "OggS") return "audio/ogg";
+  if (s4 === "RIFF" && buf.toString("latin1", 8, 12) === "WAVE") return "audio/wav";
+  if (s4 === "fLaC") return "audio/flac";
+  if (buf.toString("latin1", 4, 8) === "ftyp") return "audio/mp4";                    // M4A / AAC in MP4
+  if (buf[0] === 0x1a && buf[1] === 0x45 && buf[2] === 0xdf && buf[3] === 0xa3) return "audio/webm";
+  return null;
+}
+
 function sniff(buf) {
   if (!buf || buf.length < 12) return null;
   if (buf[0] === 0x89 && buf[1] === 0x50) return "image/png";
@@ -198,5 +214,5 @@ async function dropImages(urls) {
 
 module.exports = {
   getClient, getSub, K, NS, URL, waitForChange, withLock, getCampaign, saveCampaign, bump, Busy, Full,
-  sniff, decodeDataUrl, putImage, dropImages, imgIdFromUrl, BACKUP_KEEP, reserve, release, used, STORAGE_CAP,
+  sniff, sniffAudio, decodeDataUrl, putImage, dropImages, imgIdFromUrl, BACKUP_KEEP, reserve, release, used, STORAGE_CAP,
 };

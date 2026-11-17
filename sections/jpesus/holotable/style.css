@@ -663,3 +663,15 @@ body.no-sw5e-books [data-sa="deploy-info"], body.no-sw5e-books .lib-bar { displa
 .script-bar.hidden { display: none; }
 .script-bar input[type=number] { width: 56px; }
 .map-tip { position: absolute; z-index: 3; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 12px; white-space: nowrap; box-shadow: 0 4px 12px #0008; }
+/* table audio */
+.audio-top.hidden { display: none; }
+.audio-now { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audio-now.on { color: var(--green); }
+.audio-pop { position: fixed; z-index: 60; width: 230px; display: flex; flex-direction: column; gap: 6px; }
+.audio-pop input[type=range] { width: 100%; }
+.au-now { padding: 8px; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 8px; }
+.au-list { max-height: 260px; overflow: auto; }
+.au-row { gap: 8px; padding: 3px 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent); }
+.au-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 720px) { .audio-now { max-width: 120px; } }
+.au-note { font-size: 12px; margin: 8px 0 0; }

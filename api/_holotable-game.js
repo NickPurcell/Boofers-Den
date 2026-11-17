@@ -166,6 +166,16 @@ function cleanChar(ch) {
   return out;
 }
 
+// A sheet whose token's name the GM is hiding isn't sent to other players at all (its name, photo and
+// numbers would give it away); the player who owns it still gets it.
+function sheetsFor(camp, cid) {
+  const secret = new Set(((camp.map && camp.map.tokens) || []).filter((t) => t.nameHidden && t.charId).map((t) => t.charId));
+  if (!secret.size) return camp.characters;
+  const out = {};
+  for (const [id, c] of Object.entries(camp.characters || {})) if (!secret.has(id) || c.owner === cid) out[id] = c;
+  return out;
+}
+
 function viewFor(camp, cid, gm, online) {
   const chat = camp.chat.filter((m) => !m.to || gm || m.to.includes(cid) || m.fromId === cid);
   const ini = Object.assign({}, camp.initiative);
@@ -199,13 +209,14 @@ function viewFor(camp, cid, gm, online) {
   const fxView = camp.sceneFx ? Object.assign({}, camp.sceneFx, { moves: (camp.sceneFx.moves || []).filter((m) => shown.has(m.id)) }) : null;
   return {
     name: camp.name, you: cid, isGM: !!gm, updated: camp.updated,
-    players: camp.players, online: online || [], characters: camp.characters,
+    players: camp.players, online: online || [], characters: gm ? camp.characters : sheetsFor(camp, cid),
     chat: chat.slice(-200), initiative: ini, map,
     notes: gm ? camp.notes : null,
     handouts: (camp.handouts || []).filter((h) => gm || h.shared),
     levelUps: camp.levelUps || {},
     variants: camp.variants || [],
     hpMax: camp.hpMax !== false,
+    audio: camp.audio ? Object.assign({}, camp.audio, { now: now() }) : null,   // "now" lets each screen line its clock up
     ships: (camp.ships || []).filter((x) => gm || !x.hidden),
     sceneFx: fxView,
     scene: (camp.scenes || []).filter((x) => x.id === camp.activeScene).map((x) => ({ id: x.id, name: x.name }))[0] || null,
@@ -780,6 +791,30 @@ function applyAction(camp, cid, gm, type, p) {
 
     // ---- which SW5e variant rules this table uses (the GM decides; everyone sees the list)
     case "variants.set": need(gm); camp.variants = cleanVariants(p.variants); return {};
+
+    // ---- table audio: the GM plays an uploaded track for everyone; each screen keeps itself in step
+    case "audio.play": {   // start (or resume) a track at a position
+      need(gm);
+      if (!/^au[a-f0-9]{12}$/.test(String(p.track || ""))) throw new Invalid("No such track.");
+      const cur = camp.audio || {};
+      camp.audio = { track: p.track, name: str(p.name, 80) || "Track", playing: true, pos: clamp(num(p.pos), 0, 86400), at: now(),
+        loop: "loop" in p ? !!p.loop : !!cur.loop, vol: "vol" in p ? clamp(num(p.vol, 1), 0, 1) : clamp(num(cur.vol, 1), 0, 1) };
+      return {};
+    }
+    case "audio.pause": {
+      need(gm);
+      if (!camp.audio) return {};
+      Object.assign(camp.audio, { playing: false, pos: clamp(num(p.pos), 0, 86400), at: now() });
+      return {};
+    }
+    case "audio.set": {    // loop and the table's master volume
+      need(gm);
+      if (!camp.audio) return {};
+      if ("loop" in p) camp.audio.loop = !!p.loop;
+      if ("vol" in p) camp.audio.vol = clamp(num(p.vol, 1), 0, 1);
+      return {};
+    }
+    case "audio.stop": need(gm); camp.audio = null; return {};
     // whether players may take the hit die's maximum when levelling (the GM's table rule)
     case "settings.hpMax": need(gm); camp.hpMax = !!p.on; return {};
 
@@ -840,6 +875,9 @@ function cleanGame(g) {
   g.chat = (Array.isArray(g.chat) ? g.chat : []).slice(-CHAT_LIMIT).filter((c) => c && typeof c === "object");
   g.notes = str(g.notes, 500000);
   g.variants = cleanVariants(g.variants);
+  const au = g.audio && typeof g.audio === "object" ? g.audio : null;
+  g.audio = au && /^au[a-f0-9]{12}$/.test(String(au.track || "")) ? { track: au.track, name: str(au.name, 80) || "Track", playing: !!au.playing,
+    pos: clamp(num(au.pos), 0, 86400), at: num(au.at, now()), loop: !!au.loop, vol: clamp(num(au.vol, 1), 0, 1) } : null;
   g.hpMax = g.hpMax !== false;
   g.ships = (Array.isArray(g.ships) ? g.ships : []).slice(0, MAX_SHIPS).filter((x) => x && typeof x === "object").map((x) => cleanShip(x, g.characters));
   g.scenes = (Array.isArray(g.scenes) ? g.scenes : []).slice(0, 30).filter((x) => x && typeof x === "object")
