@@ -409,19 +409,32 @@
       const set = (o) => o && o.max !== '' && o.max != null;
       const fm = set(ch.force) ? +ch.force.max : ci.forceMax, tm = set(ch.tech) ? +ch.tech.max : ci.techMax;
       if (fm > 0) out.push({ key: 'force', name: 'Force points', max: fm, used: clampN(+(ch.force || {}).used || 0, 0, fm), refill: 'long', from: 'force' });
-      // tech points come back on a short rest too (audit 7.3)
-      if (tm > 0) out.push({ key: 'tech', name: 'Tech points', max: tm, used: clampN(+(ch.tech || {}).used || 0, 0, tm), refill: 'short', from: 'tech' });
+      // tech points come back on a short rest only for an Engineer or a Scout (audit 7.3, rules.js techOnShortRest)
+      if (tm > 0) out.push({ key: 'tech', name: 'Tech points', max: tm, used: clampN(+(ch.tech || {}).used || 0, 0, tm), refill: rules.techOnShortRest && rules.techOnShortRest(ch) ? 'short' : 'long', from: 'tech' });
     }
     const L = totalLevel(ch);
-    if (L > 0) out.push({ key: 'hitdice', name: 'Hit dice', max: L, used: clampN(+ch.hitDiceUsed || 0, 0, L), refill: 'long', regain: Math.max(1, Math.floor(L / 2)), from: 'hitdice' });
+    const hdUsed = rules && rules.hitDiceUsedTotal ? rules.hitDiceUsedTotal(ch) : +ch.hitDiceUsed || 0;
+    if (L > 0) out.push({ key: 'hitdice', name: 'Hit dice', max: L, used: clampN(hdUsed, 0, L), refill: 'long', regain: Math.max(1, Math.floor(L / 2)), from: 'hitdice' });
     return out;
   }
+  // hit dice per die size: a new total used, taken from (or given back to) the largest dice first
+  function hitDiceTo(c, used, rules) {
+    const list = rules.hitDice(c);
+    let now = list.reduce((n, d) => n + d.used, 0);
+    for (const d of list) {   // give back from the largest first
+      while (now > used && d.used > 0) { d.used--; now--; }
+    }
+    for (const d of list) {   // spend from the largest first
+      while (now < used && d.used < d.total) { d.used++; now++; }
+    }
+    return rules.hitDiceUsedOf(list);
+  }
   // write one resource's used count back where it lives (a new character; the one passed in is not changed)
-  function withUsed(ch, res, used) {
+  function withUsed(ch, res, used, rules) {
     const c = clone(ch);
     if (res.from === 'force') c.force = Object.assign({}, c.force, { used });
     else if (res.from === 'tech') c.tech = Object.assign({}, c.tech, { used });
-    else if (res.from === 'hitdice') c.hitDiceUsed = used;
+    else if (res.from === 'hitdice') c.hitDiceUsed = rules && rules.hitDice ? hitDiceTo(c, used, rules) : used;
     else c.resources = (c.resources || []).map((r) => (r.key === res.key ? Object.assign({}, r, { used }) : r));
     return c;
   }
@@ -431,7 +444,7 @@
     if (!res) return no(`No ${key} to spend.`);
     if (!(n > 0)) return no('Spend at least one.');
     if (res.used + n > res.max) return no(`Not enough ${res.name}: ${res.max - res.used} of ${res.max} left.`);
-    return { ok: true, ch: withUsed(ch, res, res.used + n), res: Object.assign({}, res, { used: res.used + n }) };
+    return { ok: true, ch: withUsed(ch, res, res.used + n, rules), res: Object.assign({}, res, { used: res.used + n }) };
   }
   // a rest refills what each resource says: 'short' refills short; 'long' refills short and long (hit dice: half back)
   function rest(ch, kind, rules) {
@@ -439,7 +452,7 @@
     for (const res of resourcesOf(ch, rules)) {
       const due = res.refill === 'short' || (kind === 'long' && res.refill === 'long');
       if (!due || !res.used) continue;
-      c = withUsed(c, res, res.regain ? Math.max(0, res.used - res.regain) : 0);
+      c = withUsed(c, res, res.regain ? Math.max(0, res.used - res.regain) : 0, rules);
     }
     return c;
   }
@@ -518,7 +531,7 @@
   // set one resource's used count where it lives (force points, tech points, hit dice, or the sheet's own list)
   function setPoolUsed(ch, key, used, rules) {
     const res = resourcesOf(ch, rules).find((r) => r.key === key);
-    return res ? withUsed(ch, res, clampN(Math.round(+used) || 0, 0, res.max)) : ch;
+    return res ? withUsed(ch, res, clampN(Math.round(+used) || 0, 0, res.max), rules) : ch;
   }
   const diceExpr = (d, add) => (add ? `${d}${add > 0 ? '+' : ''}${add}` : d);
   const doubleDice = (e) => e.replace(/(\d*)d(\d+)/gi, (_, n, s) => (2 * (+n || 1)) + 'd' + s);
