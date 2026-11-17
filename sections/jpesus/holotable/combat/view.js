@@ -81,7 +81,7 @@
         for (const x of m.saves || []) { const mm = /^(str|dex|con|int|wis|cha)\w*\s*([+-]\d+)/i.exec(x); if (mm) saves[mm[1].toLowerCase()] = +mm[2]; }
         const mods = Object.fromEntries(['str', 'dex', 'con', 'int', 'wis', 'cha'].filter((ab) => Number.isFinite(+(m.ab || {})[ab])).map((ab) => [ab, Math.floor(((m.ab || {})[ab] - 10) / 2)]));
         const reach = Math.max(5, ...atks.map((a) => a.melee || 0));
-        UI.npcAsked[id] = true; act('fight.npc', { id, speed: sp ? +sp[1] : 30, saves, mods, size: m.size || '', reach, resist: m.res || [], immune: m.imm || [], vuln: m.vul || [], condImmune: m.cimm || [] });
+        UI.npcAsked[id] = true; act('fight.npc', { id, speed: sp ? +sp[1] : 30, saves, mods, size: m.size || '', reach, resist: m.res || [], immune: m.imm || [], vuln: m.vul || [], condImmune: m.cimm || [], senses: m.senses || [] });
       }
       render(); H.drawMap();
     }).catch(() => { UI.npc[id] = { attacks: [] }; render(); });
@@ -247,7 +247,7 @@
     }
     // the current combatant's conditions (how long each lasts) and what it is concentrating on
     const flags = u ? E.spentOf(w, u.id) : {};
-    if (f.active && u && ((u.conditions || []).length || (f.conc || {})[u.id] || flags.dodge || flags.disengage || gm())) {
+    if (f.active && u && ((u.conditions || []).length || (f.conc || {})[u.id] || flags.dodge || flags.disengage || (u.senses || []).length || gm())) {
       const efs = (f.effects || []).filter((ef) => ef.unit === u.id);
       // what the chip says beyond the name: its level, its fire damage, who caused it, or that the DM hasn't set one
       const detail = (c) => {
@@ -266,6 +266,7 @@
         return ` (${ef.save ? `${ef.save.ability.toUpperCase()} save DC ${ef.save.dc} at the end of its turns` : `until the ${ef.ends} of ${whose} ${ef.rounds > 1 ? `turn, ${ef.rounds} rounds` : 'next turn'}`}${ef.conc ? ', while concentrating' : ''})`;
       };
       html += `<div class="ct-row ct-conds">${(u.conditions || []).map((c) => `<span class="ct-chip ct-cond" title="${esc((R.CONDITIONS || {})[c] || c)}${esc(until(c))}">${esc(c)}${esc(detail(c))}${E.CONDITION_EFFECTS[c] ? '' : ' <span class="muted">(no automatic effect yet)</span>'}${esc(until(c))}${gm() ? ` <button class="ct-x" data-ct="uncond" data-c="${esc(c)}" title="Take ${esc(c.toLowerCase())} off ${esc(u.name)}" aria-label="Take ${esc(c.toLowerCase())} off">✕</button>` : ''}</span>`).join('')}
+        ${(u.senses || []).map((x) => `<span class="ct-chip ct-sense" title="${esc(SENSE_HINT[x.kind] || '')}">👁 ${esc(x.kind)} ${x.range} ft</span>`).join('')}
         ${flags.dodge ? '<span class="ct-chip" title="Attacks against it at disadvantage, Dex saves at advantage, until its next turn">Dodging</span>' : ''}
         ${flags.disengage ? '<span class="ct-chip" title="Leaving a reach provokes no opportunity attack this turn">Disengaged</span>' : ''}
         ${gm() ? '<button class="btn tiny ghost" data-ct="cond" title="Put a condition on a combatant, with its level, its damage or who caused it">＋ Condition</button>' : ''}
@@ -276,7 +277,7 @@
       const pools = Object.values(u.pools || {}).filter((r) => r.key !== 'hitdice');
       html += `<div class="ct-row ct-pools">${pools.map((r) => `<button class="ct-chip ct-pool ${r.used >= r.max ? 'spent' : ''}" data-ct="pool" data-key="${esc(r.key)}" title="${esc(r.name)}: ${r.max - r.used} of ${r.max} left${r.refill === 'short' ? ', back on a short or long rest' : r.refill === 'long' ? ', back on a long rest' : ''}">${esc(r.name)} ${r.max - r.used}/${r.max}${r.die ? ' ' + esc(r.die) : ''}</button>`).join('')}
         <button class="btn tiny ghost" data-ct="addres" title="Add a resource with a maximum (uses, or a pool of dice)">＋ Resource</button>
-        <button class="btn tiny ghost" data-ct="defs" title="Damage resistances, immunities and vulnerabilities">🛡 ${(() => { const d = (f.defenses || {})[u.charId] || {}; const n = (d.resist || []).length + (d.immune || []).length + (d.vuln || []).length; return n ? `Defences (${n})` : 'Defences'; })()}</button></div>`;
+        <button class="btn tiny ghost" data-ct="defs" title="Damage resistances, immunities and vulnerabilities, and senses">🛡 ${(() => { const d = (f.defenses || {})[u.charId] || {}; const n = (d.resist || []).length + (d.immune || []).length + (d.vuln || []).length; return n ? `Defences (${n})` : 'Defences'; })()}</button></div>`;
     }
     if (!f.active) html += `<div class="ct-row muted">${gm() ? 'Start initiative in the Combat tab to begin.' : 'Waiting for the GM to start initiative.'}</div>`;
     else if (mine && u) {
@@ -325,7 +326,7 @@
         const pv = t && E.preview(w, u.id, t.id, spec, { adv: UI.adv, dis: UI.dis });
         html += `<div class="ct-row ct-preview" aria-live="polite">${!t ? `<span>${esc(spec.name)}: pick a target on the map (lit in red).</span><button class="btn tiny ghost" data-ct="disarm">Cancel</button>`
           : !pv.legal ? `<span>${esc(pv.why)}</span>`
-          : `<span><b>${esc(t.name)}</b>, ${pv.feet} ft: you need <b>${pv.need}+</b> on the d20 (${Math.round(pv.chance * 100)}%)${pv.mode !== 'normal' ? ` · ${pv.mode === 'adv' ? 'advantage' : 'disadvantage'}: ${esc(pv.tilts.map((x) => x.text).join(', '))}` : ''}${pv.weak ? ` · weakened: −${pv.weak}` : ''}. Hit: ${esc(spec.damage)}${spec.type ? ' ' + esc(spec.type) : ''}.</span>
+          : `<span><b>${esc(t.name)}</b>, ${pv.feet} ft: you need <b>${pv.need}+</b> on the d20 (${Math.round(pv.chance * 100)}%)${pv.mode !== 'normal' ? ` · ${pv.mode === 'adv' ? 'advantage' : 'disadvantage'}: ${esc(pv.tilts.map((x) => x.text).join(', '))}` : ''}${pv.weak ? ` · weakened: −${pv.weak}` : ''}${(pv.notes || []).length ? ` · ${esc(pv.notes.join('; '))}` : ''}. Hit: ${esc(spec.damage)}${spec.type ? ' ' + esc(spec.type) : ''}.</span>
              <button class="btn small primary" data-ct="go">Attack</button>`}</div>`;
       } else if (bud && bud.moveLeft > 0) html += `<div class="ct-row muted ct-hint">Tap a lit square to move there, or pick an attack.</div>`;
     }
@@ -433,15 +434,18 @@
     if (!u || !u.charId) return;
     const d = (F().defenses || {})[u.charId] || {}, on = (list, t) => (d[list] || []).some((x) => x.type === t);
     const row = (list, label) => `<div class="lbl">${label}</div><div class="ct-types">${E.DAMAGE.map((t) => `<label class="check"><input type="checkbox" data-l="${list}" value="${t}" ${on(list, t) ? 'checked' : ''}> ${t}</label>`).join('')}</div>`;
-    H.modal(`<h3>${esc(u.name)}: damage defences</h3>
+    const sense = (k) => ((d.senses || []).find((x) => x.kind === k) || {}).range || '';
+    H.modal(`<h3>${esc(u.name)}: defences and senses</h3>
       <p class="muted">Applied when ${esc(u.name)} takes damage in the combat view: resisted is halved, immune is ignored, vulnerable is doubled.</p>
       ${row('resist', 'Resistant to')}${row('immune', 'Immune to')}${row('vuln', 'Vulnerable to')}
+      <div class="lbl">Senses, in feet (blank for none)</div><div class="row2">${E.SENSES.map((k) => `<label>${k} <input type="number" min="0" max="9999" step="5" data-sense="${k}" value="${sense(k)}"></label>`).join('')}</div>
       <div class="row"><span class="spacer"></span><button class="btn" id="ctdCancel">Cancel</button><button class="btn primary" id="ctdOk">Save</button></div>`, (box) => {
       $('#ctdCancel', box).onclick = H.closeModal;
       $('#ctdOk', box).onclick = async () => {
         const pick = (l) => [...box.querySelectorAll(`input[data-l=${l}]:checked`)].map((x) => x.value);
         H.closeModal();
-        await send('fight.defenses', { charId: u.charId, resist: pick('resist'), immune: pick('immune'), vuln: pick('vuln') });
+        const senses = [...box.querySelectorAll('input[data-sense]')].map((x) => ({ kind: x.dataset.sense, range: +x.value || 0 })).filter((x) => x.range > 0);
+        await send('fight.defenses', { charId: u.charId, resist: pick('resist'), immune: pick('immune'), vuln: pick('vuln'), senses });
       };
     });
   }
@@ -580,6 +584,9 @@
     ctx.restore();
   }
   // over the tokens: who you can hit, the target you're pointing at, and what just happened
+  const SENSE_HINT = { blindsight: 'Perceives without sight within this range: being blinded doesn\'t hold it back, and it finds invisible creatures',
+    truesight: 'Sees invisible creatures within this range', tremorsense: 'Treated like blindsight within this range (SW5e\'s books don\'t define it)',
+    darkvision: 'Sees in the dark within this range (lighting isn\'t on the map yet)' };
   // two letters for a condition on a token's badge (the chip in the bar and the token's tooltip have the full name)
   const ABBR = { Incapacitated: 'Ic', Invisible: 'Iv', Petrified: 'Pe', Paralyzed: 'Pa', Poisoned: 'Po', Deafened: 'De', Diseased: 'Di', Stunned: 'St', Slowed: 'Sl', Shocked: 'Sh' };
   const abbr = (c) => ABBR[c] || String(c).slice(0, 2);

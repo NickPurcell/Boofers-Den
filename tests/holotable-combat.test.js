@@ -989,7 +989,7 @@ test("defences through the API: a creature's from its stat block (GM), a charact
   // a character's own defences
   assert.equal((await rae.act("fight.defenses", { charId: avery, resist: ["fire"] })).code, 403);
   assert.equal((await sam.act("fight.defenses", { charId: avery, resist: ["fire", "plasma"], vuln: ["ion"] })).code, 200);
-  assert.deepEqual((await rae.state()).fight.defenses[avery], { resist: [{ type: "fire", only: null }], immune: [], vuln: [{ type: "ion", only: null }], condImmune: [] });
+  assert.deepEqual((await rae.state()).fight.defenses[avery], { resist: [{ type: "fire", only: null }], immune: [], vuln: [{ type: "ion", only: null }], condImmune: [], senses: [] });
 });
 
 test("standing up through the API: a prone character stands for half its speed", async () => {
@@ -1233,4 +1233,55 @@ test("step 6 through the API: an opportunity attack waits for its answer; only t
   assert.equal((await rae.act("fight.common", { key: "dash" })).code, 200);
   st = await rae.state();
   assert.deepEqual([st.fight.pending, st.fight.budget.total], [[], 60]);
+});
+
+/* ---------------------------------------------------------------- senses (audit 5.12) */
+test("senses: read from a stat block's line; a sense in range takes the bite out of Blinded and Invisible, and says so", () => {
+  assert.deepEqual(E.readSenses(["blindsight 30 ft. (blind beyond this radius)", "Darkvision 60 Ft.", "passive Perception 13"]), [{ kind: "blindsight", range: 30 }, { kind: "darkvision", range: 60 }]);
+  assert.deepEqual(E.readSenses("Tremorsense 60 ft., truesight 120 ft."), [{ kind: "tremorsense", range: 60 }, { kind: "truesight", range: 120 }]);
+  assert.deepEqual(E.readSenses(["-", "X"]), []);
+  const ava = (o) => unit(Object.assign({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 }, o));
+  const r1 = (o) => unit(Object.assign({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0 }, o));
+  // a blinded Raider with blindsight: no advantage against it within range, and its own attacks aren't at disadvantage
+  let pv = E.preview(world([ava(), r1({ conditions: ["Blinded"], senses: [{ kind: "blindsight", range: 10 }] })], "ava"), "ava", "r1", blade);
+  assert.deepEqual([pv.mode, pv.notes], ["normal", ["Raider's blindsight (10 ft): blinded doesn't count"]]);
+  pv = E.preview(world([ava({ x: 0 }), r1({ x: 4, conditions: ["Blinded"], senses: [{ kind: "blindsight", range: 10 }] })], "ava"), "ava", "r1", rifle);
+  assert.equal(pv.mode, "adv", "15 ft away: out of its blindsight");
+  pv = E.preview(world([ava(), r1({ conditions: ["Blinded"], senses: [{ kind: "tremorsense", range: 30 }] })], "r1"), "r1", "ava", blade);
+  assert.equal(pv.mode, "normal", "tremorsense works like blindsight here");
+  // truesight finds an invisible Avery; darkvision doesn't
+  pv = E.preview(world([ava({ conditions: ["Invisible"] }), r1({ senses: [{ kind: "truesight", range: 60 }] })], "r1"), "r1", "ava", blade);
+  assert.deepEqual([pv.mode, pv.notes], ["normal", ["Raider's truesight (60 ft): invisible doesn't count"]]);
+  assert.equal(E.preview(world([ava({ conditions: ["Invisible"] }), r1({ senses: [{ kind: "darkvision", range: 60 }] })], "r1"), "r1", "ava", blade).mode, "dis");
+  assert.equal(E.preview(world([ava({ conditions: ["Invisible"] }), r1({ senses: [{ kind: "truesight", range: 60 }] })], "ava"), "ava", "r1", blade).mode, "normal", "and Avery's attacks get no advantage from it either");
+  // opportunity attacks: an invisible mover is found by truesight; a blinded reactor reacts with blindsight
+  let m = E.apply(world([ava({ conditions: ["Invisible"] }), r1({ senses: [{ kind: "truesight", range: 30 }] })], "ava"), { type: "move", unit: "ava", x: 0, y: 3 }, dice().roll);
+  assert.equal(m.reactions.length, 1);
+  m = E.apply(world([ava(), r1({ conditions: ["Blinded"] })], "ava"), { type: "move", unit: "ava", x: 0, y: 3 }, dice().roll);
+  assert.equal(m.reactions.length, 0, "blinded, no sense: it doesn't notice");
+  m = E.apply(world([ava(), r1({ conditions: ["Blinded"], senses: [{ kind: "blindsight", range: 10 }] })], "ava"), { type: "move", unit: "ava", x: 0, y: 3 }, dice().roll);
+  assert.equal(m.reactions.length, 1);
+  // the attack line says why
+  const hit = E.apply(world([ava(), r1({ conditions: ["Blinded"], senses: [{ kind: "blindsight", range: 10 }] })], "ava"), { type: "attack", unit: "ava", target: "r1", attack: blade }, dice({ total: 15, nat: 10 }, { total: 4 }).roll);
+  assert.match(hit.log[0].text, /Avery attacks Raider with Vibroblade \(Raider's blindsight \(10 ft\): blinded doesn't count\): 15/);
+});
+
+test("powers' attack rolls tilt for the same reasons as weapons: conditions, dodging, senses", () => {
+  const ch = consular();
+  const ab = E.abilitiesOf(ch, R, { "mind shove": { use: "action", range: [30, 60], attack: { bonus: "power" }, damage: [{ dice: "1d6", type: "force" }] } })[0];
+  const me = unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, pools: Object.fromEntries(E.resourcesOf(ch, R).map((x) => [x.key, x])) });
+  const d = dice({ total: 15, nat: 12 }, { total: 3 });
+  const r = E.apply(world([me, unit({ id: "r1", name: "Raider", side: "npc", x: 3, y: 0, conditions: ["Restrained"] })], "cass"), { type: "use", unit: "cass", ability: ab, target: "r1" }, d.roll);
+  assert.deepEqual([d.asked[0].slice(0, 7), /advantage: Raider is restrained/.test(r.log[1].text)], ["2d20kh1", true]);
+});
+
+test("senses through the API: a creature's from its stat block stay the GM's; a character's are set by its owner", async () => {
+  const { gm, sam, rae, ids, avery } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await gm.act("fight.npc", { id: ids.raider, speed: 30, senses: ["blindsight 30 ft. (blind beyond this radius)", "passive Perception 12"] })).code, 200);
+  assert.deepEqual((await gm.state()).fight.npcDefenses[ids.raider].senses, [{ kind: "blindsight", range: 30 }]);
+  assert.ok(!JSON.stringify((await sam.state()).fight).includes("blindsight"), "a creature's senses aren't sent to players");
+  assert.equal((await rae.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 60 }] })).code, 403);
+  assert.equal((await sam.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 60 }, { kind: "x-ray", range: 9 }] })).code, 200);
+  assert.deepEqual((await rae.state()).fight.defenses[avery].senses, [{ kind: "darkvision", range: 60 }]);
 });

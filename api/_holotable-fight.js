@@ -77,7 +77,8 @@ function cleanPending(x) {
 // damage defences as the engine reads them: [{ type, only }], for resist / immune / vuln, plus condition immunities
 function defences(o) {
   const list = (v) => (Array.isArray(v) ? v : []).slice(0, 13).filter((d) => d && E.DAMAGE.includes(d.type)).map((d) => ({ type: d.type, only: d.only === "unenhanced" ? "unenhanced" : null }));
-  return { resist: list(o.resist), immune: list(o.immune), vuln: list(o.vuln), condImmune: (Array.isArray(o.condImmune) ? o.condImmune : []).slice(0, 20).map((c) => str(c, 30)) };
+  return { resist: list(o.resist), immune: list(o.immune), vuln: list(o.vuln), condImmune: (Array.isArray(o.condImmune) ? o.condImmune : []).slice(0, 20).map((c) => str(c, 30)),
+    senses: E.cleanSenses(o.senses) };
 }
 // an undo snapshot with every field reshaped (a backup restore could bring anything back)
 function cleanSnap(x) {
@@ -322,7 +323,7 @@ function apply(camp, cid, gm, type, p, G) {
       const abl = (x, lo, hi) => Object.fromEntries(Object.entries(plainObj(x)).filter(([ab, n]) => ["str", "dex", "con", "int", "wis", "cha"].includes(ab) && Number.isFinite(+n)).map(([ab, n]) => [ab, clamp(int(n), lo, hi)]));
       const sizeAt = SIZES.indexOf(str(p.size, 12));
       f.npc[e.id] = Object.assign({ speed: clamp(int(p.speed, 30), 0, 200), saves: abl(p.saves, -10, 30), mods: abl(p.mods, -5, 15), sizeCat: sizeAt >= 0 ? sizeAt : null, reach: clamp(int(p.reach, 5), 5, 30) },
-        defences({ resist: E.readDefenses(lines(p.resist)), immune: E.readDefenses(lines(p.immune)), vuln: E.readDefenses(lines(p.vuln)), condImmune: lines(p.condImmune) }));
+        defences({ resist: E.readDefenses(lines(p.resist)), immune: E.readDefenses(lines(p.immune)), vuln: E.readDefenses(lines(p.vuln)), condImmune: lines(p.condImmune), senses: E.readSenses(lines(p.senses)) }));
       return {};
     }
     case "fight.defenses": { // a character's resistances, immunities and vulnerabilities (its owner or the GM)
@@ -330,7 +331,8 @@ function apply(camp, cid, gm, type, p, G) {
       if (!ch) throw new G.Invalid("No such character.");
       need(gm || ch.owner === cid, "not your character");
       const types = (v) => (Array.isArray(v) ? v : []).filter((x) => E.DAMAGE.includes(x)).map((type) => ({ type, only: null }));
-      f.defenses[ch.id] = defences({ resist: types(p.resist), immune: types(p.immune), vuln: types(p.vuln) });
+      // senses: until the sheet has a field for them (audit 5.12, proposed on the queue), they live here
+      f.defenses[ch.id] = defences({ resist: types(p.resist), immune: types(p.immune), vuln: types(p.vuln), senses: p.senses });
       return {};
     }
     case "fight.ability": {  // the GM teaches the table a power's numbers (or forgets them: data null)

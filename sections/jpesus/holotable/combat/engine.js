@@ -154,6 +154,37 @@
     Corroded: { levels: 3 },                                 // 1 more damage from weapons for each level
     Ignited: { burns: true },                                // fire damage at the end of each of its turns, until put out
   };
+  /* ---------------- senses (audit 5.12): { kind, range } on a unit ---------------- */
+  // SW5e's creature data uses blindsight, darkvision, tremorsense and truesight. In our words: blindsight perceives
+  // without sight within its range; truesight sees invisible things within its range; darkvision sees in the dark
+  // (lighting isn't modelled yet, so it changes nothing here). SW5e's books don't define tremorsense; the default here
+  // treats it like blindsight within its range (the table has no flying or height to tell ground from air).
+  const SENSES = ['blindsight', 'darkvision', 'tremorsense', 'truesight'];
+  const NO_SIGHT = ['blindsight', 'tremorsense'];                 // perceives without eyes: being blinded doesn't stop it
+  const SEES_INVISIBLE = ['blindsight', 'tremorsense', 'truesight'];
+  // a stat block's senses line ("blindsight 30 ft. (blind beyond this radius)") as data; anything else is ignored
+  function readSenses(lines) {
+    const out = [];
+    for (const line of Array.isArray(lines) ? lines : [lines]) {
+      for (const part of String(line || '').split(/[,;]/)) {
+        const m = /\b(blindsight|darkvision|tremorsense|truesight)\s+(\d{1,4})\s*(ft|feet)/i.exec(part);
+        if (m && !out.some((x) => x.kind === m[1].toLowerCase())) out.push({ kind: m[1].toLowerCase(), range: Math.min(9999, +m[2]) });
+      }
+    }
+    return out;
+  }
+  const cleanSenses = (list) => (Array.isArray(list) ? list : []).filter((x) => x && SENSES.includes(x.kind)).slice(0, 4)
+    .map((x) => ({ kind: x.kind, range: clampN(Math.round(+x.range) || 0, 0, 9999) })).filter((x) => x.range > 0);
+  // the sense with which `a` perceives `b`, out of `kinds`, if `b` is within its range
+  const senseFor = (a, b, kinds) => (a && b && (a.senses || []).find((x) => kinds.includes(x.kind) && feetBetween(a, b) <= x.range)) || null;
+  // a sense that takes the bite out of a condition between two units: the blinded one perceiving the other without
+  // sight, or the other one finding the invisible one. Returns { who, sense } for the preview's note, or null.
+  function defeated(cond, holder, other) {
+    if (cond === 'Blinded') { const x = senseFor(holder, other, NO_SIGHT); return x && { who: holder, sense: x }; }
+    if (cond === 'Invisible') { const x = senseFor(other, holder, SEES_INVISIBLE); return x && { who: other, sense: x }; }
+    return null;
+  }
+  const senseNote = (d, cond) => ({ note: true, text: `${d.who.name}'s ${d.sense.kind} (${d.sense.range} ft): ${cond.toLowerCase()} doesn't count` });
   const effectsOf = (u) => (u.conditions || []).map((c) => [c, CONDITION_EFFECTS[c]]).filter(([, e]) => e);
   const has = (u, flag) => effectsOf(u).find(([, e]) => e[flag]);
   const INCAPACITATING = (u) => !!has(u, 'noActions');
@@ -170,15 +201,27 @@
   REASONS.push(
     { id: 'self', when: (c) => effectsOf(c.actor).some(([, e]) => e.attacks), each: (c) => effectsOf(c.actor).filter(([, e]) => e.attacks)
       .filter(([, e]) => e.attacks !== 'prone' || !c.ranged || c.feet <= 30)   // prone: melee, or ranged at a target within 30 ft
-      .map(([n, e]) => ({ [e.attacks === 'prone' ? 'dis' : e.attacks]: true, text: `you are ${n.toLowerCase()}` })) },
+      .map(([n, e]) => { const d = defeated(n, c.actor, c.target); return d ? senseNote(d, n) : { [e.attacks === 'prone' ? 'dis' : e.attacks]: true, text: `you are ${n.toLowerCase()}` }; }) },
     { id: 'exhausted', when: (c) => (+c.actor.exhaustion || 0) >= 3, each: () => [{ dis: true, text: 'exhaustion' }] },
     { id: 'dodge', when: (c) => c.dodging, each: (c) => [{ dis: true, text: `${c.target.name} is dodging` }] },
     { id: 'target', when: (c) => effectsOf(c.target).some(([, e]) => e.attacked), each: (c) => effectsOf(c.target).filter(([, e]) => e.attacked).map(([n, e]) => {
+      const d = defeated(n, c.target, c.actor);
+      if (d) return senseNote(d, n);
       const way = e.attacked === 'near' ? (c.feet <= FT ? 'adv' : 'dis') : e.attacked;
       return { [way]: true, text: `${c.target.name} is ${n.toLowerCase()}` };
     }) },
   );
 
+  // Every reason an attack roll from `a` at `t` tilts, as { adv | dis, text } or a { note } saying why one doesn't
+  // (a sense defeating a condition). Shared by weapon attacks and powers' attack rolls.
+  // An enemy close by counts only if it can perceive you (not blinded, unless a sense makes up for it) and can act.
+  function reasons(world, a, t, attack, feet, ranged) {
+    const enemyClose = Object.values(world.units).some((o) => o.id !== a.id && hostile(a, o) && !o.down && feetBetween(a, o) <= FT
+      && (!(o.conditions || []).includes('Blinded') || senseFor(o, a, NO_SIGHT)) && !INCAPACITATING(o));
+    const ctx = { feet, ranged, enemyClose, attack, actor: a, target: t, dodging: dodging(world, t) };
+    return REASONS.filter((r) => r.when(ctx)).flatMap((r) => (r.each ? r.each(ctx) : [{ dis: !!r.dis, adv: !!r.adv, text: r.text }]))
+      .map((x) => (x.note ? { note: true, text: x.text } : { dis: !!x.dis, adv: !!x.adv, text: x.text }));
+  }
   // Can `actorId` hit `targetId` with `attack` right now, and what would it take?
   function preview(world, actorId, targetId, attack, opts = {}) {
     const a = world.units[actorId], t = world.units[targetId];
@@ -191,11 +234,8 @@
     const inRange = attack.range && feet <= attack.range[1];
     if (!inReach && !inRange) return { legal: false, why: `${t.name} is ${feet} ft away: out of ${attack.range ? 'range' : 'reach'}.`, feet };
     const ranged = !inReach;
-    const enemyClose = Object.values(world.units).some((o) => o.id !== a.id && hostile(a, o) && !o.down && feetBetween(a, o) <= FT
-      && !(o.conditions || []).includes('Blinded') && !INCAPACITATING(o));   // an enemy who can see you and isn't incapacitated
-    const ctx = { feet, ranged, enemyClose, attack, actor: a, target: t, dodging: dodging(world, t) };
-    const tilts = REASONS.filter((r) => r.when(ctx)).flatMap((r) => (r.each ? r.each(ctx) : [{ dis: !!r.dis, adv: !!r.adv, text: r.text }]))
-      .map((x) => ({ dis: !!x.dis, adv: !!x.adv, text: x.text }));
+    const all = reasons(world, a, t, attack, feet, ranged);
+    const tilts = all.filter((x) => !x.note), notes = all.filter((x) => x.note).map((x) => x.text);
     if (opts.adv) tilts.push({ adv: true, text: 'chosen' });
     if (opts.dis) tilts.push({ dis: true, text: 'chosen' });
     const adv = tilts.some((x) => x.adv), dis = tilts.some((x) => x.dis);
@@ -204,7 +244,7 @@
     const need = Math.min(20, Math.max(2, t.ac - bonus));   // the d20 needed; a 20 always hits, a 1 always misses
     const p = (21 - need) / 20;
     const chance = mode === 'adv' ? 1 - (1 - p) ** 2 : mode === 'dis' ? p * p : p;
-    return { legal: true, feet, ranged, mode, tilts, need, chance, weak, bonus, expr: (mode === 'adv' ? '2d20kh1' : mode === 'dis' ? '2d20kl1' : '1d20') + sgn(bonus) };
+    return { legal: true, feet, ranged, mode, tilts, notes, need, chance, weak, bonus, expr: (mode === 'adv' ? '2d20kh1' : mode === 'dis' ? '2d20kl1' : '1d20') + sgn(bonus) };
   }
 
   /* ---------------- resources (audit 3.1) ---------------- */
@@ -562,14 +602,14 @@
           let hit = true, crit = false, half = false;
           if (ab.attack) {
             const r0 = inReachOf(w, me, t, ab);
-            const tilts = [];
-            if (!r0.melee && r0.long) tilts.push('long range');
-            if (!r0.melee && Object.values(w.units).some((o) => o.id !== me.id && hostile(me, o) && !o.down && feetBetween(me, o) <= FT)) tilts.push('an enemy within 5 ft');
-            const adv = !!act.adv, dis = !!act.dis || tilts.length > 0;
+            const all = me.id === t.id ? [] : reasons(w, me, t, { melee: r0.melee ? ab.reach : 0, range: ab.range }, r0.feet, !r0.melee);
+            const tl = all.filter((x) => !x.note), notes = all.filter((x) => x.note).map((x) => x.text);
+            const adv = !!act.adv || tl.some((x) => x.adv), dis = !!act.dis || tl.some((x) => x.dis);
+            const tilts = tl.filter((x) => (adv && !dis ? x.adv : x.dis)).map((x) => x.text).concat(notes);
             const expr = (adv && !dis ? '2d20kh1' : dis && !adv ? '2d20kl1' : '1d20') + sgn(ab.attack.bonus - weakPenalty(me, ab.attack.abil));
             const r = roll(expr);
             crit = r.nat === 20; hit = crit || (r.nat !== 1 && r.total >= t.ac);
-            log.push({ unit: t.id, kind: 'attack', roll: r, expr, text: `${ab.name} against ${t.name}${dis && !adv && tilts.length ? ` (disadvantage: ${tilts.join(', ')})` : ''}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : 'a miss.'}` });
+            log.push({ unit: t.id, kind: 'attack', roll: r, expr, text: `${ab.name} against ${t.name}${tilts.length ? ` (${adv && !dis ? 'advantage: ' : dis && !adv ? 'disadvantage: ' : ''}${tilts.join(', ')})` : ''}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : 'a miss.'}` });
           } else if (ab.save) {
             const bonus = (t.saves || {})[ab.save.ability];
             const fail = effectsOf(t).find(([, e]) => (e.autoFail || []).includes(ab.save.ability));
@@ -653,7 +693,7 @@
     const hit = crit || (!fumble && r.total >= t.ac);
     if (hit && pv.feet <= FT && has(t, 'closeCrit')) crit = true;   // any hit from within 5 ft on the paralyzed or unconscious
     const tilt = pv.mode === 'normal' ? '' : ` with ${pv.mode === 'adv' ? 'advantage' : 'disadvantage'} (${pv.tilts.map((x) => x.text).join(', ')})`;
-    const log = [{ unit: me.id, kind: 'attack', roll: r, expr: pv.expr, text: `${me.name} ${how ? `makes ${how} against` : 'attacks'} ${t.name} with ${attack.name}${tilt}${pv.weak ? ` (weakened, −${pv.weak})` : ''}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}` }];
+    const log = [{ unit: me.id, kind: 'attack', roll: r, expr: pv.expr, text: `${me.name} ${how ? `makes ${how} against` : 'attacks'} ${t.name} with ${attack.name}${tilt}${pv.notes.length ? ` (${pv.notes.join('; ')})` : ''}${pv.weak ? ` (weakened, −${pv.weak})` : ''}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}` }];
     const events = [];
     if (!hit) { events.push({ kind: 'miss', unit: t.id }); return { ok: true, log, events }; }
     const expr = crit ? attack.crit || attack.damage : attack.damage;
@@ -672,9 +712,11 @@
   // Disengage, and an invisible mover, give none.
   function opportunities(w, me, path) {
     const out = [];
-    if (spentOf(w, me.id).disengage || (me.conditions || []).includes('Invisible')) return out;
+    if (spentOf(w, me.id).disengage) return out;
     for (const o of Object.values(w.units)) {
-      if (o.id === me.id || !hostile(me, o) || o.down || INCAPACITATING(o) || (o.conditions || []).includes('Blinded') || !budget(w, o.id).reaction) continue;
+      if (o.id === me.id || !hostile(me, o) || o.down || INCAPACITATING(o) || !budget(w, o.id).reaction) continue;
+      if ((o.conditions || []).includes('Blinded') && !senseFor(o, me, NO_SIGHT)) continue;           // it must perceive the mover
+      if ((me.conditions || []).includes('Invisible') && !senseFor(o, me, SEES_INVISIBLE)) continue;
       const reach = +o.reach || FT;
       for (let i = 0; i + 1 < path.length; i++) {
         const here = Object.assign({}, me, path[i]), next = Object.assign({}, me, path[i + 1]);
@@ -874,7 +916,8 @@
         conditions: Array.from(new Set([].concat(e.conditions || [], ch ? ch.conditions || [] : []))),
         exhaustion: ch ? +ch.exhaustion || 0 : 0,
         ...(() => { const d = ch ? (table.defenses || {})[e.charId] || {} : (table.npcStats || {})[e.id] || {};
-          return { resist: d.resist || [], immune: d.immune || [], vuln: d.vuln || [], condImmune: d.condImmune || [] }; })(),
+          return { resist: d.resist || [], immune: d.immune || [], vuln: d.vuln || [], condImmune: d.condImmune || [],
+            senses: cleanSenses(ch && Array.isArray(ch.senses) && ch.senses.length ? ch.senses : d.senses) }; })(),
         saves: ch && rules ? Object.fromEntries(ABILS.map((ab) => [ab, rules.saveBonus(ch, ab)])) : Object.assign({}, ((table.npcStats || {})[e.id] || {}).saves),
         mods: ch && rules ? Object.fromEntries(ABILS.map((ab) => [ab, rules.abilityMod(ch, ab)])) : Object.assign({}, ((table.npcStats || {})[e.id] || {}).mods),
       };
@@ -890,5 +933,6 @@
   return { FT, TURN, squaresBetween, feetBetween, reachable, readRange, attacksOf, attackFromBehavior, REASONS, preview, budget, apply, takeDamage, buildWorld, turnKey,
     cleanResources, resourcesOf, atLevel, spend, rest, powerNumbers, resolvePower, weaponAbility, abilitiesOf, inReachOf, cleanAbility, setPoolUsed,
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
-    setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf };
+    setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
+    SENSES, readSenses, cleanSenses, senseFor, reasons };
 });
