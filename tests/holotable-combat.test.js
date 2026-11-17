@@ -2291,14 +2291,15 @@ test("the GM sees and sets every character's senses at any time, view on or off;
   assert.equal((await gm.act("fight.senses", { op: "set", charId: "__proto__", senses: [] })).code, 400);
 });
 
-test("senses the combat view kept before #92 move onto the sheet once, and the copy is emptied", async () => {
+test("senses the combat view kept before #92 are dropped once (players could write them); a sheet's own stand", async () => {
   const Fight = require("../api/_holotable-fight.js");
   const camp = { characters: { aaaaaa111111: { id: "aaaaaa111111", name: "A" }, bbbbbb222222: { id: "bbbbbb222222", name: "B", senses: [{ kind: "truesight", range: 30 }] } },
     initiative: { entries: [], turn: 0, round: 1, active: false }, map: { tokens: [] },
-    fight: { on: true, defenses: { aaaaaa111111: { senses: [{ kind: "darkvision", range: 60 }] }, bbbbbb222222: { senses: [{ kind: "darkvision", range: 9999 }] } } } };
+    fight: { on: true, defenses: { aaaaaa111111: { resist: [{ type: "fire", only: null }], senses: [{ kind: "darkvision", range: 9999 }] }, bbbbbb222222: { senses: [{ kind: "darkvision", range: 9999 }] } } } };
   const G = { Invalid: Error, Forbidden: Error, addChat() {}, shownName: (c, e) => e.name };
-  try { Fight.apply(camp, "gm", true, "fight.npcres", { id: "nope", op: "use" }, G); } catch (e) { /* any combat action moves them first */ }
-  assert.deepEqual(camp.characters.aaaaaa111111.senses, [{ kind: "darkvision", range: 60 }], "moved onto a sheet that had none");
-  assert.deepEqual(camp.characters.bbbbbb222222.senses, [{ kind: "truesight", range: 30 }], "a sheet's own senses win");
+  try { Fight.apply(camp, "gm", true, "fight.npcres", { id: "nope", op: "use" }, G); } catch (e) { /* any combat action drops them first */ }
+  assert.equal(camp.characters.aaaaaa111111.senses, undefined, "not moved into the GM's field");
+  assert.deepEqual(camp.characters.bbbbbb222222.senses, [{ kind: "truesight", range: 30 }], "a sheet's own senses stand");
   assert.deepEqual([camp.fight.defenses.aaaaaa111111.senses, camp.fight.defenses.bbbbbb222222.senses], [[], []], "the copies are emptied");
+  assert.deepEqual(camp.fight.defenses.aaaaaa111111.resist, [{ type: "fire", only: null }], "resistances kept");
 });

@@ -824,16 +824,11 @@ function sensesOf(camp, t) {
   const ch = t && charOf(camp, t.charId);
   return (ch && Array.isArray(ch.senses) && ch.senses) || [];
 }
-// Senses the combat view kept for characters before they lived on the sheet (#94 to #128) move onto it, once, unless the
-// sheet already has some; the copy is emptied either way, so there's one place and one writer (the GM)
+// Senses the combat view kept for characters before they lived on the sheet (#94 to #128) are dropped, once: players
+// could write them, so they don't move into the GM's field; the GM sets senses on the sheet (or a species fills them)
 function sheetSenses(camp) {
   const defs = plainObj(plainObj(camp.fight).defenses);
-  for (const [id, d] of Object.entries(defs)) {
-    const ch = charOf(camp, id), old = d && Array.isArray(d.senses) ? d.senses : [];
-    if (!old.length) continue;
-    if (ch && !(Array.isArray(ch.senses) && ch.senses.length)) ch.senses = R.cleanSenses(old);
-    defs[id] = Object.assign({}, d, { senses: [] });
-  }
+  for (const [id, d] of Object.entries(defs)) if (d && Array.isArray(d.senses) && d.senses.length) defs[id] = Object.assign({}, d, { senses: [] });
 }
 // the GM sets a character's senses on its sheet, with the sheet's own cleaning (an empty list takes them off)
 function setSheetSenses(ch, list) {
