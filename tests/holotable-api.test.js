@@ -1779,3 +1779,58 @@ test("a character the GM makes is announced to the GM only; a player's to everyo
   const gchat = (await gm.poll()).data.state.chat.map((m) => m.text || "");
   assert.ok(gchat.some((t) => t.includes("You made Darth Secret")), "the GM still gets the line");
 });
+
+test("healing up from 0 HP wakes a character and resets death saves, on the sheet and in initiative (#138)", async () => {
+  const { gm, p1 } = await table();
+  const id = (await p1.act("char.save", { char: { name: "Kira", hp: { current: 0, max: 28 }, conditions: ["Unconscious", "Prone"], deathSaves: { s: 1, f: 2 } } })).data.id;
+  await p1.act("init.add", { charId: id, name: "Kira", init: 12 });
+  await gm.act("init.update", { id: (await gm.poll()).data.state.initiative.entries[0].id, fields: { conditions: ["Unconscious", "Prone"] } });
+  let st = (await p1.poll()).data.state;
+  // a short rest's hit die, Heal or a typed number: every one is a sheet save with more HP
+  await p1.act("char.save", { char: Object.assign({}, st.characters[id], { hp: { current: 9, max: 28 } }) });
+  st = (await p1.poll()).data.state;
+  assert.deepEqual(st.characters[id].conditions, ["Prone"], "awake, still prone until standing");
+  assert.deepEqual(st.characters[id].deathSaves, { s: 0, f: 0 });
+  assert.deepEqual(st.initiative.entries[0].conditions, ["Prone"]);
+  // staying at 0 changes nothing; going down and up again works the same
+  await p1.act("char.save", { char: Object.assign({}, st.characters[id], { hp: { current: 0, max: 28 }, conditions: ["Unconscious"], deathSaves: { s: 0, f: 1 } }) });
+  await p1.act("char.save", { char: Object.assign({}, (await p1.poll()).data.state.characters[id], { notes: "still down" }) });
+  assert.deepEqual((await p1.poll()).data.state.characters[id].conditions, ["Unconscious"], "no healing, no change");
+  await gm.act("char.save", { char: Object.assign({}, (await gm.poll()).data.state.characters[id], { hp: { current: 28, max: 28 } }) });
+  assert.deepEqual((await gm.poll()).data.state.characters[id].conditions, []);
+});
+
+test("Second Wind spent from the combat view heals 1d10 + fighter level", async () => {
+  const { gm, p1 } = await table();
+  require("../sections/jpesus/holotable/rules.js");
+  const R = globalThis.SW5E;
+  const ch = { name: "Rex", classes: [{ name: "Fighter", level: 5 }], hp: { current: 0, max: 44 }, conditions: ["Unconscious"] };
+  ch.resources = R.withClassResources(ch);
+  const id = (await p1.act("char.save", { char: ch })).data.id;
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await p1.act("fight.spend", { charId: id, key: "second-wind" })).code, 200);
+  const st = (await p1.poll()).data.state, c = st.characters[id];
+  assert.ok(c.hp.current >= 6 && c.hp.current <= 15, "1d10+5 healed from 0: " + c.hp.current);
+  assert.deepEqual(c.conditions, [], "and woke up");
+  assert.ok(st.chat.some((m) => m.roll && m.roll.label === "Second Wind (healing)" && m.roll.expr === "1d10+5"));
+  assert.equal((await p1.act("fight.spend", { charId: id, key: "second-wind" })).code, 400, "one use, then it's spent");
+});
+
+test("Second Wind by a character whose name the GM hides names nobody in players' chat (#140)", async () => {
+  const { gm, p1 } = await table();
+  require("../sections/jpesus/holotable/rules.js");
+  const R = globalThis.SW5E;
+  const ch = { name: "Darth Secret", classes: [{ name: "Fighter", level: 5 }], hp: { current: 10, max: 44 } };
+  ch.resources = R.withClassResources(ch);
+  const id = (await gm.act("char.save", { char: ch })).data.id;
+  await gm.act("token.add", { charId: id, x: 2, y: 2 });
+  const tok = (await gm.poll()).data.state.map.tokens.find((t) => t.charId === id);
+  await gm.act("token.update", { id: tok.id, fields: { nameHidden: true } });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await gm.act("fight.spend", { charId: id, key: "second-wind" })).code, 200);
+  const lines = (await p1.poll()).data.state.chat.filter((m) => (m.roll && /Second Wind/.test(m.roll.label)) || /Second Wind/.test(m.text || ""));
+  assert.equal(lines.length, 2, "the use and the roll both reach the player");
+  assert.ok(!JSON.stringify(lines).includes("Darth Secret"), JSON.stringify(lines));
+  const gmRoll = (await gm.poll()).data.state.chat.find((m) => m.roll && m.roll.label === "Second Wind (healing)");
+  assert.ok(gmRoll && gmRoll.roll.expr === "1d10+5");
+});

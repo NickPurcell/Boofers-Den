@@ -112,7 +112,8 @@
       const m = (list || []).find((x) => x.n === e.sb);
       const res = m ? limitedOf(m) : [];
       const atks = m ? m.b.filter((b) => b.k === 'action').map((b) => { const a = E.attackFromBehavior(b); return a && Object.assign(a, { res: (res.find((r) => r.name === b.n) || {}).key }); }).filter(Boolean).map((a, i) => Object.assign(a, { key: 'sb' + i })) : [];
-      UI.npc[id] = { attacks: atks, legendary: m ? m.b.filter((b) => b.k === 'legendary').map((b) => ({ name: b.n, cost: +((/costs?\s+(\d)/i.exec(b.n + ' ' + (b.r || '')) || [])[1]) || 1 })) : [] };
+      const multi = m ? E.multiattackOf((m.b.find((b) => /^multiattack/i.test(b.n || '')) || {}).d) : 1;   // attacks per Attack action (#139)
+      UI.npc[id] = { attacks: atks, multi, legendary: m ? m.b.filter((b) => b.k === 'legendary').map((b) => ({ name: b.n, cost: +((/costs?\s+(\d)/i.exec(b.n + ' ' + (b.r || '')) || [])[1]) || 1 })) : [] };
       if (m && res.length && !((F().npcRes || {})[id] || []).length) act('fight.npcres', { id, op: 'set', res });
       const sp = m && /(\d+)\s*f/.exec(m.speed || '');
       if (m && F().npcSpeed[id] == null && !UI.npcAsked[id]) {
@@ -201,7 +202,8 @@
     const spec = armedSpec(), u = cur();
     if (!spec || !u) return;
     const r = spec.power ? await send('fight.use', Object.assign({ ability: spec.key, upcast: UI.upcast || 0, adv: UI.adv, dis: UI.dis }, spec.power.area ? { point: UI.aim } : { target: targetId }))
-      : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.key : specOut(spec), no: UI.noRiders || [], add: UI.addRiders || {}, twoHands: !!UI.twoHands });
+      : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.key : specOut(spec), no: UI.noRiders || [], add: UI.addRiders || {}, twoHands: !!UI.twoHands,
+        multi: u.charId ? undefined : (UI.npc[u.id] || {}).multi || 1 });
     if (r) { UI.armed = null; UI.target = null; UI.aim = null; UI.adv = UI.dis = false; UI.upcast = 0; UI.noRiders = []; UI.addRiders = {}; render(); }
   }
 
@@ -249,7 +251,7 @@
     const who = !f.active ? 'Combat hasn\'t started' : u ? `${esc(u.name)}'s turn` : f.turn ? 'A combatant not on the map' : 'Someone you can\'t see is acting';
     const chip = (on, label, title) => `<span class="ct-chip ${on ? '' : 'spent'}" title="${esc(title)}">${on ? '' : '<span aria-hidden="true">✕ </span>'}${esc(label)}${on ? '' : ' (used)'}</span>`;
     let html = `<div class="ct-row"><span class="ct-turn">${f.active ? `Round ${+f.round || 1} · ` : ''}${who}${mine && !gm() ? ' <span class="ct-you">your turn</span>' : ''}</span>`;
-    if (bud) html += `<span class="ct-chips">${chip(bud.moveLeft > 0, `Move ${bud.moveLeft}/${bud.total == null ? bud.speed : bud.total} ft`, bud.dash ? 'Movement left this turn (with Dash)' : 'Movement left this turn')}${chip(bud.action, 'Action', 'One action a turn')}${chip(bud.bonus, 'Bonus action', 'One bonus action a turn')}${chip(bud.reaction, 'Reaction', 'One reaction between your turns')}</span>`;
+    if (bud) html += `<span class="ct-chips">${chip(bud.moveLeft > 0, `Move ${bud.moveLeft}/${bud.total == null ? bud.speed : bud.total} ft`, bud.dash ? 'Movement left this turn (with Dash)' : 'Movement left this turn')}${bud.attacks ? chip(true, `Attack: ${bud.attacks} more`, 'Attacks left in this Attack action (Extra Attack or Multiattack). You can move between them.') : chip(bud.action, 'Action', 'One action a turn')}${chip(bud.bonus, 'Bonus action', 'One bonus action a turn')}${chip(bud.reaction, 'Reaction', 'One reaction between your turns')}</span>`;
     html += '<span class="spacer"></span>';
     html += `<button class="btn small ghost ${UI.ruler ? 'primary' : ''}" data-ct="measure" aria-pressed="${!!UI.ruler}" title="Measure a distance on the map">📏 Measure</button>`;
     if (mine && u && f.active && (u.conditions || []).includes('Prone') && bud && bud.speed > 0) html += `<button class="btn small" data-ct="stand" title="Standing up costs half your speed">Stand up (${Math.ceil((bud ? bud.speed : 30) / 2 / 5) * 5} ft)</button>`;
@@ -350,7 +352,7 @@
         const n = targets(a).length;
         const slot = a.power ? a.power.use : 'action';
         const lim = !u.charId && a.res && ((f.npcRes || {})[u.id] || []).find((r) => r.key === a.res);
-        const slotSpent = (bud && slot !== 'free' && !bud[slot]) || (lim && lim.used >= lim.max);
+        const slotSpent = (bud && slot !== 'free' && !bud[slot] && !(slot === 'action' && !a.power && bud.attacks)) || (lim && lim.used >= lim.max);   // a weapon attack: also the rest of an Attack action (#139)
         const pool = a.power && Object.entries(a.power.cost || {})[0];
         const poorly = pool && (!u.pools[pool[0]] || u.pools[pool[0]].max - u.pools[pool[0]].used < pool[1]);
         const off = slotSpent || !n || poorly;

@@ -49,7 +49,8 @@ function state(camp) {
     // what each unit has spent of its turn (movement in feet, action, bonus action, reaction), since its turn began
     spent: Object.fromEntries(Object.entries(plainObj(f.spent)).filter(([k, v]) => ID.test(k) && v && typeof v === "object")
       .map(([k, v]) => [k, { key: str(v.key, 40), move: clamp(int(v.move), 0, 1000), action: clamp(int(v.action), 0, 9), bonus: clamp(int(v.bonus), 0, 9), reaction: clamp(int(v.reaction), 0, 9), diag: v.diag ? 1 : 0,
-        dash: clamp(int(v.dash), 0, 9), disengage: v.disengage ? 1 : 0, dodge: v.dodge ? 1 : 0, ds: v.ds ? 1 : 0, sneak: v.sneak ? 1 : 0, double: v.double ? 1 : 0 }])),
+        dash: clamp(int(v.dash), 0, 9), disengage: v.disengage ? 1 : 0, dodge: v.dodge ? 1 : 0, ds: v.ds ? 1 : 0, sneak: v.sneak ? 1 : 0, double: v.double ? 1 : 0,
+        atk: clamp(int(v.atk), 0, 9), atkMax: clamp(int(v.atkMax), 0, 9) }])),
     // reactions waiting for an answer: an opportunity attack someone may take (the turn waits until it's answered)
     pending: (Array.isArray(f.pending) ? f.pending : []).slice(0, 12).map(cleanPending).filter(Boolean),
     // a creature's limited abilities from its stat block (audit 9.5, issue #76): recharge, per day, legendary actions
@@ -440,6 +441,20 @@ function gmSenses(camp, gm, p, G) {
   return {};
 }
 
+// Second Wind (Fighter): regain 1d10 + fighter level hit points, rolled on the server and shown in chat
+function secondWind(camp, cid, ch, G, units) {
+  const lvl = ((ch.classes || []).find((k) => String(k.name).toLowerCase() === "fighter") || {}).level || 1;
+  const res = G.rollDice(`1d10+${clamp(int(lvl), 1, 20)}`);
+  const n0 = (v, d) => (Number.isFinite(+v) ? +v : d);
+  const was = n0((ch.hp || {}).current, 0), max = n0((ch.hp || {}).max, was);
+  ch.hp = Object.assign({}, ch.hp, { current: Math.min(max, was + Math.max(0, res.total)) });
+  G.reviveChar(camp, ch, was);
+  for (const e of camp.initiative.entries) if (e.charId === ch.id) e.hp = ch.hp.current;
+  const shown = G.shownName(camp, { charId: ch.id, name: ch.name });
+  // a character whose name the GM hides: the roll names neither the sheet nor its player, as the other rolls (#140)
+  say(camp, G, Object.assign({ from: shown, fromId: cid, roll: Object.assign({}, res, { expr: `1d10+${lvl}`, label: "Second Wind (healing)", kind: "heal" }) },
+    shown === ch.name ? { charName: ch.name } : {}), cid, units || []);
+}
 function apply(camp, cid, gm, type, p, G) {
   if (type === "fight.wall" || type === "fight.fog" || type === "fight.light") return mapTools(camp, cid, gm, type, p, G);
   if (type === "fight.senses") return gmSenses(camp, gm, p, G);
@@ -526,7 +541,10 @@ function apply(camp, cid, gm, type, p, G) {
       if (!r.ok) throw new G.Invalid(r.why);
       snapshot(camp, `${G.shownName(camp, { charId: ch.id, name: ch.name })} used ${r.res.name}`);
       Object.assign(ch, { resources: r.ch.resources, force: r.ch.force, tech: r.ch.tech, hitDiceUsed: r.ch.hitDiceUsed });
-      G.addChat(camp, { system: true, fight: true, text: `${G.shownName(camp, { charId: ch.id, name: ch.name })} uses ${r.res.name}: ${r.res.max - r.res.used} of ${r.res.max} left.` });
+      // chat follows sight (#115): only those who can see the character read what it spent or healed
+      const units = camp.initiative.entries.filter((e) => e.charId === ch.id).map((e) => e.id);
+      say(camp, G, { system: true, fight: true, text: `${G.shownName(camp, { charId: ch.id, name: ch.name })} uses ${r.res.name}: ${r.res.max - r.res.used} of ${r.res.max} left.` }, cid, units);
+      if (r.res.key === "second-wind") secondWind(camp, cid, ch, G, units);   // it heals, not only counts (#65 reel note)
       return {};
     }
     case "fight.resource": { // add, change or remove one of a character's own resources (its owner or the GM)
@@ -670,7 +688,8 @@ function apply(camp, cid, gm, type, p, G) {
           if (!spec) throw new G.Invalid("That attack isn't on the sheet.");
         } else spec = cleanSpec(p.attack, G);
         act = { type: "attack", unit: cur.id, target: String(p.target || ""), attack: spec, adv: !!p.adv, dis: !!p.dis, no: Array.isArray(p.no) ? p.no.slice(0, 4).map((x) => str(x, 20)) : [],
-          add: { fes: clamp(int(p.add && p.add.fes), 0, 20), double: !!(p.add && p.add.double) }, twoHands: !!p.twoHands };   // only how many, never the dice: the engine works those out
+          add: { fes: clamp(int(p.add && p.add.fes), 0, 20), double: !!(p.add && p.add.double) }, twoHands: !!p.twoHands,   // only how many, never the dice: the engine works those out
+          multi: gm && !cur.charId ? clamp(int(p.multi, 1), 1, 6) : 1 };   // a creature's Multiattack (#139): the GM's screen reads it from the stat block
       }
       const limited = act.type === "attack" && !cur.charId && p.attack && p.attack.res && ((f.npcres || {})[cur.id] || []).find((x) => x.key === String(p.attack.res));
       if (limited && limited.used >= limited.max) throw new G.Invalid(`${limited.name} is spent${limited.recharge ? ` until it recharges (${limited.recharge}-6 at the start of ${cur.name}'s turn)` : ""}.`);

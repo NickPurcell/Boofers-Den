@@ -545,6 +545,34 @@
   // Crueler Criticals: one set of the dice at their maximum, the other rolled, the modifier once
   const cruel = (expr) => `${expr}+${maxDice(expr)}`;
   // Can `actorId` hit `targetId` with `attack` right now, and what would it take?
+  /* ---------------- Extra Attack (#139) ---------------- */
+  // How many attacks one Attack action gives a character: SW5e's Extra Attack by class level (Fighter's later features
+  // make it three and four), and the archetypes that grant it. Multiclassing doesn't add them up; the best one counts.
+  // A feature on the sheet named "Extra Attack" counts as two, for a sheet whose classes don't say.
+  const EXTRA_ATTACK = { berserker: [5], fighter: [5, 11, 20], guardian: [5], monk: [5], scout: [5], sentinel: [5] };
+  const EXTRA_ARCHETYPE = { 'armormech engineering': 6, 'detective pursuit': 6, 'pugnacity practice': 9 };
+  function attacksPerAction(ch) {
+    let n = 1;
+    for (const k of (ch && ch.classes) || []) {
+      const L = +k.level || 0, low = (x) => String(x || '').trim().toLowerCase();
+      n = Math.max(n, 1 + (EXTRA_ATTACK[low(k.name)] || []).filter((at) => L >= at).length);
+      if (L >= (EXTRA_ARCHETYPE[low(k.archetype)] || 99)) n = Math.max(n, 2);
+    }
+    if (((ch && ch.features) || []).some((f) => f && /^extra attack\b/i.test(String(f.name || '')))) n = Math.max(n, 2);
+    return Math.min(4, n);
+  }
+  // A creature's attacks per Attack action, from its stat block's Multiattack text: "makes three attacks: two with its
+  // claws and one with its bite" is 3, "attacks twice" is 2, "makes one bite attack and one slam attack" is 2.
+  // Which attacks it may combine isn't checked; the GM picks them.
+  const COUNT_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, twice: 2, thrice: 3 };
+  function multiattackOf(text) {
+    const t = String(text || '').slice(0, 2500);
+    const m = /\bmakes?\s+(one|two|three|four|five|six|\d)\b/i.exec(t) || /\battacks?\s+(twice|thrice)\b/i.exec(t) || /\b(two|three|four|five|six)\s+(?:\w+\s+){0,3}attacks\b/i.exec(t);
+    if (!m) return 1;
+    let n = COUNT_WORDS[m[1].toLowerCase()] || +m[1] || 1;
+    if (n === 1) n = Math.max(1, (t.match(/\bone\b[^,.;:]*?\battacks?\b/gi) || []).length);
+    return clampN(n, 1, 6);
+  }
   /* ---------------- bonus damage from class features (audit 5.9) ---------------- */
   // What a character's classes add to a weapon hit, from HoloTable's class table (#108) at its levels: Sneak Attack dice
   // (Operative) and Rage Damage (Berserker). Worked out here from the sheet, never taken from a request.
@@ -868,7 +896,7 @@
   /* ---------------- turns: the turn budget is resources too, refilled at the start of the unit's own turn ---------------- */
   const turnKey = (world) => `${world.round}:${world.turnId}`;
   const TURN = ['move', 'action', 'bonus', 'reaction'];
-  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0 });
+  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0 });
   function spentOf(world, id) {
     const s = (world.spent || {})[id];
     return s && (id !== world.turnId || s.key === turnKey(world)) ? Object.assign(blank(s.key), s) : blank(id === world.turnId ? turnKey(world) : '');
@@ -885,7 +913,8 @@
     const one = has(u || {}, 'oneAction') && (s.action >= 1 || s.bonus >= 1);   // shocked: an action or a bonus action, not both
     const total = speed * (1 + (+s.dash || 0));   // each Dash adds the speed again
     return { key: s.key, moved: s.move, speed, total, moveLeft: Math.max(0, total - s.move), action: !out && !one && s.action < 1, bonus: !out && !one && s.bonus < 1, reaction: !noReact && s.reaction < 1,
-      dash: +s.dash || 0, disengage: !!s.disengage, dodge: !!s.dodge };
+      dash: +s.dash || 0, disengage: !!s.disengage, dodge: !!s.dodge,
+      attacks: !out && s.atk > 0 ? Math.max(0, (+s.atkMax || 1) - s.atk) : 0 };   // attacks left in an Attack action already begun (#139)
   }
   // a new turn gives its unit full movement, an action, a bonus action and its reaction back
   function fresh(world) {
@@ -937,10 +966,15 @@
         return { ok: true, world: w, log: [{ text: `${me.name} moves ${cost} ft.` }], events: [{ kind: 'move', unit: me.id, feet: cost }], reactions };
       }
       case 'attack': {
-        if (!b.action) return no(`${me.name} has already used the action this turn.`);
+        // Extra Attack and Multiattack (#139): the first attack takes the action; the rest of that Attack action don't,
+        // and the unit can move between them. A creature's count comes with the attack (its stat block, the GM's).
+        const more = b.attacks > 0;
+        if (!b.action && !more) return no(spentOf(w, me.id).atkMax > 1 ? `${me.name} has made every attack this action allows.` : `${me.name} has already used the action this turn.`);
         const s = strike(w, me, act.target, act.attack, { adv: !!act.adv, dis: !!act.dis, no: act.no || [], add: act.add || {}, twoHands: !!act.twoHands }, roll, '');
         if (!s.ok) return s;
-        w.spent[me.id].action += 1;
+        const sp = w.spent[me.id];
+        if (more) sp.atk += 1;
+        else Object.assign(sp, { action: sp.action + 1, atk: 1, atkMax: me.side === 'npc' ? clampN(Math.round(+act.multi || 1), 1, 6) : Math.max(1, +me.attacks || 1) });
         return { ok: true, world: w, log: s.log, events: s.events };
       }
       case 'common': {   // Dash, Disengage, Dodge; and a Berserker's Rage
@@ -1427,6 +1461,7 @@
         speed: ch ? +ch.speed || 30 : +((table.npcSpeed || {})[e.id]) || 30,
         pools: ch ? Object.fromEntries(resourcesOf(ch, rules).map((r) => [r.key, r])) : {},
         riders: ch ? ridersOf(ch, rules) : {},
+        attacks: ch ? attacksPerAction(ch) : 1,   // per Attack action (#139); a creature's Multiattack comes with its attack
         // Raging is a rage in progress: without its live effect (the fight ended, a new one began) it's dropped here
         conditions: Array.from(new Set([].concat(e.conditions || [], ch ? ch.conditions || [] : [])))
           .filter((c) => c !== 'Raging' || (table.effects || []).some((ef) => ef.unit === e.id && ef.condition === 'Raging')),
@@ -1452,5 +1487,5 @@
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
     SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf, d20, flankOf, fixedTotal, cruel, modeName,
-    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, ridersOf, ridersFor, weaponProps, volleysOf };
+    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, ridersOf, ridersFor, attacksPerAction, multiattackOf, weaponProps, volleysOf };
 });
