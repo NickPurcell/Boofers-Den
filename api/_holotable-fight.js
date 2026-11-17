@@ -33,11 +33,34 @@ function state(camp) {
     // what each unit has spent of its turn (movement in feet, action, bonus action, reaction), since its turn began
     spent: Object.fromEntries(Object.entries(plainObj(f.spent)).filter(([k, v]) => ID.test(k) && v && typeof v === "object")
       .map(([k, v]) => [k, { key: str(v.key, 40), move: clamp(int(v.move), 0, 1000), action: clamp(int(v.action), 0, 9), bonus: clamp(int(v.bonus), 0, 9), reaction: clamp(int(v.reaction), 0, 9) }])),
-    undo: (Array.isArray(f.undo) ? f.undo : []).filter((x) => x && typeof x === "object").slice(-UNDO_MAX),
-    events: (Array.isArray(f.events) ? f.events : []).filter((x) => x && typeof x === "object").slice(-EVENTS_MAX),
+    undo: (Array.isArray(f.undo) ? f.undo : []).filter((x) => x && typeof x === "object").slice(-UNDO_MAX).map(cleanSnap),
+    events: (Array.isArray(f.events) ? f.events : []).filter((x) => x && typeof x === "object").slice(-EVENTS_MAX).map((ev) => ({
+      seq: int(ev.seq), at: +ev.at || 0, kind: ["move", "hit", "crit", "miss"].includes(ev.kind) ? ev.kind : "move",
+      token: typeof ev.token === "string" && ID.test(ev.token) ? ev.token : null, amount: ev.amount == null ? null : clamp(int(ev.amount), 0, 100000),
+      feet: ev.feet == null ? null : clamp(int(ev.feet), 0, 1000), hidden: !!ev.hidden })),
     seq: int(f.seq),
   };
   return camp.fight;
+}
+
+// an undo snapshot with every field reshaped (a backup restore could bring anything back)
+function cleanSnap(x) {
+  const num = (v, a, b) => clamp(Number.isFinite(+v) ? +v : 0, a, b);
+  const nul = (v) => (v == null || v === "" ? null : num(v, -1000, 100000));
+  const ini = plainObj(x.ini);
+  return {
+    label: str(x.label, 120), at: +x.at || 0, seq: int(x.seq),
+    ini: { turnId: typeof ini.turnId === "string" && ID.test(ini.turnId) ? ini.turnId : null, round: Math.max(1, int(ini.round, 1)), active: !!ini.active },
+    spent: plainObj(x.spent),
+    tokens: (Array.isArray(x.tokens) ? x.tokens : []).slice(0, 300).filter((t) => Array.isArray(t) && typeof t[0] === "string").map((t) => [t[0], num(t[1], -500, 1000), num(t[2], -500, 1000)]),
+    hp: (Array.isArray(x.hp) ? x.hp : []).slice(0, 300).filter((h) => Array.isArray(h) && typeof h[0] === "string")
+      .map((h) => [h[0], nul(h[1]), Array.isArray(h[2]) ? [num(h[2][0], -1000, 100000), num(h[2][1], 0, 100000)] : null]),
+    chars: (Array.isArray(x.chars) ? x.chars : []).slice(0, 60).filter((c) => Array.isArray(c) && typeof c[0] === "string" && c[1] && typeof c[1] === "object")
+      .map(([id, r]) => [id, { resources: E.cleanResources(r.resources),
+        force: { max: plainObj(r.force).max == null || plainObj(r.force).max === "" ? "" : num(plainObj(r.force).max, 0, 999), used: num(plainObj(r.force).used, 0, 999) },
+        tech: { max: plainObj(r.tech).max == null || plainObj(r.tech).max === "" ? "" : num(plainObj(r.tech).max, 0, 999), used: num(plainObj(r.tech).used, 0, 999) },
+        hitDiceUsed: num(r.hitDiceUsed, 0, 40) }]),
+  };
 }
 
 // Which token is each combatant's: a character's own token; for a creature, the token the GM linked or, as HoloTable
@@ -283,7 +306,8 @@ function view(camp, cid, gm) {
   return {
     on: true, active: !!ini.active, round: ini.round, turn, units,
     budget: turn ? E.budget(world) : null,
-    spent: f.spent || {},
+    // only for combatants this viewer can see: a hidden one's id, turn or movement never reaches a player
+    spent: Object.fromEntries(Object.entries(f.spent || {}).filter(([id]) => units[id])),
     events: evs.map((ev) => ({ seq: ev.seq, at: ev.at, kind: ev.kind, token: ev.token, amount: ev.amount, feet: ev.feet })),
     undo: gm ? { n: (f.undo || []).length, last: ((f.undo || [])[(f.undo || []).length - 1] || {}).label || null } : null,
     npcSpeed: gm ? f.npc || {} : {},

@@ -413,6 +413,8 @@ test("combat view: a hidden creature's turn stays hidden from players", async ()
   assert.equal(atk.code, 200, JSON.stringify(atk.data));
   const after = await sam.state();
   assert.ok(!JSON.stringify(after).includes("Lurker"), "no roll, event or name of the Lurker reaches a player");
+  assert.ok(!JSON.stringify(after).includes(ids.lurker), "nor its id: not in the turn, the spending or the events");
+  assert.ok(!(ids.lurker in after.fight.spent));
   assert.ok(!after.fight.events.some((ev) => ev.kind === "move"), "its move isn't an event players get");
   assert.ok((await gm.state()).chat.some((m) => m.fight && m.private && /Lurker attacks Avery/.test(m.roll.label)), "the GM gets the roll");
 });
@@ -458,4 +460,18 @@ test("resources through the API: owners and the GM spend and edit; undo puts the
   assert.equal((await gm.state()).characters[avery].resources[0].used, 0);
   assert.equal((await sam.act("fight.resource", { charId: avery, op: "remove", key: "secondwind" })).code, 200);
   assert.deepEqual((await sam.state()).characters[avery].resources, []);
+});
+
+test("combat view: a crafted fight state is reshaped before it is used", async () => {
+  const F = require("../api/_holotable-fight.js");
+  const camp = { fight: { on: "yes", undo: [{ label: 5, tokens: [["abcdefgh", "x", 9e9]], hp: [["abcdefgh", "lots", ["a", -5]]], ini: { turnId: "<b>", round: "x" } }, "junk"],
+    events: [{ kind: "<img src=x>", token: "../../x", amount: "9", seq: "3" }], spent: { abcdefgh: { move: "far" }, "<bad>": {} } } };
+  const f = F.state(camp);
+  assert.equal(f.on, true);
+  assert.deepEqual(f.undo[0].tokens, [["abcdefgh", 0, 1000]]);
+  assert.deepEqual(f.undo[0].hp, [["abcdefgh", 0, [0, 0]]]);
+  assert.deepEqual([f.undo[0].ini.turnId, f.undo[0].ini.round, f.undo.length], [null, 1, 1]);
+  assert.deepEqual(f.events[0], { seq: 3, at: 0, kind: "move", token: null, amount: 9, feet: null, hidden: false });
+  assert.deepEqual(Object.keys(f.spent), ["abcdefgh"]);
+  assert.equal(f.spent.abcdefgh.move, 0);
 });
