@@ -1097,3 +1097,34 @@ test("backup and restore: the combat view's record comes back checked; a backup 
   assert.deepEqual([st.fight.on, st.fight.effects, st.fight.lib, st.fight.undo.n], [true, [], {}, 0]);
   assert.equal((await sam.state()).fight.on, true);
 });
+
+test("names the GM hides (#87): every line the combat view writes for players says ???, and nothing else gives it away", async () => {
+  const { gm, sam, rae, ids, avery } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  let st = await gm.state();
+  await gm.act("token.update", { id: tokenOf(st, "Raider").id, fields: { nameHidden: true } });
+  await gm.act("token.update", { id: tokenOf(st, "Avery").id, fields: { nameHidden: true } });
+  await sam.act("fight.defenses", { charId: avery, resist: ["fire"] });
+  await sam.act("fight.resource", { charId: avery, res: { key: "stim", name: "Stim pack", max: 2, used: 0, refill: "long" } });
+  // Avery (name hidden) walks up to the Raider (name hidden), attacks it, uses a stim pack; the GM knocks the Raider
+  // prone and undoes it
+  assert.equal((await sam.act("fight.move", { x: 5, y: 0 })).code, 200);
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0" })).code, 200);
+  assert.equal((await sam.act("fight.spend", { charId: avery, key: "stim" })).code, 200);
+  assert.equal((await gm.act("fight.condition", { unit: ids.raider, condition: "Prone" })).code, 200);
+  assert.equal((await gm.act("fight.undo", {})).code, 200);
+  const pv = await rae.state();
+  const since = pv.chat.findIndex((m) => m.text === "The GM switched the combat view on.");
+  const lines = pv.chat.slice(since).filter((m) => !/^Round \d+ - /.test(m.text || ""));   // HoloTable's own turn lines aren't the combat view's
+  const text = JSON.stringify(lines);
+  assert.ok(lines.some((m) => m.roll && /^\?\?\? attacks \?\?\? with Vibrosword/.test(m.roll.label)), text);
+  assert.ok(lines.some((m) => m.text === "??? uses Stim pack: 1 of 2 left."), text);
+  assert.ok(lines.some((m) => m.text === "??? is prone."), text);
+  assert.ok(!/Raider|Avery|Sam/.test(text), "no real name, and no player's name on a masked combatant's roll");
+  // the combat view itself: Avery is just another creature to Rae; its defences aren't sent to her; Sam still knows
+  assert.deepEqual([pv.fight.units[ids.avery].side, avery in pv.fight.defenses], ["npc", false]);
+  const own = await sam.state();
+  assert.deepEqual([own.fight.units[ids.avery].side, own.fight.units[ids.avery].mine, avery in own.fight.defenses], ["pc", true, true]);
+  // the GM's own copy keeps the real names
+  assert.equal((await gm.state()).fight.units[ids.avery].side, "pc");
+});

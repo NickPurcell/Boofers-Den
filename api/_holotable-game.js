@@ -240,7 +240,7 @@ function viewFor(camp, cid, gm, online) {
     audio: camp.audio ? Object.assign({}, camp.audio, { now: now() }) : null,   // "now" lets each screen line its clock up
     ships: (camp.ships || []).filter((x) => gm || !x.hidden),
     sceneFx: fxView,
-    ...(camp.fight && camp.fight.on ? { fight: Fight.view(camp, cid, gm) } : {}),   // the combat view, only while it is on
+    ...(camp.fight && camp.fight.on ? { fight: Fight.view(camp, cid, gm, shownName) } : {}),   // the combat view, only while it is on
     scene: (camp.scenes || []).filter((x) => x.id === camp.activeScene).map((x) => ({ id: x.id, name: x.name }))[0] || null,
     scenes: gm ? (camp.scenes || []).map((x) => ({ id: x.id, name: x.name, savedAt: x.savedAt })) : null,
   };
@@ -415,7 +415,7 @@ function applyAction(camp, cid, gm, type, p) {
   const chars = camp.characters, ini = camp.initiative, mp = camp.map;
   mp.props = mp.props || [];
   const need = (ok, why = "GM only") => { if (!ok) throw new Forbidden(why); };
-  if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, applyAction, Forbidden, Invalid });
+  if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, applyAction, shownName, Forbidden, Invalid });
 
   switch (type) {
     // ---- characters
