@@ -292,7 +292,7 @@ function tick(camp, cid, G) {
     const msg = line.roll ? { from: "Combat", fromId: "@gm", fight: true, roll: { total: line.roll.total, detail: line.roll.detail, nat: line.roll.nat == null ? null : line.roll.nat, expr: line.expr, label: str(line.text, 200), kind: line.kind } }
       : { system: true, fight: true, text: str(line.text, 200) };
     if (hidden) { msg.to = ["@gm"]; msg.private = true; msg.fromId = "@gm"; }
-    G.addChat(camp, msg);
+    say(camp, G, msg, null, [line.unit, line.about]);
   }
 }
 
@@ -318,7 +318,7 @@ function report(camp, cid, gm, G, actor, world, r, skipFirst) {
   for (const [i, line] of r.log.entries()) {
     if (!line.roll) {   // plain lines go to chat (a condition ending, concentration lost), but not "moves 10 ft." or "ends the turn."
       if (i === 0 && skipFirst) continue;
-      G.addChat(camp, Object.assign({ system: true, fight: true, text: str(line.text, 200) }, secret || isHidden(line.unit) || isHidden(line.about) ? { to: ["@gm"], private: true } : {}));
+      say(camp, G, Object.assign({ system: true, fight: true, text: str(line.text, 200) }, secret || isHidden(line.unit) || isHidden(line.about) ? { to: ["@gm"], private: true } : {}), cid, [actor.id, line.unit, line.about]);
       continue;
     }
     // a combatant whose name the GM is hiding: its roll says neither its sheet's name nor its player's
@@ -331,12 +331,19 @@ function report(camp, cid, gm, G, actor, world, r, skipFirst) {
       // HoloTable shows a message to its sender too, so a line about a hidden creature can't come from the player
       if (!gm) { msg.fromId = "@gm"; msg.from = "Combat (GM only)"; delete msg.charName; }
     }
-    G.addChat(camp, msg);
+    say(camp, G, msg, cid, [actor.id, line.unit, line.about]);
   }
   if (secret) {   // what everyone can see: the hit on someone they can see
     for (const ev of r.events) {
       const t = world.units[ev.unit];
-      if (t && (ev.kind === "hit" || ev.kind === "crit") && !isHidden(t.id)) G.addChat(camp, { system: true, fight: true, text: `${t.name} is hit for ${ev.amount} damage.` });
+      if (t && (ev.kind === "hit" || ev.kind === "crit") && !isHidden(t.id)) say(camp, G, { system: true, fight: true, text: `${t.name} is hit for ${ev.amount} damage.` }, null, [t.id]);
+    }
+  } else {   // under fog: whoever sees the one hit but not the one who hit gets the hit, unnamed
+    for (const ev of r.events) {
+      const t = world.units[ev.unit];
+      if (!t || t.id === actor.id || !(ev.kind === "hit" || ev.kind === "crit") || isHidden(t.id)) continue;
+      const to = seeOnly(camp, t.id, actor.id);
+      if (to.length) G.addChat(camp, { system: true, fight: true, text: `${t.name} is hit for ${ev.amount} damage.`, to });
     }
   }
   for (const ev of r.events) {
@@ -526,7 +533,7 @@ function apply(camp, cid, gm, type, p, G) {
       snapshot(camp, `${name} ${p.op === "remove" ? "taken off" : "put on"} ${world.units[unit].name}`);
       writeBack(camp, cid, world, r.world, G);
       const ut = unitTokens(camp), isHidden = (id) => !!id && hiddenEntry(camp, entry(id) || {}, ut[id]);
-      for (const line of r.log) G.addChat(camp, Object.assign({ system: true, fight: true, text: str(line.text, 200) }, isHidden(line.unit) || isHidden(line.about) ? { to: ["@gm"], private: true } : {}));
+      for (const line of r.log) say(camp, G, Object.assign({ system: true, fight: true, text: str(line.text, 200) }, isHidden(line.unit) || isHidden(line.about) ? { to: ["@gm"], private: true } : {}), null, [line.unit, line.about]);
       return {};
     }
     case "fight.react": {   // an answer to a reaction prompt: take the opportunity attack, or let it go (the GM can answer any)
@@ -539,7 +546,7 @@ function apply(camp, cid, gm, type, p, G) {
       need(re && mayAct(camp, cid, gm, re), "That reaction isn't yours to take.");
       if (!p.take) {
         f.pending = f.pending.filter((x) => x !== pend);
-        G.addChat(camp, { system: true, fight: true, text: str(`${G.shownName(camp, re)} lets ${against ? G.shownName(camp, against) : "them"} go.`, 200) });
+        say(camp, G, { system: true, fight: true, text: str(`${G.shownName(camp, re)} lets ${against ? G.shownName(camp, against) : "them"} go.`, 200) }, cid, [re.id, against && against.id]);
         return {};
       }
       const world = worldOf(camp, !gm, G, cid);
@@ -620,7 +627,7 @@ function apply(camp, cid, gm, type, p, G) {
       for (const re of r.reactions || []) {
         if (isHidden(re.reactor) || isHidden(re.against)) continue;
         f.pending.push({ id: String(++f.seq), kind: "opportunity", reactor: re.reactor, against: re.against, at: re.at, turn: f.lastTurn });
-        G.addChat(camp, { system: true, fight: true, text: str(`${G.shownName(camp, cur)} leaves ${G.shownName(camp, entry(re.reactor))}'s reach: ${G.shownName(camp, entry(re.reactor))} can make an opportunity attack.`, 200) });
+        say(camp, G, { system: true, fight: true, text: str(`${G.shownName(camp, cur)} leaves ${G.shownName(camp, entry(re.reactor))}'s reach: ${G.shownName(camp, entry(re.reactor))} can make an opportunity attack.`, 200) }, cid, [cur.id, re.reactor]);
       }
       if (r.endTurn) { G.applyAction(camp, cid, true, "init.next", {}); tick(camp, cid, G); }
       return {};
@@ -778,6 +785,33 @@ function fogView(camp, cid, gm, fog) {
   }
   return Object.assign(on, { any: E.packSquares(any) });
 }
+// Chat follows sight (#93): with fog on, a combat line about creatures some players can't see goes only to the GM,
+// the person whose action it was, and the players who see every creature in it. null when everyone may read it
+// (fog off, or nobody is blind to any of them). Lines already kept to the GM are left as they are.
+function sightTo(camp, cid, ids) {
+  if (!fogOn(camp)) return null;
+  const ut = unitTokens(camp), toks = [...new Set(ids.filter(Boolean).map((id) => ut[id]).filter(Boolean))];
+  if (!toks.length) return null;
+  const pids = Object.keys(camp.players || {}).filter((pid) => (camp.players[pid] || {}).role !== "gm");
+  const sees = (pid) => { const fog = fogFor(camp, pid); return !fog || toks.every((t) => !fog.tokens.has(t)); };
+  const seeing = pids.filter(sees);
+  if (seeing.length === pids.length) return null;
+  return ["@gm", ...new Set([cid, ...seeing].filter((x) => x && x !== "@gm"))];
+}
+// players who see one creature but not another (the target of a hit, not the shooter): they get the hit, unnamed
+function seeOnly(camp, seen, unseen) {
+  if (!fogOn(camp)) return [];
+  const ut = unitTokens(camp), a = ut[seen], b = ut[unseen];
+  if (!a || !b) return [];
+  return Object.keys(camp.players || {}).filter((pid) => (camp.players[pid] || {}).role !== "gm")
+    .filter((pid) => { const fog = fogFor(camp, pid); return fog && !fog.tokens.has(a) && fog.tokens.has(b); });
+}
+// a combat line into chat, routed by sight while fog is on
+function say(camp, G, msg, cid, ids) {
+  if (!msg.to) { const to = sightTo(camp, cid, ids); if (to) msg.to = to; }
+  G.addChat(camp, msg);
+}
+
 // After every action (a token dragged, a door opened, a move in combat): what each player sees now joins what they
 // have explored on this map. Nothing is written while fog is off.
 function noteSeen(camp) {
@@ -807,5 +841,5 @@ function cleanWalls(list) {
   });
 }
 
-module.exports = { apply, view, fogFor, fogView, cleanFog, noteSeen, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
+module.exports = { apply, view, fogFor, fogView, cleanFog, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
   cleanHitDiceUsed: R.cleanHitDiceUsed };   // for cleanChar: the sheet and the undo record clean hit dice the same way
