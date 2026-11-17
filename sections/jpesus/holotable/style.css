@@ -686,3 +686,7 @@ body.no-sw5e-books [data-sa="deploy-info"], body.no-sw5e-books .lib-bar { displa
 }
 .sb-chip { margin: 1px 2px; }
 .sb-save { font-size: 12px; padding: 1px 4px; max-width: 74px; }
+.enc-diff { gap: 10px; margin-top: 10px; font-size: 13px; align-items: baseline; }
+.enc-diff:empty { display: none; }
+.enc-rating { font-weight: 700; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--line); }
+.enc-easy { color: #66bb6a; } .enc-medium { color: #ffd54f; } .enc-hard { color: #ffb74d; } .enc-deadly { color: #ef5350; border-color: #ef5350; }

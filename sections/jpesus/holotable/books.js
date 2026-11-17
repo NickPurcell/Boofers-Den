@@ -366,6 +366,48 @@
     return `<div><b>${label}</b> ${bonuses(list).map(x => x.text != null ? esc(x.text)
       : `<button class="btn tiny sb-chip" data-sbroll="1d20${fmt(x.bonus)}" data-sblabel="${esc(m.n)}: ${esc(what === 'save' ? (ABN[SAVE_AB[x.name.toLowerCase()]] || x.name) : x.name)} ${what}">${esc(x.name)} ${fmt(x.bonus)}</button>`).join(' ')}</div>`;
   }
+  // ---- encounter difficulty (audit 9.7): the creatures' XP, multiplied for their numbers, against the party's
+  // thresholds. SW5e uses 5e's encounter-building tables: XP thresholds per character level (easy, medium, hard,
+  // deadly), and a multiplier by the number of creatures, one step up for a party under 3 and one down for 6 or more.
+  const XP_TH = [null, [25, 50, 75, 100], [50, 100, 150, 200], [75, 150, 225, 400], [125, 250, 375, 500], [250, 500, 750, 1100],
+    [300, 600, 900, 1400], [350, 750, 1100, 1700], [450, 900, 1400, 2100], [550, 1100, 1600, 2400], [600, 1200, 1900, 2800],
+    [800, 1600, 2400, 3600], [1000, 2000, 3000, 4500], [1100, 2200, 3400, 5100], [1250, 2500, 3800, 5700], [1400, 2800, 4300, 6400],
+    [1600, 3200, 4800, 7200], [2000, 3900, 5900, 8800], [2100, 4200, 6300, 9500], [2400, 4900, 7300, 10900], [2800, 5700, 8500, 12700]];
+  const MULT = [0.5, 1, 1.5, 2, 2.5, 3, 4, 5];
+  function xpMultiplier(creatures, party) {
+    let i = creatures <= 1 ? 1 : creatures === 2 ? 2 : creatures <= 6 ? 3 : creatures <= 10 ? 4 : creatures <= 14 ? 5 : 6;
+    if (party > 0 && party < 3) i += 1; else if (party >= 6) i -= 1;
+    return MULT[Math.max(0, Math.min(MULT.length - 1, i))];
+  }
+  // levels: each party member's character level; xps: each creature's XP. Returns the numbers and the rating.
+  function difficulty(levels, xps) {
+    const th = [0, 0, 0, 0];
+    for (const l of levels) XP_TH[Math.max(1, Math.min(20, Math.round(+l) || 1))].forEach((v, k) => { th[k] += v; });
+    const raw = xps.reduce((a, b) => a + (+b || 0), 0), mult = xpMultiplier(xps.length, levels.length), adj = Math.round(raw * mult);
+    const k = th.filter(v => adj >= v).length;   // how many thresholds the encounter reaches
+    return { raw, mult, adj, th, rating: !xps.length || !levels.length ? '' : ['Trivial', 'Easy', 'Medium', 'Hard', 'Deadly'][k] };
+  }
+  // the GM's meter above the initiative list. Party: the characters in initiative; before any have rolled, every
+  // character not owned by this GM. Creatures: entries added from the SW5e list (others have no XP to count).
+  async function renderEncounter(el, entries, characters, me) {
+    if (!el) return;
+    const inIni = entries.filter(e => e.charId && characters[e.charId]).map(e => characters[e.charId]);
+    const party = inIni.length ? inIni : Object.values(characters).filter(c => c.owner !== me);
+    const foes = entries.filter(e => !e.charId), withSb = foes.filter(e => e.sb);
+    if (!withSb.length) { el.innerHTML = foes.length ? '<span class="muted">Encounter difficulty: add creatures from the SW5e list to rate this fight.</span>' : ''; return; }
+    let mons;
+    try { mons = await list('monsters'); } catch { el.innerHTML = ''; return; }
+    const xps = withSb.map(e => (mons.find(m => m.n === e.sb) || {}).xp).filter(v => v != null);
+    const d = difficulty(party.map(c => R.totalLevel(c)), xps);
+    if (!party.length) { el.innerHTML = '<span class="muted">Encounter difficulty: no party characters yet.</span>'; return; }
+    const f = v => n0(v).toLocaleString(), lv = party.map(c => R.totalLevel(c));
+    const skipped = foes.length - xps.length;
+    el.innerHTML = `<span class="enc-rating enc-${d.rating.toLowerCase()}">${esc(d.rating)}</span>
+      <span><b>${f(d.adj)}</b> XP adjusted <span class="muted">(${f(d.raw)} × ${d.mult} for ${xps.length} creature${xps.length === 1 ? '' : 's'})</span></span>
+      <span class="muted" title="${esc(party.map(c => `${c.name} (level ${R.totalLevel(c)})`).join(', '))}">Party of ${party.length}${inIni.length ? '' : ' (everyone; none in initiative yet)'}, level${new Set(lv).size > 1 ? 's' : ''} ${esc([...new Set(lv)].sort((a, b) => a - b).join('/'))}:
+        easy ${f(d.th[0])} · medium ${f(d.th[1])} · hard ${f(d.th[2])} · deadly ${f(d.th[3])}</span>
+      ${skipped ? `<span class="muted">${skipped} without an SW5e stat block not counted</span>` : ''}`;
+  }
   const crNum = cr => (/^\d+\/\d+$/.test(cr) ? eval_frac(cr) : +cr || 0);
   function eval_frac(s) { const [a, b] = s.split('/'); return +a / +b; }
   // the GM's rolls from a stat block stay between the GM and the server (GM-only rolls)
@@ -679,7 +721,7 @@
 
   window.HTB = {
     list, mdBlock, libraryBar, openBook, openSpeciesPicker, openBackgroundPicker, openArchetypePicker, openFeaturePicker,
-    levelFeatures, archetypesOf, featNamed, featNames, openMonsterPicker, openStatBlock, rollCreatureSave, bonuses, saveBonus, renderShips, renderShipsSafe,
+    levelFeatures, archetypesOf, featNamed, featNames, openMonsterPicker, openStatBlock, rollCreatureSave, bonuses, saveBonus, difficulty, xpMultiplier, renderEncounter, renderShips, renderShipsSafe,
   };
   // the rules tab and ships tab were drawn before this file loaded
   if (!LIB.book) H.renderRules();
