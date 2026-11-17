@@ -267,31 +267,36 @@
   }
   const reachable = (world, unitId, feet) => search(world, unitId, feet).out;
   // Can a token get from where it stands to (tx, ty) without crossing a wall, a window or a closed door, however far
-  // (issue #93: a player's drag under fog)? A walk over the squares of the board (and its own start and end), each
-  // step a straight line between square centres as in search(); walls are filed by the squares they touch, so a big
-  // map costs little. Other tokens never block it, and neither do objects that block only sight.
+  // (issue #93: a player's drag under fog)? A walk over the board's own squares only: its edge is a wall too, so a
+  // wall drawn to the edge can't be stepped round off the board, and a drop off the board is refused (review of #125).
+  // Each step is a straight line between square centres as in search(); walls are filed by the squares they touch,
+  // so a big map costs little. Other tokens never block it, and neither do objects that block only sight.
   function walkable(walls, cols, rows, t, tx, ty) {
-    const stops = (walls || []).filter(blocksMove), s = Math.max(1, t.size || 1);
-    if (!stops.length || (t.x === tx && t.y === ty)) return true;
-    const X0 = Math.min(0, t.x, tx), Y0 = Math.min(0, t.y, ty), X1 = Math.max(cols - 1, t.x, tx), Y1 = Math.max(rows - 1, t.y, ty);
-    const W = X1 - X0 + 1, H = Y1 - Y0 + 1;
-    if (W * H > 250000) return true;   // far off any board: nothing sensible to check
-    const cell = (x, y) => (y - Y0) * W + (x - X0), files = new Map();
+    const s = Math.max(1, t.size || 1), X0 = 0, Y0 = 0, X1 = cols - s, Y1 = rows - s;
+    const on = (x, y) => x >= X0 && y >= Y0 && x <= X1 && y <= Y1;
+    if (t.x === tx && t.y === ty) return true;
+    if (!on(tx, ty) || !on(t.x, t.y) || X1 < 0 || Y1 < 0) return false;   // off the board: not under fog
+    const stops = (walls || []).filter(blocksMove);
+    if (!stops.length) return true;
+    // walls filed by the board squares they touch (a step's line, even a big token's, lies over board squares)
+    const sq = (x, y) => y * cols + x, files = new Map();
     for (const w of stops) {
       const ax = Math.floor(Math.min(w.a[0], w.b[0]) - 0.01), bx = Math.floor(Math.max(w.a[0], w.b[0]) + 0.01), ay = Math.floor(Math.min(w.a[1], w.b[1]) - 0.01), by = Math.floor(Math.max(w.a[1], w.b[1]) + 0.01);
-      for (let x = Math.max(X0, ax); x <= Math.min(X1, bx); x++) for (let y = Math.max(Y0, ay); y <= Math.min(Y1, by); y++) {
-        const k = cell(x, y); if (!files.has(k)) files.set(k, []); files.get(k).push(w);
+      for (let x = Math.max(0, ax); x <= Math.min(cols - 1, bx); x++) for (let y = Math.max(0, ay); y <= Math.min(rows - 1, by); y++) {
+        const k = sq(x, y); if (!files.has(k)) files.set(k, []); files.get(k).push(w);
       }
     }
     // does a step cross a wall filed under any square its line passes over (no allocation: called for every step)
     const walled = (p, q) => {
       for (let x = Math.floor(Math.min(p[0], q[0])); x <= Math.floor(Math.max(p[0], q[0])); x++) for (let y = Math.floor(Math.min(p[1], q[1])); y <= Math.floor(Math.max(p[1], q[1])); y++) {
-        if (x < X0 || x > X1 || y < Y0 || y > Y1) continue;
-        const f = files.get(cell(x, y));
+        if (x < 0 || x >= cols || y < 0 || y >= rows) continue;
+        const f = files.get(sq(x, y));
         if (f) for (const w of f) if (crosses(p, q, w.a, w.b)) return true;
       }
       return false;
     };
+    // where the token's top-left square may stand: anywhere it fits on the board
+    const W = X1 - X0 + 1, H = Y1 - Y0 + 1, cell = (x, y) => (y - Y0) * W + (x - X0);
     const seen = new Uint8Array(W * H), queue = [[t.x, t.y]];
     seen[cell(t.x, t.y)] = 1;
     while (queue.length) {

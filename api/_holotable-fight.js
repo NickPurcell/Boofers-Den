@@ -427,8 +427,24 @@ function mapTools(camp, cid, gm, type, p, G) {
   return {};
 }
 
+// Every character's senses at a glance, for the GM, with the combat view on or off (the coordinator's ruling, 17 Nov:
+// players set their own, as they do HP and AC; the GM sees them all and corrects any, at any time). "get" reads them
+// without writing anything; "set" changes one character's senses and leaves its resistances as they are.
+function gmSenses(camp, gm, p, G) {
+  if (!gm) throw new G.Forbidden("GM only");
+  const defs = plainObj(plainObj(camp.fight).defenses);
+  if (p.op === "get") return { senses: Object.fromEntries(Object.keys(camp.characters || {}).map((id) => [id, E.cleanSenses(plainObj(defs[id]).senses)])) };
+  if (p.op !== "set") throw new G.Invalid("Get or set.");
+  const ch = charOf(camp, p.charId);
+  if (!ch) throw new G.Invalid("No such character.");
+  const f = state(camp);   // with the combat view off this keeps it off; only the senses change
+  f.defenses[ch.id] = defences(Object.assign({}, plainObj(f.defenses[ch.id]), { senses: p.senses }));
+  return {};
+}
+
 function apply(camp, cid, gm, type, p, G) {
   if (type === "fight.wall" || type === "fight.fog" || type === "fight.light") return mapTools(camp, cid, gm, type, p, G);
+  if (type === "fight.senses") return gmSenses(camp, gm, p, G);
   // off (the default): only the GM's switch does anything, and switching it off when it was never on writes nothing
   if (!camp.fight || !camp.fight.on) {
     if (type !== "fight.toggle") throw new G.Invalid("The combat view is off.");
