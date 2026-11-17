@@ -16,6 +16,7 @@ process.env.HOLOTABLE_GM_PASSWORD = GM_PW;
 const S = require("../api/_holotable-store.js");
 const G = require("../api/_holotable-game.js");
 const handler = require("../api/holotable.js");
+handler.SW5E_HOLD.on = false;   // the SW5e tests below exercise the fetch code under the temporary hold (#55)
 let db = new HoloFake();
 let sub = null;
 S.getClient = () => db;
@@ -691,4 +692,26 @@ test("SW5e lists: a failed fetch isn't retried for a minute, and only one reques
     assert.equal(JSON.parse(rb.data)[0].n, "Medpac");
     assert.equal(calls, 1, "the second request waited for the first instead of fetching");
   } finally { global.fetch = realFetch; }
+});
+
+// Temporary hold (#55): while the site owner's OK is pending, the SW5e routes refuse before fetching anything.
+test("SW5e hold: the lists answer 503 and nothing is fetched; adding by hand still works", async () => {
+  const realFetch = global.fetch;
+  let calls = 0;
+  global.fetch = async () => { calls++; throw new Error("should not be called"); };
+  handler.SW5E_HOLD.on = true;
+  try {
+    const { gm, p1 } = await table();
+    for (const q of [{ op: "powers" }, { op: "equipment", set: "standard" }, { op: "equipment", set: "enhanced" }]) {
+      const r = await p1.call("GET", q);
+      assert.equal(r.code, 503);
+      assert.match(r.data.error, /switched on/);
+    }
+    assert.equal(calls, 0, "no outbound request while held");
+    assert.equal(await db.get(S.K.powers()), null);
+    const id = (await p1.act("char.save", { char: { name: "Kira", powers: [{ name: "Force Push", level: 1, type: "force" }], equipment: [{ name: "Medpac", qty: 2 }] } })).data.id;
+    const ch = (await gm.poll()).data.state.characters[id];
+    assert.equal(ch.powers[0].name, "Force Push");
+    assert.equal(ch.equipment[0].name, "Medpac");
+  } finally { handler.SW5E_HOLD.on = false; global.fetch = realFetch; }
 });

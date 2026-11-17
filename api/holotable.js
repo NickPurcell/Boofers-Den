@@ -120,6 +120,10 @@ async function loadGame() {
 //   - caches a good list for a week.
 // A failure here only ever fails the picker (503), never the game.
 const SW5E_API = "https://sw5eapi.azurewebsites.net/api/";
+// TEMPORARY HOLD (Boofers-Den #55): the site owner hasn't yet OK'd the server calling SW5e's API, so the
+// three SW5e lists are switched off: the routes answer 503 before any outbound request is made, and the
+// picker buttons are hidden (style.css). The fetch code below is intact. Reverting this commit turns them on.
+const SW5E_HOLD = { on: true };
 const sw5eText = (v, n) => (v == null || v === "None" || v === "Unknown" ? "" : String(v).split(String.fromCharCode(13)).join("").slice(0, n));
 const spaced = (v) => sw5eText(v, 60).replace(/([a-z])([A-Z])/g, "$1 $2");
 
@@ -295,6 +299,7 @@ async function handleGet(req, res, q, ses) {
   }
 
   if (op === "powers" || op === "equipment") {
+    if (SW5E_HOLD.on) return fail(res, 503, "The SW5e lists aren't switched on yet: they're waiting for the site owner's OK. Use “custom” to add it by hand for now.");
     // "powers": every SW5e force and tech power, for the "+ force power" / "+ tech power" pickers.
     // "equipment": SW5e gear for the "+ from SW5e" picker, ?set=standard or ?set=enhanced.
     const name = op === "powers" ? "powers" : q.set === "enhanced" ? "enhanced" : "standard";
@@ -607,3 +612,4 @@ module.exports = async function handler(req, res) {
     return fail(res, 500, "Something went wrong on the server.");
   }
 };
+module.exports.SW5E_HOLD = SW5E_HOLD;   // tests turn the hold off to keep exercising the fetch code underneath (#55)

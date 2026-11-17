@@ -586,3 +586,7 @@ table.t td:first-child input { min-width: 140px; }
 .pp-rar-legendary { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 50%, var(--line)); }
 .pp-rar-artifact { color: var(--red); border-color: color-mix(in srgb, var(--red) 50%, var(--line)); }
 .pp-align-menu { max-height: 280px; overflow: auto; }
+
+/* TEMPORARY HOLD (Boofers-Den #55): the SW5e pickers are hidden until the site owner OKs the server calling
+   SW5e's API. "custom" still adds powers, items and weapons by hand. Reverting this commit shows them again. */
+[data-act="pick-power"], [data-act="pick-equip"], [data-act="pick-weapon"] { display: none !important; }
