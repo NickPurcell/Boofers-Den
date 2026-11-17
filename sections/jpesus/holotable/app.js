@@ -1279,7 +1279,7 @@
   function startScript(t, kind = 'token') {
     const m = t.moves || {};
     M.script = { kind, id: t.id, name: t.name || (kind === 'prop' ? 'Asset' : 'Token'), path: (m.path || []).map(q => ({ x: q.x, y: q.y })),
-      exit: m.exit || '', delay: n0(m.delay), face: !!m.face };
+      exit: m.exit || '', delay: n0(m.delay), face: !!m.face, when: m.when === 'combat' ? 'combat' : 'scene' };
     renderScriptBar(); drawMap();
   }
   function renderScriptBar() {
@@ -1288,6 +1288,9 @@
     if (!sc) { scriptBar.innerHTML = ''; return; }
     scriptBar.innerHTML = `<b>🎬 ${esc(sc.name || 'Token')}</b><span class="muted">Click squares to add waypoints (${sc.path.length}/12).</span>
       <label class="mini">Then <select data-sb="exit">${Object.entries(EXIT_NAMES).map(([k, v]) => `<option value="${k}" ${k === sc.exit ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+      <label class="mini" title="When this movement plays">Plays <select data-sb="when">
+        <option value="scene" ${sc.when !== 'combat' ? 'selected' : ''}>after the next scene change</option>
+        <option value="combat" ${sc.when === 'combat' ? 'selected' : ''}>⚔ when combat starts</option></select></label>
       <label class="mini">Wait <input type="number" min="0" max="20" step="0.5" value="${n0(sc.delay)}" data-sb="delay"> s</label>
       ${sc.kind === 'prop' ? `<label class="toggle" title="Point the piece along its first leg; it turns at each waypoint as it goes"><input type="checkbox" data-sb="face" ${sc.face ? 'checked' : ''}> Turn to face its path</label>` : ''}
       <button class="btn tiny" data-sb="undo" ${sc.path.length ? '' : 'disabled'}>Undo</button><button class="btn tiny ghost" data-sb="clear">Clear</button>
@@ -1300,8 +1303,9 @@
     if (a === 'cancel') M.script = null;
     if (a === 'save') {
       const has = sc.path.length || sc.exit;
-      if (await act(sc.kind === 'prop' ? 'prop.script' : 'token.script', { id: sc.id, moves: has ? { path: sc.path, exit: sc.exit, delay: sc.delay, face: sc.face } : null })) {
-        toast(has ? `${sc.name}'s movement saved. It plays when this scene is next loaded, or with ▶ Play movements.` : `${sc.name}'s movement cleared`);
+      if (await act(sc.kind === 'prop' ? 'prop.script' : 'token.script', { id: sc.id, moves: has ? { path: sc.path, exit: sc.exit, delay: sc.delay, face: sc.face, when: sc.when } : null })) {
+        const plays = sc.when === 'combat' ? 'when combat starts (Start in initiative, or the combat view switched on)' : 'when this scene is next loaded';
+        toast(has ? `${sc.name}'s movement saved. It plays ${plays}, or with ▶ Play movements.` : `${sc.name}'s movement cleared`);
         M.script = null;
       }
     }
@@ -1312,6 +1316,7 @@
     if (a === 'exit') sc.exit = e.target.value;
     if (a === 'delay') sc.delay = Math.max(0, Math.min(20, n0(e.target.value)));
     if (a === 'face') sc.face = e.target.checked;
+    if (a === 'when') sc.when = e.target.value === 'combat' ? 'combat' : 'scene';
     drawMap();
   });
   // GM only: dashed paths for every scripted token (and the one being recorded)
@@ -1326,7 +1331,7 @@
       const start = prop ? { x: (t.x + t.w / 2) * g, y: (t.y + t.h / 2) * g } : { x: (t.x + sz / 2) * g, y: (t.y + sz / 2) * g };
       const c = q => (prop ? { x: (q.x + 0.5) * g, y: (q.y + 0.5) * g } : { x: (q.x + sz / 2) * g, y: (q.y + sz / 2) * g });
       const pts = [start, ...sc.path.map(c)];
-      const last = pts[pts.length - 1], amber = themeHex('amber', '#ffb74d');
+      const last = pts[pts.length - 1], amber = sc.when === 'combat' ? '#ef5350' : themeHex('amber', '#ffb74d');   // red: waits for combat
       ctx.save();
       ctx.strokeStyle = live ? amber : rgba(amber, 0.55); ctx.lineWidth = 3 / z; ctx.setLineDash([8 / z, 6 / z]);
       ctx.beginPath(); pts.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
@@ -1346,7 +1351,8 @@
         ctx.beginPath(); ctx.arc(q.x, q.y, 10 / z, 0, Math.PI * 2); ctx.fillStyle = live ? amber : rgba(amber, 0.55); ctx.fill();
         ctx.fillStyle = '#111'; ctx.font = `bold ${11 / z}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(String(i + 1), q.x, q.y + 0.5 / z);
       });
-      if (n0(sc.delay)) { ctx.fillStyle = amber; ctx.font = `600 ${11 / z}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.fillText(`🎬 after ${n0(sc.delay)} s`, pts[0].x, pts[0].y - ((prop ? t.h : sz) * g) / 2 - 8 / z); }
+      const cue = [sc.when === 'combat' ? '⚔ combat' : '', n0(sc.delay) ? `🎬 after ${n0(sc.delay)} s` : ''].filter(Boolean).join(' · ');
+      if (cue) { ctx.fillStyle = amber; ctx.font = `600 ${11 / z}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.fillText(cue, pts[0].x, pts[0].y - ((prop ? t.h : sz) * g) / 2 - 8 / z); }
       ctx.restore();
     }
   }

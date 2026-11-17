@@ -1157,3 +1157,43 @@ test("token names: chat's turn and leaving lines don't name a creature whose nam
   assert.ok(!chat.some((t) => /Raider/.test(t)), "never the hidden name");
   assert.deepEqual(chat.slice(before), ["An unknown character left the table."]);
 });
+
+test("combat-start movements: they wait through scene changes, then play when combat starts (initiative or the combat view)", async () => {
+  const { gm, p1 } = await table();
+  await gm.act("map.settings", { cols: 20, rows: 12 });
+  await gm.act("token.add", { name: "Bounty Hunter", x: 5, y: 5 });
+  await gm.act("token.add", { name: "Sniper", x: 2, y: 2 });
+  await gm.act("token.add", { name: "Courier", x: 9, y: 9 });
+  const [bh, sn, co] = (await gm.poll()).data.state.map.tokens.map((t) => t.id);
+  await gm.act("token.script", { id: bh, moves: { path: [{ x: 7, y: 5 }, { x: 7, y: 8 }], when: "combat" } });
+  await gm.act("token.script", { id: co, moves: { path: [{ x: 10, y: 9 }], when: "nonsense" } });   // anything else: the next scene
+  let gv = (await gm.poll()).data.state.map.tokens;
+  assert.equal(gv[0].moves.when, "combat");
+  assert.equal(gv[2].moves.when, undefined, "cleaned to the usual scene trigger");
+  // a scene change plays only the scene movement
+  const cantina = (await gm.act("scene.saveAs", { name: "Cantina" })).data.id;
+  await gm.act("scene.new", { name: "Other" });
+  await gm.act("scene.load", { id: cantina });
+  gv = (await gm.poll()).data.state;
+  assert.deepEqual(gv.sceneFx.moves.map((m) => m.id), [co], "the courier moves; the bounty hunter waits for combat");
+  assert.equal(gv.map.tokens.find((t) => t.id === bh).moves.when, "combat");
+  // Start in initiative plays it, once, with no wipe; players see it move but never the script
+  await gm.act("init.add", { name: "Bounty Hunter", init: 14, hp: 30 });
+  assert.equal((await p1.poll()).data.state.map.tokens.find((t) => t.id === bh).moves, undefined);
+  await gm.act("init.start", {});
+  const pv = (await p1.poll()).data.state;
+  assert.equal(pv.sceneFx.k, -1, "no wipe");
+  assert.deepEqual(pv.sceneFx.moves, [{ id: bh, from: { x: 5, y: 5 }, path: [{ x: 7, y: 5 }, { x: 7, y: 8 }], delay: 0 }]);
+  assert.deepEqual([pv.map.tokens.find((t) => t.id === bh).x, pv.map.tokens.find((t) => t.id === bh).y], [7, 8]);
+  // the combat view's switch starts combat too
+  await gm.act("token.script", { id: sn, moves: { path: [{ x: 2, y: 0 }], when: "combat" } });
+  assert.equal((await p1.act("fight.toggle", { on: true })).code, 403);
+  await gm.act("fight.toggle", { on: true });
+  gv = (await gm.poll()).data.state;
+  assert.deepEqual(gv.sceneFx.moves.map((m) => m.id), [sn]);
+  assert.equal(gv.map.tokens.find((t) => t.id === sn).moves, undefined, "each plays once");
+  // switching it off and on again with nothing queued changes nothing
+  const n = gv.sceneFx.n;
+  await gm.act("fight.toggle", { on: false }); await gm.act("fight.toggle", { on: true });
+  assert.equal((await gm.poll()).data.state.sceneFx.n, n);
+});
