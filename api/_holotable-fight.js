@@ -819,6 +819,15 @@ function squaresSeen(camp, eyes, noLight) {
   }
   return vis;
 }
+// A player's drag under fog (issue #93): only where the token can walk without crossing a wall, a window or a closed
+// door, however far; otherwise a drag would peek into the next room. The GM's drags, and maps without fog or walls,
+// aren't checked. Objects that block sight don't stop it: a player can climb over crates (the GM walls in what can't
+// be passed).
+function canWalk(camp, t, x, y) {
+  if (!fogOn(camp) || !t || !((camp.map.walls || []).length)) return true;
+  const { cols, rows } = sizeOf(camp);
+  return E.walkable(camp.map.walls, cols, rows, { x: int(t.x), y: int(t.y), size: clamp(int(t.size, 1), 1, 4) }, x, y);
+}
 // What fog hides from one player: null for the GM or with fog off; otherwise the squares they see and the tokens and
 // tracker entries they can't. A player's own tokens are never hidden from them. In the dark, a creature within a
 // character's blindsight or tremorsense (and not behind a wall from it) is still perceived, though its square isn't lit.
@@ -932,5 +941,5 @@ function cleanWalls(list) {
   });
 }
 
-module.exports = { apply, view, fogFor, fogView, cleanFog, cleanLight, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
+module.exports = { apply, view, canWalk, fogFor, fogView, cleanFog, cleanLight, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
   cleanHitDiceUsed: R.cleanHitDiceUsed };   // for cleanChar: the sheet and the undo record clean hit dice the same way

@@ -266,6 +266,52 @@
     return { out, par, prev, at, start: key(u.x, u.y, start) };
   }
   const reachable = (world, unitId, feet) => search(world, unitId, feet).out;
+  // Can a token get from where it stands to (tx, ty) without crossing a wall, a window or a closed door, however far
+  // (issue #93: a player's drag under fog)? A walk over the board's own squares only: its edge is a wall too, so a
+  // wall drawn to the edge can't be stepped round off the board, and a drop off the board is refused (review of #125).
+  // Each step is a straight line between square centres as in search(); walls are filed by the squares they touch,
+  // so a big map costs little. Other tokens never block it, and neither do objects that block only sight.
+  function walkable(walls, cols, rows, t, tx, ty) {
+    const s = Math.max(1, t.size || 1), X0 = 0, Y0 = 0, X1 = cols - s, Y1 = rows - s;
+    const on = (x, y) => x >= X0 && y >= Y0 && x <= X1 && y <= Y1;
+    if (t.x === tx && t.y === ty) return true;
+    if (!on(tx, ty) || !on(t.x, t.y) || X1 < 0 || Y1 < 0) return false;   // off the board: not under fog
+    const stops = (walls || []).filter(blocksMove);
+    if (!stops.length) return true;
+    // walls filed by the board squares they touch (a step's line, even a big token's, lies over board squares)
+    const sq = (x, y) => y * cols + x, files = new Map();
+    for (const w of stops) {
+      const ax = Math.floor(Math.min(w.a[0], w.b[0]) - 0.01), bx = Math.floor(Math.max(w.a[0], w.b[0]) + 0.01), ay = Math.floor(Math.min(w.a[1], w.b[1]) - 0.01), by = Math.floor(Math.max(w.a[1], w.b[1]) + 0.01);
+      for (let x = Math.max(0, ax); x <= Math.min(cols - 1, bx); x++) for (let y = Math.max(0, ay); y <= Math.min(rows - 1, by); y++) {
+        const k = sq(x, y); if (!files.has(k)) files.set(k, []); files.get(k).push(w);
+      }
+    }
+    // does a step cross a wall filed under any square its line passes over (no allocation: called for every step)
+    const walled = (p, q) => {
+      for (let x = Math.floor(Math.min(p[0], q[0])); x <= Math.floor(Math.max(p[0], q[0])); x++) for (let y = Math.floor(Math.min(p[1], q[1])); y <= Math.floor(Math.max(p[1], q[1])); y++) {
+        if (x < 0 || x >= cols || y < 0 || y >= rows) continue;
+        const f = files.get(sq(x, y));
+        if (f) for (const w of f) if (crosses(p, q, w.a, w.b)) return true;
+      }
+      return false;
+    };
+    // where the token's top-left square may stand: anywhere it fits on the board
+    const W = X1 - X0 + 1, H = Y1 - Y0 + 1, cell = (x, y) => (y - Y0) * W + (x - X0);
+    const seen = new Uint8Array(W * H), queue = [[t.x, t.y]];
+    seen[cell(t.x, t.y)] = 1;
+    while (queue.length) {
+      const [x, y] = queue.pop();
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+        const nx = x + dx, ny = y + dy;
+        if ((!dx && !dy) || nx < X0 || ny < Y0 || nx > X1 || ny > Y1 || seen[cell(nx, ny)]) continue;
+        const p = [x + s / 2, y + s / 2], q = [nx + s / 2, ny + s / 2];
+        if (walled(p, q)) continue;
+        if (nx === tx && ny === ty) return true;
+        seen[cell(nx, ny)] = 1; queue.push([nx, ny]);
+      }
+    }
+    return false;
+  }
   // the squares a move passes through, from where the unit stands to (x, y), by the cheapest way; null if out of reach
   function pathTo(world, unitId, feet, x, y) {
     const s = search(world, unitId, feet);
@@ -1276,5 +1322,5 @@
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
     SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf, d20, flankOf, fixedTotal, cruel, modeName,
-    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet };
+    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, walkable };
 });
