@@ -270,7 +270,7 @@
         const d = defeated(n, c.actor, c.target);
         if (d) return senseNote(d, n);
         if (n === 'Frightened') { const src = sourceOf(c.world, c.actor, n); if (src && !sees(c.world, c.actor, src)) return { note: true, text: `frightened, but ${src.name} is out of sight` }; }
-        return { [e.attacks === 'prone' ? 'dis' : e.attacks]: true, text: `you are ${n.toLowerCase()}` };
+        return { [e.attacks === 'prone' ? 'dis' : e.attacks]: true, text: `${c.actor.name} is ${n.toLowerCase()}` };   // the table reads the line too
       }) },
     { id: 'exhausted', when: (c) => (+c.actor.exhaustion || 0) >= 3, each: () => [{ dis: true, text: 'exhaustion' }] },
     { id: 'dodge', when: (c) => c.dodging, each: (c) => [{ dis: true, text: `${c.target.name} is dodging` }] },
