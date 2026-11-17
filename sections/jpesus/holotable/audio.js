@@ -116,23 +116,38 @@
         <span class="muted" style="font-size:12px">${A.uploading ? esc(A.uploading) : `MP3, OGG, WAV, FLAC, M4A or WebM, up to ${n0(A.maxTrack || 31457280) / 1048576} MB each.${A.cap ? ` Storage: ${mb(A.used)} of ${mb(A.cap)}.` : ''}`}</span></div>`;
     renderGmProgress();
   }
+  // The file goes straight from this browser to the Den's private file store, on a one-off upload address
+  // the server hands out (it takes only this file, only this size, for ten minutes). Then the server
+  // checks what arrived before the track is listed.
+  function putFile(put, file, onProgress) {
+    return new Promise((ok, bad) => {
+      const x = new XMLHttpRequest();
+      x.open(put.method || 'PUT', put.url);
+      for (const [k, v] of Object.entries(put.headers || {})) x.setRequestHeader(k, v);
+      x.upload.onprogress = e => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+      x.onload = () => (x.status >= 200 && x.status < 300 ? ok() : bad(new Error(`the file store refused the upload (${x.status})`)));
+      x.onerror = () => bad(new Error('the upload was cut off; check the connection and try again'));
+      x.send(file);
+    });
+  }
   async function uploadTrack(file) {
     A.uploading = `Uploading ${file.name}…`; renderGmBox();
+    let start = null;
     try {
-      const start = await H.post('audiostart', { name: file.name, bytes: file.size });
-      const part = start.part, n = Math.ceil(file.size / part);
-      for (let i = 0; i < n; i++) {
-        const blob = file.slice(i * part, Math.min(file.size, (i + 1) * part));
-        const data = await new Promise((ok, bad) => { const fr = new FileReader(); fr.onload = () => ok(String(fr.result).split(',')[1] || ''); fr.onerror = bad; fr.readAsDataURL(blob); });
-        let tries = 0;
-        for (;;) {   // a part that timed out is sent again; the server ignores a part it already has
-          try { await H.post('audioadd', { id: start.id, seq: i, data }); break; } catch (err) { if (++tries >= 3 || /audio file|full|room|order|bad/i.test(err.message)) throw err; await new Promise(r => setTimeout(r, 800 * tries)); }
-        }
-        A.uploading = `Uploading ${file.name}: ${Math.round(100 * (i + 1) / n)}%`; renderGmBox();
-      }
+      start = await H.post('audiostart', { name: file.name, bytes: file.size });
+      let shown = -1;
+      await putFile(start.put, file, f => {
+        const pc = Math.floor(100 * f); if (pc === shown) return; shown = pc;
+        A.uploading = `Uploading ${file.name}: ${pc}%`; renderGmBox();
+      });
+      A.uploading = `Checking ${file.name}…`; renderGmBox();
       await H.post('audiodone', { id: start.id });
+      start = null;
       H.toast(`Added ${file.name}`);
-    } catch (err) { H.toast(`${file.name}: ${err.message}`, true); }
+    } catch (err) {
+      H.toast(`${file.name}: ${err.message}`, true);
+      if (start && start.id) H.post('audiodelete', { id: start.id }).catch(() => {});   // give its room back now, not in an hour
+    }
     A.uploading = ''; await loadTracks(true); renderGmBox();
   }
   const gm = $('#gm');
