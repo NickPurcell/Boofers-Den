@@ -63,6 +63,6 @@
 #modalBox label[hidden] { display: none; }
 .ct-variants { font-size: 11px; white-space: nowrap; }
 /* the wall tool's bar: a row of its own under the map tools, never over the board */
-.ct-wallbar { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-bottom: 1px solid var(--line); background: var(--bg2); flex-wrap: nowrap; overflow-x: auto; }
+.ct-wallbar { display: flex; align-items: center; gap: 6px; padding: 4px 10px; border-bottom: 1px solid var(--line); background: var(--bg2); flex-wrap: wrap; }
 .ct-wallbar.hidden { display: none; }
 .ct-wallbar > * { white-space: nowrap; flex: none; }
