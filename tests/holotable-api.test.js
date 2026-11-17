@@ -1768,3 +1768,14 @@ test("the senses fill holds an action at most about a second while SW5e is slow,
   await gm.act("notes.save", { notes: "and another" });
   assert.deepEqual(await vel(), [{ kind: "darkvision", range: 60 }], "filled again");
 });
+
+test("a character the GM makes is announced to the GM only; a player's to everyone (#142)", async () => {
+  const { gm, p1 } = await table();
+  await gm.act("char.save", { char: { name: "Darth Secret" } });
+  await p1.act("char.save", { char: { name: "Kira" } });
+  const pchat = JSON.stringify((await p1.poll()).data.state.chat);
+  assert.ok(!pchat.includes("Darth Secret"), pchat);
+  assert.ok(pchat.includes("brought Kira to the table"), "a player's own character is still announced");
+  const gchat = (await gm.poll()).data.state.chat.map((m) => m.text || "");
+  assert.ok(gchat.some((t) => t.includes("You made Darth Secret")), "the GM still gets the line");
+});

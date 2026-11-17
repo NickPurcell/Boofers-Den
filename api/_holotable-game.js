@@ -489,7 +489,10 @@ function applyAction(camp, cid, gm, type, p) {
       const ch = clean;
       for (const e of ini.entries) if (e.charId === id) { e.name = ch.name || e.name; const hp = ch.hp || {}; e.hp = hp.current; e.maxHp = hp.max; }
       for (const t of mp.tokens) if (t.charId === id) t.name = ch.name || t.name;
-      if (!old) addChat(camp, { system: true, text: `${playerName(camp, cid)} brought ${ch.name || "a character"} to the table.` });
+      // a player's new character is announced to all; the GM's is told to the GM only, since an NPC's name may be a
+      // secret the GM hides once its token is down (#142)
+      if (!old) addChat(camp, gm ? { system: true, to: ["@gm"], private: true, text: `You made ${ch.name || "a character"}. Players don't see this line.` }
+        : { system: true, text: `${playerName(camp, cid)} brought ${ch.name || "a character"} to the table.` });
       return { id };
     }
     case "char.photo.clear": {
