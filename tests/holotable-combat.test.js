@@ -1957,3 +1957,38 @@ test("fog of war (review of #113): an unseen creature's move, hit or heal sends 
   await gm.act("fight.move", { x: 8, y: 0 });
   assert.ok((await sam.state()).fight.events.some((e) => e.token === raider), "in sight: the move shows");
 });
+
+/* ---------------------------------------------------------------- creature casting (audit 9.5) */
+test("creature casting: a stat block's force or tech points and innate N/day powers become the GM's counts", () => {
+  const src = require("fs").readFileSync(require("path").join(__dirname, "../sections/jpesus/holotable/combat/view.js"), "utf8");
+  const limitedOf = new Function(src.slice(src.indexOf("  const slug = "), src.indexOf("  // the GM's own browser has the creature list")) + "; return limitedOf;")();
+  const m = { b: [
+    { n: "Forcecasting", d: "The Inquisitor is a 9th-level forcecaster. Its forcecasting ability is Charisma (power save DC 16, +8 to hit with force attacks). It has 33 force points and knows the following force powers:" },
+    { n: "Tech Casting", d: "The droid is a 3rd level tech caster (tech save DC 13, +5 to hit with power attacks, 15 tech points).  The droid knows the following powers." },
+    { n: "Innate Forcecasting", d: "At-will: affect mind, feedback  3/day each: darkness, telekinesis  1/day each: dominate mind, mass animation  The spirit's forcecasting ability is Wisdom." },
+    { n: "Claw", d: "Melee weapon attack.", r: "" },
+  ] };
+  const got = limitedOf(m).map((r) => [r.key, r.name, r.max, r.refill, !!r.points]);
+  assert.deepEqual(got, [
+    ["force-points", "Force points", 33, "long", true], ["tech-points", "Tech points", 15, "long", true],
+    ["darkness", "Darkness", 3, "long", false], ["telekinesis", "Telekinesis", 3, "long", false],
+    ["dominate-mind", "Dominate mind", 1, "long", false], ["mass-animation", "Mass animation", 1, "long", false],
+  ]);
+});
+
+test("creature casting through the API: a points pool holds up to 300 and is spent several at a time, GM only", async () => {
+  const { gm, sam, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  const res = [{ key: "force-points", name: "Force points", max: 33, refill: "long", points: true }, { key: "darkness", name: "Darkness", max: 3, refill: "long" },
+    { key: "huge", name: "Too many", max: 999, refill: "long", points: true }, { key: "cap", name: "Plain", max: 999, refill: "long" }];
+  assert.equal((await gm.act("fight.npcres", { id: ids.raider, op: "set", res })).code, 200);
+  let r = (await gm.state()).fight.npcRes[ids.raider];
+  assert.deepEqual(r.map((x) => [x.key, x.max, !!x.points]), [["force-points", 33, true], ["darkness", 3, false], ["huge", 300, true], ["cap", 20, false]], "points pools up to 300; other counts up to 20");
+  assert.equal((await gm.act("fight.npcres", { id: ids.raider, op: "use", key: "force-points", n: 4 })).code, 200, "a 3rd-level power: 4 points");
+  const gv = await gm.state();
+  assert.equal(gv.fight.npcRes[ids.raider][0].used, 4);
+  assert.match(gv.chat.filter((m) => m.fight).pop().text, /spends 4 force points: 29 of 33 left/);
+  assert.equal((await gm.act("fight.npcres", { id: ids.raider, op: "use", key: "force-points", n: 40 })).code, 400, "not more than are left");
+  assert.equal((await sam.act("fight.npcres", { id: ids.raider, op: "use", key: "force-points", n: 1 })).code, 403);
+  assert.deepEqual((await sam.state()).fight.npcRes, {}, "players never see a creature's casting");
+});
