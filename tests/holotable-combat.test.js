@@ -1903,3 +1903,21 @@ test("fog of war: a crafted fog record is cleaned; visibility on a big map with 
   E.visibleSquares({ walls, units: { a: { id: "a", x: 100, y: 0, size: 1 } } }, ["a"], 200, 200);
   assert.ok(Date.now() - t0 < 2000, "2,000 walls on 200 x 200 squares");
 });
+
+test("fog of war (review of #113): an unseen creature's move, hit or heal sends no floating number to a player who can't see it", async () => {
+  const { gm, sam, rae, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  const st0 = await gm.state(), raider = tokenOf(st0, "Raider").id;
+  await gm.act("fight.wall", { op: "add", a: [3, -1], b: [3, 16] });
+  await gm.act("fight.fog", { on: true });
+  await sam.act("fight.end", {});   // the Raider's turn
+  assert.equal((await gm.act("fight.move", { x: 7, y: 0 })).code, 200);
+  const sv = await sam.state(), gv = await gm.state();
+  assert.ok(gv.fight.events.some((e) => e.token === raider && e.kind === "move"), "the GM sees the move");
+  assert.ok(!(sv.fight.events || []).some((e) => e.token === raider), "Sam isn't told something unseen moved");
+  assert.ok(!JSON.stringify(sv).includes(raider), "nor the Raider's token id, anywhere");
+  // with the wall gone the Raider is in sight, and its next move shows
+  await gm.act("fight.wall", { op: "clear" });
+  await gm.act("fight.move", { x: 8, y: 0 });
+  assert.ok((await sam.state()).fight.events.some((e) => e.token === raider), "in sight: the move shows");
+});
