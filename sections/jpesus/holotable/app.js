@@ -10,10 +10,10 @@
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* storage unavailable */ } },
   };
   const rid = () => (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2) + Date.now().toString(36)).replace(/-/g, '');
-  let clientId = store.get('holo.clientId', null);
-  if (!clientId) { clientId = rid(); store.set('holo.clientId', clientId); }
+  // Who you are comes from the server (a signed, HttpOnly session cookie the page can't read).
+  let clientId = null;
 
-  const S = { code: null, st: null, es: null, selected: null, tab: 'sheet', sub: 'main', rollMode: 'normal',
+  const S = { signedIn: false, st: null, selected: null, tab: 'sheet', sub: 'main', rollMode: 'normal',
     importNotes: {}, mapImg: null, mapBgVersion: -1, zoom: 1, lastChatId: null, chatHist: [], chatHistIdx: -1 };
 
   // --------------------------------------------------------------------------- utils
@@ -24,13 +24,15 @@
   const API = '/api/holotable';
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   async function post(op, body) {
-    const r = await fetch(`${API}?op=${op}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clientId, ...body }) });
+    const r = await fetch(`${API}?op=${op}`, { method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json', 'X-HoloTable': '1' }, body: JSON.stringify(body || {}) });
     const j = await r.json().catch(() => ({ error: 'Server error (' + r.status + ')' }));
+    if (r.status === 401 && op !== 'login') signedOut('Your session ended. Please sign in again.');
     if (!r.ok || j.error) throw new Error(j.error || r.statusText);
     return j;
   }
   async function act(type, payload = {}) {
-    try { return await post('action', { code: S.code, type, payload }); }
+    try { return await post('action', { type, payload }); }
     catch (e) { toast(e.message, true); return null; }
   }
   function modal(html, onMount) {
@@ -38,10 +40,14 @@
     onMount && onMount($('#modalBox'));
   }
   const closeModal = () => $('#modal').classList.add('hidden');
+  const modalOpen = () => !$('#modal').classList.contains('hidden');
   $('#modal').addEventListener('mousedown', e => { if (e.target.id === 'modal') closeModal(); });
   const initials = n => String(n || '?').split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
   const md = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\*(.+?)\*/g, '<i>$1</i>').replace(/\n/g, '<br>');
   const timeStr = ts => new Date(ts * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const n0 = v => (Number.isFinite(+v) ? +v : 0);                       // a number for display, never markup
+  const color = c => (/^#[0-9a-fA-F]{6}$/.test(String(c || '')) ? c : '#4fc3f7');
+  const imgUrl = u => (/^\/api\/holotable\?(img=[a-f0-9]{16,40}|a=[a-z0-9-]{3,60}\.\d{1,5})$/.test(String(u || '')) ? u : '');
   function getPath(o, p) { return p.split('.').reduce((a, k) => a == null ? a : a[k], o); }
   function setPath(o, p, v) {
     const ks = p.split('.'); let cur = o;
@@ -72,112 +78,72 @@
     });
   }
 
-  // --------------------------------------------------------------------------- lobby
-  function recent() { return store.get('holo.recent', []); }
-  function saveRecent(entry) {
-    const list = recent().filter(r => r.code !== entry.code);
-    const old = recent().find(r => r.code === entry.code) || {};
-    list.unshift({ ...old, ...entry, ts: Date.now() });
-    store.set('holo.recent', list.slice(0, 12));
-  }
-  async function renderSaved() {
-    const r = { campaigns: [] }; // campaigns live on Boofer's Den; "Your campaigns" above lists the ones this browser joined
-    const mine = new Set(recent().map(x => x.code));
-    const list = (r.campaigns || []).filter(c => !mine.has(c.code));
-    $('#saved').innerHTML = `${list.length ? '<h3>Saved on this PC</h3>' + list.map(c => `
-      <div class="recent-item"><span class="code">${esc(c.code)}</span><b>${esc(c.name || '')}</b>
-        <span class="muted">${esc(c.characters.join(', ') || 'no characters')} · ${new Date(c.updated * 1000).toLocaleDateString()}</span><span class="spacer"></span>
-        <button class="btn small primary" data-resume="${esc(c.code)}">Resume as GM</button></div>`).join('') : ''}
-      <div class="row" style="margin-top:10px"><button class="btn small ghost" id="restoreBtn">⇪ Restore a campaign backup…</button>
-      <input type="file" id="restoreFile" accept=".json" hidden></div>`;
-    S.savedList = r.campaigns || [];
-  }
-  $('#saved').addEventListener('click', e => {
-    const b = e.target.closest('[data-resume]');
-    if (b) { const c = S.savedList.find(x => x.code === b.dataset.resume); join(c.code, c.gmName || 'GM', c.gmToken); }
-    if (e.target.id === 'restoreBtn') $('#restoreFile').click();
-  });
-  $('#saved').addEventListener('change', async e => {
-    if (e.target.id !== 'restoreFile' || !e.target.files[0]) return;
-    try {
-      const campaign = JSON.parse(await e.target.files[0].text());
-      const name = prompt('Your name (you will be the GM of the restored campaign):', 'GM'); if (!name) return;
-      const r = await post('restore', { campaign, playerName: name });
-      saveRecent({ code: r.code, name: r.name, playerName: name, gmToken: r.gmToken });
-      toast(`Restored “${r.name}” — room code ${r.code}`);
-      join(r.code, name, r.gmToken);
-    } catch (err) { $('#lobbyError').textContent = err.message.includes('JSON') ? 'That file is not a HoloTable backup.' : err.message; }
-    e.target.value = '';
-  });
-  function renderRecent() {
-    renderSaved();
-    const list = recent();
-    $('#recent').innerHTML = list.length ? '<h3>Your campaigns</h3>' + list.map(r => `
-      <div class="recent-item"><span class="code">${esc(r.code)}</span><b>${esc(r.name || '')}</b>
-        <span class="muted">as ${esc(r.playerName || '')}${r.gmToken ? ' · GM' : ''}</span><span class="spacer"></span>
-        <button class="btn small primary" data-rejoin="${esc(r.code)}">Rejoin</button>
-        <button class="btn small ghost" data-forget="${esc(r.code)}" title="Remove from this list">✕</button></div>`).join('') : '';
-  }
-  $('#recent').addEventListener('click', e => {
-    const rj = e.target.closest('[data-rejoin]'), fg = e.target.closest('[data-forget]');
-    if (rj) { const r = recent().find(x => x.code === rj.dataset.rejoin); join(r.code, r.playerName, r.gmToken); }
-    if (fg) { store.set('holo.recent', recent().filter(x => x.code !== fg.dataset.forget)); renderRecent(); }
-  });
-  $('#hostForm').addEventListener('submit', async e => {
+  // --------------------------------------------------------------------------- sign in
+  $('#loginForm').addEventListener('submit', async e => {
     e.preventDefault();
     const f = new FormData(e.target);
-    try {
-      const r = await post('create', { campaignName: f.get('campaignName'), playerName: f.get('playerName') });
-      saveRecent({ code: r.code, name: f.get('campaignName'), playerName: f.get('playerName'), gmToken: r.gmToken });
-      join(r.code, f.get('playerName'), r.gmToken);
-    } catch (err) { $('#lobbyError').textContent = err.message; }
-  });
-  $('#joinForm').addEventListener('submit', e => {
-    e.preventDefault();
-    const f = new FormData(e.target);
-    const code = String(f.get('code')).toUpperCase().trim();
-    join(code, f.get('playerName'), String(f.get('gmToken') || '').trim() || (recent().find(r => r.code === code) || {}).gmToken);
-  });
-
-  async function join(code, playerName, gmToken) {
     $('#lobbyError').textContent = '';
     try {
-      await post('join', { code, playerName, gmToken });
-    } catch (err) { $('#lobbyError').textContent = err.message; return; }
-    S.code = code; S.st = null; S.selected = null; S.mapBgVersion = -1; S.mapImg = null; S.lastChatId = null;
-    saveRecent({ code, playerName, ...(gmToken ? { gmToken } : {}) });
-    history.replaceState(null, '', '?join=' + code);
+      await post('login', { name: f.get('name'), password: f.get('password') });
+      store.set('holo.name', String(f.get('name') || ''));
+      e.target.password.value = '';
+      enterTable();
+    } catch (err) { $('#lobbyError').textContent = err.message; }
+  });
+  function enterTable() {
+    S.signedIn = true; S.st = null; S.mapBgVersion = -1; S.mapImg = null; S.lastChatId = null;
     $('#lobby').classList.add('hidden'); $('#table').classList.remove('hidden');
     connect();
   }
+  function signedOut(msg) {
+    if (!S.signedIn) return;
+    S.signedIn = false; S.gen = (S.gen || 0) + 1;
+    if (S.abort) S.abort.abort();
+    closeModal();
+    $('#table').classList.add('hidden'); $('#lobby').classList.remove('hidden');
+    $('#lobbyError').textContent = msg || '';
+  }
+  $('#leaveBtn').addEventListener('click', async () => {
+    try { await post('logout', {}); } catch { /* signing out anyway */ }
+    signedOut('');
+  });
+
   // Live updates: the server holds each request open until something changes (or ~8 s pass).
+  // A hidden tab stops asking, and picks up again when it's shown.
   function connect() {
     const gen = S.gen = (S.gen || 0) + 1;
     pollLoop(gen);
   }
   async function pollLoop(gen) {
-    let v = '', lib = null, backoff = 1000;
-    while (S.code && S.gen === gen) {
+    let lib = null, backoff = 1000;
+    S.v = '';
+    while (S.signedIn && S.gen === gen) {
+      if (document.hidden) { $('#conn').classList.remove('ok'); $('#conn').title = 'Paused while this tab is hidden'; return; }
       try {
-        const r = await fetch(`${API}?op=poll&code=${encodeURIComponent(S.code)}&clientId=${encodeURIComponent(clientId)}&v=${v}`, { cache: 'no-store' });
+        S.abort = new AbortController();
+        const r = await fetch(`${API}?op=poll&v=${encodeURIComponent(S.v)}`, { cache: 'no-store', credentials: 'same-origin', signal: S.abort.signal });
         if (S.gen !== gen) return;
         const j = await r.json().catch(() => ({}));
-        if (r.status === 403 || r.status === 404) { $('#conn').classList.remove('ok'); toast(j.error || 'Lost access to this campaign', true); await sleep(5000); continue; }
+        if (r.status === 401) return signedOut('Your session ended. Please sign in again.');
         if (!r.ok) throw new Error(j.error || 'poll failed');
-        $('#conn').classList.add('ok'); backoff = 1000;
-        if (j.state) { v = j.v; onState(j.state); }
+        $('#conn').classList.add('ok'); $('#conn').title = 'Connected'; backoff = 1000;
+        if (j.state) { S.v = j.v; onState(j.state); }
         if (lib !== null && j.lib !== lib && A.packs) { await loadPacks(); renderDrawer(); }
         lib = j.lib;
-      } catch {
+      } catch (err) {
+        if (S.gen !== gen || document.hidden) continue;
         $('#conn').classList.remove('ok');
         await sleep(backoff); backoff = Math.min(backoff * 2, 10000);
       }
     }
   }
-  $('#leaveBtn').addEventListener('click', () => {
-    S.gen = (S.gen || 0) + 1; S.code = null;
-    history.replaceState(null, '', location.pathname);
-    $('#table').classList.add('hidden'); $('#lobby').classList.remove('hidden'); renderRecent();
+  document.addEventListener('visibilitychange', () => {
+    if (!S.signedIn) return;
+    if (document.hidden) {
+      S.gen = (S.gen || 0) + 1; if (S.abort) S.abort.abort();
+      $('#conn').classList.remove('ok'); $('#conn').title = 'Paused while this tab is hidden';
+    }
+    else { const keep = S.v; connect(); S.v = keep; }
   });
 
   // --------------------------------------------------------------------------- state
@@ -189,6 +155,7 @@
 
   function onState(st) {
     const first = !S.st;
+    clientId = st.you;
     // fill any missing fields so partial / hand-written sheets never break rendering
     for (const [id, c] of Object.entries(st.characters)) {
       const b = R.blankCharacter();
@@ -201,13 +168,13 @@
     }
     S.st = st;
     document.body.classList.toggle('is-gm', !!st.isGM);
-    saveRecent({ code: st.code, name: st.name, ...(st.gmToken ? { gmToken: st.gmToken } : {}) });
     if (!S.selected || !st.characters[S.selected]) {
       const mine = chars().find(c => c.owner === clientId);
       S.selected = (mine || chars()[0] || {}).id || null;
     }
     if (first && st.isGM && !chars().length) S.tab = 'gm';
     renderAll();
+    maybeCelebrate();
   }
 
   function guarded(id, fn) {
@@ -233,13 +200,8 @@
   // --------------------------------------------------------------------------- top bar
   function renderTop() {
     $('#campName').textContent = S.st.name;
-    $('#codeBtn').textContent = S.st.code;
     $('#online').innerHTML = S.st.online.map(o => `<span class="pill ${o.gm ? 'gm' : ''}">${esc(o.name)}${o.gm ? ' (GM)' : ''}</span>`).join('');
   }
-  $('#codeBtn').addEventListener('click', () => {
-    const link = location.origin + location.pathname + '?join=' + S.st.code;
-    navigator.clipboard?.writeText(link).then(() => toast('Invite link copied: ' + link), () => toast(link));
-  });
   $$('.rollmode button').forEach(b => b.addEventListener('click', () => {
     S.rollMode = b.dataset.mode; $$('.rollmode button').forEach(x => x.classList.toggle('on', x === b));
   }));
@@ -263,10 +225,10 @@
     $('#charList').innerHTML = list.length ? list.map(c => {
       const hp = c.hp || {}; const pct = Math.max(0, Math.min(100, 100 * (+hp.current || 0) / (+hp.max || 1)));
       const owner = (S.st.players[c.owner] || {}).name || '—';
-      const cls = (c.classes || []).map(k => `${k.name} ${k.level}`).join(' / ');
-      return `<div class="char-item ${c.id === S.selected ? 'on' : ''}" data-id="${c.id}">
-        <div class="avatar" style="background-color:${esc(c.color || '#4fc3f7')};${c.image ? `background-image:url('${esc(c.image)}')` : ''}">${c.image ? '' : esc(initials(c.name))}</div>
-        <div class="meta"><div class="nm">${esc(c.name)}</div><div class="sub">${esc(cls)} · ${esc(owner)}</div>
+      const cls = (c.classes || []).map(k => `${k.name} ${n0(k.level)}`).join(' / '); // shown with esc() below
+      return `<div class="char-item ${c.id === S.selected ? 'on' : ''}" data-id="${esc(c.id)}">
+        <div class="avatar" style="background-color:${color(c.color)};${imgUrl(c.image) ? `background-image:url('${esc(imgUrl(c.image))}')` : ''}">${imgUrl(c.image) ? '' : esc(initials(c.name))}</div>
+        <div class="meta"><div class="nm">${esc(c.name)}${pendingFor(c.id) ? ' <span class="lvl-badge" title="Level up waiting">⬆</span>' : ''}</div><div class="sub">${esc(cls)} · ${esc(owner)}</div>
         <div class="hpbar"><div style="width:${pct}%;background:${pct < 30 ? 'var(--red)' : pct < 60 ? 'var(--amber)' : 'var(--green)'}"></div></div></div></div>`;
     }).join('') : '<p class="muted" style="padding:8px">No characters yet. Import a sheet or create one.</p>';
   }
@@ -328,7 +290,7 @@
       try {
         toast('Uploading photo…');
         const { dataUrl } = await downscale(f, kind === 'token' ? 400 : 800, 0.86);
-        await post('upload', { code: S.code, purpose: 'photo', charId: ch.id, kind, dataUrl });
+        await post('upload', { purpose: 'photo', charId: ch.id, kind, dataUrl });
         toast(kind === 'token' ? 'Token photo updated' : 'Profile photo updated');
       } catch (err) { toast(err.message || 'Could not upload that image', true); }
     };
@@ -340,6 +302,14 @@
     catch (e) { toast(`Couldn't read ${src}: ${e.message}`, true); return; }
     closeModal();
     for (const res of [].concat(results)) {
+      const same = chars().find(c => canEdit(c) && c.name.trim().toLowerCase() === String(res.char.name || '').trim().toLowerCase());
+      if (same && confirm(`Update ${same.name} from this sheet?\n\nOK keeps their photos, token, and current HP / points used.\nCancel adds a separate copy.`)) {
+        Object.assign(res.char, { id: same.id, color: same.color });
+        res.char.hp.current = Math.min(n0(same.hp.current), n0(res.char.hp.max));
+        res.char.hp.temp = n0(same.hp.temp);
+        res.char.force.used = n0(same.force.used); res.char.tech.used = n0(same.tech.used);
+        res.char.conditions = same.conditions || [];
+      }
       const r = await act('char.save', { char: res.char });
       if (r) {
         S.importNotes[r.id] = { source: res.source, notes: res.notes };
@@ -406,8 +376,8 @@
     ${note ? `<div class="note"><b>Imported from ${esc(note.source)}.</b> Please check:<ul>${note.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul>
       <button class="btn tiny" data-act="dismiss-note">Got it</button></div>` : ''}
     <div class="sheet-head">
-      <div class="portrait-wrap"><div class="portrait ${ro ? '' : 'editable'}" ${ro ? '' : 'data-act="photo" data-kind="profile" title="Upload a profile photo"'} style="background-color:${esc(ch.color || '#4fc3f7')};${ch.image ? `background-image:url('${esc(ch.image)}')` : ''}">${ch.image ? '' : esc(initials(ch.name))}${ro ? '' : '<span class="cam">📷</span>'}</div>
-        <div class="token-preview" title="Map token" style="background-color:${esc(ch.color || '#4fc3f7')};${(ch.tokenImage || ch.image) ? `background-image:url('${esc(ch.tokenImage || ch.image)}')` : ''}" ${ro ? '' : 'data-act="photo" data-kind="token"'}>${(ch.tokenImage || ch.image) ? '' : esc(initials(ch.name))}</div></div>
+      <div class="portrait-wrap"><div class="portrait ${ro ? '' : 'editable'}" ${ro ? '' : 'data-act="photo" data-kind="profile" title="Upload a profile photo"'} style="background-color:${color(ch.color)};${imgUrl(ch.image) ? `background-image:url('${esc(imgUrl(ch.image))}')` : ''}">${imgUrl(ch.image) ? '' : esc(initials(ch.name))}${ro ? '' : '<span class="cam">📷</span>'}</div>
+        <div class="token-preview" title="Map token" style="background-color:${color(ch.color)};${imgUrl(ch.tokenImage || ch.image) ? `background-image:url('${esc(imgUrl(ch.tokenImage || ch.image))}')` : ''}" ${ro ? '' : 'data-act="photo" data-kind="token"'}>${imgUrl(ch.tokenImage || ch.image) ? '' : esc(initials(ch.name))}</div></div>
       <div class="sheet-title">
         ${inp('name', ch.name, { ro, cls: 'name' })}
         <div class="row wrap">
@@ -426,6 +396,8 @@
       </div>
       <div class="sheet-actions">
         <button class="btn small amber" data-act="init">⚔ Initiative</button>
+        ${pendingFor(ch.id) && !ro ? `<button class="btn small lvl-go" data-act="levelup">⬆ Level up${n0(pendingFor(ch.id).count) > 1 ? ' ×' + n0(pendingFor(ch.id).count) : ''}</button>` : ''}
+        ${isGM() && !pendingFor(ch.id) ? '<button class="btn small ghost" data-act="grant" title="Give this character a new level">⬆ Grant level</button>' : ''}
         <button class="btn small" data-act="token">◉ Token</button>
         <button class="btn small" data-act="export">⇩ Export</button>
         ${!ro ? '<button class="btn small danger" data-act="delete">Delete</button>' : ''}
@@ -546,14 +518,14 @@
         <div class="box"><h4>Appearance</h4>
           ${!ro ? `<div class="row wrap" style="margin-bottom:8px"><button class="btn small" data-act="photo" data-kind="profile">📷 Upload profile photo</button>
             <button class="btn small" data-act="photo" data-kind="token">◉ Upload token photo</button>
+            ${ch.image ? '<button class="btn small ghost" data-act="clear-photo">Remove profile photo</button>' : ''}
             ${ch.tokenImage ? '<button class="btn small ghost" data-act="clear-token-photo">Token: use profile photo</button>' : ''}</div>` : ''}
-          <label>Profile photo URL${inp('image', ch.image || '', { ro, ph: 'upload above, or paste https://…' })}</label>
-          <label style="margin-top:8px">Token photo URL <span class="muted" style="text-transform:none">(blank = profile photo)</span>${inp('tokenImage', ch.tokenImage || '', { ro, ph: 'optional' })}</label>
+          <p class="muted" style="font-size:12px;margin:0 0 6px">The token uses the profile photo unless you upload a separate one.</p>
           <label style="margin-top:8px">Token colour${inp('color', ch.color || '#4fc3f7', { ro, type: 'color' })}</label>
           <label style="margin-top:8px">Experience points${inp('xp', +ch.xp || 0, { ro, type: 'number' })}</label>
           <label style="margin-top:8px">Proficiency bonus override${inp('profOverride', ch.profOverride ?? '', { ro, type: 'number', ph: String(2 + Math.floor((lvl - 1) / 4)) })}</label>
           <label style="margin-top:8px">Initiative bonus (misc)${inp('initMisc', +ch.initMisc || 0, { ro, type: 'number' })}</label>
-          ${isGM() ? `<label style="margin-top:8px">Owner (GM)<select data-act-change="assign">${Object.entries(S.st.players).map(([id, p]) => `<option value="${id}" ${id === ch.owner ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>` : ''}
+          ${isGM() ? `<label style="margin-top:8px">Owner (GM)<select data-act-change="assign">${Object.entries(S.st.players).map(([id, p]) => `<option value="${esc(id)}" ${id === ch.owner ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>` : ''}
         </div>
         <div class="box"><h4>Backstory & Notes</h4>${inp('notes', ch.notes || '', { ro, type: 'textarea', rows: 16 })}</div>
       </div>`;
@@ -661,7 +633,10 @@
       }
       case 'token': if (await act('token.add', { charId: ch.id, x: 1, y: 1 })) setTab('map'); break;
       case 'photo': pickPhoto(b.dataset.kind); break;
-      case 'clear-token-photo': mutate(c => { c.tokenImage = ''; }); break;
+      case 'clear-token-photo': act('char.photo.clear', { charId: ch.id, kind: 'token' }); break;
+      case 'clear-photo': act('char.photo.clear', { charId: ch.id, kind: 'profile' }); break;
+      case 'levelup': openWizard(ch.id); break;
+      case 'grant': openGrant([ch.id]); break;
       case 'export': {
         const out = clone(ch); delete out.owner; delete out.id; delete out.updated; out._format = 'holotable-sw5e';
         const a2 = document.createElement('a');
@@ -680,7 +655,7 @@
     const ini = S.st.initiative, gm = isGM();
     const myChars = chars().filter(c => c.owner === clientId);
     let html = `<div class="row wrap"><h3>Initiative</h3><span class="round">${ini.active ? 'Round ' + ini.round : 'Not in combat'}</span><span class="spacer"></span>
-      ${myChars.map(c => `<button class="btn small amber" data-cact="roll-init" data-id="${c.id}">⚔ Roll for ${esc(c.name)}</button>`).join('')}
+      ${myChars.map(c => `<button class="btn small amber" data-cact="roll-init" data-id="${esc(c.id)}">⚔ Roll for ${esc(c.name)}</button>`).join('')}
       ${gm ? `<button class="btn small" data-cact="start">Start</button><button class="btn small" data-cact="prev">◀ Prev</button>
         <button class="btn small primary" data-cact="next">Next turn ▶</button><button class="btn small danger" data-cact="clear">End combat</button>` : ''}</div>`;
     if (gm) html += `<div class="box" style="margin-top:12px"><h4>Add NPC / enemy</h4><div class="npc-form">
@@ -694,12 +669,12 @@
       const ch = en.charId && S.st.characters[en.charId];
       const canHp = gm || (ch && ch.owner === clientId);
       const hp = en.hp == null ? '' : `${en.hp}`;
-      return `<div class="init-row ${ini.active && i === ini.turn ? 'cur' : ''} ${en.hidden ? 'hid' : ''}" data-id="${en.id}">
-        <div class="init">${gm ? `<input type="number" value="${en.init}" data-cf="init">` : Math.round(en.init)}</div>
+      return `<div class="init-row ${ini.active && i === ini.turn ? 'cur' : ''} ${en.hidden ? 'hid' : ''}" data-id="${esc(en.id)}">
+        <div class="init">${gm ? `<input type="number" value="${n0(en.init)}" data-cf="init">` : Math.round(n0(en.init))}</div>
         <div><b>${esc(en.name)}</b>${en.hidden ? ' <span class="muted">(hidden)</span>' : ''}${ch ? ` <span class="muted">· ${esc((S.st.players[ch.owner] || {}).name || '')}</span>` : ''}
           <div>${(en.conditions || []).map((c, ci) => `<span class="chip" title="${esc(R.CONDITIONS[c] || '')}">${esc(c)}${gm || canHp ? `<button data-cact="rm-cond" data-ci="${ci}">✕</button>` : ''}</span>`).join('')}
           ${gm || canHp ? `<select data-cf="add-cond" style="font-size:12px;padding:1px 4px"><option value="">+ condition</option>${Object.keys(R.CONDITIONS).map(c => `<option>${c}</option>`).join('')}</select>` : ''}</div></div>
-        <div class="hp">${hp !== '' ? (canHp ? `HP <input data-cf="hp" value="${esc(hp)}" title="Type a number, or -7 / +5">` : `HP ${esc(hp)}`) + (en.maxHp != null ? ` <span class="muted">/ ${en.maxHp}</span>` : '') : ''}</div>
+        <div class="hp">${hp !== '' ? (canHp ? `HP <input data-cf="hp" value="${esc(hp)}" title="Type a number, or -7 / +5">` : `HP ${esc(hp)}`) + (en.maxHp != null ? ` <span class="muted">/ ${n0(en.maxHp)}</span>` : '') : ''}</div>
         <div class="muted">${en.ac != null ? 'AC ' + esc(en.ac) : ''}</div>
         <div>${gm ? `<button class="btn tiny" data-cact="hide" title="Toggle hidden">${en.hidden ? '👁' : '◌'}</button> <button class="btn tiny ghost" data-cact="remove">✕</button>` : ''}</div></div>`;
     }).join('') || '<p class="muted">No combatants yet. Players: click “Roll initiative” on your sheet. GM: add enemies above.</p>'}</div>`;
@@ -749,6 +724,7 @@
   const DD_PX = 256; // Dungeondraft draws assets at 256 px per grid square
   const imgCache = {};
   function img(src) {
+    src = imgUrl(src);
     if (!src) return null;
     let im = imgCache[src];
     if (!im) { im = imgCache[src] = new Image(); im.onload = () => drawMap(); im.src = src; }
@@ -765,9 +741,9 @@
         ${mp.floor ? '<button class="btn small ghost" data-mact="clear-floor">clear floor</button>' : ''}
         ${(mp.props || []).length ? `<button class="btn small ghost" data-mact="clear-props">clear ${mp.props.length} props</button>` : ''}
         <button class="btn small" data-mact="fit" title="Set columns/rows to match the background image">Fit grid</button>
-        <span class="muted">cell px</span><input type="number" value="${mp.gridSize}" data-mset="gridSize">
-        <span class="muted">cols</span><input type="number" value="${mp.cols}" data-mset="cols">
-        <span class="muted">rows</span><input type="number" value="${mp.rows}" data-mset="rows">
+        <span class="muted">cell px</span><input type="number" value="${n0(mp.gridSize)}" data-mset="gridSize">
+        <span class="muted">cols</span><input type="number" value="${n0(mp.cols)}" data-mset="cols">
+        <span class="muted">rows</span><input type="number" value="${n0(mp.rows)}" data-mset="rows">
         <label class="toggle"><input type="checkbox" data-mset="showGrid" ${mp.showGrid ? 'checked' : ''}> grid</label>
         <button class="btn small" data-mact="npc">＋ Token</button>
         <input type="file" id="bgFile" accept="image/*" hidden>` : '<span class="muted">Drag your token to move. Click a token for options.</span>'}`;
@@ -794,7 +770,7 @@
       toast('Uploading map…');
       try {
         const { dataUrl, w, h } = await fitUpload(t.files[0], 4096);
-        const up = await post('upload', { code: S.code, purpose: 'bg', dataUrl });
+        const up = await post('upload', { purpose: 'bg', dataUrl });
         await act('map.bg', { url: up.url });
         act('map.settings', { cols: Math.max(5, Math.round(w / S.st.map.gridSize)), rows: Math.max(5, Math.round(h / S.st.map.gridSize)) });
       } catch (err) { toast(err.message || 'Could not read that image', true); }
@@ -805,7 +781,7 @@
     const v = S.st.map.bgVersion;
     if (v === S.mapBgVersion) return;
     S.mapBgVersion = v;
-    const data = S.st.map.bgUrl;
+    const data = imgUrl(S.st.map.bgUrl);
     if (!data) { S.mapImg = null; drawMap(); return; }
     const im = new Image(); im.onload = () => { S.mapImg = im; drawMap(); }; im.src = data;
   }
@@ -865,7 +841,7 @@
       if (isCur) { ctx.beginPath(); ctx.arc(cx, cy, r + 5, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,183,77,.35)'; ctx.fill(); }
       ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = t.color || '#4fc3f7'; ctx.fill();
       const ch = t.charId && S.st.characters[t.charId];
-      const photo = ch && [ch.tokenImage, ch.image].find(u => /^(https?:|\/api\/holotable\?)/.test(u || ''));
+      const photo = ch && [ch.tokenImage, ch.image].find(u => imgUrl(u));
       const im = img(t.img || photo);
       if (im) {
         ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, r - 2, 0, Math.PI * 2); ctx.clip();
@@ -985,8 +961,8 @@
     const canEditTok = isGM() || t.owner === clientId;
     const pop = popAt(e);
     const ch = t.charId && S.st.characters[t.charId];
-    pop.innerHTML = `<b>${esc(t.name)}</b>${ch ? `<span class="muted">HP ${ch.hp.current}/${ch.hp.max} · AC ${ch.ac}</span><button class="btn small" data-tp="sheet">Open sheet</button>` : ''}
-      ${canEditTok ? `<label>Colour<input type="color" value="${esc(t.color || '#4fc3f7')}" data-tp="color"></label>
+    pop.innerHTML = `<b>${esc(t.name)}</b>${ch ? `<span class="muted">HP ${n0(ch.hp.current)}/${n0(ch.hp.max)} · AC ${n0(ch.ac)}</span><button class="btn small" data-tp="sheet">Open sheet</button>` : ''}
+      ${canEditTok ? `<label>Colour<input type="color" value="${color(t.color)}" data-tp="color"></label>
       <label>Size<select data-tp="size">${[1, 2, 3, 4].map(n => `<option ${n === (t.size || 1) ? 'selected' : ''} value="${n}">${['Medium/Small', 'Large', 'Huge', 'Gargantuan'][n - 1]}</option>`).join('')}</select></label>
       ${isGM() && A.sel ? `<button class="btn small" data-tp="img">Use selected asset as image</button>` : ''}
       ${t.img ? '<button class="btn small ghost" data-tp="noimg">Remove image</button>' : ''}
@@ -1036,15 +1012,15 @@
         <div class="row"><b style="flex:1">Asset library</b><button class="btn tiny" id="adUpload" title="Dungeondraft .dungeondraft_pack, a .zip of images, or images">＋ Upload pack</button></div>
         <input type="file" id="adFile" accept=".dungeondraft_pack,.zip,.pck,image/*" multiple hidden>
         <div id="adProg" class="progress hidden"><div></div></div>
-        ${A.packs.length ? `<select id="adPack"><option value="all">All packs (${A.packs.reduce((s, p) => s + p.count, 0)})</option>${A.packs.map(p => `<option value="${p.id}" ${p.id === A.pack ? 'selected' : ''}>${esc(p.name)} (${p.count})</option>`).join('')}</select>
+        ${A.packs.length ? `<select id="adPack"><option value="all">All packs (${A.packs.reduce((s, p) => s + n0(p.count), 0)})</option>${A.packs.map(p => `<option value="${esc(p.id)}" ${p.id === A.pack ? 'selected' : ''}>${esc(p.name)} (${n0(p.count)})</option>`).join('')}</select>
         <input id="adSearch" placeholder="Search crates, consoles, doors…" value="${esc(A.q)}">
-        <div class="cats">${['all', ...Object.keys(cats).sort()].map(c => `<button data-cat="${c}" class="${A.cat === c ? 'on' : ''}">${c}${c === 'all' ? '' : ' ' + cats[c]}</button>`).join('')}</div>` : ''}
+        <div class="cats">${['all', ...Object.keys(cats).sort()].map(c => `<button data-cat="${esc(c)}" class="${A.cat === c ? 'on' : ''}">${esc(c)}${c === 'all' ? '' : ' ' + n0(cats[c])}</button>`).join('')}</div>` : ''}
       </div>
       <div class="asset-grid" id="adGrid">${A.packs.length ? items.slice(0, A.limit).map((a, i) => `<div class="a ${A.sel && A.sel.src === a.src ? 'on' : ''}" data-i="${i}" title="${esc(a.n)}"><img loading="lazy" src="${esc(a.src)}" alt=""><span>${esc(a.n)}</span></div>`).join('')
         + (items.length > A.limit ? `<button class="btn small" id="adMore" style="grid-column:1/-1">Show more (${items.length - A.limit})</button>` : '')
         + (!items.length ? '<p class="muted" style="grid-column:1/-1">Nothing matches.</p>' : '')
         : `<p class="muted" style="grid-column:1/-1">No asset packs yet.<br><br>Upload a <b>Dungeondraft pack</b> (.dungeondraft_pack), a <b>.zip</b> of images, or single images. Packs are stored on this server and available in every campaign.</p>`}</div>
-      ${A.sel ? `<div class="asset-sel"><b>${esc(A.sel.n)}</b><span class="muted" style="font-size:12px">${A.sel.w ? `${A.sel.w}×${A.sel.h}px · ${(A.sel.w / DD_PX).toFixed(1)}×${(A.sel.h / DD_PX).toFixed(1)} squares` : ''}</span>
+      ${A.sel ? `<div class="asset-sel"><b>${esc(A.sel.n)}</b><span class="muted" style="font-size:12px">${A.sel.w ? `${n0(A.sel.w)}×${n0(A.sel.h)}px · ${(n0(A.sel.w) / DD_PX).toFixed(1)}×${(n0(A.sel.h) / DD_PX).toFixed(1)} squares` : ''}</span>
         <div class="btns">
           <button class="btn small ${A.stamp && A.stamp.mode === 'prop' ? 'primary' : ''}" data-as="prop">Place as prop</button>
           <button class="btn small ${A.stamp && A.stamp.mode === 'token' ? 'primary' : ''}" data-as="token">Place as token</button>
@@ -1067,7 +1043,7 @@
     if (t.id === 'adDelete') {
       const p = A.packs.find(p => p.id === A.pack);
       if (p && confirm(`Delete “${p.name}” from this server? Props already placed from it will show as blank boxes.`)) {
-        try { await post('packdelete', { code: S.code, packId: p.id }); } catch (err) { toast(err.message, true); }
+        try { await post('packdelete', { packId: p.id }); } catch (err) { toast(err.message, true); }
       }
       return;
     }
@@ -1106,11 +1082,11 @@
       toast(`Reading ${file.name}…`);
       const pack = await window.PackReader.read(file, (i, n) => show(40 * i / n, `Preparing ${i}/${n}`));
       const bytes = pack.items.reduce((s, it) => s + it.data.length * 0.75, 0);
-      const { packId } = await post('packstart', { code: S.code, name: pack.name, author: pack.author, bytes });
+      const { packId } = await post('packstart', { name: pack.name, author: pack.author, bytes });
       let batch = [], size = 0, sent = 0;
       const flush = async () => {
         if (!batch.length) return;
-        await post('packadd', { code: S.code, packId, items: batch });
+        await post('packadd', { packId, items: batch });
         sent += batch.length; batch = []; size = 0;
         show(40 + 60 * sent / pack.items.length, `Uploading ${sent}/${pack.items.length}`);
       };
@@ -1119,7 +1095,7 @@
         batch.push(it); size += it.data.length;
       }
       await flush();
-      const done = await post('packdone', { code: S.code, packId });
+      const done = await post('packdone', { packId });
       toast(`Added “${done.pack.name}” — ${done.pack.count} images`);
       A.pack = packId; A.cat = 'all';
       await loadPacks();
@@ -1139,8 +1115,8 @@
       <div class="grid g2" style="margin-top:12px">${hs.slice().reverse().map(h => `<div class="box">
         <h4 style="color:var(--holo);text-transform:none;font-size:15px;letter-spacing:0">${esc(h.title || 'Untitled')}
           ${gm ? `<span class="spacer"></span><span class="muted" style="font-size:11px">${h.shared ? 'shared' : 'GM only'}</span>
-          <button class="btn tiny" data-ho="toggle" data-id="${h.id}">${h.shared ? 'Unshare' : 'Share'}</button><button class="btn tiny ghost" data-ho="del" data-id="${h.id}">✕</button>` : ''}</h4>
-        ${h.img ? `<img src="${esc(h.img)}" style="max-width:100%;border-radius:6px;margin-bottom:6px">` : ''}<div>${md(h.text || '')}</div></div>`).join('')
+          <button class="btn tiny" data-ho="toggle" data-id="${esc(h.id)}">${h.shared ? 'Unshare' : 'Share'}</button><button class="btn tiny ghost" data-ho="del" data-id="${esc(h.id)}">✕</button>` : ''}</h4>
+        ${imgUrl(h.img) ? `<img src="${esc(imgUrl(h.img))}" style="max-width:100%;border-radius:6px;margin-bottom:6px">` : ''}<div>${md(h.text || '')}</div></div>`).join('')
         || '<p class="muted">No handouts yet.</p>'}</div>`;
   }
   $('#handouts').addEventListener('click', async e => {
@@ -1162,7 +1138,7 @@
       try {
         toast('Uploading image…');
         const { dataUrl } = await fitUpload(e.target.files[0], 1600);
-        $('#hoImg').value = (await post('upload', { code: S.code, purpose: 'handout', dataUrl })).url;
+        $('#hoImg').value = (await post('upload', { purpose: 'handout', dataUrl })).url;
         toast('Image attached');
       } catch (err) { toast(err.message || 'Could not read image', true); }
     }
@@ -1194,49 +1170,63 @@
   // --------------------------------------------------------------------------- GM
   function renderGM(el) {
     if (!isGM()) { el.innerHTML = ''; return; }
-    const link = location.origin + location.pathname + '?join=' + S.st.code;
+    const link = location.origin + location.pathname;
+    const lvl = (S.st.levelUps) || {};
+    const pendingNames = Object.keys(lvl).filter(id => S.st.characters[id]).map(id => `${esc(S.st.characters[id].name)} (${n0(lvl[id].count)})`);
     el.innerHTML = `<div class="grid g2">
-      <div class="box"><h4>Invite players</h4>
-        <p>Room code: <span class="code" style="font-size:18px">${esc(S.st.code)}</span></p>
-        <p>Link: <code>${esc(link)}</code> <button class="btn tiny" id="copyLink">Copy</button></p>
-        <h4 style="margin-top:12px">Campaign</h4>
+      <div class="box"><h4>Players</h4>
+        <p style="margin-top:0">Players open <code>${esc(link)}</code> <button class="btn tiny" id="copyLink">Copy</button>
+          and sign in with the <b>player password</b>. You sign in with the GM password, on any device.</p>
+        <h4 style="margin-top:12px">Table name</h4>
         <div class="row"><input id="campRename" value="${esc(S.st.name)}" style="flex:1"><button class="btn small" id="doRename">Rename</button></div>
-        <h4 style="margin-top:12px">GM key</h4>
-        <p class="muted" style="font-size:12px">To run this campaign from another browser or device, use “Join”, open “I'm the GM on a new device” and paste this key. Keep it secret.</p>
-        <div class="row"><code style="flex:1;overflow:auto">${esc(S.st.gmToken || '')}</code><button class="btn tiny" id="copyKey">Copy</button></div>
-        <h4 style="margin-top:12px">Players</h4>
-        ${Object.entries(S.st.players).map(([id, p]) => `<div>${esc(p.name)} ${id === S.st.gmId ? '<span class="muted">(GM)</span>' : ''} ${S.st.online.some(o => o.clientId === id) ? '<span style="color:var(--green)">● online</span>' : '<span class="muted">offline</span>'}
+        <h4 style="margin-top:12px">Who's here</h4>
+        ${Object.entries(S.st.players).map(([id, p]) => `<div>${esc(p.name)} ${p.role === 'gm' ? '<span class="muted">(GM)</span>' : ''} ${S.st.online.some(o => o.clientId === id) ? '<span style="color:var(--green)">● online</span>' : '<span class="muted">offline</span>'}
           <span class="muted">— ${chars().filter(c => c.owner === id).map(c => esc(c.name)).join(', ') || 'no characters'}</span></div>`).join('')}
         <div class="row" style="margin-top:12px"><button class="btn small danger" id="clearChat">Clear chat log</button></div>
       </div>
+      <div class="box"><h4>Level ups</h4>
+        <p style="margin-top:0" class="muted">After a big fight or a hard-won conversation, give the party a level. Each player gets a pop-up and picks how to level.
+          Someone missed the session? Grant just their character, and you can level it for them.</p>
+        <button class="btn small amber" id="gmGrant">⬆ Grant a level…</button>
+        ${pendingNames.length ? `<p class="muted" style="font-size:12px">Waiting to level: ${pendingNames.join(', ')}</p>` : ''}
+      </div>
       <div class="box"><h4>Saving &amp; backups</h4>
         <p style="margin:0 0 6px"><span style="color:var(--green)">✓ Every change saves automatically to Boofer's Den.</span>
-          <span class="muted">Last saved ${S.st.updated ? new Date(S.st.updated * 1000).toLocaleString() : '—'}</span></p>
-        <p class="muted" style="font-size:12px;margin:0 0 8px">Next session: open this page and press <b>Rejoin</b>. On a new device, join with code ${esc(S.st.code)}
-          and paste your GM key. Players rejoin with the same code and keep their characters. A backup copy is also kept every 10 minutes of play (last 10).</p>
-        <div class="row wrap"><a class="btn small primary" href="${API}?op=export&code=${S.st.code}&clientId=${encodeURIComponent(clientId)}" download>⇩ Download full backup</a>
-          <button class="btn small" id="showBackups">Automatic backups…</button></div>
+          <span class="muted">Last saved ${S.st.updated ? esc(new Date(S.st.updated * 1000).toLocaleString()) : '—'}</span></p>
+        <p class="muted" style="font-size:12px;margin:0 0 8px">Next session, everyone just opens this page again. A backup copy is also kept every 10 minutes of play (last 10).</p>
+        <div class="row wrap"><a class="btn small primary" href="${API}?op=export" download>⇩ Download full backup</a>
+          <button class="btn small" id="showBackups">Automatic backups…</button>
+          <button class="btn small ghost" id="restoreBtn">⇪ Restore a backup…</button><input type="file" id="restoreFile" accept=".json" hidden></div>
         <div id="backupList" style="margin-top:8px"></div>
       </div>
       <div class="box"><h4>GM notes <span class="muted" style="text-transform:none;letter-spacing:0">(only you can see these · autosaves)</span></h4>
-        <textarea id="gmNotes" rows="24" placeholder="Session plan, NPCs, secrets, loot…">${esc(S.st.notes || '')}</textarea></div>
+        <textarea id="gmNotes" rows="18" placeholder="Session plan, NPCs, secrets, loot…">${esc(S.st.notes || '')}</textarea></div>
     </div>`;
   }
   $('#gm').addEventListener('click', e => {
     const id = e.target.id;
-    if (id === 'copyLink') navigator.clipboard?.writeText(location.origin + location.pathname + '?join=' + S.st.code).then(() => toast('Copied'));
-    if (id === 'copyKey') navigator.clipboard?.writeText(S.st.gmToken).then(() => toast('GM key copied'));
+    if (id === 'copyLink') navigator.clipboard?.writeText(location.origin + location.pathname).then(() => toast('Link copied'));
     if (id === 'doRename') act('campaign.rename', { name: $('#campRename').value });
     if (id === 'clearChat' && confirm('Clear the chat log for everyone?')) act('chat.clear');
+    if (id === 'gmGrant') openGrant();
+    if (id === 'restoreBtn') $('#restoreFile').click();
     if (id === 'showBackups') {
-      post('backups', { code: S.code }).then(r => {
-        const fmtB = b => b.at ? new Date(b.at * 1000).toLocaleString() : 'backup ' + (b.i + 1);
+      post('backups', {}).then(r => {
+        const fmtB = b => b.at ? new Date(b.at * 1000).toLocaleString() : 'backup ' + (n0(b.i) + 1);
         $('#backupList').innerHTML = r.backups.length ? r.backups.map(b => `<div class="row" style="font-size:13px"><span style="flex:1">${esc(fmtB(b))}</span>
-          <a class="btn tiny" download href="${API}?op=export&code=${S.code}&clientId=${encodeURIComponent(clientId)}&backup=${b.i}">⇩ download</a></div>`).join('')
-          + '<p class="muted" style="font-size:12px">To roll back, download a backup and use “Restore a backup” on the start screen.</p>'
-          : '<p class="muted">No automatic backups yet — the first is made on the next change.</p>';
+          <a class="btn tiny" download href="${API}?op=export&backup=${n0(b.i)}">⇩ download</a></div>`).join('')
+          + '<p class="muted" style="font-size:12px">To roll back, download one and use “Restore a backup”.</p>'
+          : '<p class="muted">No automatic backups yet; the first is made on the next change.</p>';
       }).catch(err => toast(err.message, true));
     }
+  });
+  $('#gm').addEventListener('change', async e => {
+    if (e.target.id !== 'restoreFile' || !e.target.files[0]) return;
+    const f = e.target.files[0]; e.target.value = '';
+    let campaign;
+    try { campaign = JSON.parse(await f.text()); } catch { return toast('That file is not a HoloTable backup.', true); }
+    if (!confirm(`Replace the table with “${campaign.name || f.name}”? The current table is kept as an automatic backup first.`)) return;
+    try { await post('restore', { campaign }); toast('Table restored'); } catch (err) { toast(err.message, true); }
   });
   let notesTimer;
   $('#gm').addEventListener('input', e => {
@@ -1249,6 +1239,7 @@
   // --------------------------------------------------------------------------- chat
   function renderMsg(m) {
     const t = m.ts ? `<span class="ts">${timeStr(m.ts)}</span>` : '';
+    if (m.levelup) return `<div class="msg lvl">${md(m.text)}</div>`;
     if (m.system) return `<div class="msg sys">${md(m.text)}</div>`;
     const who = m.as ? `${esc(m.as)} <span class="muted" style="font-weight:400">(${esc(m.from)})</span>` : m.charName ? `${esc(m.charName)} <span class="muted" style="font-weight:400">(${esc(m.from)})</span>` : esc(m.from);
     const priv = m.private ? `<div class="tag">${m.roll ? '🔒 GM-only roll' : m.fromId === clientId ? '🔒 whisper to ' + esc(m.whisperTo || 'GM') : '🔒 whisper'}</div>` : '';
@@ -1257,7 +1248,7 @@
       const detail = esc(r.detail).replace(/~(\d+)~/g, '<del>$1</del>');
       return `<div class="msg ${m.private ? 'priv' : ''}"><div class="who">${who}${t}</div>${priv}
         <div class="roll ${crit ? 'crit' : ''} ${fumble ? 'fumble' : ''}"><div class="label">${esc(r.label || r.expr)}${crit ? ' — NATURAL 20!' : fumble ? ' — natural 1' : ''}</div>
-        <div class="total">${r.total}</div><div class="detail">${esc(r.expr)} → ${detail}</div></div></div>`;
+        <div class="total">${n0(r.total)}</div><div class="detail">${esc(r.expr)} → ${detail}</div></div></div>`;
     }
     if (m.narration) return `<div class="msg narr">${md(m.text)}</div>`;
     if (m.emote) return `<div class="msg emote">* ${esc(m.from)} ${md(m.text)}</div>`;
@@ -1292,6 +1283,217 @@
     roll('1d' + d, 'd' + d, { d20: d === 20, mode: rollModeFromEvent(e) });
   });
 
+  // --------------------------------------------------------------------------- level ups
+  // The GM grants levels (to the whole party or picked characters); each player then levels their
+  // own character in a guided wizard. The GM can run the wizard for someone who missed the session.
+  const pendingFor = id => ((S.st && S.st.levelUps) || {})[id];
+  const ASI_AT = { _: [4, 8, 12, 16, 19], Fighter: [4, 6, 8, 12, 14, 16, 19], Operative: [4, 8, 10, 12, 16, 19] };
+  const asiDue = (cls, lvl) => (ASI_AT[cls] || ASI_AT._).includes(lvl);
+  const ABN = Object.fromEntries(R.ABILITIES.map(a => [a.key, a.name]));
+
+  function openGrant(preselect) {
+    const list = chars();
+    if (!list.length) return toast('No characters at the table yet.', true);
+    const pre = new Set(preselect || list.filter(c => !(S.st.players[c.owner] || {}).role || S.st.players[c.owner].role !== 'gm').map(c => c.id));
+    modal(`<div id="grant"><h3>⬆ Grant a level up</h3>
+      <p class="muted" style="margin:0">Everyone you tick gets a pop-up to level their character. Grants stack if you give more than one.</p>
+      <div class="row"><button class="btn tiny" data-g="all">All characters</button><button class="btn tiny" data-g="none">None</button></div>
+      <div class="grant-list">${list.map(c => {
+        const pl = S.st.players[c.owner] || {}, pend = pendingFor(c.id), lvl = c.classes.reduce((a, k) => a + n0(k.level), 0);
+        const online = S.st.online.some(o => o.clientId === c.owner);
+        return `<label class="grant-row"><input type="checkbox" value="${esc(c.id)}" ${pre.has(c.id) ? 'checked' : ''}>
+          <span><b>${esc(c.name)}</b> <span class="muted">level ${lvl} · ${esc(pl.name || 'unknown')}${online ? ' <span style="color:var(--green)">●</span>' : ' (away)'}</span>
+          ${pend ? `<span class="chip lvl-chip">${n0(pend.count)} waiting</span>` : ''}</span>
+          ${pend ? `<button class="btn tiny" data-g="for" data-id="${esc(c.id)}" title="Level this character now, for an absent player">Level for them</button>
+            <button class="btn tiny ghost" data-g="cancel" data-id="${esc(c.id)}" title="Take back the waiting level">✕</button>` : ''}</label>`;
+      }).join('')}</div>
+      <label>Reason (optional, shown in chat)<input id="grantWhy" maxlength="200" placeholder="for surviving the ambush on Ord Mantell"></label>
+      <div class="row"><span class="spacer"></span><button class="btn" data-g="close">Cancel</button><button class="btn primary amber-fill" data-g="go">Grant level up</button></div></div>`,
+    box => {
+      const g = $('#grant', box);
+      g.addEventListener('click', async e => {
+        const b = e.target.closest('[data-g]'); if (!b) return;
+        e.preventDefault();
+        const k = b.dataset.g, boxes = $$('input[type=checkbox]', g);
+        if (k === 'all') boxes.forEach(x => x.checked = true);
+        if (k === 'none') boxes.forEach(x => x.checked = false);
+        if (k === 'close') closeModal();
+        if (k === 'cancel') { await act('levelup.cancel', { charId: b.dataset.id }); closeModal(); }
+        if (k === 'for') { closeModal(); openWizard(b.dataset.id); }
+        if (k === 'go') {
+          const ids = boxes.filter(x => x.checked).map(x => x.value);
+          if (!ids.length) return toast('Tick at least one character.', true);
+          const r = await act('levelup.grant', { charIds: ids, reason: $('#grantWhy', g).value });
+          if (r) { closeModal(); toast(`Level up granted to ${r.granted} character${r.granted > 1 ? 's' : ''}`); }
+        }
+      });
+    });
+  }
+  $('#lvlBtn').addEventListener('click', () => openGrant());
+
+  // A pop-up for each new grant to one of your characters (once per grant, per browser).
+  function maybeCelebrate() {
+    if (!S.st || modalOpen() || $('#lobby').offsetParent) return;
+    const seen = new Set(store.get('holo.lvlSeen', []));
+    const ch = chars().find(c => c.owner === clientId && pendingFor(c.id) && !seen.has(pendingFor(c.id).grantId));
+    if (!ch) return;
+    const pend = pendingFor(ch.id);
+    store.set('holo.lvlSeen', [...seen, pend.grantId].slice(-50));
+    const lvl = ch.classes.reduce((a, k) => a + n0(k.level), 0);
+    modal(`<div class="celebrate"><div class="burst">⬆</div><h3>Level up!</h3>
+      <p>The GM has granted <b>${esc(ch.name)}</b> a new level: <b>${lvl} → ${lvl + 1}</b>${pend.count > 1 ? ` (and ${n0(pend.count) - 1} more after that)` : ''}.</p>
+      <div class="row" style="justify-content:center"><button class="btn" id="celLater">Later</button><button class="btn primary" id="celGo">Level up now</button></div>
+      <p class="muted" style="font-size:12px">You can also use the ⬆ button on your sheet any time.</p></div>`, box => {
+      $('#celLater', box).onclick = closeModal;
+      $('#celGo', box).onclick = () => { closeModal(); S.selected = ch.id; setTab('sheet'); renderAll(); openWizard(ch.id); };
+    });
+  }
+
+  function openWizard(charId) {
+    const ch0 = S.st.characters[charId];
+    if (!ch0) return;
+    if (!pendingFor(charId)) return toast('The GM hasn\'t granted this character a level yet.', true);
+    const W = { cls: ch0.classes[0].name, newCls: '', archetype: '', hpMode: 'average', asiOn: null, asiMode: 'two', a1: 'str', a2: 'dex', featName: '', featText: '', features: [], powers: [] };
+    modal('<div id="wiz"></div>', box => {
+      const wiz = $('#wiz', box);
+      const render = () => { wiz.innerHTML = wizardHtml(charId, W); };
+      wiz.addEventListener('input', e => {
+        const t = e.target, f = t.dataset.w;
+        if (!f) return;
+        if (f.startsWith('feature.') || f.startsWith('power.')) {
+          const [kind, i, key] = f.split('.');
+          const row = (kind === 'feature' ? W.features : W.powers)[+i];
+          row[key] = t.type === 'number' ? +t.value : t.value;
+          return;
+        }
+        if (t.type === 'text' || t.tagName === 'TEXTAREA') W[f] = t.value;
+      });
+      wiz.addEventListener('change', e => {
+        const t = e.target, f = t.dataset.w;
+        if (!f || f.startsWith('feature.') || (f.startsWith('power.') && !f.endsWith('.type'))) return;
+        if (t.type === 'text' || t.tagName === 'TEXTAREA') return; // already saved on input; re-rendering here would eat a click
+        if (f.startsWith('power.')) { const [, i] = f.split('.'); W.powers[+i].type = t.value; return; }
+        W[f] = t.type === 'checkbox' ? t.checked : t.value;
+        render();
+      });
+      wiz.addEventListener('click', async e => {
+        const b = e.target.closest('[data-wa]'); if (!b) return;
+        e.preventDefault();
+        const a = b.dataset.wa;
+        if (a === 'cancel') return closeModal();
+        if (a === 'add-feature') { W.features.push({ name: '', text: '' }); render(); }
+        if (a === 'add-power') { W.powers.push({ name: '', level: 1, type: 'force' }); render(); }
+        if (a === 'rm-feature') { W.features.splice(+b.dataset.i, 1); render(); }
+        if (a === 'rm-power') { W.powers.splice(+b.dataset.i, 1); render(); }
+        if (a === 'go') {
+          const plan = wizardPlan(charId, W);
+          if (plan.error) return toast(plan.error, true);
+          b.disabled = true;
+          const r = await act('levelup.apply', plan.payload);
+          if (!r) { b.disabled = false; return; }
+          closeModal();
+          toast(`Level ${r.level}! HP +${r.hpGain}${plan.payload.hpMode === 'roll' ? ` (rolled ${r.die})` : ''}`);
+        }
+      });
+      render();
+    });
+  }
+
+  // What the wizard will do, computed the same way the sheet computes things.
+  function wizardPlan(charId, W) {
+    const ch = S.st.characters[charId];
+    const cls = W.cls === '__new' ? W.newCls.trim() : W.cls;
+    const k = ch.classes.find(x => x.name.toLowerCase() === String(cls).toLowerCase());
+    const newClassLevel = (k ? n0(k.level) : 0) + 1;
+    const before = ch.classes.reduce((a, x) => a + n0(x.level), 0);
+    const due = asiDue(cls, newClassLevel);
+    const asiOn = W.asiOn === null ? due : W.asiOn;
+    let asi = null, feat = null, error = null;
+    if (!cls) error = 'Pick a class to level up.';
+    if (asiOn && W.asiMode === 'feat') { if (W.featName.trim()) feat = { name: W.featName.trim(), text: W.featText }; else error = error || 'Name the feat you picked.'; }
+    else if (asiOn) {
+      asi = W.asiMode === 'one' ? { [W.a1]: 2 } : { [W.a1]: 1, [W.a2]: 1 };
+      if (W.asiMode === 'two' && W.a1 === W.a2) asi = { [W.a1]: 2 };
+      for (const [ab, v] of Object.entries(asi)) if (n0(ch.abilities[ab]) + v > 20) error = error || `${ABN[ab]} can't go above 20.`;
+    }
+    const after = clone(ch);
+    const kk = after.classes.find(x => x.name.toLowerCase() === String(cls).toLowerCase());
+    if (kk) kk.level = newClassLevel; else after.classes.push({ name: cls, level: 1, archetype: '' });
+    if (asi) for (const [ab, v] of Object.entries(asi)) after.abilities[ab] = n0(after.abilities[ab]) + v;
+    const hd = (R.CLASSES[cls] || {}).hd || 8;
+    const oldCon = R.abilityMod(ch, 'con'), newCon = R.abilityMod(after, 'con');
+    const retro = (newCon - oldCon) * before;
+    const avgGain = Math.max(1, hd / 2 + 1 + newCon) + retro;
+    const payload = { charId, className: cls, hpMode: W.hpMode, archetype: W.archetype.trim() || undefined, hitDie: hd,
+      asi: asi || undefined, feat: feat || undefined,
+      features: W.features.filter(f => f.name.trim()), powers: W.powers.filter(p => p.name.trim()) };
+    return { ch, after, cls, k, newClassLevel, before, due, asiOn, hd, oldCon, newCon, retro, avgGain, payload, error };
+  }
+
+  function wizardHtml(charId, W) {
+    const P = wizardPlan(charId, W), ch = P.ch;
+    const ciB = R.casterInfo(ch), ciA = R.casterInfo(P.after);
+    const others = Object.keys(R.CLASSES).filter(c => !ch.classes.some(k => k.name === c));
+    const needArch = P.newClassLevel >= 3 && !(P.k && P.k.archetype);
+    const change = (label, a, b) => `<tr><td>${label}</td><td>${esc(a)}</td><td>${String(a) === String(b) ? '' : '→'}</td><td class="${String(a) === String(b) ? 'muted' : 'up'}">${esc(b)}</td></tr>`;
+    const abilitySelect = (f, v) => `<select data-w="${f}">${R.ABILITIES.map(a => `<option value="${a.key}" ${a.key === v ? 'selected' : ''} ${n0(ch.abilities[a.key]) >= 20 ? 'disabled' : ''}>${a.name} (${n0(ch.abilities[a.key])})</option>`).join('')}</select>`;
+    const pend = pendingFor(charId);
+    return `<h3>⬆ Level up ${esc(ch.name)} <span class="muted" style="font-weight:400">level ${P.before} → ${P.before + 1}</span></h3>
+      ${pend && pend.count > 1 ? `<p class="muted" style="margin:0">${n0(pend.count)} levels waiting: this does one; open it again for the next.</p>` : ''}
+      <section class="wiz-step"><h4><span class="step">1</span> Class</h4>
+        <div class="choices">${ch.classes.map(k => `<label class="choice ${W.cls === k.name ? 'on' : ''}"><input type="radio" name="cls" data-w="cls" value="${esc(k.name)}" ${W.cls === k.name ? 'checked' : ''}>
+          <b>${esc(k.name)}</b> ${n0(k.level)} → ${n0(k.level) + 1}${k.archetype ? `<br><span class="muted">${esc(k.archetype)}</span>` : ''}</label>`).join('')}
+          <label class="choice ${W.cls === '__new' ? 'on' : ''}"><input type="radio" name="cls" data-w="cls" value="__new" ${W.cls === '__new' ? 'checked' : ''}><b>Multiclass</b><br><span class="muted">start a new class at 1</span></label></div>
+        ${W.cls === '__new' ? `<div class="row" style="margin-top:6px"><select data-w="newCls"><option value="">Pick a class…</option>${others.map(c => `<option ${c === W.newCls ? 'selected' : ''}>${c}</option>`).join('')}</select>
+          <span class="muted" style="font-size:12px">Multiclassing usually needs 13+ in the new class's key ability; check with your GM.</span></div>` : ''}
+        ${needArch && P.cls ? `<label style="margin-top:6px">Archetype for ${esc(P.cls)}<input data-w="archetype" type="text" value="${esc(W.archetype)}" placeholder="e.g. Way of the Shadow"></label>` : ''}
+      </section>
+      <section class="wiz-step"><h4><span class="step">2</span> Hit points <span class="muted" style="text-transform:none;letter-spacing:0">(d${P.hd}${P.newCon >= 0 ? ' + ' : ' − '}${Math.abs(P.newCon)} Con)</span></h4>
+        <div class="choices">
+          <label class="choice ${W.hpMode === 'average' ? 'on' : ''}"><input type="radio" name="hp" data-w="hpMode" value="average" ${W.hpMode === 'average' ? 'checked' : ''}><b>Take the average</b><br><span class="muted">+${P.avgGain} HP</span></label>
+          <label class="choice ${W.hpMode === 'roll' ? 'on' : ''}"><input type="radio" name="hp" data-w="hpMode" value="roll" ${W.hpMode === 'roll' ? 'checked' : ''}><b>Roll the die</b><br><span class="muted">+${Math.max(1, 1 + P.newCon) + P.retro} to +${P.hd + P.newCon + P.retro} HP, rolled where everyone sees it</span></label>
+        </div>
+        ${P.retro ? `<p class="muted" style="font-size:12px;margin:4px 0 0">Includes +${P.retro} because your Constitution modifier went up (it counts for every earlier level too).</p>` : ''}
+      </section>
+      <section class="wiz-step"><h4><span class="step">3</span> Ability score improvement or feat</h4>
+        ${P.due ? `<p class="muted" style="margin:0 0 6px">${esc(P.cls)} ${P.newClassLevel} gives an ability score improvement (or a feat instead).</p>`
+          : `<label class="toggle"><input type="checkbox" data-w="asiOn" ${P.asiOn ? 'checked' : ''}> My class gives one at this level</label>`}
+        ${P.asiOn ? `<div class="choices" style="margin-top:6px">
+          ${[['two', '+1 to two scores'], ['one', '+2 to one score'], ['feat', 'Take a feat']].map(([v, t]) => `<label class="choice ${W.asiMode === v ? 'on' : ''}"><input type="radio" name="asi" data-w="asiMode" value="${v}" ${W.asiMode === v ? 'checked' : ''}><b>${t}</b></label>`).join('')}</div>
+          <div class="row wrap" style="margin-top:6px">${W.asiMode === 'feat'
+            ? `<input data-w="featName" type="text" value="${esc(W.featName)}" placeholder="Feat name" style="flex:1"><textarea data-w="featText" rows="2" placeholder="What it does (optional)">${esc(W.featText)}</textarea>`
+            : W.asiMode === 'one' ? abilitySelect('a1', W.a1) : abilitySelect('a1', W.a1) + abilitySelect('a2', W.a2)}</div>` : ''}
+      </section>
+      <section class="wiz-step"><h4><span class="step">4</span> New features &amp; powers</h4>
+        <p class="muted" style="margin:0 0 6px">Check the ${esc(P.cls || 'class')} table for level ${P.newClassLevel}${R.CLASSES[P.cls] ? ` (<a href="https://sw5e.com/characters/classes/${encodeURIComponent(P.cls)}" target="_blank" rel="noopener">open on sw5e.com</a>)` : ''} and add what you gain.
+          ${ciA.forceMaxLevel > ciB.forceMaxLevel || ciA.techMaxLevel > ciB.techMaxLevel ? '<b>You can now cast higher-level powers.</b>' : ''}</p>
+        ${W.features.map((f, i) => `<div class="row" style="margin-bottom:4px"><input data-w="feature.${i}.name" type="text" value="${esc(f.name)}" placeholder="Feature name" style="flex:1">
+          <input data-w="feature.${i}.text" type="text" value="${esc(f.text)}" placeholder="What it does" style="flex:2"><button class="btn tiny ghost" data-wa="rm-feature" data-i="${i}">✕</button></div>`).join('')}
+        ${W.powers.map((p, i) => `<div class="row" style="margin-bottom:4px"><input data-w="power.${i}.name" type="text" value="${esc(p.name)}" placeholder="Power name" style="flex:1">
+          <input data-w="power.${i}.level" type="number" min="0" max="9" value="${n0(p.level)}" style="width:60px" title="Power level (0 = at-will)">
+          <select data-w="power.${i}.type"><option value="force" ${p.type !== 'tech' ? 'selected' : ''}>force</option><option value="tech" ${p.type === 'tech' ? 'selected' : ''}>tech</option></select>
+          <button class="btn tiny ghost" data-wa="rm-power" data-i="${i}">✕</button></div>`).join('')}
+        <div class="row"><button class="btn tiny" data-wa="add-feature">＋ feature</button><button class="btn tiny" data-wa="add-power">＋ power</button></div>
+      </section>
+      <section class="wiz-step"><h4><span class="step">5</span> Summary</h4>
+        <table class="t summary">
+          ${change('Level', P.before, P.before + 1)}
+          ${change('Class', P.k ? `${P.k.name} ${n0(P.k.level)}` : '—', `${P.cls || '?'} ${P.newClassLevel}`)}
+          ${change('Hit points (max)', n0(ch.hp.max), W.hpMode === 'roll' ? `${n0(ch.hp.max)} + roll` : n0(ch.hp.max) + P.avgGain)}
+          ${change('Hit dice', R.hitDiceSummary(ch), R.hitDiceSummary(P.after))}
+          ${change('Proficiency bonus', R.fmt(R.profBonus(ch)), R.fmt(R.profBonus(P.after)))}
+          ${ciB.forceMax || ciA.forceMax ? change('Force points (max)', ciB.forceMax, ciA.forceMax) : ''}
+          ${ciB.techMax || ciA.techMax ? change('Tech points (max)', ciB.techMax, ciA.techMax) : ''}
+          ${ciB.forceMaxLevel || ciA.forceMaxLevel ? change('Max force power level', ciB.forceMaxLevel, ciA.forceMaxLevel) : ''}
+          ${ciB.techMaxLevel || ciA.techMaxLevel ? change('Max tech power level', ciB.techMaxLevel, ciA.techMaxLevel) : ''}
+          ${R.ABILITIES.filter(a => n0(ch.abilities[a.key]) !== n0(P.after.abilities[a.key])).map(a => change(a.name, n0(ch.abilities[a.key]), n0(P.after.abilities[a.key]))).join('')}
+        </table>
+        ${ch.force.max !== '' || ch.tech.max !== '' ? '<p class="muted" style="font-size:12px">This sheet has a manual force/tech point max set; update it on the Attacks &amp; Powers tab if it should change.</p>' : ''}
+        ${P.error ? `<p class="error">${esc(P.error)}</p>` : ''}
+      </section>
+      <div class="row"><span class="spacer"></span><button class="btn" data-wa="cancel">Not yet</button><button class="btn primary" data-wa="go">⬆ Level up!</button></div>`;
+  }
+
   // --------------------------------------------------------------------------- boot
   window.addEventListener('resize', () => drawMap());
   document.addEventListener('keydown', e => {
@@ -1301,12 +1503,11 @@
     if (M.selProp) { M.selProp = null; drawMap(); }
   });
   renderRules();
-  renderRecent();
-  const params = new URLSearchParams(location.search);
-  const jc = params.get('join');
-  if (jc) {
-    const r = recent().find(x => x.code === jc.toUpperCase());
-    if (r && r.playerName) join(r.code, r.playerName, r.gmToken);
-    else { $('#joinForm [name=code]').value = jc.toUpperCase(); $('#joinForm [name=playerName]').focus(); }
-  }
+  $('#loginForm [name=name]').value = store.get('holo.name', '');
+  // already signed in (the session cookie is HttpOnly, so ask the server)
+  fetch(`${API}?op=me`, { credentials: 'same-origin', cache: 'no-store' }).then(async r => {
+    const j = await r.json().catch(() => ({}));
+    if (r.ok) enterTable();
+    else if (r.status === 503) $('#lobbyError').textContent = j.error || 'HoloTable is not available right now.';
+  }).catch(() => { $('#lobbyError').textContent = "Can't reach the server."; });
 })();

@@ -13,26 +13,13 @@
     <div class="lobby-inner">
       <h1 class="logo">HOLO<span>TABLE</span></h1>
       <p class="tag">jpesus's Star Wars 5e campaign table · <a href="../">&larr; back to jpesus's corner</a></p>
-      <div class="lobby-cards">
-        <form class="card" id="hostForm">
-          <h2>Host a campaign</h2>
-          <p class="muted">You'll be the Game Master. Share the room code with your players.</p>
-          <label>Campaign name<input name="campaignName" required maxlength="80" placeholder="Shadows of the Outer Rim"></label>
-          <label>Your name<input name="playerName" required maxlength="40" placeholder="GM"></label>
-          <button class="btn primary" type="submit">Create campaign</button>
-        </form>
-        <form class="card" id="joinForm">
-          <h2>Join a campaign</h2>
-          <p class="muted">Enter the 5-character code from your GM.</p>
-          <label>Room code<input name="code" required maxlength="5" placeholder="AB3XY" style="text-transform:uppercase;letter-spacing:.2em"></label>
-          <label>Your name<input name="playerName" required maxlength="40" placeholder="Kira"></label>
-          <details class="muted"><summary style="cursor:pointer;font-size:12px">I'm the GM on a new device</summary>
-            <label style="margin-top:6px">GM key<input name="gmToken" placeholder="from the GM tab on your original device"></label></details>
-          <button class="btn primary" type="submit">Join</button>
-        </form>
-      </div>
-      <div id="recent" class="recent"></div>
-      <div id="saved" class="recent saved-list"></div>
+      <form class="card signin" id="loginForm">
+        <h2>Sign in to the table</h2>
+        <p class="muted">Use the password your GM gave you. The GM signs in with the GM password.</p>
+        <label>Your name<input name="name" required maxlength="40" autocomplete="nickname" placeholder="Kira"></label>
+        <label>Password<input name="password" type="password" required maxlength="200" autocomplete="current-password"></label>
+        <button class="btn primary" type="submit">Enter</button>
+      </form>
       <p id="lobbyError" class="error"></p>
     </div>
   </section>
@@ -41,16 +28,16 @@
   <section id="table" class="screen hidden">
     <header class="topbar">
       <div class="brand">HOLO<span>TABLE</span></div>
-      <div class="camp"><span id="campName"></span>
-        <button id="codeBtn" class="code" title="Copy invite link"></button></div>
+      <div class="camp"><span id="campName"></span></div>
       <div id="online" class="online"></div>
       <div class="spacer"></div>
       <div class="rollmode" title="Applies to d20 rolls. Shortcut: Shift-click = advantage, Ctrl-click = disadvantage">
         <button data-mode="dis">Dis</button><button data-mode="normal" class="on">Normal</button><button data-mode="adv">Adv</button>
       </div>
       <label class="toggle" title="Only you and the GM see your rolls"><input type="checkbox" id="privateRolls"> GM-only rolls</label>
+      <button id="lvlBtn" class="btn small amber gm-only" title="Give characters a new level">⬆ Level Up</button>
       <span id="conn" class="conn" title="Connection"></span>
-      <button id="leaveBtn" class="btn small ghost">Leave</button>
+      <button id="leaveBtn" class="btn small ghost">Sign out</button>
     </header>
 
     <div class="layout">

@@ -1,6 +1,6 @@
 // HoloTable storage on the project's Redis. Not a route: the underscore keeps Vercel from serving it.
 //
-//   ht:camp:<CODE>     the campaign, JSON (htpv:... on preview deployments, like hang2pv)
+//   ht:camp:main       the group's one game, JSON (htpv:... on preview deployments, like hang2pv)
 //   ht:ver:<CODE>      change counter; bumped and PUBLISHed on ht:ch:<CODE> after every change
 //   ht:on:<CODE>       hash clientId -> last poll time (who is online)
 //   ht:bk:<CODE>       list of recent backups (one every 10 minutes of play, newest first, last 10 kept)
@@ -11,7 +11,10 @@
 //   ht:a:<id>:<n>      one asset image, raw bytes
 //   ht:libver          bumped when the library changes
 //   ht:rl:<bucket>     rate-limit counters
-// Campaigns and images never expire: a game is meant to be picked up again next session.
+//   ht:bytes           total bytes of stored images and pack art, checked against the storage cap
+// Nothing here touches Find time to hang's hang:/hang2: keys. The game and images never expire:
+// it is meant to be picked up again next session. Size limits: images + packs <= HOLOTABLE_STORAGE_MB
+// (default 250), the game document <= 1.5 MB, and 10 backups of it.
 
 const crypto = require("crypto");
 const Redis = require("ioredis");
@@ -32,7 +35,10 @@ const K = {
   asset: (id, n) => `${NS}:a:${id}:${n}`,
   libver: () => `${NS}:libver`,
   rl: (b) => `${NS}:rl:${b}`,
+  bytes: () => `${NS}:bytes`,
 };
+const STORAGE_CAP = (+process.env.HOLOTABLE_STORAGE_MB || 250) * 1024 * 1024;
+const MAX_GAME_BYTES = 1.5 * 1024 * 1024;
 
 let client = null;
 let sub = null;
@@ -93,6 +99,19 @@ async function waitForChange(code, ms) {
 }
 
 class Busy extends Error {}
+class Full extends Error {}
+
+// Hard cap on stored images and pack art: reserve before writing, release after deleting.
+async function reserve(n) {
+  const r = module.exports.getClient();
+  const total = await r.incrby(K.bytes(), n);
+  if (total > STORAGE_CAP) {
+    await r.incrby(K.bytes(), -n);
+    throw new Full(`HoloTable's storage is full (${Math.round(STORAGE_CAP / 1048576)} MB). Delete an asset pack or old images first.`);
+  }
+}
+async function release(n) { if (n > 0) await module.exports.getClient().incrby(K.bytes(), -n); }
+async function used() { return +((await module.exports.getClient().get(K.bytes())) || 0); }
 
 async function withLock(code, fn) {
   const r = module.exports.getClient();
@@ -128,6 +147,7 @@ async function saveCampaign(camp) {
   const backup = !camp.lastBackup || t - camp.lastBackup >= BACKUP_EVERY;
   if (backup) camp.lastBackup = t;
   const json = JSON.stringify(camp);
+  if (json.length > MAX_GAME_BYTES) throw new Full("The table has grown too large to save. Clear the chat or remove some characters and handouts.");
   await r.set(K.camp(camp.code), json);
   if (backup) {
     await r.lpush(K.bk(camp.code), json);
@@ -152,18 +172,22 @@ function decodeDataUrl(dataUrl, maxBytes) {
   if (!sniff(buf) || buf.length > maxBytes) return null;
   return buf;
 }
-async function putImage(buf) {
-  const id = crypto.randomBytes(12).toString("hex");
+async function putImage(buf, id) {
+  id = id || crypto.randomBytes(12).toString("hex");
+  await reserve(buf.length);
   await module.exports.getClient().set(K.img(id), buf);
   return { id, url: `/api/holotable?img=${id}` };
 }
 const imgIdFromUrl = (u) => { const m = /^\/api\/holotable\?img=([a-f0-9]{16,40})$/.exec(String(u || "")); return m && m[1]; };
 async function dropImages(urls) {
-  const ids = (urls || []).map(imgIdFromUrl).filter(Boolean);
-  if (ids.length) await module.exports.getClient().del(...ids.map(K.img));
+  const r = module.exports.getClient();
+  for (const id of new Set((urls || []).map(imgIdFromUrl).filter(Boolean))) {
+    const buf = await r.getBuffer(K.img(id));
+    if (buf && (await r.del(K.img(id)))) await release(buf.length);
+  }
 }
 
 module.exports = {
-  getClient, getSub, K, NS, URL, waitForChange, withLock, getCampaign, saveCampaign, bump, Busy,
-  sniff, decodeDataUrl, putImage, dropImages, imgIdFromUrl, BACKUP_KEEP,
+  getClient, getSub, K, NS, URL, waitForChange, withLock, getCampaign, saveCampaign, bump, Busy, Full,
+  sniff, decodeDataUrl, putImage, dropImages, imgIdFromUrl, BACKUP_KEEP, reserve, release, used, STORAGE_CAP,
 };

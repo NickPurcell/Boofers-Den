@@ -1,9 +1,10 @@
 // HoloTable (jpesus's Star Wars 5e table): the game rules on the server. Pure functions, no storage,
 // so they are easy to test. Not a route: the underscore keeps Vercel from serving it.
 //
-// A campaign is one JSON document. applyAction(camp, clientId, isGM, type, payload) changes it in
-// place and returns a small result; viewFor() is what one player is allowed to see (the GM sees
-// everything, players never get the GM key, GM notes, hidden NPCs or other people's whispers).
+// The table is one JSON document (one game for the group). applyAction(camp, playerId, isGM, type,
+// payload) changes it in place and returns a small result; viewFor() is what one person may see.
+// Who is the GM is decided by the caller from the signed session, never from anything in here.
+// Players never get GM notes, hidden NPCs, NPC hit points or other people's whispers.
 
 const crypto = require("crypto");
 
@@ -66,24 +67,17 @@ function rollDice(expr) {
   return { total, detail: parts.join(" ").replace(/^\+/, ""), nat };
 }
 
-// ---------------------------------------------------------------- campaigns
-const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const newCode = () => Array.from({ length: 5 }, () => CODE_ALPHABET[crypto.randomInt(CODE_ALPHABET.length)]).join("");
-const cleanCode = (c) => String(c || "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
-
-function blankCampaign(code, name, gmId, gmName) {
+// ---------------------------------------------------------------- the game
+function blankCampaign(name) {
   return {
-    code, name: str(name, 80) || "Untitled Campaign", created: now(), updated: now(),
-    gmId, gmToken: crypto.randomBytes(16).toString("base64url"),
-    players: { [gmId]: { name: str(gmName, 40) || "GM" } },
-    characters: {}, chat: [],
+    code: "main", name: str(name, 80) || "HoloTable", created: now(), updated: now(),
+    players: {}, characters: {}, chat: [],
     initiative: { entries: [], turn: 0, round: 1, active: false },
     map: { bgVersion: 0, bgUrl: null, floor: null, floorScale: 1, gridSize: 50, cols: 24, rows: 16, tokens: [], props: [], showGrid: true },
-    notes: "", handouts: [],
+    notes: "", handouts: [], levelUps: {},
   };
 }
 
-const isGM = (camp, cid) => !!cid && cid === camp.gmId;
 const playerName = (camp, cid) => (camp.players[cid] || {}).name || "Someone";
 
 function addChat(camp, msg) {
@@ -94,15 +88,54 @@ function addChat(camp, msg) {
   return msg;
 }
 
-// images may come from this site's own store, or any http(s) URL
+// Images may only be ones uploaded to this table (photos, maps, handouts) or asset-pack art, so
+// nobody's browser is ever sent to an outside server.
 const IMG_PREFIX = "/api/holotable?";
-function validImg(src) {
-  src = str(src, 1000);
-  return src.startsWith(IMG_PREFIX) || /^https?:\/\//.test(src) ? src : null;
+const IMG_RE = /^\/api\/holotable\?(img=[a-f0-9]{16,40}|a=[a-z0-9-]{3,60}\.\d{1,5})$/;
+const validImg = (src) => (IMG_RE.test(String(src || "")) ? String(src) : null);
+const validColor = (c, d = "#4fc3f7") => (/^#[0-9a-fA-F]{6}$/.test(String(c || "")) ? String(c) : d);
+const numOr = (v, d) => (v === "" || v === null || v === undefined ? d : Number.isFinite(+v) ? +v : d);
+const optNum = (v) => numOr(v, "");   // a number, or "" meaning "not set"
+const nullNum = (v) => numOr(v, null);
+
+// A character sheet as the server keeps it: every number really is a number, every list is a
+// list of plain objects with string fields, images and colours are checked.
+function cleanChar(ch) {
+  const s = (v, n = 200) => str(v, n);
+  const list = (v, max, fn) => (Array.isArray(v) ? v.slice(0, max).filter((x) => x && typeof x === "object").map(fn) : []);
+  const nums = (o, keys, d) => Object.fromEntries(keys.map((k) => [k, numOr((o || {})[k], d)]));
+  const out = {
+    _format: "holotable-sw5e", id: ch.id, name: s(ch.name, 80) || "Unnamed", species: s(ch.species, 60), background: s(ch.background, 60),
+    alignment: s(ch.alignment, 60), xp: numOr(ch.xp, 0), credits: numOr(ch.credits, 0),
+    classes: list(ch.classes, 6, (k) => ({ name: s(k.name, 40) || "Fighter", level: clamp(int(k.level, 1), 0, 20), archetype: s(k.archetype, 60) })),
+    abilities: nums(ch.abilities, ABILS, 10),
+    saves: Object.fromEntries(ABILS.map((a) => [a, !!(ch.saves || {})[a]])),
+    skills: Object.fromEntries(Object.entries(ch.skills || {}).slice(0, 40).filter(([k]) => /^[a-zA-Z]{1,30}$/.test(k)).map(([k, v]) => [k, [0, 0.5, 1, 2].includes(+v) ? +v : 0])),
+    skillMisc: Object.fromEntries(Object.entries(ch.skillMisc || {}).slice(0, 40).filter(([k]) => /^[a-zA-Z]{1,30}$/.test(k)).map(([k, v]) => [k, numOr(v, 0)])),
+    saveMisc: nums(ch.saveMisc, ABILS, 0),
+    ac: numOr(ch.ac, 10), speed: numOr(ch.speed, 30),
+    hp: nums(ch.hp, ["max", "current", "temp"], 0), hitDiceUsed: numOr(ch.hitDiceUsed, 0),
+    deathSaves: { s: clamp(int((ch.deathSaves || {}).s), 0, 3), f: clamp(int((ch.deathSaves || {}).f), 0, 3) },
+    initMisc: numOr(ch.initMisc, 0), profOverride: optNum(ch.profOverride),
+    force: { max: optNum((ch.force || {}).max), used: numOr((ch.force || {}).used, 0) },
+    tech: { max: optNum((ch.tech || {}).max), used: numOr((ch.tech || {}).used, 0) },
+    attacks: list(ch.attacks, 40, (a) => ({ name: s(a.name, 80), ab: ["str", "dex", "con", "int", "wis", "cha", "finesse"].includes(a.ab) ? a.ab : "str",
+      damage: s(a.damage, 40), damageFull: a.damageFull ? s(a.damageFull, 60) : undefined, type: s(a.type, 30), props: s(a.props, 200),
+      proficient: a.proficient !== false, magic: optNum(a.magic), bonus: optNum(a.bonus), noModDamage: !!a.noModDamage })),
+    powers: list(ch.powers, 150, (pw) => ({ name: s(pw.name, 80), level: clamp(int(pw.level), 0, 9), type: pw.type === "tech" ? "tech" : "force",
+      alignment: ["light", "dark"].includes(pw.alignment) ? pw.alignment : "universal", notes: s(pw.notes, 300), description: s(pw.description, 4000) })),
+    features: list(ch.features, 150, (f) => ({ name: s(f.name, 80), text: s(f.text, 4000) })),
+    equipment: list(ch.equipment, 200, (e) => ({ name: s(e.name, 80), qty: numOr(e.qty, 1), equipped: !!e.equipped, notes: s(e.notes, 200) })),
+    conditions: (Array.isArray(ch.conditions) ? ch.conditions : []).slice(0, 20).map((c) => s(c, 30)),
+    exhaustion: clamp(int(ch.exhaustion), 0, 6), inspiration: !!ch.inspiration,
+    proficiencies: s(ch.proficiencies, 2000), languages: s(ch.languages, 500), notes: s(ch.notes, 20000),
+    image: validImg(ch.image) || "", tokenImage: validImg(ch.tokenImage) || "", color: validColor(ch.color),
+  };
+  if (!out.classes.length) out.classes = [{ name: "Fighter", level: 1, archetype: "" }];
+  return out;
 }
 
-function viewFor(camp, cid, online) {
-  const gm = isGM(camp, cid);
+function viewFor(camp, cid, gm, online) {
   const chat = camp.chat.filter((m) => !m.to || gm || m.to.includes(cid) || m.fromId === cid);
   const ini = Object.assign({}, camp.initiative);
   if (!gm) {
@@ -112,11 +145,12 @@ function viewFor(camp, cid, online) {
   const map = Object.assign({}, camp.map);
   if (!gm) map.tokens = map.tokens.filter((t) => !t.hidden);
   return {
-    code: camp.code, name: camp.name, gmId: camp.gmId, you: cid, isGM: gm, updated: camp.updated,
+    name: camp.name, you: cid, isGM: !!gm, updated: camp.updated,
     players: camp.players, online: online || [], characters: camp.characters,
     chat: chat.slice(-200), initiative: ini, map,
-    notes: gm ? camp.notes : null, gmToken: gm ? camp.gmToken : null,
+    notes: gm ? camp.notes : null,
     handouts: (camp.handouts || []).filter((h) => gm || h.shared),
+    levelUps: camp.levelUps || {},
   };
 }
 
@@ -124,9 +158,84 @@ function doRoll(camp, cid, expr, label, charId, priv, kind) {
   const res = rollDice(expr);
   const msg = { from: playerName(camp, cid), fromId: cid, roll: Object.assign({}, res, { expr: str(expr, 120), label: str(label, 120), kind: kind || null }) };
   if (charId && camp.characters[charId]) msg.charName = camp.characters[charId].name;
-  if (priv) { msg.to = [...new Set([camp.gmId, cid])]; msg.private = true; }
+  if (priv) { msg.to = ["@gm", cid]; msg.private = true; }
   addChat(camp, msg);
   return res;
+}
+
+// ---------------------------------------------------------------- levelling
+// Hit die per SW5e class (custom / homebrew classes send their own die from the sheet).
+const HIT_DIE = { berserker: 12, consular: 6, engineer: 8, fighter: 10, guardian: 10, monk: 8, operative: 8, scholar: 8, scout: 10, sentinel: 8 };
+const ABILS = ["str", "dex", "con", "int", "wis", "cha"];
+const totalLevel = (ch) => (ch.classes || []).reduce((a, k) => a + (int(k.level) || 0), 0);
+const abMod = (ch, ab) => Math.floor((num((ch.abilities || {})[ab], 10) - 10) / 2);
+const hitDieFor = (name, fallback) => HIT_DIE[String(name || "").toLowerCase()] || ([6, 8, 10, 12].includes(int(fallback)) ? int(fallback) : 8);
+
+function applyLevelUp(camp, cid, gm, p) {
+  const ch = camp.characters[p.charId];
+  if (!ch) throw new Invalid("No such character.");
+  if (!(gm || ch.owner === cid)) throw new Forbidden("not your character");
+  const pend = (camp.levelUps || {})[ch.id];
+  if (!pend || pend.count < 1) throw new Invalid("The GM hasn't granted this character a level up yet.");
+  if (!Array.isArray(ch.classes)) ch.classes = [];
+  const before = totalLevel(ch);
+  if (before >= 20) throw new Invalid("Already level 20.");
+  const clsName = str(p.className, 40).trim();
+  if (!clsName) throw new Invalid("Pick a class to level up.");
+  let k = ch.classes.find((x) => String(x.name || "").toLowerCase() === clsName.toLowerCase());
+  const multiclass = !k;
+  if (!k) { k = { name: clsName, level: 0, archetype: "" }; ch.classes.push(k); }
+  if (!ch.abilities) ch.abilities = {};
+  const oldCon = abMod(ch, "con");
+
+  // ability score increase (+2 to one score or +1 to two, never above 20) or a feat
+  if (p.asi) {
+    let total = 0;
+    for (const [ab, v] of Object.entries(p.asi)) {
+      const inc = int(v);
+      if (!ABILS.includes(ab) || inc < 0 || inc > 2) throw new Invalid("Bad ability score increase.");
+      if (num(ch.abilities[ab], 10) + inc > 20) throw new Invalid("Ability scores can't go above 20.");
+      total += inc;
+    }
+    if (total !== 2) throw new Invalid("An ability score increase is +2 to one score or +1 to two.");
+  }
+  const feat = p.feat && str(p.feat.name, 80).trim();
+
+  // hit points: rolled on the server (shown in chat) or the fixed average; Con changes count for every level
+  const hd = hitDieFor(k.name, p.hitDie);
+  if (p.asi) for (const [ab, v] of Object.entries(p.asi)) ch.abilities[ab] = num(ch.abilities[ab], 10) + int(v);
+  const newCon = abMod(ch, "con");
+  const die = p.hpMode === "roll"
+    ? doRoll(camp, cid, `1d${hd}`, `${ch.name}: level ${before + 1} hit points (d${hd})`, ch.id, false, "hp").total
+    : hd / 2 + 1;
+  const gain = Math.max(1, die + newCon) + (newCon - oldCon) * before;
+  ch.hp = ch.hp || {};
+  ch.hp.max = num(ch.hp.max) + gain;
+  ch.hp.current = num(ch.hp.current) + gain;
+
+  k.level = int(k.level) + 1;
+  if (p.archetype) k.archetype = str(p.archetype, 60);
+  ch.features = Array.isArray(ch.features) ? ch.features : [];
+  ch.powers = Array.isArray(ch.powers) ? ch.powers : [];
+  if (feat) ch.features.push({ name: feat, text: `Feat (level ${before + 1})` + (p.feat.text ? "\n" + str(p.feat.text, 4000) : "") });
+  for (const f of (Array.isArray(p.features) ? p.features : []).slice(0, 20)) {
+    if (f && str(f.name, 80).trim()) ch.features.push({ name: str(f.name, 80).trim(), text: str(f.text, 4000) });
+  }
+  for (const pw of (Array.isArray(p.powers) ? p.powers : []).slice(0, 20)) {
+    if (!pw || !str(pw.name, 80).trim()) continue;
+    ch.powers.push({ name: str(pw.name, 80).trim(), level: clamp(int(pw.level), 0, 9), type: pw.type === "tech" ? "tech" : "force",
+      alignment: ["light", "dark"].includes(pw.alignment) ? pw.alignment : "universal", notes: str(pw.notes, 300) });
+  }
+  ch.updated = now();
+  pend.count -= 1;
+  if (pend.count < 1) delete camp.levelUps[ch.id];
+  for (const e of camp.initiative.entries) if (e.charId === ch.id) { e.hp = ch.hp.current; e.maxHp = ch.hp.max; }
+
+  const bits = [`HP +${gain}`];
+  if (p.asi) bits.push(Object.entries(p.asi).filter(([, v]) => int(v)).map(([ab, v]) => `${ab.toUpperCase()} +${int(v)}`).join(", "));
+  if (feat) bits.push(`feat: ${feat}`);
+  addChat(camp, { levelup: true, text: `🎉 ${ch.name} reached level ${before + 1}! ${multiclass ? "Multiclassed into " : ""}${k.name} ${k.level}${k.archetype ? " (" + k.archetype + ")" : ""} · ${bits.join(" · ")}` });
+  return { level: before + 1, hpGain: gain, die };
 }
 
 const canEditChar = (camp, cid, gm, id) => { const ch = camp.characters[id]; return !ch || gm || ch.owner === cid; };
@@ -149,21 +258,34 @@ function applyAction(camp, cid, gm, type, p) {
   switch (type) {
     // ---- characters
     case "char.save": {
-      const ch = p.char;
-      if (!ch || typeof ch !== "object" || Array.isArray(ch)) throw new Invalid("bad character");
-      if (JSON.stringify(ch).length > 400000) throw new Invalid("character sheet too large");
-      const id = /^[a-z0-9]{6,20}$/.test(ch.id || "") ? ch.id : rid(12);
+      if (!p.char || typeof p.char !== "object" || Array.isArray(p.char)) throw new Invalid("bad character");
+      if (JSON.stringify(p.char).length > 400000) throw new Invalid("character sheet too large");
+      const id = /^[a-z0-9]{6,20}$/.test(p.char.id || "") ? p.char.id : rid(12);
       need(canEditChar(camp, cid, gm, id), "not your character");
+      if (!chars[id] && Object.keys(chars).length >= 60) throw new Invalid("too many characters at this table");
       const old = chars[id];
-      ch.id = id;
-      ch.owner = old ? old.owner : (gm && p.owner && camp.players[p.owner] ? p.owner : cid);
-      ch.updated = now();
-      for (const k of ["image", "tokenImage"]) if (ch[k] && !validImg(ch[k])) ch[k] = "";
-      chars[id] = ch;
+      const clean = cleanChar(Object.assign({}, p.char, { id }));
+      clean.owner = old ? old.owner : (gm && p.owner && camp.players[p.owner] ? p.owner : cid);
+      // photos change only through an upload (or char.photo.clear), never through a sheet save,
+      // so a save carrying a stale copy can't undo or delete a photo that was just uploaded
+      clean.image = old ? old.image || "" : "";
+      clean.tokenImage = old ? old.tokenImage || "" : "";
+      clean.updated = now();
+      chars[id] = clean;
+      const ch = clean;
       for (const e of ini.entries) if (e.charId === id) { e.name = ch.name || e.name; const hp = ch.hp || {}; e.hp = hp.current; e.maxHp = hp.max; }
       for (const t of mp.tokens) if (t.charId === id) t.name = ch.name || t.name;
       if (!old) addChat(camp, { system: true, text: `${playerName(camp, cid)} brought ${ch.name || "a character"} to the table.` });
       return { id };
+    }
+    case "char.photo.clear": {
+      const ch = chars[p.charId];
+      if (!ch) return {};
+      need(gm || ch.owner === cid, "not your character");
+      const k = p.kind === "token" ? "tokenImage" : "image";
+      const old = ch[k];
+      ch[k] = "";
+      return { dropImages: [old] };
     }
     case "char.delete": {
       const ch = chars[p.id];
@@ -204,7 +326,7 @@ function applyAction(camp, cid, gm, type, p) {
         if (target) {
           ids = Object.keys(camp.players).filter((id) => (camp.players[id].name || "").toLowerCase() === target.toLowerCase());
           body = rest.slice(target.length);
-        } else if (rest.toLowerCase().startsWith("gm ")) { ids = [camp.gmId]; body = rest.slice(3); target = "GM"; }
+        } else if (rest.toLowerCase().startsWith("gm ")) { ids = ["@gm"]; body = rest.slice(3); target = "GM"; }
         else throw new Invalid("No player by that name. Use /w <name> <message>");
         addChat(camp, { from: playerName(camp, cid), fromId: cid, text: body.trim(), to: [...new Set([...ids, cid])], private: true, whisperTo: target });
         return {};
@@ -231,8 +353,8 @@ function applyAction(camp, cid, gm, type, p) {
       const hp = ch.hp || {};
       Object.assign(entry, {
         name: str(p.name || ch.name || "Combatant", 60), init: num(init), charId, npc: !charId,
-        hidden: !!p.hidden && gm, hp: charId ? hp.current : (p.hp ?? null), maxHp: charId ? hp.max : (p.hp ?? null),
-        ac: charId ? ch.ac : (p.ac ?? null), dexTie: num(p.bonus) / 100, conditions: entry.conditions || [],
+        hidden: !!p.hidden && gm, hp: nullNum(charId ? hp.current : p.hp), maxHp: nullNum(charId ? hp.max : p.hp),
+        ac: nullNum(charId ? ch.ac : p.ac), dexTie: num(p.bonus) / 100, conditions: entry.conditions || [],
       });
       sortInit(ini);
       return {};
@@ -242,9 +364,12 @@ function applyAction(camp, cid, gm, type, p) {
       if (!e) return {};
       need(gm || (e.charId && chars[e.charId] && chars[e.charId].owner === cid));
       const f = p.fields || {};
-      for (const k of ["name", "init", "hp", "maxHp", "ac", "conditions", "notes"]) if (k in f) e[k] = f[k];
+      if ("name" in f) e.name = str(f.name, 60);
+      for (const k of ["hp", "maxHp", "ac"]) if (k in f) e[k] = nullNum(f[k]);
+      if ("init" in f) e.init = num(f.init);
+      if ("conditions" in f) e.conditions = (Array.isArray(f.conditions) ? f.conditions : []).slice(0, 20).map((c) => str(c, 30));
       if ("hidden" in f && gm) e.hidden = !!f.hidden;
-      if ("hp" in f && e.charId && chars[e.charId]) (chars[e.charId].hp = chars[e.charId].hp || {}).current = f.hp;
+      if ("hp" in f && e.charId && chars[e.charId]) (chars[e.charId].hp = chars[e.charId].hp || {}).current = numOr(f.hp, 0);
       if ("init" in f) sortInit(ini);
       return {};
     }
@@ -289,7 +414,7 @@ function applyAction(camp, cid, gm, type, p) {
       if (mp.tokens.length >= 300) throw new Invalid("too many tokens on this map");
       const ch = charId ? chars[charId] || {} : {};
       mp.tokens.push({
-        id: rid(), name: str(p.name || ch.name || "Token", 40), color: str(p.color || ch.color || "#4fc3f7", 20),
+        id: rid(), name: str(p.name || ch.name || "Token", 40), color: validColor(p.color || ch.color),
         x: clamp(int(p.x, 1), 0, 400), y: clamp(int(p.y, 1), 0, 400), size: clamp(int(p.size, 1), 1, 4),
         charId, owner: cid, hidden: !!p.hidden && gm, img: validImg(p.img),
       });
@@ -302,7 +427,7 @@ function applyAction(camp, cid, gm, type, p) {
       if (type === "token.remove") { mp.tokens.splice(mp.tokens.indexOf(t), 1); return {}; }
       const f = p.fields || {};
       if ("name" in f) t.name = str(f.name, 40);
-      if ("color" in f) t.color = str(f.color, 20);
+      if ("color" in f) t.color = validColor(f.color);
       if ("size" in f) t.size = clamp(int(f.size, 1), 1, 4);
       if ("hidden" in f && gm) t.hidden = !!f.hidden;
       if ("img" in f) t.img = validImg(f.img);
@@ -356,6 +481,7 @@ function applyAction(camp, cid, gm, type, p) {
       need(gm);
       const h = p.handout || {};
       const clean = { id: /^[a-z0-9]{6,20}$/.test(h.id || "") ? h.id : rid(), title: str(h.title, 200), text: str(h.text, 20000), img: validImg(h.img), shared: !!h.shared };
+      if ((camp.handouts || []).length >= 100 && !(camp.handouts || []).some((x) => x.id === clean.id)) throw new Invalid("too many handouts");
       camp.handouts = (camp.handouts || []).filter((x) => x.id !== clean.id).concat(clean);
       if (clean.shared && p.announce) addChat(camp, { system: true, text: `New handout: ${clean.title || "Untitled"}` });
       return {};
@@ -366,6 +492,33 @@ function applyAction(camp, cid, gm, type, p) {
       camp.handouts = (camp.handouts || []).filter((x) => x.id !== p.id);
       return { dropImages: [h && h.img] };
     }
+    // ---- level ups: the GM grants, the player (or the GM for an absent player) picks how to level
+    case "levelup.grant": {
+      need(gm);
+      const ids = (Array.isArray(p.charIds) ? p.charIds : []).filter((id) => chars[id]);
+      if (!ids.length) throw new Invalid("Pick at least one character.");
+      camp.levelUps = camp.levelUps || {};
+      const names = [];
+      for (const id of ids) {
+        const pend = camp.levelUps[id] || { count: 0 };
+        if (totalLevel(chars[id]) + pend.count >= 20) continue;
+        pend.count += 1; pend.grantId = rid(); pend.at = now();
+        camp.levelUps[id] = pend;
+        names.push(chars[id].name || "Someone");
+      }
+      if (!names.length) throw new Invalid("Those characters are already level 20.");
+      const reason = str(p.reason, 200).trim();
+      addChat(camp, { levelup: true, text: `⬆ Level up! ${names.join(", ")} ${names.length > 1 ? "have" : "has"} earned a new level${reason ? ": " + reason : ""}.` });
+      return { granted: names.length };
+    }
+    case "levelup.cancel": {
+      need(gm);
+      if (camp.levelUps && camp.levelUps[p.charId]) delete camp.levelUps[p.charId];
+      return {};
+    }
+    case "levelup.apply":
+      return applyLevelUp(camp, cid, gm, p);
+
     case "player.rename":
       (camp.players[cid] = camp.players[cid] || {}).name = str(p.name, 40) || "Player";
       return {};
@@ -374,7 +527,38 @@ function applyAction(camp, cid, gm, type, p) {
   throw new Invalid("unknown action " + str(type, 40));
 }
 
+// A whole game coming back from a backup file gets the same checks as live edits.
+function cleanGame(g) {
+  const m = g.map && typeof g.map === "object" ? g.map : {};
+  const n = (v, d) => (Number.isFinite(+v) ? +v : d);
+  g.map = {
+    bgVersion: int(m.bgVersion) + 1, bgUrl: validImg(m.bgUrl), floor: validImg(m.floor), floorScale: clamp(n(m.floorScale, 1), 0.1, 8),
+    gridSize: clamp(int(m.gridSize, 50), 5, 200), cols: clamp(int(m.cols, 24), 5, 200), rows: clamp(int(m.rows, 16), 5, 200), showGrid: m.showGrid !== false,
+    tokens: (Array.isArray(m.tokens) ? m.tokens : []).slice(0, 300).filter((t) => t && typeof t === "object").map((t) => ({
+      id: /^[a-z0-9]{6,20}$/.test(t.id || "") ? t.id : rid(), name: str(t.name, 40), color: validColor(t.color), x: clamp(int(t.x), 0, 400), y: clamp(int(t.y), 0, 400),
+      size: clamp(int(t.size, 1), 1, 4), charId: g.characters[t.charId] ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, img: validImg(t.img) })),
+    props: (Array.isArray(m.props) ? m.props : []).slice(0, 1500).filter((p) => p && validImg(p.src)).map((p) => ({
+      id: /^[a-z0-9]{6,20}$/.test(p.id || "") ? p.id : rid(), src: p.src, name: str(p.name, 60), x: n(p.x, 0), y: n(p.y, 0), w: n(p.w, 1), h: n(p.h, 1), rot: n(p.rot, 0) })),
+  };
+  const ini = g.initiative && typeof g.initiative === "object" ? g.initiative : {};
+  g.initiative = {
+    turn: clamp(int(ini.turn), 0, 300), round: Math.max(1, int(ini.round, 1)), active: !!ini.active,
+    entries: (Array.isArray(ini.entries) ? ini.entries : []).slice(0, 300).filter((e) => e && typeof e === "object").map((e) => ({
+      id: /^[a-z0-9]{6,20}$/.test(e.id || "") ? e.id : rid(), name: str(e.name, 60), init: n(e.init, 0), charId: g.characters[e.charId] ? e.charId : null,
+      npc: !!e.npc, hidden: !!e.hidden, hp: nullNum(e.hp), maxHp: nullNum(e.maxHp), ac: nullNum(e.ac), dexTie: n(e.dexTie, 0),
+      conditions: (Array.isArray(e.conditions) ? e.conditions : []).slice(0, 20).map((c) => str(c, 30)) })),
+  };
+  g.handouts = (Array.isArray(g.handouts) ? g.handouts : []).slice(0, 100).filter((h) => h && typeof h === "object").map((h) => ({
+    id: /^[a-z0-9]{6,20}$/.test(h.id || "") ? h.id : rid(), title: str(h.title, 200), text: str(h.text, 20000), img: validImg(h.img), shared: !!h.shared }));
+  g.chat = (Array.isArray(g.chat) ? g.chat : []).slice(-CHAT_LIMIT).filter((c) => c && typeof c === "object");
+  g.notes = str(g.notes, 500000);
+  g.levelUps = Object.fromEntries(Object.entries(g.levelUps || {}).filter(([id]) => g.characters[id])
+    .map(([id, v]) => [id, { count: clamp(int((v || {}).count), 0, 20), grantId: rid(), at: now() }]).filter(([, v]) => v.count > 0));
+  return g;
+}
+
 module.exports = {
-  rollDice, newCode, cleanCode, blankCampaign, isGM, playerName, addChat, viewFor, applyAction, validImg, rid,
+  cleanGame,
+  rollDice, blankCampaign, playerName, addChat, viewFor, applyAction, validImg, validColor, cleanChar, rid,
   Forbidden, Invalid, IMG_PREFIX,
 };

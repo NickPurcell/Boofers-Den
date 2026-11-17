@@ -10,6 +10,9 @@ const orig = Module._resolveFilename;
 Module._resolveFilename = function (req, ...rest) { return req === "ioredis" ? "ioredis-stub" : orig.call(this, req, ...rest); };
 require.cache["ioredis-stub"] = { id: "ioredis-stub", filename: "ioredis-stub", loaded: true, exports: HoloFake };
 process.env.REDIS_URL = "redis://stub";
+// local-only passwords (the real ones live in Vercel's environment settings, never in the repo)
+process.env.HOLOTABLE_PLAYER_PASSWORD = process.env.HOLOTABLE_PLAYER_PASSWORD || "dev-player";
+process.env.HOLOTABLE_GM_PASSWORD = process.env.HOLOTABLE_GM_PASSWORD || "dev-gm";
 const ROOT = path.join(__dirname, "..");
 const S = require("../api/_holotable-store.js");
 const db = new HoloFake();
@@ -43,4 +46,5 @@ http.createServer(async (req, res) => {
   if (!fs.existsSync(f)) { res.statusCode = 404; return res.end("not found"); }
   res.setHeader("Content-Type", TYPES[path.extname(f)] || "application/octet-stream");
   fs.createReadStream(f).pipe(res);
-}).listen(+process.argv[2] || 8788, () => console.log("HoloTable dev server on", +process.argv[2] || 8788));
+}).listen(+process.argv[2] || 8788, () => console.log("HoloTable dev server on", +process.argv[2] || 8788,
+  "- dev passwords: player 'dev-player', GM 'dev-gm' (override with HOLOTABLE_PLAYER_PASSWORD / HOLOTABLE_GM_PASSWORD)"));
