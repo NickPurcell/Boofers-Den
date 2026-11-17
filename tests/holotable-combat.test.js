@@ -1939,3 +1939,37 @@ test("fog of war outside the combat view (#93): walls and fog are the map's; a s
   sv = await sam.state();
   assert.ok(tokenOf(sv, "Raider") && sv.fog === undefined);
 });
+
+test("fog of war: chat follows sight; a player blind to the shooter gets the hit on the one they see, unnamed (#93)", async () => {
+  const { gm, sam, rae, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  const st0 = await gm.state();
+  // a wall at x = 3 from y 0 to 3: Avery (0,0) can't see the Raider (6,0); Bolt, moved to (1,6), sees both
+  await gm.act("token.move", { id: tokenOf(st0, "Bolt").id, x: 1, y: 6 });
+  await gm.act("fight.wall", { op: "add", a: [3, 0], b: [3, 3] });
+  await gm.act("fight.fog", { on: true });
+  assert.equal(tokenOf(await sam.state(), "Raider"), undefined, "Avery can't see the Raider");
+  assert.ok(tokenOf(await rae.state(), "Raider"), "Bolt can");
+  await sam.act("fight.end", {});
+  const n0 = (await gm.state()).chat.length;
+  assert.equal((await gm.act("fight.attack", { target: ids.bolt, attack: { name: "Blaster", bonus: 30, damage: "1d4", type: "energy", range: [60, 240] } })).code, 200);
+  const g = (await gm.state()).chat.slice(n0), sv = (await sam.state()).chat, rv = (await rae.state()).chat;
+  const text = (m) => (m.text || (m.roll && m.roll.label) || "");
+  const full = g.filter((m) => /Raider attacks Bolt/.test(text(m)));
+  assert.equal(full.length, 1, "the GM reads the attack");
+  assert.ok(rv.some((m) => /Raider attacks Bolt/.test(text(m))), "Bolt's player, who sees the Raider, reads it");
+  assert.ok(!sv.some((m) => /Raider/.test(text(m)) && /attacks|takes|hit/.test(text(m))), "Avery's player reads nothing naming the unseen Raider");
+  const hit = g.some((m) => m.roll && m.roll.kind === "damage");
+  if (hit) {   // (a natural 1 misses: then there's nothing to tell)
+    assert.ok(sv.some((m) => /^Bolt is hit for \d+ damage\.$/.test(text(m))), "the hit on Bolt, whom Avery sees, unnamed");
+    assert.ok(!rv.some((m) => /^Bolt is hit for/.test(text(m))), "Bolt's player has the full line instead");
+  }
+  const ev = (await sam.state()).fight.events || [];
+  assert.ok(!ev.some((e) => e.token === tokenOf(st0, "Raider").id), "no floating numbers on the unseen Raider's token");
+  // fog off: lines are for everyone again
+  await gm.act("fight.fog", { on: false });
+  const n1 = (await gm.state()).chat.length;
+  await gm.act("fight.undo", {});
+  await gm.act("fight.attack", { target: ids.bolt, attack: { name: "Blaster", bonus: 30, damage: "1d4", type: "energy", range: [60, 240] } });
+  assert.ok((await sam.state()).chat.slice(-6).some((m) => /Raider attacks Bolt/.test(text(m))), "fog off: everyone reads it");
+});
