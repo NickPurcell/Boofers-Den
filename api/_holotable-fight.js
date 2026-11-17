@@ -33,8 +33,10 @@ function state(camp) {
     npc: Object.fromEntries(Object.entries(plainObj(f.npc)).filter(([k]) => ID.test(k)).map(([k, v]) => {
       const o = typeof v === "object" && v ? v : { speed: v };
       const saves = Object.fromEntries(Object.entries(plainObj(o.saves)).filter(([ab, n]) => ["str", "dex", "con", "int", "wis", "cha"].includes(ab) && Number.isFinite(+n)).map(([ab, n]) => [ab, clamp(int(n), -10, 30)]));
-      return [k, { speed: clamp(int(o.speed, 30), 0, 200), saves }];
+      return [k, Object.assign({ speed: clamp(int(o.speed, 30), 0, 200), saves }, defences(o))];
     })),
+    // a character's resistances, immunities and vulnerabilities (set by its owner or the GM in the combat view)
+    defenses: Object.fromEntries(Object.entries(plainObj(f.defenses)).filter(([k]) => ID.test(k)).slice(0, 60).map(([k, v]) => [k, defences(plainObj(v))])),
     // the table's ability data, by power name (issue #73): the GM fills it in; a power without data works as before
     lib: Object.fromEntries(Object.entries(plainObj(f.lib)).slice(0, 300).map(([k, v]) => [str(k, 80).toLowerCase(), E.cleanAbility(v)]).filter(([k, v]) => k && v)),
     // what each unit has spent of its turn (movement in feet, action, bonus action, reaction), since its turn began
@@ -58,6 +60,11 @@ function state(camp) {
   return camp.fight;
 }
 
+// damage defences as the engine reads them: [{ type, only }], for resist / immune / vuln, plus condition immunities
+function defences(o) {
+  const list = (v) => (Array.isArray(v) ? v : []).slice(0, 13).filter((d) => d && E.DAMAGE.includes(d.type)).map((d) => ({ type: d.type, only: d.only === "unenhanced" ? "unenhanced" : null }));
+  return { resist: list(o.resist), immune: list(o.immune), vuln: list(o.vuln), condImmune: (Array.isArray(o.condImmune) ? o.condImmune : []).slice(0, 20).map((c) => str(c, 30)) };
+}
 // an undo snapshot with every field reshaped (a backup restore could bring anything back)
 function cleanSnap(x) {
   const num = (v, a, b) => clamp(Number.isFinite(+v) ? +v : 0, a, b);
@@ -108,6 +115,7 @@ function worldOf(camp, forPlayer) {
     tokens: camp.map.tokens, unitTokens: ut, spent: f.spent || {}, effects: f.effects || [], conc: f.conc || {},
     npcSpeed: Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v.speed : v])),
     npcStats: Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v : {}])),
+    defenses: f.defenses || {},
   }, R);
 }
 
@@ -240,7 +248,18 @@ function apply(camp, cid, gm, type, p, G) {
       need(gm);
       const e = entry(p.id);
       if (!e || e.charId) throw new G.Invalid("No such creature.");
-      f.npc[e.id] = { speed: clamp(int(p.speed, 30), 0, 200), saves: Object.fromEntries(Object.entries(plainObj(p.saves)).filter(([ab, n]) => ["str", "dex", "con", "int", "wis", "cha"].includes(ab) && Number.isFinite(+n)).map(([ab, n]) => [ab, clamp(int(n), -10, 30)])) };
+      // defences arrive as the stat block's own lines ("Kinetic from unenhanced weapons") and are read here
+      const lines = (v) => (Array.isArray(v) ? v : []).slice(0, 12).map((x) => str(x, 80));
+      f.npc[e.id] = Object.assign({ speed: clamp(int(p.speed, 30), 0, 200), saves: Object.fromEntries(Object.entries(plainObj(p.saves)).filter(([ab, n]) => ["str", "dex", "con", "int", "wis", "cha"].includes(ab) && Number.isFinite(+n)).map(([ab, n]) => [ab, clamp(int(n), -10, 30)])) },
+        defences({ resist: E.readDefenses(lines(p.resist)), immune: E.readDefenses(lines(p.immune)), vuln: E.readDefenses(lines(p.vuln)), condImmune: lines(p.condImmune) }));
+      return {};
+    }
+    case "fight.defenses": { // a character's resistances, immunities and vulnerabilities (its owner or the GM)
+      const ch = camp.characters[p.charId];
+      if (!ch) throw new G.Invalid("No such character.");
+      need(gm || ch.owner === cid, "not your character");
+      const types = (v) => (Array.isArray(v) ? v : []).filter((x) => E.DAMAGE.includes(x)).map((type) => ({ type, only: null }));
+      f.defenses[ch.id] = defences({ resist: types(p.resist), immune: types(p.immune), vuln: types(p.vuln) });
       return {};
     }
     case "fight.ability": {  // the GM teaches the table a power's numbers (or forgets them: data null)
@@ -416,6 +435,8 @@ function view(camp, cid, gm) {
     undo: gm ? { n: (f.undo || []).length, last: ((f.undo || [])[(f.undo || []).length - 1] || {}).label || null } : null,
     npcSpeed: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v.speed : v])) : {},
     npcSaves: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, (v && v.saves) || {}])) : {},
+    npcDefenses: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, defences(plainObj(v))])) : {},
+    defenses: f.defenses || {},   // characters' own: as visible as their sheets
     lib: f.lib || {},
     effects: (f.effects || []).filter((ef) => units[ef.unit]).map((ef) => ({ unit: ef.unit, condition: ef.condition, ends: ef.ends, of: units[ef.of] ? ef.of : null, rounds: ef.rounds, save: ef.save, conc: ef.conc })),
     conc: Object.fromEntries(Object.entries(f.conc || {}).filter(([id]) => units[id])),

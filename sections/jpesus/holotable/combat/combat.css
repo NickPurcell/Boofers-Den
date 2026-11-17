@@ -44,3 +44,4 @@
 #modalBox label.check input { width: auto; margin: 0; }
 .ct-power b { color: var(--holo); }
 .ct-atk.primary.ct-power b { color: inherit; }
+#modalBox .ct-types { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-bottom: 8px; }

@@ -82,7 +82,7 @@
   function attacksOf(ch, rules) {
     return (ch.attacks || []).map((a, i) => {
       const damage = rules.damageExpr(ch, a);
-      return Object.assign({ key: String(i), name: a.name || 'Attack', bonus: rules.attackBonus(ch, a), damage, crit: rules.critExpr(damage), type: a.type || '' }, readRange(a.props));
+      return Object.assign({ key: String(i), name: a.name || 'Attack', bonus: rules.attackBonus(ch, a), damage, crit: rules.critExpr(damage), type: a.type || '', enhanced: +a.magic > 0 }, readRange(a.props));
     }).filter((a) => a.melee || a.range);
   }
   // a creature's attack from its stat block entry ({ n, atk, dmg, dt, rng, d } as HoloTable's creature list keeps it)
@@ -442,9 +442,10 @@
         if (!hit) { events.push({ kind: 'miss', unit: t.id }); return { ok: true, world: w, log, events }; }
         const expr = crit ? attack.crit || attack.damage : attack.damage;
         const d = roll(expr);
-        const amount = Math.max(0, d.total);
+        const df = defended(t, Math.max(0, d.total), String(attack.type || '').toLowerCase(), attack.enhanced ? 'enhanced' : 'weapon');
+        const amount = df.amount;
         const took = takeDamage(t, amount);
-        log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 ? ' and drops to 0 hit points.' : '.'}` });
+        log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 ? ' and drops to 0 hit points.' : '.'}` });
         events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
         concentrationCheck(w, t, amount, roll, log);
         return { ok: true, world: w, log, events };
@@ -517,6 +518,7 @@
           // conditions the ability puts on its target, with how long they last
           if (!half) for (const ap of ab.applies || []) {
             if (!ap.condition) continue;
+            if ((t.condImmune || []).some((c) => String(c).toLowerCase() === String(ap.condition).toLowerCase())) { log.push({ unit: t.id, text: `${t.name} can't be ${String(ap.condition).toLowerCase()}.` }); continue; }
             t.conditions = Array.from(new Set((t.conditions || []).concat(ap.condition)));
             const until = ap.until || { ends: 'end', of: 'self', rounds: 1 };
             w.effects.push({ id: `${me.id}-${ab.key}-${t.id}-${w.effects.length}`, unit: t.id, condition: ap.condition, ends: until.ends, of: until.of === 'target' ? t.id : me.id,
@@ -526,9 +528,11 @@
           if (ab.damage.length) {
             const expr = dmgExpr(crit);
             const d = roll(expr);
-            const amount = Math.max(0, half ? Math.floor(d.total / 2) : d.total);
+            const raw = Math.max(0, half ? Math.floor(d.total / 2) : d.total);
+            const df = defended(t, raw, String(dtype || '').toLowerCase(), ab.kind === 'weapon' ? 'weapon' : 'power');
+            const amount = df.amount;
             const took = takeDamage(t, amount);
-            log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${dtype ? ' ' + dtype : ''} damage${half ? ' (half, on a save)' : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 ? ' and drops to 0 hit points.' : '.'}` });
+            log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${dtype ? ' ' + dtype : ''} damage${half ? ' (half, on a save)' : ''}${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 ? ' and drops to 0 hit points.' : '.'}` });
             events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
             concentrationCheck(w, t, amount, roll, log);
           } else if (ab.heal) {
@@ -602,6 +606,29 @@
     for (const id of Object.keys(w.conc)) if (w.units[id] && INCAPACITATING(w.units[id])) endConcentration(w, id, `${w.units[id].name} is incapacitated`, log);
     return { world: w, log };
   }
+  /* ---------------- resistances, immunities, vulnerabilities (audit 5.10, 9.6) ---------------- */
+  // A defence is { type, only: 'unenhanced' | null }, read from a stat block line like "Kinetic, Energy" or
+  // "Kinetic from unenhanced weapons". Types are HoloTable's own (rules.js DAMAGE_TYPES).
+  const DAMAGE = ['acid', 'cold', 'energy', 'fire', 'force', 'ion', 'kinetic', 'lightning', 'necrotic', 'poison', 'psychic', 'sonic', 'true'];
+  function readDefenses(lines) {
+    const out = [];
+    for (const line of Array.isArray(lines) ? lines : [lines]) {
+      const t = String(line || '').toLowerCase(), only = /unenhanced|non-?enhanced|nonmagical/.test(t) ? 'unenhanced' : null;
+      for (const d of DAMAGE) if (new RegExp(`\\b${d}\\b`).test(t) && !out.some((x) => x.type === d && x.only === only)) out.push({ type: d, only });
+    }
+    return out.slice(0, 13);
+  }
+  // how much of a hit a target takes: immune 0, resistant half (rounded down), vulnerable double. A defence that only
+  // covers unenhanced weapons doesn't apply to an enhanced weapon or to a power.
+  function defended(t, amount, type, how) {
+    const applies = (list) => (list || []).some((d) => d.type === type && (!d.only || how === 'weapon'));
+    if (!type || amount <= 0) return { amount, note: '' };
+    if (applies(t.immune)) return { amount: 0, note: 'immune' };
+    let n = amount, note = '';
+    if (applies(t.resist)) { n = Math.floor(n / 2); note = 'resisted'; }
+    if (applies(t.vuln)) { n *= 2; note = note ? '' : 'vulnerable'; }
+    return { amount: n, note };
+  }
   // temporary hit points go first; hit points stop at 0; a creature whose hit points aren't known just takes the hit
   function takeDamage(t, amount) {
     const fromTemp = Math.min(Math.max(0, +t.temp || 0), amount);
@@ -631,6 +658,8 @@
         speed: ch ? +ch.speed || 30 : +((table.npcSpeed || {})[e.id]) || 30,
         pools: ch ? Object.fromEntries(resourcesOf(ch, rules).map((r) => [r.key, r])) : {},
         conditions: Array.from(new Set([].concat(e.conditions || [], ch ? ch.conditions || [] : []))),
+        ...(() => { const d = ch ? (table.defenses || {})[e.charId] || {} : (table.npcStats || {})[e.id] || {};
+          return { resist: d.resist || [], immune: d.immune || [], vuln: d.vuln || [], condImmune: d.condImmune || [] }; })(),
         saves: ch && rules ? Object.fromEntries(ABILS.map((ab) => [ab, rules.saveBonus(ch, ab)])) : Object.assign({}, ((table.npcStats || {})[e.id] || {}).saves),
       };
       if (units[e.id].hp != null && units[e.id].hp <= 0) units[e.id].down = true;
@@ -644,5 +673,5 @@
 
   return { FT, TURN, squaresBetween, feetBetween, reachable, readRange, attacksOf, attackFromBehavior, REASONS, preview, budget, apply, takeDamage, buildWorld, turnKey,
     cleanResources, resourcesOf, atLevel, spend, rest, powerNumbers, resolvePower, weaponAbility, abilitiesOf, inReachOf, cleanAbility, setPoolUsed,
-    ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration };
+    ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE };
 });

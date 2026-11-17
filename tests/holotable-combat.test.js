@@ -443,6 +443,34 @@ test("concentration: one power at a time; damage asks for a Con save; dropping t
   assert.match(hit.log.at(-1).text, /Cass loses concentration: Unknown Art ends/);
 });
 
+test("defences: read from a stat block's lines; halved, ignored or doubled by damage type", () => {
+  assert.deepEqual(E.readDefenses(["Kinetic, Energy", "Kinetic from unenhanced weapons", "Sonic", "nothing"]), [
+    { type: "energy", only: null }, { type: "kinetic", only: null }, { type: "kinetic", only: "unenhanced" }, { type: "sonic", only: null }]);
+  const t = { resist: [{ type: "kinetic", only: "unenhanced" }, { type: "fire", only: null }], immune: [{ type: "poison", only: null }], vuln: [{ type: "ion", only: null }] };
+  assert.deepEqual(E.defended(t, 9, "kinetic", "weapon"), { amount: 4, note: "resisted" });
+  assert.deepEqual(E.defended(t, 9, "kinetic", "enhanced"), { amount: 9, note: "" }, "an enhanced weapon gets through");
+  assert.deepEqual(E.defended(t, 9, "kinetic", "power"), { amount: 9, note: "" }, "so does a power");
+  assert.deepEqual(E.defended(t, 9, "fire", "power"), { amount: 4, note: "resisted" });
+  assert.deepEqual(E.defended(t, 9, "poison", "weapon"), { amount: 0, note: "immune" });
+  assert.deepEqual(E.defended(t, 9, "ion", "weapon"), { amount: 18, note: "vulnerable" });
+  assert.deepEqual(E.defended(t, 9, "", "weapon"), { amount: 9, note: "" });
+});
+
+test("defences: in an attack, in a power, and against a condition", () => {
+  const ava = unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 });
+  const tough = unit({ id: "r1", name: "Droid", side: "npc", x: 1, y: 0, hp: 30, resist: [{ type: "kinetic", only: null }], immune: [{ type: "poison", only: null }], condImmune: ["Poisoned"], saves: { con: 0 } });
+  let r = E.apply(world([ava, tough], "ava"), { type: "attack", unit: "ava", target: "r1", attack: blade }, dice({ total: 20, nat: 15 }, { total: 9 }).roll);
+  assert.deepEqual([r.world.units.r1.hp, r.events[0].amount], [26, 4]);
+  assert.match(r.log[1].text, /takes 4 kinetic damage \(resisted\)/);
+  const ch = consular();
+  const ab = E.abilitiesOf(ch, R, { "mind shove": { use: "action", range: [60, 60], save: { ability: "con", dc: 30 }, damage: [{ dice: "2d6", type: "poison" }], applies: [{ condition: "Poisoned" }] } })[0];
+  const me = unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, pools: Object.fromEntries(E.resourcesOf(ch, R).map((x) => [x.key, x])) });
+  r = E.apply(world([me, tough], "cass"), { type: "use", unit: "cass", ability: ab, target: "r1" }, dice({ total: 2, nat: 2 }, { total: 8 }).roll);
+  assert.deepEqual([r.world.units.r1.hp, r.world.units.r1.conditions || []], [30, []]);
+  assert.ok(r.log.some((l) => /can't be poisoned/.test(l.text)));
+  assert.ok(r.log.some((l) => /takes 0 poison damage \(immune\)/.test(l.text)));
+});
+
 /* ---------------------------------------------------------------- the server's fight actions, through the API */
 const Module = require("module");
 const HoloFake = require("./holotable-fake-redis.js");
@@ -749,4 +777,22 @@ test("concentration: dropping to 0 hit points ends it without a save", () => {
   assert.equal(d.asked.length, 2, "no concentration save is rolled");
   assert.deepEqual([hit.world.conc.cass, hit.world.units.r1.conditions], [undefined, []]);
   assert.match(hit.log.at(-1).text, /Cass drops: Mind Shove ends/);
+});
+
+test("defences through the API: a creature's from its stat block (GM), a character's from its owner", async () => {
+  const { gm, sam, rae, ids, avery } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await gm.act("fight.npc", { id: ids.raider, speed: 30, resist: ["Kinetic from unenhanced weapons"], immune: ["Poison"], condImmune: ["Poisoned"] })).code, 200);
+  const gv = await gm.state();
+  assert.deepEqual(gv.fight.npcDefenses[ids.raider].resist, [{ type: "kinetic", only: "unenhanced" }]);
+  assert.deepEqual((await sam.state()).fight.npcDefenses, {}, "a creature's defences are the GM's");
+  // Avery's vibrosword is an unenhanced kinetic weapon: against the Raider (AC 2) the damage is halved
+  await sam.act("fight.move", { x: 5, y: 0 });
+  await sam.act("fight.attack", { attack: 0, target: ids.raider });
+  const dmg = (await gm.state()).chat.filter((m) => m.fight && m.roll && m.roll.kind === "damage").at(-1);
+  if (dmg) assert.match(dmg.roll.label, /\(resisted\)/);
+  // a character's own defences
+  assert.equal((await rae.act("fight.defenses", { charId: avery, resist: ["fire"] })).code, 403);
+  assert.equal((await sam.act("fight.defenses", { charId: avery, resist: ["fire", "plasma"], vuln: ["ion"] })).code, 200);
+  assert.deepEqual((await rae.state()).fight.defenses[avery], { resist: [{ type: "fire", only: null }], immune: [], vuln: [{ type: "ion", only: null }], condImmune: [] });
 });

@@ -22,7 +22,8 @@
     const w = E.buildWorld({
       characters: s.characters, entries: s.initiative.entries, active: f.active, turnId: f.turn, round: f.round, tokens: s.map.tokens,
       unitTokens: Object.fromEntries(Object.entries(f.units || {}).map(([id, u]) => [id, u.token])), npcSpeed: f.npcSpeed,
-      spent: f.spent,
+      spent: f.spent, defenses: f.defenses || {},
+      npcStats: Object.fromEntries(Object.keys(f.npcDefenses || {}).map((k) => [k, Object.assign({ saves: (f.npcSaves || {})[k] || {} }, f.npcDefenses[k])])),
     }, R);
     for (const [id, u] of Object.entries(f.units || {})) if (w.units[id] && u.down) w.units[id].down = true;
     UI.cache = { st: s, w, reach: null };
@@ -76,7 +77,7 @@
         // its speed and save bonuses: the ability modifier, or the bonus its stat block lists ("Dex +5")
         const saves = Object.fromEntries(['str', 'dex', 'con', 'int', 'wis', 'cha'].map((ab) => [ab, Math.floor(((m.ab || {})[ab] - 10) / 2) || 0]));
         for (const x of m.saves || []) { const mm = /^(str|dex|con|int|wis|cha)\w*\s*([+-]\d+)/i.exec(x); if (mm) saves[mm[1].toLowerCase()] = +mm[2]; }
-        UI.npcAsked[id] = true; act('fight.npc', { id, speed: sp ? +sp[1] : 30, saves });
+        UI.npcAsked[id] = true; act('fight.npc', { id, speed: sp ? +sp[1] : 30, saves, resist: m.res || [], immune: m.imm || [], vuln: m.vul || [], condImmune: m.cimm || [] });
       }
       render(); H.drawMap();
     }).catch(() => { UI.npc[id] = { attacks: [] }; render(); });
@@ -208,7 +209,8 @@
     if (f.active && u && u.charId && (mine || gm())) {
       const pools = Object.values(u.pools || {}).filter((r) => r.key !== 'hitdice');
       html += `<div class="ct-row ct-pools">${pools.map((r) => `<button class="ct-chip ct-pool ${r.used >= r.max ? 'spent' : ''}" data-ct="pool" data-key="${esc(r.key)}" title="${esc(r.name)}: ${r.max - r.used} of ${r.max} left${r.refill === 'short' ? ', back on a short or long rest' : r.refill === 'long' ? ', back on a long rest' : ''}">${esc(r.name)} ${r.max - r.used}/${r.max}${r.die ? ' ' + esc(r.die) : ''}</button>`).join('')}
-        <button class="btn tiny ghost" data-ct="addres" title="Add a resource with a maximum (uses, or a pool of dice)">＋ Resource</button></div>`;
+        <button class="btn tiny ghost" data-ct="addres" title="Add a resource with a maximum (uses, or a pool of dice)">＋ Resource</button>
+        <button class="btn tiny ghost" data-ct="defs" title="Damage resistances, immunities and vulnerabilities">🛡 ${(() => { const d = (f.defenses || {})[u.charId] || {}; const n = (d.resist || []).length + (d.immune || []).length + (d.vuln || []).length; return n ? `Defences (${n})` : 'Defences'; })()}</button></div>`;
     }
     if (!f.active) html += `<div class="ct-row muted">${gm() ? 'Start initiative in the Combat tab to begin.' : 'Waiting for the GM to start initiative.'}</div>`;
     else if (mine && u) {
@@ -273,6 +275,7 @@
     if (k === 'custom') return customAttack();
     if (k === 'pool') return poolModal(el.dataset.key);
     if (k === 'addres') return resourceModal();
+    if (k === 'defs') return defencesModal();
     if (k === 'arm') { UI.armed = UI.armed === el.dataset.key ? null : el.dataset.key; UI.target = null; UI.upcast = 0; render(); return H.drawMap(); }
     if (k === 'disarm') { UI.armed = UI.target = UI.aim = null; render(); return H.drawMap(); }
     if (k === 'adv' || k === 'dis') { UI[k] = el.checked; return render(); }
@@ -340,6 +343,25 @@
       });
     };
     draw(pick);
+  }
+
+  /* ---------------- a character's damage defences (audit 5.10) ---------------- */
+  function defencesModal() {
+    const u = cur();
+    if (!u || !u.charId) return;
+    const d = (F().defenses || {})[u.charId] || {}, on = (list, t) => (d[list] || []).some((x) => x.type === t);
+    const row = (list, label) => `<div class="lbl">${label}</div><div class="ct-types">${E.DAMAGE.map((t) => `<label class="check"><input type="checkbox" data-l="${list}" value="${t}" ${on(list, t) ? 'checked' : ''}> ${t}</label>`).join('')}</div>`;
+    H.modal(`<h3>${esc(u.name)}: damage defences</h3>
+      <p class="muted">Applied when ${esc(u.name)} takes damage in the combat view: resisted is halved, immune is ignored, vulnerable is doubled.</p>
+      ${row('resist', 'Resistant to')}${row('immune', 'Immune to')}${row('vuln', 'Vulnerable to')}
+      <div class="row"><span class="spacer"></span><button class="btn" id="ctdCancel">Cancel</button><button class="btn primary" id="ctdOk">Save</button></div>`, (box) => {
+      $('#ctdCancel', box).onclick = H.closeModal;
+      $('#ctdOk', box).onclick = async () => {
+        const pick = (l) => [...box.querySelectorAll(`input[data-l=${l}]:checked`)].map((x) => x.value);
+        H.closeModal();
+        await send('fight.defenses', { charId: u.charId, resist: pick('resist'), immune: pick('immune'), vuln: pick('vuln') });
+      };
+    });
   }
 
   /* ---------------- resources (audit 3.1) ---------------- */
