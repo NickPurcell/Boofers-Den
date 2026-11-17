@@ -249,6 +249,20 @@ async function speciesSenses(r, name) {
   }
   return SPECIES_SENSES_MAP.get(String(name || "").trim().toLowerCase()) || [];
 }
+// Sheets made before senses were on the sheet (#129) get their species' senses, once (#92): only where a sheet has a
+// species and no senses, never over senses already set (the GM's or a species fill). If SW5e's species list can't be
+// read, nothing changes and the next action tries again. A restore that drops the marker just checks again, harmlessly.
+async function fillSpeciesSenses(r, camp) {
+  if (camp.sensesFilled) return;
+  for (const c of Object.values(camp.characters || {})) {
+    if (!c || !c.species || (Array.isArray(c.senses) && c.senses.length)) continue;
+    const ss = await speciesSenses(r, c.species);
+    if (ss === null) return;   // the list is unreachable right now: leave every sheet alone, try again later
+    const clean = globalThis.SW5E.cleanSenses(ss);
+    if (clean.length) c.senses = clean;
+  }
+  camp.sensesFilled = true;
+}
 async function sw5eList(r, name) {
   const cfg = SW5E_LISTS[name], key = cfg.key(), failKey = S.K.sw5eFail(name), lockKey = S.K.sw5eLock(name);
   let raw = await r.get(key);
@@ -458,6 +472,7 @@ async function handlePost(req, res, q, b, ses) {
     }
     const err = await S.withLock(GAME, async () => {
       const camp = await loadGame();
+      await fillSpeciesSenses(r, camp);   // once: species' senses for sheets made before #129
       const pl = camp.players[ses.pid] || (camp.players[ses.pid] = { name: ses.name });
       pl.role = ses.role;
       const before = imageRefs(camp);

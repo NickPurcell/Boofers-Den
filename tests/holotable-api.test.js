@@ -1666,3 +1666,37 @@ test("senses on the sheet are the GM's: players get their species' senses, never
   await p1.act("char.save", { char: Object.assign({}, ch, { species: "Kaleesh" }) });
   assert.deepEqual(await senses(kira), [{ kind: "blindsight", range: 30 }]);
 });
+
+test("sheets made before #129 get their species' senses once; never over senses already set; nothing while the list is unreachable (#92)", async () => {
+  const { gm } = await table();
+  // a table from before #129: sheets with a species but no senses (the GM's saves keep what they're given)
+  const make = async (name, species, senses) => (await gm.act("char.save", { char: Object.assign({ name, species }, senses ? { senses } : {}) })).data.id;
+  // SW5e's species list unreachable at first: nothing changes, and the next action tries again
+  await db.del(S.K.sw5e("species"));
+  await db.set(S.K.sw5eFail("species"), "1");
+  handler.resetSpeciesSenses();
+  const vel = await make("Vel", "Sith Pureblood"), ana = await make("Ana", "Sith Pureblood", [{ kind: "truesight", range: 30 }]), hal = await make("Hal", "Human"), nos = await make("Nos", "");
+  const file = JSON.parse((await gm.call("GET", { op: "export" })).data);
+  delete file.sensesFilled;
+  for (const c of Object.values(file.characters)) if (c.name === "Vel") delete c.senses;
+  assert.equal((await gm.post("restore", { campaign: file })).code, 200);
+  await gm.act("notes.save", { notes: "an action" });
+  const senses = async (id) => (await gm.poll()).data.state.characters[id].senses;
+  assert.equal(await senses(vel), undefined, "the list unreachable: left alone");
+  // the list back: the next action fills Vel from its species; Ana keeps the GM's; Hal's species has none; Nos has no species
+  await db.del(S.K.sw5eFail("species"));
+  await db.set(S.K.sw5e("species"), JSON.stringify([
+    { n: "Sith Pureblood", traits: [{ n: "Darkvision", d: "You can see in dim light within 60 feet of you as if it were bright light." }] },
+    { n: "Human", traits: [{ n: "Versatile", d: "Skill." }] },
+  ]));
+  handler.resetSpeciesSenses();
+  await gm.act("notes.save", { notes: "another action" });
+  assert.deepEqual(await senses(vel), [{ kind: "darkvision", range: 60 }], "filled from its species");
+  assert.deepEqual(await senses(ana), [{ kind: "truesight", range: 30 }], "never over senses already set");
+  assert.deepEqual([await senses(hal), await senses(nos)], [undefined, undefined]);
+  // once: the GM clearing Vel's senses afterwards stands
+  const ch = (await gm.poll()).data.state.characters[vel];
+  await gm.act("char.save", { char: Object.assign({}, ch, { senses: [] }) });
+  await gm.act("notes.save", { notes: "a third action" });
+  assert.equal(await senses(vel), undefined, "the fill ran once; the GM's clearing stands");
+});
