@@ -64,3 +64,4 @@
 /* the wall tool's bar sits at the bottom of the map, out of the way of the board's top edge, and stays one row */
 .script-bar.ct-wallbar { top: auto; bottom: 8px; flex-wrap: nowrap; gap: 6px; padding: 4px 8px; max-width: calc(100% - 16px); overflow-x: auto; }
 .script-bar.ct-wallbar > * { white-space: nowrap; flex: none; }
+.ct-variants { font-size: 11px; white-space: nowrap; }

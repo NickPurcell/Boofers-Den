@@ -1646,3 +1646,62 @@ test("walls through the API: a whole map's walls set at once (an import), checke
   assert.equal((await gm.act("fight.wall", { op: "set", walls: [] })).code, 200);
   assert.equal("walls" in (await gm.state()).map, false, "an empty set leaves no walls key");
 });
+
+/* ---------------------------------------------------------------- variant rules (audit 9.16) */
+test("variants, only when the GM marks them: Crueler Criticals, Critical Saving Throws, Compound Advantage, Flanking", () => {
+  const ava = (o) => unit(Object.assign({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 }, o));
+  const r1 = (o) => unit(Object.assign({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, ac: 13 }, o));
+  const V = (...names) => ({ variants: names });
+  // Crueler Criticals: 1d8+3 on a critical is 1d8+3+8, not 2d8+3
+  let d = dice({ total: 20, nat: 20 }, { total: 15 });
+  E.apply(world([ava(), r1()], "ava", V("Crueler Criticals")), { type: "attack", unit: "ava", target: "r1", attack: blade }, d.roll);
+  assert.equal(d.asked[1], "1d8+3+8");
+  d = dice({ total: 20, nat: 20 }, { total: 15 });
+  E.apply(world([ava(), r1()], "ava"), { type: "attack", unit: "ava", target: "r1", attack: blade }, d.roll);
+  assert.equal(d.asked[1], "2d8+3", "without the variant, as before");
+  // Compound Advantage: two sources stack to three d20s; two against one is plain advantage
+  const two = world([ava(), r1({ conditions: ["Restrained"] })], "ava", V("Compound Advantage"));
+  assert.deepEqual([E.preview(two, "ava", "r1", blade, { adv: true }).expr, E.modeName(E.preview(two, "ava", "r1", blade, { adv: true }))], ["3d20kh1+5", "superadvantage"]);
+  assert.equal(E.preview(two, "ava", "r1", blade, { adv: true, dis: true }).expr, "2d20kh1+5");
+  assert.equal(E.preview(world([ava(), r1({ conditions: ["Restrained"] })], "ava"), "ava", "r1", blade, { adv: true }).expr, "2d20kh1+5", "without it, two sources are plain advantage");
+  // Flanking: Avery and Bolt on opposite sides of the Raider: half flanked, -3 AC against them; not from 20 ft away
+  const bolt = unit({ id: "bolt", name: "Bolt", side: "pc", x: 2, y: 0 });
+  const fl = world([ava(), r1(), bolt], "ava", V("Flanking"));
+  const pv = E.preview(fl, "ava", "r1", blade);
+  assert.deepEqual([pv.ac, pv.notes], [10, ["Raider is flanked, -3 AC"]]);
+  assert.equal(E.preview(world([ava({ x: -3 }), r1(), bolt], "ava", V("Flanking")), "ava", "r1", rifle).ac, 13, "a source 20 ft away isn't flanking");
+  assert.equal(E.preview(world([ava(), r1()], "ava", V("Flanking")), "ava", "r1", blade).ac, 13, "one enemy alone doesn't flank");
+  assert.equal(E.preview(world([ava(), r1(), bolt], "ava"), "ava", "r1", blade).ac, 13, "without the variant");
+  // Critical Saving Throws: a 20 saves whatever the total (damage at its minimum, halved); a 1 fails (damage at its maximum)
+  const ch = consular();
+  const ab = E.abilitiesOf(ch, R, { "mind shove": { use: "action", range: [30, 30], save: { ability: "dex", dc: 30, onSave: "half" }, damage: [{ dice: "2d6", type: "force" }] } })[0];
+  const me = unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, pools: Object.fromEntries(E.resourcesOf(ch, R).map((x) => [x.key, x])) });
+  const cs = (nat, total) => E.apply(world([me, r1({ x: 3, hp: 30, maxHp: 30 })], "cass", V("Critical Saving Throws")), { type: "use", unit: "cass", ability: ab, target: "r1" }, dice({ total, nat }).roll);
+  let r = cs(20, 20);
+  assert.match(r.log[1].text, /a success/);
+  assert.equal(r.world.units.r1.hp, 30 - 1, "2d6 at its minimum (2), halved");
+  r = cs(1, 35);
+  assert.match(r.log[1].text, /a failure/);
+  assert.equal(r.world.units.r1.hp, 30 - 12, "2d6 at its maximum");
+});
+
+test("review #102: walls without a usable id get their own on the way in; erasing or opening needs an id; a big map's far walls cost nothing", async () => {
+  const Fight = require("../api/_holotable-fight.js");
+  const w = Fight.cleanWalls([{ a: [0, 0], b: [1, 0] }, { id: "same", a: [0, 1], b: [1, 1] }, { id: "same", a: [0, 2], b: [1, 2] }, { id: "", a: [0, 3], b: [1, 3], kind: "door" }]);
+  assert.equal(new Set(w.map((x) => x.id)).size, 4, "four walls, four ids");
+  assert.ok(w.every((x) => x.id), "none empty");
+  const { gm } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  await gm.act("fight.wall", { op: "add", a: [3, 0], b: [3, 5] });
+  assert.equal((await gm.act("fight.wall", { op: "remove", id: "" })).code, 400);
+  assert.equal((await gm.act("fight.wall", { op: "door", id: "", open: true })).code, 400);
+  assert.equal((await gm.state()).map.walls.length, 1);
+  // 2,000 walls far away: the reachable squares are the same as with none, and quick to find
+  const far = Array.from({ length: 2000 }, (_, i) => ({ a: [100 + (i % 40), 100 + Math.floor(i / 40)], b: [101 + (i % 40), 100 + Math.floor(i / 40)], kind: "wall" }));
+  const ava = unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 });
+  const t0 = Date.now();
+  const lots = E.reachable(world([ava], "ava", { walls: far }), "ava", 60);
+  const took = Date.now() - t0;
+  assert.deepEqual(Object.keys(lots).length, Object.keys(E.reachable(world([ava], "ava"), "ava", 60)).length);
+  assert.ok(took < 400, `took ${took} ms`);
+});
