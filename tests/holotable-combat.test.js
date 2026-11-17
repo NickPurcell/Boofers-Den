@@ -2201,6 +2201,33 @@ test("light: the GM's lights are checked; a dd2vtt-style set replaces them; a cr
   assert.equal((await gm.state()).map.light, undefined, "bright and no lights: no record");
 });
 
+test("the dark in a fight (#93 step 5): a creature its target can't see attacks with advantage; darkvision ends it; only under fog", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  await gm.act("fight.fog", { on: true });
+  await gm.act("fight.light", { level: "dark" });
+  await gm.act("fight.light", { op: "add", x: 0.5, y: 0.5, bright: 10, dim: 0 });   // a glow rod at Avery; the Raider (6,0) stands in the dark
+  await sam.act("fight.end", {});
+  const blaster = { name: "Blaster", bonus: 5, damage: "1d4", type: "energy", range: [60, 240] };
+  const swing = async () => {
+    assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: blaster })).code, 200);
+    const line = (await gm.state()).chat.filter((m) => m.fight && m.roll && m.roll.kind === "attack").pop().roll.label;
+    await gm.act("fight.undo", {});
+    return line;
+  };
+  assert.match(await swing(), /with advantage \(Raider is unseen in the dark\)/, "Avery can't see the Raider in the dark");
+  // Avery's darkvision 60 ft sees it: no advantage
+  await sam.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 60 }] });
+  assert.doesNotMatch(await swing(), /unseen in the dark/);
+  // and the Raider can't see an unlit Avery without darkvision of its own: Avery's light out, the Raider attacks at disadvantage
+  const L = (await gm.state()).map.light.lights[0];
+  await gm.act("fight.light", { op: "remove", id: L.id });
+  assert.match(await swing(), /disadvantage \(Avery is unseen in the dark\)/);
+  // fog off: lighting changes nothing in a fight
+  await gm.act("fight.fog", { on: false });
+  assert.doesNotMatch(await swing(), /unseen in the dark/, "without fog, the dark doesn't count");
+});
+
 /* ---------------------------------------------------------------- creature casting (audit 9.5) */
 test("creature casting: a stat block's force or tech points and innate N/day powers become the GM's counts", () => {
   const src = require("fs").readFileSync(require("path").join(__dirname, "../sections/jpesus/holotable/combat/view.js"), "utf8");
@@ -2234,4 +2261,26 @@ test("creature casting through the API: a points pool holds up to 300 and is spe
   assert.equal((await gm.act("fight.npcres", { id: ids.raider, op: "use", key: "force-points", n: 40 })).code, 400, "not more than are left");
   assert.equal((await sam.act("fight.npcres", { id: ids.raider, op: "use", key: "force-points", n: 1 })).code, 403);
   assert.deepEqual((await sam.state()).fight.npcRes, {}, "players never see a creature's casting");
+});
+
+test("the GM sees and sets every character's senses at any time, combat view on or off (coordinator's ruling, 17 Nov)", async () => {
+  const { gm, sam, avery, bolt } = await fight();
+  assert.equal((await sam.act("fight.senses", { op: "get" })).code, 403, "the GM's table");
+  let r = await gm.act("fight.senses", { op: "get" });
+  assert.equal(r.code, 200);
+  assert.deepEqual([r.data.senses[avery], r.data.senses[bolt]], [[], []], "nothing set yet; reading writes nothing");
+  assert.equal((await gm.state()).fight, undefined, "the combat view stays off");
+  assert.equal((await gm.act("fight.senses", { op: "set", charId: avery, senses: [{ kind: "darkvision", range: 60 }, { kind: "x-ray", range: 9 }] })).code, 200, "with the view off");
+  assert.equal((await gm.state()).fight, undefined, "still off");
+  r = await gm.act("fight.senses", { op: "get" });
+  assert.deepEqual(r.data.senses[avery], [{ kind: "darkvision", range: 60 }]);
+  // players still set their own (as they do HP and AC), and the GM's correction keeps their resistances
+  await gm.act("fight.toggle", { on: true });
+  await sam.act("fight.defenses", { charId: avery, resist: ["fire"], senses: [{ kind: "darkvision", range: 9999 }] });
+  assert.deepEqual((await gm.state()).fight.defenses[avery].senses, [{ kind: "darkvision", range: 9999 }], "a player's own sheet data");
+  await gm.act("fight.senses", { op: "set", charId: avery, senses: [{ kind: "darkvision", range: 60 }] });
+  const d = (await sam.state()).fight.defenses[avery];
+  assert.deepEqual([d.senses, d.resist.map((x) => x.type)], [[{ kind: "darkvision", range: 60 }], ["fire"]], "corrected; resistances kept");
+  assert.equal((await gm.act("fight.senses", { op: "set", charId: "__proto__", senses: [] })).code, 400);
+  assert.equal((await sam.act("fight.senses", { op: "set", charId: avery, senses: [] })).code, 403);
 });
