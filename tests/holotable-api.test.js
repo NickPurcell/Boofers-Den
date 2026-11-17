@@ -1029,3 +1029,66 @@ test("restore round trip: a fully populated table comes back the same, from the 
   assert.equal((await gm.act("scene.load", { id: desertId })).code, 200);
   assert.equal((await gm.poll()).data.state.sceneFx.moves.length, 2);
 });
+
+// Table audio: the GM uploads a track in 1 MiB parts; everyone streams it by byte range; the GM controls playback.
+test("table audio: GM-only uploads in order, checked by content, streamed in ranges, counted against storage", async () => {
+  const { gm, p1 } = await table();
+  const PART = 1024 * 1024;
+  // a fake MP3: an ID3 header, then filler, 2.5 parts long
+  const mp3 = Buffer.alloc(Math.floor(2.5 * PART));
+  mp3.write("ID3", 0, "latin1"); for (let i = 10; i < mp3.length; i++) mp3[i] = i % 251;
+  const usedBefore = (await gm.call("GET", { op: "audios" })).data.used;
+  for (const op of ["audiostart", "audioadd", "audiodone", "audiodelete"]) assert.equal((await p1.post(op, {})).code, 403, op);
+  assert.equal((await gm.post("audiostart", { name: "big.mp3", bytes: 40 * PART })).code, 413, "too big");
+  const st = (await gm.post("audiostart", { name: "Cantina Band.mp3", bytes: mp3.length })).data;
+  assert.match(st.id, /^au[a-f0-9]{12}$/); assert.equal(st.part, PART);
+  const part = (i) => mp3.subarray(i * PART, Math.min(mp3.length, (i + 1) * PART)).toString("base64");
+  assert.equal((await gm.post("audioadd", { id: st.id, seq: 1, data: part(1) })).code, 400, "parts arrive in order");
+  for (let i = 0; i < 3; i++) assert.equal((await gm.post("audioadd", { id: st.id, seq: i, data: part(i) })).code, 200);
+  assert.equal((await gm.post("audioadd", { id: st.id, seq: 1, data: part(1) })).data.repeat, true, "a retried part is ignored");
+  assert.equal((await gm.post("audiodone", { id: st.id })).code, 200);
+  const list = (await p1.call("GET", { op: "audios" })).data;
+  assert.deepEqual(list.tracks.map((t) => [t.name, t.bytes, t.type]), [["Cantina Band", mp3.length, "audio/mpeg"]]);
+  assert.equal(list.used - usedBefore, mp3.length, "counted against the storage cap");
+  // streaming: needs a session; ranges; never more than 4 MiB per response
+  assert.equal((await browser().call("GET", { aud: st.id })).code, 401);
+  let r = await p1.call("GET", { aud: st.id });
+  assert.equal(r.code, 206); assert.equal(r.headers["content-type"], "audio/mpeg");
+  assert.equal(r.headers["content-range"], `bytes 0-${mp3.length - 1}/${mp3.length}`);
+  assert.ok(Buffer.compare(r.data, mp3) === 0, "the whole small file comes back intact");
+  r = await p1.call("GET", { aud: st.id }, undefined, { range: `bytes=${PART - 5}-${PART + 4}` });
+  assert.equal(r.code, 206); assert.equal(r.headers["content-range"], `bytes ${PART - 5}-${PART + 4}/${mp3.length}`);
+  assert.ok(Buffer.compare(r.data, mp3.subarray(PART - 5, PART + 5)) === 0, "a range across two parts");
+  r = await p1.call("GET", { aud: st.id }, undefined, { range: "bytes=-10" });
+  assert.ok(Buffer.compare(r.data, mp3.subarray(mp3.length - 10)) === 0, "a suffix range");
+  assert.equal((await p1.call("GET", { aud: st.id }, undefined, { range: `bytes=${mp3.length}-` })).code, 416);
+  assert.equal((await p1.call("GET", { aud: "au000000000000" })).code, 404);
+  // not audio: refused on the first part, nothing kept
+  const bad = (await gm.post("audiostart", { name: "notes.txt", bytes: 100 })).data;
+  assert.equal((await gm.post("audioadd", { id: bad.id, seq: 0, data: Buffer.alloc(100, 65).toString("base64") })).code, 415);
+  assert.equal((await gm.call("GET", { op: "audios" })).data.tracks.length, 1);
+  // delete gives the space back
+  assert.equal((await gm.post("audiodelete", { id: st.id })).code, 200);
+  const after = (await gm.call("GET", { op: "audios" })).data;
+  assert.equal(after.tracks.length, 0); assert.equal(after.used, usedBefore);
+  assert.equal((await p1.call("GET", { aud: st.id })).code, 404);
+});
+
+test("table audio: the GM plays, pauses, loops and stops; everyone sees it with the server's clock", async () => {
+  const { gm, p1 } = await table();
+  const track = "au0123456789ab";
+  assert.equal((await p1.act("audio.play", { track, name: "x" })).code, 403, "GM only");
+  assert.equal((await gm.act("audio.play", { track: "../etc", name: "x" })).code, 400);
+  await gm.act("audio.play", { track, name: "Mos Eisley", pos: 12, loop: true, vol: 0.6 });
+  let au = (await p1.poll()).data.state.audio;
+  assert.deepEqual([au.track, au.name, au.playing, au.pos, au.loop, au.vol], [track, "Mos Eisley", true, 12, true, 0.6]);
+  assert.ok(Math.abs(au.now - au.at) < 5, "the view carries the server's time so screens can line up");
+  await gm.act("audio.pause", { pos: 30.5 });
+  au = (await p1.poll()).data.state.audio;
+  assert.deepEqual([au.playing, au.pos], [false, 30.5]);
+  await gm.act("audio.set", { loop: false, vol: 5 });
+  au = (await p1.poll()).data.state.audio;
+  assert.deepEqual([au.loop, au.vol], [false, 1], "volume is clamped");
+  await gm.act("audio.stop", {});
+  assert.equal((await p1.poll()).data.state.audio, null);
+});

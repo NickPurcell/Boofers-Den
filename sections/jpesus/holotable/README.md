@@ -99,6 +99,11 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
 - **Colour themes (🎨):** each person picks their own look. Republic Command is the default, and there are 18 more themes in three groups: Light Side, Dark Side and
   Across the Galaxy. The GM also gets an exclusive Green & Silver theme. Anyone can then fine-tune five colours.
   The choice is saved with your account and follows you to other devices. Every theme passes a contrast check (themes.js).
+- **Table audio:** the GM uploads music or ambience (GM tab → Table audio; MP3, OGG, WAV, FLAC, M4A or WebM, up to
+  30 MB each, counted against the storage cap) and plays, pauses, loops or stops it for everyone. Every screen streams
+  the same file from this site and keeps itself in step with the GM. Nothing plays on a device until that person turns
+  table audio on there once ("🔈 Turn on table audio" in the top bar); after that, the ♪ button sets their own volume,
+  mutes it, or turns it off again. If a browser still waits for a click before playing sound, that button says so.
 - **GM tools:** handouts, GM notes, a backup file download, automatic backups, and restore.
 
 ## How it runs

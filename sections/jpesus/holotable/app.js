@@ -132,6 +132,7 @@
         if (j.state) { S.v = j.v; onState(j.state); }
         if (lib !== null && j.lib !== lib && A.packs) { await loadPacks(); renderDrawer(); }
         lib = j.lib;
+        if (S.lib !== j.lib) { S.lib = j.lib; if (window.HTA) HTA.sync(); }   // the GM's track list changed
       } catch (err) {
         if (S.gen !== gen || document.hidden) continue;
         $('#conn').classList.remove('ok');
@@ -201,6 +202,7 @@
     guarded('combat', renderCombat);
     guarded('handouts', renderHandouts);
     guarded('gm', renderGM);
+    if (window.HTA) HTA.sync();   // table audio: keep this screen in step, refresh the GM's audio box
     if (window.HTB) {
       HTB.renderShipsSafe();
       const v = JSON.stringify(S.st.variants || []);
@@ -1912,6 +1914,7 @@
           <button class="btn small ghost" id="restoreBtn">⇪ Restore a backup…</button><input type="file" id="restoreFile" accept=".json" hidden></div>
         <div id="backupList" style="margin-top:8px"></div>
       </div>
+      <div class="box" id="gmAudio"></div>
       <div class="box"><h4>GM notes <span class="muted" style="text-transform:none;letter-spacing:0">(only you can see these · autosaves)</span></h4>
         <textarea id="gmNotes" rows="18" placeholder="Session plan, NPCs, secrets, loot…">${esc(S.st.notes || '')}</textarea></div>
     </div>`;
@@ -2477,7 +2480,7 @@
   }
 
   // --------------------------------------------------------------------------- shared with books.js
-  window.HT = { S, $, $$, esc, n0, R, API, modal, closeModal, toast, act, mutate, isGM, chars, roll, rollModeFromEvent, setPath, renderRules, setTab, drawMap };
+  window.HT = { S, $, $$, esc, n0, R, API, modal, closeModal, toast, act, post, mutate, isGM, chars, roll, rollModeFromEvent, setPath, renderRules, setTab, drawMap };
 
   // --------------------------------------------------------------------------- boot
   window.addEventListener('resize', () => drawMap());
