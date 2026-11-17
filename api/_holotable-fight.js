@@ -634,6 +634,12 @@ function apply(camp, cid, gm, type, p, G) {
         const ab = ch && E.abilitiesOf(ch, R, f.lib).find((a) => a.key === String(p.ability || ""));
         return !!(ab && ab.area);
       })();
+      // Rage counts its uses: a sheet from before #108 gets its class's Rages resource from the class table first
+      const rager = type === "fight.common" && String(p.key || "") === "rage" && cur.charId && charOf(camp, cur.charId);
+      if (rager && R.withClassResources && !(rager.resources || []).some((r) => r && r.key === "rage")) {
+        const withRage = E.cleanResources(R.withClassResources(rager));
+        if (withRage.some((r) => r.key === "rage")) rager.resources = withRage;
+      }
       const world = worldOf(camp, !gm && !areaUse, G, cid);
       if (type === "fight.end" && !world.units[cur.id]) {      // a combatant with no token can still pass the turn
         snapshot(camp, `${G.shownName(camp, cur)} ends the turn`);

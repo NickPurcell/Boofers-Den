@@ -1666,3 +1666,105 @@ test("senses on the sheet are the GM's: players get their species' senses, never
   await p1.act("char.save", { char: Object.assign({}, ch, { species: "Kaleesh" }) });
   assert.deepEqual(await senses(kira), [{ kind: "blindsight", range: 30 }]);
 });
+
+test("sheets made before #129 get their species' senses once; never over senses already set; nothing while the list is unreachable (#92)", async () => {
+  const { gm } = await table();
+  // a table from before #129: sheets with a species but no senses (the GM's saves keep what they're given)
+  const make = async (name, species, senses) => (await gm.act("char.save", { char: Object.assign({ name, species }, senses ? { senses } : {}) })).data.id;
+  // SW5e's species list unreachable at first: nothing changes, and the next action tries again
+  await db.del(S.K.sw5e("species"));
+  await db.set(S.K.sw5eFail("species"), "1");
+  handler.resetSpeciesSenses();
+  const vel = await make("Vel", "Sith Pureblood"), ana = await make("Ana", "Sith Pureblood", [{ kind: "truesight", range: 30 }]), hal = await make("Hal", "Human"), nos = await make("Nos", "");
+  const file = JSON.parse((await gm.call("GET", { op: "export" })).data);
+  delete file.sensesFilled;
+  for (const c of Object.values(file.characters)) if (c.name === "Vel") delete c.senses;
+  assert.equal((await gm.post("restore", { campaign: file })).code, 200);
+  await gm.act("notes.save", { notes: "an action" });
+  const senses = async (id) => (await gm.poll()).data.state.characters[id].senses;
+  assert.equal(await senses(vel), undefined, "the list unreachable: left alone");
+  // the list back: the next action fills Vel from its species; Ana keeps the GM's; Hal's species has none; Nos has no species
+  await db.del(S.K.sw5eFail("species"));
+  await db.set(S.K.sw5e("species"), JSON.stringify([
+    { n: "Sith Pureblood", traits: [{ n: "Darkvision", d: "You can see in dim light within 60 feet of you as if it were bright light." }] },
+    { n: "Human", traits: [{ n: "Versatile", d: "Skill." }] },
+  ]));
+  handler.resetSpeciesSenses();
+  await gm.act("notes.save", { notes: "another action" });
+  assert.deepEqual(await senses(vel), [{ kind: "darkvision", range: 60 }], "filled from its species");
+  assert.deepEqual(await senses(ana), [{ kind: "truesight", range: 30 }], "never over senses already set");
+  assert.deepEqual([await senses(hal), await senses(nos)], [undefined, undefined]);
+  // once: the GM clearing Vel's senses afterwards stands
+  const ch = (await gm.poll()).data.state.characters[vel];
+  await gm.act("char.save", { char: Object.assign({}, ch, { senses: [] }) });
+  await gm.act("notes.save", { notes: "a third action" });
+  assert.equal(await senses(vel), undefined, "the fill ran once; the GM's clearing stands");
+  // a backup restored later keeps the mark, so the GM's deliberate "none" survives it (review of #132)
+  const back = JSON.parse((await gm.call("GET", { op: "export" })).data);
+  assert.equal(back.sensesFilled, true);
+  assert.equal((await gm.post("restore", { campaign: back })).code, 200);
+  handler.resetSpeciesSenses();
+  await gm.act("notes.save", { notes: "after the restore" });
+  assert.equal(await senses(vel), undefined, "not filled again: the restore didn't forget it was done");
+  // a crafted mark is only ever true or false
+  const crafted = JSON.parse((await gm.call("GET", { op: "export" })).data);
+  crafted.sensesFilled = { not: "a boolean" };
+  await gm.post("restore", { campaign: crafted });
+  assert.equal(JSON.parse((await gm.call("GET", { op: "export" })).data).sensesFilled, false);
+});
+
+test("the one-time senses fill never reads SW5e inside the game lock, and only reads it when a sheet needs filling (review of #132)", async () => {
+  const { gm } = await table();
+  await gm.act("char.save", { char: { name: "Vel", species: "Sith Pureblood" } });   // a sheet from before #129: a species, no senses
+  const file = JSON.parse((await gm.call("GET", { op: "export" })).data);
+  delete file.sensesFilled;
+  assert.equal((await gm.post("restore", { campaign: file })).code, 200);
+  await db.del(S.K.sw5e("species"));
+  await db.del(S.K.sw5eFail("species"));
+  handler.resetSpeciesSenses();
+  const realFetch = global.fetch;
+  let inLock = 0, calls = 0, askedInLock = false;
+  const realWith = S.withLock;
+  S.withLock = async (k, fn) => realWith.call(S, k, async () => { inLock++; try { return await fn(); } finally { inLock--; } });
+  global.fetch = async () => { calls++; if (inLock) askedInLock = true; throw new Error("offline"); };
+  try {
+    assert.equal((await gm.act("notes.save", { notes: "an action while SW5e is slow or out" })).code, 200);
+    assert.equal(askedInLock, false, "SW5e is never asked while the table is locked");
+    assert.ok(calls >= 1, "the list was asked for, before the lock");
+  } finally { global.fetch = realFetch; S.withLock = realWith; }
+  // a table with nothing to fill never asks SW5e: it's marked done at once
+  const t2 = await table(); handler.resetSpeciesSenses();
+  let asked = 0; global.fetch = async () => { asked++; throw new Error("offline"); };
+  try { await t2.gm.act("notes.save", { notes: "nothing to fill" }); } finally { global.fetch = realFetch; }
+  assert.equal(asked, 0);
+  assert.equal(JSON.parse((await t2.gm.call("GET", { op: "export" })).data).sensesFilled, true);
+});
+
+test("the senses fill holds an action at most about a second while SW5e is slow, and fills a restored old backup again (notes on #132)", async () => {
+  const { gm } = await table();
+  await gm.act("char.save", { char: { name: "Vel", species: "Sith Pureblood" } });
+  let file = JSON.parse((await gm.call("GET", { op: "export" })).data);
+  delete file.sensesFilled;
+  await gm.post("restore", { campaign: file });
+  await db.del(S.K.sw5e("species")); await db.del(S.K.sw5eFail("species"));
+  handler.resetSpeciesSenses();
+  const realFetch = global.fetch;
+  global.fetch = () => new Promise((ok, bad) => setTimeout(() => bad(new Error("slow, then out")), 2500));
+  try {
+    const t0 = Date.now();
+    assert.equal((await gm.act("notes.save", { notes: "while SW5e is slow" })).code, 200);
+    assert.ok(Date.now() - t0 < 1800, `held ${Date.now() - t0} ms`);
+  } finally { await new Promise((ok) => setTimeout(ok, 2700)); global.fetch = realFetch; }
+  // the list back: filled; then an old backup (no mark, no senses) restored on a warm instance is filled again
+  await db.del(S.K.sw5eFail("species"));
+  await db.set(S.K.sw5e("species"), JSON.stringify([{ n: "Sith Pureblood", traits: [{ n: "Darkvision", d: "You can see in dim light within 60 feet of you as if it were bright light." }] }]));
+  handler.resetSpeciesSenses();
+  await gm.act("notes.save", { notes: "filled" });
+  const vel = () => gm.poll().then((r) => Object.values(r.data.state.characters).find((c) => c.name === "Vel").senses);
+  assert.deepEqual(await vel(), [{ kind: "darkvision", range: 60 }]);
+  for (const c of Object.values(file.characters)) delete c.senses;
+  await gm.post("restore", { campaign: file });   // the warm instance has seen the mark before
+  await gm.act("notes.save", { notes: "after an old backup" });
+  await gm.act("notes.save", { notes: "and another" });
+  assert.deepEqual(await vel(), [{ kind: "darkvision", range: 60 }], "filled again");
+});

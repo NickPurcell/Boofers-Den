@@ -1046,7 +1046,7 @@
             const amount = df.amount;
             const took = takeDamage(t, amount);
             log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${dtype ? ' ' + dtype : ''} damage${half ? ' (half, on a save)' : ''}${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
-            fallen(t, took, crit, log);
+            fallen(t, took, crit, log, w);
             events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
             concentrationCheck(w, t, amount, roll, log);
           } else if (ab.heal) {
@@ -1137,7 +1137,7 @@
     const amount = df.amount;
     const took = takeDamage(t, amount);
     log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${twoHands ? ' (two-handed)' : ''}${attack.heavy ? ` (heavy +${attack.heavy})` : ''}${riders.length ? ` (with ${riders.map((x) => `${x.name} ${x.dice ? (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat}${x.points ? `, ${x.points} force point${x.points === 1 ? '' : 's'}` : ''}`).join('; ')})` : ''}${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
-    fallen(t, took, crit, log);
+    fallen(t, took, crit, log, w);
     events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
     concentrationCheck(w, t, amount, roll, log);
     return { ok: true, log, events };
@@ -1284,7 +1284,7 @@
       const df = defended(burning, Math.max(0, d.total), 'fire', 'other');
       const took = takeDamage(burning, df.amount);
       log.push({ unit: burning.id, kind: 'damage', roll: d, expr: burn, text: `${burning.name} burns for ${df.amount} fire damage${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${burning.hp != null && burning.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
-      fallen(burning, took, false, log);
+      fallen(burning, took, false, log, w);
       concentrationCheck(w, burning, df.amount, roll, log);
     }
     // incapacitated casters stop concentrating
@@ -1336,7 +1336,7 @@
   const isDead = (t) => t.side === 'pc' && t.hp === 0 && +((t.deathSaves || {}).f) >= 3;
   const isStable = (t) => t.side === 'pc' && t.hp === 0 && !isDead(t) && +((t.deathSaves || {}).s) >= 3;
   const isDying = (t) => t.side === 'pc' && t.hp === 0 && !isDead(t) && !isStable(t);
-  function fallen(t, took, crit, log) {
+  function fallen(t, took, crit, log, w) {
     if (t.side !== 'pc' || t.hp == null || t.hp > 0 || !(took.hurt > 0)) return;
     const ds = saves0(t), max = +t.maxHp || 0;
     if (ds.f >= 3) return;
@@ -1344,6 +1344,7 @@
       if (max && took.over >= max) { ds.f = 3; log.push({ unit: t.id, text: `${t.name} is killed outright: the damage left over is at least ${t.name}'s hit point maximum.` }); return; }
       ds.s = 0; ds.f = 0;
       t.conditions = Array.from(new Set((t.conditions || []).concat('Unconscious', 'Prone'))).filter((c) => c !== 'Raging');   // a rage ends when knocked unconscious
+      if (w && w.effects) w.effects = w.effects.filter((ef) => !(ef.unit === t.id && ef.condition === 'Raging'));
       log.push({ unit: t.id, text: `${t.name} falls unconscious.` });
       return;
     }
@@ -1395,7 +1396,9 @@
         speed: ch ? +ch.speed || 30 : +((table.npcSpeed || {})[e.id]) || 30,
         pools: ch ? Object.fromEntries(resourcesOf(ch, rules).map((r) => [r.key, r])) : {},
         riders: ch ? ridersOf(ch, rules) : {},
-        conditions: Array.from(new Set([].concat(e.conditions || [], ch ? ch.conditions || [] : []))),
+        // Raging is a rage in progress: without its live effect (the fight ended, a new one began) it's dropped here
+        conditions: Array.from(new Set([].concat(e.conditions || [], ch ? ch.conditions || [] : [])))
+          .filter((c) => c !== 'Raging' || (table.effects || []).some((ef) => ef.unit === e.id && ef.condition === 'Raging')),
         exhaustion: ch ? +ch.exhaustion || 0 : 0,
         deathSaves: ch ? { s: +((ch.deathSaves || {}).s) || 0, f: +((ch.deathSaves || {}).f) || 0 } : null,
         ...(() => { const d = ch ? (table.defenses || {})[e.charId] || {} : (table.npcStats || {})[e.id] || {};

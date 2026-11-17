@@ -249,6 +249,33 @@ async function speciesSenses(r, name) {
   }
   return SPECIES_SENSES_MAP.get(String(name || "").trim().toLowerCase()) || [];
 }
+// Sheets made before senses were on the sheet (#129) get their species' senses, once (#92): only where a sheet has a
+// species and no senses, never over senses already set (the GM's or a species fill). SW5e's species list is read
+// before the game is locked (warmSpeciesFill), never inside the lock: a slow SW5e must not hold the table (review of
+// #132). Inside the lock the fill uses only the list already read; if there isn't one, nothing changes and a later
+// action tries again. camp.sensesFilled marks it done, and an instance that has seen the mark stops reading the list.
+let SPECIES_FILL_SEEN = false;
+const needsSenses = (c) => !!(c && c.species && !(Array.isArray(c.senses) && c.senses.length));
+async function warmSpeciesFill(r) {
+  if (SPECIES_FILL_SEEN) return;
+  const camp = await S.getCampaign(GAME).catch(() => null);   // a peek, unlocked: is there anything to fill at all?
+  if (!camp || camp.sensesFilled) { if (camp) SPECIES_FILL_SEEN = true; return; }
+  // builds the name -> senses map (null if SW5e is out), waiting at most a second: a cold cache with SW5e slow mustn't
+  // hold every action; the read carries on, and a later action finds the map built
+  if (Object.values(camp.characters || {}).some(needsSenses)) await Promise.race([speciesSenses(r, "").catch(() => null), new Promise((ok) => setTimeout(ok, 1000))]);
+}
+function fillSpeciesSenses(camp) {
+  if (camp.sensesFilled) { SPECIES_FILL_SEEN = true; return; }
+  SPECIES_FILL_SEEN = false;   // a game without the mark (an old backup restored): warm up again before later actions
+  const need = Object.values(camp.characters || {}).filter(needsSenses);
+  if (need.length && !SPECIES_SENSES_MAP) return;   // the list isn't read yet: try again on a later action
+  for (const c of need) {
+    const clean = globalThis.SW5E.cleanSenses(SPECIES_SENSES_MAP.get(String(c.species).trim().toLowerCase()) || []);
+    if (clean.length) c.senses = clean;
+  }
+  camp.sensesFilled = true;   // done (or nothing was waiting for it)
+  SPECIES_FILL_SEEN = true;
+}
 async function sw5eList(r, name) {
   const cfg = SW5E_LISTS[name], key = cfg.key(), failKey = S.K.sw5eFail(name), lockKey = S.K.sw5eLock(name);
   let raw = await r.get(key);
@@ -456,8 +483,10 @@ async function handlePost(req, res, q, b, ses) {
       const ss = await speciesSenses(r, b.payload.char.species);
       if (ss) b.payload = Object.assign({}, b.payload, { [G.SPECIES_SENSES]: ss });
     }
+    await warmSpeciesFill(r);   // before the lock: SW5e's species list, for the one-time fill below
     const err = await S.withLock(GAME, async () => {
       const camp = await loadGame();
+      fillSpeciesSenses(camp);   // once: species' senses for sheets made before #129, from the list already read
       const pl = camp.players[ses.pid] || (camp.players[ses.pid] = { name: ses.name });
       pl.role = ses.role;
       const before = imageRefs(camp);
@@ -536,7 +565,8 @@ async function handlePost(req, res, q, b, ses) {
       // every part of the game a backup holds (cleanGame checks each one below). sceneFx is left out on purpose:
       // a restored table shouldn't replay the last scene change's wipe and movements.
       for (const k of ["name", "players", "chat", "initiative", "map", "notes", "handouts", "levelUps", "created",
-        "scenes", "activeScene", "ships", "variants", "hpMax", "fight"]) if (file[k] !== undefined) g[k] = file[k];
+        "scenes", "activeScene", "ships", "variants", "hpMax", "fight", "sensesFilled"]) if (file[k] !== undefined) g[k] = file[k];
+      if (g.sensesFilled !== undefined) g.sensesFilled = g.sensesFilled === true;   // the one-time senses fill (#132): done or not, nothing else
       // everything coming back in goes through the same checks as a live edit
       g.characters = {};
       for (const [id, ch] of Object.entries(file.characters).slice(0, 60)) {
@@ -1024,4 +1054,4 @@ module.exports = async function handler(req, res) {
 };
 module.exports.SW5E_BOOKS = SW5E_BOOKS;   // tests switch the books off and on
 module.exports.SW5E_TOTAL_MAX = SW5E_TOTAL_MAX;
-module.exports.resetSpeciesSenses = () => { SPECIES_SENSES_MAP = null; };   // tests: forget the species list read so far
+module.exports.resetSpeciesSenses = () => { SPECIES_SENSES_MAP = null; SPECIES_FILL_SEEN = false; };   // tests: forget the species list read so far
