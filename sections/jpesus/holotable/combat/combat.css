@@ -1,0 +1,31 @@
+/* HoloTable combat view (experimental branch): the bar under the map. HoloTable's own colours and buttons. */
+.ct-bar { flex: none; border-top: 1px solid var(--line); background: var(--bg2); padding: 6px 10px; display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow-y: auto; }
+.ct-bar[hidden] { display: none; }
+.ct-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ct-row .spacer { flex: 1; }
+.ct-turn { font-weight: 600; letter-spacing: .02em; }
+.ct-you { color: var(--amber); font-weight: 700; margin-left: 4px; text-transform: uppercase; font-size: 12px; letter-spacing: .08em; }
+.ct-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.ct-chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--holo); color: var(--text); background: color-mix(in srgb, var(--holo) 12%, transparent); }
+.ct-chip.spent { border-color: var(--line); color: var(--muted); background: transparent; text-decoration: line-through; }
+.ct-actions { gap: 6px; }
+.ct-atk { text-align: left; min-height: 36px; }
+.ct-atk b { margin: 0 2px; }
+.ct-atk .muted { font-size: 12px; }
+.ct-atk[disabled] { opacity: .45; cursor: not-allowed; }
+.ct-atk.primary .muted { color: inherit; opacity: .85; }
+.ct-tog { display: inline-flex; flex-direction: row; align-items: center; gap: 4px; margin: 0; font-size: 13px; text-transform: none; letter-spacing: 0; color: var(--soft-text, var(--text)); }
+.ct-tog input { width: auto; margin: 0; }
+.ct-preview { background: color-mix(in srgb, var(--holo) 8%, var(--panel)); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+.ct-hint { font-size: 13px; }
+/* a phone's map is short: keep the bar to two compact rows, the attacks scrolling sideways */
+@media (max-width: 700px) {
+  .ct-bar { padding: 4px 6px; gap: 4px; font-size: 13px; max-height: none; }
+  .ct-row { gap: 6px; }
+  .ct-chip { font-size: 11px; padding: 1px 6px; }
+  .ct-actions { flex-wrap: nowrap; overflow-x: auto; }
+  .ct-atk, .ct-tog { flex: none; }
+  .ct-atk { min-height: 34px; padding: 3px 8px; }
+  .ct-hint { display: none; }
+  .ct-preview { padding: 4px 6px; }
+}

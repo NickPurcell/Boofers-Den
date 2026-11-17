@@ -207,6 +207,7 @@
       if (v !== S.variantsSeen) { S.variantsSeen = v; if (!$('#rules .lib') && !($('#rulesSearch') || {}).value) renderRules(); }
     }
     renderMapTools(); loadMapBg(); drawMap();
+    if (window.HTC) HTC.render();   // experimental: combat view
     renderChat();
   }
 
@@ -1458,6 +1459,7 @@
       if (im) { ctx.globalAlpha = 0.6; const w = st.w * g, h = st.h * g; ctx.drawImage(im, A.hover.x - w / 2, A.hover.y - h / 2, w, h); ctx.globalAlpha = 1; }
     }
     if (isGM()) drawScripts(g, z);
+    if (window.HTC) HTC.under(ctx, g, z);   // experimental: combat view (reachable squares)
     // tokens
     const ini = S.st.initiative, cur = ini.active && ini.entries[ini.turn];
     for (const t of mp.tokens) {
@@ -1492,6 +1494,7 @@
       ctx.lineWidth = 3 / z; ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.strokeText(t.name, cx, py + sz + 1); ctx.fillStyle = '#fff'; ctx.fillText(t.name, cx, py + sz + 1);
       ctx.globalAlpha = 1;
     }
+    if (window.HTC) HTC.over(ctx, g, z);    // experimental: combat view (targets, results)
   }
   const canMove = t => isGM() || t.owner === clientId || (t.charId && S.st.characters[t.charId] && S.st.characters[t.charId].owner === clientId);
   function tokenAt(x, y) {
@@ -1522,6 +1525,7 @@
     if (e.button === 1) { e.preventDefault(); M.drag = { pan: true, sx: e.clientX, sy: e.clientY, cx: CAM.x, cy: CAM.y, moved: false }; capture(e); return; }
     if (e.button !== 0) return;
     const { x, y } = mapXY(e), g = S.st.map.gridSize;
+    if (!M.script && !A.stamp && window.HTC && HTC.down(x / g, y / g, e)) { drawMap(); return; }   // experimental: combat view
     if (M.script) {          // recording a scene movement: each click is the next waypoint
       if (M.script.path.length >= 12) return toast('That\'s the most waypoints for one piece (12).', true);
       M.script.path.push({ x: Math.floor(x / g), y: Math.floor(y / g) });
@@ -1563,7 +1567,7 @@
       pinch = { d, mx, my }; return;
     }
     if (A.stamp) { A.hover = mapXY(e); drawMap(); return; }
-    if (!M.drag) return;
+    if (!M.drag) { if (window.HTC) { const { x, y } = mapXY(e); HTC.hover(x / S.st.map.gridSize, y / S.st.map.gridSize, e); } return; }   // experimental: combat view
     if (M.drag.pan) {
       const dx = e.clientX - M.drag.sx, dy = e.clientY - M.drag.sy;
       if (Math.abs(dx) + Math.abs(dy) > 3) M.drag.moved = true;
@@ -1580,7 +1584,11 @@
     if (!M.drag) return;
     const d = M.drag, g = S.st.map.gridSize;
     M.drag = null;
-    if (d.pan) { if (d.moved) saveCam(); else { M.sel = null; M.selProp = null; drawMap(); } return; }
+    if (d.pan) {
+      if (d.moved) saveCam();
+      else { const { x, y } = mapXY(e); if (!(window.HTC && HTC.tap(x / g, y / g, e))) { M.sel = null; M.selProp = null; } drawMap(); }   // experimental: combat view
+      return;
+    }
     if (d.prop) {
       const p = (S.st.map.props || []).find(p => p.id === d.prop);
       if (p && d.moved) { p.x = snap(d.px / g, e); p.y = snap(d.py / g, e); act('prop.update', { id: p.id, fields: { x: p.x, y: p.y } }); }
@@ -2469,7 +2477,7 @@
   }
 
   // --------------------------------------------------------------------------- shared with books.js
-  window.HT = { S, $, $$, esc, n0, R, API, modal, closeModal, toast, act, mutate, isGM, chars, roll, rollModeFromEvent, setPath, renderRules, setTab };
+  window.HT = { S, $, $$, esc, n0, R, API, modal, closeModal, toast, act, mutate, isGM, chars, roll, rollModeFromEvent, setPath, renderRules, setTab, drawMap };
 
   // --------------------------------------------------------------------------- boot
   window.addEventListener('resize', () => drawMap());
