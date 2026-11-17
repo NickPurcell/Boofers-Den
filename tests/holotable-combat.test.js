@@ -255,7 +255,7 @@ test("turn budget: each unit's own turn refills its movement, action, bonus acti
   const hers = Object.assign({}, w, { turnId: "ava", round: 2 });
   assert.deepEqual([E.budget(hers).reaction, E.budget(hers).moveLeft, E.budget(hers).action], [true, 30, true]);
   const r = E.apply(hers, { type: "move", unit: "ava", x: 2, y: 0 }, dice().roll);
-  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0 });
+  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0 });
 });
 
 // a level-3 Consular with two powers; the table has data for one of them (numbers invented for the test)
@@ -1342,6 +1342,70 @@ test("review #89 through the API: one diagonal step at a time is 5, 10, 5, 10 ft
   assert.equal((await sam.act("fight.move", { x: 5, y: 5 })).code, 400);
 });
 
+/* ---------------------------------------------------------------- 0 hit points (audit 7.6) */
+test("0 hit points: a character falls unconscious, or dies outright from damage left over at its maximum; creatures just drop", () => {
+  const ava = (o) => unit(Object.assign({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0, hp: 6, maxHp: 12, deathSaves: { s: 1, f: 1 } }, o));
+  const r1 = (o) => unit(Object.assign({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0 }, o));
+  let r = E.apply(world([ava(), r1()], "r1"), { type: "attack", unit: "r1", target: "ava", attack: blade }, dice({ total: 18, nat: 13 }, { total: 9 }).roll);
+  assert.deepEqual([r.world.units.ava.hp, r.world.units.ava.conditions, r.world.units.ava.deathSaves], [0, ["Unconscious", "Prone"], { s: 0, f: 0 }]);
+  assert.equal(r.log[2].text, "Avery falls unconscious.");
+  r = E.apply(world([ava(), r1()], "r1"), { type: "attack", unit: "r1", target: "ava", attack: blade }, dice({ total: 18, nat: 13 }, { total: 18 }).roll);
+  assert.deepEqual([r.world.units.ava.deathSaves.f, E.isDead(r.world.units.ava)], [3, true], "6 to 0 with 12 left over: dead");
+  r = E.apply(world([ava(), r1({ hp: 5 })], "ava"), { type: "attack", unit: "ava", target: "r1", attack: blade }, dice({ total: 18, nat: 13 }, { total: 9 }).roll);
+  assert.deepEqual([r.world.units.r1.hp, r.world.units.r1.conditions || []], [0, []], "a creature at 0 is the GM's to call");
+});
+
+test("0 hit points: damage while dying is a failure, two on a critical; at the maximum it kills; a stable character starts dying again", () => {
+  const down = (o) => unit(Object.assign({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0, hp: 0, maxHp: 12, deathSaves: { s: 1, f: 0 }, conditions: ["Unconscious", "Prone"] }, o));
+  const r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0 }), far = unit({ id: "r1", name: "Raider", side: "npc", x: 4, y: 0 });
+  let r = E.apply(world([down(), far], "r1"), { type: "attack", unit: "r1", target: "ava", attack: rifle }, dice({ total: 25, nat: 13 }, { total: 3 }).roll);
+  assert.deepEqual(r.world.units.ava.deathSaves, { s: 1, f: 1 }, "a hit from 20 ft: one failure");
+  r = E.apply(world([down(), r1], "r1"), { type: "attack", unit: "r1", target: "ava", attack: blade }, dice({ total: 25, nat: 13 }, { total: 3 }).roll);
+  assert.deepEqual(r.world.units.ava.deathSaves, { s: 1, f: 2 }, "a hit from within 5 ft on the unconscious is a critical: two failures");
+  r = E.apply(world([down(), far], "r1"), { type: "attack", unit: "r1", target: "ava", attack: rifle }, dice({ total: 25, nat: 13 }, { total: 12 }).roll);
+  assert.equal(E.isDead(r.world.units.ava), true);
+  r = E.apply(world([down({ deathSaves: { s: 3, f: 1 } }), far], "r1"), { type: "attack", unit: "r1", target: "ava", attack: rifle }, dice({ total: 25, nat: 13 }, { total: 2 }).roll);
+  assert.deepEqual(r.world.units.ava.deathSaves, { s: 0, f: 2 }, "stable no longer");
+});
+
+test("0 hit points: the death save on the dying character's turn; End turn rolls it if forgotten; healing wakes, but not the dead", () => {
+  const down = (o) => unit(Object.assign({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0, hp: 0, maxHp: 12, deathSaves: { s: 2, f: 2 }, conditions: ["Unconscious", "Prone"] }, o));
+  const save = (n, o) => E.apply(world([down(o)], "ava"), { type: "deathsave", unit: "ava" }, dice({ total: n, nat: n }).roll);
+  assert.deepEqual([save(12).world.units.ava.deathSaves, save(12).log[0].text], [{ s: 3, f: 2 }, "Avery makes a death save: 12, a success: Avery is stable."]);
+  assert.equal(E.isDead(save(4).world.units.ava), true);
+  assert.deepEqual(save(1, { deathSaves: { s: 0, f: 0 } }).world.units.ava.deathSaves, { s: 0, f: 2 });
+  const twenty = save(20).world.units.ava;
+  assert.deepEqual([twenty.hp, twenty.conditions, twenty.deathSaves], [1, ["Prone"], { s: 0, f: 0 }]);
+  const once = save(12, { deathSaves: { s: 0, f: 0 } });
+  assert.match(E.apply(once.world, { type: "deathsave", unit: "ava" }, dice().roll).why, /already made this turn's death save/);
+  assert.equal(E.apply(world([down()], "ava"), { type: "attack", unit: "ava", target: "x", attack: blade }, dice().roll).ok, false, "unconscious: no attack");
+  const ended = E.apply(world([down({ deathSaves: { s: 0, f: 0 } })], "ava"), { type: "end", unit: "ava" }, dice({ total: 15, nat: 15 }).roll);
+  assert.deepEqual([ended.world.units.ava.deathSaves, ended.log[1].text], [{ s: 1, f: 0 }, "Avery makes a death save: 15, a success (1 of 3)."]);
+  // healing: wakes the dying, not the dead
+  const ch = consular();
+  const heal = E.abilitiesOf(ch, R, { "mind shove": { use: "action", range: [30, 30], heal: { dice: "1d4" } } })[0];
+  const cass = unit({ id: "cass", name: "Cass", side: "pc", x: 1, y: 0, pools: Object.fromEntries(E.resourcesOf(ch, R).map((x) => [x.key, x])) });
+  let r = E.apply(world([down(), cass], "cass"), { type: "use", unit: "cass", ability: heal, target: "ava" }, dice({ total: 3 }).roll);
+  assert.deepEqual([r.world.units.ava.hp, r.world.units.ava.conditions, r.world.units.ava.deathSaves, r.log[1].text], [3, ["Prone"], { s: 0, f: 0 }, "Avery regains 3 hit points and wakes."]);
+  r = E.apply(world([down({ deathSaves: { s: 0, f: 3 } }), cass], "cass"), { type: "use", unit: "cass", ability: heal, target: "ava" }, dice({ total: 3 }).roll);
+  assert.equal(r.world.units.ava.hp, 0);
+});
+
+test("0 hit points through the API: the death saves land on the sheet, and undo takes them back", async () => {
+  const { gm, sam, avery } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hp: { max: 20, current: 0, temp: 0 }, conditions: ["Unconscious"] }) });
+  assert.equal((await sam.act("fight.attack", { target: "x", attack: "0" })).code, 400, "unconscious");
+  assert.equal((await sam.act("fight.deathsave", {})).code, 200);
+  st = await sam.state();
+  const ds = st.characters[avery].deathSaves;
+  assert.equal(ds.s + ds.f + (st.characters[avery].hp.current > 0 ? 1 : 0) >= 1, true, "a success, a failure (or two), or a 20");
+  assert.equal((await sam.act("fight.deathsave", {})).code, 400, "one a turn");
+  await gm.act("fight.undo", {});
+  assert.deepEqual((await sam.state()).characters[avery].deathSaves, { s: 0, f: 0 });
+});
+
 test("review #94: a reaction prompt survives the tracker's index moving, and lapses once either side is hidden", async () => {
   const setup = async () => {
     const t = await fight();
@@ -1370,4 +1434,50 @@ test("review #94: a reaction prompt survives the tracker's index moving, and lap
   const r = await sam.act("fight.end", {});
   assert.equal(r.code, 200, JSON.stringify(r.data));
   assert.ok(!(await sam.state()).chat.some((m) => /lets Avery go|Waiting for Raider/.test(m.text || "")));
+});
+
+/* ---------------------------------------------------------------- creatures' limited abilities (audit 9.5, issue #76) */
+test("creature resources through the API: recharge rolls at the start of its turn, per day and legendary counts, all the GM's", async () => {
+  const { gm, sam, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  const res = [
+    { key: "plasma-cannon", name: "Plasma Cannon", max: 1, refill: "manual", recharge: 5 },
+    { key: "rockets", name: "Rocket Launchers", max: 2, refill: "long" },
+    { key: "legendary", name: "Legendary actions", max: 3, refill: "turn" },
+  ];
+  assert.equal((await sam.act("fight.npcres", { id: ids.raider, op: "set", res })).code, 403);
+  assert.equal((await gm.act("fight.npcres", { id: ids.raider, op: "set", res })).code, 200);
+  assert.equal((await gm.act("fight.npcres", { id: ids.avery, op: "set", res })).code, 400, "creatures only");
+  assert.deepEqual((await sam.state()).fight.npcRes, {}, "players never see a creature's abilities");
+  // legendary actions on Avery's turn: 2, then 2 more is too many
+  assert.equal((await gm.act("fight.npcres", { id: ids.raider, op: "use", key: "legendary", n: 2 })).code, 200);
+  assert.equal((await gm.act("fight.npcres", { id: ids.raider, op: "use", key: "legendary", n: 2 })).code, 400);
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  // the Raider's turn: legendary actions back; the cannon (a limited attack) fires once
+  let gv = await gm.state();
+  assert.equal(gv.fight.npcRes[ids.raider].find((r) => r.key === "legendary").used, 0);
+  const cannon = { name: "Plasma Cannon", bonus: 40, damage: "2d10", type: "energy", melee: 0, range: [100, 400], res: "plasma-cannon" };
+  assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: cannon })).code, 200);
+  gv = await gm.state();
+  assert.equal(gv.fight.npcRes[ids.raider].find((r) => r.key === "plasma-cannon").used, 1);
+  // undo gives it back; do it again; spent now for the rest of the turn (the action's gone too, so test via the guard by resetting the action)
+  await gm.act("fight.undo", {});
+  assert.equal((await gm.state()).fight.npcRes[ids.raider].find((r) => r.key === "plasma-cannon").used, 0);
+  await gm.act("fight.attack", { target: ids.avery, attack: cannon });
+  // per day: use both rockets, the third is refused; reset brings them back
+  await gm.act("fight.npcres", { id: ids.raider, op: "use", key: "rockets" });
+  await gm.act("fight.npcres", { id: ids.raider, op: "use", key: "rockets" });
+  assert.equal((await gm.act("fight.npcres", { id: ids.raider, op: "use", key: "rockets" })).code, 400);
+  await gm.act("fight.npcres", { id: ids.raider, op: "reset", key: "rockets" });
+  assert.equal((await gm.state()).fight.npcRes[ids.raider].find((r) => r.key === "rockets").used, 0);
+  // round the table to the Raider's next turn: the spent cannon rolls a d6 to recharge, to the GM only
+  await gm.act("fight.end", {});
+  for (let i = 0; i < 3; i++) { const st = await gm.state(); const cur = st.initiative.entries[st.initiative.turn]; if (cur.id === ids.raider) break; await gm.act("init.next", {}); }
+  await gm.act("fight.npcres", { id: ids.raider, op: "use", key: "legendary", n: 1 });   // any combat step runs the turn's start
+  gv = await gm.state();
+  const line = gv.chat.filter((m) => m.roll && m.roll.kind === "recharge").pop();
+  assert.ok(line && /Plasma Cannon \(recharge 5-6\)/.test(line.roll.label), JSON.stringify(line));
+  assert.deepEqual(line.to, ["@gm"]);
+  assert.ok(!(await sam.state()).chat.some((m) => m.roll && m.roll.kind === "recharge"), "players don't see it");
+  assert.equal(gv.fight.npcRes[ids.raider].find((r) => r.key === "plasma-cannon").used, line.roll.total >= 5 ? 0 : 1);
 });

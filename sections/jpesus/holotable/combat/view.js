@@ -65,6 +65,22 @@
     if (!known) loadCreature(u.id);
     return ((known && known.attacks) || []).concat(UI.custom && UI.custom.unit === u.id ? [UI.custom.spec] : []);
   }
+  // a stat block's limited abilities (audit 9.5): "Recharge X-6", "N/Day", "Recharges after a Short or Long Rest", and
+  // legendary actions (3 a round, back at the start of its turn)
+  const slug = (n) => String(n).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
+  function limitedOf(m) {
+    const out = [];
+    for (const b of m.b || []) {
+      const r = String(b.r || ''), name = String(b.n || ''), key = slug(name);
+      let mm;
+      if (!key || out.some((x) => x.key === key)) continue;
+      if ((mm = /recharge\s*(\d)/i.exec(r))) out.push({ key, name, max: 1, used: 0, refill: 'manual', recharge: +mm[1] });
+      else if (/recharges? after/i.test(r)) out.push({ key, name, max: 1, used: 0, refill: 'short' });
+      else if ((mm = /(\d+)\s*\/\s*day/i.exec(r))) out.push({ key, name, max: +mm[1], used: 0, refill: 'long' });
+    }
+    if ((m.b || []).some((b) => b.k === 'legendary')) out.push({ key: 'legendary', name: 'Legendary actions', max: 3, used: 0, refill: 'turn' });
+    return out;
+  }
   // the GM's own browser has the creature list (books.js); speed goes to the server once, attacks travel with each attack
   function loadCreature(id) {
     const e = entry(id);
@@ -72,8 +88,10 @@
     UI.npc[id] = { attacks: [], loading: true };
     window.HTB.list('monsters').then((list) => {
       const m = (list || []).find((x) => x.n === e.sb);
-      const atks = m ? m.b.filter((b) => b.k === 'action').map(E.attackFromBehavior).filter(Boolean).map((a, i) => Object.assign(a, { key: 'sb' + i })) : [];
-      UI.npc[id] = { attacks: atks };
+      const res = m ? limitedOf(m) : [];
+      const atks = m ? m.b.filter((b) => b.k === 'action').map((b) => { const a = E.attackFromBehavior(b); return a && Object.assign(a, { res: (res.find((r) => r.name === b.n) || {}).key }); }).filter(Boolean).map((a, i) => Object.assign(a, { key: 'sb' + i })) : [];
+      UI.npc[id] = { attacks: atks, legendary: m ? m.b.filter((b) => b.k === 'legendary').map((b) => ({ name: b.n, cost: +((/costs?\s+(\d)/i.exec(b.n + ' ' + (b.r || '')) || [])[1]) || 1 })) : [] };
+      if (m && res.length && !((F().npcRes || {})[id] || []).length) act('fight.npcres', { id, op: 'set', res });
       const sp = m && /(\d+)\s*f/.exec(m.speed || '');
       if (m && F().npcSpeed[id] == null && !UI.npcAsked[id]) {
         // its speed and save bonuses: the ability modifier, or the bonus its stat block lists ("Dex +5")
@@ -149,7 +167,7 @@
     UI.busy = true;
     try { return await act(type, payload); } finally { UI.busy = false; }
   }
-  const specOut = (spec) => ({ name: spec.name, bonus: spec.bonus, damage: spec.damage, type: spec.type, melee: spec.melee, range: spec.range });
+  const specOut = (spec) => ({ name: spec.name, bonus: spec.bonus, damage: spec.damage, type: spec.type, melee: spec.melee, range: spec.range, res: spec.res || undefined });
   // the melee attacks a reacting combatant has: its sheet's, or (for the GM) its stat block's
   function meleeOf(re) {
     if (re.charId) { const ch = st().characters[re.charId]; return ch ? E.attacksOf(ch, R).filter((a) => a.melee > 0) : []; }
@@ -211,11 +229,12 @@
     if (bud) html += `<span class="ct-chips">${chip(bud.moveLeft > 0, `Move ${bud.moveLeft}/${bud.total == null ? bud.speed : bud.total} ft`, bud.dash ? 'Movement left this turn (with Dash)' : 'Movement left this turn')}${chip(bud.action, 'Action', 'One action a turn')}${chip(bud.bonus, 'Bonus action', 'One bonus action a turn')}${chip(bud.reaction, 'Reaction', 'One reaction between your turns')}</span>`;
     html += '<span class="spacer"></span>';
     html += `<button class="btn small ghost ${UI.ruler ? 'primary' : ''}" data-ct="measure" aria-pressed="${!!UI.ruler}" title="Measure a distance on the map">📏 Measure</button>`;
-    if (mine && u && f.active && (u.conditions || []).includes('Prone')) html += `<button class="btn small" data-ct="stand" title="Standing up costs half your speed">Stand up (${Math.ceil((bud ? bud.speed : 30) / 2 / 5) * 5} ft)</button>`;
+    if (mine && u && f.active && (u.conditions || []).includes('Prone') && bud && bud.speed > 0) html += `<button class="btn small" data-ct="stand" title="Standing up costs half your speed">Stand up (${Math.ceil((bud ? bud.speed : 30) / 2 / 5) * 5} ft)</button>`;
     if (mine && u && f.active && bud && bud.action) for (const o of Object.values(w.units)) {
       if (!(o.conditions || []).includes('Ignited') || (o.id !== u.id && E.feetBetween(u, o) > E.FT)) continue;
       html += `<button class="btn small" data-ct="douse" data-id="${esc(o.id)}" title="Takes your action">🔥 Put out the flames${o.id === u.id ? '' : ` on ${esc(o.name)}`}</button>`;
     }
+    if (mine && u && f.active && E.isDying(u) && !E.spentOf(w, u.id).ds) html += '<button class="btn small primary" data-ct="deathsave" title="At 0 hit points: 10 or more succeeds, a 1 counts twice, a 20 brings you back with 1 hit point">🎲 Death save</button>';
     if (mine && u && f.active) html += '<button class="btn small amber" data-ct="end">End turn ⏭</button>';
     if (gm()) html += `<button class="btn small ghost" data-ct="undo" ${f.undo && f.undo.n ? '' : 'disabled'} title="${esc(f.undo && f.undo.last ? 'Undo: ' + f.undo.last : 'Nothing to undo')}">↶ Undo</button><button class="btn small ghost" data-ct="off" title="Turn the combat view off for everyone">Combat view off</button>`;
     html += '</div>';
@@ -247,7 +266,8 @@
     }
     // the current combatant's conditions (how long each lasts) and what it is concentrating on
     const flags = u ? E.spentOf(w, u.id) : {};
-    if (f.active && u && ((u.conditions || []).length || (f.conc || {})[u.id] || flags.dodge || flags.disengage || (u.senses || []).length || gm())) {
+    const at0 = u && u.side === 'pc' && u.hp === 0;
+    if (f.active && u && ((u.conditions || []).length || (f.conc || {})[u.id] || flags.dodge || flags.disengage || (u.senses || []).length || at0 || gm())) {
       const efs = (f.effects || []).filter((ef) => ef.unit === u.id);
       // what the chip says beyond the name: its level, its fire damage, who caused it, or that the DM hasn't set one
       const detail = (c) => {
@@ -266,11 +286,28 @@
         return ` (${ef.save ? `${ef.save.ability.toUpperCase()} save DC ${ef.save.dc} at the end of its turns` : `until the ${ef.ends} of ${whose} ${ef.rounds > 1 ? `turn, ${ef.rounds} rounds` : 'next turn'}`}${ef.conc ? ', while concentrating' : ''})`;
       };
       html += `<div class="ct-row ct-conds">${(u.conditions || []).map((c) => `<span class="ct-chip ct-cond" title="${esc((R.CONDITIONS || {})[c] || c)}${esc(until(c))}">${esc(c)}${esc(detail(c))}${E.CONDITION_EFFECTS[c] ? '' : ' <span class="muted">(no automatic effect yet)</span>'}${esc(until(c))}${gm() ? ` <button class="ct-x" data-ct="uncond" data-c="${esc(c)}" title="Take ${esc(c.toLowerCase())} off ${esc(u.name)}" aria-label="Take ${esc(c.toLowerCase())} off">✕</button>` : ''}</span>`).join('')}
+        ${at0 ? (() => {
+          const ds = u.deathSaves || { s: 0, f: 0 }, dots = (n, ch) => Array.from({ length: 3 }, (_, i) => (i < n ? ch : '·')).join('');
+          return E.isDead(u) ? '<span class="ct-chip ct-cond">💀 Dead</span>' : E.isStable(u) ? '<span class="ct-chip">Stable at 0 hit points</span>'
+            : `<span class="ct-chip ct-cond" title="Death saves: successes, then failures">Dying · ${dots(ds.s, '✓')} ${dots(ds.f, '✗')}</span>`;
+        })() : ''}
         ${(u.senses || []).map((x) => `<span class="ct-chip ct-sense" title="${esc(SENSE_HINT[x.kind] || '')}">👁 ${esc(x.kind)} ${x.range} ft</span>`).join('')}
         ${flags.dodge ? '<span class="ct-chip" title="Attacks against it at disadvantage, Dex saves at advantage, until its next turn">Dodging</span>' : ''}
         ${flags.disengage ? '<span class="ct-chip" title="Leaving a reach provokes no opportunity attack this turn">Disengaged</span>' : ''}
         ${gm() ? '<button class="btn tiny ghost" data-ct="cond" title="Put a condition on a combatant, with its level, its damage or who caused it">＋ Condition</button>' : ''}
         ${(f.conc || {})[u.id] ? `<span class="ct-chip ct-conc" title="Damage asks for a Con save; dropping to 0 hit points or being incapacitated ends it">Concentrating: ${esc(f.conc[u.id])}</span>` : ''}</div>`;
+    }
+    // a creature's limited abilities (the GM's): a chip each; click to use one, or to reset a spent one
+    if (gm() && f.active && u && !u.charId && ((f.npcRes || {})[u.id] || []).length) {
+      html += `<div class="ct-row ct-pools">${f.npcRes[u.id].map((r) => `<button class="ct-chip ct-pool ${r.used >= r.max ? 'spent' : ''}" data-ct="npcres" data-unit="${esc(u.id)}" data-key="${esc(r.key)}" title="${esc(r.recharge ? `Recharge ${r.recharge}-6: rolled at the start of its turn` : r.refill === 'turn' ? 'Back at the start of its turn' : r.refill === 'short' ? 'Back after a short or long rest (reset by hand)' : 'Per day (reset by hand)')}">${esc(r.name)} ${r.max - r.used}/${r.max}${r.recharge ? ` ⟳${r.recharge}–6` : ''}</button>`).join('')}</div>`;
+    }
+    if (gm() && f.active) {   // legendary actions, used at the end of another combatant's turn
+      const legs = Object.entries(f.npcRes || {}).filter(([id, list]) => id !== (u && u.id) && w.units[id] && !w.units[id].down && list.some((r) => r.key === 'legendary' && r.used < r.max));
+      if (legs.length) html += `<div class="ct-row ct-legend"><span class="muted">⚡ Legendary:</span>${legs.map(([id, list]) => {
+        const r = list.find((x) => x.key === 'legendary'), opts = (UI.npc[id] || {}).legendary || [];
+        if (!UI.npc[id]) loadCreature(id);
+        return `<span class="ct-chip">${esc(w.units[id].name)} ${r.max - r.used}/${r.max}</span>${opts.map((o) => `<button class="btn tiny ghost" data-ct="legend" data-unit="${esc(id)}" data-n="${o.cost}" ${r.max - r.used < o.cost ? 'disabled' : ''} title="Costs ${o.cost}">${esc(o.name.replace(/\s*\(costs?[^)]*\)/i, ''))}${o.cost > 1 ? ` (${o.cost})` : ''}</button>`).join('') || `<button class="btn tiny ghost" data-ct="legend" data-unit="${esc(id)}" data-n="1">Use one</button>`}`;
+      }).join('')}</div>`;
     }
     // the current character's resources (its owner and the GM): use one, or add one
     if (f.active && u && u.charId && (mine || gm())) {
@@ -287,7 +324,8 @@
       for (const a of atks) {
         const n = targets(a).length;
         const slot = a.power ? a.power.use : 'action';
-        const slotSpent = bud && slot !== 'free' && !bud[slot];
+        const lim = !u.charId && a.res && ((f.npcRes || {})[u.id] || []).find((r) => r.key === a.res);
+        const slotSpent = (bud && slot !== 'free' && !bud[slot]) || (lim && lim.used >= lim.max);
         const pool = a.power && Object.entries(a.power.cost || {})[0];
         const poorly = pool && (!u.pools[pool[0]] || u.pools[pool[0]].max - u.pools[pool[0]].used < pool[1]);
         const off = slotSpent || !n || poorly;
@@ -346,6 +384,13 @@
     if (k === 'stand') return send('fight.stand', {});
     if (k === 'douse') return send('fight.douse', { target: el.dataset.id });
     if (k === 'common') return send('fight.common', { key: el.dataset.key });
+    if (k === 'deathsave') return send('fight.deathsave', {});
+    if (k === 'legend') return send('fight.npcres', { id: el.dataset.unit, op: 'use', key: 'legendary', n: +el.dataset.n || 1 });
+    if (k === 'npcres') {
+      const r = ((F().npcRes || {})[el.dataset.unit] || []).find((x) => x.key === el.dataset.key);
+      if (!r) return;
+      return send('fight.npcres', { id: el.dataset.unit, key: r.key, op: r.used >= r.max ? 'reset' : 'use' });
+    }
     if (k === 'log') { UI.log = !UI.log; return render(); }
     if (k === 'letgo') return send('fight.react', { id: el.dataset.id, take: false });
     if (k === 'react') {

@@ -88,6 +88,7 @@ function monsters(d) {
       d: t(unlink((x && (x.descriptionWithLinks || x.description)) || "").trim(), 2500),
       atk: x && x.attackType && x.attackType !== "None" ? int(x.attackBonus, -10, 40) : null,
       dmg: t(x && x.damageRoll, 40), dt: t(x && x.damageType, 20).toLowerCase(), rng: t(x && x.range, 60),
+      r: t(x && x.restrictions, 60),   // "Recharge 5-6", "3/Day", "Recharges after a Short or Long Rest" (the combat view counts them, #76)
     })).filter((x) => x.n),
   })).sort(byName);
 }
@@ -144,7 +145,7 @@ const LISTS = {
   masteries: { path: "fightingMastery", build: simple("text"), maxBytes: 1 * MB, maxItems: 400 },  // 32
   forms: { path: "lightsaberForm", build: simple("description"), maxBytes: 1 * MB, maxItems: 300 }, // 20
   features: { path: "feature", build: features, maxBytes: 6 * MB, maxItems: 12000 },               // 1.74 MB, 2,723 (1,130 kept)
-  monsters: { path: "monster", build: monsters, maxBytes: 8 * MB, maxItems: 2000 },                // 2.59 MB, 271
+  monsters: { path: "monster", build: monsters, maxBytes: 8 * MB, maxItems: 2000, cacheAs: "monsters-2" },   // 2.59 MB, 271; cacheAs: a new shape (r) is a new cache
   "rules-phb": { path: "playerHandbookRule", build: chapters, maxBytes: 3 * MB, maxItems: 60 },    // 0.47 MB
   "rules-wh": { path: "wretchedHivesRule", build: chapters, maxBytes: 3 * MB, maxItems: 60 },      // 0.41 MB
   "rules-sotg": { path: "starshipRule", build: chapters, maxBytes: 3 * MB, maxItems: 60 },         // 0.27 MB
