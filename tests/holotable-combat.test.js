@@ -1471,3 +1471,33 @@ test("cover (issue #93, step 2): from walls by the grid method, from creatures b
   const blocked = world([me, r1()], "cass", { walls: [{ a: [3, -9], b: [3, 9], kind: "wall" }] });
   assert.equal(E.apply(blocked, { type: "use", unit: "cass", ability: ab, target: "r1" }, dice().roll).why, "Raider has total cover.");
 });
+
+test("review #94: a reaction prompt survives the tracker's index moving, and lapses once either side is hidden", async () => {
+  const setup = async () => {
+    const t = await fight();
+    await t.gm.act("fight.toggle", { on: true });
+    await t.sam.act("fight.move", { x: 5, y: 0 });
+    await t.sam.act("fight.move", { x: 4, y: 0 });   // away from the Raider: its prompt
+    return t;
+  };
+  // A: the GM adds a reinforcement above Avery in the order: the prompt stays, for both, and still blocks
+  let { gm, sam, rae, ids } = await setup();
+  await gm.act("init.add", { name: "Reinforcement", init: 25, hp: 5, ac: 10 });
+  assert.equal((await gm.state()).fight.pending.length, 1, "the GM still sees it");
+  assert.equal((await sam.state()).fight.pending.length, 1, "so does Sam");
+  assert.equal((await sam.act("fight.end", {})).code, 400);
+  const id = (await gm.state()).fight.pending[0].id;
+  assert.equal((await gm.act("fight.react", { id, take: false })).code, 200, "and it can be answered");
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  // B: a player raises their own initiative mid-prompt: same
+  ({ gm, sam, rae, ids } = await setup());
+  assert.equal((await rae.act("init.update", { id: ids.bolt, fields: { init: 30 } })).code, 200);
+  assert.equal((await sam.state()).fight.pending.length, 1);
+  // C: the GM hides the Raider while its prompt is up: lapsed, the turn goes on, and nothing names it
+  ({ gm, sam, rae, ids } = await setup());
+  await gm.act("init.update", { id: ids.raider, fields: { hidden: true } });
+  assert.equal((await sam.state()).fight.pending.length, 0);
+  const r = await sam.act("fight.end", {});
+  assert.equal(r.code, 200, JSON.stringify(r.data));
+  assert.ok(!(await sam.state()).chat.some((m) => /lets Avery go|Waiting for Raider/.test(m.text || "")));
+});
