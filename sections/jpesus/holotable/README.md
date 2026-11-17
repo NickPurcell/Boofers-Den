@@ -48,6 +48,9 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
     sideways in one row.
   - The board, where the background image sits, is outlined.
   - Tokens, plus Dungeondraft packs or zips of images placed as props, tokens or floors.
+  - **Objects that block sight (GM):** click a placed piece (a crate stack, a parked freighter, a pillar) and press
+    "👁 Blocks sight". With the fog of war on, characters can't see through or past it, like a wall. The GM sees a dotted
+    outline on blocking pieces; players never receive the setting, only its effect.
   - **Token names:** each token shows a short label that fits its own square (the full name, the first name, or the
     initials), so neighbours never overlap. Hover a token for its full name.
   - **Unknown names (GM):** click a token and choose "Hide name from players" (or tick "hide their names" when adding

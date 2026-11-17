@@ -655,6 +655,7 @@ function view(camp, cid, gm, shownName) {
   const cur = ini.entries[ini.turn];
   const turn = ini.active && cur && seen(cur) ? cur.id : null;
   const world = worldOf(camp, !gm, null, cid);
+  // floating numbers: never on a token this player isn't sent (hidden by the GM, or out of their sight under fog)
   const evs = (Array.isArray(f.events) ? f.events : []).filter((ev) => gm || (!ev.hidden && !(fog && ev.token && fog.tokens.has(ev.token)))).slice(-15);
   return {
     on: true, active: !!ini.active, round: ini.round, turn, units,
