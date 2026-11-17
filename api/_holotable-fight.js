@@ -25,6 +25,8 @@ const int = (v, d = 0) => { const n = parseInt(v, 10); return Number.isFinite(n)
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const now = () => Date.now() / 1000;
 const plainObj = (o) => (o && typeof o === "object" && !Array.isArray(o) ? o : {});
+// a character by an id from a request or a stored record: the table's own only, never an inherited name ("__proto__") (#111)
+const charOf = (camp, id) => (typeof id === "string" && Object.prototype.hasOwnProperty.call(camp.characters || {}, id) ? camp.characters[id] : undefined);
 
 // The fight's own state, with its shape checked every time (a backup restore can bring anything back).
 function state(camp) {
@@ -219,7 +221,7 @@ function restore(camp, s) {
   if (i >= 0) ini.turn = i;
   ini.round = s.ini.round; ini.active = s.ini.active;
   f.spent = s.spent || {};
-  for (const [id, r] of s.chars || []) if (camp.characters[id]) Object.assign(camp.characters[id], r);
+  for (const [id, r] of s.chars || []) if (charOf(camp, id)) Object.assign(charOf(camp, id), r);
   if (Array.isArray(s.effects)) f.effects = s.effects;
   if (s.conc) f.conc = s.conc;
   if (typeof s.lastTurn === "string") f.lastTurn = s.lastTurn;
@@ -455,7 +457,7 @@ function apply(camp, cid, gm, type, p, G) {
       return {};
     }
     case "fight.defenses": { // a character's resistances, immunities and vulnerabilities (its owner or the GM)
-      const ch = camp.characters[p.charId];
+      const ch = charOf(camp, p.charId);
       if (!ch) throw new G.Invalid("No such character.");
       need(gm || ch.owner === cid, "not your character");
       const types = (v) => (Array.isArray(v) ? v : []).filter((x) => E.DAMAGE.includes(x)).map((type) => ({ type, only: null }));
@@ -493,7 +495,7 @@ function apply(camp, cid, gm, type, p, G) {
       return {};
     }
     case "fight.spend": {    // spend from a character's resource (its owner or the GM); undoable like a combat step
-      const ch = camp.characters[p.charId];
+      const ch = charOf(camp, p.charId);
       if (!ch) throw new G.Invalid("No such character.");
       need(gm || ch.owner === cid, "not your character");
       const r = E.spend(ch, String(p.key || ""), p.n == null ? 1 : p.n, R);
@@ -504,7 +506,7 @@ function apply(camp, cid, gm, type, p, G) {
       return {};
     }
     case "fight.resource": { // add, change or remove one of a character's own resources (its owner or the GM)
-      const ch = camp.characters[p.charId];
+      const ch = charOf(camp, p.charId);
       if (!ch) throw new G.Invalid("No such character.");
       need(gm || ch.owner === cid, "not your character");
       const list = E.cleanResources(ch.resources);
@@ -701,7 +703,7 @@ function view(camp, cid, gm, shownName) {
     npcDefenses: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, defences(plainObj(v))])) : {},
     // characters' own: as visible as their sheets (not a sheet whose token's name the GM is hiding, except to its owner)
     defenses: gm || !shownName ? f.defenses || {} : Object.fromEntries(Object.entries(f.defenses || {}).filter(([id]) => {
-      const c = camp.characters[id];
+      const c = charOf(camp, id);
       return c && (c.owner === cid || shownName(camp, { charId: id, name: c.name }) === c.name);
     })),
     lib: f.lib || {},

@@ -1,11 +1,13 @@
 // Local dev server for HoloTable: the whole site's static files plus /api/holotable, on an
-// in-memory Redis. node tests/holotable-devserver.js [port], then open /sections/jpesus/holotable/.
+// in-memory Redis and an in-memory stand-in for the private Blob file store (tests/holotable-fake-blob.js;
+// the browser's direct audio uploads go to /__fakeblob/put here). node tests/holotable-devserver.js [port], then open /sections/jpesus/holotable/.
 // Not deployed (.vercelignore).
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
 const Module = require("module");
 const HoloFake = require("./holotable-fake-redis.js");
+const FakeBlob = require("./holotable-fake-blob.js");
 const orig = Module._resolveFilename;
 Module._resolveFilename = function (req, ...rest) { return req === "ioredis" ? "ioredis-stub" : orig.call(this, req, ...rest); };
 require.cache["ioredis-stub"] = { id: "ioredis-stub", filename: "ioredis-stub", loaded: true, exports: HoloFake };
@@ -32,6 +34,13 @@ if (LATENCY) {
 }
 S.getClient = () => db;
 S.getSub = () => sub;
+const blob = new FakeBlob("/__fakeblob/put");
+if (LATENCY) for (const name of ["put", "get", "head", "del", "list"]) {
+  const orig = blob[name].bind(blob);
+  blob[name] = async (...a) => { await new Promise((r) => setTimeout(r, LATENCY)); return orig(...a); };
+}
+S.getBlob = () => blob;
+S.blobReady = () => true;
 const api = require("../api/holotable.js");
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".svg": "image/svg+xml", ".json": "application/json", ".mp3": "audio/mpeg" };
 
@@ -44,6 +53,14 @@ http.createServer(async (req, res) => {
     await db.del(S.K.camp("main"));
     await S.bump("main");
     return res.end("dropped");
+  }
+  // the fake store's side of a presigned PUT (the real one is on Vercel's Blob API)
+  if (u.pathname === "/__fakeblob/put" && req.method === "PUT") {
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    const [code, msg] = await blob.presignedPut(req.url, Buffer.concat(chunks), req.headers["content-type"]);
+    res.statusCode = code;
+    return res.end(JSON.stringify(code === 200 ? { pathname: "" } : { error: { message: msg } }));
   }
   if (u.pathname === "/api/holotable") {
     const chunks = [];

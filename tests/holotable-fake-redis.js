@@ -17,6 +17,17 @@ class HoloFakeRedis extends FakeRedis {
   async exists(k) { return this.kv.has(k) ? 1 : 0; }
   async llen(k) { const l = this.kv.get(k); return Array.isArray(l) ? l.length : 0; }
   async lindex(k, i) { const l = this.kv.get(k) || []; return l[i] === undefined ? null : l[i]; }
+  // SCAN with MATCH: everything in one page (the cursor always comes back "0")
+  async scan(cursor, ...a) {
+    const m = a.indexOf("MATCH"), pat = m >= 0 ? a[m + 1] : "*";
+    const re = new RegExp("^" + pat.split("*").map((x) => x.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$");
+    return ["0", [...this.kv.keys()].filter((k) => re.test(k))];
+  }
+  async hmget(k, ...fs) { const h = this.kv.get(k); return fs.flat().map((f) => (h && h.has(f) ? h.get(f) : null)); }
+  // sets (SADD / SREM / SMEMBERS)
+  async sadd(k, ...ms) { let st = this.kv.get(k); if (!(st instanceof Set)) { st = new Set(); this.kv.set(k, st); } let n = 0; for (const m of ms.flat()) if (!st.has(String(m))) { st.add(String(m)); n++; } return n; }
+  async srem(k, ...ms) { const st = this.kv.get(k); let n = 0; if (st instanceof Set) for (const m of ms.flat()) if (st.delete(String(m))) n++; return n; }
+  async smembers(k) { const st = this.kv.get(k); return st instanceof Set ? [...st] : []; }
   async hdel(k, ...fs) { const h = this.kv.get(k); let n = 0; for (const f of fs) if (h && h.delete(f)) n++; return n; }
   // ioredis-style pipeline: queue commands, run them in order on exec(), results as [err, value]
   pipeline() {
