@@ -260,10 +260,13 @@ async function warmSpeciesFill(r) {
   if (SPECIES_FILL_SEEN) return;
   const camp = await S.getCampaign(GAME).catch(() => null);   // a peek, unlocked: is there anything to fill at all?
   if (!camp || camp.sensesFilled) { if (camp) SPECIES_FILL_SEEN = true; return; }
-  if (Object.values(camp.characters || {}).some(needsSenses)) await speciesSenses(r, "");   // builds the name -> senses map (null if SW5e is out)
+  // builds the name -> senses map (null if SW5e is out), waiting at most a second: a cold cache with SW5e slow mustn't
+  // hold every action; the read carries on, and a later action finds the map built
+  if (Object.values(camp.characters || {}).some(needsSenses)) await Promise.race([speciesSenses(r, "").catch(() => null), new Promise((ok) => setTimeout(ok, 1000))]);
 }
 function fillSpeciesSenses(camp) {
   if (camp.sensesFilled) { SPECIES_FILL_SEEN = true; return; }
+  SPECIES_FILL_SEEN = false;   // a game without the mark (an old backup restored): warm up again before later actions
   const need = Object.values(camp.characters || {}).filter(needsSenses);
   if (need.length && !SPECIES_SENSES_MAP) return;   // the list isn't read yet: try again on a later action
   for (const c of need) {
