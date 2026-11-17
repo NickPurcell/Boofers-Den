@@ -6,9 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#f6f1e7" />
   <title>HoloTable against SW5e: what's done, what's missing</title>
-  <meta name="description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules at commit 4427cbe: 54 done, 42 partial, 62 missing, and the ten gaps that matter most." />
+  <meta name="description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules at commit 4427cbe: 60 done, 38 partial, 60 missing, and the ten gaps that matter most." />
   <meta property="og:title" content="HoloTable against SW5e: what's done, what's missing" />
-  <meta property="og:description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules at commit 4427cbe: 54 done, 42 partial, 62 missing, and the ten gaps that matter most." />
+  <meta property="og:description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules at commit 4427cbe: 60 done, 38 partial, 60 missing, and the ten gaps that matter most." />
   <link rel="stylesheet" href="audit.css" />
 </head>
 <body>
@@ -19,9 +19,9 @@
       <h1>HoloTable against SW5e <span>what a table needs to play the whole system, and what is there</span></h1>
       <p class="lead">This is a line-by-line check of <a href="https://boofers-den.vercel.app/sections/jpesus/holotable/">HoloTable</a>, the Star Wars 5e tabletop jpesus built on the Den, against what the SW5e rules ask of a table: making and levelling characters, class resources, powers, the sheet's arithmetic, gear, rests and conditions, combat on the map, the GM's side, starships, downtime, and the table itself. It describes HoloTable's code at commit <code>4427cbe</code> (17 Nov 2026, 08:01 PST), so anything changed since then is not counted. It is meant as a to-do list for the group, not a verdict.</p>
       <ul class="counts" aria-label="The 158 lines">
-        <li class="done"><b>54</b> <span aria-hidden="true">✓</span> done</li>
-        <li class="partial"><b>42</b> <span aria-hidden="true">◐</span> partial</li>
-        <li class="missing"><b>62</b> <span aria-hidden="true">✗</span> missing</li>
+        <li class="done"><b>60</b> <span aria-hidden="true">✓</span> done</li>
+        <li class="partial"><b>38</b> <span aria-hidden="true">◐</span> partial</li>
+        <li class="missing"><b>60</b> <span aria-hidden="true">✗</span> missing</li>
       </ul>
     </header>
 
@@ -67,9 +67,9 @@
       </dl>
       <div class="filters" id="filters" hidden>
         <div class="fgroup" role="group" aria-label="Show by state">
-          <button type="button" data-f="state" data-v="done" aria-pressed="true">✓ Done 54</button>
-          <button type="button" data-f="state" data-v="partial" aria-pressed="true">◐ Partial 42</button>
-          <button type="button" data-f="state" data-v="missing" aria-pressed="true">✗ Missing 62</button>
+          <button type="button" data-f="state" data-v="done" aria-pressed="true">✓ Done 60</button>
+          <button type="button" data-f="state" data-v="partial" aria-pressed="true">◐ Partial 38</button>
+          <button type="button" data-f="state" data-v="missing" aria-pressed="true">✗ Missing 60</button>
         </div>
         <div class="fgroup" role="group" aria-label="Show by how much it matters">
           <button type="button" data-f="matters" data-v="every" aria-pressed="true">Every session 57</button>
@@ -505,7 +505,7 @@
 <p class="nomatch" hidden>Nothing in this section matches the filters.</p>
 </details>
 <details class="sec" id="s-7">
-<summary><span class="sn">7.</span> <span class="st">Resting, hit dice, death, conditions</span> <span class="sc"><span class="tally">5 done · 4 partial · 2 missing</span><span class="shown" hidden></span></span></summary>
+<summary><span class="sn">7.</span> <span class="st">Resting, hit dice, death, conditions</span> <span class="sc"><span class="tally">11 done · 0 partial · 0 missing</span><span class="shown" hidden></span></span></summary>
 
 <ul class="items">
 <li class="item done" id="l-7-1" data-state="done" data-matters="every">
@@ -513,40 +513,40 @@
 <p class="text">Damage and healing on the sheet: temporary HP absorbs damage first, healing stops at the maximum and clears death saves.</p>
 <p class="ev">Evidence: <code>case 'hp'</code> (app.js:598–605).</p>
 </li>
-<li class="item partial" id="l-7-2" data-state="partial" data-matters="every">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">7.2</span> <span class="meta">computes · every session</span></p>
+<li class="item done" id="l-7-2" data-state="done" data-matters="every">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">7.2</span> <span class="meta">computes · every session</span></p>
 <p class="text">Short rest: spend hit dice of the character's own die sizes, each adding Con. HoloTable spends one die at a time, always of the largest size among the classes, from one shared &quot;used&quot; count.</p>
-<p class="ev">Evidence: <code>case 'short-rest'</code> (app.js:607–614); <code>hitDiceUsed</code> is one number.</p>
+<p class="ev">Evidence: <code>case 'short-rest'</code> (app.js:607–614); <code>hitDiceUsed</code> is one number. <strong>Since 17 Nov:</strong> hit dice are kept per die size, and the short rest dialog spends them by size, each adding Con (#103).</p>
 </li>
-<li class="item missing" id="l-7-3" data-state="missing" data-matters="every">
-<p class="row"><span class="state missing"><span aria-hidden="true">✗</span> Missing</span> <span class="id">7.3</span> <span class="meta">none · every session (for an Engineer or Scout)</span></p>
+<li class="item done" id="l-7-3" data-state="done" data-matters="every">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">7.3</span> <span class="meta">computes · every session (for an Engineer or Scout)</span></p>
 <p class="text">Tech points come back on a short <strong>or</strong> long rest (Engineer and Scout class text). HoloTable restores them only on a long rest, and its quick reference says so.</p>
-<p class="ev">Evidence: <code>case 'long-rest'</code> (app.js:615–622); rules.js:117.</p>
+<p class="ev">Evidence: <code>case 'long-rest'</code> (app.js:615–622); rules.js:117. <strong>Since 17 Nov:</strong> Engineers and Scouts get their tech points back on a short rest too (#77), and so does the combat view (#103).</p>
 </li>
-<li class="item missing" id="l-7-4" data-state="missing" data-matters="every">
-<p class="row"><span class="state missing"><span aria-hidden="true">✗</span> Missing</span> <span class="id">7.4</span> <span class="meta">none · every session (for a Consular)</span></p>
+<li class="item done" id="l-7-4" data-state="done" data-matters="every">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">7.4</span> <span class="meta">computes · every session (for a Consular)</span></p>
 <p class="text">Force points recovered on a short rest by a class feature: the Consular's Force Recovery (half the Consular level + Wis or Cha modifier, at least one).</p>
-<p class="ev">Evidence: no code.</p>
+<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> the short rest dialog offers Force Recovery to a Consular, once per long rest (#103).</p>
 </li>
-<li class="item partial" id="l-7-5" data-state="partial" data-matters="every">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">7.5</span> <span class="meta">computes · every session</span></p>
+<li class="item done" id="l-7-5" data-state="done" data-matters="every">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">7.5</span> <span class="meta">computes · every session</span></p>
 <p class="text">Long rest: full HP, all points, half the hit dice back (at least one), one exhaustion level off. Done; but class resources (3.1) and short-rest features are not reset because they are not tracked, and the &quot;only one long rest per day&quot; rule is not checked.</p>
-<p class="ev">Evidence: app.js:615–622.</p>
+<p class="ev">Evidence: app.js:615–622. <strong>Since 17 Nov:</strong> a long rest also resets the tracked resources (3.1) and gives back half the hit dice, largest first (#103). The one-per-day rule stays with the GM.</p>
 </li>
 <li class="item done" id="l-7-6" data-state="done" data-matters="every">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">7.6</span> <span class="meta">computes · every session</span></p>
 <p class="text">Death saves: the roll is automated (20 heals 1 HP, 1 counts twice). Missing: three successes making the character stable, three failures marking them dead, damage at 0 HP adding a failure (two on a critical), damage of at least the HP maximum killing outright, and falling unconscious at 0 HP.</p>
 <p class="ev">Evidence: <code>case 'death-roll'</code> (app.js:624–634); <code>case 'hp'</code> (app.js:598). <strong>Since 17 Nov:</strong> the combat view (on main, off until the GM switches it on) (#97): unconscious and prone at 0, instant death from damage left over at the maximum, damage at 0 as failures (two on a critical), a death save each turn, stable at three successes, dead at three failures, healing wakes.</p>
 </li>
-<li class="item partial" id="l-7-7" data-state="partial" data-matters="every">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">7.7</span> <span class="meta">stores · every session</span></p>
+<li class="item done" id="l-7-7" data-state="done" data-matters="every">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">7.7</span> <span class="meta">stores · every session</span></p>
 <p class="text">SW5e's conditions. The PHB's appendix lists 21: Blinded, Charmed, Corroded, Deafened, Diseased, Exhaustion, Frightened, Grappled, Ignited, Incapacitated, Invisible, Paralyzed, Petrified, Poisoned, Prone, Restrained, Shocked, Slowed (in levels), Stunned, Unconscious, Weakened. HoloTable offers 16: <strong>Corroded, Diseased, Ignited, Slowed and Weakened are missing</strong>. (HoloTable's 16 match SW5e's own <code>conditions</code> API endpoint, which lags its Player's Handbook; the book's appendix is the rule.)</p>
-<p class="ev">Evidence: <code>CONDITIONS</code> (rules.js:82–99).</p>
+<p class="ev">Evidence: <code>CONDITIONS</code> (rules.js:82–99). <strong>Since 17 Nov:</strong> all 21 are offered (#77).</p>
 </li>
-<li class="item partial" id="l-7-8" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">7.8</span> <span class="meta">computes · sometimes</span></p>
+<li class="item done" id="l-7-8" data-state="done" data-matters="some">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">7.8</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Exhaustion uses SW5e's own table (slowed levels at 2 and 5 rather than halved or zero speed). HoloTable stores a level 0–6 and applies nothing; its tooltip describes the D&amp;D version, not SW5e's.</p>
-<p class="ev">Evidence: rules.js:86; app.js:465. <strong>Since 17 Nov:</strong> the combat view (#89, #94; on main, off until the GM switches it on) applies SW5e's table (slowed levels at 2 and 5, disadvantage at 3, the halved maximum at 4). The tooltip still describes the D&amp;D version until #77.</p>
+<p class="ev">Evidence: rules.js:86; app.js:465. <strong>Since 17 Nov:</strong> the combat view (#89, #94; on main, off until the GM switches it on) applies SW5e's table (slowed levels at 2 and 5, disadvantage at 3, the halved maximum at 4). The tooltip still describes the D&amp;D version until #77. <strong>Since 17 Nov:</strong> the tooltip describes SW5e's table (#77).</p>
 </li>
 <li class="item done" id="l-7-9" data-state="done" data-matters="every">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">7.9</span> <span class="meta">computes · every session</span></p>
@@ -613,7 +613,7 @@
 <li class="item partial" id="l-8-9" data-state="partial" data-matters="some">
 <p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">8.9</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Vision and light: darkvision, dim light and darkness, line of sight, fog of war, walls and doors. Dungeondraft wall and light art loads only as pictures.</p>
-<p class="ev">Evidence: no code; packs.js:12–15 sorts walls/lights into categories only. <strong>Since 17 Nov:</strong> the combat view (on main, off until the GM switches it on) (#102): walls, doors and windows drawn by the GM or imported from Dungeondraft (.dd2vtt), line of sight and movement worked out on the server, areas stopped by walls. Fog of war and lighting are still missing.</p>
+<p class="ev">Evidence: no code; packs.js:12–15 sorts walls/lights into categories only. <strong>Since 17 Nov:</strong> the combat view (on main, off until the GM switches it on) (#102): walls, doors and windows drawn by the GM or imported from Dungeondraft (.dd2vtt), line of sight and movement worked out on the server, areas stopped by walls. Fog of war per player (#113), with the combat view off too (#114): each player sees only what their own characters see. Lighting and darkvision are in review (#119).</p>
 </li>
 <li class="item done" id="l-8-10" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">8.10</span> <span class="meta">computes · sometimes</span></p>
