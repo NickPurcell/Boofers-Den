@@ -1435,3 +1435,49 @@ test("review #94: a reaction prompt survives the tracker's index moving, and lap
   assert.equal(r.code, 200, JSON.stringify(r.data));
   assert.ok(!(await sam.state()).chat.some((m) => /lets Avery go|Waiting for Raider/.test(m.text || "")));
 });
+
+/* ---------------------------------------------------------------- creatures' limited abilities (audit 9.5, issue #76) */
+test("creature resources through the API: recharge rolls at the start of its turn, per day and legendary counts, all the GM's", async () => {
+  const { gm, sam, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  const res = [
+    { key: "plasma-cannon", name: "Plasma Cannon", max: 1, refill: "manual", recharge: 5 },
+    { key: "rockets", name: "Rocket Launchers", max: 2, refill: "long" },
+    { key: "legendary", name: "Legendary actions", max: 3, refill: "turn" },
+  ];
+  assert.equal((await sam.act("fight.npcres", { id: ids.raider, op: "set", res })).code, 403);
+  assert.equal((await gm.act("fight.npcres", { id: ids.raider, op: "set", res })).code, 200);
+  assert.equal((await gm.act("fight.npcres", { id: ids.avery, op: "set", res })).code, 400, "creatures only");
+  assert.deepEqual((await sam.state()).fight.npcRes, {}, "players never see a creature's abilities");
+  // legendary actions on Avery's turn: 2, then 2 more is too many
+  assert.equal((await gm.act("fight.npcres", { id: ids.raider, op: "use", key: "legendary", n: 2 })).code, 200);
+  assert.equal((await gm.act("fight.npcres", { id: ids.raider, op: "use", key: "legendary", n: 2 })).code, 400);
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  // the Raider's turn: legendary actions back; the cannon (a limited attack) fires once
+  let gv = await gm.state();
+  assert.equal(gv.fight.npcRes[ids.raider].find((r) => r.key === "legendary").used, 0);
+  const cannon = { name: "Plasma Cannon", bonus: 40, damage: "2d10", type: "energy", melee: 0, range: [100, 400], res: "plasma-cannon" };
+  assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: cannon })).code, 200);
+  gv = await gm.state();
+  assert.equal(gv.fight.npcRes[ids.raider].find((r) => r.key === "plasma-cannon").used, 1);
+  // undo gives it back; do it again; spent now for the rest of the turn (the action's gone too, so test via the guard by resetting the action)
+  await gm.act("fight.undo", {});
+  assert.equal((await gm.state()).fight.npcRes[ids.raider].find((r) => r.key === "plasma-cannon").used, 0);
+  await gm.act("fight.attack", { target: ids.avery, attack: cannon });
+  // per day: use both rockets, the third is refused; reset brings them back
+  await gm.act("fight.npcres", { id: ids.raider, op: "use", key: "rockets" });
+  await gm.act("fight.npcres", { id: ids.raider, op: "use", key: "rockets" });
+  assert.equal((await gm.act("fight.npcres", { id: ids.raider, op: "use", key: "rockets" })).code, 400);
+  await gm.act("fight.npcres", { id: ids.raider, op: "reset", key: "rockets" });
+  assert.equal((await gm.state()).fight.npcRes[ids.raider].find((r) => r.key === "rockets").used, 0);
+  // round the table to the Raider's next turn: the spent cannon rolls a d6 to recharge, to the GM only
+  await gm.act("fight.end", {});
+  for (let i = 0; i < 3; i++) { const st = await gm.state(); const cur = st.initiative.entries[st.initiative.turn]; if (cur.id === ids.raider) break; await gm.act("init.next", {}); }
+  await gm.act("fight.npcres", { id: ids.raider, op: "use", key: "legendary", n: 1 });   // any combat step runs the turn's start
+  gv = await gm.state();
+  const line = gv.chat.filter((m) => m.roll && m.roll.kind === "recharge").pop();
+  assert.ok(line && /Plasma Cannon \(recharge 5-6\)/.test(line.roll.label), JSON.stringify(line));
+  assert.deepEqual(line.to, ["@gm"]);
+  assert.ok(!(await sam.state()).chat.some((m) => m.roll && m.roll.kind === "recharge"), "players don't see it");
+  assert.equal(gv.fight.npcRes[ids.raider].find((r) => r.key === "plasma-cannon").used, line.roll.total >= 5 ? 0 : 1);
+});

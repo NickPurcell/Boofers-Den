@@ -50,6 +50,8 @@ function state(camp) {
         dash: clamp(int(v.dash), 0, 9), disengage: v.disengage ? 1 : 0, dodge: v.dodge ? 1 : 0, ds: v.ds ? 1 : 0 }])),
     // reactions waiting for an answer: an opportunity attack someone may take (the turn waits until it's answered)
     pending: (Array.isArray(f.pending) ? f.pending : []).slice(0, 12).map(cleanPending).filter(Boolean),
+    // a creature's limited abilities from its stat block (audit 9.5, issue #76): recharge, per day, legendary actions
+    npcres: Object.fromEntries(Object.entries(plainObj(f.npcres)).filter(([k, v]) => ID.test(k) && Array.isArray(v)).slice(0, 300).map(([k, v]) => [k, cleanNpcRes(v)])),
     undo: (Array.isArray(f.undo) ? f.undo : []).filter((x) => x && typeof x === "object").slice(-UNDO_MAX).map(cleanSnap),
     events: (Array.isArray(f.events) ? f.events : []).filter((x) => x && typeof x === "object").slice(-EVENTS_MAX).map((ev) => ({
       seq: int(ev.seq), at: +ev.at || 0, kind: ["move", "hit", "crit", "miss", "heal"].includes(ev.kind) ? ev.kind : "move",
@@ -69,6 +71,14 @@ function state(camp) {
   return camp.fight;
 }
 
+// { key, name, max, used, refill: 'turn' | 'short' | 'long' | 'manual', recharge: 2..6 or null, cost }
+function cleanNpcRes(list) {
+  return (Array.isArray(list) ? list : []).slice(0, 20).filter((r) => r && typeof r === "object").map((r) => {
+    const max = clamp(int(r.max, 1), 1, 20);
+    return { key: str(r.key, 40).toLowerCase().replace(/[^a-z0-9-]/g, ""), name: str(r.name, 80), max, used: clamp(int(r.used), 0, max),
+      refill: ["turn", "short", "long", "manual"].includes(r.refill) ? r.refill : "manual", recharge: r.recharge == null ? null : clamp(int(r.recharge, 6), 2, 6) };
+  }).filter((r) => r.key && r.name);
+}
 function cleanPending(x) {
   if (!x || typeof x !== "object" || !ID.test(String(x.reactor || "")) || !ID.test(String(x.against || ""))) return null;
   const at = plainObj(x.at);
@@ -96,6 +106,7 @@ function cleanSnap(x) {
     conc: Object.fromEntries(Object.entries(plainObj(x.conc)).filter(([k, v]) => ID.test(k) && typeof v === "string").map(([k, v]) => [k, str(v, 80)])),
     lastTurn: str(x.lastTurn, 60),
     pending: (Array.isArray(x.pending) ? x.pending : []).slice(0, 12).map(cleanPending).filter(Boolean),
+    npcres: x.npcres && typeof x.npcres === "object" ? state({ fight: { npcres: x.npcres } }).npcres : undefined,
     conds: (Array.isArray(x.conds) ? x.conds : []).slice(0, 300).filter((c) => Array.isArray(c) && typeof c[0] === "string")
       .map(([id, ec, cc]) => [id, (Array.isArray(ec) ? ec : []).slice(0, 20).map((c) => str(c, 30)), Array.isArray(cc) ? cc.slice(0, 20).map((c) => str(c, 30)) : null]),
     chars: (Array.isArray(x.chars) ? x.chars : []).slice(0, 60).filter((c) => Array.isArray(c) && typeof c[0] === "string" && c[1] && typeof c[1] === "object")
@@ -172,6 +183,7 @@ function snapshot(camp, label) {
     ini: { turnId: (ini.entries[ini.turn] || {}).id || null, round: ini.round, active: ini.active },
     spent: JSON.parse(JSON.stringify(f.spent || {})),
     effects: JSON.parse(JSON.stringify(f.effects || [])), conc: Object.assign({}, f.conc), lastTurn: f.lastTurn || "", pending: JSON.parse(JSON.stringify(f.pending || [])),
+    npcres: JSON.parse(JSON.stringify(f.npcres || {})),
     conds: ini.entries.map((e) => [e.id, (e.conditions || []).slice(), e.charId && camp.characters[e.charId] ? (camp.characters[e.charId].conditions || []).slice() : null]),
     chars: Object.values(camp.characters).map((c) => [c.id, JSON.parse(JSON.stringify({ resources: c.resources || [], force: c.force, tech: c.tech, hitDiceUsed: c.hitDiceUsed, deathSaves: c.deathSaves }))]),
     tokens: (camp.map.tokens || []).filter((t) => tok.has(t.id)).map((t) => [t.id, t.x, t.y]),
@@ -197,6 +209,7 @@ function restore(camp, s) {
   if (s.conc) f.conc = s.conc;
   if (typeof s.lastTurn === "string") f.lastTurn = s.lastTurn;
   if (Array.isArray(s.pending)) f.pending = s.pending;
+  if (s.npcres) f.npcres = s.npcres;
   for (const [id, ec, cc] of s.conds || []) {
     const e = ini.entries.find((k) => k.id === id);
     if (e) e.conditions = ec;
@@ -237,6 +250,21 @@ function writeBack(camp, cid, before, after, G) {
     if (a.charId && camp.characters[a.charId]) camp.characters[a.charId].conditions = (a.conditions || []).slice(0, 20);
   }
 }
+// A creature's turn begins: its legendary actions come back, and each spent "Recharge X-6" ability rolls a d6 to come
+// back (on X or more). The rolls and lines go to the GM only: a creature's abilities are the GM's.
+function startOfTurn(camp, cur, G) {
+  const list = cur && (camp.fight.npcres || {})[cur.id];
+  if (!list || !list.length) return;
+  for (const r of list) {
+    if (r.refill === "turn") r.used = 0;
+    else if (r.recharge && r.used > 0) {
+      const d = G.rollDice("1d6"), back = d.total >= r.recharge;
+      if (back) r.used = 0;
+      G.addChat(camp, { from: "Combat", fromId: "@gm", fight: true, to: ["@gm"], private: true,
+        roll: { total: d.total, detail: d.detail, nat: null, expr: "1d6", label: str(`${cur.name}'s ${r.name} (recharge ${r.recharge}-6): ${back ? "it's back" : "not yet"}.`, 200), kind: "recharge" } });
+    }
+  }
+}
 // The turn moved on since the last combat step (End turn, or the tracker's Next): effects that end now go, and
 // save-ends effects roll their save. Done at the next combat action, never on a read, so a poll changes nothing.
 function tick(camp, cid, G) {
@@ -246,6 +274,8 @@ function tick(camp, cid, G) {
   const [lr, prevId, lt] = (f.lastTurn || "").split(":");
   f.lastTurn = key;
   f.pending = [];   // a reaction nobody answered lapses when the turn moves on
+  const going = lt !== undefined && (ini.round < +lr || (ini.round === +lr && ini.turn < +lt));
+  if (!going) startOfTurn(camp, cur, G);
   // the tracker stepped back (Prev): nothing ends, nothing is saved against; the DM undoes or edits what should come back
   if (lt !== undefined && (ini.round < +lr || (ini.round === +lr && ini.turn < +lt))) return;
   if (!f.effects.length && !Object.keys(f.conc).length) return;
@@ -415,6 +445,29 @@ function apply(camp, cid, gm, type, p, G) {
       G.addChat(camp, { system: true, fight: true, text: `The GM undid the last combat step (${s.label}).` });
       return {};
     }
+    case "fight.npcres": {   // a creature's limited abilities (GM): set from its stat block, use some, or reset one
+      need(gm);
+      if (!f.on) throw new G.Invalid("The combat view is off.");
+      tick(camp, cid, G);   // a turn that began since the last combat step begins now (legendary actions back, recharge rolls)
+      const e = entry(String(p.id || ""));
+      if (!e || e.charId) throw new G.Invalid("No such creature.");
+      const list = f.npcres[e.id] || [];
+      if (p.op === "set") {   // keeps what's already been used of an ability with the same key
+        f.npcres[e.id] = cleanNpcRes(p.res).map((r) => { const old = list.find((o) => o.key === r.key); return old ? Object.assign(r, { used: Math.min(r.max, old.used) }) : r; });
+        return {};
+      }
+      const r = list.find((x) => x.key === String(p.key || ""));
+      if (!r) throw new G.Invalid("No such ability on that creature.");
+      snapshot(camp, `${G.shownName(camp, e)}: ${r.name}`);
+      if (p.op === "reset") r.used = 0;
+      else {
+        const n = clamp(int(p.n, 1), 1, r.max);
+        if (r.max - r.used < n) throw new G.Invalid(`${r.name}: ${r.max - r.used} of ${r.max} left.`);
+        r.used += n;
+        G.addChat(camp, { system: true, fight: true, to: ["@gm"], private: true, text: str(`${e.name} uses ${r.name}${n > 1 ? ` (${n})` : ""}: ${r.max - r.used} of ${r.max} left.`, 200) });
+      }
+      return {};
+    }
     case "fight.condition": {   // the DM puts a condition on a combatant (a level, a damage amount, who caused it) or takes it off
       need(gm);
       if (!f.on) throw new G.Invalid("The combat view is off.");
@@ -505,10 +558,13 @@ function apply(camp, cid, gm, type, p, G) {
         } else spec = cleanSpec(p.attack, G);
         act = { type: "attack", unit: cur.id, target: String(p.target || ""), attack: spec, adv: !!p.adv, dis: !!p.dis };
       }
+      const limited = act.type === "attack" && !cur.charId && p.attack && p.attack.res && ((f.npcres || {})[cur.id] || []).find((x) => x.key === String(p.attack.res));
+      if (limited && limited.used >= limited.max) throw new G.Invalid(`${limited.name} is spent${limited.recharge ? ` until it recharges (${limited.recharge}-6 at the start of ${cur.name}'s turn)` : ""}.`);
       const r = E.apply(world, act, (expr) => G.rollDice(expr));
       if (!r.ok) throw new G.Invalid(r.why);
       const label = type === "fight.deathsave" ? `${G.shownName(camp, cur)}'s death save` : type === "fight.common" ? `${G.shownName(camp, cur)} took ${String(p.key || "an action")}` : type === "fight.douse" ? `${G.shownName(camp, cur)} put out flames` : type === "fight.stand" ? `${G.shownName(camp, cur)} stood up` : type === "fight.move" ? `${G.shownName(camp, cur)} moved` : type === "fight.end" ? `${G.shownName(camp, cur)} ended the turn` : type === "fight.use" ? `${G.shownName(camp, cur)} used ${act.ability.name}` : `${G.shownName(camp, cur)}'s attack`;
       snapshot(camp, label);
+      if (limited) limited.used += 1;   // after the snapshot, so Undo gives it back
       writeBack(camp, cid, world, r.world, G);
       report(camp, cid, gm, G, cur, world, r, type === "fight.move" || type === "fight.end");
       // a move out of someone's reach: they may take an opportunity attack, and the turn waits for their answer.
@@ -557,6 +613,7 @@ function view(camp, cid, gm, shownName) {
     npcSpeed: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v.speed : v])) : {},
     npcSaves: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, (v && v.saves) || {}])) : {},
     npcMods: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, (v && v.mods) || {}])) : {},
+    npcRes: gm ? f.npcres || {} : {},   // a creature's limited abilities: the GM's
     npcDefenses: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, defences(plainObj(v))])) : {},
     // characters' own: as visible as their sheets (not a sheet whose token's name the GM is hiding, except to its owner)
     defenses: gm || !shownName ? f.defenses || {} : Object.fromEntries(Object.entries(f.defenses || {}).filter(([id]) => {

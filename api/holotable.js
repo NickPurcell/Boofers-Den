@@ -172,7 +172,7 @@ const SW5E_LISTS = {
 // The other books (species, archetypes, backgrounds, feats, class features, Scum and Villainy creatures,
 // rule chapters, starship parts...) are defined in _holotable-sw5e-data.js and fetched the same way.
 for (const [name, cfg] of Object.entries(require("./_holotable-sw5e-data.js").LISTS)) {
-  SW5E_LISTS[name] = Object.assign({}, cfg, { key: () => S.K.sw5e(name) });
+  SW5E_LISTS[name] = Object.assign({}, cfg, { key: () => S.K.sw5e(cfg.cacheAs || name) });   // cacheAs: a list whose shape changed starts a new cache
 }
 // All cached SW5e lists together stay under this total (today about 6.3 MB for every book). A list that
 // would push the total over it isn't cached: that one picker answers 503, the game is untouched.
