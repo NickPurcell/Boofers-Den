@@ -1446,3 +1446,28 @@ test("walls through the API: Frightened only while its source is in sight", asyn
   assert.match(line, /frightened, but Raider is out of sight/);
   assert.ok(!/disadvantage/.test(line), line);
 });
+
+test("cover (issue #93, step 2): from walls by the grid method, from creatures by size; total cover can't be targeted; no walls, no cover", () => {
+  const ava = unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 2 });
+  const r1 = (o) => unit(Object.assign({ id: "r1", name: "Raider", side: "npc", x: 4, y: 2, ac: 12 }, o));
+  const w = (walls, extra = []) => world([ava, r1(), ...extra], "ava", { walls });
+  // a wall right across: total; one stopping halfway down the Raider's square: half (two of its corners hidden)
+  assert.equal(E.coverOf(w([{ a: [3, -9], b: [3, 9], kind: "wall" }]), ava, r1()).name, "total");
+  assert.equal(E.preview(w([{ a: [3, -9], b: [3, 9], kind: "wall" }]), "ava", "r1", rifle).why, "Raider has total cover.");
+  const half = E.preview(w([{ a: [3.9, 0], b: [3.9, 2.5], kind: "wall" }, { a: [3.9, 2.5], b: [4.1, 2.5], kind: "wall" }]), "ava", "r1", rifle);
+  assert.ok(half.legal && half.cover, JSON.stringify(half));
+  assert.equal(half.ac, 12 + half.cover.bonus);
+  assert.ok(half.notes.some((n) => /cover, \+\d AC/.test(n)));
+  // an open door doesn't cover; no walls on the map: no cover at all, not even from a creature in the way
+  assert.equal(E.coverOf(w([{ a: [3, -9], b: [3, 9], kind: "door", open: true }]), ava, r1()), null);
+  const thug = unit({ id: "th", name: "Thug", side: "npc", x: 2, y: 2 });
+  assert.equal(E.coverOf(world([ava, r1(), thug], "ava"), ava, r1()), null, "no walls: the GM handles cover by hand");
+  // with walls somewhere on the map, a same-size creature in the line gives half cover
+  assert.equal(E.coverOf(w([{ a: [20, 20], b: [21, 20], kind: "wall" }], [thug]), ava, r1()).name, "half");
+  // a power can't be aimed at a creature behind total cover
+  const ch = consular();
+  const ab = E.abilitiesOf(ch, R, { "mind shove": { use: "action", range: [60, 60], save: { ability: "dex", dc: 13 } } })[0];
+  const me = unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 2, pools: Object.fromEntries(E.resourcesOf(ch, R).map((x) => [x.key, x])) });
+  const blocked = world([me, r1()], "cass", { walls: [{ a: [3, -9], b: [3, 9], kind: "wall" }] });
+  assert.equal(E.apply(blocked, { type: "use", unit: "cass", ability: ab, target: "r1" }, dice().roll).why, "Raider has total cover.");
+});

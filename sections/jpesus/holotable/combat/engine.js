@@ -66,6 +66,28 @@
     const sa = spots(a), sb = spots(b);
     return sa.some((p) => sb.some((q) => clear(walls, p, q, () => true)));
   }
+  // Cover (issue #93, step 2), only on a map with walls (without walls the GM applies cover by hand, as before).
+  // SW5e's four degrees: one-quarter +2, half +3, three-quarters +5 to AC and Dex saves; total: can't be targeted.
+  // How much a wall covers isn't measured in SW5e's text, so the default here is the grid method: lines from the
+  // attacker's best corner to the target's four corners; 1 blocked is one-quarter, 2 half, 3 three-quarters, 4 total.
+  // A creature in the way covers by its size against the target's, as SW5e says: one size smaller one-quarter, the same
+  // size half, larger three-quarters. Only the most protective degree counts.
+  const COVER = [null, { name: 'one-quarter', bonus: 2 }, { name: 'half', bonus: 3 }, { name: 'three-quarters', bonus: 5 }, { name: 'total', bonus: null }];
+  const corners = (u) => { const s = u.size || 1, e = 0.05; return [[u.x + e, u.y + e], [u.x + s - e, u.y + e], [u.x + e, u.y + s - e], [u.x + s - e, u.y + s - e]]; };
+  function coverOf(world, a, t) {
+    const walls = (world.walls || []).filter(blocksSight);
+    if (!(world.walls || []).length || !a || !t || a.id === t.id) return null;
+    let deg = walls.length ? Math.min(...corners(a).map((p) => corners(t).filter((q) => !clear(walls, p, q, () => true)).length)) : 0;
+    const mid = (u) => [u.x + (u.size || 1) / 2, u.y + (u.size || 1) / 2];
+    for (const o of Object.values(world.units)) {
+      if (o.id === a.id || o.id === t.id || o.down) continue;
+      const s = o.size || 1, box = [[[o.x, o.y], [o.x + s, o.y]], [[o.x + s, o.y], [o.x + s, o.y + s]], [[o.x + s, o.y + s], [o.x, o.y + s]], [[o.x, o.y + s], [o.x, o.y]]];
+      if (!box.some(([p, q]) => crosses(mid(a), mid(t), p, q))) continue;
+      const d = sizeCat(o) - sizeCat(t);
+      deg = Math.max(deg, d <= -2 ? 0 : d === -1 ? 1 : d === 0 ? 2 : 3);
+    }
+    return deg ? COVER[deg] : null;
+  }
   const overlaps = (ax, ay, as, b) => ax < b.x + (b.size || 1) && b.x < ax + as && ay < b.y + (b.size || 1) && b.y < ay + as;
   const hostile = (a, b) => a.side !== b.side;
 
@@ -281,10 +303,14 @@
     const adv = tilts.some((x) => x.adv), dis = tilts.some((x) => x.dis);
     const mode = adv && !dis ? 'adv' : dis && !adv ? 'dis' : 'normal';
     const weak = weakPenalty(a, attack.abil), bonus = attack.bonus - weak;
-    const need = Math.min(20, Math.max(2, t.ac - bonus));   // the d20 needed; a 20 always hits, a 1 always misses
+    const cover = coverOf(world, a, t);
+    if (cover && cover.bonus == null) return { legal: false, why: `${t.name} has total cover.`, feet };
+    const ac = +t.ac + (cover ? cover.bonus : 0);
+    if (cover) notes.push(`${cover.name} cover, +${cover.bonus} AC`);
+    const need = Math.min(20, Math.max(2, ac - bonus));   // the d20 needed; a 20 always hits, a 1 always misses
     const p = (21 - need) / 20;
     const chance = mode === 'adv' ? 1 - (1 - p) ** 2 : mode === 'dis' ? p * p : p;
-    return { legal: true, feet, ranged, mode, tilts, notes, need, chance, weak, bonus, expr: (mode === 'adv' ? '2d20kh1' : mode === 'dis' ? '2d20kl1' : '1d20') + sgn(bonus) };
+    return { legal: true, feet, ranged, mode, tilts, notes, need, chance, weak, bonus, ac, cover, expr: (mode === 'adv' ? '2d20kh1' : mode === 'dis' ? '2d20kl1' : '1d20') + sgn(bonus) };
   }
 
   /* ---------------- resources (audit 3.1) ---------------- */
@@ -630,6 +656,8 @@
             if (ab.attack && (t.ac == null || t.ac === '' || !Number.isFinite(+t.ac))) return no(`${t.name} has no AC set.`);
             const r = inReachOf(w, me, t, ab);
             if (!r.ok) return no(r.why);
+            const cv = t.id !== me.id && coverOf(w, me, t);
+            if (cv && cv.bonus == null && (ab.attack || ab.save || ab.damage.length)) return no(`${t.name} has total cover.`);
           }
         }
         // pay first: the turn slot and the points; a new concentration power ends the old one
@@ -653,19 +681,22 @@
             const adv = !!act.adv || tl.some((x) => x.adv), dis = !!act.dis || tl.some((x) => x.dis);
             const tilts = tl.filter((x) => (adv && !dis ? x.adv : x.dis)).map((x) => x.text).concat(notes);
             const expr = (adv && !dis ? '2d20kh1' : dis && !adv ? '2d20kl1' : '1d20') + sgn(ab.attack.bonus - weakPenalty(me, ab.attack.abil));
+            const cv = me.id === t.id || ab.area ? null : coverOf(w, me, t), ac = +t.ac + (cv ? cv.bonus || 0 : 0);
             const r = roll(expr);
-            crit = r.nat === 20; hit = crit || (r.nat !== 1 && r.total >= t.ac);
-            log.push({ unit: t.id, kind: 'attack', roll: r, expr, text: `${ab.name} against ${t.name}${tilts.length ? ` (${adv && !dis ? 'advantage: ' : dis && !adv ? 'disadvantage: ' : ''}${tilts.join(', ')})` : ''}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : 'a miss.'}` });
+            crit = r.nat === 20; hit = crit || (r.nat !== 1 && r.total >= ac);
+            log.push({ unit: t.id, kind: 'attack', roll: r, expr, text: `${ab.name} against ${t.name}${tilts.length ? ` (${adv && !dis ? 'advantage: ' : dis && !adv ? 'disadvantage: ' : ''}${tilts.join(', ')})` : ''}${cv ? ` (${cv.name} cover, +${cv.bonus} AC)` : ''}: ${r.total} against AC ${ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : 'a miss.'}` });
           } else if (ab.save) {
             const bonus = (t.saves || {})[ab.save.ability];
             const fail = effectsOf(t).find(([, e]) => (e.autoFail || []).includes(ab.save.ability));
             const sdis = effectsOf(t).some(([, e]) => (e.saveDis || []).includes(ab.save.ability));
             const sadv = ab.save.ability === 'dex' && dodging(w, t);
-            const sexpr = (sdis && !sadv ? '2d20kl1' : sadv && !sdis ? '2d20kh1' : '1d20') + sgn((+bonus || 0) - weakPenalty(t, ab.save.ability));
+            // cover helps a Dex save against a power aimed at the target (areas: a later step on #93)
+            const scv = ab.save.ability === 'dex' && !ab.area && t.id !== me.id ? coverOf(w, me, t) : null;
+            const sexpr = (sdis && !sadv ? '2d20kl1' : sadv && !sdis ? '2d20kh1' : '1d20') + sgn((+bonus || 0) - weakPenalty(t, ab.save.ability) + (scv ? scv.bonus || 0 : 0));
             const r = roll(sexpr);
             const saved = !fail && r.total >= ab.save.dc;
             hit = !saved || ab.save.onSave === 'half'; half = saved && ab.save.onSave === 'half';
-            log.push({ unit: t.id, kind: 'save', roll: r, expr: sexpr, text: `${t.name} makes a ${ab.save.ability.toUpperCase()} save against DC ${ab.save.dc}${bonus == null ? ' (no save bonus known)' : ''}${sdis && !sadv ? ' with disadvantage' : sadv && !sdis ? ' with advantage (dodging)' : ''}: ${r.total}, ${fail ? `an automatic failure (${fail[0].toLowerCase()})` : saved ? 'a success' : 'a failure'}.` });
+            log.push({ unit: t.id, kind: 'save', roll: r, expr: sexpr, text: `${t.name} makes a ${ab.save.ability.toUpperCase()} save against DC ${ab.save.dc}${bonus == null ? ' (no save bonus known)' : ''}${scv ? ` (${scv.name} cover, +${scv.bonus})` : ''}${sdis && !sadv ? ' with disadvantage' : sadv && !sdis ? ' with advantage (dodging)' : ''}: ${r.total}, ${fail ? `an automatic failure (${fail[0].toLowerCase()})` : saved ? 'a success' : 'a failure'}.` });
           }
           if (!hit) { events.push({ kind: 'miss', unit: t.id }); continue; }
           // conditions the ability puts on its target, with how long they last
@@ -736,10 +767,10 @@
     const r = roll(pv.expr);
     const nat = r.nat, fumble = nat === 1;
     let crit = nat === 20;
-    const hit = crit || (!fumble && r.total >= t.ac);
+    const hit = crit || (!fumble && r.total >= pv.ac);
     if (hit && pv.feet <= FT && has(t, 'closeCrit')) crit = true;   // any hit from within 5 ft on the paralyzed or unconscious
     const tilt = pv.mode === 'normal' ? '' : ` with ${pv.mode === 'adv' ? 'advantage' : 'disadvantage'} (${pv.tilts.map((x) => x.text).join(', ')})`;
-    const log = [{ unit: me.id, kind: 'attack', roll: r, expr: pv.expr, text: `${me.name} ${how ? `makes ${how} against` : 'attacks'} ${t.name} with ${attack.name}${tilt}${pv.notes.length ? ` (${pv.notes.join('; ')})` : ''}${pv.weak ? ` (weakened, −${pv.weak})` : ''}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}` }];
+    const log = [{ unit: me.id, kind: 'attack', roll: r, expr: pv.expr, text: `${me.name} ${how ? `makes ${how} against` : 'attacks'} ${t.name} with ${attack.name}${tilt}${pv.notes.length ? ` (${pv.notes.join('; ')})` : ''}${pv.weak ? ` (weakened, −${pv.weak})` : ''}: ${r.total} against AC ${pv.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}` }];
     const events = [];
     if (!hit) { events.push({ kind: 'miss', unit: t.id }); return { ok: true, log, events }; }
     const expr = crit ? attack.crit || attack.damage : attack.damage;
@@ -987,5 +1018,5 @@
     cleanResources, resourcesOf, atLevel, spend, rest, powerNumbers, resolvePower, weaponAbility, abilitiesOf, inReachOf, cleanAbility, setPoolUsed,
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
-    SENSES, readSenses, cleanSenses, senseFor, reasons, crosses, sees, cleanWalls, WALL_KINDS };
+    SENSES, readSenses, cleanSenses, senseFor, reasons, crosses, sees, cleanWalls, WALL_KINDS, coverOf };
 });
