@@ -255,7 +255,7 @@ test("turn budget: each unit's own turn refills its movement, action, bonus acti
   const hers = Object.assign({}, w, { turnId: "ava", round: 2 });
   assert.deepEqual([E.budget(hers).reaction, E.budget(hers).moveLeft, E.budget(hers).action], [true, 30, true]);
   const r = E.apply(hers, { type: "move", unit: "ava", x: 2, y: 0 }, dice().roll);
-  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0 });
+  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0 });
 });
 
 // a level-3 Consular with two powers; the table has data for one of them (numbers invented for the test)
@@ -604,6 +604,65 @@ test("the DM's defaults: weakened counts half a positive modifier on attacks and
   const tired = unit({ id: "pal", name: "Pal", side: "pc", x: 1, y: 0, hp: 6, maxHp: 20, exhaustion: 4 });
   const healed = E.apply(world([unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, pools: me.pools }), tired], "cass"), { type: "use", unit: "cass", ability: h, target: "pal" }, dice({ total: 8 }).roll);
   assert.equal(healed.world.units.pal.hp, 10, "6 + 8 would be 14; the maximum is halved to 10");
+});
+
+test("step 6: moving through an enemy two sizes larger or smaller; the path a move takes", () => {
+  const ava = unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 });
+  // a wall of three enemies in the next column: Large ones (one size up) block it, Huge ones (two up) can be passed
+  // through, each step into one costing 5 ft more
+  const wall = (sizeCat) => [-1, 0, 1].map((y) => unit({ id: "big" + (y + 1), name: "Big", side: "npc", x: 1, y, sizeCat }));
+  assert.equal(E.reachable(world([ava, ...wall(3)], "ava"), "ava", 15)["2,0"], undefined, "Large: no way through with 15 ft");
+  assert.equal(E.reachable(world([ava, ...wall(4)], "ava"), "ava", 15)["2,0"], 15, "Huge: straight through it (10 + 5)");
+  assert.equal(E.reachable(world([ava, ...wall(4)], "ava"), "ava", 30)["1,0"], undefined, "but not stopping in it");
+  assert.equal(E.sizeCat({ size: 3 }), 4, "a 3×3 token with no stat block is Huge");
+  assert.deepEqual(E.pathTo(world([ava], "ava"), "ava", 30, 3, 0), [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 }]);
+});
+
+test("step 6: Dash, Disengage and Dodge", () => {
+  const ava = (o) => unit(Object.assign({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 }, o));
+  const r1 = (o) => unit(Object.assign({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0 }, o));
+  let r = E.apply(world([ava(), r1({ x: 9 })], "ava"), { type: "common", unit: "ava", key: "dash" }, dice().roll);
+  assert.deepEqual([E.budget(r.world).total, E.budget(r.world).moveLeft, E.budget(r.world).action, r.log[0].text], [60, 60, false, "Avery takes the Dash action."]);
+  assert.equal(E.apply(r.world, { type: "common", unit: "ava", key: "dodge" }, dice().roll).ok, false, "one action a turn");
+  // Disengage: walking away from the Raider provokes nothing
+  r = E.apply(world([ava(), r1()], "ava"), { type: "common", unit: "ava", key: "disengage" }, dice().roll);
+  assert.deepEqual(E.apply(r.world, { type: "move", unit: "ava", x: 0, y: 3 }, dice().roll).reactions, []);
+  // Dodge: attacks against Avery at disadvantage until its next turn, Dex saves at advantage; not while stunned
+  r = E.apply(world([ava(), r1()], "ava"), { type: "common", unit: "ava", key: "dodge" }, dice().roll);
+  const later = Object.assign({}, r.world, { turnId: "r1" });
+  assert.deepEqual([E.preview(later, "r1", "ava", blade).mode, E.preview(later, "r1", "ava", blade).tilts[0].text], ["dis", "Avery is dodging"]);
+  const stunned = JSON.parse(JSON.stringify(later)); stunned.units.ava.conditions = ["Stunned"];
+  assert.equal(E.preview(stunned, "r1", "ava", blade).mode, "adv", "stunned: no dodging, and attacks have advantage");
+  const cass = consular();
+  const ab = E.abilitiesOf(cass, R, { "mind shove": { use: "action", range: [30, 30], save: { ability: "dex", dc: 13 } } })[0];
+  const caster = unit({ id: "cass", name: "Cass", side: "npc", x: 2, y: 0, pools: Object.fromEntries(E.resourcesOf(cass, R).map((x) => [x.key, x])) });
+  const d = dice({ total: 15, nat: 15 });
+  const w2 = Object.assign({}, later, { turnId: "cass", units: Object.assign({}, later.units, { cass: caster }) });
+  E.apply(w2, { type: "use", unit: "cass", ability: ab, target: "ava" }, d.roll);
+  assert.deepEqual(d.asked, ["2d20kh1+0"], "a Dex save with advantage");
+});
+
+test("step 6: opportunity attacks: who may react, where, and what the reaction does", () => {
+  const ava = (o) => unit(Object.assign({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 }, o));
+  const r1 = (o) => unit(Object.assign({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, reach: 5 }, o));
+  let m = E.apply(world([ava(), r1()], "ava"), { type: "move", unit: "ava", x: 0, y: 3 }, dice().roll);
+  assert.deepEqual(m.reactions, [{ reactor: "r1", against: "ava", kind: "opportunity", at: { x: 0, y: 1 } }], "the last square still within 5 ft");
+  assert.deepEqual(E.apply(world([ava(), r1()], "ava"), { type: "move", unit: "ava", x: 1, y: 1 }, dice().roll).reactions, [], "staying in reach");
+  assert.deepEqual(E.apply(world([ava(), r1({ reach: 10 })], "ava"), { type: "move", unit: "ava", x: 0, y: 2 }, dice().roll).reactions, [], "a 10 ft reach still covers it");
+  assert.deepEqual(E.apply(world([ava(), r1({ conditions: ["Blinded"] })], "ava"), { type: "move", unit: "ava", x: 0, y: 3 }, dice().roll).reactions, [], "it can't see Avery go");
+  assert.deepEqual(E.apply(world([ava({ conditions: ["Invisible"] }), r1()], "ava"), { type: "move", unit: "ava", x: 0, y: 3 }, dice().roll).reactions, []);
+  const spentR = world([ava(), r1()], "ava", { spent: { r1: { key: "", move: 0, action: 0, bonus: 0, reaction: 1 } } });
+  assert.deepEqual(E.apply(spentR, { type: "move", unit: "ava", x: 0, y: 3 }, dice().roll).reactions, [], "its reaction is already spent");
+  // the Raider takes it: rolled where Avery left its reach; Avery carries on to where it went
+  const hit = E.react(m.world, { reactor: "r1", against: "ava", at: { x: 0, y: 1 }, attack: blade }, dice({ total: 18, nat: 13 }, { total: 6 }).roll);
+  assert.ok(hit.ok, hit.why);
+  assert.deepEqual([hit.world.units.ava.hp, hit.world.units.ava.y, E.budget(hit.world, "r1").reaction], [14, 3, false]);
+  assert.match(hit.log[0].text, /^Raider makes an opportunity attack against Avery with Vibroblade: 18 against AC 13, a hit\./);
+  assert.equal(E.react(hit.world, { reactor: "r1", against: "ava", at: { x: 0, y: 1 }, attack: blade }, dice().roll).ok, false, "one reaction until its next turn");
+  // a hit that drops Avery ends its movement where it was struck
+  const drop = E.react(m.world, { reactor: "r1", against: "ava", at: { x: 0, y: 1 }, attack: blade }, dice({ total: 18, nat: 13 }, { total: 25 }).roll);
+  assert.deepEqual([drop.world.units.ava.hp, drop.world.units.ava.y], [0, 1]);
+  assert.equal(E.react(m.world, { reactor: "r1", against: "ava", at: { x: 0, y: 1 }, attack: rifle }, dice().roll).ok, false, "a ranged weapon can't");
 });
 
 test("review #89: diagonals split over several moves cost what one move would (5, 10, 5, 10)", () => {
@@ -974,7 +1033,7 @@ test("defences through the API: a creature's from its stat block (GM), a charact
   // a character's own defences
   assert.equal((await rae.act("fight.defenses", { charId: avery, resist: ["fire"] })).code, 403);
   assert.equal((await sam.act("fight.defenses", { charId: avery, resist: ["fire", "plasma"], vuln: ["ion"] })).code, 200);
-  assert.deepEqual((await rae.state()).fight.defenses[avery], { resist: [{ type: "fire", only: null }], immune: [], vuln: [{ type: "ion", only: null }], condImmune: [] });
+  assert.deepEqual((await rae.state()).fight.defenses[avery], { resist: [{ type: "fire", only: null }], immune: [], vuln: [{ type: "ion", only: null }], condImmune: [], senses: [] });
 });
 
 test("standing up through the API: a prone character stands for half its speed", async () => {
@@ -1173,6 +1232,104 @@ test("names the GM hides (#87): every line the combat view writes for players sa
   assert.equal((await gm.state()).fight.units[ids.avery].side, "pc");
 });
 
+test("step 6 through the API: an opportunity attack waits for its answer; only the reactor (or the GM) answers", async () => {
+  const { gm, sam, rae, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  // Avery walks up to the Raider (leaving the hidden Lurker's reach: it never reacts, and is never named)
+  assert.equal((await sam.act("fight.move", { x: 5, y: 0 })).code, 200);
+  let st = await sam.state();
+  assert.deepEqual(st.fight.pending, []);
+  // then steps away from the Raider: the Raider may react; Avery's turn waits
+  assert.equal((await sam.act("fight.move", { x: 4, y: 0 })).code, 200);
+  st = await sam.state();
+  assert.deepEqual(st.fight.pending.map((x) => [x.reactor, x.against, x.mine]), [[ids.raider, ids.avery, false]]);
+  assert.ok(st.chat.some((m) => m.text === "Avery leaves Raider's reach: Raider can make an opportunity attack."));
+  const wait = await sam.act("fight.end", {});
+  assert.deepEqual([wait.code, /Waiting for Raider/.test(wait.data.error)], [400, true]);
+  const id = st.fight.pending[0].id;
+  assert.equal((await sam.act("fight.react", { id, take: true, attack: "0" })).code, 403, "not Sam's reaction");
+  assert.equal((await gm.act("fight.react", { id, take: true, attack: { name: "Claw", bonus: 40, damage: "1d4", type: "kinetic", melee: 5, range: null } })).code, 200);
+  st = await gm.state();
+  const line = st.chat.filter((m) => m.fight && m.roll && m.roll.kind === "attack").pop();
+  assert.match(line.roll.label, /^Raider makes an opportunity attack against Avery with Claw/);
+  assert.deepEqual([st.fight.pending, tokenOf(st, "Avery").x], [[], 4], "answered; Avery stays where it went");
+  // undo brings the question back
+  await gm.act("fight.undo", {});
+  assert.equal((await gm.state()).fight.pending.length, 1);
+  await gm.act("fight.react", { id, take: false });
+  assert.ok((await sam.state()).chat.some((m) => m.text === "Raider lets Avery go."));
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  // the Raider's turn: it steps next to Avery, then away; now Sam answers for Avery
+  await gm.act("fight.move", { x: 5, y: 1 });
+  await gm.act("fight.move", { x: 7, y: 1 });
+  st = await sam.state();
+  assert.deepEqual(st.fight.pending.map((x) => [x.reactor, x.mine]), [[ids.avery, true]]);
+  assert.equal((await rae.act("fight.react", { id: st.fight.pending[0].id, take: false })).code, 403, "not Rae's");
+  assert.equal((await sam.act("fight.react", { id: st.fight.pending[0].id, take: true, attack: "0" })).code, 200);
+  st = await sam.state();
+  assert.deepEqual([st.fight.pending, st.fight.spent[ids.avery].reaction], [[], 1]);
+  // a question nobody answers lapses when the turn moves on: Bolt is next to the Raider, the Raider walks off
+  await gm.act("token.move", { id: tokenOf(st, "Bolt").id, x: 8, y: 1 });
+  assert.equal((await gm.act("fight.move", { x: 9, y: 3 })).code, 200);
+  assert.deepEqual((await rae.state()).fight.pending.map((x) => [x.reactor, x.mine]), [[ids.bolt, true]]);
+  await gm.act("init.next", {});                       // the GM moves on with the tracker; Bolt's turn
+  assert.deepEqual((await rae.state()).fight.pending, [], "gone from the screen at once");
+  assert.equal((await rae.act("fight.common", { key: "dash" })).code, 200);
+  st = await rae.state();
+  assert.deepEqual([st.fight.pending, st.fight.budget.total], [[], 60]);
+});
+
+/* ---------------------------------------------------------------- senses (audit 5.12) */
+test("senses: read from a stat block's line; a sense in range takes the bite out of Blinded and Invisible, and says so", () => {
+  assert.deepEqual(E.readSenses(["blindsight 30 ft. (blind beyond this radius)", "Darkvision 60 Ft.", "passive Perception 13"]), [{ kind: "blindsight", range: 30 }, { kind: "darkvision", range: 60 }]);
+  assert.deepEqual(E.readSenses("Tremorsense 60 ft., truesight 120 ft."), [{ kind: "tremorsense", range: 60 }, { kind: "truesight", range: 120 }]);
+  assert.deepEqual(E.readSenses(["-", "X"]), []);
+  const ava = (o) => unit(Object.assign({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 }, o));
+  const r1 = (o) => unit(Object.assign({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0 }, o));
+  // a blinded Raider with blindsight: no advantage against it within range, and its own attacks aren't at disadvantage
+  let pv = E.preview(world([ava(), r1({ conditions: ["Blinded"], senses: [{ kind: "blindsight", range: 10 }] })], "ava"), "ava", "r1", blade);
+  assert.deepEqual([pv.mode, pv.notes], ["normal", ["Raider's blindsight (10 ft): blinded doesn't count"]]);
+  pv = E.preview(world([ava({ x: 0 }), r1({ x: 4, conditions: ["Blinded"], senses: [{ kind: "blindsight", range: 10 }] })], "ava"), "ava", "r1", rifle);
+  assert.equal(pv.mode, "adv", "15 ft away: out of its blindsight");
+  pv = E.preview(world([ava(), r1({ conditions: ["Blinded"], senses: [{ kind: "tremorsense", range: 30 }] })], "r1"), "r1", "ava", blade);
+  assert.equal(pv.mode, "normal", "tremorsense works like blindsight here");
+  // truesight finds an invisible Avery; darkvision doesn't
+  pv = E.preview(world([ava({ conditions: ["Invisible"] }), r1({ senses: [{ kind: "truesight", range: 60 }] })], "r1"), "r1", "ava", blade);
+  assert.deepEqual([pv.mode, pv.notes], ["normal", ["Raider's truesight (60 ft): invisible doesn't count"]]);
+  assert.equal(E.preview(world([ava({ conditions: ["Invisible"] }), r1({ senses: [{ kind: "darkvision", range: 60 }] })], "r1"), "r1", "ava", blade).mode, "dis");
+  assert.equal(E.preview(world([ava({ conditions: ["Invisible"] }), r1({ senses: [{ kind: "truesight", range: 60 }] })], "ava"), "ava", "r1", blade).mode, "normal", "and Avery's attacks get no advantage from it either");
+  // opportunity attacks: an invisible mover is found by truesight; a blinded reactor reacts with blindsight
+  let m = E.apply(world([ava({ conditions: ["Invisible"] }), r1({ senses: [{ kind: "truesight", range: 30 }] })], "ava"), { type: "move", unit: "ava", x: 0, y: 3 }, dice().roll);
+  assert.equal(m.reactions.length, 1);
+  m = E.apply(world([ava(), r1({ conditions: ["Blinded"] })], "ava"), { type: "move", unit: "ava", x: 0, y: 3 }, dice().roll);
+  assert.equal(m.reactions.length, 0, "blinded, no sense: it doesn't notice");
+  m = E.apply(world([ava(), r1({ conditions: ["Blinded"], senses: [{ kind: "blindsight", range: 10 }] })], "ava"), { type: "move", unit: "ava", x: 0, y: 3 }, dice().roll);
+  assert.equal(m.reactions.length, 1);
+  // the attack line says why
+  const hit = E.apply(world([ava(), r1({ conditions: ["Blinded"], senses: [{ kind: "blindsight", range: 10 }] })], "ava"), { type: "attack", unit: "ava", target: "r1", attack: blade }, dice({ total: 15, nat: 10 }, { total: 4 }).roll);
+  assert.match(hit.log[0].text, /Avery attacks Raider with Vibroblade \(Raider's blindsight \(10 ft\): blinded doesn't count\): 15/);
+});
+
+test("powers' attack rolls tilt for the same reasons as weapons: conditions, dodging, senses", () => {
+  const ch = consular();
+  const ab = E.abilitiesOf(ch, R, { "mind shove": { use: "action", range: [30, 60], attack: { bonus: "power" }, damage: [{ dice: "1d6", type: "force" }] } })[0];
+  const me = unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, pools: Object.fromEntries(E.resourcesOf(ch, R).map((x) => [x.key, x])) });
+  const d = dice({ total: 15, nat: 12 }, { total: 3 });
+  const r = E.apply(world([me, unit({ id: "r1", name: "Raider", side: "npc", x: 3, y: 0, conditions: ["Restrained"] })], "cass"), { type: "use", unit: "cass", ability: ab, target: "r1" }, d.roll);
+  assert.deepEqual([d.asked[0].slice(0, 7), /advantage: Raider is restrained/.test(r.log[1].text)], ["2d20kh1", true]);
+});
+
+test("senses through the API: a creature's from its stat block stay the GM's; a character's are set by its owner", async () => {
+  const { gm, sam, rae, ids, avery } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await gm.act("fight.npc", { id: ids.raider, speed: 30, senses: ["blindsight 30 ft. (blind beyond this radius)", "passive Perception 12"] })).code, 200);
+  assert.deepEqual((await gm.state()).fight.npcDefenses[ids.raider].senses, [{ kind: "blindsight", range: 30 }]);
+  assert.ok(!JSON.stringify((await sam.state()).fight).includes("blindsight"), "a creature's senses aren't sent to players");
+  assert.equal((await rae.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 60 }] })).code, 403);
+  assert.equal((await sam.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 60 }, { kind: "x-ray", range: 9 }] })).code, 200);
+  assert.deepEqual((await rae.state()).fight.defenses[avery].senses, [{ kind: "darkvision", range: 60 }]);
+});
+
 test("review #89 through the API: one diagonal step at a time is 5, 10, 5, 10 ft, kept between requests", async () => {
   const { gm, sam } = await fight();
   await gm.act("fight.toggle", { on: true });
@@ -1183,4 +1340,34 @@ test("review #89 through the API: one diagonal step at a time is 5, 10, 5, 10 ft
   }
   assert.deepEqual(left, [25, 15, 10, 0]);
   assert.equal((await sam.act("fight.move", { x: 5, y: 5 })).code, 400);
+});
+
+test("review #94: a reaction prompt survives the tracker's index moving, and lapses once either side is hidden", async () => {
+  const setup = async () => {
+    const t = await fight();
+    await t.gm.act("fight.toggle", { on: true });
+    await t.sam.act("fight.move", { x: 5, y: 0 });
+    await t.sam.act("fight.move", { x: 4, y: 0 });   // away from the Raider: its prompt
+    return t;
+  };
+  // A: the GM adds a reinforcement above Avery in the order: the prompt stays, for both, and still blocks
+  let { gm, sam, rae, ids } = await setup();
+  await gm.act("init.add", { name: "Reinforcement", init: 25, hp: 5, ac: 10 });
+  assert.equal((await gm.state()).fight.pending.length, 1, "the GM still sees it");
+  assert.equal((await sam.state()).fight.pending.length, 1, "so does Sam");
+  assert.equal((await sam.act("fight.end", {})).code, 400);
+  const id = (await gm.state()).fight.pending[0].id;
+  assert.equal((await gm.act("fight.react", { id, take: false })).code, 200, "and it can be answered");
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  // B: a player raises their own initiative mid-prompt: same
+  ({ gm, sam, rae, ids } = await setup());
+  assert.equal((await rae.act("init.update", { id: ids.bolt, fields: { init: 30 } })).code, 200);
+  assert.equal((await sam.state()).fight.pending.length, 1);
+  // C: the GM hides the Raider while its prompt is up: lapsed, the turn goes on, and nothing names it
+  ({ gm, sam, rae, ids } = await setup());
+  await gm.act("init.update", { id: ids.raider, fields: { hidden: true } });
+  assert.equal((await sam.state()).fight.pending.length, 0);
+  const r = await sam.act("fight.end", {});
+  assert.equal(r.code, 200, JSON.stringify(r.data));
+  assert.ok(!(await sam.state()).chat.some((m) => /lets Avery go|Waiting for Raider/.test(m.text || "")));
 });
