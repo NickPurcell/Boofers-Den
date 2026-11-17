@@ -61,3 +61,4 @@
 .ct-atk.primary.ct-power b { color: inherit; }
 #modalBox .ct-types { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-bottom: 8px; }
 #modalBox label[hidden] { display: none; }
+.ct-variants { font-size: 11px; white-space: nowrap; }
