@@ -257,6 +257,17 @@ function tick(camp, cid, G) {
   }
 }
 
+// A reaction waiting for an answer is live only during the turn it was asked in (the round and the combatant, whatever
+// the tracker's index does meanwhile: an entry added or removed above, an initiative edited) and only while both
+// sides are visible to everyone. Anything else has lapsed. One rule for the view, the turn's guard and the answer.
+function liveReactions(camp) {
+  const f = camp.fight, ini = camp.initiative, cur = ini.entries[ini.turn];
+  if (!f || !Array.isArray(f.pending) || !f.pending.length || !ini.active || !cur) return [];
+  const ut = unitTokens(camp), turn = `${ini.round}:${cur.id}`;
+  const hidden = (id) => { const e = ini.entries.find((x) => x.id === id); return !e || hiddenEntry(camp, e, ut[id]); };
+  return f.pending.filter((x) => String(x.turn || "").split(":").slice(0, 2).join(":") === turn && !hidden(x.reactor) && !hidden(x.against));
+}
+
 // What an action did, into chat (the roll lines as rolls, the way HoloTable shows every roll) and into the floating
 // numbers on the map. Lines about a hidden creature, or by one, go to the GM only.
 function report(camp, cid, gm, G, actor, world, r, skipFirst) {
@@ -415,6 +426,7 @@ function apply(camp, cid, gm, type, p, G) {
     case "fight.react": {   // an answer to a reaction prompt: take the opportunity attack, or let it go (the GM can answer any)
       if (!f.on) throw new G.Invalid("The combat view is off.");
       tick(camp, cid, G);
+      f.pending = liveReactions(camp);
       const pend = f.pending.find((x) => x.id === String(p.id || ""));
       if (!pend) throw new G.Invalid("That reaction has already been answered or has lapsed.");
       const re = entry(pend.reactor), against = entry(pend.against);
@@ -445,6 +457,7 @@ function apply(camp, cid, gm, type, p, G) {
       if (!ini.active || !cur) throw new G.Invalid("Combat hasn't started: start initiative first.");
       need(mayAct(camp, cid, gm, cur), "It's not your turn.");
       tick(camp, cid, G);
+      f.pending = liveReactions(camp);   // a lapsed question never blocks a turn
       if (f.pending.length) {
         const who = f.pending.map((x) => entry(x.reactor)).filter(Boolean).map((e) => G.shownName(camp, e));
         throw new G.Invalid(`Waiting for ${who.join(" and ") || "a reaction"}: an opportunity attack to take or let go.`);   // names players can see
@@ -550,7 +563,7 @@ function view(camp, cid, gm, shownName) {
     // a creature's size and reach, for the ones this viewer can see (both show on the map anyway)
     npcBody: Object.fromEntries(Object.entries(f.npc || {}).filter(([k]) => units[k]).map(([k, v]) => [k, { sizeCat: v.sizeCat == null ? null : v.sizeCat, reach: v.reach || 5 }])),
     // reactions waiting: who may react to whom; `mine` when this viewer is the one to answer
-    pending: (f.pending || []).filter((x) => units[x.reactor] && units[x.against] && cur && x.turn === `${ini.round}:${cur.id}:${ini.turn}`).map((x) => {   // lapsed once the turn moves on
+    pending: liveReactions(camp).filter((x) => units[x.reactor] && units[x.against]).map((x) => {   // lapsed ones are never shown
       const re = ini.entries.find((e) => e.id === x.reactor);
       return { id: x.id, kind: x.kind, reactor: x.reactor, against: x.against, mine: !!re && mayAct(camp, cid, gm, re) };
     }),
