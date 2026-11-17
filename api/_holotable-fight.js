@@ -34,6 +34,7 @@ function state(camp) {
   const ids = (o, ok) => Object.fromEntries(Object.entries(plainObj(o)).filter(([k, v]) => ID.test(k) && ok(v)));
   camp.fight = {
     on: !!f.on,
+    ...(f.sensesLocked ? { sensesLocked: true } : {}),   // the GM's switch: only the GM edits characters' senses (off by default)
     links: ids(f.links, (v) => typeof v === "string" && ID.test(v)),
     // a creature's numbers from its stat block (the GM's screen sends them): speed, and save bonuses
     npc: Object.fromEntries(Object.entries(plainObj(f.npc)).filter(([k]) => ID.test(k)).map(([k, v]) => {
@@ -430,14 +431,20 @@ function mapTools(camp, cid, gm, type, p, G) {
 // without writing anything; "set" changes one character's senses and leaves its resistances as they are.
 function gmSenses(camp, gm, p, G) {
   if (!gm) throw new G.Forbidden("GM only");
-  const defs = plainObj(plainObj(camp.fight).defenses);
-  if (p.op === "get") return { senses: Object.fromEntries(Object.keys(camp.characters || {}).map((id) => [id, E.cleanSenses(plainObj(defs[id]).senses)])) };
-  if (p.op !== "set") throw new G.Invalid("Get or set.");
+  if (p.op === "lock") { const f = state(camp); if (p.on) f.sensesLocked = true; else delete f.sensesLocked; return {}; }
+  if (p.op !== "set") throw new G.Invalid("Set or lock.");
   const ch = charOf(camp, p.charId);
   if (!ch) throw new G.Invalid("No such character.");
   const f = state(camp);   // with the combat view off this keeps it off; only the senses change
   f.defenses[ch.id] = defences(Object.assign({}, plainObj(f.defenses[ch.id]), { senses: p.senses }));
   return {};
+}
+// What the GM's screen gets for the senses table, at the top of its state and only when there's something to show,
+// so opening the table is a read: every character's recorded senses, and whether the lock is on
+function gmSensesView(camp) {
+  const f = plainObj(camp.fight), defs = plainObj(f.defenses), senses = {};
+  for (const id of Object.keys(camp.characters || {})) { const x = E.cleanSenses(plainObj(defs[id]).senses); if (x.length) senses[id] = x; }
+  return Object.assign(Object.keys(senses).length ? { charSenses: senses } : {}, f.sensesLocked ? { sensesLocked: true } : {});
 }
 
 function apply(camp, cid, gm, type, p, G) {
@@ -478,8 +485,11 @@ function apply(camp, cid, gm, type, p, G) {
       if (!ch) throw new G.Invalid("No such character.");
       need(gm || ch.owner === cid, "not your character");
       const types = (v) => (Array.isArray(v) ? v : []).filter((x) => E.DAMAGE.includes(x)).map((type) => ({ type, only: null }));
-      // senses: until the sheet has a field for them (audit 5.12, proposed on the queue), they live here
-      f.defenses[ch.id] = defences({ resist: types(p.resist), immune: types(p.immune), vuln: types(p.vuln), senses: p.senses });
+      // senses: until the sheet has a field for them (audit 5.12, #92), they live here. The owner sets them, unless the GM
+      // has switched on "Only the GM edits senses": then a player's change to them is refused (their other defences save)
+      const was = plainObj(f.defenses[ch.id]).senses || [], sig = (l) => E.cleanSenses(l).map((x) => `${x.kind}:${x.range}`).sort().join();
+      if (!gm && f.sensesLocked && sig(p.senses) !== sig(was)) throw new G.Forbidden("Only the GM edits senses at this table.");
+      f.defenses[ch.id] = defences({ resist: types(p.resist), immune: types(p.immune), vuln: types(p.vuln), senses: gm || !f.sensesLocked ? p.senses : was });
       return {};
     }
     case "fight.ability": {  // the GM teaches the table a power's numbers (or forgets them: data null)
@@ -707,6 +717,7 @@ function view(camp, cid, gm, shownName) {
   const evs = (Array.isArray(f.events) ? f.events : []).filter((ev) => gm || (!ev.hidden && !(fog && ev.token && fog.tokens.has(ev.token)))).slice(-15);
   return {
     on: true, active: !!ini.active, round: ini.round, turn, units,
+    ...(f.sensesLocked ? { sensesLocked: true } : {}),
     budget: turn ? E.budget(world) : null,
     // only for combatants this viewer can see: a hidden one's id, turn or movement never reaches a player
     spent: Object.fromEntries(Object.entries(f.spent || {}).filter(([id]) => units[id])),
@@ -957,5 +968,5 @@ function cleanWalls(list) {
   });
 }
 
-module.exports = { apply, view, canWalk, fogFor, fogView, cleanFog, cleanLight, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
+module.exports = { apply, view, gmSensesView, canWalk, fogFor, fogView, cleanFog, cleanLight, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
   cleanHitDiceUsed: R.cleanHitDiceUsed };   // for cleanChar: the sheet and the undo record clean hit dice the same way

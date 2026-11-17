@@ -499,14 +499,14 @@
   // they do HP and AC, and the GM sees them all here and corrects any (under fog and light they decide what a player sees)
   async function sensesTable() {
     if (!gm()) return;
-    const got = await act('fight.senses', { op: 'get' });
-    if (!got || !got.senses) return;
+    const got = { senses: st().charSenses || {} }, locked = !!st().sensesLocked;   // from the GM's own state: opening the table writes nothing
     const chars = Object.values(st().characters || {}).sort((a, b) => String(a.name).localeCompare(String(b.name)));
     if (!chars.length) return H.toast('No characters at the table yet.');
     const val = (id, k) => ((got.senses[id] || []).find((x) => x.kind === k) || {}).range || '';
     const owner = (c) => ((st().players || {})[c.owner] || {}).name || '';
     H.modal(`<h3>👁 Senses</h3>
-      <p class="muted">Every character's senses, in feet (blank for none). Players set their own in the combat view's Defences; you can correct any here. Under fog and light, they decide what each player sees.</p>
+      <p class="muted">Every character's senses, in feet (blank for none). Under fog and light, they decide what each player sees. Players set their own in the combat view's Defences, unless you lock them; you can correct any here.</p>
+      <label class="check"><input type="checkbox" id="ctsLock" ${locked ? 'checked' : ''}> 🔒 Only the GM edits senses</label>
       <table class="ct-senses"><tr><th></th>${E.SENSES.map((k) => `<th>${esc(k)}</th>`).join('')}</tr>
         ${chars.map((c) => `<tr data-char="${esc(c.id)}"><td><b>${esc(c.name)}</b>${owner(c) ? ` <span class="muted">· ${esc(owner(c))}</span>` : ''}</td>${E.SENSES.map((k) => `<td><input type="number" min="0" max="9999" step="5" data-sense="${k}" value="${val(c.id, k)}" aria-label="${esc(c.name)} ${k}"></td>`).join('')}</tr>`).join('')}
       </table>
@@ -514,7 +514,9 @@
       $('#ctsCancel', box).onclick = H.closeModal;
       $('#ctsOk', box).onclick = async () => {
         const rows = [...box.querySelectorAll('tr[data-char]')].map((tr) => [tr.dataset.char, [...tr.querySelectorAll('input[data-sense]')].map((x) => ({ kind: x.dataset.sense, range: +x.value || 0 })).filter((x) => x.range > 0)]);
+        const lock = $('#ctsLock', box).checked;
         H.closeModal();
+        if (lock !== locked) await act('fight.senses', { op: 'lock', on: lock });
         for (const [id, senses] of rows) {   // only the ones that changed, one after another
           const was = (got.senses[id] || []).map((x) => `${x.kind}:${x.range}`).sort().join(), now = senses.map((x) => `${x.kind}:${x.range}`).sort().join();
           if (was !== now) await act('fight.senses', { op: 'set', charId: id, senses });
@@ -531,7 +533,7 @@
     H.modal(`<h3>${esc(u.name)}: defences and senses</h3>
       <p class="muted">Applied when ${esc(u.name)} takes damage in the combat view: resisted is halved, immune is ignored, vulnerable is doubled.</p>
       ${row('resist', 'Resistant to')}${row('immune', 'Immune to')}${row('vuln', 'Vulnerable to')}
-      <div class="lbl">Senses, in feet (blank for none)</div><div class="row2">${E.SENSES.map((k) => `<label>${k} <input type="number" min="0" max="9999" step="5" data-sense="${k}" value="${sense(k)}"></label>`).join('')}</div>
+      <div class="lbl">Senses, in feet (blank for none)${F().sensesLocked && !gm() ? ' <span class="muted">· 🔒 the GM sets these</span>' : ''}</div><div class="row2">${E.SENSES.map((k) => `<label>${k} <input type="number" min="0" max="9999" step="5" data-sense="${k}" value="${sense(k)}" ${F().sensesLocked && !gm() ? 'disabled' : ''}></label>`).join('')}</div>
       <div class="row"><span class="spacer"></span><button class="btn" id="ctdCancel">Cancel</button><button class="btn primary" id="ctdOk">Save</button></div>`, (box) => {
       $('#ctdCancel', box).onclick = H.closeModal;
       $('#ctdOk', box).onclick = async () => {

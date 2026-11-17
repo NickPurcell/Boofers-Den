@@ -2236,24 +2236,36 @@ test("creature casting through the API: a points pool holds up to 300 and is spe
   assert.deepEqual((await sam.state()).fight.npcRes, {}, "players never see a creature's casting");
 });
 
-test("the GM sees and sets every character's senses at any time, combat view on or off (coordinator's ruling, 17 Nov)", async () => {
+test("the GM sees and sets every character's senses at any time, and may lock them; off by default (coordinator, 17 Nov)", async () => {
   const { gm, sam, avery, bolt } = await fight();
-  assert.equal((await sam.act("fight.senses", { op: "get" })).code, 403, "the GM's table");
-  let r = await gm.act("fight.senses", { op: "get" });
-  assert.equal(r.code, 200);
-  assert.deepEqual([r.data.senses[avery], r.data.senses[bolt]], [[], []], "nothing set yet; reading writes nothing");
-  assert.equal((await gm.state()).fight, undefined, "the combat view stays off");
+  let gv = await gm.state();
+  assert.deepEqual([gv.charSenses, gv.sensesLocked, gv.fight], [undefined, undefined, undefined], "nothing recorded: the GM's state is as before");
+  assert.equal((await sam.act("fight.senses", { op: "set", charId: avery, senses: [] })).code, 403, "the GM's");
   assert.equal((await gm.act("fight.senses", { op: "set", charId: avery, senses: [{ kind: "darkvision", range: 60 }, { kind: "x-ray", range: 9 }] })).code, 200, "with the view off");
-  assert.equal((await gm.state()).fight, undefined, "still off");
-  r = await gm.act("fight.senses", { op: "get" });
-  assert.deepEqual(r.data.senses[avery], [{ kind: "darkvision", range: 60 }]);
-  // players still set their own (as they do HP and AC), and the GM's correction keeps their resistances
+  gv = await gm.state();
+  assert.deepEqual([gv.fight, gv.charSenses[avery], gv.charSenses[bolt]], [undefined, [{ kind: "darkvision", range: 60 }], undefined], "the view stays off; the table reads the GM's state");
+  assert.equal((await sam.state()).charSenses, undefined, "players never get the table");
+  // unlocked (the default): players set their own, as they do HP and AC; the GM's correction keeps their resistances
   await gm.act("fight.toggle", { on: true });
   await sam.act("fight.defenses", { charId: avery, resist: ["fire"], senses: [{ kind: "darkvision", range: 9999 }] });
-  assert.deepEqual((await gm.state()).fight.defenses[avery].senses, [{ kind: "darkvision", range: 9999 }], "a player's own sheet data");
+  assert.deepEqual((await gm.state()).charSenses[avery], [{ kind: "darkvision", range: 9999 }], "a player's own");
   await gm.act("fight.senses", { op: "set", charId: avery, senses: [{ kind: "darkvision", range: 60 }] });
-  const d = (await sam.state()).fight.defenses[avery];
+  let d = (await sam.state()).fight.defenses[avery];
   assert.deepEqual([d.senses, d.resist.map((x) => x.type)], [[{ kind: "darkvision", range: 60 }], ["fire"]], "corrected; resistances kept");
+  // locked: a player's change to senses is refused; their other defences still save; the GM still sets them
+  assert.equal((await sam.act("fight.senses", { op: "lock", on: true })).code, 403);
+  await gm.act("fight.senses", { op: "lock", on: true });
+  assert.equal((await sam.state()).fight.sensesLocked, true, "players are told, for the dialog");
+  const r = await sam.act("fight.defenses", { charId: avery, resist: ["fire"], senses: [{ kind: "darkvision", range: 9999 }] });
+  assert.equal(r.code, 403);
+  assert.match(JSON.stringify(r.data), /Only the GM edits senses/);
+  assert.equal((await sam.act("fight.defenses", { charId: avery, resist: ["fire", "cold"], senses: [{ kind: "darkvision", range: 60 }] })).code, 200, "unchanged senses: the save goes through");
+  d = (await gm.state()).fight.defenses[avery];
+  assert.deepEqual([d.senses, d.resist.map((x) => x.type)], [[{ kind: "darkvision", range: 60 }], ["fire", "cold"]]);
+  assert.equal((await gm.act("fight.senses", { op: "set", charId: avery, senses: [{ kind: "truesight", range: 30 }] })).code, 200, "the GM still can");
+  // unlocked again: as before
+  await gm.act("fight.senses", { op: "lock", on: false });
+  assert.equal((await gm.state()).sensesLocked, undefined);
+  assert.equal((await sam.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 30 }] })).code, 200);
   assert.equal((await gm.act("fight.senses", { op: "set", charId: "__proto__", senses: [] })).code, 400);
-  assert.equal((await sam.act("fight.senses", { op: "set", charId: avery, senses: [] })).code, 403);
 });

@@ -253,6 +253,7 @@ function viewFor(camp, cid, gm, online) {
     ships: (camp.ships || []).filter((x) => gm || !x.hidden),
     sceneFx: fxView,
     ...(camp.fight && camp.fight.on ? { fight: Fight.view(camp, cid, gm, shownName) } : {}),
+    ...(gm ? Fight.gmSensesView(camp) : {}),   // the GM's senses table (only when some are recorded, or locked)
     ...(fogState ? { fog: fogState } : {}),   // the map's fog of war (#93), combat view or not: only while the GM has it on   // the combat view, only while it is on
     scene: (camp.scenes || []).filter((x) => x.id === camp.activeScene).map((x) => ({ id: x.id, name: x.name }))[0] || null,
     scenes: gm ? (camp.scenes || []).map((x) => ({ id: x.id, name: x.name, savedAt: x.savedAt })) : null,
