@@ -255,7 +255,7 @@ test("turn budget: each unit's own turn refills its movement, action, bonus acti
   const hers = Object.assign({}, w, { turnId: "ava", round: 2 });
   assert.deepEqual([E.budget(hers).reaction, E.budget(hers).moveLeft, E.budget(hers).action], [true, 30, true]);
   const r = E.apply(hers, { type: "move", unit: "ava", x: 2, y: 0 }, dice().roll);
-  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0 });
+  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0 });
 });
 
 // a level-3 Consular with two powers; the table has data for one of them (numbers invented for the test)
@@ -604,6 +604,50 @@ test("the DM's defaults: weakened counts half a positive modifier on attacks and
   const tired = unit({ id: "pal", name: "Pal", side: "pc", x: 1, y: 0, hp: 6, maxHp: 20, exhaustion: 4 });
   const healed = E.apply(world([unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, pools: me.pools }), tired], "cass"), { type: "use", unit: "cass", ability: h, target: "pal" }, dice({ total: 8 }).roll);
   assert.equal(healed.world.units.pal.hp, 10, "6 + 8 would be 14; the maximum is halved to 10");
+});
+
+test("review #89: diagonals split over several moves cost what one move would (5, 10, 5, 10)", () => {
+  const ava = unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 });
+  let w = world([ava, unit({ id: "r1", name: "Raider", side: "npc", x: 9, y: 9 })], "ava");
+  const costs = [];
+  for (let i = 1; i <= 4; i++) {
+    const r = E.apply(w, { type: "move", unit: "ava", x: i, y: i }, dice().roll);
+    assert.ok(r.ok, r.why);
+    costs.push(r.events[0].feet); w = r.world;
+  }
+  assert.deepEqual(costs, [5, 10, 5, 10]);
+  assert.equal(E.apply(w, { type: "move", unit: "ava", x: 5, y: 5 }, dice().roll).ok, false, "30 ft used: no fifth diagonal");
+  assert.equal(E.reachable(world([ava], "ava"), "ava", 30)["4,4"], 30, "the same as one long move");
+  // a straight step in between keeps the count: diagonal 5, straight 5, diagonal 10
+  w = world([ava], "ava");
+  w = E.apply(w, { type: "move", unit: "ava", x: 1, y: 1 }, dice().roll).world;
+  w = E.apply(w, { type: "move", unit: "ava", x: 2, y: 1 }, dice().roll).world;
+  assert.equal(E.apply(w, { type: "move", unit: "ava", x: 3, y: 2 }, dice().roll).events[0].feet, 10);
+});
+
+test("review #89: an at-will power's upcast is capped at the caster's highest level; a power's attack needs an AC", () => {
+  const ch = consular();
+  const lib = { "mind shove": { use: "action", range: [30, 30], attack: { bonus: "power" }, damage: [{ dice: "1d6", type: "force" }], upcast: { damage: "1d6" } } };
+  const ab = Object.assign(E.abilitiesOf(ch, R, lib)[0], { level: 0, cost: {} });   // as an at-will power
+  const me = unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, pools: Object.fromEntries(E.resourcesOf(ch, R).map((x) => [x.key, x])) });
+  const w = world([me, unit({ id: "r1", name: "Raider", side: "npc", x: 2, y: 0 })], "cass");
+  const top = ab.maxLevel;
+  assert.match(E.apply(w, { type: "use", unit: "cass", ability: ab, target: "r1", upcast: top + 1 }, dice().roll).why, /up to level/);
+  assert.ok(E.apply(w, { type: "use", unit: "cass", ability: ab, target: "r1", upcast: top }, dice({ total: 15, nat: 12 }, { total: 9 }).roll).ok);
+  const noAc = world([me, unit({ id: "r1", name: "Raider", side: "npc", x: 2, y: 0, ac: null })], "cass");
+  assert.equal(E.apply(noAc, { type: "use", unit: "cass", ability: ab, target: "r1" }, dice().roll).why, "Raider has no AC set.");
+});
+
+test("review #89: a power's attack roll tilts for the same reasons the preview shows", () => {
+  const ch = consular();
+  const ab = E.abilitiesOf(ch, R, { "mind shove": { use: "action", range: [30, 60], attack: { bonus: "power" }, damage: [{ dice: "1d6", type: "force" }] } })[0];
+  const me = unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, pools: Object.fromEntries(E.resourcesOf(ch, R).map((x) => [x.key, x])) });
+  const w = world([me, unit({ id: "r1", name: "Raider", side: "npc", x: 3, y: 0, conditions: ["Restrained"] })], "cass");
+  const pv = E.preview(w, "cass", "r1", { name: ab.name, bonus: ab.attack.bonus, abil: ab.attack.abil, damage: "x", melee: 0, range: ab.range });
+  const d = dice({ total: 15, nat: 12 }, { total: 3 });
+  const r = E.apply(w, { type: "use", unit: "cass", ability: ab, target: "r1" }, d.roll);
+  assert.deepEqual([pv.mode, d.asked[0]], ["adv", pv.expr], "the preview's roll is the server's roll");
+  assert.match(r.log[1].text, /\(advantage: Raider is restrained\)/);
 });
 
 /* ---------------------------------------------------------------- the server's fight actions, through the API */
@@ -1127,4 +1171,16 @@ test("names the GM hides (#87): every line the combat view writes for players sa
   assert.deepEqual([own.fight.units[ids.avery].side, own.fight.units[ids.avery].mine, avery in own.fight.defenses], ["pc", true, true]);
   // the GM's own copy keeps the real names
   assert.equal((await gm.state()).fight.units[ids.avery].side, "pc");
+});
+
+test("review #89 through the API: one diagonal step at a time is 5, 10, 5, 10 ft, kept between requests", async () => {
+  const { gm, sam } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  const left = [];
+  for (const [x, y] of [[1, 1], [2, 2], [3, 3], [4, 4]]) {
+    assert.equal((await sam.act("fight.move", { x, y })).code, 200);
+    left.push((await sam.state()).fight.budget.moveLeft);
+  }
+  assert.deepEqual(left, [25, 15, 10, 0]);
+  assert.equal((await sam.act("fight.move", { x: 5, y: 5 })).code, 400);
 });

@@ -46,36 +46,40 @@
   // difficult terrain (each step into it costs 5 ft more), and a prone unit crawls (every step costs double). A unit
   // may pass through allies but not through enemies, and may not stop where another unit stands. Units the mover can't
   // see (hidden ones, for a player) are not in the world at all, so they never give themselves away by blocking.
-  function reachable(world, unitId, feet) {
+  // The diagonal count carries across a turn's moves (spent.diag): stepping one diagonal at a time costs what one long
+  // move would, 5, 10, 5, 10…
+  function search(world, unitId, feet) {
     const u = world.units[unitId];
-    if (!u) return {};
+    if (!u) return { out: {}, par: {} };
+    const start = unitId === world.turnId ? (+spentOf(world, unitId).diag ? 1 : 0) : 0;
     const others = Object.values(world.units).filter((o) => o.id !== u.id && !o.down);
     const size = u.size || 1, budget = Math.max(0, feet), crawl = (u.conditions || []).includes('Prone') ? 2 : 1;
     const blocked = (x, y) => others.some((o) => hostile(u, o) && overlaps(x, y, size, o));
     const occupied = (x, y) => others.some((o) => overlaps(x, y, size, o));
-    const best = {}, out = {};
+    const best = {}, out = {}, par = {};
     const key = (x, y, p) => `${x},${y},${p}`;
-    let open = [[0, u.x, u.y, 0]];   // [feet, x, y, diagonal parity]
-    best[key(u.x, u.y, 0)] = 0;
+    let open = [[0, u.x, u.y, start]];   // [feet, x, y, diagonal parity]
+    best[key(u.x, u.y, start)] = 0;
     while (open.length) {
       open.sort((p, q) => p[0] - q[0]);
-      const [c, x, y, par] = open.shift();
-      if (c > best[key(x, y, par)]) continue;
+      const [c, x, y, pr] = open.shift();
+      if (c > best[key(x, y, pr)]) continue;
       for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
         if (!dx && !dy) continue;
         const nx = x + dx, ny = y + dy;
         if (nx < -500 || ny < -500 || nx > 1000 || ny > 1000 || blocked(nx, ny)) continue;
-        const diag = dx && dy, np = diag ? 1 - par : par;
-        const step = ((diag && par ? 2 * FT : FT) + (occupied(nx, ny) ? FT : 0)) * crawl;
+        const diag = dx && dy, np = diag ? 1 - pr : pr;
+        const step = ((diag && pr ? 2 * FT : FT) + (occupied(nx, ny) ? FT : 0)) * crawl;
         const nc = c + step, k = key(nx, ny, np);
         if (nc > budget || (best[k] !== undefined && best[k] <= nc)) continue;
         best[k] = nc;
         open.push([nc, nx, ny, np]);
-        if (!occupied(nx, ny) && (out[`${nx},${ny}`] === undefined || out[`${nx},${ny}`] > nc)) out[`${nx},${ny}`] = nc;
+        if (!occupied(nx, ny) && (out[`${nx},${ny}`] === undefined || out[`${nx},${ny}`] > nc)) { out[`${nx},${ny}`] = nc; par[`${nx},${ny}`] = np; }
       }
     }
-    return out;
+    return { out, par };
   }
+  const reachable = (world, unitId, feet) => search(world, unitId, feet).out;
 
   /* ---------------- attacks ---------------- */
   // An attack spec: { name, bonus, damage, crit, type, melee: reach in feet or 0, range: [normal, long] or null }.
@@ -165,6 +169,15 @@
     }) },
   );
 
+  // Every reason an attack roll from `a` at `t` tilts, as { adv | dis, text }: shared by weapon attacks, powers'
+  // attack rolls and both previews, so what the preview says is what the server rolls.
+  function reasons(world, a, t, attack, feet, ranged) {
+    const enemyClose = Object.values(world.units).some((o) => o.id !== a.id && hostile(a, o) && !o.down && feetBetween(a, o) <= FT
+      && !(o.conditions || []).includes('Blinded') && !INCAPACITATING(o));   // an enemy who can see you and isn't incapacitated
+    const ctx = { feet, ranged, enemyClose, attack, actor: a, target: t };
+    return REASONS.filter((r) => r.when(ctx)).flatMap((r) => (r.each ? r.each(ctx) : [{ dis: !!r.dis, adv: !!r.adv, text: r.text }]))
+      .map((x) => ({ dis: !!x.dis, adv: !!x.adv, text: x.text }));
+  }
   // Can `actorId` hit `targetId` with `attack` right now, and what would it take?
   function preview(world, actorId, targetId, attack, opts = {}) {
     const a = world.units[actorId], t = world.units[targetId];
@@ -177,11 +190,7 @@
     const inRange = attack.range && feet <= attack.range[1];
     if (!inReach && !inRange) return { legal: false, why: `${t.name} is ${feet} ft away: out of ${attack.range ? 'range' : 'reach'}.`, feet };
     const ranged = !inReach;
-    const enemyClose = Object.values(world.units).some((o) => o.id !== a.id && hostile(a, o) && !o.down && feetBetween(a, o) <= FT
-      && !(o.conditions || []).includes('Blinded') && !INCAPACITATING(o));   // an enemy who can see you and isn't incapacitated
-    const ctx = { feet, ranged, enemyClose, attack, actor: a, target: t };
-    const tilts = REASONS.filter((r) => r.when(ctx)).flatMap((r) => (r.each ? r.each(ctx) : [{ dis: !!r.dis, adv: !!r.adv, text: r.text }]))
-      .map((x) => ({ dis: !!x.dis, adv: !!x.adv, text: x.text }));
+    const tilts = reasons(world, a, t, attack, feet, ranged);
     if (opts.adv) tilts.push({ adv: true, text: 'chosen' });
     if (opts.dis) tilts.push({ dis: true, text: 'chosen' });
     const adv = tilts.some((x) => x.adv), dis = tilts.some((x) => x.dis);
@@ -424,7 +433,7 @@
   const TURN = ['move', 'action', 'bonus', 'reaction'];
   function spentOf(world, id) {
     const s = (world.spent || {})[id];
-    return s && (id !== world.turnId || s.key === turnKey(world)) ? s : { key: id === world.turnId ? turnKey(world) : '', move: 0, action: 0, bonus: 0, reaction: 0 };
+    return s && (id !== world.turnId || s.key === turnKey(world)) ? s : { key: id === world.turnId ? turnKey(world) : '', move: 0, action: 0, bonus: 0, reaction: 0, diag: 0 };
   }
   // what a unit's turn has left (by default, the unit whose turn it is)
   function budget(world, id) {
@@ -442,7 +451,7 @@
   function fresh(world) {
     const w = clone(world);
     w.spent = w.spent || {}; w.effects = w.effects || []; w.conc = w.conc || {};
-    if (w.turnId && (!w.spent[w.turnId] || w.spent[w.turnId].key !== turnKey(w))) w.spent[w.turnId] = { key: turnKey(w), move: 0, action: 0, bonus: 0, reaction: 0 };
+    if (w.turnId && (!w.spent[w.turnId] || w.spent[w.turnId].key !== turnKey(w))) w.spent[w.turnId] = { key: turnKey(w), move: 0, action: 0, bonus: 0, reaction: 0, diag: 0 };
     return w;
   }
 
@@ -464,9 +473,9 @@
         const x = Math.round(+act.x), y = Math.round(+act.y);
         if (!Number.isFinite(x) || !Number.isFinite(y)) return no('Bad square.');
         if (x === me.x && y === me.y) return no('Already there.');
-        const cost = reachable(w, me.id, b.moveLeft)[`${x},${y}`];
+        const found = search(w, me.id, b.moveLeft), cost = found.out[`${x},${y}`];
         if (cost === undefined) return no(b.moveLeft ? `${me.name} can't reach that square with ${b.moveLeft} ft of movement left.` : `${me.name} has no movement left this turn.`);
-        me.x = x; me.y = y; w.spent[me.id].move += cost;
+        me.x = x; me.y = y; w.spent[me.id].move += cost; w.spent[me.id].diag = found.par[`${x},${y}`] ? 1 : 0;
         return { ok: true, world: w, log: [{ text: `${me.name} moves ${cost} ft.` }], events: [{ kind: 'move', unit: me.id, feet: cost }] };
       }
       case 'attack': {
@@ -504,7 +513,8 @@
         const slot = ab.use || 'action';
         if (slot !== 'free' && !b[slot]) return no(`${me.name} has already used the ${slot === 'bonus' ? 'bonus action' : slot} this turn.`);
         const up = Math.max(0, Math.round(+act.upcast || 0));
-        if (ab.kind === 'power' && ab.level && ab.maxLevel != null && ab.level + up > ab.maxLevel) return no(ab.maxLevel ? `${me.name} can cast powers up to level ${ab.maxLevel}.` : `${me.name} can't cast leveled powers yet.`);
+        // a power's level, upcast included, can't pass the caster's highest level (an at-will power's upcast too)
+        if (ab.kind === 'power' && (ab.level || up) && ab.maxLevel != null && ab.level + up > ab.maxLevel) return no(ab.maxLevel ? `${me.name} can cast powers up to level ${ab.maxLevel}.` : `${me.name} can't cast leveled powers yet.`);
         const cost = Object.assign({}, ab.cost || {});
         if (up && ab.pool) cost[ab.pool] = (cost[ab.pool] || 0) + up;
         for (const [pool, n] of Object.entries(cost)) {
@@ -525,6 +535,7 @@
             const t = w.units[id];
             if (!t) return no('No such target.');
             if (t.id !== me.id && (w.effects || []).some((ef) => ef.unit === me.id && ef.condition === 'Charmed' && ef.source === t.id) && (ab.attack || ab.save || ab.damage.length)) return no(`${me.name} is charmed by ${t.name} and can't target it with that.`);
+            if (ab.attack && (t.ac == null || t.ac === '' || !Number.isFinite(+t.ac))) return no(`${t.name} has no AC set.`);
             const r = inReachOf(w, me, t, ab);
             if (!r.ok) return no(r.why);
           }
@@ -543,15 +554,15 @@
           const t = w.units[id];
           let hit = true, crit = false, half = false;
           if (ab.attack) {
+            if (t.ac == null || t.ac === '' || !Number.isFinite(+t.ac)) { log.push({ unit: t.id, text: `${t.name} has no AC set: ${ab.name} can't be rolled against it.` }); continue; }
             const r0 = inReachOf(w, me, t, ab);
-            const tilts = [];
-            if (!r0.melee && r0.long) tilts.push('long range');
-            if (!r0.melee && Object.values(w.units).some((o) => o.id !== me.id && hostile(me, o) && !o.down && feetBetween(me, o) <= FT)) tilts.push('an enemy within 5 ft');
-            const adv = !!act.adv, dis = !!act.dis || tilts.length > 0;
+            const tl = me.id === t.id ? [] : reasons(w, me, t, { melee: r0.melee ? ab.reach : 0, range: ab.range }, r0.feet, !r0.melee);
+            const adv = !!act.adv || tl.some((x) => x.adv), dis = !!act.dis || tl.some((x) => x.dis);
+            const tilts = tl.filter((x) => (adv && !dis ? x.adv : x.dis)).map((x) => x.text);
             const expr = (adv && !dis ? '2d20kh1' : dis && !adv ? '2d20kl1' : '1d20') + sgn(ab.attack.bonus - weakPenalty(me, ab.attack.abil));
             const r = roll(expr);
             crit = r.nat === 20; hit = crit || (r.nat !== 1 && r.total >= t.ac);
-            log.push({ unit: t.id, kind: 'attack', roll: r, expr, text: `${ab.name} against ${t.name}${dis && !adv && tilts.length ? ` (disadvantage: ${tilts.join(', ')})` : ''}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : 'a miss.'}` });
+            log.push({ unit: t.id, kind: 'attack', roll: r, expr, text: `${ab.name} against ${t.name}${tilts.length && adv !== dis ? ` (${adv ? 'advantage' : 'disadvantage'}: ${tilts.join(', ')})` : ''}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : 'a miss.'}` });
           } else if (ab.save) {
             const bonus = (t.saves || {})[ab.save.ability];
             const fail = effectsOf(t).find(([, e]) => (e.autoFail || []).includes(ab.save.ability));
@@ -806,6 +817,6 @@
 
   return { FT, TURN, squaresBetween, feetBetween, reachable, readRange, attacksOf, attackFromBehavior, REASONS, preview, budget, apply, takeDamage, buildWorld, turnKey,
     cleanResources, resourcesOf, atLevel, spend, rest, powerNumbers, resolvePower, weaponAbility, abilitiesOf, inReachOf, cleanAbility, setPoolUsed,
-    ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
+    ruler, areaSquares, areaHits, reasons, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE };
 });
