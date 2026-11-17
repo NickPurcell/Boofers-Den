@@ -1,0 +1,63 @@
+# HoloTable
+
+jpesus's Star Wars 5e table at `/sections/jpesus/holotable/`. It runs one game for the group, behind two passwords.
+
+## Setup (site owner)
+
+Set two environment variables in Vercel:
+
+| Variable | Lets in |
+|---|---|
+| `HOLOTABLE_PLAYER_PASSWORD` | players |
+| `HOLOTABLE_GM_PASSWORD` | the GM |
+
+Until both are set (and different from each other), the API refuses every request. Changing either one signs everybody out.
+Sessions are signed with a random secret the server creates once and keeps in Redis (`ht:secret`). Nobody has to configure it.
+
+Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded images and asset-pack art.
+
+## What it does
+
+- **Character sheets:** upload the SW5e.com builder's Roll20 export or character JSON. Foundry VTT (sw5e) exports also work.
+  Uploading the same character again updates it, keeping its photos and current HP.
+- **Profile and token photos** for each character.
+- **Click-to-roll:** checks, saves, skills, attacks and damage, rolled on the server.
+- **Chat:** whispers, secret GM rolls, `/r 2d20kh1+5`.
+- **Combat tracker:** initiative, HP, conditions, hidden NPCs.
+- **Battle map:** tokens, plus Dungeondraft packs or zips of images placed as props, tokens or floors.
+- **Level ups:** the GM grants a level to the party or to chosen characters. Each player gets a pop-up and a guided wizard:
+  pick a class or multiclass, roll or take average HP, take an ability score improvement or feat, add new features and powers,
+  then see a before/after summary. The GM can level a character for a player who missed the session.
+- **Colour themes (🎨):** each person picks their own look. There are 18 themes in three groups: Light Side, Dark Side and
+  Across the Galaxy. The GM also gets an exclusive Green & Silver theme. Anyone can then fine-tune five colours.
+  The choice is saved with your account and follows you to other devices. Every theme passes a contrast check (themes.js).
+- **GM tools:** handouts, GM notes, a backup file download, automatic backups, and restore.
+
+## How it runs
+
+- **One function:** `api/holotable.js`, routed by `?op=`. The rules live in `_holotable-game.js` and storage in `_holotable-store.js`.
+- **Sign-in:** a password is exchanged for a signed (HMAC), expiring session in an HttpOnly cookie. The signing key mixes
+  the server-only secret with both passwords, so a cookie can't be used to test password guesses offline.
+  - The session carries the person's id and role, and only the role decides who is GM.
+  - Every read, write and image needs a session.
+  - POSTs also need an `X-HoloTable: 1` header, which other sites can't send.
+  - Wrong passwords are limited to 10 per address per 15 minutes, with no shared limit anyone could trip for the whole group.
+    They're compared in constant time.
+- **Input cleaning:** the server cleans every character sheet and table edit. Numbers stay numbers, colours must be `#rrggbb`,
+  and images must be ones uploaded to this table.
+- **Storage:** the project's Redis, under `ht:` keys (`htpv:` on preview deployments). Nothing touches Find time to hang's keys.
+  - Uploaded images and pack art share the `HOLOTABLE_STORAGE_MB` cap.
+  - The game document is capped at 1.5 MB, with 10 automatic backups kept.
+- **If the save goes missing** (for example, a full Redis evicting keys), changes are refused and everyone sees a notice.
+  The GM gets a one-click restore from the latest automatic backup, so a blank table is never saved over it.
+  A full database shows a clear "database is full" message.
+- **Live updates:** long-polling woken by Redis pub/sub. Each request waits up to 8 s, and hidden tabs stop polling.
+
+## Local testing
+
+```
+node --test tests/holotable-api.test.js
+node tests/holotable-devserver.js     # then open http://localhost:8788/sections/jpesus/holotable/
+```
+
+The dev server runs on an in-memory stand-in for Redis, with local-only passwords `dev-player` and `dev-gm`.

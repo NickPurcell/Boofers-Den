@@ -225,3 +225,11 @@ body {
   .slots { grid-template-columns: 1fr; }
   .card-grid { grid-template-columns: 1fr; }
 }
+
+/* HoloTable entrance (the table itself lives in holotable/) */
+.holo-door { display: flex; align-items: center; gap: .9rem; max-width: 36rem; margin: 1.2rem auto 0; padding: .9rem 1.1rem;
+  text-align: left; text-decoration: none; color: var(--text); border: 1px solid var(--accent); border-radius: 12px;
+  background: linear-gradient(100deg, rgba(79,195,247,.12), rgba(108,140,255,.08)); transition: transform .15s, box-shadow .15s; }
+.holo-door:hover { transform: translateY(-2px); box-shadow: 0 6px 22px rgba(79,195,247,.25); }
+.holo-door .holo-icon { font-size: 1.8rem; }
+.holo-door .holo-go { margin-left: auto; font-size: 1.4rem; color: var(--accent); }
