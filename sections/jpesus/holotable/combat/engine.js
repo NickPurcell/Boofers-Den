@@ -44,16 +44,19 @@
   // Every square the unit could move its top-left corner to with `feet` of movement: { "x,y": feet spent }.
   // By SW5e's grid rule: each straight step is 5 ft, diagonals alternate 5 ft and 10 ft, another creature's space is
   // difficult terrain (each step into it costs 5 ft more), and a prone unit crawls (every step costs double). A unit
-  // may pass through allies but not through enemies, and may not stop where another unit stands. Units the mover can't
-  // see (hidden ones, for a player) are not in the world at all, so they never give themselves away by blocking.
-  function reachable(world, unitId, feet) {
+  // may pass through allies, and through an enemy only one at least two sizes larger or smaller than itself; it may not
+  // stop where another unit stands. Units the mover can't see (hidden ones, for a player) are not in the world at all,
+  // so they never give themselves away by blocking.
+  // Size: a stat block's size when the GM's screen sent it (0 Tiny … 5 Gargantuan), otherwise from the token's squares.
+  const sizeCat = (o) => (o.sizeCat != null ? +o.sizeCat : [2, 2, 3, 4, 5][Math.min(4, o.size || 1)]);
+  function search(world, unitId, feet) {
     const u = world.units[unitId];
-    if (!u) return {};
+    if (!u) return { out: {}, prev: {}, at: {} };
     const others = Object.values(world.units).filter((o) => o.id !== u.id && !o.down);
     const size = u.size || 1, budget = Math.max(0, feet), crawl = (u.conditions || []).includes('Prone') ? 2 : 1;
-    const blocked = (x, y) => others.some((o) => hostile(u, o) && overlaps(x, y, size, o));
+    const blocked = (x, y) => others.some((o) => hostile(u, o) && overlaps(x, y, size, o) && Math.abs(sizeCat(u) - sizeCat(o)) < 2);
     const occupied = (x, y) => others.some((o) => overlaps(x, y, size, o));
-    const best = {}, out = {};
+    const best = {}, out = {}, prev = {}, at = {};
     const key = (x, y, p) => `${x},${y},${p}`;
     let open = [[0, u.x, u.y, 0]];   // [feet, x, y, diagonal parity]
     best[key(u.x, u.y, 0)] = 0;
@@ -69,12 +72,22 @@
         const step = ((diag && par ? 2 * FT : FT) + (occupied(nx, ny) ? FT : 0)) * crawl;
         const nc = c + step, k = key(nx, ny, np);
         if (nc > budget || (best[k] !== undefined && best[k] <= nc)) continue;
-        best[k] = nc;
+        best[k] = nc; prev[k] = key(x, y, par);
         open.push([nc, nx, ny, np]);
-        if (!occupied(nx, ny) && (out[`${nx},${ny}`] === undefined || out[`${nx},${ny}`] > nc)) out[`${nx},${ny}`] = nc;
+        if (!occupied(nx, ny) && (out[`${nx},${ny}`] === undefined || out[`${nx},${ny}`] > nc)) { out[`${nx},${ny}`] = nc; at[`${nx},${ny}`] = k; }
       }
     }
-    return out;
+    return { out, prev, at, start: key(u.x, u.y, 0) };
+  }
+  const reachable = (world, unitId, feet) => search(world, unitId, feet).out;
+  // the squares a move passes through, from where the unit stands to (x, y), by the cheapest way; null if out of reach
+  function pathTo(world, unitId, feet, x, y) {
+    const s = search(world, unitId, feet);
+    let k = s.at[`${x},${y}`];
+    if (!k) return null;
+    const path = [];
+    while (k) { const [px, py] = k.split(',').map(Number); path.unshift({ x: px, y: py }); k = k === s.start ? null : s.prev[k]; }
+    return path;
   }
 
   /* ---------------- attacks ---------------- */
@@ -159,6 +172,7 @@
       .filter(([, e]) => e.attacks !== 'prone' || !c.ranged || c.feet <= 30)   // prone: melee, or ranged at a target within 30 ft
       .map(([n, e]) => ({ [e.attacks === 'prone' ? 'dis' : e.attacks]: true, text: `you are ${n.toLowerCase()}` })) },
     { id: 'exhausted', when: (c) => (+c.actor.exhaustion || 0) >= 3, each: () => [{ dis: true, text: 'exhaustion' }] },
+    { id: 'dodge', when: (c) => c.dodging, each: (c) => [{ dis: true, text: `${c.target.name} is dodging` }] },
     { id: 'target', when: (c) => effectsOf(c.target).some(([, e]) => e.attacked), each: (c) => effectsOf(c.target).filter(([, e]) => e.attacked).map(([n, e]) => {
       const way = e.attacked === 'near' ? (c.feet <= FT ? 'adv' : 'dis') : e.attacked;
       return { [way]: true, text: `${c.target.name} is ${n.toLowerCase()}` };
@@ -179,7 +193,7 @@
     const ranged = !inReach;
     const enemyClose = Object.values(world.units).some((o) => o.id !== a.id && hostile(a, o) && !o.down && feetBetween(a, o) <= FT
       && !(o.conditions || []).includes('Blinded') && !INCAPACITATING(o));   // an enemy who can see you and isn't incapacitated
-    const ctx = { feet, ranged, enemyClose, attack, actor: a, target: t };
+    const ctx = { feet, ranged, enemyClose, attack, actor: a, target: t, dodging: dodging(world, t) };
     const tilts = REASONS.filter((r) => r.when(ctx)).flatMap((r) => (r.each ? r.each(ctx) : [{ dis: !!r.dis, adv: !!r.adv, text: r.text }]))
       .map((x) => ({ dis: !!x.dis, adv: !!x.adv, text: x.text }));
     if (opts.adv) tilts.push({ adv: true, text: 'chosen' });
@@ -422,9 +436,10 @@
   /* ---------------- turns: the turn budget is resources too, refilled at the start of the unit's own turn ---------------- */
   const turnKey = (world) => `${world.round}:${world.turnId}`;
   const TURN = ['move', 'action', 'bonus', 'reaction'];
+  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, dash: 0, disengage: 0, dodge: 0 });
   function spentOf(world, id) {
     const s = (world.spent || {})[id];
-    return s && (id !== world.turnId || s.key === turnKey(world)) ? s : { key: id === world.turnId ? turnKey(world) : '', move: 0, action: 0, bonus: 0, reaction: 0 };
+    return s && (id !== world.turnId || s.key === turnKey(world)) ? Object.assign(blank(s.key), s) : blank(id === world.turnId ? turnKey(world) : '');
   }
   // what a unit's turn has left (by default, the unit whose turn it is)
   function budget(world, id) {
@@ -436,15 +451,29 @@
     if (u && (has(u, 'speed0') || slow >= 4)) speed = 0; else speed = Math.max(0, speed - SLOWED_FT[slow]);
     const out = has(u || {}, 'noActions'), noReact = out || has(u || {}, 'noReactions');
     const one = has(u || {}, 'oneAction') && (s.action >= 1 || s.bonus >= 1);   // shocked: an action or a bonus action, not both
-    return { key: s.key, moved: s.move, speed, moveLeft: Math.max(0, speed - s.move), action: !out && !one && s.action < 1, bonus: !out && !one && s.bonus < 1, reaction: !noReact && s.reaction < 1 };
+    const total = speed * (1 + (+s.dash || 0));   // each Dash adds the speed again
+    return { key: s.key, moved: s.move, speed, total, moveLeft: Math.max(0, total - s.move), action: !out && !one && s.action < 1, bonus: !out && !one && s.bonus < 1, reaction: !noReact && s.reaction < 1,
+      dash: +s.dash || 0, disengage: !!s.disengage, dodge: !!s.dodge };
   }
   // a new turn gives its unit full movement, an action, a bonus action and its reaction back
   function fresh(world) {
     const w = clone(world);
     w.spent = w.spent || {}; w.effects = w.effects || []; w.conc = w.conc || {};
-    if (w.turnId && (!w.spent[w.turnId] || w.spent[w.turnId].key !== turnKey(w))) w.spent[w.turnId] = { key: turnKey(w), move: 0, action: 0, bonus: 0, reaction: 0 };
+    if (w.turnId && (!w.spent[w.turnId] || w.spent[w.turnId].key !== turnKey(w))) w.spent[w.turnId] = blank(turnKey(w));
+    else if (w.turnId) w.spent[w.turnId] = Object.assign(blank(turnKey(w)), w.spent[w.turnId]);
     return w;
   }
+
+  /* ---------------- the actions everyone has (SW5e chapter 9), as data ---------------- */
+  // `gives` is what taking it does: more movement this turn, or a flag that lasts until the unit's next turn starts.
+  // A class feature that offers one of these as a bonus action (or a new one) is the same shape with its own `use`.
+  const COMMON = [
+    { key: 'dash', name: 'Dash', use: 'action', gives: { dash: 1 }, hint: 'Your speed again in movement, this turn' },
+    { key: 'disengage', name: 'Disengage', use: 'action', gives: { disengage: 1 }, hint: 'Leaving a reach provokes no opportunity attack this turn' },
+    { key: 'dodge', name: 'Dodge', use: 'action', gives: { dodge: 1 }, hint: 'Until your next turn: attacks against you at disadvantage, Dex saves at advantage' },
+  ];
+  // dodging counts only while the unit can see trouble coming: not incapacitated, and not at speed 0
+  const dodging = (w, t) => !!spentOf(w, t.id).dodge && !INCAPACITATING(t) && budget(w, t.id).speed > 0;
 
   /* ---------------- applying one action ---------------- */
   function apply(world, act, roll) {
@@ -466,36 +495,25 @@
         if (x === me.x && y === me.y) return no('Already there.');
         const cost = reachable(w, me.id, b.moveLeft)[`${x},${y}`];
         if (cost === undefined) return no(b.moveLeft ? `${me.name} can't reach that square with ${b.moveLeft} ft of movement left.` : `${me.name} has no movement left this turn.`);
+        const path = pathTo(w, me.id, b.moveLeft, x, y) || [{ x: me.x, y: me.y }, { x, y }];
+        const reactions = opportunities(w, me, path);
         me.x = x; me.y = y; w.spent[me.id].move += cost;
-        return { ok: true, world: w, log: [{ text: `${me.name} moves ${cost} ft.` }], events: [{ kind: 'move', unit: me.id, feet: cost }] };
+        return { ok: true, world: w, log: [{ text: `${me.name} moves ${cost} ft.` }], events: [{ kind: 'move', unit: me.id, feet: cost }], reactions };
       }
       case 'attack': {
         if (!b.action) return no(`${me.name} has already used the action this turn.`);
-        const attack = act.attack;
-        if (!attack || !Number.isFinite(+attack.bonus) || !attack.damage) return no('Pick an attack.');
-        const t = w.units[act.target];
-        const pv = preview(w, me.id, act.target, attack, { adv: !!act.adv, dis: !!act.dis });
-        if (!pv.legal) return no(pv.why);
-        const r = roll(pv.expr);
-        const nat = r.nat, fumble = nat === 1;
-        let crit = nat === 20;
-        const hit = crit || (!fumble && r.total >= t.ac);
-        if (hit && pv.feet <= FT && has(t, 'closeCrit')) crit = true;   // any hit from within 5 ft on the paralyzed or unconscious
+        const s = strike(w, me, act.target, act.attack, { adv: !!act.adv, dis: !!act.dis }, roll, '');
+        if (!s.ok) return s;
         w.spent[me.id].action += 1;
-        const tilt = pv.mode === 'normal' ? '' : ` with ${pv.mode === 'adv' ? 'advantage' : 'disadvantage'} (${pv.tilts.map((x) => x.text).join(', ')})`;
-        const log = [{ kind: 'attack', roll: r, expr: pv.expr, text: `${me.name} attacks ${t.name} with ${attack.name}${tilt}${pv.weak ? ` (weakened, −${pv.weak})` : ''}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}` }];
-        const events = [];
-        if (!hit) { events.push({ kind: 'miss', unit: t.id }); return { ok: true, world: w, log, events }; }
-        const expr = crit ? attack.crit || attack.damage : attack.damage;
-        const d = roll(expr);
-        const corr = levelOf(w, t, 'Corroded');   // corroded: 1 more damage from weapons for each level
-        const df = defended(t, Math.max(0, d.total) + corr, String(attack.type || '').toLowerCase(), attack.enhanced ? 'enhanced' : 'weapon');
-        const amount = df.amount;
-        const took = takeDamage(t, amount);
-        log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 ? ' and drops to 0 hit points.' : '.'}` });
-        events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
-        concentrationCheck(w, t, amount, roll, log);
-        return { ok: true, world: w, log, events };
+        return { ok: true, world: w, log: s.log, events: s.events };
+      }
+      case 'common': {   // Dash, Disengage, Dodge
+        const c = COMMON.find((x) => x.key === act.key);
+        if (!c) return no('Unknown action.');
+        if (!b[c.use]) return no(`${me.name} has already used the ${c.use === 'bonus' ? 'bonus action' : c.use} this turn.`);
+        w.spent[me.id][c.use] += 1;
+        for (const [k, v] of Object.entries(c.gives)) w.spent[me.id][k] = (+w.spent[me.id][k] || 0) + v;
+        return { ok: true, world: w, log: [{ text: `${me.name} takes the ${c.name} action.` }], events: [] };
       }
       case 'use': {
         // an ability from the table's data: its turn cost, its point cost, then an attack roll or a save for each target
@@ -556,11 +574,12 @@
             const bonus = (t.saves || {})[ab.save.ability];
             const fail = effectsOf(t).find(([, e]) => (e.autoFail || []).includes(ab.save.ability));
             const sdis = effectsOf(t).some(([, e]) => (e.saveDis || []).includes(ab.save.ability));
-            const sexpr = (sdis ? '2d20kl1' : '1d20') + sgn((+bonus || 0) - weakPenalty(t, ab.save.ability));
+            const sadv = ab.save.ability === 'dex' && dodging(w, t);
+            const sexpr = (sdis && !sadv ? '2d20kl1' : sadv && !sdis ? '2d20kh1' : '1d20') + sgn((+bonus || 0) - weakPenalty(t, ab.save.ability));
             const r = roll(sexpr);
             const saved = !fail && r.total >= ab.save.dc;
             hit = !saved || ab.save.onSave === 'half'; half = saved && ab.save.onSave === 'half';
-            log.push({ unit: t.id, kind: 'save', roll: r, expr: sexpr, text: `${t.name} makes a ${ab.save.ability.toUpperCase()} save against DC ${ab.save.dc}${bonus == null ? ' (no save bonus known)' : ''}${sdis ? ' with disadvantage' : ''}: ${r.total}, ${fail ? `an automatic failure (${fail[0].toLowerCase()})` : saved ? 'a success' : 'a failure'}.` });
+            log.push({ unit: t.id, kind: 'save', roll: r, expr: sexpr, text: `${t.name} makes a ${ab.save.ability.toUpperCase()} save against DC ${ab.save.dc}${bonus == null ? ' (no save bonus known)' : ''}${sdis && !sadv ? ' with disadvantage' : sadv && !sdis ? ' with advantage (dodging)' : ''}: ${r.total}, ${fail ? `an automatic failure (${fail[0].toLowerCase()})` : saved ? 'a success' : 'a failure'}.` });
           }
           if (!hit) { events.push({ kind: 'miss', unit: t.id }); continue; }
           // conditions the ability puts on its target, with how long they last
@@ -621,6 +640,68 @@
       default:
         return no('Unknown combat action.');
     }
+  }
+  // One weapon attack, rolled and applied: on your turn (the Attack action) or as a reaction. `how` names a reaction.
+  function strike(w, me, targetId, attack, opts, roll, how) {
+    if (!attack || !Number.isFinite(+attack.bonus) || !attack.damage) return no('Pick an attack.');
+    const t = w.units[targetId];
+    const pv = preview(w, me.id, targetId, attack, opts);
+    if (!pv.legal) return no(pv.why);
+    const r = roll(pv.expr);
+    const nat = r.nat, fumble = nat === 1;
+    let crit = nat === 20;
+    const hit = crit || (!fumble && r.total >= t.ac);
+    if (hit && pv.feet <= FT && has(t, 'closeCrit')) crit = true;   // any hit from within 5 ft on the paralyzed or unconscious
+    const tilt = pv.mode === 'normal' ? '' : ` with ${pv.mode === 'adv' ? 'advantage' : 'disadvantage'} (${pv.tilts.map((x) => x.text).join(', ')})`;
+    const log = [{ unit: me.id, kind: 'attack', roll: r, expr: pv.expr, text: `${me.name} ${how ? `makes ${how} against` : 'attacks'} ${t.name} with ${attack.name}${tilt}${pv.weak ? ` (weakened, −${pv.weak})` : ''}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}` }];
+    const events = [];
+    if (!hit) { events.push({ kind: 'miss', unit: t.id }); return { ok: true, log, events }; }
+    const expr = crit ? attack.crit || attack.damage : attack.damage;
+    const d = roll(expr);
+    const corr = levelOf(w, t, 'Corroded');   // corroded: 1 more damage from weapons for each level
+    const df = defended(t, Math.max(0, d.total) + corr, String(attack.type || '').toLowerCase(), attack.enhanced ? 'enhanced' : 'weapon');
+    const amount = df.amount;
+    const took = takeDamage(t, amount);
+    log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 ? ' and drops to 0 hit points.' : '.'}` });
+    events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
+    concentrationCheck(w, t, amount, roll, log);
+    return { ok: true, log, events };
+  }
+  // Who may make an opportunity attack on a move along `path`: a hostile unit that can see the mover, can react, and
+  // whose melee reach the mover leaves. `at` is the last square still in that reach, where the attack happens.
+  // Disengage, and an invisible mover, give none.
+  function opportunities(w, me, path) {
+    const out = [];
+    if (spentOf(w, me.id).disengage || (me.conditions || []).includes('Invisible')) return out;
+    for (const o of Object.values(w.units)) {
+      if (o.id === me.id || !hostile(me, o) || o.down || INCAPACITATING(o) || (o.conditions || []).includes('Blinded') || !budget(w, o.id).reaction) continue;
+      const reach = +o.reach || FT;
+      for (let i = 0; i + 1 < path.length; i++) {
+        const here = Object.assign({}, me, path[i]), next = Object.assign({}, me, path[i + 1]);
+        if (feetBetween(o, here) <= reach && feetBetween(o, next) > reach) { out.push({ reactor: o.id, against: me.id, kind: 'opportunity', at: { x: path[i].x, y: path[i].y } }); break; }
+      }
+    }
+    return out;
+  }
+  // A reaction taken: the opportunity attack, made where the mover left the reach. If it drops the mover, the mover
+  // stays there (its movement ends); otherwise it carries on to where it went.
+  function react(world, re, roll) {
+    const w = clone(world);
+    w.spent = w.spent || {}; w.effects = w.effects || []; w.conc = w.conc || {};
+    const me = w.units[re.reactor], t = w.units[re.against];
+    if (!me || !t) return no('That combatant is not on the map.');
+    if (t.down) return no(`${t.name} is already down.`);
+    if (INCAPACITATING(me)) return no(`${me.name} can't react right now.`);
+    if (!budget(w, me.id).reaction) return no(`${me.name} has no reaction left.`);
+    if (!re.attack || !(+re.attack.melee > 0)) return no('An opportunity attack is a melee attack.');
+    const there = { x: t.x, y: t.y };
+    if (re.at) { t.x = re.at.x; t.y = re.at.y; }
+    const s = strike(w, me, t.id, re.attack, { adv: !!re.adv, dis: !!re.dis }, roll, 'an opportunity attack');
+    if (!s.ok) return s;
+    if (!(t.hp != null && t.hp <= 0)) { t.x = there.x; t.y = there.y; }
+    w.spent[me.id] = Object.assign(spentOf(w, me.id), { reaction: spentOf(w, me.id).reaction + 1 });
+    settle(w, s.log);
+    return { ok: true, world: w, log: s.log, events: s.events };
   }
   // a unit's concentration ends: its effects (and the conditions they gave) go
   function endConcentration(w, id, why, log) {
@@ -783,6 +864,8 @@
       units[e.id] = {
         id: e.id, name: e.name, side: e.charId ? 'pc' : 'npc', charId: e.charId || null, owner: ch ? ch.owner : null, tokenId: tok.id,
         x: tok.x, y: tok.y, size: tok.size || 1,
+        sizeCat: ch ? null : ((table.npcStats || {})[e.id] || {}).sizeCat ?? null,
+        reach: ch && rules ? Math.max(FT, ...attacksOf(ch, rules).map((a) => a.melee || 0)) : +(((table.npcStats || {})[e.id] || {}).reach) || FT,
         ac: ch ? +ch.ac : e.ac == null || e.ac === '' ? null : +e.ac,
         hp: ch ? +hp.current : e.hp == null || e.hp === '' ? null : +e.hp, maxHp: ch ? +hp.max : e.maxHp == null ? null : +e.maxHp,
         temp: ch ? +hp.temp || 0 : 0,
@@ -807,5 +890,5 @@
   return { FT, TURN, squaresBetween, feetBetween, reachable, readRange, attacksOf, attackFromBehavior, REASONS, preview, budget, apply, takeDamage, buildWorld, turnKey,
     cleanResources, resourcesOf, atLevel, spend, rest, powerNumbers, resolvePower, weaponAbility, abilitiesOf, inReachOf, cleanAbility, setPoolUsed,
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
-    setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE };
+    setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf };
 });

@@ -23,14 +23,16 @@
       characters: s.characters, entries: s.initiative.entries, active: f.active, turnId: f.turn, round: f.round, tokens: s.map.tokens,
       unitTokens: Object.fromEntries(Object.entries(f.units || {}).map(([id, u]) => [id, u.token])), npcSpeed: f.npcSpeed,
       spent: f.spent, defenses: f.defenses || {}, effects: f.effects || [], conc: f.conc || {},
-      npcStats: Object.fromEntries(Object.keys(f.npcDefenses || {}).map((k) => [k, Object.assign({ saves: (f.npcSaves || {})[k] || {}, mods: (f.npcMods || {})[k] || {} }, f.npcDefenses[k])])),
+      npcStats: Object.fromEntries(Array.from(new Set(Object.keys(f.npcDefenses || {}).concat(Object.keys(f.npcBody || {})))).map((k) => [k,
+        Object.assign({ saves: (f.npcSaves || {})[k] || {}, mods: (f.npcMods || {})[k] || {} }, (f.npcDefenses || {})[k] || {}, (f.npcBody || {})[k] || {})])),
     }, R);
     for (const [id, u] of Object.entries(f.units || {})) if (w.units[id] && u.down) w.units[id].down = true;
     UI.cache = { st: s, w, reach: null };
     return w;
   }
   const cur = () => { const w = world(); return w.turnId ? w.units[w.turnId] : null; };
-  const myTurn = () => { const f = F(), u = cur(); return !!(f.on && u && (gm() ? true : (f.units[u.id] || {}).mine)); };
+  // the turn is yours to play, unless it waits for someone's answer to a reaction
+  const myTurn = () => { const f = F(), u = cur(); return !!(f.on && u && !(f.pending || []).length && (gm() ? true : (f.units[u.id] || {}).mine)); };
   const entry = (id) => st().initiative.entries.find((e) => e.id === id);
   const unitAt = (gx, gy) => {
     const w = world();
@@ -78,13 +80,14 @@
         const saves = Object.fromEntries(['str', 'dex', 'con', 'int', 'wis', 'cha'].map((ab) => [ab, Math.floor(((m.ab || {})[ab] - 10) / 2) || 0]));
         for (const x of m.saves || []) { const mm = /^(str|dex|con|int|wis|cha)\w*\s*([+-]\d+)/i.exec(x); if (mm) saves[mm[1].toLowerCase()] = +mm[2]; }
         const mods = Object.fromEntries(['str', 'dex', 'con', 'int', 'wis', 'cha'].filter((ab) => Number.isFinite(+(m.ab || {})[ab])).map((ab) => [ab, Math.floor(((m.ab || {})[ab] - 10) / 2)]));
-        UI.npcAsked[id] = true; act('fight.npc', { id, speed: sp ? +sp[1] : 30, saves, mods, resist: m.res || [], immune: m.imm || [], vuln: m.vul || [], condImmune: m.cimm || [] });
+        const reach = Math.max(5, ...atks.map((a) => a.melee || 0));
+        UI.npcAsked[id] = true; act('fight.npc', { id, speed: sp ? +sp[1] : 30, saves, mods, size: m.size || '', reach, resist: m.res || [], immune: m.imm || [], vuln: m.vul || [], condImmune: m.cimm || [] });
       }
       render(); H.drawMap();
     }).catch(() => { UI.npc[id] = { attacks: [] }; render(); });
   }
-  function customAttack() {
-    const u = cur();
+  function customAttack(forUnit) {
+    const u = forUnit || cur();
     H.modal(`<h3>Custom attack</h3>
       <p class="muted">For ${esc(u.name)}: an attack that isn't in its stat block.</p>
       <label>Name <input id="ctcName" value="Attack" maxlength="60"></label>
@@ -99,7 +102,7 @@
         const damage = $('#ctcDmg', box).value.replace(/\s+/g, '');
         UI.custom = { unit: u.id, spec: { key: 'custom', name: $('#ctcName', box).value || 'Attack', bonus: +$('#ctcBonus', box).value || 0, damage,
           crit: damage.replace(/(\d*)d(\d+)/gi, (_, n, s) => (2 * (+n || 1)) + 'd' + s), type: '', melee: rg ? 0 : +$('#ctcReach', box).value || 5, range: rg ? [+rg[1], +rg[2]] : null } };
-        UI.armed = 'custom';
+        if (!forUnit) UI.armed = 'custom';
         H.closeModal(); render(); H.drawMap();
       };
     });
@@ -146,11 +149,19 @@
     UI.busy = true;
     try { return await act(type, payload); } finally { UI.busy = false; }
   }
+  const specOut = (spec) => ({ name: spec.name, bonus: spec.bonus, damage: spec.damage, type: spec.type, melee: spec.melee, range: spec.range });
+  // the melee attacks a reacting combatant has: its sheet's, or (for the GM) its stat block's
+  function meleeOf(re) {
+    if (re.charId) { const ch = st().characters[re.charId]; return ch ? E.attacksOf(ch, R).filter((a) => a.melee > 0) : []; }
+    if (!gm()) return [];
+    if (!UI.npc[re.id]) loadCreature(re.id);
+    return ((UI.npc[re.id] || {}).attacks || []).concat(UI.custom && UI.custom.unit === re.id ? [UI.custom.spec] : []).filter((a) => a.melee > 0);
+  }
   async function attack(targetId) {
     const spec = armedSpec(), u = cur();
     if (!spec || !u) return;
     const r = spec.power ? await send('fight.use', Object.assign({ ability: spec.key, upcast: UI.upcast || 0, adv: UI.adv, dis: UI.dis }, spec.power.area ? { point: UI.aim } : { target: targetId }))
-      : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.key : { name: spec.name, bonus: spec.bonus, damage: spec.damage, type: spec.type, melee: spec.melee, range: spec.range } });
+      : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.key : specOut(spec) });
     if (r) { UI.armed = null; UI.target = null; UI.aim = null; UI.adv = UI.dis = false; UI.upcast = 0; render(); }
   }
 
@@ -188,7 +199,7 @@
     const who = !f.active ? 'Combat hasn\'t started' : u ? `${esc(u.name)}'s turn` : f.turn ? 'A combatant not on the map' : 'Someone you can\'t see is acting';
     const chip = (on, label, title) => `<span class="ct-chip ${on ? '' : 'spent'}" title="${esc(title)}">${on ? '' : '<span aria-hidden="true">✕ </span>'}${esc(label)}${on ? '' : ' (used)'}</span>`;
     let html = `<div class="ct-row"><span class="ct-turn">${f.active ? `Round ${+f.round || 1} · ` : ''}${who}${mine && !gm() ? ' <span class="ct-you">your turn</span>' : ''}</span>`;
-    if (bud) html += `<span class="ct-chips">${chip(bud.moveLeft > 0, `Move ${bud.moveLeft}/${bud.speed} ft`, 'Movement left this turn')}${chip(bud.action, 'Action', 'One action a turn')}${chip(bud.bonus, 'Bonus action', 'One bonus action a turn')}${chip(bud.reaction, 'Reaction', 'One reaction between your turns')}</span>`;
+    if (bud) html += `<span class="ct-chips">${chip(bud.moveLeft > 0, `Move ${bud.moveLeft}/${bud.total == null ? bud.speed : bud.total} ft`, bud.dash ? 'Movement left this turn (with Dash)' : 'Movement left this turn')}${chip(bud.action, 'Action', 'One action a turn')}${chip(bud.bonus, 'Bonus action', 'One bonus action a turn')}${chip(bud.reaction, 'Reaction', 'One reaction between your turns')}</span>`;
     html += '<span class="spacer"></span>';
     html += `<button class="btn small ghost ${UI.ruler ? 'primary' : ''}" data-ct="measure" aria-pressed="${!!UI.ruler}" title="Measure a distance on the map">📏 Measure</button>`;
     if (mine && u && f.active && (u.conditions || []).includes('Prone')) html += `<button class="btn small" data-ct="stand" title="Standing up costs half your speed">Stand up (${Math.ceil((bud ? bud.speed : 30) / 2 / 5) * 5} ft)</button>`;
@@ -199,8 +210,22 @@
     if (mine && u && f.active) html += '<button class="btn small amber" data-ct="end">End turn ⏭</button>';
     if (gm()) html += `<button class="btn small ghost" data-ct="undo" ${f.undo && f.undo.n ? '' : 'disabled'} title="${esc(f.undo && f.undo.last ? 'Undo: ' + f.undo.last : 'Nothing to undo')}">↶ Undo</button><button class="btn small ghost" data-ct="off" title="Turn the combat view off for everyone">Combat view off</button>`;
     html += '</div>';
+    // reactions waiting: the one who may react answers (or the GM for anyone); everyone else sees that the turn waits
+    for (const pr of f.pending || []) {
+      const re = w.units[pr.reactor], ag = w.units[pr.against];
+      if (!re || !ag) continue;
+      if (pr.mine) {
+        const opts = meleeOf(re);
+        html += `<div class="ct-row ct-react" role="alert"><span>⚡ <b>${esc(re.name)}</b> can make an opportunity attack on <b>${esc(ag.name)}</b>, who is leaving its reach.</span>
+          ${opts.map((a) => `<button class="btn small primary" data-ct="react" data-id="${esc(pr.id)}" data-key="${esc(a.key)}" data-unit="${esc(re.id)}">${esc(a.name)} <b>${esc(sgn(a.bonus))}</b></button>`).join('')}
+          ${opts.length ? '' : `<span class="muted">${UI.npc[re.id] && UI.npc[re.id].loading ? 'Reading the stat block…' : 'No melee attack known.'}</span>`}
+          ${gm() && !re.charId ? `<button class="btn small ghost" data-ct="custom" data-unit="${esc(re.id)}">＋ Custom attack</button>` : ''}
+          <button class="btn small ghost" data-ct="letgo" data-id="${esc(pr.id)}">Let it go</button></div>`;
+      } else html += `<div class="ct-row ct-react muted">Waiting for ${esc(re.name)}: an opportunity attack on ${esc(ag.name)}, to take or let go.</div>`;
+    }
     // the current combatant's conditions (how long each lasts) and what it is concentrating on
-    if (f.active && u && ((u.conditions || []).length || (f.conc || {})[u.id] || gm())) {
+    const flags = u ? E.spentOf(w, u.id) : {};
+    if (f.active && u && ((u.conditions || []).length || (f.conc || {})[u.id] || flags.dodge || flags.disengage || gm())) {
       const efs = (f.effects || []).filter((ef) => ef.unit === u.id);
       // what the chip says beyond the name: its level, its fire damage, who caused it, or that the DM hasn't set one
       const detail = (c) => {
@@ -219,6 +244,8 @@
         return ` (${ef.save ? `${ef.save.ability.toUpperCase()} save DC ${ef.save.dc} at the end of its turns` : `until the ${ef.ends} of ${whose} ${ef.rounds > 1 ? `turn, ${ef.rounds} rounds` : 'next turn'}`}${ef.conc ? ', while concentrating' : ''})`;
       };
       html += `<div class="ct-row ct-conds">${(u.conditions || []).map((c) => `<span class="ct-chip ct-cond" title="${esc((R.CONDITIONS || {})[c] || c)}${esc(until(c))}">${esc(c)}${esc(detail(c))}${E.CONDITION_EFFECTS[c] ? '' : ' <span class="muted">(no automatic effect yet)</span>'}${esc(until(c))}${gm() ? ` <button class="ct-x" data-ct="uncond" data-c="${esc(c)}" title="Take ${esc(c.toLowerCase())} off ${esc(u.name)}" aria-label="Take ${esc(c.toLowerCase())} off">✕</button>` : ''}</span>`).join('')}
+        ${flags.dodge ? '<span class="ct-chip" title="Attacks against it at disadvantage, Dex saves at advantage, until its next turn">Dodging</span>' : ''}
+        ${flags.disengage ? '<span class="ct-chip" title="Leaving a reach provokes no opportunity attack this turn">Disengaged</span>' : ''}
         ${gm() ? '<button class="btn tiny ghost" data-ct="cond" title="Put a condition on a combatant, with its level, its damage or who caused it">＋ Condition</button>' : ''}
         ${(f.conc || {})[u.id] ? `<span class="ct-chip ct-conc" title="Damage asks for a Con save; dropping to 0 hit points or being incapacitated ends it">Concentrating: ${esc(f.conc[u.id])}</span>` : ''}</div>`;
     }
@@ -245,6 +272,10 @@
         const tag = a.power ? (a.power.attack ? sgn(a.power.attack.bonus) : a.power.save ? `DC ${a.power.save.dc}` : '') : sgn(a.bonus);
         html += `<button class="btn small ct-atk ${a.power ? 'ct-power' : ''} ${UI.armed === a.key ? 'primary' : ''}" data-ct="arm" data-key="${esc(a.key)}" ${off ? 'disabled' : ''} aria-pressed="${UI.armed === a.key}"
           title="${esc(why)}">${esc(a.name)} <b>${esc(tag)}</b> <span class="muted">${esc(a.damage)}${a.type ? ' ' + esc(a.type) : ''} · ${a.power && a.power.targets === 'self' ? 'self' : a.range ? `${a.range[0]}${a.range[1] !== a.range[0] ? '/' + a.range[1] : ''} ft` : `${a.melee} ft`}${pool ? ` · ${pool[1]} ${pool[0] === 'force' ? 'FP' : pool[0] === 'tech' ? 'TP' : pool[0]}` : ''}${slot !== 'action' ? ` · ${slot === 'bonus' ? 'bonus' : slot}` : ''}</span></button>`;
+      }
+      for (const c of E.COMMON) {
+        const used = bud && !bud[c.use];
+        html += `<button class="btn small ghost ct-common" data-ct="common" data-key="${esc(c.key)}" ${used ? 'disabled' : ''} title="${esc(used ? `Your ${c.use === 'bonus' ? 'bonus action' : c.use} is used this turn` : c.hint)}">${esc(c.name)}</button>`;
       }
       if (gm() && u.charId) html += '<button class="btn small ghost" data-ct="teach" title="Give the table the numbers for one of this character\'s powers">＋ Power data</button>';
       if (!atks.length) html += `<span class="muted">${u.charId ? 'No weapon attacks on this sheet.' : UI.npc[u.id] && UI.npc[u.id].loading ? 'Reading the stat block…' : 'No attacks found in the stat block.'}</span>`;
@@ -291,9 +322,16 @@
     if (k === 'end') { UI.armed = UI.target = null; return send('fight.end', {}); }
     if (k === 'stand') return send('fight.stand', {});
     if (k === 'douse') return send('fight.douse', { target: el.dataset.id });
+    if (k === 'common') return send('fight.common', { key: el.dataset.key });
+    if (k === 'letgo') return send('fight.react', { id: el.dataset.id, take: false });
+    if (k === 'react') {
+      const re = world().units[el.dataset.unit], a = re && meleeOf(re).find((x) => x.key === el.dataset.key);
+      if (!a) return;
+      return send('fight.react', { id: el.dataset.id, take: true, attack: re.charId ? a.key : specOut(a) });
+    }
     if (k === 'cond') return conditionModal();
     if (k === 'uncond') { const u = cur(); return u && send('fight.condition', { unit: u.id, condition: el.dataset.c, op: 'remove' }); }
-    if (k === 'custom') return customAttack();
+    if (k === 'custom') return customAttack(el.dataset.unit ? world().units[el.dataset.unit] : null);
     if (k === 'pool') return poolModal(el.dataset.key);
     if (k === 'addres') return resourceModal();
     if (k === 'defs') return defencesModal();

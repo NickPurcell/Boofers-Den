@@ -15,6 +15,7 @@ require("../sections/jpesus/holotable/rules.js");
 const R = globalThis.SW5E;
 
 const UNDO_MAX = 20, EVENTS_MAX = 30;
+const SIZES = ["Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"];
 // the conditions the DM can set from the combat view: HoloTable's list, plus SW5e's levelled ones until #77 brings them to rules.js
 const CONDS = new Set([...Object.keys((R && R.CONDITIONS) || {}), ...Object.keys(E.CONDITION_EFFECTS), "Deafened", "Diseased"]);
 const ID = /^[a-z0-9]{6,20}$/;
@@ -35,7 +36,8 @@ function state(camp) {
     npc: Object.fromEntries(Object.entries(plainObj(f.npc)).filter(([k]) => ID.test(k)).map(([k, v]) => {
       const o = typeof v === "object" && v ? v : { speed: v };
       const abl = (x, lo, hi) => Object.fromEntries(Object.entries(plainObj(x)).filter(([ab, n]) => ["str", "dex", "con", "int", "wis", "cha"].includes(ab) && Number.isFinite(+n)).map(([ab, n]) => [ab, clamp(int(n), lo, hi)]));
-      return [k, Object.assign({ speed: clamp(int(o.speed, 30), 0, 200), saves: abl(o.saves, -10, 30), mods: abl(o.mods, -5, 15) }, defences(o))];
+      return [k, Object.assign({ speed: clamp(int(o.speed, 30), 0, 200), saves: abl(o.saves, -10, 30), mods: abl(o.mods, -5, 15),
+        sizeCat: o.sizeCat == null || o.sizeCat === "" ? null : clamp(int(o.sizeCat, 2), 0, 5), reach: clamp(int(o.reach, 5), 5, 30) }, defences(o))];
     })),
     // a character's resistances, immunities and vulnerabilities (set by its owner or the GM in the combat view)
     defenses: Object.fromEntries(Object.entries(plainObj(f.defenses)).filter(([k]) => ID.test(k)).slice(0, 60).map(([k, v]) => [k, defences(plainObj(v))])),
@@ -43,7 +45,10 @@ function state(camp) {
     lib: Object.fromEntries(Object.entries(plainObj(f.lib)).slice(0, 300).map(([k, v]) => [str(k, 80).toLowerCase(), E.cleanAbility(v)]).filter(([k, v]) => k && v)),
     // what each unit has spent of its turn (movement in feet, action, bonus action, reaction), since its turn began
     spent: Object.fromEntries(Object.entries(plainObj(f.spent)).filter(([k, v]) => ID.test(k) && v && typeof v === "object")
-      .map(([k, v]) => [k, { key: str(v.key, 40), move: clamp(int(v.move), 0, 1000), action: clamp(int(v.action), 0, 9), bonus: clamp(int(v.bonus), 0, 9), reaction: clamp(int(v.reaction), 0, 9) }])),
+      .map(([k, v]) => [k, { key: str(v.key, 40), move: clamp(int(v.move), 0, 1000), action: clamp(int(v.action), 0, 9), bonus: clamp(int(v.bonus), 0, 9), reaction: clamp(int(v.reaction), 0, 9),
+        dash: clamp(int(v.dash), 0, 9), disengage: v.disengage ? 1 : 0, dodge: v.dodge ? 1 : 0 }])),
+    // reactions waiting for an answer: an opportunity attack someone may take (the turn waits until it's answered)
+    pending: (Array.isArray(f.pending) ? f.pending : []).slice(0, 12).map(cleanPending).filter(Boolean),
     undo: (Array.isArray(f.undo) ? f.undo : []).filter((x) => x && typeof x === "object").slice(-UNDO_MAX).map(cleanSnap),
     events: (Array.isArray(f.events) ? f.events : []).filter((x) => x && typeof x === "object").slice(-EVENTS_MAX).map((ev) => ({
       seq: int(ev.seq), at: +ev.at || 0, kind: ["move", "hit", "crit", "miss", "heal"].includes(ev.kind) ? ev.kind : "move",
@@ -63,6 +68,11 @@ function state(camp) {
   return camp.fight;
 }
 
+function cleanPending(x) {
+  if (!x || typeof x !== "object" || !ID.test(String(x.reactor || "")) || !ID.test(String(x.against || ""))) return null;
+  const at = plainObj(x.at);
+  return { id: str(x.id, 30), kind: "opportunity", reactor: x.reactor, against: x.against, at: { x: clamp(int(at.x), -500, 1000), y: clamp(int(at.y), -500, 1000) }, turn: str(x.turn, 60) };
+}
 // damage defences as the engine reads them: [{ type, only }], for resist / immune / vuln, plus condition immunities
 function defences(o) {
   const list = (v) => (Array.isArray(v) ? v : []).slice(0, 13).filter((d) => d && E.DAMAGE.includes(d.type)).map((d) => ({ type: d.type, only: d.only === "unenhanced" ? "unenhanced" : null }));
@@ -83,6 +93,7 @@ function cleanSnap(x) {
     effects: Array.isArray(x.effects) ? state({ fight: { effects: x.effects } }).effects : [],
     conc: Object.fromEntries(Object.entries(plainObj(x.conc)).filter(([k, v]) => ID.test(k) && typeof v === "string").map(([k, v]) => [k, str(v, 80)])),
     lastTurn: str(x.lastTurn, 60),
+    pending: (Array.isArray(x.pending) ? x.pending : []).slice(0, 12).map(cleanPending).filter(Boolean),
     conds: (Array.isArray(x.conds) ? x.conds : []).slice(0, 300).filter((c) => Array.isArray(c) && typeof c[0] === "string")
       .map(([id, ec, cc]) => [id, (Array.isArray(ec) ? ec : []).slice(0, 20).map((c) => str(c, 30)), Array.isArray(cc) ? cc.slice(0, 20).map((c) => str(c, 30)) : null]),
     chars: (Array.isArray(x.chars) ? x.chars : []).slice(0, 60).filter((c) => Array.isArray(c) && typeof c[0] === "string" && c[1] && typeof c[1] === "object")
@@ -153,7 +164,7 @@ function snapshot(camp, label) {
     label: str(label, 120), at: now(), seq: f.seq,
     ini: { turnId: (ini.entries[ini.turn] || {}).id || null, round: ini.round, active: ini.active },
     spent: JSON.parse(JSON.stringify(f.spent || {})),
-    effects: JSON.parse(JSON.stringify(f.effects || [])), conc: Object.assign({}, f.conc), lastTurn: f.lastTurn || "",
+    effects: JSON.parse(JSON.stringify(f.effects || [])), conc: Object.assign({}, f.conc), lastTurn: f.lastTurn || "", pending: JSON.parse(JSON.stringify(f.pending || [])),
     conds: ini.entries.map((e) => [e.id, (e.conditions || []).slice(), e.charId && camp.characters[e.charId] ? (camp.characters[e.charId].conditions || []).slice() : null]),
     chars: Object.values(camp.characters).map((c) => [c.id, JSON.parse(JSON.stringify({ resources: c.resources || [], force: c.force, tech: c.tech, hitDiceUsed: c.hitDiceUsed }))]),
     tokens: (camp.map.tokens || []).filter((t) => tok.has(t.id)).map((t) => [t.id, t.x, t.y]),
@@ -178,6 +189,7 @@ function restore(camp, s) {
   if (Array.isArray(s.effects)) f.effects = s.effects;
   if (s.conc) f.conc = s.conc;
   if (typeof s.lastTurn === "string") f.lastTurn = s.lastTurn;
+  if (Array.isArray(s.pending)) f.pending = s.pending;
   for (const [id, ec, cc] of s.conds || []) {
     const e = ini.entries.find((k) => k.id === id);
     if (e) e.conditions = ec;
@@ -223,6 +235,7 @@ function tick(camp, cid, G) {
   if (!key || key.split(":").slice(0, 2).join(":") === (f.lastTurn || "").split(":").slice(0, 2).join(":")) return;
   const [lr, prevId, lt] = (f.lastTurn || "").split(":");
   f.lastTurn = key;
+  f.pending = [];   // a reaction nobody answered lapses when the turn moves on
   // the tracker stepped back (Prev): nothing ends, nothing is saved against; the DM undoes or edits what should come back
   if (lt !== undefined && (ini.round < +lr || (ini.round === +lr && ini.turn < +lt))) return;
   if (!f.effects.length && !Object.keys(f.conc).length) return;
@@ -236,6 +249,44 @@ function tick(camp, cid, G) {
     if (hidden) { msg.to = ["@gm"]; msg.private = true; msg.fromId = "@gm"; }
     G.addChat(camp, msg);
   }
+}
+
+// What an action did, into chat (the roll lines as rolls, the way HoloTable shows every roll) and into the floating
+// numbers on the map. Lines about a hidden creature, or by one, go to the GM only.
+function report(camp, cid, gm, G, actor, world, r, skipFirst) {
+  const f = camp.fight, ut = unitTokens(camp);
+  const entry = (id) => camp.initiative.entries.find((e) => e.id === id);
+  const isHidden = (id) => !!id && hiddenEntry(camp, entry(id) || {}, ut[id]);
+  const secret = isHidden(actor.id);
+  const ch = actor.charId && camp.characters[actor.charId];
+  for (const [i, line] of r.log.entries()) {
+    if (!line.roll) {   // plain lines go to chat (a condition ending, concentration lost), but not "moves 10 ft." or "ends the turn."
+      if (i === 0 && skipFirst) continue;
+      G.addChat(camp, Object.assign({ system: true, fight: true, text: str(line.text, 200) }, secret || isHidden(line.unit) || isHidden(line.about) ? { to: ["@gm"], private: true } : {}));
+      continue;
+    }
+    const msg = { from: G.playerName(camp, cid), fromId: cid, fight: true,
+      roll: { total: line.roll.total, detail: line.roll.detail, nat: line.roll.nat == null ? null : line.roll.nat, expr: line.expr, label: str(line.text, 200), kind: line.kind } };
+    if (ch) msg.charName = ch.name;
+    if (secret || isHidden(line.unit)) {
+      msg.to = ["@gm"]; msg.private = true;
+      // HoloTable shows a message to its sender too, so a line about a hidden creature can't come from the player
+      if (!gm) { msg.fromId = "@gm"; msg.from = "Combat (GM only)"; delete msg.charName; }
+    }
+    G.addChat(camp, msg);
+  }
+  if (secret) {   // what everyone can see: the hit on someone they can see
+    for (const ev of r.events) {
+      const t = world.units[ev.unit];
+      if (t && (ev.kind === "hit" || ev.kind === "crit") && !isHidden(t.id)) G.addChat(camp, { system: true, fight: true, text: `${t.name} is hit for ${ev.amount} damage.` });
+    }
+  }
+  for (const ev of r.events) {
+    const u = r.world.units[ev.unit];
+    f.events.push({ seq: ++f.seq, at: now(), kind: ev.kind, token: u ? u.tokenId : null, amount: ev.amount == null ? null : ev.amount, feet: ev.feet == null ? null : ev.feet,
+      hidden: secret && ev.kind === "move" ? true : isHidden(ev.unit) });
+  }
+  if (f.events.length > EVENTS_MAX) f.events.splice(0, f.events.length - EVENTS_MAX);
 }
 
 function apply(camp, cid, gm, type, p, G) {
@@ -256,7 +307,8 @@ function apply(camp, cid, gm, type, p, G) {
       // defences arrive as the stat block's own lines ("Kinetic from unenhanced weapons") and are read here
       const lines = (v) => (Array.isArray(v) ? v : []).slice(0, 12).map((x) => str(x, 80));
       const abl = (x, lo, hi) => Object.fromEntries(Object.entries(plainObj(x)).filter(([ab, n]) => ["str", "dex", "con", "int", "wis", "cha"].includes(ab) && Number.isFinite(+n)).map(([ab, n]) => [ab, clamp(int(n), lo, hi)]));
-      f.npc[e.id] = Object.assign({ speed: clamp(int(p.speed, 30), 0, 200), saves: abl(p.saves, -10, 30), mods: abl(p.mods, -5, 15) },
+      const sizeAt = SIZES.indexOf(str(p.size, 12));
+      f.npc[e.id] = Object.assign({ speed: clamp(int(p.speed, 30), 0, 200), saves: abl(p.saves, -10, 30), mods: abl(p.mods, -5, 15), sizeCat: sizeAt >= 0 ? sizeAt : null, reach: clamp(int(p.reach, 5), 5, 30) },
         defences({ resist: E.readDefenses(lines(p.resist)), immune: E.readDefenses(lines(p.immune)), vuln: E.readDefenses(lines(p.vuln)), condImmune: lines(p.condImmune) }));
       return {};
     }
@@ -345,12 +397,43 @@ function apply(camp, cid, gm, type, p, G) {
       for (const line of r.log) G.addChat(camp, Object.assign({ system: true, text: str(line.text, 200) }, isHidden(line.unit) || isHidden(line.about) ? { to: ["@gm"], private: true } : {}));
       return {};
     }
-    case "fight.move": case "fight.attack": case "fight.end": case "fight.use": case "fight.stand": case "fight.douse": {
+    case "fight.react": {   // an answer to a reaction prompt: take the opportunity attack, or let it go (the GM can answer any)
+      if (!f.on) throw new G.Invalid("The combat view is off.");
+      tick(camp, cid, G);
+      const pend = f.pending.find((x) => x.id === String(p.id || ""));
+      if (!pend) throw new G.Invalid("That reaction has already been answered or has lapsed.");
+      const re = entry(pend.reactor), against = entry(pend.against);
+      need(re && mayAct(camp, cid, gm, re), "That reaction isn't yours to take.");
+      if (!p.take) {
+        f.pending = f.pending.filter((x) => x !== pend);
+        G.addChat(camp, { system: true, fight: true, text: str(`${re.name} lets ${against ? against.name : "them"} go.`, 200) });
+        return {};
+      }
+      const world = worldOf(camp, !gm);
+      let spec;
+      if (re.charId) {
+        const ch = camp.characters[re.charId];
+        spec = ch && E.attacksOf(ch, R).find((a) => a.key === String(p.attack));
+        if (!spec) throw new G.Invalid("That attack isn't on the sheet.");
+      } else spec = cleanSpec(p.attack, G);
+      const r = E.react(world, { reactor: re.id, against: pend.against, at: pend.at, attack: spec, adv: !!p.adv, dis: !!p.dis }, (expr) => G.rollDice(expr));
+      if (!r.ok) throw new G.Invalid(r.why);
+      snapshot(camp, `${re.name}'s opportunity attack`);
+      f.pending = f.pending.filter((x) => x !== pend);
+      writeBack(camp, cid, world, r.world, G);
+      report(camp, cid, gm, G, re, world, r, false);
+      return {};
+    }
+    case "fight.move": case "fight.attack": case "fight.end": case "fight.use": case "fight.stand": case "fight.douse": case "fight.common": {
       if (!f.on) throw new G.Invalid("The combat view is off.");
       const cur = ini.entries[ini.turn];
       if (!ini.active || !cur) throw new G.Invalid("Combat hasn't started: start initiative first.");
       need(mayAct(camp, cid, gm, cur), "It's not your turn.");
       tick(camp, cid, G);
+      if (f.pending.length) {
+        const who = f.pending.map((x) => (entry(x.reactor) || {}).name).filter(Boolean);
+        throw new G.Invalid(`Waiting for ${who.join(" and ") || "a reaction"}: an opportunity attack to take or let go.`);
+      }
       // an area catches whoever is in it, hidden or not; only its rolls about a hidden one stay with the GM
       const areaUse = type === "fight.use" && cur.charId && (() => {
         const ch = camp.characters[cur.charId];
@@ -369,6 +452,7 @@ function apply(camp, cid, gm, type, p, G) {
       else if (type === "fight.end") act = { type: "end", unit: cur.id };
       else if (type === "fight.stand") act = { type: "stand", unit: cur.id };
       else if (type === "fight.douse") act = { type: "douse", unit: cur.id, target: String(p.target || "") };
+      else if (type === "fight.common") act = { type: "common", unit: cur.id, key: String(p.key || "") };
       else if (type === "fight.use") {
         const ch = cur.charId && camp.characters[cur.charId];
         if (!ch) throw new G.Invalid("Creatures use their attacks for now.");
@@ -388,42 +472,18 @@ function apply(camp, cid, gm, type, p, G) {
       }
       const r = E.apply(world, act, (expr) => G.rollDice(expr));
       if (!r.ok) throw new G.Invalid(r.why);
-      const label = type === "fight.douse" ? `${cur.name} put out flames` : type === "fight.stand" ? `${cur.name} stood up` : type === "fight.move" ? `${cur.name} moved` : type === "fight.end" ? `${cur.name} ended the turn` : type === "fight.use" ? `${cur.name} used ${act.ability.name}` : `${cur.name}'s attack`;
+      const label = type === "fight.common" ? `${cur.name} took ${String(p.key || "an action")}` : type === "fight.douse" ? `${cur.name} put out flames` : type === "fight.stand" ? `${cur.name} stood up` : type === "fight.move" ? `${cur.name} moved` : type === "fight.end" ? `${cur.name} ended the turn` : type === "fight.use" ? `${cur.name} used ${act.ability.name}` : `${cur.name}'s attack`;
       snapshot(camp, label);
       writeBack(camp, cid, world, r.world, G);
-      // the roll lines go to chat as rolls, the way HoloTable shows every roll; a hidden creature's go to the GM only
-      const secret = hiddenEntry(camp, cur, unitTokens(camp)[cur.id]);
-      const ch = cur.charId && camp.characters[cur.charId];
+      report(camp, cid, gm, G, cur, world, r, type === "fight.move" || type === "fight.end");
+      // a move out of someone's reach: they may take an opportunity attack, and the turn waits for their answer.
+      // Only between combatants everyone can see: a hidden creature never gives itself away by reacting.
       const ut = unitTokens(camp), isHidden = (id) => !!id && hiddenEntry(camp, entry(id) || {}, ut[id]);
-      for (const [i, line] of r.log.entries()) {
-        if (!line.roll) {   // plain lines go to chat (a condition ending, concentration lost), but not "moves 10 ft." or "ends the turn."
-          if (i === 0 && (type === "fight.move" || type === "fight.end")) continue;
-          G.addChat(camp, Object.assign({ system: true, text: str(line.text, 200) }, secret || isHidden(line.unit) || isHidden(line.about) ? { to: ["@gm"], private: true } : {}));
-          continue;
-        }
-        const msg = { from: G.playerName(camp, cid), fromId: cid, fight: true,
-          roll: { total: line.roll.total, detail: line.roll.detail, nat: line.roll.nat == null ? null : line.roll.nat, expr: line.expr, label: str(line.text, 200), kind: line.kind } };
-        if (ch) msg.charName = ch.name;
-        const aboutHidden = line.unit && hiddenEntry(camp, entry(line.unit) || {}, (world.units[line.unit] || {}).tokenId);
-        if (secret || aboutHidden) {
-          msg.to = ["@gm"]; msg.private = true;
-          // HoloTable shows a message to its sender too, so a line about a hidden creature can't come from the player
-          if (!gm) { msg.fromId = "@gm"; msg.from = "Combat (GM only)"; delete msg.charName; }
-        }
-        G.addChat(camp, msg);
+      for (const re of r.reactions || []) {
+        if (isHidden(re.reactor) || isHidden(re.against)) continue;
+        f.pending.push({ id: String(++f.seq), kind: "opportunity", reactor: re.reactor, against: re.against, at: re.at, turn: f.lastTurn });
+        G.addChat(camp, { system: true, fight: true, text: str(`${cur.name} leaves ${entry(re.reactor).name}'s reach: ${entry(re.reactor).name} can make an opportunity attack.`, 200) });
       }
-      if (secret) {   // what everyone can see: the hit on someone they can see
-        for (const ev of r.events) {
-          const t = world.units[ev.unit];
-          if (t && (ev.kind === "hit" || ev.kind === "crit") && !hiddenEntry(camp, entry(t.id) || {}, t.tokenId)) G.addChat(camp, { system: true, text: `${t.name} is hit for ${ev.amount} damage.` });
-        }
-      }
-      for (const ev of r.events) {
-        const u = r.world.units[ev.unit];
-        f.events.push({ seq: ++f.seq, at: now(), kind: ev.kind, token: u ? u.tokenId : null, amount: ev.amount == null ? null : ev.amount, feet: ev.feet == null ? null : ev.feet,
-          hidden: secret && ev.kind === "move" ? true : hiddenEntry(camp, entry(ev.unit) || {}, u && u.tokenId) });
-      }
-      if (f.events.length > EVENTS_MAX) f.events.splice(0, f.events.length - EVENTS_MAX);
       if (r.endTurn) { G.applyAction(camp, cid, true, "init.next", {}); tick(camp, cid, G); }
       return {};
     }
@@ -466,6 +526,13 @@ function view(camp, cid, gm) {
     effects: (f.effects || []).filter((ef) => units[ef.unit]).map((ef) => ({ unit: ef.unit, condition: ef.condition, ends: ef.ends, of: units[ef.of] ? ef.of : null, rounds: ef.rounds, save: ef.save, conc: ef.conc,
       level: ef.level || 0, amount: ef.amount || "", source: units[ef.source] ? ef.source : null })),   // a grappler or charmer the viewer can't see stays unnamed
     conc: Object.fromEntries(Object.entries(f.conc || {}).filter(([id]) => units[id])),
+    // a creature's size and reach, for the ones this viewer can see (both show on the map anyway)
+    npcBody: Object.fromEntries(Object.entries(f.npc || {}).filter(([k]) => units[k]).map(([k, v]) => [k, { sizeCat: v.sizeCat == null ? null : v.sizeCat, reach: v.reach || 5 }])),
+    // reactions waiting: who may react to whom; `mine` when this viewer is the one to answer
+    pending: (f.pending || []).filter((x) => units[x.reactor] && units[x.against] && cur && x.turn === `${ini.round}:${cur.id}:${ini.turn}`).map((x) => {   // lapsed once the turn moves on
+      const re = ini.entries.find((e) => e.id === x.reactor);
+      return { id: x.id, kind: x.kind, reactor: x.reactor, against: x.against, mine: !!re && mayAct(camp, cid, gm, re) };
+    }),
   };
 }
 
