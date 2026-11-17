@@ -264,10 +264,10 @@
   const alpha = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; };
   // under the tokens: the squares you can reach
   function under(ctx, g, z) {
-    if (!F().on || !myTurn() || UI.armed) return;
-    const holo = cssVar('--holo', '#4fc3f7');
+    if (!F().on || !myTurn()) return;
+    const holo = cssVar('--holo', '#4fc3f7'), dim = UI.armed ? 0.45 : 1;   // fainter while an attack is picked
     ctx.save();
-    ctx.fillStyle = alpha(holo, 0.16); ctx.strokeStyle = alpha(holo, 0.55); ctx.lineWidth = 1 / z;
+    ctx.fillStyle = alpha(holo, 0.16 * dim); ctx.strokeStyle = alpha(holo, 0.55 * dim); ctx.lineWidth = 1 / z;
     for (const k of Object.keys(reach())) {
       const [x, y] = k.split(',').map(Number);
       ctx.fillRect(x * g + 2, y * g + 2, g - 4, g - 4); ctx.strokeRect(x * g + 2, y * g + 2, g - 4, g - 4);

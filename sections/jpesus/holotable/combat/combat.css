@@ -20,9 +20,14 @@
 .ct-tog input { width: auto; margin: 0; }
 .ct-preview { background: color-mix(in srgb, var(--holo) 8%, var(--panel)); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
 .ct-hint { font-size: 13px; }
-/* a phone's map is short: keep the bar to two compact rows, the attacks scrolling sideways */
+/* the map always keeps room while the bar shows: the bar scrolls inside itself instead of squeezing the board */
+#pane-map:has(.ct-bar:not([hidden])) .map-body { min-height: 150px; }
+/* a phone's map is short: keep the bar compact, the attacks scrolling sideways */
 @media (max-width: 700px) {
-  .ct-bar { padding: 4px 6px; gap: 4px; font-size: 13px; max-height: none; }
+  .ct-bar { padding: 4px 6px; gap: 4px; font-size: 13px; max-height: 45%; }
+  .ct-pools:not(:has(.ct-pool)) { display: none; }
+  .ct-preview { font-size: 12px; line-height: 1.3; order: -1; }   /* the Attack button first, never below the fold */
+  .ct-preview .btn { padding: 3px 10px; }
   .ct-row { gap: 6px; }
   .ct-chip { font-size: 11px; padding: 1px 6px; }
   .ct-actions { flex-wrap: nowrap; overflow-x: auto; }
