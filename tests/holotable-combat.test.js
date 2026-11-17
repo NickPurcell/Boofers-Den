@@ -1341,3 +1341,51 @@ test("review #89 through the API: one diagonal step at a time is 5, 10, 5, 10 ft
   assert.deepEqual(left, [25, 15, 10, 0]);
   assert.equal((await sam.act("fight.move", { x: 5, y: 5 })).code, 400);
 });
+
+/* ---------------------------------------------------------------- walls and line of sight (issue #93) */
+test("walls: segments cross; line of sight goes round a wall's end, not through it; doors and windows", () => {
+  assert.equal(E.crosses([0, 0], [4, 4], [0, 4], [4, 0]), true);
+  assert.equal(E.crosses([0, 0], [1, 1], [2, 0], [2, 4]), false);
+  assert.equal(E.crosses([0, 2], [4, 2], [2, 2], [2, 6]), true, "touching a wall's end counts");
+  const ava = unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 }), r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 4, y: 0 });
+  const wall = (o) => Object.assign({ a: [2, -3], b: [2, 3], kind: "wall" }, o);
+  assert.equal(E.sees(world([ava, r1], "ava"), ava, r1), true, "no walls: everyone sees everyone");
+  assert.equal(E.sees(world([ava, r1], "ava", { walls: [wall()] }), ava, r1), false);
+  assert.equal(E.sees(world([ava, r1], "ava", { walls: [wall({ b: [2, 0.5] })] }), ava, r1), true, "past the end of a short wall");
+  assert.equal(E.sees(world([ava, r1], "ava", { walls: [wall({ kind: "door", open: false })] }), ava, r1), false);
+  assert.equal(E.sees(world([ava, r1], "ava", { walls: [wall({ kind: "door", open: true })] }), ava, r1), true);
+  assert.equal(E.sees(world([ava, r1], "ava", { walls: [wall({ kind: "window" })] }), ava, r1), true, "a window doesn't block sight");
+  assert.deepEqual(E.cleanWalls([{ a: [1.234, 2], b: [1.234, 5], kind: "door", open: 1 }, { a: [1, 1], b: [1, 1] }, { a: [0, 0], b: [3, 0], kind: "lava" }]),
+    [{ id: "", a: [1.23, 2], b: [1.23, 5], kind: "door", open: true }]);
+});
+
+test("walls: movement can't cross a wall, a window or a closed door; it goes round, or through an open door", () => {
+  const ava = unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 });
+  const w = (walls) => world([ava], "ava", { walls });
+  assert.equal(E.reachable(w([]), "ava", 30)["3,0"], 15);
+  assert.equal(E.reachable(w([{ a: [2, -9], b: [2, 9], kind: "wall" }]), "ava", 30)["3,0"], undefined, "a long wall in the way");
+  assert.equal(E.reachable(w([{ a: [2, -9], b: [2, 9], kind: "window" }]), "ava", 30)["3,0"], undefined, "a window too");
+  const doorway = (open) => [{ a: [2, -9], b: [2, 0], kind: "wall" }, { a: [2, 0], b: [2, 1], kind: "door", open }, { a: [2, 1], b: [2, 9], kind: "wall" }];
+  assert.equal(E.reachable(w(doorway(true)), "ava", 30)["3,0"], 15, "through the open door");
+  assert.equal(E.reachable(w(doorway(false)), "ava", 30)["3,0"], undefined, "not through the closed one");
+  assert.equal(E.reachable(w([{ a: [2, 1], b: [2, 9], kind: "wall" }]), "ava", 30)["3,1"] > 10, true, "round the wall's end costs more than straight");
+  const r = E.apply(w([{ a: [2, -9], b: [2, 9], kind: "wall" }]), { type: "move", unit: "ava", x: 3, y: 0 }, dice().roll);
+  assert.equal(r.ok, false);
+});
+
+test("walls: Frightened counts only while its source is in sight; in sight, no moving closer to it", () => {
+  const ava = (o) => unit(Object.assign({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0, conditions: ["Frightened"] }, o));
+  const r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 6, y: 0 }), r2 = unit({ id: "r2", name: "Thug", side: "npc", x: 0, y: 3 });
+  const fx = [{ unit: "ava", condition: "Frightened", ends: "never", source: "r1" }];
+  const wall = [{ a: [3, -9], b: [3, 2], kind: "wall" }];
+  // in sight: disadvantage on attacks; behind the wall: none, and the preview says why
+  assert.equal(E.preview(world([ava(), r1, r2], "ava", { effects: fx }), "ava", "r2", rifle).mode, "dis");
+  const hidden = E.preview(world([ava(), r1, r2], "ava", { effects: fx, walls: wall }), "ava", "r2", rifle);
+  assert.deepEqual([hidden.mode, hidden.notes], ["normal", ["frightened, but Raider is out of sight"]]);
+  // a Frightened set by hand, with no source: it always counts (the earlier default)
+  assert.equal(E.preview(world([ava(), r1, r2], "ava", { walls: wall }), "ava", "r2", rifle).mode, "dis");
+  // in sight: stepping toward the Raider is refused, stepping away is fine; behind the wall, toward is fine
+  assert.match(E.apply(world([ava(), r1], "ava", { effects: fx }), { type: "move", unit: "ava", x: 1, y: 0 }, dice().roll).why, /frightened of Raider/);
+  assert.ok(E.apply(world([ava({ x: 2 }), r1], "ava", { effects: fx }), { type: "move", unit: "ava", x: 1, y: 0 }, dice().roll).ok);
+  assert.ok(E.apply(world([ava({ y: 0 }), r1], "ava", { effects: fx, walls: [{ a: [2, -9], b: [2, 9], kind: "wall" }] }), { type: "move", unit: "ava", x: 1, y: 0 }, dice().roll).ok);
+});
