@@ -13,10 +13,24 @@
 //   ht:rl:<bucket>     rate-limit counters
 //   ht:secret          random secret for signing sessions (only the server reads it)
 //   ht:powers, ht:equip:<set>   SW5e lists, cached for a week; ht:sw5e:lock|fail:<list> short fetch markers
-//   ht:bytes           total bytes of stored images and pack art, checked against the storage cap
-// Nothing here touches Find time to hang's hang:/hang2: keys. The game and images never expire:
-// it is meant to be picked up again next session. Size limits: images + packs <= HOLOTABLE_STORAGE_MB
-// (default 250), the game document <= 1.5 MB, and 10 backups of it.
+//   ht:audios          hash trackId -> table-audio track summary JSON
+//   ht:files           hash pathname -> {b: bytes, t: sniffed type, at} for every file in the Blob store (below)
+//   ht:bytes           total bytes of stored images, pack art and audio, checked against the storage cap
+//
+// The files themselves (uploaded images, pack art, table audio) live in the project's PRIVATE Vercel Blob
+// store, not in Redis:
+//   ht/img/<id>        an uploaded image (character photo, token, map, handout)
+//   ht/pack/<id>/<n>   one asset image of a pack
+//   ht/aud/<id>        one table-audio track
+// (htpv/... on preview deployments, like the htpv: keys.) The store is private: only these functions can
+// read it, so every file still goes out through /api/holotable after the session check, and no store URL
+// is ever handed to a browser. Files uploaded before the store existed are still in Redis under
+// ht:img:<id>, ht:a:<pack>:<n> and ht:aud:<id>:<n>; they're read from there until the GM moves them
+// (op=filemove). A file is in the store when ht:files lists it, and only then.
+//
+// Nothing here touches Find time to hang's hang:/hang2: keys. The game and files never expire:
+// it is meant to be picked up again next session. Size limits: files <= HOLOTABLE_STORAGE_MB
+// (default 1000), the game document <= 1.5 MB, and 10 backups of it.
 
 const crypto = require("crypto");
 const Redis = require("ioredis");
@@ -38,7 +52,8 @@ const K = {
   libver: () => `${NS}:libver`,
   rl: (b) => `${NS}:rl:${b}`,
   audios: () => `${NS}:audios`,                     // hash id -> table-audio track summary JSON (GM's uploads)
-  audioPart: (id, n) => `${NS}:aud:${id}:${n}`,     // one 1 MiB part of a track, raw bytes
+  audioPart: (id, n) => `${NS}:aud:${id}:${n}`,     // one 1 MiB part of a track uploaded before the Blob store, raw bytes
+  files: () => `${NS}:files`,                       // hash pathname -> JSON {b, t, at}: what is in the Blob store
   bytes: () => `${NS}:bytes`,
   secret: () => `${NS}:secret`,                 // random session-signing secret, made once; never sent anywhere
   powers: () => `${NS}:powers`,                 // the SW5e power list, fetched from SW5e's own API and cached for a week
@@ -48,7 +63,13 @@ const K = {
   sw5eLock: (name) => `${NS}:sw5e:lock:${name}`,  // short marker: one request at a time fetches that SW5e list
   sw5eFail: (name) => `${NS}:sw5e:fail:${name}`,  // set for a minute after a failed fetch, so SW5e isn't called again
 };
-const STORAGE_CAP = (+process.env.HOLOTABLE_STORAGE_MB || 250) * 1024 * 1024;
+// pathnames in the Blob store, same production / preview split as the Redis keys
+const P = {
+  img: (id) => `${NS}/img/${id}`,
+  asset: (id, n) => `${NS}/pack/${id}/${n}`,
+  aud: (id) => `${NS}/aud/${id}`,
+};
+const STORAGE_CAP = (+process.env.HOLOTABLE_STORAGE_MB || 1000) * 1024 * 1024;
 const MAX_GAME_BYTES = 1.5 * 1024 * 1024;
 
 let client = null;
@@ -111,6 +132,7 @@ async function waitForChange(code, ms) {
 
 class Busy extends Error {}
 class Full extends Error {}
+class NoStore extends Error {}   // the Blob store isn't connected to this deployment: no new files can be kept
 
 // Hard cap on stored images and pack art: reserve before writing, release after deleting.
 async function reserve(n) {
@@ -197,22 +219,110 @@ function decodeDataUrl(dataUrl, maxBytes) {
   if (!sniff(buf) || buf.length > maxBytes) return null;
   return buf;
 }
+// ---- the Blob store
+// @vercel/blob is loaded on first use; tests and the dev server swap getBlob for an in-memory fake.
+// On Vercel the connected store authenticates by OIDC (BLOB_STORE_ID plus a per-request token).
+let blobSdk = null;
+function getBlob() { return blobSdk || (blobSdk = require("@vercel/blob")); }
+const blobReady = () => !!(process.env.BLOB_STORE_ID || process.env.BLOB_READ_WRITE_TOKEN);
+const noStore = () => new NoStore("File storage isn't connected to this deployment, so uploads are off. The site owner can connect the Blob store in Vercel.");
+
+// @vercel/blob's errors are classes named Blob...Error (BlobNotFoundError, BlobAccessError, ...)
+const errName = (e) => String((e && e.constructor && e.constructor.name) || (e && e.name) || "");
+const isBlobError = (e) => /^Blob/.test(errName(e));
+const isNotFound = (e) => errName(e) === "BlobNotFoundError";
+async function fileInfo(pathname) {
+  const raw = await module.exports.getClient().hget(K.files(), pathname);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+// Write a file to the store, then list it. The caller has reserved its bytes. Ids are random, so a
+// file is never written twice except by the move from Redis, which may retry one it half-finished.
+// If the listing can't be written (the database is full), the new file is deleted again rather than
+// left in the store uncounted; a retried move keeps its file, since its Redis copy is still there.
+async function putFile(pathname, buf, type, overwrite = false) {
+  if (!module.exports.blobReady()) throw noStore();
+  await module.exports.getBlob().put(pathname, buf, {
+    access: "private", contentType: type, addRandomSuffix: false, allowOverwrite: overwrite,
+    cacheControlMaxAge: 365 * 24 * 3600, multipart: buf.length > 8 * 1024 * 1024,
+  });
+  try {
+    await module.exports.getClient().hset(K.files(), pathname, JSON.stringify({ b: buf.length, t: type, at: Math.floor(Date.now() / 1000) }));
+  } catch (e) {
+    if (!overwrite) { try { await module.exports.getBlob().del(pathname); } catch { /* the tidy-up gets it */ } }
+    throw e;
+  }
+}
+// Read a listed file, or one byte range of it ([start, end] inclusive), into a Buffer. Responses are at
+// most a few MB (images <= 3 MB, audio is sent 4 MiB at a time), so reading it whole is fine.
+// null when the store no longer has it.
+async function readFile(pathname, range) {
+  const got = await module.exports.getBlob().get(pathname, Object.assign({ access: "private" },
+    range ? { headers: { Range: `bytes=${range[0]}-${range[1]}` } } : {}));
+  if (!got || !got.stream) return null;
+  const chunks = [];
+  for await (const c of got.stream) chunks.push(Buffer.from(c));
+  let buf = Buffer.concat(chunks);
+  // a store that ignored the range sends the whole file: cut the range out here
+  const ranged = got.headers && typeof got.headers.get === "function" && got.headers.get("content-range");
+  if (range && !ranged) buf = buf.subarray(range[0], range[1] + 1);
+  return buf;
+}
+// Unlist first, so nothing serves a file the CDN is still forgetting, then delete it and give back its
+// bytes. Returns the bytes given back. Looks up 200 at a time: a pack can have thousands of files.
+async function dropFiles(pathnames) {
+  const r = module.exports.getClient();
+  const all = [...new Set(pathnames)];
+  let freed = 0;
+  const gone = [];
+  for (let i = 0; i < all.length; i += 200) {
+    const chunk = all.slice(i, i + 200);
+    const infos = await r.hmget(K.files(), ...chunk);
+    const found = chunk.filter((_, j) => infos[j]);
+    if (!found.length) continue;
+    await r.hdel(K.files(), ...found);
+    chunk.forEach((p, j) => { if (infos[j]) { try { freed += JSON.parse(infos[j]).b || 0; } catch { /* skip */ } } });
+    gone.push(...found);
+  }
+  for (let i = 0; i < gone.length; i += 100) await module.exports.getBlob().del(gone.slice(i, i + 100));
+  await release(freed);
+  return freed;
+}
+
+// ---- images
 async function putImage(buf, id) {
   id = id || crypto.randomBytes(12).toString("hex");
+  if (!module.exports.blobReady()) throw noStore();
   await reserve(buf.length);
-  await module.exports.getClient().set(K.img(id), buf);
+  try { await putFile(P.img(id), buf, sniff(buf)); } catch (e) { await release(buf.length); throw e; }
   return { id, url: `/api/holotable?img=${id}` };
+}
+// An image's bytes, from the store, or from Redis if it was uploaded before the store and not moved yet.
+async function readImage(id) {
+  if (await fileInfo(P.img(id))) return readFile(P.img(id));
+  const old = await module.exports.getClient().getBuffer(K.img(id));
+  if (old) return old;
+  // moved between the two looks: it's in the store now
+  return (await fileInfo(P.img(id))) ? readFile(P.img(id)) : null;
+}
+async function imageExists(id) {
+  return !!(await fileInfo(P.img(id))) || !!(await module.exports.getClient().exists(K.img(id)));
 }
 const imgIdFromUrl = (u) => { const m = /^\/api\/holotable\?img=([a-f0-9]{16,40})$/.exec(String(u || "")); return m && m[1]; };
 async function dropImages(urls) {
   const r = module.exports.getClient();
-  for (const id of new Set((urls || []).map(imgIdFromUrl).filter(Boolean))) {
+  const ids = [...new Set((urls || []).map(imgIdFromUrl).filter(Boolean))];
+  const inStore = [];
+  for (const id of ids) {
+    if (await fileInfo(P.img(id))) { inStore.push(P.img(id)); continue; }
     const buf = await r.getBuffer(K.img(id));
     if (buf && (await r.del(K.img(id)))) await release(buf.length);
   }
+  if (inStore.length) await dropFiles(inStore);
 }
 
 module.exports = {
-  getClient, getSub, K, NS, URL, waitForChange, withLock, getCampaign, saveCampaign, bump, Busy, Full,
-  sniff, sniffAudio, decodeDataUrl, putImage, dropImages, imgIdFromUrl, BACKUP_KEEP, reserve, release, used, STORAGE_CAP,
+  getClient, getSub, K, P, NS, URL, waitForChange, withLock, getCampaign, saveCampaign, bump, Busy, Full, NoStore,
+  sniff, sniffAudio, decodeDataUrl, putImage, readImage, imageExists, dropImages, imgIdFromUrl, BACKUP_KEEP, reserve, release, used, STORAGE_CAP,
+  getBlob, blobReady, noStore, fileInfo, putFile, readFile, dropFiles, isBlobError, isNotFound,
 };
