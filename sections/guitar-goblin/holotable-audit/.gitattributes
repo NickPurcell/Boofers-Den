@@ -1,0 +1,2 @@
+# keep LF on every checkout, so build.mjs --check and the tests compare like with like (Windows defaults to CRLF)
+* text eol=lf
