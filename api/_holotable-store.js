@@ -37,7 +37,8 @@ const K = {
   libver: () => `${NS}:libver`,
   rl: (b) => `${NS}:rl:${b}`,
   bytes: () => `${NS}:bytes`,
-  secret: () => `${NS}:secret`,      // random session-signing secret, made once; never sent anywhere
+  secret: () => `${NS}:secret`,
+  powers: () => `${NS}:powers`,       // the SW5e power list, fetched from SW5e's own API and cached for a week      // random session-signing secret, made once; never sent anywhere
 };
 const STORAGE_CAP = (+process.env.HOLOTABLE_STORAGE_MB || 250) * 1024 * 1024;
 const MAX_GAME_BYTES = 1.5 * 1024 * 1024;

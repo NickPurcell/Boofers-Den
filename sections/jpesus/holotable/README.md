@@ -26,6 +26,7 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
   - `/r` (or `/roll`): roll dice.
   - `/gmr`: a secret roll only you and the GM see.
   - `/w` (or `/whisper`, `/tell`, `/msg`): whisper a player, or a character, which reaches whoever plays it.
+    Speaking as a character only works for characters you play (the GM can voice any). The real sender is always shown.
   - `/yell` (or `/y`, `/shout`): a loud message with a pop-up on every screen.
   - `/me`: describe what your character does.
   - `/ooc`: out-of-character talk.
@@ -39,6 +40,18 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
   - Tokens, plus Dungeondraft packs or zips of images placed as props, tokens or floors.
 - **Power tooltips:** hover any force or tech power for its cost, save DC, attack bonus, casting details and description.
   Use ✎ to write or edit a description.
+- **Power pickers:** **＋ force power** and **＋ tech power** open the whole SW5e list. Filter by level (0–9), by name, and,
+  for force powers, by alignment (Light, Dark, Universal, using checkboxes). Picking a power adds it with its level, type,
+  alignment, casting details and description.
+  - **Where the list comes from:** the server fetches it from SW5e's public API and caches it for a week (`ht:powers`).
+    Players' browsers never contact another site.
+- **Features & traits:** names and descriptions are fixed on the sheet. Hover a name to see its description.
+  New features are written once, when they're added.
+- **Scenes (GM):** save the map setup (background, floor, grid, tokens, props) under a name and pick one from the
+  Scene dropdown to show it to everyone at once.
+  - **Switching keeps your work:** changes to the current scene are kept in that scene when you switch away.
+  - **The other buttons:** Save, Save as new, New blank, Rename and Delete. A table can keep up to 30 scenes.
+  - **Images:** an uploaded image is deleted only once nothing on the table, saved scenes included, uses it.
 - **Level ups:** the GM grants a level to the party or to chosen characters. Each player gets a pop-up and a guided wizard:
   pick a class or multiclass, roll or take average HP, take an ability score improvement or feat, add new features and powers,
   then see a before/after summary. The GM can level a character for a player who missed the session.

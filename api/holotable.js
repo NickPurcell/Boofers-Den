@@ -110,6 +110,26 @@ async function loadGame() {
   return G.blankCampaign("HoloTable");
 }
 
+// The SW5e power list comes from SW5e's own public API (sw5e.com), trimmed to what the pickers and
+// tooltips use. It's fetched by the server (players' browsers never contact another site) and cached.
+const SW5E_POWERS_URL = "https://sw5eapi.azurewebsites.net/api/power";
+async function fetchSw5ePowers() {
+  const r = await fetch(SW5E_POWERS_URL, { signal: AbortSignal.timeout(7000), headers: { Accept: "application/json" } });
+  if (!r.ok) throw new Error("SW5e API " + r.status);
+  const data = await r.json();
+  if (!Array.isArray(data)) throw new Error("unexpected SW5e data");
+  const s = (v, n) => (v == null || v === "None" ? "" : String(v).split(String.fromCharCode(13)).join("").slice(0, n));
+  return data.filter((p) => p && p.name && (p.powerType === "Force" || p.powerType === "Tech")).map((p) => ({
+    n: s(p.name, 80), t: p.powerType === "Tech" ? "tech" : "force", l: Math.max(0, Math.min(9, parseInt(p.level, 10) || 0)),
+    a: p.powerType === "Tech" ? "" : ({ Light: "light", Dark: "dark" })[p.forceAlignment] || "universal",
+    ct: s(p.castingPeriodText, 160), r: s(p.range, 80), d: s(p.duration, 80), c: !!p.concentration,
+    pre: s(p.prerequisite, 80), src: s(p.contentSource, 10), desc: s(p.description, 6000), hl: s(p.higherLevelDescription, 1500),
+  })).sort((a, b) => a.l - b.l || a.n.localeCompare(b.n));
+}
+
+// every uploaded image the table refers to (live map, saved scenes, sheets, handouts)
+const imageRefs = (camp) => new Set(JSON.stringify(camp).match(/\/api\/holotable\?img=[a-f0-9]{16,40}/g) || []);
+
 async function onlineList(camp) {
   const h = await S.getClient().hgetall(S.K.on(GAME));
   const t = nowS();
@@ -175,6 +195,21 @@ async function handleGet(req, res, q, ses) {
     }
   }
 
+  if (op === "powers") { // every SW5e force and tech power, for the "+ force power" / "+ tech power" pickers
+    let raw = await r.get(S.K.powers());
+    if (!raw) {
+      let list;
+      try { list = await fetchSw5ePowers(); } catch (e) {
+        return fail(res, 503, "Couldn't reach the SW5e power list right now. Try again in a minute, or add the power by hand.");
+      }
+      raw = JSON.stringify(list);
+      await r.set(S.K.powers(), raw, "EX", 7 * 24 * 3600);
+    }
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Cache-Control", "private, max-age=3600");
+    return res.status(200).send(raw);
+  }
+
   if (op === "assets") {
     const h = (await r.hgetall(S.K.packs())) || {};
     const packs = Object.values(h).map((s) => { try { return JSON.parse(s); } catch { return null; } })
@@ -226,9 +261,11 @@ async function handlePost(req, res, q, b, ses) {
       const camp = await loadGame();
       const pl = camp.players[ses.pid] || (camp.players[ses.pid] = { name: ses.name });
       pl.role = ses.role;
+      const before = imageRefs(camp);
       try {
         const out = G.applyAction(camp, ses.pid, gm, String(b.type || ""), b.payload || {});
-        drop = out.dropImages; delete out.dropImages;
+        drop = [...(out.dropImages || []), ...[...before].filter((u) => !imageRefs(camp).has(u))]; // anything no longer shown anywhere
+        delete out.dropImages;
         result = out;
       } catch (e) {
         if (e instanceof G.Forbidden) return [403, e.message];
@@ -236,6 +273,8 @@ async function handlePost(req, res, q, b, ses) {
         throw e;
       }
       await S.saveCampaign(camp);
+      // an image is only deleted when nothing still shows it (another scene, a sheet, a handout, the map)
+      if (drop && drop.length) { const json = JSON.stringify(camp); drop = drop.filter((u) => u && !json.includes(u)); }
       return null;
     });
     if (err) return fail(res, ...err);

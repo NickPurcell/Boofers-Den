@@ -151,6 +151,8 @@ function viewFor(camp, cid, gm, online) {
     notes: gm ? camp.notes : null,
     handouts: (camp.handouts || []).filter((h) => gm || h.shared),
     levelUps: camp.levelUps || {},
+    scene: (camp.scenes || []).filter((x) => x.id === camp.activeScene).map((x) => ({ id: x.id, name: x.name }))[0] || null,
+    scenes: gm ? (camp.scenes || []).map((x) => ({ id: x.id, name: x.name, savedAt: x.savedAt })) : null,
   };
 }
 
@@ -170,6 +172,15 @@ const ABILS = ["str", "dex", "con", "int", "wis", "cha"];
 const totalLevel = (ch) => (ch.classes || []).reduce((a, k) => a + (int(k.level) || 0), 0);
 const abMod = (ch, ab) => Math.floor((num((ch.abilities || {})[ab], 10) - 10) / 2);
 const hitDieFor = (name, fallback) => HIT_DIE[String(name || "").toLowerCase()] || ([6, 8, 10, 12].includes(int(fallback)) ? int(fallback) : 8);
+
+// copy the live map into the active scene (returns false if no scene is active)
+function stashScene(camp) {
+  const sc = (camp.scenes || []).find((x) => x.id === camp.activeScene);
+  if (!sc) return false;
+  sc.map = JSON.parse(JSON.stringify(camp.map));
+  sc.savedAt = now();
+  return true;
+}
 
 function applyLevelUp(camp, cid, gm, p) {
   const ch = camp.characters[p.charId];
@@ -311,6 +322,11 @@ function applyAction(camp, cid, gm, type, p) {
       const text = str(p.text, 2000).trim();
       if (!text) return {};
       const low = text.toLowerCase();
+      // "as" (speaking as a character) only counts for a character the sender actually plays (any, for the GM);
+      // the real sender always stays in `from`, so every message shows who sent it
+      const wantAs = str(p.as, 80).trim().toLowerCase();
+      const asCh = wantAs && Object.values(chars).find((c) => c && String(c.name || "").toLowerCase() === wantAs && (gm || c.owner === cid));
+      const as = asCh ? asCh.name : null;
       if (/^\/(r|roll) /.test(low)) {
         let expr = text.split(" ").slice(1).join(" "), label = "";
         if (expr.includes("#")) [expr, label] = [expr.slice(0, expr.indexOf("#")), expr.slice(expr.indexOf("#") + 1)];
@@ -335,13 +351,18 @@ function applyAction(camp, cid, gm, type, p) {
         const body = rest.slice(t.name.length).trim();
         if (!body) throw new Invalid(`What do you want to whisper to ${t.label}?`);
         addChat(camp, { from: playerName(camp, cid), fromId: cid, text: body, to: [...new Set([...t.ids, cid])], private: true, whisperTo: t.label,
-          as: str(p.as, 80) || null });
+          as });
         return {};
       }
       // /yell: a loud message for everyone at the table (shown big, with a pop-up on every screen)
       if (/^\/(y|yell|shout) /.test(low)) {
         const body = text.slice(text.indexOf(" ") + 1).trim();
-        if (body) addChat(camp, { from: playerName(camp, cid), fromId: cid, text: str(body, 500), yell: true, as: str(p.as, 80) || null });
+        if (!body) return {};
+        // a few seconds between yells per person, so a stuck key can't flood everyone's screen
+        camp.yellAt = camp.yellAt || {};
+        if (now() - (camp.yellAt[cid] || 0) < 5) throw new Invalid("You just yelled. Give it a few seconds.");
+        camp.yellAt[cid] = now();
+        addChat(camp, { from: playerName(camp, cid), fromId: cid, text: str(body, 500), yell: true, as });
         return {};
       }
       // /ooc: out-of-character table talk
@@ -350,11 +371,11 @@ function applyAction(camp, cid, gm, type, p) {
         if (body) addChat(camp, { from: playerName(camp, cid), fromId: cid, text: body, ooc: true });
         return {};
       }
-      if (low.startsWith("/me ")) { addChat(camp, { from: str(p.as, 80) || playerName(camp, cid), fromId: cid, text: text.slice(4), emote: true }); return {}; }
+      if (low.startsWith("/me ")) { addChat(camp, { from: playerName(camp, cid), fromId: cid, text: text.slice(4), emote: true, as }); return {}; }
       if (low.startsWith("/desc ") && gm) { addChat(camp, { from: "Narrator", fromId: cid, text: text.slice(6), narration: true }); return {}; }
       if (low.startsWith("/desc ")) throw new Invalid("Only the GM can narrate with /desc.");
       if (/^\/\S/.test(text)) throw new Invalid(`Unknown command ${text.split(/\s/)[0]}. Type / to see the list.`);
-      addChat(camp, { from: playerName(camp, cid), fromId: cid, text, as: str(p.as, 80) || null });
+      addChat(camp, { from: playerName(camp, cid), fromId: cid, text, as });
       return {};
     }
 
@@ -456,6 +477,59 @@ function applyAction(camp, cid, gm, type, p) {
     }
 
     // ---- map: settings, background, floor, props (GM)
+    // ---- scenes (GM): named map setups. The live map always belongs to the active scene; switching
+    // keeps the current map's changes in its scene first, then puts the chosen scene on everyone's screen.
+    case "scene.saveAs": case "scene.new": {
+      need(gm);
+      camp.scenes = camp.scenes || [];
+      if (camp.scenes.length >= 30) throw new Invalid("That's the most scenes a table can keep (30). Delete one first.");
+      const name = str(p.name, 60).trim() || "Untitled scene";
+      stashScene(camp);
+      if (type === "scene.new") {   // a blank board with the same grid settings
+        const old = mp;
+        camp.map = { bgVersion: int(old.bgVersion) + 1, bgUrl: null, floor: null, floorScale: 1, gridSize: old.gridSize || 70, gridV2: true,
+          cols: old.cols || 24, rows: old.rows || 16, tokens: [], props: [], showGrid: old.showGrid !== false };
+      }
+      const sc = { id: rid(), name, savedAt: now(), map: JSON.parse(JSON.stringify(camp.map)) };
+      camp.scenes.push(sc);
+      camp.activeScene = sc.id;
+      camp.map.sceneId = sc.id;
+      return { id: sc.id };
+    }
+    case "scene.save": {
+      need(gm);
+      if (!stashScene(camp)) throw new Invalid("There's no scene to save into yet. Use \"Save as new scene\".");
+      return {};
+    }
+    case "scene.load": {
+      need(gm);
+      const sc = (camp.scenes || []).find((x) => x.id === p.id);
+      if (!sc) throw new Invalid("No such scene.");
+      if (sc.id === camp.activeScene) return {};
+      stashScene(camp);
+      const bgv = int(mp.bgVersion) + 1;
+      camp.map = JSON.parse(JSON.stringify(sc.map));
+      camp.map.bgVersion = bgv;
+      camp.map.sceneId = sc.id;
+      camp.activeScene = sc.id;
+      addChat(camp, { system: true, text: `The scene changes: ${sc.name}.` });
+      return {};
+    }
+    case "scene.rename": {
+      need(gm);
+      const sc = (camp.scenes || []).find((x) => x.id === p.id);
+      if (sc) sc.name = str(p.name, 60).trim() || sc.name;
+      return {};
+    }
+    case "scene.delete": {
+      need(gm);
+      const sc = (camp.scenes || []).find((x) => x.id === p.id);
+      if (!sc) return {};
+      camp.scenes = camp.scenes.filter((x) => x.id !== sc.id);
+      if (camp.activeScene === sc.id) { camp.activeScene = null; delete mp.sceneId; }
+      // the deleted scene's own images go too, unless something else still shows them (checked by the caller)
+      return { dropImages: [sc.map.bgUrl, sc.map.floor] };
+    }
     case "map.settings":
       need(gm);
       for (const k of ["gridSize", "cols", "rows"]) if (k in p) mp[k] = clamp(int(p[k], mp[k]), 5, 200);
@@ -563,10 +637,10 @@ function applyAction(camp, cid, gm, type, p) {
 }
 
 // A whole game coming back from a backup file gets the same checks as live edits.
-function cleanGame(g) {
-  const m = g.map && typeof g.map === "object" ? g.map : {};
+function cleanMap(g, raw) {
+  const m = raw && typeof raw === "object" ? raw : {};
   const n = (v, d) => (Number.isFinite(+v) ? +v : d);
-  g.map = {
+  return {
     bgVersion: int(m.bgVersion) + 1, bgUrl: validImg(m.bgUrl), floor: validImg(m.floor), floorScale: clamp(n(m.floorScale, 1), 0.1, 8),
     gridSize: clamp(int(m.gridSize, 70), 5, 200), gridV2: true, cols: clamp(int(m.cols, 24), 5, 200), rows: clamp(int(m.rows, 16), 5, 200), showGrid: m.showGrid !== false,
     tokens: (Array.isArray(m.tokens) ? m.tokens : []).slice(0, 300).filter((t) => t && typeof t === "object").map((t) => ({
@@ -574,7 +648,11 @@ function cleanGame(g) {
       size: clamp(int(t.size, 1), 1, 4), charId: g.characters[t.charId] ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, img: validImg(t.img) })),
     props: (Array.isArray(m.props) ? m.props : []).slice(0, 1500).filter((p) => p && validImg(p.src)).map((p) => ({
       id: /^[a-z0-9]{6,20}$/.test(p.id || "") ? p.id : rid(), src: p.src, name: str(p.name, 60), x: n(p.x, 0), y: n(p.y, 0), w: n(p.w, 1), h: n(p.h, 1), rot: n(p.rot, 0) })),
+    sceneId: /^[a-z0-9]{6,20}$/.test(m.sceneId || "") ? m.sceneId : undefined,
   };
+}
+function cleanGame(g) {
+  g.map = cleanMap(g, g.map);
   const ini = g.initiative && typeof g.initiative === "object" ? g.initiative : {};
   g.initiative = {
     turn: clamp(int(ini.turn), 0, 300), round: Math.max(1, int(ini.round, 1)), active: !!ini.active,
@@ -587,6 +665,9 @@ function cleanGame(g) {
     id: /^[a-z0-9]{6,20}$/.test(h.id || "") ? h.id : rid(), title: str(h.title, 200), text: str(h.text, 20000), img: validImg(h.img), shared: !!h.shared }));
   g.chat = (Array.isArray(g.chat) ? g.chat : []).slice(-CHAT_LIMIT).filter((c) => c && typeof c === "object");
   g.notes = str(g.notes, 500000);
+  g.scenes = (Array.isArray(g.scenes) ? g.scenes : []).slice(0, 30).filter((x) => x && typeof x === "object")
+    .map((x) => ({ id: /^[a-z0-9]{6,20}$/.test(x.id || "") ? x.id : rid(), name: str(x.name, 60) || "Scene", savedAt: num(x.savedAt, now()), map: cleanMap(g, x.map) }));
+  if (!g.scenes.some((x) => x.id === g.activeScene)) g.activeScene = null;
   g.levelUps = Object.fromEntries(Object.entries(g.levelUps || {}).filter(([id]) => g.characters[id])
     .map(([id, v]) => [id, { count: clamp(int((v || {}).count), 0, 20), grantId: rid(), at: now() }]).filter(([, v]) => v.count > 0));
   return g;

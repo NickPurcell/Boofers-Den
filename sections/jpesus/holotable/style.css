@@ -540,3 +540,40 @@ table.t td:first-child input { min-width: 140px; }
 .yell-pop.out { opacity: 0; transition: opacity .5s; }
 @keyframes yellIn { from { transform: translate(-50%, -12px) scale(.96); opacity: 0; } to { transform: translate(-50%, 0) scale(1); opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .yell-pop { animation: none; } }
+
+/* ---------------- scenes */
+.scene-bar { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; padding-right: 8px; margin-right: 4px;
+  border-right: 1px solid color-mix(in srgb, var(--trim) 35%, var(--line)); }
+.scene-bar select { max-width: 200px; }
+.scene-name { font-family: var(--display); font-size: 11px; letter-spacing: .08em; color: var(--trim); padding-right: 8px; }
+.map-tools .tool-break { display: none; }
+
+/* ---------------- power picker + fixed feature text */
+.modal-box:has(.power-picker) { width: min(760px, 100%); }
+.pp-filters { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.pp-align { position: relative; }
+.pp-align summary { cursor: pointer; list-style: none; padding: 6px 10px; border: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 94%, #000); min-width: 150px; }
+.pp-align summary::after { content: " ▾"; color: var(--muted); }
+.pp-align-menu { position: absolute; z-index: 5; top: calc(100% + 2px); left: 0; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px;
+  background: var(--plate); border: 1px solid color-mix(in srgb, var(--holo) 40%, var(--line)); min-width: 160px; box-shadow: 0 8px 20px rgba(0,0,0,.4); }
+.pp-count { font-size: 12px; }
+.pp-list { max-height: 52vh; overflow: auto; display: flex; flex-direction: column; gap: 4px; }
+.pp-row { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; background: var(--plate); box-shadow: inset 0 0 0 1px var(--line); }
+.pp-main { flex: 1; min-width: 0; }
+.pp-lvl, .pp-al, .pp-tag { font-size: 11px; margin-left: 6px; padding: 0 6px; border: 1px solid var(--line); color: var(--muted); }
+.pp-light { color: var(--holo); border-color: color-mix(in srgb, var(--holo) 50%, var(--line)); }
+.pp-dark { color: var(--red); border-color: color-mix(in srgb, var(--red) 50%, var(--line)); }
+.pp-universal { color: var(--violet); border-color: color-mix(in srgb, var(--violet) 50%, var(--line)); }
+.pp-high { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 50%, var(--line)); }
+.pp-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.pp-desc summary { cursor: pointer; font-size: 12px; color: var(--holo); margin-top: 2px; }
+.pp-desc div { font-size: 13px; line-height: 1.45; margin-top: 4px; }
+.feature-text { font-size: 13px; line-height: 1.5; padding: 6px 8px; margin-top: 4px; background: color-mix(in srgb, var(--bg) 70%, transparent);
+  border-left: 2px solid color-mix(in srgb, var(--trim) 50%, transparent); white-space: normal; }
+
+/* ---------------- features: fixed names; descriptions show on hover */
+.feature-list { display: flex; flex-direction: column; gap: 4px; }
+.feature-row { display: flex; align-items: center; gap: 6px; padding: 5px 8px; background: color-mix(in srgb, var(--bg) 60%, transparent);
+  box-shadow: inset 2px 0 0 color-mix(in srgb, var(--trim) 55%, transparent); }
+.feature-name { font-weight: 600; cursor: help; border-bottom: 1px dotted color-mix(in srgb, var(--holo) 60%, transparent); }
+.feature-name:hover, .feature-name:focus-visible { color: var(--holo); outline: none; }

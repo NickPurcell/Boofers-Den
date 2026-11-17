@@ -494,7 +494,9 @@
         ${pts('force', fMax, +ch.force.used || 0, '', 'Force Points', `Light DC ${ci.lightDC} / atk ${R.fmt(ci.lightAtk)} · Dark DC ${ci.darkDC} / atk ${R.fmt(ci.darkAtk)}${ci.forceMaxLevel ? ' · max power level ' + ci.forceMaxLevel : ''}`)}
         ${pts('tech', tMax, +ch.tech.used || 0, 'tech', 'Tech Points', `Tech DC ${ci.techDC} / atk ${R.fmt(ci.techAtk)}${ci.techMaxLevel ? ' · max power level ' + ci.techMaxLevel : ''}`)}
       </div>
-      <div class="box" style="margin-top:12px"><h4>Powers <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="add-power">＋ power</button>' : ''}</h4>
+      <div class="box" style="margin-top:12px"><h4>Powers <span class="spacer"></span>${!ro ? `<button class="btn tiny" data-act="pick-power" data-kind="force">＋ force power</button>
+          <button class="btn tiny" data-act="pick-power" data-kind="tech">＋ tech power</button>
+          <button class="btn tiny ghost" data-act="add-power" title="Add a homebrew power by hand">custom</button>` : ''}</h4>
         <table class="t"><thead><tr><th>Name</th><th>Lvl</th><th>Type</th><th>Alignment</th><th>Notes</th><th></th><th></th></tr></thead><tbody>
         ${(ch.powers || []).slice().map((p, i) => ({ p, i })).sort((a, b) => (+a.p.level || 0) - (+b.p.level || 0)).map(({ p, i }) => `<tr data-power-tip="${i}">
           <td>${inp(`powers.${i}.name`, p.name, { ro })}</td>
@@ -518,10 +520,12 @@
             <td>${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">Empty.</td></tr>'}
           </tbody></table></div>
         <div class="box"><h4>Features & Traits <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="add-feature">＋ feature</button>' : ''}</h4>
-          ${(ch.features || []).map((f, i) => `<div style="margin-bottom:10px"><div class="row">${inp(`features.${i}.name`, f.name, { ro })}
-            ${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="features" data-i="${i}">✕</button>` : ''}
-            <button class="btn tiny" data-act="share-feature" data-i="${i}" title="Post to chat">💬</button></div>
-            ${inp(`features.${i}.text`, f.text || '', { ro, type: 'textarea', rows: 2 })}</div>`).join('') || '<p class="muted">None.</p>'}
+          <div class="feature-list">${(ch.features || []).map((f, i) => `<div class="feature-row">
+            <span class="feature-name" data-feature-tip="${i}" tabindex="0">${esc(f.name || 'Feature')}</span>
+            <span class="spacer"></span>
+            <button class="btn tiny" data-act="share-feature" data-i="${i}" title="Post to chat">💬</button>
+            ${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="features" data-i="${i}" title="Remove">✕</button>` : ''}</div>`).join('') || '<p class="muted">None.</p>'}</div>
+          ${(ch.features || []).length ? '<p class="muted" style="font-size:12px;margin:6px 0 0">Hover a feature for its description.</p>' : ''}
         </div>
         <div class="box"><h4>Proficiencies</h4>${inp('proficiencies', ch.proficiencies || '', { ro, type: 'textarea', rows: 3, ph: 'Armor, weapons, tools…' })}
           <h4 style="margin-top:10px">Languages</h4>${inp('languages', ch.languages || '', { ro, type: 'textarea', rows: 2 })}</div>
@@ -624,7 +628,22 @@
       case 'add-attack': mutate(c => c.attacks.push({ name: 'New attack', ab: 'str', damage: '1d6', type: 'kinetic', props: '', proficient: true })); break;
       case 'add-power': mutate(c => c.powers.push({ name: 'New power', level: 0, type: 'force', alignment: 'universal', notes: '' })); break;
       case 'add-item': mutate(c => c.equipment.push({ name: 'Item', qty: 1, notes: '' })); break;
-      case 'add-feature': mutate(c => c.features.push({ name: 'Feature', text: '' })); break;
+      case 'add-feature':   // the description is written once, here; on the sheet it's fixed text
+        modal(`<h3>＋ Add a feature or trait</h3>
+          <label>Name<input id="ftName" maxlength="80" placeholder="e.g. Fighting Style: Defense"></label>
+          <label>Description<textarea id="ftText" rows="6" placeholder="What it does"></textarea></label>
+          <p class="muted" style="margin:0;font-size:12px">Once added, the description can't be edited on the sheet.</p>
+          <div class="row"><span class="spacer"></span><button class="btn" id="ftCancel">Cancel</button><button class="btn primary" id="ftAdd">Add</button></div>`, box => {
+          $('#ftCancel', box).onclick = closeModal;
+          $('#ftAdd', box).onclick = () => {
+            const name = $('#ftName', box).value.trim(); if (!name) return toast('Give the feature a name.', true);
+            const text = $('#ftText', box).value.trim();
+            mutate(c => c.features.push({ name, text })); closeModal();
+          };
+          $('#ftName', box).focus();
+        });
+        break;
+      case 'pick-power': openPowerPicker(ch.id, b.dataset.kind); break;
       case 'del': mutate(c => c[b.dataset.list].splice(i, 1)); break;
       case 'atk': { const at = ch.attacks[i]; roll(d20(R.attackBonus(ch, at)), `${at.name} — attack`, { d20: true, mode: rollModeFromEvent(e), charId: ch.id, kind: 'attack' }); break; }
       case 'dmg': { const at = ch.attacks[i]; roll(R.damageExpr(ch, at), `${at.name} — ${at.type || ''} damage`, { charId: ch.id, kind: 'damage' }); break; }
@@ -676,6 +695,84 @@
     }
   });
 
+  // --------------------------------------------------------------------------- power picker
+  // "+ force power" / "+ tech power": the whole SW5e list (served by our API, cached), filtered by level
+  // and, for force powers, by alignment checkboxes. Picking one adds it with the right level, type and alignment.
+  let POWER_LIST = null;
+  async function powerList() {
+    if (POWER_LIST) return POWER_LIST;
+    const r = await fetch(`${API}?op=powers`, { credentials: 'same-origin' });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !Array.isArray(j)) throw new Error((j && j.error) || "Couldn't load the SW5e power list.");
+    return (POWER_LIST = j);
+  }
+  const ALIGN = { light: 'Light', dark: 'Dark', universal: 'Universal' };
+  function openPowerPicker(charId, kind) {
+    const force = kind !== 'tech';
+    const F = { level: 'all', align: new Set(['light', 'dark', 'universal']), q: '', limit: 120 };
+    modal(`<div id="pp" class="power-picker"><h3>${force ? '＋ Add a force power' : '＋ Add a tech power'}</h3><p class="muted">Loading the SW5e power list…</p></div>`, async box => {
+      const pp = $('#pp', box);
+      let list;
+      try { list = (await powerList()).filter(p => p.t === (force ? 'force' : 'tech')); }
+      catch (err) { pp.innerHTML = `<h3>${force ? 'Force' : 'Tech'} powers</h3><p class="error">${esc(err.message)}</p><div class="row"><span class="spacer"></span><button class="btn" data-pp="close">Close</button></div>`; pp.onclick = e => { if (e.target.dataset.pp === 'close') closeModal(); }; return; }
+      const ch = () => S.st.characters[charId];
+      const known = () => new Set((ch() ? ch().powers : []).map(p => String(p.name).toLowerCase()));
+      const ci = () => R.casterInfo(ch() || {});
+      const shown = () => list.filter(p => (F.level === 'all' || p.l === +F.level) && (!force || F.align.has(p.a))
+        && (!F.q || p.n.toLowerCase().includes(F.q)));
+      const alignLabel = () => F.align.size === 3 ? 'All alignments' : F.align.size === 0 ? 'None selected' : [...F.align].map(a => ALIGN[a]).join(', ');
+      const render = () => {
+        const rows = shown(), kn = known(), maxLvl = force ? ci().forceMaxLevel : ci().techMaxLevel;
+        pp.querySelector('.pp-list').innerHTML = rows.slice(0, F.limit).map(p => {
+          const has = kn.has(p.n.toLowerCase());
+          return `<div class="pp-row" data-n="${esc(p.n)}">
+            <div class="pp-main"><b>${esc(p.n)}</b>
+              <span class="pp-lvl">${p.l ? 'Level ' + p.l : 'At-will'}</span>${force ? `<span class="pp-al pp-${esc(p.a)}">${esc(ALIGN[p.a] || '')}</span>` : ''}
+              ${p.c ? '<span class="pp-tag">Concentration</span>' : ''}${p.src === 'EC' ? '<span class="pp-tag" title="SW5e Expanded Content">EC</span>' : ''}
+              ${maxLvl && p.l > maxLvl ? '<span class="pp-tag pp-high" title="Above the highest level this character can cast right now">above your level</span>' : ''}
+              <div class="pp-meta">${esc(p.ct)} · Range ${esc(p.r)} · ${esc(p.d)}${p.pre ? ` · Requires ${esc(p.pre)}` : ''}</div>
+              <details class="pp-desc"><summary>Description</summary><div>${md(p.desc)}${p.hl ? `<p><b>At higher levels.</b> ${md(p.hl)}</p>` : ''}</div></details></div>
+            <button class="btn small ${has ? 'ghost' : 'primary'}" data-pp="add" ${has ? 'disabled' : ''}>${has ? '✓ Known' : 'Add'}</button></div>`;
+        }).join('') + (rows.length > F.limit ? `<button class="btn small" data-pp="more" style="width:100%">Show ${rows.length - F.limit} more</button>` : '')
+          + (!rows.length ? '<p class="muted">No powers match these filters.</p>' : '');
+        pp.querySelector('.pp-count').textContent = `${rows.length} of ${list.length} ${force ? 'force' : 'tech'} powers`;
+        const al = pp.querySelector('.pp-align summary'); if (al) al.textContent = alignLabel();
+      };
+      pp.innerHTML = `<h3>${force ? '＋ Add a force power' : '＋ Add a tech power'}</h3>
+        <div class="pp-filters">
+          <label class="mini">Level <select data-pp="level"><option value="all">All levels</option>${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(l => `<option value="${l}">${l ? l : '0 (at-will)'}</option>`).join('')}</select></label>
+          ${force ? `<details class="pp-align"><summary>All alignments</summary><div class="pp-align-menu">
+            ${['light', 'dark', 'universal'].map(a => `<label class="toggle"><input type="checkbox" data-pp="align" value="${a}" checked> ${ALIGN[a]}</label>`).join('')}</div></details>` : ''}
+          <input data-pp="q" placeholder="Search by name…" style="flex:1;min-width:140px">
+        </div>
+        <div class="pp-count muted"></div>
+        <div class="pp-list"></div>
+        <p class="muted" style="font-size:11px;margin:0">Power data from SW5e (sw5e.com).</p>
+        <div class="row"><span class="spacer"></span><button class="btn primary" data-pp="close">Done</button></div>`;
+      pp.addEventListener('change', e => {
+        const t = e.target;
+        if (t.dataset.pp === 'level') { F.level = t.value; F.limit = 120; render(); }
+        if (t.dataset.pp === 'align') { t.checked ? F.align.add(t.value) : F.align.delete(t.value); F.limit = 120; render(); }
+      });
+      pp.addEventListener('input', e => { if (e.target.dataset.pp === 'q') { F.q = e.target.value.trim().toLowerCase(); F.limit = 120; render(); } });
+      pp.addEventListener('click', e => {
+        const b = e.target.closest('[data-pp]'); if (!b) return;
+        if (b.dataset.pp === 'close') return closeModal();
+        if (b.dataset.pp === 'more') { F.limit += 200; return render(); }
+        if (b.dataset.pp === 'add') {
+          const p = list.find(x => x.n === b.closest('.pp-row').dataset.n); if (!p) return;
+          const notes = [p.ct, p.r && 'Range ' + p.r, p.d, p.c && !/concentration/i.test(p.d) ? 'Concentration' : ''].filter(Boolean).join(' · ');
+          const desc = p.desc + (p.hl ? '\n\nAt higher levels. ' + p.hl : '');
+          mutate(c => c.powers.push({ name: p.n, level: p.l, type: force ? 'force' : 'tech', alignment: force ? p.a : 'universal', notes: notes.slice(0, 300), description: desc.slice(0, 4000) }));
+          b.textContent = '✓ Added'; b.disabled = true; b.classList.replace('primary', 'ghost');
+          toast(`Added ${p.n}`);
+        }
+      });
+      render();
+      pp.querySelector('[data-pp="q"]').focus();
+    });
+  }
+
   // --------------------------------------------------------------------------- power tooltips
   const tip = document.createElement('div');
   tip.className = 'hover-card hidden'; tip.setAttribute('role', 'tooltip');
@@ -701,16 +798,26 @@
     if (top + r.height > innerHeight - 8) top = Math.max(8, innerHeight - r.height - 8);
     tip.style.left = Math.max(8, left) + 'px'; tip.style.top = top + 'px';
   }
+  function showFeatureTip(el, x, y) {
+    const ch = selChar(); const f = ch && ch.features[+el.dataset.featureTip];
+    if (!f) return;
+    const text = String(f.text || '').trim();
+    tip.innerHTML = `<div class="hc-title">${esc(f.name || 'Feature')}</div>
+      ${text ? `<div class="hc-desc">${md(text.length > 1500 ? text.slice(0, 1500) + '…' : text)}</div>` : '<div class="hc-desc muted">No description.</div>'}`;
+    tip.classList.remove('hidden'); placeTip(x, y);
+  }
   function showPowerTip(row, x, y) {
     const ch = selChar(); const pw = ch && ch.powers[+row.dataset.powerTip];
     if (!pw) return;
     tip.innerHTML = powerCard(ch, pw); tip.classList.remove('hidden'); placeTip(x, y);
   }
   const hideTip = () => tip.classList.add('hidden');
-  $('#sheet').addEventListener('mouseover', e => { const row = e.target.closest('[data-power-tip]'); if (row) showPowerTip(row, e.clientX, e.clientY); });
-  $('#sheet').addEventListener('mousemove', e => { if (!tip.classList.contains('hidden') && e.target.closest('[data-power-tip]')) placeTip(e.clientX, e.clientY); });
-  $('#sheet').addEventListener('mouseout', e => { const row = e.target.closest('[data-power-tip]'); if (row && !row.contains(e.relatedTarget)) hideTip(); });
-  $('#sheet').addEventListener('focusin', e => { const row = e.target.closest('[data-power-tip]'); if (row) { const r = row.getBoundingClientRect(); showPowerTip(row, r.left, r.bottom); } });
+  const tipTarget = e => e.target.closest('[data-power-tip], [data-feature-tip]');
+  const showTip = (el, x, y) => (el.dataset.featureTip !== undefined ? showFeatureTip(el, x, y) : showPowerTip(el, x, y));
+  $('#sheet').addEventListener('mouseover', e => { const el = tipTarget(e); if (el) showTip(el, e.clientX, e.clientY); });
+  $('#sheet').addEventListener('mousemove', e => { if (!tip.classList.contains('hidden') && tipTarget(e)) placeTip(e.clientX, e.clientY); });
+  $('#sheet').addEventListener('mouseout', e => { const el = tipTarget(e); if (el && !el.contains(e.relatedTarget)) hideTip(); });
+  $('#sheet').addEventListener('focusin', e => { const el = tipTarget(e); if (el) { const r = el.getBoundingClientRect(); showTip(el, r.left, r.bottom); } });
   $('#sheet').addEventListener('focusout', hideTip);
   document.addEventListener('scroll', hideTip, true);
 
@@ -823,9 +930,21 @@
   }
   function updateZoomLabel() { const l = $('#zoomPct'); if (l) l.textContent = Math.round(CAM.z * 100) + '%'; }
 
+  function sceneBar() {
+    const scenes = S.st.scenes || [], cur = S.st.scene;
+    if (!isGM()) return cur ? `<span class="scene-name" title="Current scene">📍 ${esc(cur.name)}</span>` : '';
+    return `<span class="scene-bar"><label class="mini" title="Pick a scene to show it to everyone">Scene
+        <select data-mact-change="scene"><option value="">${scenes.length ? '— pick a scene —' : '— no scenes yet —'}</option>
+        ${scenes.map(x => `<option value="${esc(x.id)}" ${cur && cur.id === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+      ${cur ? '<button class="btn small" data-mact="scene-save" title="Save the map into this scene">💾 Save</button>' : ''}
+      <button class="btn small" data-mact="scene-saveas" title="Save the map as a new named scene">＋ Save as new</button>
+      <button class="btn small ghost" data-mact="scene-new" title="Start an empty board as a new scene">New blank</button>
+      ${cur ? `<button class="btn small ghost" data-mact="scene-rename" title="Rename this scene">✎</button>
+        <button class="btn small ghost" data-mact="scene-delete" title="Delete this scene">🗑</button>` : ''}</span>`;
+  }
   function renderMapTools() {
     const mp = S.st.map, gm = isGM(), sc = selChar();
-    $('#mapTools').innerHTML = `
+    $('#mapTools').innerHTML = `${sceneBar()}<span class="tool-break"></span>
       ${sc && canEdit(sc) ? `<button class="btn small" data-mact="place">◉ Place ${esc(sc.name)}</button>` : ''}
       <span class="zoom-ctl"><button class="btn small" data-mact="zout" title="Zoom out">−</button><button class="btn small" data-mact="z100" id="zoomPct" title="Back to 100% (70 px squares)">${Math.round(CAM.z * 100)}%</button><button class="btn small" data-mact="zin" title="Zoom in">＋</button>
         <button class="btn small" data-mact="zfit" title="Fit the whole map in view">⤢ Fit</button></span>
@@ -852,6 +971,7 @@
       const g = S.st.map.gridSize;
       await act('token.add', { charId: S.selected, x: Math.floor((w / 2 - CAM.x) / CAM.z / g), y: Math.floor((h / 2 - CAM.y) / CAM.z / g) });
     }
+    if (a.startsWith('scene-')) return sceneAction(a);
     if (a === 'assets') { A.open = !A.open; renderMapTools(); renderDrawer(); requestAnimationFrame(drawMap); }
     if (a === 'bg') $('#bgFile').click();
     if (a === 'clear-bg') act('map.bg', { url: null });
@@ -864,8 +984,23 @@
       act('token.add', { name, color: '#ef5350', x: Math.floor((w / 2 - CAM.x) / CAM.z / g), y: Math.floor((h / 2 - CAM.y) / CAM.z / g) });
     }
   });
+  async function sceneAction(a) {
+    const cur = S.st.scene;
+    if (a === 'scene-save' && cur) { if (await act('scene.save')) toast(`Saved “${cur.name}”`); }
+    if (a === 'scene-saveas' || a === 'scene-new') {
+      const name = prompt(a === 'scene-new' ? 'Name for the new, empty scene:' : 'Name this scene:', ''); if (name === null) return;
+      if (await act(a === 'scene-new' ? 'scene.new' : 'scene.saveAs', { name: name.trim() || 'Untitled scene' })) toast(a === 'scene-new' ? 'New scene ready' : 'Scene saved');
+    }
+    if (a === 'scene-rename' && cur) { const name = prompt('Rename the scene:', cur.name); if (name && name.trim()) act('scene.rename', { id: cur.id, name: name.trim() }); }
+    if (a === 'scene-delete' && cur && confirm(`Delete the scene “${cur.name}”? The map on screen stays; only the saved scene is removed.`)) act('scene.delete', { id: cur.id });
+  }
   $('#mapTools').addEventListener('change', async e => {
     const t = e.target;
+    if (t.dataset.mactChange === 'scene') {
+      if (!t.value) return;
+      if (await act('scene.load', { id: t.value })) toast('Scene changed for everyone');
+      return;
+    }
     if (t.id === 'bgFile' && t.files[0]) {
       toast('Uploading map…');
       try {
@@ -878,6 +1013,9 @@
     if (t.dataset.mset) act('map.settings', { [t.dataset.mset]: t.type === 'checkbox' ? t.checked : +t.value });
   });
   async function loadMapBg() {
+    const sid = S.st.map.sceneId || '';
+    if (S.sceneSeen !== undefined && S.sceneSeen !== sid) { CAM.ready = false; requestAnimationFrame(drawMap); }
+    S.sceneSeen = sid;
     const v = S.st.map.bgVersion;
     if (v === S.mapBgVersion) return;
     S.mapBgVersion = v;
@@ -1435,14 +1573,14 @@
     if (m.yell) return `<div class="msg yell"><div class="who">📣 ${who} yells${t}</div><div class="yell-text">${md(m.text)}</div></div>`;
     if (m.ooc) return `<div class="msg ooc"><span class="ooc-tag">OOC</span> <b>${esc(m.from)}:</b> ${md(m.text)}</div>`;
     if (m.narration) return `<div class="msg narr">${md(m.text)}</div>`;
-    if (m.emote) return `<div class="msg emote">* ${esc(m.from)} ${md(m.text)}</div>`;
+    if (m.emote) return `<div class="msg emote">* ${m.as ? `${esc(m.as)} <span class="muted">(${esc(m.from)})</span>` : esc(m.from)} ${md(m.text)}</div>`;
     return `<div class="msg ${m.private ? 'priv' : ''}"><div class="who">${who}${t}</div>${priv}<div>${md(m.text)}</div></div>`;
   }
   // a yell also pops up on everyone else's screen for a moment
   function showYell(m) {
     const el = document.createElement('div');
     el.className = 'yell-pop'; el.setAttribute('role', 'alert');
-    el.innerHTML = `<span class="who">📣 ${esc(m.as || m.from)} yells</span><span class="text">${esc(m.text)}</span>`;
+    el.innerHTML = `<span class="who">📣 ${m.as ? `${esc(m.as)} (${esc(m.from)})` : esc(m.from)} yells</span><span class="text">${esc(m.text)}</span>`;
     document.body.appendChild(el);
     setTimeout(() => el.classList.add('out'), 3800);
     setTimeout(() => el.remove(), 4400);

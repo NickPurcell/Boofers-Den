@@ -504,3 +504,96 @@ test("chat: whisper a character (reaches whoever plays it), yell to everyone, ou
   assert.equal((await p1.act("chat", { text: "/desc the room darkens" })).code, 400, "only the GM narrates");
   assert.match((await p1.act("chat", { text: "/frobnicate" })).data.error, /Unknown command/);
 });
+
+test("scenes: the GM saves named map setups and switches everyone between them", async () => {
+  const { gm, p1 } = await table();
+  const mapUrl = (await gm.post("upload", { purpose: "bg", dataUrl: PNG_URL })).data.url;
+  await gm.act("map.bg", { url: mapUrl });
+  await gm.act("token.add", { name: "Bartender", x: 3, y: 4 });
+  assert.equal((await p1.act("scene.saveAs", { name: "Cantina" })).code, 403, "players can't manage scenes");
+  const cantina = (await gm.act("scene.saveAs", { name: "Cantina" })).data.id;
+  // a blank new scene for the next part of the session
+  const hangar = (await gm.act("scene.new", { name: "Hangar Bay 7" })).data.id;
+  let st = (await p1.poll()).data.state;
+  assert.equal(st.scene.name, "Hangar Bay 7");
+  assert.equal(st.scenes, null, "players don't get the scene list");
+  assert.equal(st.map.tokens.length, 0); assert.equal(st.map.bgUrl, null);
+  await gm.act("token.add", { name: "Stormtrooper", x: 1, y: 1 });          // changes to the hangar...
+  await gm.act("scene.load", { id: cantina });                               // ...are kept when switching away
+  st = (await p1.poll()).data.state;
+  assert.equal(st.scene.name, "Cantina");
+  assert.equal(st.map.bgUrl, mapUrl);
+  assert.deepEqual(st.map.tokens.map((t) => t.name), ["Bartender"]);
+  assert.match(st.chat.at(-1).text, /The scene changes: Cantina/);
+  await gm.act("scene.load", { id: hangar });
+  assert.deepEqual((await p1.poll()).data.state.map.tokens.map((t) => t.name), ["Stormtrooper"], "the hangar kept its trooper");
+  const gmView = (await gm.poll()).data.state;
+  assert.deepEqual(gmView.scenes.map((x) => x.name), ["Cantina", "Hangar Bay 7"]);
+  await gm.act("scene.rename", { id: hangar, name: "Docking Bay 94" });
+  assert.equal((await gm.poll()).data.state.scene.name, "Docking Bay 94");
+  // the cantina's background is still shown by a saved scene, so replacing the live map's background keeps it
+  await gm.act("scene.load", { id: cantina });
+  await gm.act("map.bg", { url: null });
+  assert.equal((await gm.call("GET", { img: mapUrl.split("=")[1] })).code, 200, "kept: the saved Cantina scene still uses it");
+  await gm.act("scene.load", { id: hangar });                                 // cantina saved without its background now
+  await gm.act("scene.delete", { id: cantina });
+  assert.equal((await gm.call("GET", { img: mapUrl.split("=")[1] })).code, 404, "freed once nothing uses it");
+  assert.deepEqual((await gm.poll()).data.state.scenes.map((x) => x.name), ["Docking Bay 94"]);
+  assert.equal((await gm.act("scene.load", { id: "nosuchscene" })).code, 400);
+});
+
+test("the SW5e power list is fetched by the server once, trimmed, cached, and needs a session", async () => {
+  const { p1 } = await table();
+  const realFetch = global.fetch;
+  let calls = 0;
+  global.fetch = async (url) => {
+    calls++;
+    assert.match(String(url), /sw5eapi/);
+    return { ok: true, json: async () => [
+      { name: "Force Push", powerType: "Force", level: 1, forceAlignment: "Universal", castingPeriodText: "1 action", range: "60 feet", duration: "Instantaneous", concentration: false, prerequisite: null, contentSource: "PHB", description: "Shove.\r\nHard.", higherLevelDescription: "None" },
+      { name: "Shock", powerType: "Force", level: 0, forceAlignment: "Dark", castingPeriodText: "1 action", range: "Touch", duration: "Instantaneous", concentration: false, description: "Zap." },
+      { name: "Encrypted Message", powerType: "Tech", level: 0, forceAlignment: "None", castingPeriodText: "1 action", range: "120 feet", duration: "1 round", description: "Beep." },
+      { name: "Not a power", powerType: "Maneuver", level: 1 },
+    ] };
+  };
+  try {
+    assert.equal((await browser().call("GET", { op: "powers" })).code, 401, "no session, no list");
+    const r1 = await p1.call("GET", { op: "powers" });
+    assert.equal(r1.code, 200);
+    const list = JSON.parse(r1.data);
+    assert.deepEqual(list.map((x) => `${x.l} ${x.t} ${x.a} ${x.n}`), ["0 tech  Encrypted Message", "0 force dark Shock", "1 force universal Force Push"]);
+    assert.equal(list[2].desc, "Shove.\nHard.");
+    assert.equal(list[2].hl, "", "SW5e's \"None\" becomes empty");
+    await p1.call("GET", { op: "powers" });
+    assert.equal(calls, 1, "served from the cache the second time");
+    await db.del(S.K.powers());
+    global.fetch = async () => { throw new Error("offline"); };
+    assert.equal((await p1.call("GET", { op: "powers" })).code, 503, "a clear error when SW5e can't be reached");
+  } finally { global.fetch = realFetch; }
+});
+
+test("chat: nobody can post as someone else; the real sender is always on the message", async () => {
+  const { gm, p1, p2 } = await table();
+  await p1.act("char.save", { char: { name: "Kira Vos" } });
+  await p2.act("char.save", { char: { name: "Fly" } });
+  // Clawcius's probe: Sam tries to emote and yell as someone else's character
+  await p1.act("chat", { text: "/me declares the session over", as: "Fly" });
+  await p1.act("chat", { text: "/yell We're done here", as: "Fly" });
+  await p1.act("chat", { text: "plain talk", as: "Fly" });
+  let chat = (await gm.poll()).data.state.chat;
+  const emote = chat.find((m) => m.emote), yell = chat.find((m) => m.yell), talk = chat.find((m) => m.text === "plain talk");
+  assert.equal(emote.from, "Sam"); assert.equal(emote.as, null, "can't speak as a character you don't play");
+  assert.equal(yell.from, "Sam"); assert.equal(yell.as, null);
+  assert.equal(talk.from, "Sam"); assert.equal(talk.as, null);
+  // speaking as your own character works, with the player still recorded
+  await p1.act("chat", { text: "/me draws her blaster", as: "kira vos" });
+  chat = (await gm.poll()).data.state.chat;
+  const own = chat.filter((m) => m.emote).at(-1);
+  assert.deepEqual([own.from, own.as], ["Sam", "Kira Vos"]);
+  // the GM may voice any character
+  await gm.act("chat", { text: "/me shrugs", as: "Fly" });
+  const gmEmote = (await gm.poll()).data.state.chat.filter((m) => m.emote).at(-1);
+  assert.deepEqual([gmEmote.from, gmEmote.as], ["Dee", "Fly"]);
+  // a short cooldown between yells
+  assert.equal((await p1.act("chat", { text: "/yell again!" })).code, 400);
+});
