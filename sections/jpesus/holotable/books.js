@@ -139,7 +139,7 @@
         ${cfg.intro ? `<p class="muted" style="margin:0">${cfg.intro}</p>` : ''}
         ${cfg.tabs ? `<div class="subtabs" style="margin:0">${cfg.tabs.map(t => `<button data-bp="tab" data-tab="${esc(t.key)}" class="${t.key === F.tab ? 'on' : ''}">${esc(t.label)}</button>`).join('')}</div>` : ''}
         <div class="pp-filters"></div><div class="pp-count muted"></div><div class="pp-list"></div>
-        <p class="muted" style="font-size:11px;margin:0">Data from SW5e (sw5e.com).</p>
+        <p class="muted" style="font-size:11px;margin:0">Data from <a href="https://sw5e.com" target="_blank" rel="noopener noreferrer">SW5e</a>, a free fan project (sw5e.com).</p>
         <div class="row"><span class="spacer"></span><button class="btn primary" data-bp="close">Done</button></div>`;
       const updateSummaries = () => {
         for (const f of facets()) {
@@ -406,7 +406,7 @@
   const LIB = { book: null, ch: 0, q: '' };
   function libraryBar() {
     const v = (H.S.st && H.S.st.variants) || [];
-    return `<div class="box lib-bar"><h4>SW5e rulebooks</h4><div class="row wrap">${BOOKS.map(b => `<button class="btn small" data-lib="${esc(b.key)}">${esc(b.name)}</button>`).join('')}</div>
+    return `<div class="box lib-bar"><h4>SW5e rulebooks <span class="spacer"></span><span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">from <a href="https://sw5e.com" target="_blank" rel="noopener noreferrer">sw5e.com</a>, a free fan project</span></h4><div class="row wrap">${BOOKS.map(b => `<button class="btn small" data-lib="${esc(b.key)}">${esc(b.name)}</button>`).join('')}</div>
       ${v.length ? `<div style="margin-top:8px"><span class="muted">Variant rules in use at this table:</span> ${v.map(n => `<button class="chip lib-var" data-lib="rules-variant" data-libch="${esc(n)}">${esc(n)}</button>`).join(' ')}</div>` : ''}</div>`;
   }
   async function openBook(key, chapterName) {
@@ -430,6 +430,7 @@
     $('#rules').innerHTML = `<div class="lib">
       <div class="row wrap"><button class="btn small ghost" data-lib="back">← Quick reference</button><h3 style="margin:0">${esc(book.name)}</h3><span class="spacer"></span>
         <input id="libSearch" placeholder="Search this book…" value="${esc(LIB.q)}" style="min-width:200px"></div>
+      <p class="lib-credit muted">Rules text from SW5e, a free fan project: <a href="https://sw5e.com" target="_blank" rel="noopener noreferrer">sw5e.com</a></p>
       <div class="lib-body"><nav class="lib-nav">${hits.map(({ c, i }) => `<button class="${i === LIB.ch ? 'on' : ''}" data-libgo="${i}">${esc(c.n)}${book.variants && used.has(c.n) ? ' <span class="lib-on">in use</span>' : ''}</button>`).join('') || '<p class="muted">No matches.</p>'}</nav>
         <article class="lib-page">
           ${book.variants && cur ? `<div class="lib-variant ${used.has(cur.n) ? 'on' : ''}">${used.has(cur.n) ? '✓ This table uses this variant rule.' : 'This table doesn\'t use this variant rule.'}

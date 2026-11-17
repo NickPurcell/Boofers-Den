@@ -170,6 +170,7 @@
     }
     S.st = st;
     document.body.classList.toggle('is-gm', !!st.isGM);
+    document.body.classList.toggle('no-sw5e-books', st.sw5eBooks === false);
     if (!S.selected || !st.characters[S.selected]) {
       const mine = chars().find(c => c.owner === clientId);
       S.selected = (mine || chars()[0] || {}).id || null;
@@ -785,7 +786,7 @@
       ep.innerHTML = `<h3>＋ Add equipment from SW5e</h3>
         <div class="subtabs" style="margin:0"><button data-eq="set" data-set="standard" class="on">Standard gear</button><button data-eq="set" data-set="enhanced">Enhanced items</button></div>
         <div class="pp-filters"></div><div class="pp-count muted"></div><div class="pp-list"></div>
-        <p class="muted" style="font-size:11px;margin:0">Equipment data from SW5e (sw5e.com): Player's Handbook, Expanded Content and Wretched Hives.</p>
+        <p class="muted" style="font-size:11px;margin:0">Equipment from the Player's Handbook, Expanded Content and Wretched Hives. Data from <a href="https://sw5e.com" target="_blank" rel="noopener noreferrer">SW5e</a>, a free fan project (sw5e.com).</p>
         <div class="row"><span class="spacer"></span><button class="btn primary" data-eq="close">Done</button></div>`;
       ep.addEventListener('change', e => {
         const t = e.target;
@@ -884,7 +885,7 @@
         </div>
         <div class="pp-count muted"></div>
         <div class="pp-list"></div>
-        <p class="muted" style="font-size:11px;margin:0">Power data from SW5e (sw5e.com).</p>
+        <p class="muted" style="font-size:11px;margin:0">Data from <a href="https://sw5e.com" target="_blank" rel="noopener noreferrer">SW5e</a>, a free fan project (sw5e.com).</p>
         <div class="row"><span class="spacer"></span><button class="btn primary" data-pp="close">Done</button></div>`;
       pp.addEventListener('change', e => {
         const t = e.target;
@@ -1651,6 +1652,8 @@
         <p style="margin-top:0" class="muted">After a big fight or a hard-won conversation, give the party a level. Each player gets a pop-up and picks how to level.
           Someone missed the session? Grant just their character, and you can level it for them.</p>
         <button class="btn small amber" id="gmGrant">⬆ Grant a level…</button>
+        <label class="toggle" style="margin-top:8px" title="A table rule: whether players may take the hit die's maximum instead of the average or a roll">
+          <input type="checkbox" id="gmHpMax" ${S.st.hpMax !== false ? 'checked' : ''}> Players may take maximum hit points when levelling</label>
         ${pendingNames.length ? `<p class="muted" style="font-size:12px">Waiting to level: ${pendingNames.join(', ')}</p>` : ''}
       </div>
       <div class="box"><h4>Saving &amp; backups</h4>
@@ -1684,6 +1687,7 @@
     }
   });
   $('#gm').addEventListener('change', async e => {
+    if (e.target.id === 'gmHpMax') { act('settings.hpMax', { on: e.target.checked }); return; }
     if (e.target.id !== 'restoreFile' || !e.target.files[0]) return;
     const f = e.target.files[0]; e.target.value = '';
     let campaign;
@@ -2033,7 +2037,7 @@
       const wiz = $('#wiz', box);
       // SW5e's class/archetype features for the level being gained (fetched once per class/level/archetype)
       const suggest = () => {
-        if (!window.HTB) return;
+        if (!window.HTB || S.st.sw5eBooks === false) return;
         const P = wizardPlan(charId, W);
         const arch = (P.k && P.k.archetype) || W.archetype.trim();
         const key = `${P.cls}|${P.newClassLevel}|${arch}`;
@@ -2046,7 +2050,7 @@
         }).catch(err => { if (W.autoKey === key) { W.autoState = err.message; draw(); } });
         HTB.archetypesOf(P.cls).then(a => { W.archList = a; draw(); }).catch(() => {});
       };
-      if (window.HTB) HTB.featNames().then(f => { W.featList = f; draw(); }).catch(() => {});
+      if (window.HTB && S.st.sw5eBooks !== false) HTB.featNames().then(f => { W.featList = f; draw(); }).catch(() => {});
       const draw = () => { const a = document.activeElement, id = a && a.dataset && a.dataset.w, pos = a && a.selectionStart; wiz.innerHTML = wizardHtml(charId, W);
         if (id) { const el = wiz.querySelector(`[data-w="${id}"]`); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch { /* not a text box */ } } } };
       const render = () => { draw(); suggest(); };
@@ -2124,6 +2128,7 @@
     const retro = (newCon - oldCon) * before;
     const avgGain = Math.max(1, hd / 2 + 1 + newCon) + retro;
     const maxGain = Math.max(1, hd + newCon) + retro;
+    if (W.hpMode === 'max' && S.st.hpMax === false) W.hpMode = 'average';
     const payload = { charId, className: cls, hpMode: W.hpMode, archetype: W.archetype.trim() || undefined, hitDie: hd,
       asi: asi || undefined, feat: feat || undefined,
       features: (W.auto || []).filter(f => !f.have).map(f => ({ name: f.name, text: f.text })).slice(0, 20), powers: W.powers.filter(p => p.name.trim()).slice(0, 20) };
@@ -2153,7 +2158,7 @@
         <div class="choices">
           <label class="choice ${W.hpMode === 'average' ? 'on' : ''}"><input type="radio" name="hp" data-w="hpMode" value="average" ${W.hpMode === 'average' ? 'checked' : ''}><b>Take the average</b><br><span class="muted">+${P.avgGain} HP</span></label>
           <label class="choice ${W.hpMode === 'roll' ? 'on' : ''}"><input type="radio" name="hp" data-w="hpMode" value="roll" ${W.hpMode === 'roll' ? 'checked' : ''}><b>Roll the die</b><br><span class="muted">+${Math.max(1, 1 + P.newCon) + P.retro} to +${P.hd + P.newCon + P.retro} HP, rolled where everyone sees it</span></label>
-          <label class="choice ${W.hpMode === 'max' ? 'on' : ''}"><input type="radio" name="hp" data-w="hpMode" value="max" ${W.hpMode === 'max' ? 'checked' : ''}><b>Take the maximum</b><br><span class="muted">+${P.maxGain} HP (the full d${P.hd})</span></label>
+          ${S.st.hpMax === false ? '' : `<label class="choice ${W.hpMode === 'max' ? 'on' : ''}"><input type="radio" name="hp" data-w="hpMode" value="max" ${W.hpMode === 'max' ? 'checked' : ''}><b>Take the maximum</b><br><span class="muted">+${P.maxGain} HP (the full d${P.hd})</span></label>`}
         </div>
         ${P.retro ? `<p class="muted" style="font-size:12px;margin:4px 0 0">Includes +${P.retro} because your Constitution modifier went up (it counts for every earlier level too).</p>` : ''}
       </section>

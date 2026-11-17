@@ -781,3 +781,51 @@ test("level-up wizard: maximum hit points, SW5e class features added once, picke
   assert.deepEqual(ch.features.map((f) => f.name), ["Second Wind", "Action Surge"], "a feature already on the sheet isn't added twice");
   assert.equal(ch.powers[0].description, "Shove.");
 });
+
+test("SW5e caches: together they stay under a stated total; over it, that list answers 503 and nothing is cached", async () => {
+  const { gm, p1 } = await table();
+  const realFetch = global.fetch;
+  // a feature list just under its own cap, but big enough to cross the total with the others
+  const big = (n) => JSON.stringify(Array.from({ length: n }, (_, i) => ({ name: "F" + i, level: 1, source: "Class", sourceName: "Fighter", text: "x".repeat(3990) })));
+  global.fetch = async (url) => ({ ok: true, text: async () => (/feature$/.test(String(url)) ? big(1300) : /monster$/.test(String(url)) ? big(1300).replace(/"source":"Class"/g, '"size":"Medium"') : "[]") });
+  try {
+    await db.set(S.K.sw5e("rules-ec"), "x", "EX", 100);
+    await db.hset(S.K.sw5eSizes(), "rules-ec", String(handler.SW5E_TOTAL_MAX - 3 * 1024 * 1024));   // pretend most of the total is used
+    const r = await p1.call("GET", { op: "sw5e", list: "features" });
+    assert.equal(r.code, 503, "would go over the total");
+    assert.equal(await db.get(S.K.sw5e("features")), null, "nothing cached");
+    assert.equal((await gm.poll()).code, 200, "the game is untouched");
+    await db.del(S.K.sw5e("rules-ec")); await db.del(S.K.sw5eFail("features"));
+    assert.equal((await p1.call("GET", { op: "sw5e", list: "features" })).code, 200, "an expired list no longer counts");
+    assert.ok(+(await db.hgetall(S.K.sw5eSizes())).features > 1024 * 1024);
+    assert.equal((await db.hgetall(S.K.sw5eSizes()))["rules-ec"], undefined);
+  } finally { global.fetch = realFetch; }
+});
+
+test("SW5e books switch: off turns off op=sw5e only; powers and equipment keep working", async () => {
+  const { p1 } = await table();
+  const realFetch = global.fetch;
+  let calls = 0;
+  global.fetch = async () => { calls++; return { ok: true, text: async () => "[]" }; };
+  handler.SW5E_BOOKS.on = false;
+  try {
+    const r = await p1.call("GET", { op: "sw5e", list: "species" });
+    assert.equal(r.code, 503); assert.match(r.data.error, /switched on/);
+    assert.equal(calls, 0, "nothing fetched for the books");
+    assert.equal((await p1.poll()).data.state.sw5eBooks, false, "the page learns to hide the book buttons");
+    assert.equal((await p1.call("GET", { op: "powers" })).code, 200, "the power picker is separate");
+  } finally { handler.SW5E_BOOKS.on = true; global.fetch = realFetch; }
+  assert.equal((await p1.poll()).data.state.sw5eBooks, true);
+});
+
+test("maximum hit points is the GM's table rule", async () => {
+  const { gm, p1 } = await table();
+  const kira = (await p1.act("char.save", { char: { name: "Kira", classes: [{ name: "Scout", level: 1 }] } })).data.id;
+  assert.equal((await p1.poll()).data.state.hpMax, true, "on unless the GM turns it off");
+  assert.equal((await p1.act("settings.hpMax", { on: false })).code, 403);
+  await gm.act("settings.hpMax", { on: false });
+  await gm.act("levelup.grant", { charIds: [kira] });
+  assert.equal((await p1.act("levelup.apply", { charId: kira, className: "Scout", hpMode: "max" })).code, 400);
+  assert.equal((await p1.act("levelup.apply", { charId: kira, className: "Scout", hpMode: "average" })).code, 200);
+  assert.equal((await p1.poll()).data.state.hpMax, false);
+});

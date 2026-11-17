@@ -637,3 +637,10 @@ table.t td:first-child input { min-width: 140px; }
 .wiz-feats li { cursor: help; }
 .wiz-sub { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
 .wiz-power { gap: 6px; margin-bottom: 4px; align-items: center; }
+.lib-credit { font-size: 12px; margin: 6px 0 0; }
+.power-picker a, .lib-bar a, .lib-credit a { color: var(--holo); }
+/* when the site switches the SW5e books off (HOLOTABLE_SW5E_BOOKS=off), hide what needs them */
+body.no-sw5e-books [data-act="pick-species"], body.no-sw5e-books [data-act="pick-background"], body.no-sw5e-books [data-act="pick-archetype"],
+body.no-sw5e-books [data-act="pick-feature"], body.no-sw5e-books [data-cact="add-creature"], body.no-sw5e-books [data-cact="statblock"],
+body.no-sw5e-books [data-sa="pick-equip"], body.no-sw5e-books [data-sa="pick-mod"], body.no-sw5e-books [data-sa="rules"],
+body.no-sw5e-books [data-sa="deploy-info"], body.no-sw5e-books .lib-bar { display: none !important; }

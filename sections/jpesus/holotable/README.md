@@ -54,14 +54,18 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
   - **Images:** an uploaded image is deleted only once nothing on the table, saved scenes included, uses it.
 - **Level ups:** the GM grants a level to the party or to chosen characters. Each player gets a pop-up and a guided wizard:
   - **Class:** pick a class or multiclass. When an archetype is due, the class's archetypes are offered.
-  - **Hit points:** take the average, roll the die (in chat), or take the die's maximum.
+  - **Hit points:** take the average, roll the die (in chat), or take the die's maximum. Maximum is a table rule the GM can
+    switch off in the GM tab.
   - **Ability score improvement:** only at the levels the SW5e class table gives one (4, 8, 12, 16 and 19, plus the
     Fighter, Monk and Operative extras); otherwise the wizard says the class gets none. +1 to two scores, +2 to one, or a
     feat (picked from SW5e's list, with its text filled in).
   - **Features:** the class (and archetype) features SW5e gives at the new level are added to Features & Traits automatically.
   - **Powers:** "+ force power" / "+ tech power" open the same SW5e pickers as the sheet.
   - Then a before/after summary. The GM can level a character for a player who missed the session.
-- **Every SW5e book** (the server fetches SW5e's lists and caches them for a week under `ht:sw5e:list:<name>`):
+- **Every SW5e book** (the server fetches SW5e's lists and caches them for a week under `ht:sw5e:list:<name>`;
+  all cached SW5e lists together are capped at 15 MB, today about 6.3 MB). The books have their own switch, separate from
+  the power and equipment pickers: set `HOLOTABLE_SW5E_BOOKS=off` to turn just them off (their buttons hide).
+  Content from [SW5e](https://sw5e.com), a free fan project, credited wherever it's shown:
   - **Player's Handbook and Expanded Content:** ◈ buttons on the sheet choose a species (adds its traits, speed and
     languages, and can apply a fixed ability increase), a background (adds its feature and proficiencies) and an archetype
     (adds its features up to your level). "+ from SW5e" in Features & Traits adds feats, class and archetype features,

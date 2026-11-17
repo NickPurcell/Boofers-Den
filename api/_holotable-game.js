@@ -183,6 +183,7 @@ function viewFor(camp, cid, gm, online) {
     handouts: (camp.handouts || []).filter((h) => gm || h.shared),
     levelUps: camp.levelUps || {},
     variants: camp.variants || [],
+    hpMax: camp.hpMax !== false,
     ships: (camp.ships || []).filter((x) => gm || !x.hidden),
     scene: (camp.scenes || []).filter((x) => x.id === camp.activeScene).map((x) => ({ id: x.id, name: x.name }))[0] || null,
     scenes: gm ? (camp.scenes || []).map((x) => ({ id: x.id, name: x.name, savedAt: x.savedAt })) : null,
@@ -244,6 +245,7 @@ function applyLevelUp(camp, cid, gm, p) {
     if (total !== 2) throw new Invalid("An ability score increase is +2 to one score or +1 to two.");
   }
   const feat = p.feat && str(p.feat.name, 80).trim();
+  if (p.hpMode === "max" && camp.hpMax === false) throw new Invalid("The GM has turned off taking maximum hit points.");
 
   // hit points: rolled on the server (shown in chat), the fixed average, or the die's maximum (a table's choice);
   // Con changes count for every level
@@ -671,6 +673,8 @@ function applyAction(camp, cid, gm, type, p) {
 
     // ---- which SW5e variant rules this table uses (the GM decides; everyone sees the list)
     case "variants.set": need(gm); camp.variants = cleanVariants(p.variants); return {};
+    // whether players may take the hit die's maximum when levelling (the GM's table rule)
+    case "settings.hpMax": need(gm); camp.hpMax = !!p.on; return {};
 
     // ---- starships: the party's ships can be edited by anyone at the table; hidden (enemy) ships only by the GM
     case "ship.save": {
@@ -728,6 +732,7 @@ function cleanGame(g) {
   g.chat = (Array.isArray(g.chat) ? g.chat : []).slice(-CHAT_LIMIT).filter((c) => c && typeof c === "object");
   g.notes = str(g.notes, 500000);
   g.variants = cleanVariants(g.variants);
+  g.hpMax = g.hpMax !== false;
   g.ships = (Array.isArray(g.ships) ? g.ships : []).slice(0, MAX_SHIPS).filter((x) => x && typeof x === "object").map((x) => cleanShip(x, g.characters));
   g.scenes = (Array.isArray(g.scenes) ? g.scenes : []).slice(0, 30).filter((x) => x && typeof x === "object")
     .map((x) => ({ id: /^[a-z0-9]{6,20}$/.test(x.id || "") ? x.id : rid(), name: str(x.name, 60) || "Scene", savedAt: num(x.savedAt, now()), map: cleanMap(g, x.map) }));

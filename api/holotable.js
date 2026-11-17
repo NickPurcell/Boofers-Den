@@ -167,6 +167,13 @@ const SW5E_LISTS = {
 for (const [name, cfg] of Object.entries(require("./_holotable-sw5e-data.js").LISTS)) {
   SW5E_LISTS[name] = Object.assign({}, cfg, { key: () => S.K.sw5e(name) });
 }
+// All cached SW5e lists together stay under this total (today about 6.3 MB for every book). A list that
+// would push the total over it isn't cached: that one picker answers 503, the game is untouched.
+const SW5E_TOTAL_MAX = 15 * MB;
+// The wider SW5e books (everything served by op=sw5e: species, archetypes, feats, creatures, rule chapters,
+// starship parts...) have their own switch, separate from the power and equipment pickers. Set the
+// HOLOTABLE_SW5E_BOOKS environment variable to "off" (or flip this) to turn just the books off.
+const SW5E_BOOKS = { on: String(process.env.HOLOTABLE_SW5E_BOOKS || "").toLowerCase() !== "off" };
 const SW5E_TIMEOUT_MS = 8000;
 const SW5E_FAIL_S = 60;          // after a failure, don't call SW5e again for this long
 const SW5E_LOCK_MS = 15000;      // the "someone is fetching" marker outlives the fetch timeout
@@ -204,6 +211,19 @@ async function fetchSw5e(cfg) {
   return raw;
 }
 
+// Would caching `bytes` more for list `name` keep every cached SW5e list within SW5E_TOTAL_MAX?
+// Sizes are kept in a small hash; entries whose list has since expired are dropped from it.
+async function sw5eRoomFor(r, name, bytes) {
+  const sizes = (await r.hgetall(S.K.sw5eSizes())) || {};
+  let total = bytes;
+  for (const [n, b] of Object.entries(sizes)) {
+    if (n === name) continue;
+    if (SW5E_LISTS[n] && (await r.exists(SW5E_LISTS[n].key()))) total += +b || 0;
+    else await r.hdel(S.K.sw5eSizes(), n);
+  }
+  return total <= SW5E_TOTAL_MAX;
+}
+
 // The cached list as a JSON string, or null when it isn't available right now (caller answers 503).
 async function sw5eList(r, name) {
   const cfg = SW5E_LISTS[name], key = cfg.key(), failKey = S.K.sw5eFail(name), lockKey = S.K.sw5eLock(name);
@@ -221,7 +241,10 @@ async function sw5eList(r, name) {
   }
   try {
     raw = await fetchSw5e(cfg);
+    const bytes = Buffer.byteLength(raw);
+    if (!(await sw5eRoomFor(r, name, bytes))) throw new Error("SW5e caches would go over their total");
     await r.set(key, raw, "EX", 7 * 24 * 3600);
+    await r.hset(S.K.sw5eSizes(), name, String(bytes));
     return raw;
   } catch (e) {
     await r.set(failKey, "1", "EX", SW5E_FAIL_S);
@@ -291,6 +314,7 @@ async function handleGet(req, res, q, ses) {
         if (!camp.players[ses.pid]) camp.players[ses.pid] = { name: ses.name, role: ses.role }; // shown before their first save
         const state = G.viewFor(camp, ses.pid, gm, await onlineList(camp));
         if (missing) state.missing = true;
+        state.sw5eBooks = SW5E_BOOKS.on;
         return res.status(200).json({ v: String(v || 0), lib: String(lib || 0), state });
       }
       const left = deadline - Date.now();
@@ -315,6 +339,7 @@ async function handleGet(req, res, q, ses) {
   if (op === "sw5e") { // ?list=<name>: one of the fixed lists above, nothing else
     const name = String(q.list || "");
     if (!Object.prototype.hasOwnProperty.call(SW5E_LISTS, name) || ["powers", "standard", "enhanced"].includes(name)) return fail(res, 404, "No such SW5e list.");
+    if (!SW5E_BOOKS.on) return fail(res, 503, "The SW5e books aren't switched on for this table.");
     const raw = await sw5eList(r, name);
     if (!raw) return fail(res, 503, "Couldn't reach SW5e for that list right now. Try again in a minute.");
     res.setHeader("Content-Type", "application/json");
@@ -622,3 +647,5 @@ module.exports = async function handler(req, res) {
     return fail(res, 500, "Something went wrong on the server.");
   }
 };
+module.exports.SW5E_BOOKS = SW5E_BOOKS;   // tests switch the books off and on
+module.exports.SW5E_TOTAL_MAX = SW5E_TOTAL_MAX;
