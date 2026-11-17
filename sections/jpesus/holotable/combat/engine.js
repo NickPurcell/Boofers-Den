@@ -334,13 +334,27 @@
     const melee = !range || thrown ? (reach ? 2 * FT : FT) : 0;
     return { melee, range };
   }
+  // Weapon properties that change an attack (audit 5.8), read from the properties text as SW5e writes it:
+  //   Versatile (1d10): the two-handed die for a melee attack; Heavy: half the Strength modifier (at least 1) on a hit
+  //   with a Strength attack; Strength N / Dexterity N: disadvantage unless the wielder's score is at least N.
+  function weaponProps(ch, a, abil, rules) {
+    const p = String(a.props || ''), out = {};
+    const v = /\bversatile\s*\(\s*(\d*d\d+)\s*\)/i.exec(p);
+    if (v) out.versatile = v[1].toLowerCase();
+    if (/\bheavy\b/i.test(p) && abil === 'str') out.heavy = Math.max(1, Math.floor(rules.abilityMod(ch, 'str') / 2));
+    for (const [, name, n] of p.matchAll(/\b(strength|dexterity)\s+(\d{1,2})\b/gi)) {
+      const k = name.toLowerCase() === 'strength' ? 'str' : 'dex', score = +((ch.abilities || {})[k]) || 10;
+      if (score < +n) out.unmet = `${name[0].toUpperCase()}${name.slice(1).toLowerCase()} ${n}`;
+    }
+    return out;
+  }
   // the attacks on a character sheet, with HoloTable's own arithmetic (rules.js)
   function attacksOf(ch, rules) {
     return (ch.attacks || []).map((a, i) => {
       const damage = rules.damageExpr(ch, a);
       const ab = a.ab === 'finesse' ? (rules.abilityMod(ch, 'dex') > rules.abilityMod(ch, 'str') ? 'dex' : 'str') : ABILS.includes(a.ab) ? a.ab : 'str';
       return Object.assign({ key: String(i), name: a.name || 'Attack', bonus: rules.attackBonus(ch, a), abil: ab, damage, crit: rules.critExpr(damage), type: a.type || '', enhanced: +a.magic > 0,
-        finesse: a.ab === 'finesse' || /\bfinesse\b/i.test(String(a.props || '')), weapon: true }, readRange(a.props));
+        finesse: a.ab === 'finesse' || /\bfinesse\b/i.test(String(a.props || '')), weapon: true }, readRange(a.props), weaponProps(ch, a, ab, rules));
     }).filter((a) => a.melee || a.range);
   }
   // a creature's attack from its stat block entry ({ n, atk, dmg, dt, rng, d } as HoloTable's creature list keeps it)
@@ -463,6 +477,7 @@
       return out;
     } },
     { id: 'exhausted', when: (c) => (+c.actor.exhaustion || 0) >= 3, each: () => [{ dis: true, text: 'exhaustion' }] },
+    { id: 'requirement', when: (c) => !!(c.attack && c.attack.unmet), each: (c) => [{ dis: true, text: `${c.attack.unmet} not met` }] },   // a weapon's Strength or Dexterity number (5.8)
     { id: 'dodge', when: (c) => c.dodging, each: (c) => [{ dis: true, text: `${c.target.name} is dodging` }] },
     { id: 'target', when: (c) => effectsOf(c.target).some(([, e]) => e.attacked), each: (c) => effectsOf(c.target).filter(([, e]) => e.attacked).map(([n, e]) => {
       const d = defeated(n, c.target, c.actor);
@@ -903,7 +918,7 @@
       }
       case 'attack': {
         if (!b.action) return no(`${me.name} has already used the action this turn.`);
-        const s = strike(w, me, act.target, act.attack, { adv: !!act.adv, dis: !!act.dis, no: act.no || [], add: act.add || {} }, roll, '');
+        const s = strike(w, me, act.target, act.attack, { adv: !!act.adv, dis: !!act.dis, no: act.no || [], add: act.add || {}, twoHands: !!act.twoHands }, roll, '');
         if (!s.ok) return s;
         w.spent[me.id].action += 1;
         return { ok: true, world: w, log: s.log, events: s.events };
@@ -1100,7 +1115,9 @@
     const log = [{ unit: me.id, kind: 'attack', roll: r, expr: pv.expr, text: `${me.name} ${how ? `makes ${how} against` : 'attacks'} ${t.name} with ${attack.name}${tilt}${pv.notes.length ? ` (${pv.notes.join('; ')})` : ''}${pv.weak ? ` (weakened, −${pv.weak})` : ''}: ${r.total} against AC ${pv.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}` }];
     const events = [];
     if (!hit) { events.push({ kind: 'miss', unit: t.id }); return { ok: true, log, events }; }
-    const base = !crit ? attack.damage : variant(w, 'Crueler Criticals') ? cruel(attack.damage) : attack.crit || attack.damage;
+    // versatile in two hands (5.8): its larger die for a melee attack, in place of the weapon's own
+    const twoHands = !!(opts.twoHands && attack.versatile && !pv.ranged), dmg0 = twoHands ? String(attack.damage).replace(/\d*d\d+/i, attack.versatile) : attack.damage;
+    const base = (!crit ? dmg0 : variant(w, 'Crueler Criticals') ? cruel(dmg0) : twoHands ? doubleDice(dmg0) : attack.crit || dmg0) + (attack.heavy ? '+' + attack.heavy : '');
     // bonus damage from class features (audit 5.9); a rider the attacker turned down (opts.no) isn't added
     const add = opts.add || {}, fp = (me.pools || {}).force;
     const riders = (pv.riders || []).filter((x) => !((opts.no || []).includes(x.key))).map((x) => {
@@ -1119,7 +1136,7 @@
     const df = defended(t, Math.max(0, d.total) + corr, String(attack.type || '').toLowerCase(), attack.enhanced ? 'enhanced' : 'weapon');
     const amount = df.amount;
     const took = takeDamage(t, amount);
-    log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${riders.length ? ` (with ${riders.map((x) => `${x.name} ${x.dice ? (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat}${x.points ? `, ${x.points} force point${x.points === 1 ? '' : 's'}` : ''}`).join('; ')})` : ''}${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
+    log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${twoHands ? ' (two-handed)' : ''}${attack.heavy ? ` (heavy +${attack.heavy})` : ''}${riders.length ? ` (with ${riders.map((x) => `${x.name} ${x.dice ? (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat}${x.points ? `, ${x.points} force point${x.points === 1 ? '' : 's'}` : ''}`).join('; ')})` : ''}${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
     fallen(t, took, crit, log);
     events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
     concentrationCheck(w, t, amount, roll, log);
@@ -1401,5 +1418,5 @@
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
     SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf, d20, flankOf, fixedTotal, cruel, modeName,
-    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, ridersOf, ridersFor };
+    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, ridersOf, ridersFor, weaponProps };
 });

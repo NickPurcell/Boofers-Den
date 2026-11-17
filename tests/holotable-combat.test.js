@@ -2450,3 +2450,50 @@ test("Force-Empowered Strikes through the API: the points come off the sheet on 
   } else assert.equal(st.characters[avery].force.used, 0, "a miss costs nothing");
   assert.ok(!/50d8/.test(JSON.stringify(st.chat)));
 });
+
+/* ---------------------------------------------------------------- weapon properties in the combat view (audit 5.8) */
+test("weapon properties: versatile's two-handed die, heavy's Strength bonus, a Strength or Dexterity requirement", () => {
+  const sheet = (abilities) => ({ abilities: Object.assign({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }, abilities), classes: [{ name: "Fighter", level: 1 }] });
+  assert.deepEqual(E.weaponProps(sheet({ str: 16 }), { props: "Versatile (1d10)" }, "str", R), { versatile: "1d10" });
+  assert.deepEqual(E.weaponProps(sheet({ str: 16 }), { props: "Dexterity 11, Heavy, shocking 13, two-handed" }, "str", R), { heavy: 1, unmet: "Dexterity 11" }, "an Electrohammer at Dex 10");
+  assert.deepEqual(E.weaponProps(sheet({ str: 16, dex: 12 }), { props: "Dexterity 11, Heavy, shocking 13, two-handed" }, "str", R), { heavy: 1 });
+  assert.deepEqual(E.weaponProps(sheet({ str: 20 }), { props: "Heavy" }, "str", R), { heavy: 2 });
+  assert.deepEqual(E.weaponProps(sheet({ str: 8 }), { props: "Heavy" }, "str", R), { heavy: 1 }, "at least 1");
+  assert.deepEqual(E.weaponProps(sheet({ dex: 16 }), { props: "Heavy" }, "dex", R), {}, "heavy counts only with Strength");
+  assert.deepEqual(E.weaponProps(sheet({ str: 12 }), { props: "Burst 4, power cell (range 90/360), reload 4, strength 15, two-handed" }, "dex", R), { unmet: "Strength 15" });
+  assert.deepEqual(E.weaponProps(sheet({ str: 16 }), { props: "strength 15" }, "dex", R), {}, "met");
+  assert.deepEqual(E.weaponProps(sheet({}), { props: "Range (40/160), Strength, Two-handed" }, "dex", R), {}, "a bare Strength without a number asks nothing");
+  // in an attack: an unmet requirement is disadvantage; two hands use the larger die (doubled on a critical); heavy adds on a hit
+  const sword = Object.assign({}, blade, { name: "Vibrosword", abil: "str", weapon: true, versatile: "1d10", heavy: 1 });
+  const ava = unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 }), r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 60, maxHp: 60 });
+  const pv = E.preview(world([ava, r1], "ava"), "ava", "r1", Object.assign({}, sword, { unmet: "Strength 15" }));
+  assert.deepEqual([pv.mode, pv.tilts.map((x) => x.text)], ["dis", ["Strength 15 not met"]]);
+  let d = dice({ total: 15, nat: 12 }, { total: 9 });
+  let r = E.apply(world([ava, r1], "ava"), { type: "attack", unit: "ava", target: "r1", attack: sword, twoHands: true }, d.roll);
+  assert.equal(d.asked[1], "1d10+3+1");
+  assert.match(r.log[1].text, /\(two-handed\) \(heavy \+1\)/);
+  d = dice({ total: 25, nat: 20 }, { total: 20 });
+  E.apply(world([ava, r1], "ava"), { type: "attack", unit: "ava", target: "r1", attack: sword, twoHands: true }, d.roll);
+  assert.equal(d.asked[1], "2d10+3+1");
+  d = dice({ total: 15, nat: 12 }, { total: 9 });
+  E.apply(world([ava, r1], "ava"), { type: "attack", unit: "ava", target: "r1", attack: sword }, d.roll);
+  assert.equal(d.asked[1], "1d8+3+1", "one hand: the weapon's own die");
+});
+
+test("weapon properties through the API: two hands for a versatile sword; a bowcaster's unmet Strength is disadvantage", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { abilities: { str: 12, dex: 14, con: 12, int: 10, wis: 10, cha: 10 },
+    attacks: [{ name: "Vibrosword", ab: "str", damage: "1d8", type: "kinetic", props: "Versatile (1d10)" }, { name: "Bowcaster", ab: "dex", damage: "1d10", type: "energy", props: "Burst 4, power cell (range 50/200), reload 4, strength 13, two-handed" }] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0", twoHands: true })).code, 200);
+  st = await gm.state();
+  const dmg = st.chat.filter((m) => m.fight && m.roll && m.roll.kind === "damage").pop();
+  if (dmg) assert.match(dmg.roll.label, /\(two-handed\)/);
+  await gm.act("fight.undo", {});
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 6, y: 0 });
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "1" })).code, 200);
+  const atk = (await gm.state()).chat.filter((m) => m.fight && m.roll && m.roll.kind === "attack").pop().roll.label;
+  assert.match(atk, /disadvantage \(Strength 13 not met\)/);
+});
