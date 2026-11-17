@@ -677,10 +677,8 @@
       case 'hp': {
         const raw = $('#hpDelta').value.trim(); const n = Math.abs(parseInt(raw, 10)); if (!n) return;
         const sign = raw.startsWith('-') ? -1 : raw.startsWith('+') ? 1 : +b.dataset.sign;
-        mutate(c => {
-          if (sign < 0) { let d = n; const t = Math.min(+c.hp.temp || 0, d); c.hp.temp = (+c.hp.temp || 0) - t; d -= t; c.hp.current = Math.max(0, (+c.hp.current || 0) - d); }
-          else { c.hp.current = Math.min(+c.hp.max || 0, (+c.hp.current || 0) + n); if (c.hp.current > 0) c.deathSaves = { s: 0, f: 0 }; }
-        });
+        if (sign < 0) { act('char.damage', { id: ch.id, amount: n }); $('#hpDelta').value = ''; break; }   // on the server, as the tracker's -n: temporary HP first (#107)
+        mutate(c => { c.hp.current = Math.min(+c.hp.max || 0, (+c.hp.current || 0) + n); if (c.hp.current > 0) c.deathSaves = { s: 0, f: 0 }; });
         break;
       }
       case 'short-rest': case 'short-rest-done': shortRestDialog(); break;   // hit dice by size, then the rest itself (#71)
@@ -1072,13 +1070,13 @@
     html += `<div class="init-list">${ini.entries.map((en, i) => {
       const ch = en.charId && S.st.characters[en.charId];
       const canHp = gm || (ch && ch.owner === clientId);
-      const hp = en.hp == null ? '' : `${en.hp}`;
+      const hp = en.hp == null ? '' : `${en.hp}`, temp = ch ? Math.max(0, +(ch.hp || {}).temp || 0) : 0;
       return `<div class="init-row ${ini.active && i === ini.turn ? 'cur' : ''} ${en.hidden ? 'hid' : ''}" data-id="${esc(en.id)}">
         <div class="init${gm ? ' gm-init' : ''}">${gm ? `<input type="number" value="${n0(en.init)}" data-cf="init" aria-label="Initiative for ${esc(en.name)}"><span class="init-step"><button type="button" data-cact="init-up" title="Raise initiative by 1" aria-label="Raise initiative for ${esc(en.name)}">▲</button><button type="button" data-cact="init-down" title="Lower initiative by 1" aria-label="Lower initiative for ${esc(en.name)}">▼</button></span>` : Math.round(n0(en.init))}</div>
         <div><b>${esc(en.name)}</b>${en.hidden ? ' <span class="muted">(hidden)</span>' : ''}${ch ? ` <span class="muted">· ${esc((S.st.players[ch.owner] || {}).name || '')}</span>` : ''}
           <div>${(en.conditions || []).map((c, ci) => `<span class="chip" title="${esc(R.CONDITIONS[c] || '')}">${esc(c)}${gm || canHp ? `<button data-cact="rm-cond" data-ci="${ci}">✕</button>` : ''}</span>`).join('')}
           ${gm || canHp ? `<select data-cf="add-cond" style="font-size:12px;padding:1px 4px"><option value="">+ condition</option>${Object.keys(R.CONDITIONS).map(c => `<option>${c}</option>`).join('')}</select>` : ''}</div></div>
-        <div class="hp">${hp !== '' ? (canHp ? `HP <input data-cf="hp" value="${esc(hp)}" title="Type a number, or -7 / +5">` : `HP ${esc(hp)}`) + (en.maxHp != null ? ` <span class="muted">/ ${n0(en.maxHp)}</span>` : '') : ''}</div>
+        <div class="hp">${hp !== '' ? (canHp ? `HP <input data-cf="hp" value="${esc(hp)}" title="Type a number, or -7 / +5">` : `HP ${esc(hp)}`) + (en.maxHp != null ? ` <span class="muted">/ ${n0(en.maxHp)}</span>` : '') + (temp > 0 ? ` <span class="hp-temp" title="${temp} temporary hit point${temp === 1 ? '' : 's'}">+${temp}</span>` : '') : ''}</div>
         <div class="muted">${en.ac != null ? 'AC ' + esc(en.ac) : ''}</div>
         <div>${gm && en.sb ? `<button class="btn tiny" data-cact="statblock" title="${esc(en.sb)} stat block">📜</button> <select class="sb-save" data-cf="save" title="Roll this creature's saving throw (GM-only). Shift: advantage, Ctrl: disadvantage" aria-label="Roll a saving throw for ${esc(en.name)}"><option value="">Save…</option>${['str', 'dex', 'con', 'int', 'wis', 'cha'].map(k => `<option value="${k}">${k.toUpperCase()}</option>`).join('')}</select> ` : ''}${gm ? `<button class="btn tiny" data-cact="hide" title="Toggle hidden">${en.hidden ? '👁' : '◌'}</button> <button class="btn tiny ghost" data-cact="remove">✕</button>` : ''}</div></div>`;
     }).join('') || '<p class="muted">No combatants yet. Players: click “Roll initiative” on your sheet. GM: add enemies above.</p>'}</div>`;
@@ -1124,8 +1122,11 @@
     if (cf === 'init') act('init.update', { id, fields: { init: +t.value || 0 } });
     if (cf === 'hp') {
       const v = t.value.trim(); let n;
-      if (/^[+-]\d+$/.test(v)) n = (+en.hp || 0) + parseInt(v, 10); else n = parseInt(v, 10);
-      if (!isNaN(n)) act('init.update', { id, fields: { hp: Math.max(0, n) } });
+      if (/^-\d+$/.test(v)) act('init.update', { id, fields: { damage: -parseInt(v, 10) } });   // on the server: temporary HP first (#107)
+      else {
+        if (/^\+\d+$/.test(v)) n = (+en.hp || 0) + parseInt(v, 10); else n = parseInt(v, 10);
+        if (!isNaN(n)) act('init.update', { id, fields: { hp: Math.max(0, n) } });
+      }
       t.blur();
     }
     if (cf === 'add-cond' && t.value) act('init.update', { id, fields: { conditions: [...new Set([...(en.conditions || []), t.value])] } });
@@ -2043,12 +2044,60 @@
           <button class="btn small ghost" id="restoreBtn">⇪ Restore a backup…</button><input type="file" id="restoreFile" accept=".json" hidden></div>
         <div id="backupList" style="margin-top:8px"></div>
       </div>
+      <div class="box" id="gmFiles"></div>
       <div class="box" id="gmAudio"></div>
       <div class="box"><h4>GM notes <span class="muted" style="text-transform:none;letter-spacing:0">(only you can see these · autosaves)</span></h4>
         <textarea id="gmNotes" rows="18" placeholder="Session plan, NPCs, secrets, loot…">${esc(S.st.notes || '')}</textarea></div>
     </div>`;
+    renderFilesBox();
+  }
+  // ---- the GM's "File storage" box: what the Den's private file store holds for this table, and the
+  // one-time move of files uploaded before the store existed (they work where they are until then)
+  const F = { info: null, loaded: false, lib: null, busy: '' };
+  const fmb = b => (n0(b) < 1048576 ? `${Math.ceil(n0(b) / 1024)} KB` : `${(n0(b) / 1048576).toFixed(1)} MB`);
+  async function loadFiles() {
+    F.info = await fetch(`${API}?op=files`, { cache: 'no-store', credentials: 'same-origin' }).then(r => (r.ok ? r.json() : null)).catch(() => null);
+    renderFilesBox();
+  }
+  function renderFilesBox() {
+    const box = $('#gmFiles'); if (!box || !isGM()) return;
+    if (!F.loaded || F.lib !== S.lib) { F.loaded = true; F.lib = S.lib; loadFiles(); }   // packs or tracks changed
+    const f = F.info, left = f && f.left ? n0(f.left.images) + n0(f.left.packArt) + n0(f.left.tracks) : 0;
+    const kinds = [['images', 'Uploaded images'], ['packArt', 'Asset-pack art'], ['audio', 'Table audio']];
+    const line = (k, label) => { const h = f.held ? f.held[k] : f.listed[k]; return h && h.n ? `<div class="row" style="font-size:13px"><span style="flex:1">${label}</span><span class="muted">${n0(h.n)} file${h.n === 1 ? '' : 's'} · ${fmb(h.b)}</span></div>` : ''; };
+    box.innerHTML = `<h4>File storage <span class="muted" style="text-transform:none;letter-spacing:0">(images, asset packs and audio)</span></h4>
+      ${!f ? '<p class="muted">Loading…</p>' : `
+        <p style="margin:0 0 6px">${f.store ? '<span style="color:var(--green)">✓ Files are kept in the Den\'s private file store.</span>' : '<span style="color:var(--amber)">File storage isn\'t connected here, so new uploads are off.</span>'}
+          <span class="muted">${fmb(f.used)} of ${fmb(f.cap)} used.</span></p>
+        ${kinds.map(([k, label]) => line(k, label)).join('') || '<p class="muted" style="font-size:12px;margin:0">Nothing stored yet.</p>'}
+        ${f.unlisted && f.unlisted.n ? `<p class="muted" style="font-size:12px">${n0(f.unlisted.n)} leftover file${f.unlisted.n === 1 ? '' : 's'} from unfinished uploads (${fmb(f.unlisted.b)}); “Tidy up” removes them once they're an hour old.</p>` : ''}
+        ${f.complete === false ? '<p class="muted" style="font-size:12px">(Only the first 20,000 files were counted.)</p>' : ''}
+        ${left ? `<p style="font-size:13px;margin:8px 0 4px">Still in the database from before: ${[[f.left.images, 'image'], [f.left.packArt, 'pack image'], [f.left.tracks, 'track']].filter(([n]) => n).map(([n, w]) => `${n0(n)} ${w}${n === 1 ? '' : 's'}`).join(', ')}. They work as they are; moving them frees the database.</p>` : ''}
+        <div class="row wrap" style="margin-top:6px">${f.store ? `<button class="btn small ${left ? 'primary' : ''}" id="moveFiles" ${F.busy ? 'disabled' : ''}>${left ? '⇪ Move files to file storage' : 'Tidy up'}</button>` : ''}
+          <button class="btn small ghost" id="filesRefresh" ${F.busy ? 'disabled' : ''}>Refresh</button>
+          ${F.busy ? `<span class="muted" style="font-size:12px">${esc(F.busy)}</span>` : ''}</div>`}`;
+  }
+  async function moveFiles() {
+    let moved = 0, tidied = 0;
+    F.busy = 'Moving…'; renderFilesBox();
+    try {
+      for (let i = 0, tries = 0; i < 500; i++) {   // each call moves what fits in a few seconds; it's safe to stop at any point
+        let r;
+        try { r = await post('filemove', {}); tries = 0; } catch (err) {   // a timeout or a blip: go again; a refusal: stop
+          if (++tries >= 3 || /GM only|isn't connected|sign in/i.test(err.message)) throw err;
+          await sleep(1500 * tries); continue;
+        }
+        moved += n0(r.moved); tidied += n0(r.tidied);
+        F.busy = `Moving… ${moved} moved`; renderFilesBox();
+        if (!r.more) break;
+      }
+      toast(moved || tidied ? `Moved ${moved} file${moved === 1 ? '' : 's'}${tidied ? `, removed ${tidied} leftover${tidied === 1 ? '' : 's'}` : ''}` : 'Nothing to move');
+    } catch (err) { toast(err.message, true); }
+    F.busy = ''; await loadFiles();
   }
   $('#gm').addEventListener('click', e => {
+    if (e.target.id === 'moveFiles') return moveFiles();
+    if (e.target.id === 'filesRefresh') return loadFiles();
     const rm = e.target.closest('[data-rmplayer]');
     if (rm) { const pl = S.st.players[rm.dataset.rmplayer]; if (pl && confirm(`Remove ${pl.name || 'this player'} from the player list?`)) act('player.remove', { id: rm.dataset.rmplayer }); return; }
     const id = e.target.id;

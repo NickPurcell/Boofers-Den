@@ -1,6 +1,7 @@
 {
   "private": true,
   "dependencies": {
+    "@vercel/blob": "2.9.0",
     "ioredis": "^5.4.1"
   }
 }
