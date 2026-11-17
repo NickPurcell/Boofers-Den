@@ -1646,3 +1646,29 @@ test("walls through the API: a whole map's walls set at once (an import), checke
   assert.equal((await gm.act("fight.wall", { op: "set", walls: [] })).code, 200);
   assert.equal("walls" in (await gm.state()).map, false, "an empty set leaves no walls key");
 });
+
+/* ---------------------------------------------------------------- fog of war (issue #93, step 4): the engine part */
+test("fog: the squares a unit can see through walls; packed for the browser; fast on a big map", () => {
+  const ava = unit({ id: "ava", name: "Avery", side: "pc", x: 1, y: 1 });
+  const show = (vis, cols) => Array.from({ length: vis.length / cols }, (_, y) => Array.from(vis.slice(y * cols, y * cols + cols)).join("")).join("/");
+  // an empty 6x3 board: all of it
+  assert.equal(show(E.visibleSquares(world([ava], "ava"), ["ava"], 6, 3), 6), "111111/111111/111111");
+  // a wall across x=3, all the way down: the right half is dark
+  const walled = world([ava], "ava", { walls: [{ a: [3, 0], b: [3, 3], kind: "wall" }] });
+  assert.equal(show(E.visibleSquares(walled, ["ava"], 6, 3), 6), "111000/111000/111000");
+  // an open door in it lets the eye through, a closed one doesn't
+  const door = (open) => world([ava], "ava", { walls: [{ a: [3, 0], b: [3, 1], kind: "wall" }, { a: [3, 1], b: [3, 2], kind: "door", open }, { a: [3, 2], b: [3, 3], kind: "wall" }] });
+  assert.equal(show(E.visibleSquares(door(false), ["ava"], 6, 3), 6), "111000/111000/111000");
+  assert.equal(E.visibleSquares(door(true), ["ava"], 6, 3)[1 * 6 + 5], 1, "through the open door");
+  // seen: a unit with any square in sight
+  const vis = E.visibleSquares(walled, ["ava"], 6, 3);
+  assert.deepEqual([E.seenIn(vis, 6, 3, { x: 2, y: 2 }), E.seenIn(vis, 6, 3, { x: 4, y: 0 }), E.seenIn(vis, 6, 3, { x: 2, y: 0, size: 2 })], [true, false, true]);
+  // packed and back
+  assert.deepEqual(Array.from(E.unpackSquares(E.packSquares(vis), 18)), Array.from(vis));
+  // 200 x 200 with 2,000 walls: quick
+  const walls = Array.from({ length: 2000 }, (_, i) => ({ a: [(i * 7) % 200, (i * 13) % 200], b: [((i * 7) % 200) + 1, ((i * 13) % 200) + 1], kind: "wall" }));
+  const t0 = Date.now();
+  E.visibleSquares(world([unit({ id: "ava", name: "Avery", side: "pc", x: 100, y: 100 })], "ava", { walls }), ["ava"], 200, 200);
+  const took = Date.now() - t0;
+  assert.ok(took < 1500, `took ${took} ms`);
+});
