@@ -1819,3 +1819,28 @@ test("review #102: walls without a usable id get their own on the way in; erasin
   assert.deepEqual(Object.keys(lots).length, Object.keys(E.reachable(world([ava], "ava"), "ava", 60)).length);
   assert.ok(took < 400, `took ${took} ms`);
 });
+
+test("review of #109 (and #111): an id that every object inherits (__proto__, constructor) is never taken for a character", async () => {
+  const { gm, sam } = await fight();
+  const before = JSON.stringify(Object.getOwnPropertyNames(Object.prototype).sort());
+  for (const bad of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+    for (const [who, type, p] of [
+      [gm, "char.damage", { id: bad, amount: 5 }], [sam, "char.damage", { id: bad, amount: 5 }],
+      [gm, "char.assign", { id: bad, owner: "x" }], [gm, "char.photo.clear", { charId: bad }], [gm, "char.delete", { id: bad }],
+      [gm, "levelup.grant", { charIds: [bad] }], [gm, "levelup.apply", { charId: bad }],
+      [sam, "init.add", { charId: bad, name: "X", init: 3 }], [sam, "token.add", { charId: bad, x: 1, y: 1 }],
+      [sam, "roll", { expr: "1d20", charId: bad }], [sam, "char.save", { char: { id: bad, name: "Sneaky" } }],
+    ]) {
+      const r = await who.act(type, p);
+      assert.ok(r.code < 500, `${type} ${bad}: ${r.code}`);
+    }
+  }
+  assert.equal(({}).hp, undefined, "nothing was written onto Object.prototype");
+  assert.equal(({}).owner, undefined);
+  assert.equal(JSON.stringify(Object.getOwnPropertyNames(Object.prototype).sort()), before);
+  const st = await gm.state();
+  assert.ok(!st.map.tokens.some((t) => t.charId && !Object.prototype.hasOwnProperty.call(st.characters, t.charId)), "no token linked to an inherited name");
+  assert.ok(!st.initiative.entries.some((e) => e.charId && !Object.prototype.hasOwnProperty.call(st.characters, e.charId)));
+  assert.ok(!st.chat.some((m) => m.charName === "Object" || (typeof m.charName === "string" && /function/.test(m.charName))));
+  assert.deepEqual(Object.keys(st.levelUps || {}).filter((k) => !Object.prototype.hasOwnProperty.call(st.characters, k)), []);
+});
