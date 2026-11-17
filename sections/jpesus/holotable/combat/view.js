@@ -616,8 +616,10 @@
   function renderWallBar() {
     if (!wallBar) {
       wallBar = document.createElement('div');
-      wallBar.className = 'script-bar ct-wallbar hidden';
-      $('#mapWrap').appendChild(wallBar);
+      wallBar.className = 'ct-wallbar hidden';
+      // a row of its own between the map tools and the map, so it never covers any of the board
+      const pane = $('#pane-map'), body = pane && pane.querySelector('.map-body');
+      if (body) pane.insertBefore(wallBar, body); else $('#mapWrap').appendChild(wallBar);
       wallBar.addEventListener('change', (e) => { const f = e.target.matches('[data-wb-file]') && e.target.files[0]; if (f) importUvtt(f).finally(() => { e.target.value = ''; }); });
       wallBar.addEventListener('click', (e) => {
         const b = e.target.closest('[data-wb]'); if (!b) return;
