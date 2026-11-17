@@ -161,6 +161,8 @@ function worldOf(camp, forPlayer, G, cid) {
   if (G && G.shownName) for (const e of entries) if (w.units[e.id]) w.units[e.id].name = G.shownName(camp, e);
   // the GM's world keeps hidden combatants; the engine is told which they are, so they never count toward what a public line says (Flanking)
   if (!forPlayer) for (const e of entries) if (w.units[e.id] && hiddenEntry(camp, e, ut[e.id])) w.units[e.id].hidden = true;
+  // the dark matters in a fight where it matters to fog: a dimmed or dark map with fog on (step 5)
+  if (fogOn(camp) && lightOn(camp)) { const { cols, rows } = sizeOf(camp); w.light = { lit: litOf(camp), cols, rows }; }
   return w;
 }
 

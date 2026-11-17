@@ -27,6 +27,12 @@
         Object.assign({ saves: (f.npcSaves || {})[k] || {}, mods: (f.npcMods || {})[k] || {} }, (f.npcDefenses || {})[k] || {}, (f.npcBody || {})[k] || {})])),
     }, R);
     for (const [id, u] of Object.entries(f.units || {})) { if (w.units[id] && u.down) w.units[id].down = true; if (w.units[id] && u.hidden) w.units[id].hidden = true; }
+    // the GM's previews see the dark as the server does (step 5): the fog view says where the light falls
+    const fog = s.fog;
+    if (fog && (fog.dark || fog.dimLit)) {
+      const n = fog.cols * fog.rows, dark = fog.dark ? E.unpackSquares(fog.dark, n) : new Uint8Array(n), dim = fog.dimLit ? E.unpackSquares(fog.dimLit, n) : new Uint8Array(n);
+      w.light = { lit: Uint8Array.from(dark, (d, i) => (d ? 0 : dim[i] ? 1 : 2)), cols: fog.cols, rows: fog.rows };
+    }
     UI.cache = { st: s, w, reach: null };
     return w;
   }
