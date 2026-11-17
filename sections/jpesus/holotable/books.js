@@ -329,7 +329,7 @@
       <div class="sb-rule"></div>
       <div class="sb-abil">${Object.entries(m.ab).map(([k, v]) => `<div ${opts.roll ? `class="sb-roll" data-sbroll="1d20${fmt(mod(v))}" data-sblabel="${esc(m.n)}: ${ABN[k]} check"` : ''}><b>${ABN[k].toUpperCase()}</b><br>${n0(v)} (${fmt(mod(v))})</div>`).join('')}</div>
       <div class="sb-rule"></div>
-      ${line('Saving Throws', m.saves)}${line('Skills', m.skills)}${line('Damage Vulnerabilities', m.vul)}${line('Damage Resistances', m.res)}
+      ${rollLine(m, 'Saving Throws', m.saves, 'save', opts)}${rollLine(m, 'Skills', m.skills, 'check', opts)}${line('Damage Vulnerabilities', m.vul)}${line('Damage Resistances', m.res)}
       ${line('Damage Immunities', m.imm)}${line('Condition Immunities', m.cimm)}${line('Senses', m.senses)}${line('Languages', m.langs)}
       <div><b>Challenge</b> ${esc(m.cr)}${m.xp != null ? ` (${n0(m.xp).toLocaleString()} XP)` : ''} ${srcTag(m.src)}</div>
       ${kinds.map(([k, h]) => {
@@ -342,14 +342,53 @@
       ${m.flavor ? `<details class="pp-desc"><summary>About</summary>${md(m.flavor)}</details>` : ''}
     </div>`;
   }
+  // "Dex +5", "Insight+12", "Dex + 6", "* Dex +7", "Stealth +14 Survival +8": each name with its bonus.
+  // Entries with no number (a bare "Cha") come back as plain text.
+  function bonuses(list) {
+    const out = [];
+    for (const s of list || []) {
+      const re = /([A-Za-z][A-Za-z ]*?)\s*([+-])\s*(\d+)/g; let m, any = false;
+      while ((m = re.exec(s))) { any = true; out.push({ name: m[1].trim(), bonus: (m[2] === '-' ? -1 : 1) * +m[3] }); }
+      if (!any) out.push({ text: s });
+    }
+    return out;
+  }
+  const SAVE_AB = { str: 'str', strength: 'str', dex: 'dex', dexterity: 'dex', con: 'con', constitution: 'con', int: 'int', intelligence: 'int', wis: 'wis', wisdom: 'wis', cha: 'cha', charisma: 'cha' };
+  // a creature's save for one ability: its listed bonus, or the plain ability modifier when it isn't proficient
+  function saveBonus(m, ab) {
+    const hit = bonuses(m.saves).find(x => x.name && SAVE_AB[x.name.toLowerCase()] === ab);
+    return hit ? hit.bonus : mod(m.ab[ab]);
+  }
+  // the saves and skills lines, each entry a GM-only roll when the stat block can roll
+  function rollLine(m, label, list, what, opts) {
+    if (!list || !list.length) return '';
+    if (!opts.roll) return `<div><b>${label}</b> ${esc(list.join(', '))}</div>`;
+    return `<div><b>${label}</b> ${bonuses(list).map(x => x.text != null ? esc(x.text)
+      : `<button class="btn tiny sb-chip" data-sbroll="1d20${fmt(x.bonus)}" data-sblabel="${esc(m.n)}: ${esc(what === 'save' ? (ABN[SAVE_AB[x.name.toLowerCase()]] || x.name) : x.name)} ${what}">${esc(x.name)} ${fmt(x.bonus)}</button>`).join(' ')}</div>`;
+  }
   const crNum = cr => (/^\d+\/\d+$/.test(cr) ? eval_frac(cr) : +cr || 0);
   function eval_frac(s) { const [a, b] = s.split('/'); return +a / +b; }
   // the GM's rolls from a stat block stay between the GM and the server (GM-only rolls)
+  function sbRoll(expr, label, e) {
+    if (/^1d20/.test(expr)) {   // d20 rolls: shift-click for advantage, ctrl-click for disadvantage, else the table's mode
+      const mode = H.rollModeFromEvent ? H.rollModeFromEvent(e) : 'normal';
+      if (mode === 'adv') { expr = expr.replace(/^1d20/, '2d20kh1'); label += ' (adv)'; }
+      if (mode === 'dis') { expr = expr.replace(/^1d20/, '2d20kl1'); label += ' (dis)'; }
+    }
+    const kind = /\(attack\)/.test(label) ? 'attack' : /(save|check)( \((adv|dis)\))?$/.test(label) ? 'check' : 'damage';
+    return H.act('roll', { expr, label, private: true, kind });
+  }
+  // the tracker's "Save…" menu for a creature: rolls its saving throw for one ability, GM-only
+  async function rollCreatureSave(sb, ab, name, e) {
+    const m = (await list('monsters')).find(x => x.n === sb);
+    if (!m || !ABN[ab]) return;
+    return sbRoll(`1d20${fmt(saveBonus(m, ab))}`, `${name || m.n}: ${ABN[ab]} save`, e);
+  }
   function sbRollHandler(box) {
     box.addEventListener('click', e => {
       const b = e.target.closest('[data-sbroll]'); if (!b) return;
       e.preventDefault();
-      H.act('roll', { expr: b.dataset.sbroll, label: b.dataset.sblabel, private: true, kind: /attack|check/.test(b.dataset.sblabel) ? 'attack' : 'damage' });
+      sbRoll(b.dataset.sbroll, b.dataset.sblabel, e);
     });
   }
   function openMonsterPicker() {
@@ -640,7 +679,7 @@
 
   window.HTB = {
     list, mdBlock, libraryBar, openBook, openSpeciesPicker, openBackgroundPicker, openArchetypePicker, openFeaturePicker,
-    levelFeatures, archetypesOf, featNamed, featNames, openMonsterPicker, openStatBlock, renderShips, renderShipsSafe,
+    levelFeatures, archetypesOf, featNamed, featNames, openMonsterPicker, openStatBlock, rollCreatureSave, bonuses, saveBonus, renderShips, renderShipsSafe,
   };
   // the rules tab and ships tab were drawn before this file loaded
   if (!LIB.book) H.renderRules();

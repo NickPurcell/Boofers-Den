@@ -97,7 +97,9 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
   - **Wretched Hives:** its gear and enhanced items are in the equipment picker, its feats in the feat list, its chapters
     (downtime, factions, tools and more) in the rulebook library.
   - **Scum and Villainy:** the GM's "☠ Add an SW5e creature" (Combat tab) adds any of its 271 creatures to initiative,
-    with AC, HP (average or rolled) and a map token. 📜 opens the stat block, and its attacks and damage roll GM-only.
+    with AC, HP (average or rolled) and a map token. 📜 opens the stat block, and its attacks, damage, saving throws, skills and
+    ability checks roll GM-only (shift-click for advantage, ctrl-click for disadvantage). The tracker's "Save…" menu
+    rolls a creature's save straight from its row: its listed bonus, or the plain modifier if it isn't proficient.
     Players never see which creature an NPC is.
   - **Starships of the Galaxy:** a Ships tab with ship sheets (size, tier, AC, hull and shield points, speed, hyperdrive,
     ship ability scores, saves and the 14 ship skills), crew with deployments and ranks, weapons that roll attack (Wis +
