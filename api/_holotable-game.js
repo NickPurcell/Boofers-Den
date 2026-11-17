@@ -448,10 +448,11 @@ function applyAction(camp, cid, gm, type, p) {
       const ch = chars[p.id];
       if (!ch) return {};
       need(gm || ch.owner === cid, "not your character");
+      const said = shownName(camp, { charId: p.id, name: ch.name });   // before its token goes: a hidden name stays hidden
       delete chars[p.id];
       ini.entries = ini.entries.filter((e) => e.charId !== p.id);
       mp.tokens = mp.tokens.filter((t) => t.charId !== p.id);
-      addChat(camp, { system: true, text: `${ch.name} left the table.` });
+      addChat(camp, { system: true, text: `${said === "???" ? "An unknown character" : said} left the table.` });
       return { dropImages: [ch.image, ch.tokenImage] };
     }
     case "char.assign": {
@@ -572,7 +573,7 @@ function applyAction(camp, cid, gm, type, p) {
         ini.active = true; ini.turn++;
         if (ini.turn >= n) { ini.turn = 0; ini.round++; }
         const cur = ini.entries[ini.turn];
-        if (!cur.hidden) addChat(camp, { system: true, text: `Round ${ini.round} - ${cur.name}'s turn.` });
+        if (!cur.hidden) addChat(camp, { system: true, text: `Round ${ini.round} - ${shownName(camp, cur)}'s turn.` });   // "???" while the GM hides the name
       } else if (type === "init.prev" && n) {
         ini.turn--;
         if (ini.turn < 0) { ini.turn = n - 1; ini.round = Math.max(1, ini.round - 1); }
