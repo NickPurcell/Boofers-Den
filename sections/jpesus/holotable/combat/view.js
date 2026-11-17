@@ -85,6 +85,21 @@
       else if ((mm = /(\d+)\s*\/\s*day/i.exec(r))) out.push({ key, name, max: +mm[1], used: 0, refill: 'long' });
     }
     if ((m.b || []).some((b) => b.k === 'legendary')) out.push({ key: 'legendary', name: 'Legendary actions', max: 3, used: 0, refill: 'turn' });
+    // casting (audit 9.5): "It has 36 force points" / "(…, 22 tech points)" as a points pool, back after a long rest; an
+    // innate caster's "3/day each: a, b, c" as a use count for each power
+    for (const b of m.b || []) {
+      const d = String(b.d || '');
+      for (const [, n, kind] of d.matchAll(/(\d{1,3})\s+(force|tech)\s+points/gi)) {
+        const key = `${kind.toLowerCase()}-points`;
+        if (!out.some((x) => x.key === key)) out.push({ key, name: `${kind[0].toUpperCase()}${kind.slice(1).toLowerCase()} points`, max: Math.min(300, +n), used: 0, refill: 'long', points: true });
+      }
+      for (const [, n, list] of d.matchAll(/(\d+)\s*\/\s*day\s+each\s*:\s*(.+?)(?=\s{2,}|\.(?:\s|$)|\s+\d+\s*\/\s*day\s+each|\s+at[- ]will\s*:|$)/gi)) {
+        for (const p of list.split(',').map((x) => x.trim().replace(/[.;]+$/, '')).filter(Boolean)) {
+          const key = slug(p);
+          if (key && !out.some((x) => x.key === key) && out.length < 40) out.push({ key, name: p.replace(/^./, (c) => c.toUpperCase()), max: +n, used: 0, refill: 'long' });
+        }
+      }
+    }
     return out;
   }
   // the GM's own browser has the creature list (books.js); speed goes to the server once, attacks travel with each attack
@@ -307,7 +322,7 @@
     }
     // a creature's limited abilities (the GM's): a chip each; click to use one, or to reset a spent one
     if (gm() && f.active && u && !u.charId && ((f.npcRes || {})[u.id] || []).length) {
-      html += `<div class="ct-row ct-pools">${f.npcRes[u.id].map((r) => `<button class="ct-chip ct-pool ${r.used >= r.max ? 'spent' : ''}" data-ct="npcres" data-unit="${esc(u.id)}" data-key="${esc(r.key)}" title="${esc(r.recharge ? `Recharge ${r.recharge}-6: rolled at the start of its turn` : r.refill === 'turn' ? 'Back at the start of its turn' : r.refill === 'short' ? 'Back after a short or long rest (reset by hand)' : 'Per day (reset by hand)')}">${esc(r.name)} ${r.max - r.used}/${r.max}${r.recharge ? ` ⟳${r.recharge}–6` : ''}</button>`).join('')}</div>`;
+      html += `<div class="ct-row ct-pools">${f.npcRes[u.id].map((r) => `${r.points && r.used < r.max ? `<input class="ct-ptsn" type="number" min="1" max="${r.max - r.used}" value="${Math.min(2, r.max - r.used)}" data-pts="${esc(r.key)}" title="Points to spend: a power costs its level + 1 (at will costs nothing)" aria-label="${esc(r.name)} to spend">` : ''}<button class="ct-chip ct-pool ${r.used >= r.max ? 'spent' : ''}" data-ct="npcres" data-unit="${esc(u.id)}" data-key="${esc(r.key)}" title="${esc(r.recharge ? `Recharge ${r.recharge}-6: rolled at the start of its turn` : r.refill === 'turn' ? 'Back at the start of its turn' : r.refill === 'short' ? 'Back after a short or long rest (reset by hand)' : 'Per day (reset by hand)')}">${esc(r.name)} ${r.max - r.used}/${r.max}${r.recharge ? ` ⟳${r.recharge}–6` : ''}</button>`).join('')}</div>`;
     }
     if (gm() && f.active) {   // legendary actions, used at the end of another combatant's turn
       const legs = Object.entries(f.npcRes || {}).filter(([id, list]) => id !== (u && u.id) && w.units[id] && !w.units[id].down && list.some((r) => r.key === 'legendary' && r.used < r.max));
@@ -397,7 +412,8 @@
     if (k === 'npcres') {
       const r = ((F().npcRes || {})[el.dataset.unit] || []).find((x) => x.key === el.dataset.key);
       if (!r) return;
-      return send('fight.npcres', { id: el.dataset.unit, key: r.key, op: r.used >= r.max ? 'reset' : 'use' });
+      const box = r.points && el.parentNode.querySelector(`[data-pts="${CSS.escape(r.key)}"]`), n = box ? Math.max(1, Math.min(r.max - r.used, Math.round(+box.value) || 1)) : 1;
+      return send('fight.npcres', { id: el.dataset.unit, key: r.key, op: r.used >= r.max ? 'reset' : 'use', n });
     }
     if (k === 'log') { UI.log = !UI.log; return render(); }
 
