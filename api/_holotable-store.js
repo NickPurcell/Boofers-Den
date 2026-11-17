@@ -265,11 +265,16 @@ async function readFile(pathname, range) {
   const chunks = [];
   for await (const c of got.stream) chunks.push(Buffer.from(c));
   let buf = Buffer.concat(chunks);
-  // a store that ignored the range sends the whole file: cut the range out here
+  // a store that ignored the range sends the whole file: cut the range out here. That's correct but slow
+  // (a 30 MB track read whole for every 4 MiB piece), so say so in the log, once per instance.
   const ranged = got.headers && typeof got.headers.get === "function" && got.headers.get("content-range");
-  if (range && !ranged) buf = buf.subarray(range[0], range[1] + 1);
+  if (range && !ranged) {
+    if (!rangeWarned) { rangeWarned = true; console.warn("holotable: the file store ignored a byte range; reading whole files to serve audio"); }
+    buf = buf.subarray(range[0], range[1] + 1);
+  }
   return buf;
 }
+let rangeWarned = false;
 // Unlist first, so nothing serves a file the CDN is still forgetting, then delete it and give back its
 // bytes. Returns the bytes given back. Looks up 200 at a time: a pack can have thousands of files.
 async function dropFiles(pathnames) {

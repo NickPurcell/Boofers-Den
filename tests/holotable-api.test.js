@@ -1235,6 +1235,24 @@ test("file store: nothing in it, or still in Redis, is readable without a sessio
   assert.ok(!/blob\.vercel-storage\.com|__fakeblob/.test(seen), "no store URL in any response");
 });
 
+test("a store that ignores byte ranges still serves the right bytes, and the log says so once", async () => {
+  const { gm, p1 } = await table();
+  const id = await storedTrack(gm, "tone.wav", WAV);
+  const realGet = store.get.bind(store);
+  store.get = async (p, o) => realGet(p, Object.assign({}, o, { headers: {} }));   // drops the Range header
+  const warned = [], realWarn = console.warn;
+  console.warn = (...a) => warned.push(a.join(" "));
+  try {
+    for (const range of ["bytes=100-199", "bytes=500-"]) {
+      const r = await p1.call("GET", { aud: id }, undefined, { range });
+      const [, a, b] = /bytes=(\d+)-(\d*)/.exec(range);
+      assert.equal(r.code, 206);
+      assert.equal(Buffer.compare(Buffer.from(r.data), WAV.subarray(+a, b ? +b + 1 : WAV.length)), 0);
+    }
+  } finally { store.get = realGet; console.warn = realWarn; }
+  assert.equal(warned.filter((w) => /ignored a byte range/.test(w)).length, 1, "said once, not on every request");
+});
+
 test("moving files out of Redis: everything arrives, nothing is lost, safe to stop part-way and to run again", async () => {
   const { gm, p1 } = await table();
   const old = await seedLegacy();
