@@ -1,6 +1,10 @@
-/* HoloTable combat view (experimental branch): the bar under the map. HoloTable's own colours and buttons. */
+/* HoloTable combat view (off until the GM switches it on): the bar under the map. HoloTable's own colours and buttons. */
 .ct-bar { flex: none; border-top: 1px solid var(--line); background: var(--bg2); padding: 6px 10px; display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow-y: auto; }
 .ct-bar[hidden] { display: none; }
+/* while the view is off: the GM's one switch, over the map's corner (nothing else moves) */
+.ct-switch { position: absolute; right: 10px; bottom: 10px; z-index: 2; opacity: .85; }
+.ct-switch:hover { opacity: 1; }
+.ct-switch[hidden] { display: none; }
 .ct-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ct-row .spacer { flex: 1; }
 .ct-turn { font-weight: 600; letter-spacing: .02em; }

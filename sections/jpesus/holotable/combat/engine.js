@@ -1,6 +1,6 @@
 /* HoloTable combat engine: the rules of a fight, as pure functions. No page code, no storage, no dice of its own.
    The server (api/_holotable-fight.js) uses it to decide and apply every action; the combat view (view.js) uses the
-   same code to show what is possible before anyone clicks. Experimental branch only.
+   same code to show what is possible before anyone clicks.
 
    A fight is a "world": the units in the initiative order that have a token on the map, the grid, whose turn it is,
    and what that turn has spent. apply(world, action, roll) says whether one action is legal and, if it is, returns

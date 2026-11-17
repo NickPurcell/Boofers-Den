@@ -662,6 +662,7 @@ body.no-sw5e-books [data-sa="deploy-info"], body.no-sw5e-books .lib-bar { displa
   box-shadow: 0 4px 18px #0008; font-size: 13px; }
 .script-bar.hidden { display: none; }
 .script-bar input[type=number] { width: 56px; }
+.map-tip { position: absolute; z-index: 3; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 12px; white-space: nowrap; box-shadow: 0 4px 12px #0008; }
 /* table audio */
 .audio-top.hidden { display: none; }
 .audio-now { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

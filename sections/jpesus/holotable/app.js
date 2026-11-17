@@ -209,7 +209,7 @@
       if (v !== S.variantsSeen) { S.variantsSeen = v; if (!$('#rules .lib') && !($('#rulesSearch') || {}).value) renderRules(); }
     }
     renderMapTools(); loadMapBg(); drawMap();
-    if (window.HTC) HTC.render();   // experimental: combat view
+    if (window.HTC) HTC.render();   // combat view
     renderChat();
   }
 
@@ -985,6 +985,7 @@
       <label class="toggle"><input type="checkbox" id="npcHidden"> hidden</label>
       <button class="btn primary" data-cact="add-npc">Add</button></div>
       <div class="row wrap" style="margin-top:6px"><label class="toggle"><input type="checkbox" id="npcToken" checked> also place map tokens</label>
+        <label class="toggle" title="Players see these tokens as ??? until you reveal them"><input type="checkbox" id="npcNameHidden"> hide their names</label>
         <label class="toggle" title="For SW5e creatures: roll each one's hit dice instead of taking the average"><input type="checkbox" id="npcRollHp"> roll creature HP</label>
         <span class="spacer"></span><button class="btn small amber" data-cact="add-creature">☠ Add an SW5e creature…</button></div></div>`;
     html += `<div class="init-list">${ini.entries.map((en, i) => {
@@ -1030,7 +1031,7 @@
       for (let k = 1; k <= count; k++) {
         const nm = count > 1 ? `${name} ${k}` : name;
         await act('init.add', { name: nm, bonus: +$('#npcBonus').value || 0, hp: +$('#npcHp').value || null, ac: +$('#npcAc').value || null, hidden: $('#npcHidden').checked });
-        if ($('#npcToken').checked) await act('token.add', { name: nm, color: '#ef5350', x: 2 * k, y: 2, hidden: $('#npcHidden').checked });
+        if ($('#npcToken').checked) await act('token.add', { name: nm, color: '#ef5350', x: 2 * k, y: 2, hidden: $('#npcHidden').checked, nameHidden: $('#npcNameHidden').checked });
       }
     }
   });
@@ -1461,7 +1462,7 @@
       if (im) { ctx.globalAlpha = 0.6; const w = st.w * g, h = st.h * g; ctx.drawImage(im, A.hover.x - w / 2, A.hover.y - h / 2, w, h); ctx.globalAlpha = 1; }
     }
     if (isGM()) drawScripts(g, z);
-    if (window.HTC) HTC.under(ctx, g, z);   // experimental: combat view (reachable squares)
+    if (window.HTC) HTC.under(ctx, g, z);   // combat view (reachable squares)
     // tokens
     const ini = S.st.initiative, cur = ini.active && ini.entries[ini.turn];
     for (const t of mp.tokens) {
@@ -1470,7 +1471,7 @@
       const px = drag ? M.drag.px : (ap ? ap.x : t.x) * g, py = drag ? M.drag.py : (ap ? ap.y : t.y) * g, sz = (t.size || 1) * g, r = sz / 2 - 3;
       const cx = px + sz / 2, cy = py + sz / 2;
       ctx.globalAlpha = t.hidden ? 0.45 : 1;
-      const isCur = cur && ((cur.charId && cur.charId === t.charId) || (!cur.charId && cur.name === t.name));
+      const isCur = cur && (cur.tok ? cur.tok === t.id : (cur.charId && cur.charId === t.charId) || (!cur.charId && cur.name !== '???' && cur.name === t.name));
       if (isCur) { ctx.beginPath(); ctx.arc(cx, cy, r + 5, 0, Math.PI * 2); ctx.fillStyle = rgba(themeHex('amber', '#ffb74d'), 0.4); ctx.fill(); }
       ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = color(t.color); ctx.fill();
       const ch = t.charId && S.st.characters[t.charId];
@@ -1492,11 +1493,35 @@
         ctx.fillStyle = '#300'; ctx.fillRect(px + 4, py + sz - 6, sz - 8, 4);
         ctx.fillStyle = pct < .3 ? '#ef5350' : pct < .6 ? '#ffb74d' : '#66bb6a'; ctx.fillRect(px + 4, py + sz - 6, (sz - 8) * pct, 4);
       }
+      // a short label that fits under the token (so neighbours don't overlap); hover shows the full name
       ctx.font = `600 ${Math.max(11 / z, g * 0.2)}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.lineWidth = 3 / z; ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.strokeText(t.name, cx, py + sz + 1); ctx.fillStyle = '#fff'; ctx.fillText(t.name, cx, py + sz + 1);
+      const lab = shortLabel(t.name, sz - 4);
+      if (t.nameHidden) ctx.globalAlpha = Math.min(ctx.globalAlpha, 0.55);   // the GM's reminder: players see "???"
+      ctx.lineWidth = 3 / z; ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.strokeText(lab, cx, py + sz + 1); ctx.fillStyle = t.nameHidden ? '#ffb74d' : '#fff'; ctx.fillText(lab, cx, py + sz + 1);
       ctx.globalAlpha = 1;
     }
-    if (window.HTC) HTC.over(ctx, g, z);    // experimental: combat view (targets, results)
+    if (window.HTC) HTC.over(ctx, g, z);    // combat view (targets, results)
+  }
+  // the longest of: full name, first word, first word cut short, initials — that fits the token's width
+  function shortLabel(name, w) {
+    name = String(name || '').trim(); if (!name) return '';
+    const fits = s => ctx.measureText(s).width <= w;
+    if (fits(name)) return name;
+    const first = name.split(/\s+/)[0];
+    if (fits(first)) return first;
+    for (let n = first.length - 1; n >= 3; n--) if (fits(first.slice(0, n) + '…')) return first.slice(0, n) + '…';
+    return initials(name);
+  }
+  // hovering a token shows its full name
+  function mapTip(t, e) {
+    let tip = $('#mapTip');
+    if (!t) { if (tip) tip.remove(); return; }
+    if (!tip) { tip = document.createElement('div'); tip.id = 'mapTip'; tip.className = 'map-tip'; $('#mapWrap').appendChild(tip); }
+    const unknown = !isGM() && t.name === '???';
+    tip.innerHTML = unknown ? '<i>Name unknown</i>' : `${esc(t.name)}${isGM() && t.nameHidden ? '<span class="muted"> · name hidden from players</span>' : ''}`;
+    const r = $('#mapWrap').getBoundingClientRect();
+    tip.style.left = Math.min(e.clientX - r.left + 14, r.width - tip.offsetWidth - 4) + 'px';
+    tip.style.top = Math.max(4, e.clientY - r.top - 30) + 'px';
   }
   const canMove = t => isGM() || t.owner === clientId || (t.charId && S.st.characters[t.charId] && S.st.characters[t.charId].owner === clientId);
   function tokenAt(x, y) {
@@ -1527,7 +1552,7 @@
     if (e.button === 1) { e.preventDefault(); M.drag = { pan: true, sx: e.clientX, sy: e.clientY, cx: CAM.x, cy: CAM.y, moved: false }; capture(e); return; }
     if (e.button !== 0) return;
     const { x, y } = mapXY(e), g = S.st.map.gridSize;
-    if (!M.script && !A.stamp && window.HTC && HTC.down(x / g, y / g, e)) { drawMap(); return; }   // experimental: combat view
+    if (!M.script && !A.stamp && window.HTC && HTC.down(x / g, y / g, e)) { drawMap(); return; }   // combat view
     if (M.script) {          // recording a scene movement: each click is the next waypoint
       if (M.script.path.length >= 12) return toast('That\'s the most waypoints for one piece (12).', true);
       M.script.path.push({ x: Math.floor(x / g), y: Math.floor(y / g) });
@@ -1569,7 +1594,13 @@
       pinch = { d, mx, my }; return;
     }
     if (A.stamp) { A.hover = mapXY(e); drawMap(); return; }
-    if (!M.drag) { if (window.HTC) { const { x, y } = mapXY(e); HTC.hover(x / S.st.map.gridSize, y / S.st.map.gridSize, e); } return; }   // experimental: combat view
+    if (!M.drag) {
+      const { x, y } = mapXY(e);
+      if (e.pointerType !== 'touch') mapTip(tokenAt(x, y), e);
+      if (window.HTC) HTC.hover(x / S.st.map.gridSize, y / S.st.map.gridSize, e);   // combat view
+      return;
+    }
+    mapTip(null);
     if (M.drag.pan) {
       const dx = e.clientX - M.drag.sx, dy = e.clientY - M.drag.sy;
       if (Math.abs(dx) + Math.abs(dy) > 3) M.drag.moved = true;
@@ -1578,7 +1609,7 @@
     const { x, y } = mapXY(e);
     M.drag.px = x - M.drag.ox; M.drag.py = y - M.drag.oy; M.drag.moved = true; drawMap();
   });
-  canvas.addEventListener('pointerleave', () => { if (A.stamp) { A.hover = null; drawMap(); } });
+  canvas.addEventListener('pointerleave', () => { mapTip(null); if (A.stamp) { A.hover = null; drawMap(); } });
   const endPointer = e => {
     touches.delete(e.pointerId);
     if (touches.size < 2) pinch = null;
@@ -1588,7 +1619,7 @@
     M.drag = null;
     if (d.pan) {
       if (d.moved) saveCam();
-      else { const { x, y } = mapXY(e); if (!(window.HTC && HTC.tap(x / g, y / g, e))) { M.sel = null; M.selProp = null; } drawMap(); }   // experimental: combat view
+      else { const { x, y } = mapXY(e); if (!(window.HTC && HTC.tap(x / g, y / g, e))) { M.sel = null; M.selProp = null; } drawMap(); }   // combat view
       return;
     }
     if (d.prop) {
@@ -1650,6 +1681,7 @@
       ${isGM() && A.sel ? `<button class="btn small" data-tp="img">Use selected asset as image</button>` : ''}
       ${t.img ? '<button class="btn small ghost" data-tp="noimg">Remove image</button>' : ''}
       ${isGM() ? `<button class="btn small" data-tp="hide">${t.hidden ? 'Reveal to players' : 'Hide from players'}</button>
+        <button class="btn small" data-tp="hidename" title="${t.nameHidden ? 'Players see this token as ???' : 'Players see the token but not who it is'}">${t.nameHidden ? 'Reveal name to players' : 'Hide name from players'}</button>
         <button class="btn small" data-tp="script" title="Waypoints this piece follows after the next scene change">🎬 Scene movement${t.moves ? ' ✓' : ''}…</button>` : ''}
       <button class="btn small danger" data-tp="remove">Remove token</button>` : ''}
       <button class="btn small ghost" data-tp="close">Close</button>`;
@@ -1657,11 +1689,12 @@
       const a = ev.target.dataset.tp;
       if (a === 'remove') act('token.remove', { id: t.id });
       if (a === 'hide') act('token.update', { id: t.id, fields: { hidden: !t.hidden } });
+      if (a === 'hidename') act('token.update', { id: t.id, fields: { nameHidden: !t.nameHidden } });
       if (a === 'img') act('token.update', { id: t.id, fields: { img: A.sel.src } });
       if (a === 'noimg') act('token.update', { id: t.id, fields: { img: null } });
       if (a === 'sheet') { S.selected = t.charId; setTab('sheet'); renderAll(); }
       if (a === 'script') startScript(t);
-      if (['remove', 'hide', 'sheet', 'close', 'img', 'noimg', 'script'].includes(a)) closeTokenPop();
+      if (['remove', 'hide', 'hidename', 'sheet', 'close', 'img', 'noimg', 'script'].includes(a)) closeTokenPop();
     });
     pop.addEventListener('change', ev => {
       const a = ev.target.dataset.tp;

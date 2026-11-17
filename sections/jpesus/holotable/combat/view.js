@@ -1,4 +1,4 @@
-/* HoloTable combat view (experimental branch): the fight on the map, by clicking.
+/* HoloTable combat view (off until the GM switches it on): the fight on the map, by clicking.
    On your turn the squares you can still reach are lit and a click moves you there; the bar under the map lists your
    attacks (greyed when the action is spent or nothing is in reach); pick one, hover a target to see what you need to
    roll, click it to attack; End turn passes it on. Everyone watches it happen. The GM plays the creatures the same way,
@@ -177,6 +177,17 @@
     bar.addEventListener('change', onBarChange);
     return bar;
   }
+  let sw = null;
+  function ensureSwitch() {
+    if (sw) return sw;
+    sw = document.createElement('button');
+    sw.className = 'btn small ct-switch'; sw.id = 'ctSwitch'; sw.hidden = true; sw.type = 'button';
+    sw.textContent = '⚔ Combat view';
+    sw.title = 'Turn on the combat view for everyone: click to move, an action bar, and the rules doing the arithmetic. Off again any time.';
+    sw.addEventListener('click', () => send('fight.toggle', { on: true }));
+    $('#mapWrap').appendChild(sw);
+    return sw;
+  }
   function render() {
     const s = st();
     if (!s) return;
@@ -188,12 +199,10 @@
     for (const ev of evs) if (ev.seq > UI.seen && ev.kind !== 'move') UI.floats.push({ token: ev.token, kind: ev.kind, amount: ev.amount, t0: performance.now() });
     UI.seen = Math.max(UI.seen, top);
     if (UI.floats.length) animate();
-    if (!f.on) {
-      b.hidden = !gm();
-      b.innerHTML = gm() ? `<div class="ct-row"><span class="ct-turn muted">Combat view is off: the table works as usual.</span><span class="spacer"></span>
-        <button class="btn small" data-ct="on">⚔ Turn on the combat view</button></div>` : '';
-      return;
-    }
+    // off (the default): no bar and no change to the map's layout; the GM alone gets one small switch in its corner
+    const sw = ensureSwitch();
+    sw.hidden = f.on || !gm();
+    if (!f.on) { b.hidden = true; b.innerHTML = ''; return; }
     b.hidden = false;
     const u = cur(), mine = myTurn(), bud = f.budget, w = world();
     const who = !f.active ? 'Combat hasn\'t started' : u ? `${esc(u.name)}'s turn` : f.turn ? 'A combatant not on the map' : 'Someone you can\'t see is acting';

@@ -516,7 +516,7 @@ async function handlePost(req, res, q, b, ses) {
       // every part of the game a backup holds (cleanGame checks each one below). sceneFx is left out on purpose:
       // a restored table shouldn't replay the last scene change's wipe and movements.
       for (const k of ["name", "players", "chat", "initiative", "map", "notes", "handouts", "levelUps", "created",
-        "scenes", "activeScene", "ships", "variants", "hpMax"]) if (file[k] !== undefined) g[k] = file[k];
+        "scenes", "activeScene", "ships", "variants", "hpMax", "fight"]) if (file[k] !== undefined) g[k] = file[k];
       // everything coming back in goes through the same checks as a live edit
       g.characters = {};
       for (const [id, ch] of Object.entries(file.characters).slice(0, 60)) {

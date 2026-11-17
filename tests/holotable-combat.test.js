@@ -1,4 +1,4 @@
-// HoloTable combat (experimental branch): the engine (pure) and the server's fight actions.
+// HoloTable combat view: the engine (pure) and the server's fight actions, and proof that with the view off nothing changes.
 // Every name here is invented. Dice are loaded so every outcome is known.
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -737,7 +737,7 @@ test("combat view: off until the GM switches it on, and players never see hidden
   assert.ok(!JSON.stringify(pv).includes("Lurker"), "the name never reaches a player");
   assert.deepEqual([pv.fight.budget.moveLeft, pv.fight.budget.action], [30, true]);
   await gm.act("fight.toggle", { on: false });
-  assert.deepEqual((await sam.state()).fight, { on: false });
+  assert.equal((await sam.state()).fight, undefined, "switched off: no combat view in anyone's state");
 });
 
 test("combat view: only the owner moves, on their own turn, within their movement", async () => {
@@ -853,6 +853,7 @@ test("combat view: GM tools: set hit points, creature speed, link a token", asyn
 
 test("resources through the API: owners and the GM spend and edit; undo puts the spend back; sheet saves keep them", async () => {
   const { gm, sam, rae, avery } = await fight();
+  await gm.act("fight.toggle", { on: true });
   const res = { key: "secondwind", name: "Second Wind", max: 1, used: 0, refill: "short" };
   assert.equal((await rae.act("fight.resource", { charId: avery, res })).code, 403, "not Rae's character");
   assert.equal((await sam.act("fight.resource", { charId: avery, res })).code, 200);
@@ -1087,6 +1088,104 @@ test("putting out the flames through the API: Avery, on fire, uses the action on
   assert.deepEqual([st.initiative.entries.find((e) => e.id === ids.avery).conditions, st.fight.budget.action], [[], false]);
   assert.ok(st.chat.some((m) => m.system && m.text === "Avery puts out the flames."));
   assert.equal((await sam.act("fight.douse", { target: ids.avery })).code, 400, "nothing burning now");
+});
+
+/* ---------------------------------------------------------------- off by default: nothing differs until the GM switches it on */
+// The keys every state had before the combat view existed (main at 9db7fbb: viewFor's, then the poll's sw5eBooks).
+const VIEW_KEYS = ["name", "you", "isGM", "updated", "players", "online", "characters", "chat", "initiative", "map", "notes", "handouts", "levelUps",
+  "variants", "hpMax", "audio", "ships", "sceneFx", "scene", "scenes", "sw5eBooks"];
+const FIGHT_ACTIONS = ["fight.move", "fight.attack", "fight.end", "fight.use", "fight.stand", "fight.douse", "fight.condition", "fight.npc", "fight.link",
+  "fight.hp", "fight.undo", "fight.ability", "fight.defenses", "fight.spend", "fight.resource"];
+
+test("off by default: a whole session with the combat view never switched on leaves no trace", async () => {
+  const { gm, sam, rae, ids, avery } = await fight();
+  let st = await sam.state();
+  // ordinary play: moving a token, the tracker, hit points and conditions, the turn going round, chat, a sheet save
+  await sam.act("token.move", { id: tokenOf(st, "Avery").id, x: 3, y: 2 });
+  await gm.act("init.update", { id: ids.raider, fields: { hp: 25, conditions: ["Prone"] } });
+  await gm.act("init.next", {}); await gm.act("init.next", {});
+  await sam.act("chat", { text: "hello table" });
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hp: { max: 20, current: 14, temp: 0 } }) });
+  // every view has exactly the keys it had before the combat view existed
+  for (const b of [gm, sam, rae]) assert.deepEqual(Object.keys(await b.state()), VIEW_KEYS);
+  // every combat action but the GM's switch is refused, for the GM and players alike, and writes nothing
+  for (const type of FIGHT_ACTIONS) for (const b of [gm, sam]) {
+    const r = await b.act(type, {});
+    assert.deepEqual([r.code, r.data.error], [400, "The combat view is off."], type);
+  }
+  assert.equal((await sam.act("fight.toggle", { on: true })).code, 403, "only the GM switches it on");
+  assert.equal((await gm.act("fight.toggle", { on: false })).code, 200, "switching off what was never on");
+  // the saved game: no combat record, no new field on any sheet, no combat lines in chat
+  const file = JSON.parse((await gm.call("GET", { op: "export" })).data);
+  assert.equal("fight" in file, false);
+  assert.ok(Object.values(file.characters).every((c) => !("resources" in c)));
+  assert.ok(!file.chat.some((m) => m.fight), "no combat lines");
+  for (const b of [gm, sam, rae]) assert.deepEqual(Object.keys(await b.state()), VIEW_KEYS);
+});
+
+test("backup and restore: the combat view's record comes back checked; a backup without one restores without one", async () => {
+  const { gm, sam, ids, avery } = await fight();
+  const post = (op, body) => gm.call("POST", { op }, body);
+  await gm.act("fight.toggle", { on: true });
+  await gm.act("fight.ability", { name: "Mind Shove", data: SHOVE });
+  await gm.act("fight.npc", { id: ids.raider, speed: 40 });
+  await sam.act("fight.defenses", { charId: avery, resist: ["fire"] });
+  await sam.act("fight.resource", { charId: avery, res: { key: "secondwind", name: "Second Wind", max: 1, used: 0, refill: "short" } });
+  assert.equal((await sam.act("fight.move", { x: 2, y: 0 })).code, 200);    // an undo step and a floating number
+  const file = JSON.parse((await gm.call("GET", { op: "export" })).data);
+  assert.ok(file.fight.on && file.fight.undo.length && file.fight.events.length);
+  // 1. the file comes back: what the GM taught the table, creature numbers, character defences and resources;
+  //    not the undo stack or the floating numbers, which belonged to the table before the restore
+  await gm.act("fight.ability", { name: "Mind Shove", data: null });
+  assert.equal((await post("restore", { campaign: file })).code, 200);
+  let st = await gm.state();
+  assert.deepEqual([st.fight.on, !!st.fight.lib["mind shove"], st.fight.npcSpeed[ids.raider], st.fight.defenses[avery].resist[0].type, st.fight.undo.n, st.fight.events.length,
+    st.characters[avery].resources[0].name], [true, true, 40, "fire", 0, 0, "Second Wind"]);
+  assert.equal((await sam.state()).fight.on, true);
+  // 2. a backup made before the combat view existed: no record, and none appears
+  const plain = Object.assign({}, file);
+  delete plain.fight;
+  for (const c of Object.values(plain.characters)) delete c.resources;
+  assert.equal((await post("restore", { campaign: plain })).code, 200);
+  for (const b of [gm, sam]) assert.deepEqual(Object.keys(await b.state()), VIEW_KEYS);
+  assert.equal("fight" in JSON.parse((await gm.call("GET", { op: "export" })).data), false);
+  // 3. a hand-edited record is checked, not trusted: the table still loads for everyone
+  const broken = Object.assign({}, file, { fight: { on: true, npc: { [ids.raider]: "fast", x: null }, effects: "lots", lib: 7, undo: [null, 3], spent: { a: 1 }, conc: [1] } });
+  assert.equal((await post("restore", { campaign: broken })).code, 200);
+  st = await gm.state();
+  assert.deepEqual([st.fight.on, st.fight.effects, st.fight.lib, st.fight.undo.n], [true, [], {}, 0]);
+  assert.equal((await sam.state()).fight.on, true);
+});
+
+test("names the GM hides (#87): every line the combat view writes for players says ???, and nothing else gives it away", async () => {
+  const { gm, sam, rae, ids, avery } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  let st = await gm.state();
+  await gm.act("token.update", { id: tokenOf(st, "Raider").id, fields: { nameHidden: true } });
+  await gm.act("token.update", { id: tokenOf(st, "Avery").id, fields: { nameHidden: true } });
+  await sam.act("fight.defenses", { charId: avery, resist: ["fire"] });
+  await sam.act("fight.resource", { charId: avery, res: { key: "stim", name: "Stim pack", max: 2, used: 0, refill: "long" } });
+  // Avery (name hidden) walks up to the Raider (name hidden), attacks it, uses a stim pack; the GM knocks the Raider
+  // prone and undoes it
+  assert.equal((await sam.act("fight.move", { x: 5, y: 0 })).code, 200);
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0" })).code, 200);
+  assert.equal((await sam.act("fight.spend", { charId: avery, key: "stim" })).code, 200);
+  assert.equal((await gm.act("fight.condition", { unit: ids.raider, condition: "Prone" })).code, 200);
+  assert.equal((await gm.act("fight.undo", {})).code, 200);
+  const pv = await rae.state();
+  const since = pv.chat.findIndex((m) => m.text === "The GM switched the combat view on.");
+  const lines = pv.chat.slice(since).filter((m) => !/^Round \d+ - /.test(m.text || ""));   // HoloTable's own turn lines aren't the combat view's
+  const text = JSON.stringify(lines);
+  assert.ok(lines.some((m) => m.roll && /^\?\?\? attacks \?\?\? with Vibrosword/.test(m.roll.label)), text);
+  assert.ok(lines.some((m) => m.text === "??? uses Stim pack: 1 of 2 left."), text);
+  assert.ok(lines.some((m) => m.text === "??? is prone."), text);
+  assert.ok(!/Raider|Avery|Sam/.test(text), "no real name, and no player's name on a masked combatant's roll");
+  // the combat view itself: Avery is just another creature to Rae; its defences aren't sent to her; Sam still knows
+  assert.deepEqual([pv.fight.units[ids.avery].side, avery in pv.fight.defenses], ["npc", false]);
+  const own = await sam.state();
+  assert.deepEqual([own.fight.units[ids.avery].side, own.fight.units[ids.avery].mine, avery in own.fight.defenses], ["pc", true, true]);
+  // the GM's own copy keeps the real names
+  assert.equal((await gm.state()).fight.units[ids.avery].side, "pc");
 });
 
 test("step 6 through the API: an opportunity attack waits for its answer; only the reactor (or the GM) answers", async () => {

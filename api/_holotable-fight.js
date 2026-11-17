@@ -1,4 +1,5 @@
-// HoloTable combat view (experimental branch): the fight actions on the server. Not a route.
+// HoloTable combat view: the fight actions on the server. Not a route. Off until the GM switches it on: until then
+// every fight.* action but the GM's switch is refused, nothing is written, and players and the GM see the table as before.
 //
 // The rules are in sections/jpesus/holotable/combat/engine.js (pure, shared with the browser). This file turns the
 // table into the engine's "world", checks who may act, lets the engine decide, and writes the result back to the
@@ -118,19 +119,23 @@ function unitTokens(camp) {
 }
 const hiddenEntry = (camp, e, tokenId) => !!e.hidden || !!((camp.map.tokens || []).find((t) => t.id === tokenId) || {}).hidden;
 
-// The engine's world. For a player (forPlayer) hidden combatants are not in it at all.
-function worldOf(camp, forPlayer) {
+// The engine's world. For a player (forPlayer) hidden combatants are not in it at all. With G, every unit carries the
+// name players are shown (HoloTable's shownName: "???" while the GM hides a token's name), so every line the engine
+// writes is fit for players; hidden combatants are never masked, so lines that go only to the GM keep their names.
+function worldOf(camp, forPlayer, G) {
   const ini = camp.initiative, f = camp.fight || {};
   const ut = unitTokens(camp);
   const entries = forPlayer ? ini.entries.filter((e) => !hiddenEntry(camp, e, ut[e.id])) : ini.entries;
   const cur = ini.entries[ini.turn];
-  return E.buildWorld({
+  const w = E.buildWorld({
     characters: camp.characters, entries, active: ini.active, turnId: cur && entries.includes(cur) ? cur.id : null, round: ini.round,
     tokens: camp.map.tokens, unitTokens: ut, spent: f.spent || {}, effects: f.effects || [], conc: f.conc || {},
     npcSpeed: Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v.speed : v])),
     npcStats: Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v : {}])),
     defenses: f.defenses || {},
   }, R);
+  if (G && G.shownName) for (const e of entries) if (w.units[e.id]) w.units[e.id].name = G.shownName(camp, e);
+  return w;
 }
 
 function mayAct(camp, cid, gm, entry) {
@@ -239,7 +244,7 @@ function tick(camp, cid, G) {
   // the tracker stepped back (Prev): nothing ends, nothing is saved against; the DM undoes or edits what should come back
   if (lt !== undefined && (ini.round < +lr || (ini.round === +lr && ini.turn < +lt))) return;
   if (!f.effects.length && !Object.keys(f.conc).length) return;
-  const before = worldOf(camp, false);
+  const before = worldOf(camp, false, G);
   const r = E.turnPassed(before, prevId || null, cur.id, (expr) => G.rollDice(expr));
   writeBack(camp, cid, before, r.world, G);
   for (const line of r.log) {
@@ -265,9 +270,11 @@ function report(camp, cid, gm, G, actor, world, r, skipFirst) {
       G.addChat(camp, Object.assign({ system: true, fight: true, text: str(line.text, 200) }, secret || isHidden(line.unit) || isHidden(line.about) ? { to: ["@gm"], private: true } : {}));
       continue;
     }
-    const msg = { from: G.playerName(camp, cid), fromId: cid, fight: true,
+    // a combatant whose name the GM is hiding: its roll says neither its sheet's name nor its player's
+    const masked = G.shownName(camp, actor) !== actor.name;
+    const msg = { from: masked ? "Combat" : G.playerName(camp, cid), fromId: cid, fight: true,
       roll: { total: line.roll.total, detail: line.roll.detail, nat: line.roll.nat == null ? null : line.roll.nat, expr: line.expr, label: str(line.text, 200), kind: line.kind } };
-    if (ch) msg.charName = ch.name;
+    if (ch && !masked) msg.charName = ch.name;
     if (secret || isHidden(line.unit)) {
       msg.to = ["@gm"]; msg.private = true;
       // HoloTable shows a message to its sender too, so a line about a hidden creature can't come from the player
@@ -290,6 +297,12 @@ function report(camp, cid, gm, G, actor, world, r, skipFirst) {
 }
 
 function apply(camp, cid, gm, type, p, G) {
+  // off (the default): only the GM's switch does anything, and switching it off when it was never on writes nothing
+  if (!camp.fight || !camp.fight.on) {
+    if (type !== "fight.toggle") throw new G.Invalid("The combat view is off.");
+    if (!gm) throw new G.Forbidden("GM only");
+    if (!p.on && !camp.fight) return {};
+  }
   const f = state(camp), ini = camp.initiative;
   const need = (ok, why = "GM only") => { if (!ok) throw new G.Forbidden(why); };
   const entry = (id) => ini.entries.find((e) => e.id === id);
@@ -344,7 +357,7 @@ function apply(camp, cid, gm, type, p, G) {
       need(gm);
       const e = entry(p.id);
       if (!e) throw new G.Invalid("No such combatant.");
-      snapshot(camp, `set ${e.name}'s hit points`);
+      snapshot(camp, `set ${G.shownName(camp, e)}'s hit points`);
       if (p.hp !== undefined && p.hp !== null && p.hp !== "") G.applyAction(camp, cid, true, "init.update", { id: e.id, fields: { hp: clamp(int(p.hp), -1000, 100000) } });
       if (p.temp !== undefined && e.charId && camp.characters[e.charId]) camp.characters[e.charId].hp.temp = clamp(int(p.temp), 0, 100000);
       return {};
@@ -355,9 +368,9 @@ function apply(camp, cid, gm, type, p, G) {
       need(gm || ch.owner === cid, "not your character");
       const r = E.spend(ch, String(p.key || ""), p.n == null ? 1 : p.n, R);
       if (!r.ok) throw new G.Invalid(r.why);
-      snapshot(camp, `${ch.name} used ${r.res.name}`);
+      snapshot(camp, `${G.shownName(camp, { charId: ch.id, name: ch.name })} used ${r.res.name}`);
       Object.assign(ch, { resources: r.ch.resources, force: r.ch.force, tech: r.ch.tech, hitDiceUsed: r.ch.hitDiceUsed });
-      G.addChat(camp, { system: true, text: `${ch.name} uses ${r.res.name}: ${r.res.max - r.res.used} of ${r.res.max} left.` });
+      G.addChat(camp, { system: true, text: `${G.shownName(camp, { charId: ch.id, name: ch.name })} uses ${r.res.name}: ${r.res.max - r.res.used} of ${r.res.max} left.` });
       return {};
     }
     case "fight.resource": { // add, change or remove one of a character's own resources (its owner or the GM)
@@ -388,7 +401,7 @@ function apply(camp, cid, gm, type, p, G) {
       if (!f.on) throw new G.Invalid("The combat view is off.");
       const name = str(p.condition, 30);
       if (!CONDS.has(name)) throw new G.Invalid("That isn't a condition HoloTable knows.");
-      const world = worldOf(camp, false), unit = String(p.unit || "");
+      const world = worldOf(camp, false, G), unit = String(p.unit || "");
       const r = E.setCondition(world, { unit, condition: name, op: p.op === "remove" ? "remove" : "add", level: int(p.level), amount: str(p.amount, 24), source: p.source ? String(p.source) : null });
       if (!r.ok) throw new G.Invalid(r.why);
       snapshot(camp, `${name} ${p.op === "remove" ? "taken off" : "put on"} ${world.units[unit].name}`);
@@ -406,10 +419,10 @@ function apply(camp, cid, gm, type, p, G) {
       need(re && mayAct(camp, cid, gm, re), "That reaction isn't yours to take.");
       if (!p.take) {
         f.pending = f.pending.filter((x) => x !== pend);
-        G.addChat(camp, { system: true, fight: true, text: str(`${re.name} lets ${against ? against.name : "them"} go.`, 200) });
+        G.addChat(camp, { system: true, fight: true, text: str(`${G.shownName(camp, re)} lets ${against ? G.shownName(camp, against) : "them"} go.`, 200) });
         return {};
       }
-      const world = worldOf(camp, !gm);
+      const world = worldOf(camp, !gm, G);
       let spec;
       if (re.charId) {
         const ch = camp.characters[re.charId];
@@ -418,7 +431,7 @@ function apply(camp, cid, gm, type, p, G) {
       } else spec = cleanSpec(p.attack, G);
       const r = E.react(world, { reactor: re.id, against: pend.against, at: pend.at, attack: spec, adv: !!p.adv, dis: !!p.dis }, (expr) => G.rollDice(expr));
       if (!r.ok) throw new G.Invalid(r.why);
-      snapshot(camp, `${re.name}'s opportunity attack`);
+      snapshot(camp, `${G.shownName(camp, re)}'s opportunity attack`);
       f.pending = f.pending.filter((x) => x !== pend);
       writeBack(camp, cid, world, r.world, G);
       report(camp, cid, gm, G, re, world, r, false);
@@ -431,8 +444,8 @@ function apply(camp, cid, gm, type, p, G) {
       need(mayAct(camp, cid, gm, cur), "It's not your turn.");
       tick(camp, cid, G);
       if (f.pending.length) {
-        const who = f.pending.map((x) => (entry(x.reactor) || {}).name).filter(Boolean);
-        throw new G.Invalid(`Waiting for ${who.join(" and ") || "a reaction"}: an opportunity attack to take or let go.`);
+        const who = f.pending.map((x) => entry(x.reactor)).filter(Boolean).map((e) => G.shownName(camp, e));
+        throw new G.Invalid(`Waiting for ${who.join(" and ") || "a reaction"}: an opportunity attack to take or let go.`);   // names players can see
       }
       // an area catches whoever is in it, hidden or not; only its rolls about a hidden one stay with the GM
       const areaUse = type === "fight.use" && cur.charId && (() => {
@@ -440,9 +453,9 @@ function apply(camp, cid, gm, type, p, G) {
         const ab = ch && E.abilitiesOf(ch, R, f.lib).find((a) => a.key === String(p.ability || ""));
         return !!(ab && ab.area);
       })();
-      const world = worldOf(camp, !gm && !areaUse);
+      const world = worldOf(camp, !gm && !areaUse, G);
       if (type === "fight.end" && !world.units[cur.id]) {      // a combatant with no token can still pass the turn
-        snapshot(camp, `${cur.name} ends the turn`);
+        snapshot(camp, `${G.shownName(camp, cur)} ends the turn`);
         G.applyAction(camp, cid, true, "init.next", {});
         tick(camp, cid, G);
         return {};
@@ -472,7 +485,7 @@ function apply(camp, cid, gm, type, p, G) {
       }
       const r = E.apply(world, act, (expr) => G.rollDice(expr));
       if (!r.ok) throw new G.Invalid(r.why);
-      const label = type === "fight.common" ? `${cur.name} took ${String(p.key || "an action")}` : type === "fight.douse" ? `${cur.name} put out flames` : type === "fight.stand" ? `${cur.name} stood up` : type === "fight.move" ? `${cur.name} moved` : type === "fight.end" ? `${cur.name} ended the turn` : type === "fight.use" ? `${cur.name} used ${act.ability.name}` : `${cur.name}'s attack`;
+      const label = type === "fight.common" ? `${G.shownName(camp, cur)} took ${String(p.key || "an action")}` : type === "fight.douse" ? `${G.shownName(camp, cur)} put out flames` : type === "fight.stand" ? `${G.shownName(camp, cur)} stood up` : type === "fight.move" ? `${G.shownName(camp, cur)} moved` : type === "fight.end" ? `${G.shownName(camp, cur)} ended the turn` : type === "fight.use" ? `${G.shownName(camp, cur)} used ${act.ability.name}` : `${G.shownName(camp, cur)}'s attack`;
       snapshot(camp, label);
       writeBack(camp, cid, world, r.world, G);
       report(camp, cid, gm, G, cur, world, r, type === "fight.move" || type === "fight.end");
@@ -482,7 +495,7 @@ function apply(camp, cid, gm, type, p, G) {
       for (const re of r.reactions || []) {
         if (isHidden(re.reactor) || isHidden(re.against)) continue;
         f.pending.push({ id: String(++f.seq), kind: "opportunity", reactor: re.reactor, against: re.against, at: re.at, turn: f.lastTurn });
-        G.addChat(camp, { system: true, fight: true, text: str(`${cur.name} leaves ${entry(re.reactor).name}'s reach: ${entry(re.reactor).name} can make an opportunity attack.`, 200) });
+        G.addChat(camp, { system: true, fight: true, text: str(`${G.shownName(camp, cur)} leaves ${G.shownName(camp, entry(re.reactor))}'s reach: ${G.shownName(camp, entry(re.reactor))} can make an opportunity attack.`, 200) });
       }
       if (r.endTurn) { G.applyAction(camp, cid, true, "init.next", {}); tick(camp, cid, G); }
       return {};
@@ -494,7 +507,7 @@ function apply(camp, cid, gm, type, p, G) {
 
 // What one person sees of the fight. Players get nothing about hidden combatants: not their turn, not their tokens'
 // links, not their events. Only the GM gets the undo stack (as a count and a label) and creature speeds.
-function view(camp, cid, gm) {
+function view(camp, cid, gm, shownName) {
   const f = camp.fight;
   if (!f || !f.on) return { on: false };
   const ini = camp.initiative, ut = unitTokens(camp);
@@ -504,7 +517,9 @@ function view(camp, cid, gm) {
     if (!ut[e.id] || !seen(e)) continue;
     const ch = e.charId && camp.characters[e.charId];
     const hp = ch ? +ch.hp.current : e.hp;
-    units[e.id] = { token: ut[e.id], side: e.charId ? "pc" : "npc", mine: !!ch && ch.owner === cid, down: hp != null && hp <= 0 };
+    // a character whose name the GM is hiding looks like any creature to other players, as HoloTable's own view has it
+    const masked = !gm && shownName && shownName(camp, e) !== e.name && !(ch && ch.owner === cid);
+    units[e.id] = { token: ut[e.id], side: e.charId && !masked ? "pc" : "npc", mine: !!ch && ch.owner === cid, down: hp != null && hp <= 0 };
   }
   const cur = ini.entries[ini.turn];
   const turn = ini.active && cur && seen(cur) ? cur.id : null;
@@ -521,7 +536,11 @@ function view(camp, cid, gm) {
     npcSaves: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, (v && v.saves) || {}])) : {},
     npcMods: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, (v && v.mods) || {}])) : {},
     npcDefenses: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, defences(plainObj(v))])) : {},
-    defenses: f.defenses || {},   // characters' own: as visible as their sheets
+    // characters' own: as visible as their sheets (not a sheet whose token's name the GM is hiding, except to its owner)
+    defenses: gm || !shownName ? f.defenses || {} : Object.fromEntries(Object.entries(f.defenses || {}).filter(([id]) => {
+      const c = camp.characters[id];
+      return c && (c.owner === cid || shownName(camp, { charId: id, name: c.name }) === c.name);
+    })),
     lib: f.lib || {},
     effects: (f.effects || []).filter((ef) => units[ef.unit]).map((ef) => ({ unit: ef.unit, condition: ef.condition, ends: ef.ends, of: units[ef.of] ? ef.of : null, rounds: ef.rounds, save: ef.save, conc: ef.conc,
       level: ef.level || 0, amount: ef.amount || "", source: units[ef.source] ? ef.source : null })),   // a grappler or charmer the viewer can't see stays unnamed
@@ -544,4 +563,11 @@ function turned(camp, cid, G) {
   tick(camp, cid, G);
 }
 
-module.exports = { apply, view, unitTokens, worldOf, state, turned, cleanResources: E.cleanResources };
+// A backup brought back: the record is checked like a live one, and what only made sense on the old table goes
+// (the undo stack, the floating numbers, reactions waiting for an answer).
+function restored(g) {
+  state(g);
+  Object.assign(g.fight, { undo: [], events: [], pending: [] });
+}
+
+module.exports = { apply, view, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources };
