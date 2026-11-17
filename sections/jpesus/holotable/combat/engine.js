@@ -46,38 +46,40 @@
   // difficult terrain (each step into it costs 5 ft more), and a prone unit crawls (every step costs double). A unit
   // may pass through allies, and through an enemy only one at least two sizes larger or smaller than itself; it may not
   // stop where another unit stands. Units the mover can't see (hidden ones, for a player) are not in the world at all,
-  // so they never give themselves away by blocking.
+  // so they never give themselves away by blocking. The diagonal count carries across a turn's moves (spent.diag):
+  // stepping one diagonal at a time costs what one long move would, 5, 10, 5, 10…
   // Size: a stat block's size when the GM's screen sent it (0 Tiny … 5 Gargantuan), otherwise from the token's squares.
   const sizeCat = (o) => (o.sizeCat != null ? +o.sizeCat : [2, 2, 3, 4, 5][Math.min(4, o.size || 1)]);
   function search(world, unitId, feet) {
     const u = world.units[unitId];
-    if (!u) return { out: {}, prev: {}, at: {} };
+    if (!u) return { out: {}, par: {}, prev: {}, at: {} };
+    const start = unitId === world.turnId ? (+spentOf(world, unitId).diag ? 1 : 0) : 0;
     const others = Object.values(world.units).filter((o) => o.id !== u.id && !o.down);
     const size = u.size || 1, budget = Math.max(0, feet), crawl = (u.conditions || []).includes('Prone') ? 2 : 1;
     const blocked = (x, y) => others.some((o) => hostile(u, o) && overlaps(x, y, size, o) && Math.abs(sizeCat(u) - sizeCat(o)) < 2);
     const occupied = (x, y) => others.some((o) => overlaps(x, y, size, o));
-    const best = {}, out = {}, prev = {}, at = {};
+    const best = {}, out = {}, par = {}, prev = {}, at = {};
     const key = (x, y, p) => `${x},${y},${p}`;
-    let open = [[0, u.x, u.y, 0]];   // [feet, x, y, diagonal parity]
-    best[key(u.x, u.y, 0)] = 0;
+    let open = [[0, u.x, u.y, start]];   // [feet, x, y, diagonal parity]
+    best[key(u.x, u.y, start)] = 0;
     while (open.length) {
       open.sort((p, q) => p[0] - q[0]);
-      const [c, x, y, par] = open.shift();
-      if (c > best[key(x, y, par)]) continue;
+      const [c, x, y, pr] = open.shift();
+      if (c > best[key(x, y, pr)]) continue;
       for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
         if (!dx && !dy) continue;
         const nx = x + dx, ny = y + dy;
         if (nx < -500 || ny < -500 || nx > 1000 || ny > 1000 || blocked(nx, ny)) continue;
-        const diag = dx && dy, np = diag ? 1 - par : par;
-        const step = ((diag && par ? 2 * FT : FT) + (occupied(nx, ny) ? FT : 0)) * crawl;
+        const diag = dx && dy, np = diag ? 1 - pr : pr;
+        const step = ((diag && pr ? 2 * FT : FT) + (occupied(nx, ny) ? FT : 0)) * crawl;
         const nc = c + step, k = key(nx, ny, np);
         if (nc > budget || (best[k] !== undefined && best[k] <= nc)) continue;
-        best[k] = nc; prev[k] = key(x, y, par);
+        best[k] = nc; prev[k] = key(x, y, pr);
         open.push([nc, nx, ny, np]);
-        if (!occupied(nx, ny) && (out[`${nx},${ny}`] === undefined || out[`${nx},${ny}`] > nc)) { out[`${nx},${ny}`] = nc; at[`${nx},${ny}`] = k; }
+        if (!occupied(nx, ny) && (out[`${nx},${ny}`] === undefined || out[`${nx},${ny}`] > nc)) { out[`${nx},${ny}`] = nc; par[`${nx},${ny}`] = np; at[`${nx},${ny}`] = k; }
       }
     }
-    return { out, prev, at, start: key(u.x, u.y, 0) };
+    return { out, par, prev, at, start: key(u.x, u.y, start) };
   }
   const reachable = (world, unitId, feet) => search(world, unitId, feet).out;
   // the squares a move passes through, from where the unit stands to (x, y), by the cheapest way; null if out of reach
@@ -213,8 +215,9 @@
   );
 
   // Every reason an attack roll from `a` at `t` tilts, as { adv | dis, text } or a { note } saying why one doesn't
-  // (a sense defeating a condition). Shared by weapon attacks and powers' attack rolls.
-  // An enemy close by counts only if it can perceive you (not blinded, unless a sense makes up for it) and can act.
+  // (a sense defeating a condition): shared by weapon attacks, powers' attack rolls and both previews, so what the
+  // preview says is what the server rolls. An enemy close by counts only if it can perceive you (not blinded, unless a
+  // sense makes up for it) and can act.
   function reasons(world, a, t, attack, feet, ranged) {
     const enemyClose = Object.values(world.units).some((o) => o.id !== a.id && hostile(a, o) && !o.down && feetBetween(a, o) <= FT
       && (!(o.conditions || []).includes('Blinded') || senseFor(o, a, NO_SIGHT)) && !INCAPACITATING(o));
@@ -476,7 +479,7 @@
   /* ---------------- turns: the turn budget is resources too, refilled at the start of the unit's own turn ---------------- */
   const turnKey = (world) => `${world.round}:${world.turnId}`;
   const TURN = ['move', 'action', 'bonus', 'reaction'];
-  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, dash: 0, disengage: 0, dodge: 0 });
+  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0 });
   function spentOf(world, id) {
     const s = (world.spent || {})[id];
     return s && (id !== world.turnId || s.key === turnKey(world)) ? Object.assign(blank(s.key), s) : blank(id === world.turnId ? turnKey(world) : '');
@@ -533,11 +536,11 @@
         const x = Math.round(+act.x), y = Math.round(+act.y);
         if (!Number.isFinite(x) || !Number.isFinite(y)) return no('Bad square.');
         if (x === me.x && y === me.y) return no('Already there.');
-        const cost = reachable(w, me.id, b.moveLeft)[`${x},${y}`];
+        const found = search(w, me.id, b.moveLeft), cost = found.out[`${x},${y}`];
         if (cost === undefined) return no(b.moveLeft ? `${me.name} can't reach that square with ${b.moveLeft} ft of movement left.` : `${me.name} has no movement left this turn.`);
         const path = pathTo(w, me.id, b.moveLeft, x, y) || [{ x: me.x, y: me.y }, { x, y }];
         const reactions = opportunities(w, me, path);
-        me.x = x; me.y = y; w.spent[me.id].move += cost;
+        me.x = x; me.y = y; w.spent[me.id].move += cost; w.spent[me.id].diag = found.par[`${x},${y}`] ? 1 : 0;
         return { ok: true, world: w, log: [{ text: `${me.name} moves ${cost} ft.` }], events: [{ kind: 'move', unit: me.id, feet: cost }], reactions };
       }
       case 'attack': {
@@ -562,7 +565,8 @@
         const slot = ab.use || 'action';
         if (slot !== 'free' && !b[slot]) return no(`${me.name} has already used the ${slot === 'bonus' ? 'bonus action' : slot} this turn.`);
         const up = Math.max(0, Math.round(+act.upcast || 0));
-        if (ab.kind === 'power' && ab.level && ab.maxLevel != null && ab.level + up > ab.maxLevel) return no(ab.maxLevel ? `${me.name} can cast powers up to level ${ab.maxLevel}.` : `${me.name} can't cast leveled powers yet.`);
+        // a power's level, upcast included, can't pass the caster's highest level (an at-will power's upcast too)
+        if (ab.kind === 'power' && (ab.level || up) && ab.maxLevel != null && ab.level + up > ab.maxLevel) return no(ab.maxLevel ? `${me.name} can cast powers up to level ${ab.maxLevel}.` : `${me.name} can't cast leveled powers yet.`);
         const cost = Object.assign({}, ab.cost || {});
         if (up && ab.pool) cost[ab.pool] = (cost[ab.pool] || 0) + up;
         for (const [pool, n] of Object.entries(cost)) {
@@ -583,6 +587,7 @@
             const t = w.units[id];
             if (!t) return no('No such target.');
             if (t.id !== me.id && (w.effects || []).some((ef) => ef.unit === me.id && ef.condition === 'Charmed' && ef.source === t.id) && (ab.attack || ab.save || ab.damage.length)) return no(`${me.name} is charmed by ${t.name} and can't target it with that.`);
+            if (ab.attack && (t.ac == null || t.ac === '' || !Number.isFinite(+t.ac))) return no(`${t.name} has no AC set.`);
             const r = inReachOf(w, me, t, ab);
             if (!r.ok) return no(r.why);
           }
@@ -601,6 +606,7 @@
           const t = w.units[id];
           let hit = true, crit = false, half = false;
           if (ab.attack) {
+            if (t.ac == null || t.ac === '' || !Number.isFinite(+t.ac)) { log.push({ unit: t.id, text: `${t.name} has no AC set: ${ab.name} can't be rolled against it.` }); continue; }
             const r0 = inReachOf(w, me, t, ab);
             const all = me.id === t.id ? [] : reasons(w, me, t, { melee: r0.melee ? ab.reach : 0, range: ab.range }, r0.feet, !r0.melee);
             const tl = all.filter((x) => !x.note), notes = all.filter((x) => x.note).map((x) => x.text);

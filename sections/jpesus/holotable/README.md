@@ -36,6 +36,10 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
 - **Combat tracker:** initiative, HP, conditions, hidden NPCs.
 - **Battle map:** an endless grid of 70 px squares (the usual VTT size) that fills the map pane.
   - Drag empty space to pan, and scroll or pinch to zoom. The **−**, **100%**, **+** and **Fit** buttons reset the view.
+  - The map always opens fitted to the board, whatever size the GM has set. It refits when the GM changes the board's
+    size or the scene, and when the window resizes or a phone rotates, unless you've zoomed or panned since.
+  - On a phone, the map tab gives the map most of the screen: the roster and chat shrink, and the map tools scroll
+    sideways in one row.
   - The board, where the background image sits, is outlined.
   - Tokens, plus Dungeondraft packs or zips of images placed as props, tokens or floors.
   - **Token names:** each token shows a short label that fits its own square (the full name, the first name, or the
