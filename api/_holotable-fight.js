@@ -148,6 +148,8 @@ function worldOf(camp, forPlayer, G) {
     defenses: f.defenses || {}, walls: (camp.map && camp.map.walls) || [], variants: camp.variants || [],
   }, R);
   if (G && G.shownName) for (const e of entries) if (w.units[e.id]) w.units[e.id].name = G.shownName(camp, e);
+  // the GM's world keeps hidden combatants; the engine is told which they are, so they never count toward what a public line says (Flanking)
+  if (!forPlayer) for (const e of entries) if (w.units[e.id] && hiddenEntry(camp, e, ut[e.id])) w.units[e.id].hidden = true;
   return w;
 }
 
@@ -623,6 +625,7 @@ function view(camp, cid, gm, shownName) {
     // a character whose name the GM is hiding looks like any creature to other players, as HoloTable's own view has it
     const masked = !gm && shownName && shownName(camp, e) !== e.name && !(ch && ch.owner === cid);
     units[e.id] = { token: ut[e.id], side: e.charId && !masked ? "pc" : "npc", mine: !!ch && ch.owner === cid, down: hp != null && hp <= 0 };
+    if (gm && hiddenEntry(camp, e, ut[e.id])) units[e.id].hidden = true;   // for the GM's previews (Flanking); players never get these units
   }
   const cur = ini.entries[ini.turn];
   const turn = ini.active && cur && seen(cur) ? cur.id : null;

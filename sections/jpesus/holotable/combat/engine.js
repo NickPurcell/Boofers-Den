@@ -308,9 +308,12 @@
   // Flanking (the variant): a creature engaged by more than one enemy within 5 ft is flanked against sources within 5 ft
   // of it. SW5e measures it as how surrounded it is; the default here counts the sides (north, east, south, west) its
   // enemies within 5 ft stand on: one side is one-quarter (-2), two half (-3), three or four three-quarters (-5).
+  // A creature hidden from players (marked .hidden in the GM's world) counts only when the attacker or the target is
+  // hidden too, which is when the line goes to the GM alone; otherwise "flanked" on a public line would give it away.
   function flankOf(w, t, src) {
     if (!variant(w, 'Flanking') || !t || !src || feetBetween(src, t) > FT) return 0;
-    const near = Object.values(w.units).filter((o) => o.id !== t.id && hostile(o, t) && !o.down && !INCAPACITATING(o) && feetBetween(o, t) <= FT);
+    const secret = !!(src.hidden || t.hidden);
+    const near = Object.values(w.units).filter((o) => o.id !== t.id && (secret || !o.hidden) && hostile(o, t) && !o.down && !INCAPACITATING(o) && feetBetween(o, t) <= FT);
     if (near.length < 2) return 0;
     const ts = t.size || 1, cx = t.x + ts / 2, cy = t.y + ts / 2, sides = new Set();
     for (const o of near) {

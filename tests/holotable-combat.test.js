@@ -1685,6 +1685,41 @@ test("variants, only when the GM marks them: Crueler Criticals, Critical Saving 
   assert.equal(r.world.units.r1.hp, 30 - 12, "2d6 at its maximum");
 });
 
+test("review #105: a hidden creature never counts toward Flanking on a line players read; it does on the GM's own", async () => {
+  const { gm, sam, ids } = await fight();
+  await gm.act("variants.set", { variants: ["Flanking"] });
+  await gm.act("fight.toggle", { on: true });
+  // Avery at (5,5) with the Raider to the east and the hidden Lurker to the west
+  const st0 = await gm.state(), tok = (n) => st0.map.tokens.find((t) => t.name === n).id;
+  await gm.act("token.move", { id: tok("Avery"), x: 5, y: 5 });
+  await gm.act("token.move", { id: tok("Raider"), x: 6, y: 5 });
+  await gm.act("token.move", { id: tok("Lurker"), x: 4, y: 5 });
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  const claw = { name: "Claw", bonus: 40, damage: "1d4", type: "kinetic", melee: 5 };
+  const lastAttack = async (who) => (await who.state()).chat.filter((m) => m.fight && m.roll && m.roll.kind === "attack").pop().roll.label;
+  const gv = await gm.state();
+  assert.equal(gv.fight.units[ids.lurker].hidden, true, "the GM's view marks the hidden unit, for the GM's own preview");
+  assert.equal((await sam.state()).fight.units[ids.lurker], undefined);
+  assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: claw })).code, 200);
+  assert.doesNotMatch(await lastAttack(sam), /flanked/, "with only the Raider visibly beside Avery, players read no flanking");
+  // revealed, the Lurker counts: Avery is flanked from two sides
+  await gm.act("fight.undo", {});
+  await gm.act("token.update", { id: tok("Lurker"), fields: { hidden: false } });
+  await gm.act("init.update", { id: ids.lurker, fields: { hidden: false } });
+  assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: claw })).code, 200);
+  assert.match(await lastAttack(sam), /Avery is flanked, -3 AC/);
+  // hidden again, and the Lurker itself attacks: that line is the GM's alone, so the Raider beside Avery counts with it
+  await gm.act("fight.undo", {});
+  await gm.act("token.update", { id: tok("Lurker"), fields: { hidden: true } });
+  await gm.act("init.update", { id: ids.lurker, fields: { hidden: true } });
+  const E2 = require("../sections/jpesus/holotable/combat/engine.js"), Fight = require("../api/_holotable-fight.js");
+  const camp = JSON.parse(JSON.stringify((await gm.state())));
+  const w = Fight.worldOf(Object.assign(camp, { fight: camp.fight && { spent: {}, effects: [], conc: {}, npc: {} } }), false);
+  assert.equal(w.units[ids.lurker].hidden, true);
+  assert.equal(E2.flankOf(w, w.units[ids.avery], w.units[ids.lurker]), 3, "hidden attacker: a GM-only line, both flankers count");
+  assert.equal(E2.flankOf(w, w.units[ids.avery], w.units[ids.raider]), 0, "visible attacker: the hidden Lurker doesn't count");
+});
+
 test("review #102: walls without a usable id get their own on the way in; erasing or opening needs an id; a big map's far walls cost nothing", async () => {
   const Fight = require("../api/_holotable-fight.js");
   const w = Fight.cleanWalls([{ a: [0, 0], b: [1, 0] }, { id: "same", a: [0, 1], b: [1, 1] }, { id: "same", a: [0, 2], b: [1, 2] }, { id: "", a: [0, 3], b: [1, 3], kind: "door" }]);
