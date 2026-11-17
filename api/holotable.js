@@ -101,7 +101,11 @@ async function gameWasLost() {
 }
 async function loadGame() {
   const camp = await S.getCampaign(GAME);
-  if (camp) return camp;
+  if (camp) {
+    // tables made before 70 px squares: move the old 50 px default to 70 (saved with the next change)
+    if (camp.map && !camp.map.gridV2) { if (camp.map.gridSize === 50) camp.map.gridSize = 70; camp.map.gridV2 = true; }
+    return camp;
+  }
   if (await gameWasLost()) throw new Missing("The table's save is missing. GM: open the GM tab and restore the latest backup.");
   return G.blankCampaign("HoloTable");
 }
@@ -331,25 +335,42 @@ async function handlePost(req, res, q, b, ses) {
 
     if (op === "packadd") {
       return S.withLock("pack-" + id, async () => {
+        // a retried batch (the browser resends after a timeout) is applied only once
+        const seq = Number.isInteger(+b.seq) ? +b.seq : null;
+        summary.seqs = Array.isArray(summary.seqs) ? summary.seqs : [];
         const list = JSON.parse((await r.get(S.K.pack(id))) || "[]");
+        if (seq !== null && summary.seqs.includes(seq)) return res.status(200).json({ ok: true, count: list.length, repeat: true });
         const items = [];
         for (const it of (Array.isArray(b.items) ? b.items : []).slice(0, 400)) {
           const buf = Buffer.from(String(it.data || ""), "base64");
           if (S.sniff(buf) && buf.length <= MAX_IMAGE) items.push({ it, buf });
         }
-        const bytes = items.reduce((s, x) => s + x.buf.length, 0);
+        const room = Math.max(0, MAX_PACK_ITEMS - list.length);
+        const keep = items.slice(0, room);
+        const bytes = keep.reduce((s, x) => s + x.buf.length, 0);
         try { await S.reserve(bytes); } catch (e) {
           if (!(e instanceof S.Full)) throw e;
           await removePack(id, list.length, summary.bytes);
           return fail(res, 413, "The asset library is full, so this pack wasn't added. Delete a pack (or ask the site owner to raise HOLOTABLE_STORAGE_MB) and try again.");
         }
-        for (const { it, buf } of items) {
-          if (list.length >= MAX_PACK_ITEMS) { await S.release(buf.length); continue; }
-          await r.set(S.K.asset(id, list.length), buf);
+        // one round trip for the whole batch: sending images one by one can run past the
+        // function time limit when the database is a few milliseconds away
+        const pl = r.pipeline();
+        keep.forEach(({ buf }, i) => pl.set(S.K.asset(id, list.length + i), buf));
+        const results = (await pl.exec()) || [];
+        const failed = results.find(([err]) => err);
+        if (failed) { // e.g. the database refused writes because it's full: don't leave half a pack behind
+          await S.release(bytes);
+          await r.del(...keep.map((_, i) => S.K.asset(id, list.length + i)));
+          await removePack(id, list.length, summary.bytes);
+          throw failed[0];
+        }
+        for (const { it, buf } of keep) {
           list.push({ n: String(it.n || "asset").slice(0, 80), c: /^[a-z]{1,20}$/.test(it.c) ? it.c : "props",
             w: Number.isFinite(+it.w) && +it.w > 0 ? Math.round(+it.w) : null, h: Number.isFinite(+it.h) && +it.h > 0 ? Math.round(+it.h) : null });
           summary.bytes += buf.length;
         }
+        if (seq !== null) summary.seqs.push(seq);
         await r.set(S.K.pack(id), JSON.stringify(list));
         summary.count = list.length;
         await r.hset(S.K.packs(), id, JSON.stringify(summary));

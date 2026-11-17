@@ -18,6 +18,15 @@ class HoloFakeRedis extends FakeRedis {
   async llen(k) { const l = this.kv.get(k); return Array.isArray(l) ? l.length : 0; }
   async lindex(k, i) { const l = this.kv.get(k) || []; return l[i] === undefined ? null : l[i]; }
   async hdel(k, ...fs) { const h = this.kv.get(k); let n = 0; for (const f of fs) if (h && h.delete(f)) n++; return n; }
+  // ioredis-style pipeline: queue commands, run them in order on exec(), results as [err, value]
+  pipeline() {
+    const ops = [], self = this;
+    const p = new Proxy({}, { get(_, name) {
+      if (name === "exec") return async () => { const out = []; for (const [n, a] of ops) { try { out.push([null, await self[n](...a)]); } catch (e) { out.push([e, null]); } } return out; };
+      return (...a) => { ops.push([name, a]); return p; };
+    } });
+    return p;
+  }
   async publish(ch, msg) { this.bus.emit("msg", ch, msg); return 1; }
   duplicate() {
     const d = new HoloFakeRedis(this.bus);

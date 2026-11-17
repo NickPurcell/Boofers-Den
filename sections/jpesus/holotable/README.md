@@ -24,11 +24,18 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
 - **Click-to-roll:** checks, saves, skills, attacks and damage, rolled on the server.
 - **Chat:** whispers, secret GM rolls, `/r 2d20kh1+5`.
 - **Combat tracker:** initiative, HP, conditions, hidden NPCs.
-- **Battle map:** tokens, plus Dungeondraft packs or zips of images placed as props, tokens or floors.
+- **Battle map:** an endless grid of 70 px squares (the usual VTT size) that fills the map pane.
+  - Drag empty space to pan, and scroll or pinch to zoom. The **−**, **100%**, **+** and **Fit** buttons reset the view.
+  - The board, where the background image sits, is outlined.
+  - Tokens, plus Dungeondraft packs or zips of images placed as props, tokens or floors.
+- **Power tooltips:** hover any force or tech power for its cost, save DC, attack bonus, casting details and description.
+  Use ✎ to write or edit a description.
 - **Level ups:** the GM grants a level to the party or to chosen characters. Each player gets a pop-up and a guided wizard:
   pick a class or multiclass, roll or take average HP, take an ability score improvement or feat, add new features and powers,
   then see a before/after summary. The GM can level a character for a player who missed the session.
-- **Colour themes (🎨):** each person picks their own look. There are 18 themes in three groups: Light Side, Dark Side and
+- **Look:** an original sci-fi console design, with framed panels, angled tabs and glowing accents. It uses the Orbitron and
+  Exo 2 fonts (SIL Open Font License, in `fonts/`), served from this folder.
+- **Colour themes (🎨):** each person picks their own look. Republic Command is the default, and there are 18 more themes in three groups: Light Side, Dark Side and
   Across the Galaxy. The GM also gets an exclusive Green & Silver theme. Anyone can then fine-tune five colours.
   The choice is saved with your account and follows you to other devices. Every theme passes a contrast check (themes.js).
 - **GM tools:** handouts, GM notes, a backup file download, automatic backups, and restore.
@@ -51,6 +58,9 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
 - **If the save goes missing** (for example, a full Redis evicting keys), changes are refused and everyone sees a notice.
   The GM gets a one-click restore from the latest automatic backup, so a blank table is never saved over it.
   A full database shows a clear "database is full" message.
+- **Asset pack uploads** go in numbered ~1.5 MB batches. Each batch is written to Redis in one pipeline, so a distant
+  database can't push a request past Vercel's 10 s limit. A batch retried after a timeout is applied only once.
+  `node tests/holotable-devserver.js 8789 --slow=80` simulates database delay and the 10 s limit.
 - **Live updates:** long-polling woken by Redis pub/sub. Each request waits up to 8 s, and hidden tabs stop polling.
 
 ## Local testing

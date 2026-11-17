@@ -8,6 +8,9 @@
 (function (root) {
   const T = (id, name, group, tagline, light, c) => ({ id, name, group, tagline, light: !!light, colors: c });
   const THEMES = [
+    // the default: console navy with gold trim and an ice-blue second accent
+    T('republic-command', 'Republic Command', 'light', 'Command-deck navy, gold trim, ice-blue readouts. The default.', false,
+      { bg: '#0a0f1a', bg2: '#0e1524', panel: '#121b2d', panel2: '#172238', line: '#2a3a58', text: '#e6ecf6', muted: '#9caac4', holo: '#d9b45a', amber: '#6fc3ff', red: '#ef6b6b', green: '#78d08a', violet: '#b9a6ff' }),
     // ---------------------------------------------------------------- the galaxy (neutral)
     T('holo-blue', 'Holo Blue', 'galaxy', 'The classic hologram glow.', false,
       { bg: '#0b0f17', bg2: '#111827', panel: '#151d2b', panel2: '#1b2536', line: '#26344b', text: '#dbe6f5', muted: '#8fa1ba', holo: '#4fc3f7', amber: '#ffb74d', red: '#ef5350', green: '#66bb6a', violet: '#b388ff' }),

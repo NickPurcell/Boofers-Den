@@ -209,7 +209,8 @@
          <button class="btn small amber-fill" id="restoreLatest">Restore latest backup</button> <span class="muted">or pick one in the GM tab</span>`
       : `⚠ The table's save is missing. The GM needs to restore a backup before play can continue.`;
     $('#campName').textContent = S.st.name;
-    $('#online').innerHTML = S.st.online.map(o => `<span class="pill ${o.gm ? 'gm' : ''}">${esc(o.name)}${o.gm ? ' (GM)' : ''}</span>`).join('');
+    const gmTag = n => (/^\s*gm\s*$/i.test(n || '') ? '' : ' (GM)');
+    $('#online').innerHTML = S.st.online.map(o => `<span class="pill ${o.gm ? 'gm' : ''}">${esc(o.name)}${o.gm ? gmTag(o.name) : ''}</span>`).join('');
   }
   $('#missingBar').addEventListener('click', async e => {
     if (e.target.id !== 'restoreLatest') return;
@@ -402,7 +403,7 @@
         </div>
         <div class="row wrap">${(ch.classes || []).map((k, i) => `
           <span class="row">${inp(`classes.${i}.name`, k.name, { ro, list: 'dlClasses', w: '110px' })}
-          ${inp(`classes.${i}.level`, +k.level || 1, { ro, type: 'number', w: '52px' })}
+          ${inp(`classes.${i}.level`, +k.level || 1, { ro, type: 'number', w: '58px' })}
           ${inp(`classes.${i}.archetype`, k.archetype || '', { ro, ph: 'Archetype', w: '130px' })}
           ${!ro && ch.classes.length > 1 ? `<button class="btn tiny ghost" data-act="del-class" data-i="${i}">✕</button>` : ''}</span>`).join('')}
           ${!ro ? '<button class="btn tiny" data-act="add-class">＋ multiclass</button>' : ''}
@@ -424,7 +425,7 @@
       <div class="stat"><div class="lbl">Proficiency</div><div class="val">${R.fmt(pb)}</div></div>
       <div class="stat"><div class="lbl">Passive Perc.</div><div class="val">${R.passive(ch, 'perception')}</div></div>
       <div class="stat"><div class="lbl">Hit Dice</div><div class="val" style="font-size:15px;padding-top:6px">${esc(R.hitDiceSummary(ch))}</div>
-        <div class="muted" style="font-size:11px">used ${inp('hitDiceUsed', +ch.hitDiceUsed || 0, { ro, type: 'number', w: '44px' })}</div></div>
+        <div class="muted" style="font-size:11px">used ${inp('hitDiceUsed', +ch.hitDiceUsed || 0, { ro, type: 'number', w: '58px' })}</div></div>
       <div class="stat"><div class="lbl">Inspiration</div><div style="padding-top:6px">${inp('inspiration', ch.inspiration, { ro, type: 'checkbox' })}</div></div>
     </div>
     <div class="subtabs">${[['main', 'Abilities & Skills'], ['actions', 'Attacks & Powers'], ['gear', 'Features & Gear'], ['bio', 'Bio & Notes']]
@@ -482,7 +483,7 @@
           const hit = R.attackBonus(ch, a), dmg = R.damageExpr(ch, a);
           return `<tr><td>${inp(`attacks.${i}.name`, a.name, { ro })}</td>
             <td style="width:96px">${inp(`attacks.${i}.ab`, a.ab || 'str', { ro, type: 'select', options: [{ v: 'str', t: 'Str' }, { v: 'dex', t: 'Dex' }, { v: 'finesse', t: 'Finesse' }, { v: 'con', t: 'Con' }, { v: 'int', t: 'Int' }, { v: 'wis', t: 'Wis' }, { v: 'cha', t: 'Cha' }] })}</td>
-            <td style="width:120px"><button class="btn small amber" data-act="atk" data-i="${i}">${R.fmt(hit)}</button> ${inp(`attacks.${i}.magic`, a.magic || '', { ro, type: 'number', w: '44px', ph: '+0' })}</td>
+            <td style="width:120px"><button class="btn small amber" data-act="atk" data-i="${i}">${R.fmt(hit)}</button> ${inp(`attacks.${i}.magic`, a.magic || '', { ro, type: 'number', w: '58px', ph: '+0' })}</td>
             <td style="width:160px"><div class="row">${inp(`attacks.${i}.damage`, a.damage || '', { ro, w: '64px' })}<button class="btn small" data-act="dmg" data-i="${i}" title="${esc(dmg)}">Dmg</button><button class="btn tiny" data-act="crit" data-i="${i}" title="Critical: dice doubled">Crit</button></div></td>
             <td style="width:100px">${inp(`attacks.${i}.type`, a.type || '', { ro, list: 'dlTypes' })}</td>
             <td>${inp(`attacks.${i}.props`, a.props || '', { ro })}</td>
@@ -495,15 +496,15 @@
       </div>
       <div class="box" style="margin-top:12px"><h4>Powers <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="add-power">＋ power</button>' : ''}</h4>
         <table class="t"><thead><tr><th>Name</th><th>Lvl</th><th>Type</th><th>Alignment</th><th>Notes</th><th></th><th></th></tr></thead><tbody>
-        ${(ch.powers || []).slice().map((p, i) => ({ p, i })).sort((a, b) => (+a.p.level || 0) - (+b.p.level || 0)).map(({ p, i }) => `<tr>
+        ${(ch.powers || []).slice().map((p, i) => ({ p, i })).sort((a, b) => (+a.p.level || 0) - (+b.p.level || 0)).map(({ p, i }) => `<tr data-power-tip="${i}">
           <td>${inp(`powers.${i}.name`, p.name, { ro })}</td>
           <td class="n">${inp(`powers.${i}.level`, +p.level || 0, { ro, type: 'number' })}</td>
           <td style="width:90px">${inp(`powers.${i}.type`, p.type || 'force', { ro, type: 'select', options: ['force', 'tech'] })}</td>
           <td style="width:110px">${p.type === 'tech' ? '' : inp(`powers.${i}.alignment`, p.alignment || 'universal', { ro, type: 'select', options: ['universal', 'light', 'dark'] })}</td>
           <td>${inp(`powers.${i}.notes`, p.notes || '', { ro, ph: 'range, duration, effect…' })}</td>
           <td style="width:60px"><button class="btn small amber" data-act="cast" data-i="${i}">Cast</button></td>
-          <td>${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="powers" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">No powers.</td></tr>'}</tbody></table>
-        <p class="muted" style="font-size:12px;margin:6px 0 0">Casting costs 1 + power level points (level 0 at-wills are free).</p></div>`;
+          <td style="white-space:nowrap">${!ro ? `<button class="btn tiny ghost" data-act="power-desc" data-i="${i}" title="Write or edit this power's description">✎</button><button class="btn tiny ghost" data-act="del" data-list="powers" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">No powers.</td></tr>'}</tbody></table>
+        <p class="muted" style="font-size:12px;margin:6px 0 0">Hover a power for its details. Casting costs 1 + power level points (level 0 at-wills are free).</p></div>`;
     }
 
     if (sub === 'gear') {
@@ -628,6 +629,17 @@
       case 'atk': { const at = ch.attacks[i]; roll(d20(R.attackBonus(ch, at)), `${at.name} — attack`, { d20: true, mode: rollModeFromEvent(e), charId: ch.id, kind: 'attack' }); break; }
       case 'dmg': { const at = ch.attacks[i]; roll(R.damageExpr(ch, at), `${at.name} — ${at.type || ''} damage`, { charId: ch.id, kind: 'damage' }); break; }
       case 'crit': { const at = ch.attacks[i]; roll(R.critExpr(R.damageExpr(ch, at)), `${at.name} — CRITICAL ${at.type || ''} damage`, { charId: ch.id, kind: 'damage' }); break; }
+      case 'power-desc': {
+        const pw = ch.powers[i];
+        modal(`<h3>✎ ${esc(pw.name || 'Power')}</h3>
+          <label>Description<textarea id="pwDesc" rows="10" placeholder="What the power does: effect, damage, saving throw, upcasting…">${esc(pw.description || '')}</textarea></label>
+          <div class="row"><span class="spacer"></span><button class="btn" id="pwCancel">Cancel</button><button class="btn primary" id="pwSave">Save</button></div>`, box => {
+          $('#pwCancel', box).onclick = closeModal;
+          $('#pwSave', box).onclick = () => { const v = $('#pwDesc', box).value; mutate(c => { c.powers[i].description = v; }); closeModal(); };
+          $('#pwDesc', box).focus();
+        });
+        break;
+      }
       case 'cast': {
         const p = ch.powers[i], lvl = +p.level || 0, cost = lvl ? lvl + 1 : 0, k = p.type === 'tech' ? 'tech' : 'force';
         const ci = R.casterInfo(ch);
@@ -663,6 +675,44 @@
         break;
     }
   });
+
+  // --------------------------------------------------------------------------- power tooltips
+  const tip = document.createElement('div');
+  tip.className = 'hover-card hidden'; tip.setAttribute('role', 'tooltip');
+  document.body.appendChild(tip);
+  function powerCard(ch, pw) {
+    const ci = R.casterInfo(ch), lvl = +pw.level || 0, tech = pw.type === 'tech';
+    const cost = lvl ? lvl + 1 : 0;
+    const side = tech ? 'Tech' : pw.alignment === 'light' ? 'Light side' : pw.alignment === 'dark' ? 'Dark side' : 'Universal';
+    const dc = tech ? ci.techDC : pw.alignment === 'dark' ? ci.darkDC : pw.alignment === 'light' ? ci.lightDC : Math.max(ci.lightDC, ci.darkDC);
+    const atk = tech ? ci.techAtk : pw.alignment === 'dark' ? ci.darkAtk : pw.alignment === 'light' ? ci.lightAtk : Math.max(ci.lightAtk, ci.darkAtk);
+    const desc = String(pw.description || '').trim();
+    return `<div class="hc-title">${esc(pw.name || 'Power')}</div>
+      <div class="hc-sub">${lvl ? 'Level ' + lvl : 'At-will'} · ${side} ${tech ? 'power' : 'force power'}</div>
+      <div class="hc-stats"><span>Cost <b>${cost ? cost + (tech ? ' TP' : ' FP') : 'free'}</b></span><span>Save DC <b>${n0(dc)}</b></span><span>Attack <b>${R.fmt(n0(atk))}</b></span></div>
+      ${pw.notes ? `<div class="hc-notes">${esc(pw.notes)}</div>` : ''}
+      ${desc ? `<div class="hc-desc">${md(desc.length > 900 ? desc.slice(0, 900) + '…' : desc)}</div>`
+        : `<div class="hc-desc muted">No description yet${canEdit(ch) ? '. Click ✎ to add one.' : '.'}</div>`}`;
+  }
+  function placeTip(x, y) {
+    const r = tip.getBoundingClientRect(), pad = 14;
+    let left = x + pad, top = y + pad;
+    if (left + r.width > innerWidth - 8) left = x - r.width - pad;
+    if (top + r.height > innerHeight - 8) top = Math.max(8, innerHeight - r.height - 8);
+    tip.style.left = Math.max(8, left) + 'px'; tip.style.top = top + 'px';
+  }
+  function showPowerTip(row, x, y) {
+    const ch = selChar(); const pw = ch && ch.powers[+row.dataset.powerTip];
+    if (!pw) return;
+    tip.innerHTML = powerCard(ch, pw); tip.classList.remove('hidden'); placeTip(x, y);
+  }
+  const hideTip = () => tip.classList.add('hidden');
+  $('#sheet').addEventListener('mouseover', e => { const row = e.target.closest('[data-power-tip]'); if (row) showPowerTip(row, e.clientX, e.clientY); });
+  $('#sheet').addEventListener('mousemove', e => { if (!tip.classList.contains('hidden') && e.target.closest('[data-power-tip]')) placeTip(e.clientX, e.clientY); });
+  $('#sheet').addEventListener('mouseout', e => { const row = e.target.closest('[data-power-tip]'); if (row && !row.contains(e.relatedTarget)) hideTip(); });
+  $('#sheet').addEventListener('focusin', e => { const row = e.target.closest('[data-power-tip]'); if (row) { const r = row.getBoundingClientRect(); showPowerTip(row, r.left, r.bottom); } });
+  $('#sheet').addEventListener('focusout', hideTip);
+  document.addEventListener('scroll', hideTip, true);
 
   // --------------------------------------------------------------------------- combat
   function renderCombat(el) {
@@ -741,6 +791,7 @@
   const canvas = $('#mapCanvas'), ctx = canvas.getContext('2d');
   const M = { drag: null, sel: null, selProp: null };
   const DD_PX = 256; // Dungeondraft draws assets at 256 px per grid square
+  const UI_FONT = '"Exo 2", "Segoe UI", sans-serif';
   const imgCache = {};
   function img(src) {
     src = imgUrl(src);
@@ -750,28 +801,58 @@
     return im.complete && im.naturalWidth ? im : null;
   }
 
+  // The map is an endless grid you can pan (drag empty space, or middle-drag anywhere) and zoom
+  // (mouse wheel, trackpad pinch, two-finger pinch, or the buttons). One square is 70 px at 100%,
+  // like most VTTs. The board (cols x rows) is where the background image and floor are drawn.
+  const CAM = { x: 40, y: 40, z: 1, ready: false };
+  const ZMIN = 0.2, ZMAX = 3;
+  (() => { const c = store.get('holo.cam', null); if (c && isFinite(c.x) && isFinite(c.y) && isFinite(c.z)) Object.assign(CAM, c, { ready: true }); })();
+  let camSaveT;
+  const saveCam = () => { clearTimeout(camSaveT); camSaveT = setTimeout(() => store.set('holo.cam', { x: CAM.x, y: CAM.y, z: CAM.z }), 400); };
+  function viewSize() { const w = $('#mapWrap'); return { w: w.clientWidth || 800, h: w.clientHeight || 600 }; }
+  function zoomAt(sx, sy, factor) {
+    const z = Math.max(ZMIN, Math.min(ZMAX, CAM.z * factor));
+    CAM.x = sx - (sx - CAM.x) * (z / CAM.z); CAM.y = sy - (sy - CAM.y) * (z / CAM.z); CAM.z = z;
+    saveCam(); drawMap(); updateZoomLabel();
+  }
+  function fitBoard() {
+    const mp = S.st.map, g = mp.gridSize, { w, h } = viewSize();
+    const z = Math.max(ZMIN, Math.min(ZMAX, Math.min((w - 40) / (mp.cols * g), (h - 40) / (mp.rows * g))));
+    CAM.z = z; CAM.x = (w - mp.cols * g * z) / 2; CAM.y = (h - mp.rows * g * z) / 2;
+    saveCam(); drawMap(); updateZoomLabel();
+  }
+  function updateZoomLabel() { const l = $('#zoomPct'); if (l) l.textContent = Math.round(CAM.z * 100) + '%'; }
+
   function renderMapTools() {
     const mp = S.st.map, gm = isGM(), sc = selChar();
     $('#mapTools').innerHTML = `
       ${sc && canEdit(sc) ? `<button class="btn small" data-mact="place">◉ Place ${esc(sc.name)}</button>` : ''}
-      <span class="muted">Zoom</span><input type="range" min="0.3" max="2" step="0.1" value="${S.zoom}" data-mact="zoom" style="width:90px">
+      <span class="zoom-ctl"><button class="btn small" data-mact="zout" title="Zoom out">−</button><button class="btn small" data-mact="z100" id="zoomPct" title="Back to 100% (70 px squares)">${Math.round(CAM.z * 100)}%</button><button class="btn small" data-mact="zin" title="Zoom in">＋</button>
+        <button class="btn small" data-mact="zfit" title="Fit the whole map in view">⤢ Fit</button></span>
       ${gm ? `<button class="btn small ${A.open ? 'primary' : ''}" data-mact="assets">📦 Assets</button><span class="spacer"></span>
-        <button class="btn small" data-mact="bg">🖼 Background…</button>${mp.bgVersion ? '<button class="btn small ghost" data-mact="clear-bg">clear</button>' : ''}
+        <button class="btn small" data-mact="bg">🖼 Background…</button>${mp.bgVersion && mp.bgUrl ? '<button class="btn small ghost" data-mact="clear-bg">clear</button>' : ''}
         ${mp.floor ? '<button class="btn small ghost" data-mact="clear-floor">clear floor</button>' : ''}
-        ${(mp.props || []).length ? `<button class="btn small ghost" data-mact="clear-props">clear ${mp.props.length} props</button>` : ''}
-        <button class="btn small" data-mact="fit" title="Set columns/rows to match the background image">Fit grid</button>
-        <span class="muted">cell px</span><input type="number" value="${n0(mp.gridSize)}" data-mset="gridSize">
-        <span class="muted">cols</span><input type="number" value="${n0(mp.cols)}" data-mset="cols">
-        <span class="muted">rows</span><input type="number" value="${n0(mp.rows)}" data-mset="rows">
+        ${(mp.props || []).length ? `<button class="btn small ghost" data-mact="clear-props">clear ${n0(mp.props.length)} props</button>` : ''}
+        <button class="btn small" data-mact="fit" title="Set the board size to match the background image">Fit board</button>
+        <label class="mini" title="Background image pixels per square">px/sq <input type="number" value="${n0(mp.gridSize)}" data-mset="gridSize"></label>
+        <label class="mini">cols <input type="number" value="${n0(mp.cols)}" data-mset="cols"></label>
+        <label class="mini">rows <input type="number" value="${n0(mp.rows)}" data-mset="rows"></label>
         <label class="toggle"><input type="checkbox" data-mset="showGrid" ${mp.showGrid ? 'checked' : ''}> grid</label>
         <button class="btn small" data-mact="npc">＋ Token</button>
-        <input type="file" id="bgFile" accept="image/*" hidden>` : '<span class="muted">Drag your token to move. Click a token for options.</span>'}`;
+        <input type="file" id="bgFile" accept="image/*" hidden>` : '<span class="muted">Drag your token to move it · drag empty space to pan · scroll to zoom</span>'}`;
   }
   $('#mapTools').addEventListener('click', async e => {
     const b = e.target.closest('[data-mact]'); if (!b) return;
-    const a = b.dataset.mact;
-    if (a === 'place') await act('token.add', { charId: S.selected, x: 1, y: 1 });
-    if (a === 'assets') { A.open = !A.open; renderMapTools(); renderDrawer(); }
+    const a = b.dataset.mact, { w, h } = viewSize();
+    if (a === 'zin') zoomAt(w / 2, h / 2, 1.25);
+    if (a === 'zout') zoomAt(w / 2, h / 2, 0.8);
+    if (a === 'z100') zoomAt(w / 2, h / 2, 1 / CAM.z);
+    if (a === 'zfit') fitBoard();
+    if (a === 'place') {   // drop the token in the middle of what you're looking at
+      const g = S.st.map.gridSize;
+      await act('token.add', { charId: S.selected, x: Math.floor((w / 2 - CAM.x) / CAM.z / g), y: Math.floor((h / 2 - CAM.y) / CAM.z / g) });
+    }
+    if (a === 'assets') { A.open = !A.open; renderMapTools(); renderDrawer(); requestAnimationFrame(drawMap); }
     if (a === 'bg') $('#bgFile').click();
     if (a === 'clear-bg') act('map.bg', { url: null });
     if (a === 'clear-floor') act('map.floor', { src: null });
@@ -779,10 +860,10 @@
     if (a === 'fit' && S.mapImg) act('map.settings', { cols: Math.round(S.mapImg.width / S.st.map.gridSize), rows: Math.round(S.mapImg.height / S.st.map.gridSize) });
     if (a === 'npc') {
       const name = prompt('Token name', 'Enemy'); if (!name) return;
-      act('token.add', { name, color: '#ef5350', x: 1, y: 1 });
+      const g = S.st.map.gridSize;
+      act('token.add', { name, color: '#ef5350', x: Math.floor((w / 2 - CAM.x) / CAM.z / g), y: Math.floor((h / 2 - CAM.y) / CAM.z / g) });
     }
   });
-  $('#mapTools').addEventListener('input', e => { if (e.target.dataset.mact === 'zoom') { S.zoom = +e.target.value; drawMap(); } });
   $('#mapTools').addEventListener('change', async e => {
     const t = e.target;
     if (t.id === 'bgFile' && t.files[0]) {
@@ -817,11 +898,19 @@
 
   function drawMap() {
     if (!S.st || S.tab !== 'map') return;
-    const mp = S.st.map, g = mp.gridSize, W = mp.cols * g, H = mp.rows * g, z = S.zoom, dpr = window.devicePixelRatio || 1;
-    canvas.width = W * z * dpr; canvas.height = H * z * dpr; canvas.style.width = W * z + 'px'; canvas.style.height = H * z + 'px';
-    ctx.setTransform(z * dpr, 0, 0, z * dpr, 0, 0);
-    const MC = mapColors();
-    ctx.fillStyle = MC.bg; ctx.fillRect(0, 0, W, H);
+    const mp = S.st.map, g = mp.gridSize, W = mp.cols * g, H = mp.rows * g, dpr = window.devicePixelRatio || 1;
+    const { w: vw, h: vh } = viewSize();
+    if (!CAM.ready) { CAM.ready = true; fitBoard(); if (CAM.z < 0.7) { CAM.z = 1; CAM.x = 40; CAM.y = 40; } return; }
+    if (canvas.width !== Math.round(vw * dpr) || canvas.height !== Math.round(vh * dpr)) {
+      canvas.width = Math.round(vw * dpr); canvas.height = Math.round(vh * dpr);
+      canvas.style.width = vw + 'px'; canvas.style.height = vh + 'px';
+    }
+    const z = CAM.z, MC = mapColors();
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = MC.bg; ctx.fillRect(0, 0, vw, vh);
+    ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * CAM.x, dpr * CAM.y);
+    // the board: floor texture and background image
+    ctx.fillStyle = MC.board; ctx.fillRect(0, 0, W, H);
     const fl = img(mp.floor);
     if (fl) {
       const pat = ctx.createPattern(fl, 'repeat'), s = (g / DD_PX) * (mp.floorScale || 1);
@@ -829,12 +918,16 @@
       ctx.fillStyle = pat; ctx.fillRect(0, 0, W, H);
     }
     if (S.mapImg) ctx.drawImage(S.mapImg, 0, 0, W, H);
+    // the grid fills the whole view, not just the board
     if (mp.showGrid) {
+      const x0 = Math.floor((-CAM.x / z) / g) * g, y0 = Math.floor((-CAM.y / z) / g) * g;
+      const x1 = (vw - CAM.x) / z, y1 = (vh - CAM.y) / z;
       ctx.strokeStyle = MC.grid; ctx.lineWidth = 1 / z; ctx.beginPath();
-      for (let x = 0; x <= W; x += g) { ctx.moveTo(x, 0); ctx.lineTo(x, H); }
-      for (let y = 0; y <= H; y += g) { ctx.moveTo(0, y); ctx.lineTo(W, y); }
+      for (let x = x0; x <= x1; x += g) { ctx.moveTo(x, y0); ctx.lineTo(x, y1); }
+      for (let y = y0; y <= y1; y += g) { ctx.moveTo(x0, y); ctx.lineTo(x1, y); }
       ctx.stroke();
     }
+    ctx.strokeStyle = MC.edge; ctx.lineWidth = 2 / z; ctx.strokeRect(0, 0, W, H);
     // props
     for (const p of mp.props || []) {
       const drag = M.drag && M.drag.prop === p.id;
@@ -842,7 +935,7 @@
       const im = img(p.src);
       ctx.save(); ctx.translate(px + w / 2, py + h / 2); ctx.rotate((p.rot || 0) * Math.PI / 180);
       if (im) ctx.drawImage(im, -w / 2, -h / 2, w, h); else { ctx.fillStyle = MC.ghost; ctx.fillRect(-w / 2, -h / 2, w, h); }
-      if (M.selProp === p.id) { ctx.strokeStyle = '#ffb74d'; ctx.lineWidth = 2 / z; ctx.setLineDash([6 / z, 4 / z]); ctx.strokeRect(-w / 2, -h / 2, w, h); }
+      if (M.selProp === p.id) { ctx.strokeStyle = themeHex('amber', '#ffb74d'); ctx.lineWidth = 2 / z; ctx.setLineDash([6 / z, 4 / z]); ctx.strokeRect(-w / 2, -h / 2, w, h); }
       ctx.restore();
     }
     // stamp preview
@@ -858,8 +951,8 @@
       const cx = px + sz / 2, cy = py + sz / 2;
       ctx.globalAlpha = t.hidden ? 0.45 : 1;
       const isCur = cur && ((cur.charId && cur.charId === t.charId) || (!cur.charId && cur.name === t.name));
-      if (isCur) { ctx.beginPath(); ctx.arc(cx, cy, r + 5, 0, Math.PI * 2); ctx.fillStyle = 'rgba(255,183,77,.35)'; ctx.fill(); }
-      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = t.color || '#4fc3f7'; ctx.fill();
+      if (isCur) { ctx.beginPath(); ctx.arc(cx, cy, r + 5, 0, Math.PI * 2); ctx.fillStyle = rgba(themeHex('amber', '#ffb74d'), 0.4); ctx.fill(); }
+      ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = color(t.color); ctx.fill();
       const ch = t.charId && S.st.characters[t.charId];
       const photo = ch && [ch.tokenImage, ch.image].find(u => imgUrl(u));
       const im = img(t.img || photo);
@@ -869,18 +962,18 @@
         const s = t.img ? Math.min((r - 2) * 2 / im.width, (r - 2) * 2 / im.height) : Math.max((r * 2) / im.width, (r * 2) / im.height);
         ctx.drawImage(im, cx - im.width * s / 2, cy - im.height * s / 2, im.width * s, im.height * s); ctx.restore();
       } else {
-        ctx.fillStyle = '#04121b'; ctx.font = `bold ${Math.round(sz * 0.32)}px Segoe UI, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#04121b'; ctx.font = `bold ${Math.round(sz * 0.32)}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText(initials(t.name), cx, cy + 1);
       }
       ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.lineWidth = (M.sel === t.id ? 3 : 2); ctx.strokeStyle = M.sel === t.id ? '#fff' : 'rgba(0,0,0,.6)'; ctx.stroke();
+      ctx.lineWidth = (M.sel === t.id ? 3 : 2) / Math.min(1, z); ctx.strokeStyle = M.sel === t.id ? '#fff' : 'rgba(0,0,0,.6)'; ctx.stroke();
       if (ch && ch.hp && +ch.hp.max) {
         const pct = Math.max(0, Math.min(1, ch.hp.current / ch.hp.max));
         ctx.fillStyle = '#300'; ctx.fillRect(px + 4, py + sz - 6, sz - 8, 4);
         ctx.fillStyle = pct < .3 ? '#ef5350' : pct < .6 ? '#ffb74d' : '#66bb6a'; ctx.fillRect(px + 4, py + sz - 6, (sz - 8) * pct, 4);
       }
-      ctx.font = `600 ${Math.max(10, g * 0.22)}px Segoe UI, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.strokeText(t.name, cx, py + sz + 1); ctx.fillStyle = '#fff'; ctx.fillText(t.name, cx, py + sz + 1);
+      ctx.font = `600 ${Math.max(11 / z, g * 0.2)}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.lineWidth = 3 / z; ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.strokeText(t.name, cx, py + sz + 1); ctx.fillStyle = '#fff'; ctx.fillText(t.name, cx, py + sz + 1);
       ctx.globalAlpha = 1;
     }
   }
@@ -889,11 +982,28 @@
     const g = S.st.map.gridSize;
     return S.st.map.tokens.slice().reverse().find(t => x >= t.x * g && x < (t.x + (t.size || 1)) * g && y >= t.y * g && y < (t.y + (t.size || 1)) * g);
   }
-  function mapXY(e) { const r = canvas.getBoundingClientRect(); return { x: (e.clientX - r.left) / S.zoom, y: (e.clientY - r.top) / S.zoom }; }
+  function screenXY(e) { const r = canvas.getBoundingClientRect(); return { sx: e.clientX - r.left, sy: e.clientY - r.top }; }
+  function mapXY(e) { const { sx, sy } = screenXY(e); return { x: (sx - CAM.x) / CAM.z, y: (sy - CAM.y) / CAM.z }; }
   const snap = (v, e) => e.altKey ? Math.round(v * 100) / 100 : Math.round(v * 2) / 2;
+  const TOK_MIN = -500, TOK_MAX = 1000;
+  const capture = e => { try { canvas.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ } };
+  const touches = new Map(); // pointers currently down, for two-finger pinch / pan
+  let pinch = null;
   canvas.addEventListener('contextmenu', e => { if (A.stamp) { e.preventDefault(); stopStamp(); } });
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const { sx, sy } = screenXY(e);
+    zoomAt(sx, sy, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)));
+  }, { passive: false });
   canvas.addEventListener('pointerdown', async e => {
     closeTokenPop();
+    touches.set(e.pointerId, screenXY(e));
+    if (touches.size === 2) { // second finger: start a pinch, cancel any drag
+      const [a, b] = [...touches.values()];
+      pinch = { d: Math.hypot(a.sx - b.sx, a.sy - b.sy), mx: (a.sx + b.sx) / 2, my: (a.sy + b.sy) / 2 };
+      M.drag = null; return;
+    }
+    if (e.button === 1) { e.preventDefault(); M.drag = { pan: true, sx: e.clientX, sy: e.clientY, cx: CAM.x, cy: CAM.y, moved: false }; capture(e); return; }
     if (e.button !== 0) return;
     const { x, y } = mapXY(e), g = S.st.map.gridSize;
     if (A.stamp) {           // place from the asset browser
@@ -910,29 +1020,46 @@
     M.sel = t ? t.id : null; M.selProp = null;
     if (t && canMove(t)) {
       M.drag = { id: t.id, ox: x - t.x * g, oy: y - t.y * g, px: t.x * g, py: t.y * g, moved: false };
-      canvas.setPointerCapture(e.pointerId);
-    } else if (!t && isGM()) {
+    } else if (!t && isGM() && propAt(x, y)) {
       const p = propAt(x, y);
-      if (p) {
-        M.selProp = p.id;
-        M.drag = { prop: p.id, ox: x - p.x * g, oy: y - p.y * g, px: p.x * g, py: p.y * g, moved: false };
-        canvas.setPointerCapture(e.pointerId);
-      }
+      M.selProp = p.id;
+      M.drag = { prop: p.id, ox: x - p.x * g, oy: y - p.y * g, px: p.x * g, py: p.y * g, moved: false };
+    } else if (!t) {
+      M.drag = { pan: true, sx: e.clientX, sy: e.clientY, cx: CAM.x, cy: CAM.y, moved: false }; // empty space: pan
     }
+    if (M.drag) capture(e);
+    canvas.classList.toggle('panning', !!(M.drag && M.drag.pan));
     drawMap();
     if (t && !M.drag) showTokenPop(t, e);
   });
   canvas.addEventListener('pointermove', e => {
+    if (touches.has(e.pointerId)) touches.set(e.pointerId, screenXY(e));
+    if (pinch && touches.size === 2) {
+      const [a, b] = [...touches.values()];
+      const d = Math.hypot(a.sx - b.sx, a.sy - b.sy), mx = (a.sx + b.sx) / 2, my = (a.sy + b.sy) / 2;
+      CAM.x += mx - pinch.mx; CAM.y += my - pinch.my;
+      zoomAt(mx, my, d / (pinch.d || d));
+      pinch = { d, mx, my }; return;
+    }
     if (A.stamp) { A.hover = mapXY(e); drawMap(); return; }
     if (!M.drag) return;
+    if (M.drag.pan) {
+      const dx = e.clientX - M.drag.sx, dy = e.clientY - M.drag.sy;
+      if (Math.abs(dx) + Math.abs(dy) > 3) M.drag.moved = true;
+      CAM.x = M.drag.cx + dx; CAM.y = M.drag.cy + dy; drawMap(); return;
+    }
     const { x, y } = mapXY(e);
     M.drag.px = x - M.drag.ox; M.drag.py = y - M.drag.oy; M.drag.moved = true; drawMap();
   });
   canvas.addEventListener('pointerleave', () => { if (A.stamp) { A.hover = null; drawMap(); } });
-  canvas.addEventListener('pointerup', e => {
+  const endPointer = e => {
+    touches.delete(e.pointerId);
+    if (touches.size < 2) pinch = null;
+    canvas.classList.remove('panning');
     if (!M.drag) return;
     const d = M.drag, g = S.st.map.gridSize;
     M.drag = null;
+    if (d.pan) { if (d.moved) saveCam(); else { M.sel = null; M.selProp = null; drawMap(); } return; }
     if (d.prop) {
       const p = (S.st.map.props || []).find(p => p.id === d.prop);
       if (p && d.moved) { p.x = snap(d.px / g, e); p.y = snap(d.py / g, e); act('prop.update', { id: p.id, fields: { x: p.x, y: p.y } }); }
@@ -941,17 +1068,20 @@
     }
     const t = S.st.map.tokens.find(t => t.id === d.id);
     if (t && d.moved) {
-      t.x = Math.max(0, Math.min(S.st.map.cols - 1, Math.round(d.px / g)));
-      t.y = Math.max(0, Math.min(S.st.map.rows - 1, Math.round(d.py / g)));
+      t.x = Math.max(TOK_MIN, Math.min(TOK_MAX, Math.round(d.px / g)));
+      t.y = Math.max(TOK_MIN, Math.min(TOK_MAX, Math.round(d.py / g)));
       act('token.move', { id: t.id, x: t.x, y: t.y });
     } else if (t) showTokenPop(t, e);
     drawMap();
-  });
+  };
+  canvas.addEventListener('pointerup', endPointer);
+  canvas.addEventListener('pointercancel', endPointer);
+  if (window.ResizeObserver) new ResizeObserver(() => drawMap()).observe($('#mapWrap'));
   function closeTokenPop() { const p = $('.token-pop'); if (p) p.remove(); }
   function popAt(e) {
     const wrap = $('#mapWrap'), r = wrap.getBoundingClientRect();
     const pop = document.createElement('div'); pop.className = 'token-pop';
-    pop.style.left = (e.clientX - r.left + wrap.scrollLeft + 10) + 'px'; pop.style.top = (e.clientY - r.top + wrap.scrollTop + 10) + 'px';
+    pop.style.left = Math.min(e.clientX - r.left + 10, r.width - 200) + 'px'; pop.style.top = Math.min(e.clientY - r.top + 10, r.height - 260) + 'px';
     wrap.appendChild(pop); return pop;
   }
   function showPropPop(p, e) {
@@ -1030,8 +1160,9 @@
     const items = filtered();
     el.innerHTML = `<div class="ad-head">
         <div class="row"><b style="flex:1">Asset library</b><button class="btn tiny" id="adUpload" title="Dungeondraft .dungeondraft_pack, a .zip of images, or images">＋ Upload pack</button></div>
-        <input type="file" id="adFile" accept=".dungeondraft_pack,.zip,.pck,image/*" multiple hidden>
+        <input type="file" id="adFile" multiple hidden>
         <div id="adProg" class="progress hidden"><div></div></div>
+        <div id="adMsg" class="pack-msg hidden" role="status"></div>
         ${A.packs.length ? `<select id="adPack"><option value="all">All packs (${A.packs.reduce((s, p) => s + n0(p.count), 0)})</option>${A.packs.map(p => `<option value="${esc(p.id)}" ${p.id === A.pack ? 'selected' : ''}>${esc(p.name)} (${n0(p.count)})</option>`).join('')}</select>
         <input id="adSearch" placeholder="Search crates, consoles, doors…" value="${esc(A.q)}">
         <div class="cats">${['all', ...Object.keys(cats).sort()].map(c => `<button data-cat="${esc(c)}" class="${A.cat === c ? 'on' : ''}">${esc(c)}${c === 'all' ? '' : ' ' + n0(cats[c])}</button>`).join('')}</div>` : ''}
@@ -1093,33 +1224,60 @@
     A.open = true; setTab('map'); renderMapTools();
     files.reduce((p, f) => p.then(() => uploadPack(f)), renderDrawer());
   }
-  // Packs are unpacked in the browser (packs.js) and sent in ~3 MB batches, so even a 60 MB
-  // Dungeondraft pack fits through the site's per-request size limit.
+  // Packs are unpacked in the browser (packs.js) and sent in small batches (~1.5 MB), so even a
+  // 60 MB Dungeondraft pack fits through the site's per-request limits. Each batch is numbered, so
+  // a retry after a timeout can't add the same images twice. Errors stay on screen and say which step failed.
+  function packStatus(text, isErr) {
+    const m = $('#adMsg'); if (!m) return;
+    m.textContent = text || ''; m.className = 'pack-msg' + (isErr ? ' err' : '') + (text ? '' : ' hidden');
+  }
+  async function postRetry(op, body, what) {
+    let last;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try { return await post(op, body); } catch (err) {
+        last = err;
+        // a refusal (full library, not the GM, bad file) won't change on retry; a timeout or blip might
+        if (/full|GM only|isn't|Please sign in|not found|no such/i.test(err.message)) break;
+        if (attempt < 3) { packStatus(`${what}: retrying (${err.message})…`); await sleep(1500 * attempt); }
+      }
+    }
+    throw new Error(`${what} failed: ${last.message}`);
+  }
   async function uploadPack(file) {
     const bar = () => $('#adProg');
-    const show = (pct, label) => { const b = bar(); if (b) { b.classList.remove('hidden'); b.firstElementChild.style.width = pct + '%'; b.title = label; } };
+    const show = (pct, label) => { const b = bar(); if (b) { b.classList.remove('hidden'); b.firstElementChild.style.width = pct + '%'; b.title = label; } packStatus(label); };
     try {
-      toast(`Reading ${file.name}…`);
-      const pack = await window.PackReader.read(file, (i, n) => show(40 * i / n, `Preparing ${i}/${n}`));
+      show(0, `Reading ${file.name} (${(file.size / 1048576).toFixed(0)} MB)…`);
+      let pack;
+      try { pack = await window.PackReader.read(file, (i, n) => show(40 * i / n, `Preparing images ${i} / ${n}`)); }
+      catch (err) { throw new Error(`Couldn't read ${file.name}: ${err.message}`); }
       const bytes = pack.items.reduce((s, it) => s + it.data.length * 0.75, 0);
-      const { packId } = await post('packstart', { name: pack.name, author: pack.author, bytes });
-      let batch = [], size = 0, sent = 0;
-      const flush = async () => {
-        if (!batch.length) return;
-        await post('packadd', { packId, items: batch });
-        sent += batch.length; batch = []; size = 0;
-        show(40 + 60 * sent / pack.items.length, `Uploading ${sent}/${pack.items.length}`);
-      };
+      const { packId } = await postRetry('packstart', { name: pack.name, author: pack.author, bytes }, 'Starting the upload');
+      const batches = [];
+      let cur = [], size = 0;
       for (const it of pack.items) {
-        if (size + it.data.length > 3000000) await flush();
-        batch.push(it); size += it.data.length;
+        if (cur.length && size + it.data.length > 1500000) { batches.push(cur); cur = []; size = 0; }
+        cur.push(it); size += it.data.length;
       }
-      await flush();
-      const done = await post('packdone', { packId });
-      toast(`Added “${done.pack.name}” — ${done.pack.count} images`);
+      if (cur.length) batches.push(cur);
+      let sent = 0;
+      for (let i = 0; i < batches.length; i++) {
+        await postRetry('packadd', { packId, seq: i, items: batches[i] }, `Uploading batch ${i + 1} of ${batches.length}`);
+        sent += batches[i].length;
+        show(40 + 60 * sent / pack.items.length, `Uploading images ${sent} / ${pack.items.length}`);
+      }
+      const done = await postRetry('packdone', { packId }, 'Finishing the upload');
+      toast(`Added “${done.pack.name}”: ${done.pack.count} images`);
+      packStatus(`Added “${done.pack.name}”: ${done.pack.count} images.`);
       A.pack = packId; A.cat = 'all';
       await loadPacks();
-    } catch (err) { toast(err.message || 'Upload failed', true); }
+    } catch (err) {
+      toast(err.message || 'Upload failed', true);
+      packStatus(err.message || 'Upload failed', true);
+      const b = bar(); if (b) b.classList.add('hidden');
+      await renderDrawer(); packStatus(err.message || 'Upload failed', true); // after the redraw, so it stays visible
+      return;
+    }
     const b = bar(); if (b) b.classList.add('hidden');
     renderDrawer();
   }
@@ -1200,7 +1358,7 @@
         <h4 style="margin-top:12px">Table name</h4>
         <div class="row"><input id="campRename" value="${esc(S.st.name)}" style="flex:1"><button class="btn small" id="doRename">Rename</button></div>
         <h4 style="margin-top:12px">Who's here</h4>
-        ${Object.entries(S.st.players).map(([id, p]) => `<div>${esc(p.name)} ${p.role === 'gm' ? '<span class="muted">(GM)</span>' : ''} ${S.st.online.some(o => o.clientId === id) ? '<span style="color:var(--green)">● online</span>' : '<span class="muted">offline</span>'}
+        ${Object.entries(S.st.players).map(([id, p]) => `<div>${esc(p.name)} ${p.role === 'gm' && !/^\s*gm\s*$/i.test(p.name || '') ? '<span class="muted">(GM)</span>' : ''} ${S.st.online.some(o => o.clientId === id) ? '<span style="color:var(--green)">● online</span>' : '<span class="muted">offline</span>'}
           <span class="muted">— ${chars().filter(c => c.owner === id).map(c => esc(c.name)).join(', ') || 'no characters'}</span></div>`).join('')}
         <div class="row" style="margin-top:12px"><button class="btn small danger" id="clearChat">Clear chat log</button></div>
       </div>
@@ -1326,12 +1484,13 @@
   function mapColors() {
     const bg = themeHex('bg', '#0b0f17'), holo = themeHex('holo', '#4fc3f7');
     const dark = [1, 3, 5].map(i => Math.round(parseInt(bg.slice(i, i + 2), 16) * 0.82));
-    return { bg: `rgb(${dark.join(',')})`, grid: rgba(holo, 0.2), ghost: rgba(holo, 0.15) };
+    const board = [1, 3, 5].map(i => Math.round(parseInt(bg.slice(i, i + 2), 16) * 0.95 + 6));
+    return { bg: `rgb(${dark.join(',')})`, board: `rgb(${board.join(',')})`, grid: rgba(holo, 0.2), ghost: rgba(holo, 0.15), edge: rgba(holo, 0.45) };
   }
 
   function openThemes() {
-    const start = myPrefs() || { theme: 'holo-blue', custom: {} };
-    let draft = { theme: start.theme || 'holo-blue', custom: Object.assign({}, start.custom || {}) };
+    const start = myPrefs() || { theme: 'republic-command', custom: {} };
+    let draft = { theme: start.theme || 'republic-command', custom: Object.assign({}, start.custom || {}) };
     let saveTimer;
     const save = () => {
       applyPrefs(draft);

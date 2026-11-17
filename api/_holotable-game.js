@@ -73,7 +73,7 @@ function blankCampaign(name) {
     code: "main", name: str(name, 80) || "HoloTable", created: now(), updated: now(),
     players: {}, characters: {}, chat: [],
     initiative: { entries: [], turn: 0, round: 1, active: false },
-    map: { bgVersion: 0, bgUrl: null, floor: null, floorScale: 1, gridSize: 50, cols: 24, rows: 16, tokens: [], props: [], showGrid: true },
+    map: { bgVersion: 0, bgUrl: null, floor: null, floorScale: 1, gridSize: 70, gridV2: true, cols: 24, rows: 16, tokens: [], props: [], showGrid: true },
     notes: "", handouts: [], levelUps: {},
   };
 }
@@ -402,7 +402,7 @@ function applyAction(camp, cid, gm, type, p) {
       const t = mp.tokens.find((x) => x.id === p.id);
       if (!t) return {};
       need(gm || t.owner === cid || (t.charId && chars[t.charId] && chars[t.charId].owner === cid), "not your token");
-      t.x = clamp(int(p.x, t.x), 0, 400); t.y = clamp(int(p.y, t.y), 0, 400);
+      t.x = clamp(int(p.x, t.x), -500, 1000); t.y = clamp(int(p.y, t.y), -500, 1000);
       return {};
     }
     case "token.add": {
@@ -415,7 +415,7 @@ function applyAction(camp, cid, gm, type, p) {
       const ch = charId ? chars[charId] || {} : {};
       mp.tokens.push({
         id: rid(), name: str(p.name || ch.name || "Token", 40), color: validColor(p.color || ch.color),
-        x: clamp(int(p.x, 1), 0, 400), y: clamp(int(p.y, 1), 0, 400), size: clamp(int(p.size, 1), 1, 4),
+        x: clamp(int(p.x, 1), -500, 1000), y: clamp(int(p.y, 1), -500, 1000), size: clamp(int(p.size, 1), 1, 4),
         charId, owner: cid, hidden: !!p.hidden && gm, img: validImg(p.img),
       });
       return {};
@@ -547,9 +547,9 @@ function cleanGame(g) {
   const n = (v, d) => (Number.isFinite(+v) ? +v : d);
   g.map = {
     bgVersion: int(m.bgVersion) + 1, bgUrl: validImg(m.bgUrl), floor: validImg(m.floor), floorScale: clamp(n(m.floorScale, 1), 0.1, 8),
-    gridSize: clamp(int(m.gridSize, 50), 5, 200), cols: clamp(int(m.cols, 24), 5, 200), rows: clamp(int(m.rows, 16), 5, 200), showGrid: m.showGrid !== false,
+    gridSize: clamp(int(m.gridSize, 70), 5, 200), gridV2: true, cols: clamp(int(m.cols, 24), 5, 200), rows: clamp(int(m.rows, 16), 5, 200), showGrid: m.showGrid !== false,
     tokens: (Array.isArray(m.tokens) ? m.tokens : []).slice(0, 300).filter((t) => t && typeof t === "object").map((t) => ({
-      id: /^[a-z0-9]{6,20}$/.test(t.id || "") ? t.id : rid(), name: str(t.name, 40), color: validColor(t.color), x: clamp(int(t.x), 0, 400), y: clamp(int(t.y), 0, 400),
+      id: /^[a-z0-9]{6,20}$/.test(t.id || "") ? t.id : rid(), name: str(t.name, 40), color: validColor(t.color), x: clamp(int(t.x), -500, 1000), y: clamp(int(t.y), -500, 1000),
       size: clamp(int(t.size, 1), 1, 4), charId: g.characters[t.charId] ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, img: validImg(t.img) })),
     props: (Array.isArray(m.props) ? m.props : []).slice(0, 1500).filter((p) => p && validImg(p.src)).map((p) => ({
       id: /^[a-z0-9]{6,20}$/.test(p.id || "") ? p.id : rid(), src: p.src, name: str(p.name, 60), x: n(p.x, 0), y: n(p.y, 0), w: n(p.w, 1), h: n(p.h, 1), rot: n(p.rot, 0) })),

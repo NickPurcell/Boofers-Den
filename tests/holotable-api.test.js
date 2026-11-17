@@ -465,3 +465,20 @@ test("initiative: the GM's step buttons re-order the tracker for everyone; playe
   assert.equal((await gm.act("init.update", { id: a.id, fields: { init: "<b>14</b>" } })).code, 200);
   assert.equal(typeof (await gm.poll()).data.state.initiative.entries.find((e) => e.id === a.id).init, "number", "init stays a number");
 });
+
+test("pack batches: written in one round trip, and a retried batch isn't added twice", async () => {
+  const { gm } = await table();
+  const packId = (await gm.post("packstart", { name: "Retry Pack", bytes: 10 })).data.packId;
+  const items = [{ n: "a", c: "props", data: PNG.toString("base64") }, { n: "b", c: "props", data: PNG.toString("base64") }];
+  let pipelines = 0;
+  const realPipe = db.pipeline.bind(db);
+  db.pipeline = () => { pipelines++; return realPipe(); };
+  try {
+    assert.equal((await gm.post("packadd", { packId, seq: 0, items })).data.count, 2);
+    assert.equal(pipelines, 1, "the whole batch goes in one pipeline");
+    const again = await gm.post("packadd", { packId, seq: 0, items }); // the browser retries after a timeout
+    assert.equal(again.data.count, 2);
+    assert.equal(again.data.repeat, true);
+    assert.equal((await gm.post("packadd", { packId, seq: 1, items: items.slice(0, 1) })).data.count, 3);
+  } finally { db.pipeline = realPipe; }
+});
