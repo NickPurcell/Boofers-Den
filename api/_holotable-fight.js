@@ -250,7 +250,7 @@ function tick(camp, cid, G) {
   for (const line of r.log) {
     const hidden = line.unit && hiddenEntry(camp, ini.entries.find((e) => e.id === line.unit) || {}, (before.units[line.unit] || {}).tokenId);
     const msg = line.roll ? { from: "Combat", fromId: "@gm", fight: true, roll: { total: line.roll.total, detail: line.roll.detail, nat: line.roll.nat == null ? null : line.roll.nat, expr: line.expr, label: str(line.text, 200), kind: line.kind } }
-      : { system: true, text: str(line.text, 200) };
+      : { system: true, fight: true, text: str(line.text, 200) };
     if (hidden) { msg.to = ["@gm"]; msg.private = true; msg.fromId = "@gm"; }
     G.addChat(camp, msg);
   }
@@ -310,7 +310,7 @@ function apply(camp, cid, gm, type, p, G) {
     case "fight.toggle": {
       need(gm);
       f.on = !!p.on;
-      G.addChat(camp, { system: true, text: f.on ? "The GM switched the combat view on." : "The GM switched the combat view off." });
+      G.addChat(camp, { system: true, fight: true, text: f.on ? "The GM switched the combat view on." : "The GM switched the combat view off." });
       return {};
     }
     case "fight.npc": {      // a creature's speed and save bonuses, from its stat block
@@ -370,7 +370,7 @@ function apply(camp, cid, gm, type, p, G) {
       if (!r.ok) throw new G.Invalid(r.why);
       snapshot(camp, `${G.shownName(camp, { charId: ch.id, name: ch.name })} used ${r.res.name}`);
       Object.assign(ch, { resources: r.ch.resources, force: r.ch.force, tech: r.ch.tech, hitDiceUsed: r.ch.hitDiceUsed });
-      G.addChat(camp, { system: true, text: `${G.shownName(camp, { charId: ch.id, name: ch.name })} uses ${r.res.name}: ${r.res.max - r.res.used} of ${r.res.max} left.` });
+      G.addChat(camp, { system: true, fight: true, text: `${G.shownName(camp, { charId: ch.id, name: ch.name })} uses ${r.res.name}: ${r.res.max - r.res.used} of ${r.res.max} left.` });
       return {};
     }
     case "fight.resource": { // add, change or remove one of a character's own resources (its owner or the GM)
@@ -393,7 +393,7 @@ function apply(camp, cid, gm, type, p, G) {
       const s = f.undo.pop();
       if (!s) throw new G.Invalid("Nothing to undo.");
       restore(camp, s);
-      G.addChat(camp, { system: true, text: `The GM undid the last combat step (${s.label}).` });
+      G.addChat(camp, { system: true, fight: true, text: `The GM undid the last combat step (${s.label}).` });
       return {};
     }
     case "fight.condition": {   // the DM puts a condition on a combatant (a level, a damage amount, who caused it) or takes it off
@@ -407,7 +407,7 @@ function apply(camp, cid, gm, type, p, G) {
       snapshot(camp, `${name} ${p.op === "remove" ? "taken off" : "put on"} ${world.units[unit].name}`);
       writeBack(camp, cid, world, r.world, G);
       const ut = unitTokens(camp), isHidden = (id) => !!id && hiddenEntry(camp, entry(id) || {}, ut[id]);
-      for (const line of r.log) G.addChat(camp, Object.assign({ system: true, text: str(line.text, 200) }, isHidden(line.unit) || isHidden(line.about) ? { to: ["@gm"], private: true } : {}));
+      for (const line of r.log) G.addChat(camp, Object.assign({ system: true, fight: true, text: str(line.text, 200) }, isHidden(line.unit) || isHidden(line.about) ? { to: ["@gm"], private: true } : {}));
       return {};
     }
     case "fight.react": {   // an answer to a reaction prompt: take the opportunity attack, or let it go (the GM can answer any)
