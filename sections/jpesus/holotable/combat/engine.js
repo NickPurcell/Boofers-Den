@@ -1181,9 +1181,13 @@
     const base = (!crit ? dmg0 : variant(w, 'Crueler Criticals') ? cruel(dmg0) : twoHands ? doubleDice(dmg0) : attack.crit || dmg0) + (attack.heavy ? '+' + attack.heavy : '');
     // bonus damage from class features (audit 5.9); a rider the attacker turned down (opts.no) isn't added
     const add = opts.add || {}, fp = (me.pools || {}).force;
-    const riders = (pv.riders || []).filter((x) => !((opts.no || []).includes(x.key))).map((x) => {
+    const offered = (pv.riders || []).filter((x) => !((opts.no || []).includes(x.key)));
+    // Double Strike's point comes out of the same pool, so with it chosen Force-Empowered Strikes gets one point fewer
+    const dbl = add.double && offered.some((x) => x.key === 'double') ? 1 : 0;
+    const left = fp ? Math.max(0, fp.max - fp.used) : 0;
+    const riders = offered.map((x) => {
       if (!x.optIn) return x;
-      if (x.key === 'fes') { const n = Math.max(0, Math.min(x.max, Math.round(+add.fes || 0))); return n ? Object.assign({}, x, { dice: `${n}d8`, points: n }) : null; }
+      if (x.key === 'fes') { const n = Math.max(0, Math.min(x.max, left - dbl, Math.round(+add.fes || 0))); return n ? Object.assign({}, x, { dice: `${n}d8`, points: n }) : null; }
       if (x.key === 'double') return add.double ? Object.assign({}, x, { points: 1 }) : null;
       return null;
     }).filter(Boolean);

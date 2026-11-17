@@ -2432,6 +2432,11 @@ test("Force-Empowered Strikes and Double Strike: the attacker's choice, paid in 
   r = E.apply(world([sn, r1()], "gd"), { type: "attack", unit: "gd", target: "r1", attack: sword, add: { double: true } }, d.roll);
   assert.deepEqual([d.asked[1], r.world.units.gd.pools.force.used, r.world.spent.gd.double], ["1d8+3+1d6", 1, 1]);
   assert.deepEqual((E.preview(r.world, "gd", "r1", sword).riders || []).map((x) => x.key), [], "not again this turn");
+  // both from one pool (a Guardian/Sentinel multiclass with 2 points left): Double Strike's point comes first
+  const mc = unit({ id: "gd", name: "Mara", side: "pc", x: 0, y: 0, riders: { fes: 3, kinetic: "d6" }, pools: fp(8) });
+  d = dice({ total: 15, nat: 12 }, { total: 8 });
+  r = E.apply(world([mc, r1()], "gd"), { type: "attack", unit: "gd", target: "r1", attack: sword, add: { fes: 2, double: true } }, d.roll);
+  assert.deepEqual([d.asked[1], r.world.units.gd.pools.force.used], ["1d8+3+1d8+1d6", 10], "two points buy two points' worth");
 });
 
 test("Force-Empowered Strikes through the API: the points come off the sheet on a hit; a request can only say how many", async () => {
