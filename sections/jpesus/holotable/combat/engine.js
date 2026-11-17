@@ -363,6 +363,17 @@
     .map((x) => ({ kind: x.kind, range: clampN(Math.round(+x.range) || 0, 0, 9999) })).filter((x) => x.range > 0);
   // the sense with which `a` perceives `b`, out of `kinds`, if `b` is within its range
   const senseFor = (a, b, kinds) => (a && b && (a.senses || []).find((x) => kinds.includes(x.kind) && feetBetween(a, b) <= x.range)) || null;
+  // Light in a fight (issue #93, step 5): world.light = { lit, cols, rows } while the map is dimmed or dark under fog.
+  // A unit stands in the dark when none of its squares is lit. `a` can see `b` as far as light goes when `b` is lit, or
+  // within a's darkvision, or a perceives it without light (blindsight, tremorsense, truesight) within range.
+  function inDark(w, u) {
+    const L = w && w.light;
+    if (!L || !L.lit || !u) return false;
+    for (let x = u.x; x < u.x + (u.size || 1); x++) for (let y = u.y; y < u.y + (u.size || 1); y++)
+      if (x >= 0 && y >= 0 && x < L.cols && y < L.rows && L.lit[y * L.cols + x]) return false;
+    return true;
+  }
+  const seesInLight = (w, a, b) => !inDark(w, b) || !!senseFor(a, b, ['darkvision', 'blindsight', 'tremorsense', 'truesight']);
   // a sense that takes the bite out of a condition between two units: the blinded one perceiving the other without
   // sight, or the other one finding the invisible one. Returns { who, sense } for the preview's note, or null.
   // the source of a condition on `u`, when an effect recorded who caused it
@@ -395,6 +406,12 @@
         if (n === 'Frightened') { const src = sourceOf(c.world, c.actor, n); if (src && !sees(c.world, c.actor, src)) return { note: true, text: `frightened, but ${src.name} is out of sight` }; }
         return { [e.attacks === 'prone' ? 'dis' : e.attacks]: true, text: `${c.actor.name} is ${n.toLowerCase()}` };   // the table reads the line too
       }) },
+    { id: 'dark', when: (c) => !!(c.world && c.world.light), each: (c) => {   // unseen in the dark (step 5): attacking what you can't see, or being attacked by it
+      const out = [], blind = (u) => (u.conditions || []).includes('Blinded');
+      if (!blind(c.actor) && !seesInLight(c.world, c.actor, c.target)) out.push({ dis: true, text: `${c.target.name} is unseen in the dark` });
+      if (!blind(c.target) && !seesInLight(c.world, c.target, c.actor)) out.push({ adv: true, text: `${c.actor.name} is unseen in the dark` });
+      return out;
+    } },
     { id: 'exhausted', when: (c) => (+c.actor.exhaustion || 0) >= 3, each: () => [{ dis: true, text: 'exhaustion' }] },
     { id: 'dodge', when: (c) => c.dodging, each: (c) => [{ dis: true, text: `${c.target.name} is dodging` }] },
     { id: 'target', when: (c) => effectsOf(c.target).some(([, e]) => e.attacked), each: (c) => effectsOf(c.target).filter(([, e]) => e.attacked).map(([n, e]) => {
@@ -1276,5 +1293,5 @@
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
     SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf, d20, flankOf, fixedTotal, cruel, modeName,
-    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet };
+    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight };
 });

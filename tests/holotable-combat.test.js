@@ -2079,3 +2079,30 @@ test("light: the GM's lights are checked; a dd2vtt-style set replaces them; a cr
   await gm.act("fight.light", { op: "clear" });
   assert.equal((await gm.state()).map.light, undefined, "bright and no lights: no record");
 });
+
+test("the dark in a fight (#93 step 5): a creature its target can't see attacks with advantage; darkvision ends it; only under fog", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  await gm.act("fight.fog", { on: true });
+  await gm.act("fight.light", { level: "dark" });
+  await gm.act("fight.light", { op: "add", x: 0.5, y: 0.5, bright: 10, dim: 0 });   // a glow rod at Avery; the Raider (6,0) stands in the dark
+  await sam.act("fight.end", {});
+  const blaster = { name: "Blaster", bonus: 5, damage: "1d4", type: "energy", range: [60, 240] };
+  const swing = async () => {
+    assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: blaster })).code, 200);
+    const line = (await gm.state()).chat.filter((m) => m.fight && m.roll && m.roll.kind === "attack").pop().roll.label;
+    await gm.act("fight.undo", {});
+    return line;
+  };
+  assert.match(await swing(), /with advantage \(Raider is unseen in the dark\)/, "Avery can't see the Raider in the dark");
+  // Avery's darkvision 60 ft sees it: no advantage
+  await sam.act("fight.defenses", { charId: avery, senses: [{ kind: "darkvision", range: 60 }] });
+  assert.doesNotMatch(await swing(), /unseen in the dark/);
+  // and the Raider can't see an unlit Avery without darkvision of its own: Avery's light out, the Raider attacks at disadvantage
+  const L = (await gm.state()).map.light.lights[0];
+  await gm.act("fight.light", { op: "remove", id: L.id });
+  assert.match(await swing(), /disadvantage \(Avery is unseen in the dark\)/);
+  // fog off: lighting changes nothing in a fight
+  await gm.act("fight.fog", { on: false });
+  assert.doesNotMatch(await swing(), /unseen in the dark/, "without fog, the dark doesn't count");
+});
