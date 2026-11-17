@@ -321,8 +321,10 @@ function apply(camp, cid, gm, type, p, G) {
   switch (type) {
     case "fight.toggle": {
       need(gm);
+      const was = !!f.on;
       f.on = !!p.on;
       G.addChat(camp, { system: true, fight: true, text: f.on ? "The GM switched the combat view on." : "The GM switched the combat view off." });
+      if (f.on && !was && G.combatMoves) G.combatMoves(camp);   // the movements the GM queued for combat play now
       return {};
     }
     case "fight.npc": {      // a creature's speed and save bonuses, from its stat block
