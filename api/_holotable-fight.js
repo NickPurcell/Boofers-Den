@@ -132,6 +132,16 @@ function unitTokens(camp) {
 }
 const hiddenEntry = (camp, e, tokenId) => !!e.hidden || !!((camp.map.tokens || []).find((t) => t.id === tokenId) || {}).hidden;
 
+// Map objects the GM marked "Blocks sight" (#110), as the engine's 'sight' segments: each one's rotated rectangle
+// from HoloTable's own propSightSegments (required when first used: that file requires this one). They block sight,
+// cover and fog; never movement or an area.
+function propWalls(camp) {
+  if (!((camp.map && camp.map.props) || []).some((x) => x && x.blocksSight)) return [];
+  const G = require("./_holotable-game.js");
+  return (G.propSightSegments ? G.propSightSegments(camp.map) : []).map((w, i) => ({ id: `p${i}`, a: w.a, b: w.b, kind: "sight" }));
+}
+const mapWalls = (camp) => ((camp.map && camp.map.walls) || []).concat(propWalls(camp));
+
 // The engine's world. For a player (forPlayer) hidden combatants are not in it at all. With G, every unit carries the
 // name players are shown (HoloTable's shownName: "???" while the GM hides a token's name), so every line the engine
 // writes is fit for players; hidden combatants are never masked, so lines that go only to the GM keep their names.
@@ -146,7 +156,7 @@ function worldOf(camp, forPlayer, G, cid) {
     tokens: camp.map.tokens, unitTokens: ut, spent: f.spent || {}, effects: f.effects || [], conc: f.conc || {},
     npcSpeed: Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v.speed : v])),
     npcStats: Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v : {}])),
-    defenses: f.defenses || {}, walls: (camp.map && camp.map.walls) || [], variants: camp.variants || [],
+    defenses: f.defenses || {}, walls: mapWalls(camp), variants: camp.variants || [],
   }, R);
   if (G && G.shownName) for (const e of entries) if (w.units[e.id]) w.units[e.id].name = G.shownName(camp, e);
   // the GM's world keeps hidden combatants; the engine is told which they are, so they never count toward what a public line says (Flanking)
@@ -667,6 +677,7 @@ function view(camp, cid, gm, shownName) {
     npcSpeed: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v.speed : v])) : {},
     npcSaves: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, (v && v.saves) || {}])) : {},
     npcMods: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, (v && v.mods) || {}])) : {},
+    ...(gm ? { propWalls: propWalls(camp) } : {}),   // the GM's previews see what the server sees (#110's sight-blocking objects)
     npcRes: gm ? f.npcres || {} : {},   // a creature's limited abilities: the GM's
     npcDefenses: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, defences(plainObj(v))])) : {},
     // characters' own: as visible as their sheets (not a sheet whose token's name the GM is hiding, except to its owner)
@@ -731,7 +742,7 @@ function eyesOf(camp, cid) {
 const SEEN_CACHE = new Map();
 function squaresSeen(camp, eyes) {
   const { cols, rows } = sizeOf(camp);
-  const walls = (camp.map.walls || []).filter((w) => w.kind === "wall" || (w.kind === "door" && !w.open));
+  const walls = mapWalls(camp).filter((w) => w.kind === "wall" || w.kind === "sight" || (w.kind === "door" && !w.open));
   const key = JSON.stringify([cols, rows, eyes.map((t) => [t.x, t.y, t.size || 1]), walls.map((w) => [w.a, w.b])]);
   let vis = SEEN_CACHE.get(key);
   if (!vis) {
