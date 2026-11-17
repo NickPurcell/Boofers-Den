@@ -549,12 +549,12 @@ test("the SW5e power list is fetched by the server once, trimmed, cached, and ne
   global.fetch = async (url) => {
     calls++;
     assert.match(String(url), /sw5eapi/);
-    return { ok: true, json: async () => [
+    return { ok: true, text: async () => JSON.stringify([
       { name: "Force Push", powerType: "Force", level: 1, forceAlignment: "Universal", castingPeriodText: "1 action", range: "60 feet", duration: "Instantaneous", concentration: false, prerequisite: null, contentSource: "PHB", description: "Shove.\r\nHard.", higherLevelDescription: "None" },
       { name: "Shock", powerType: "Force", level: 0, forceAlignment: "Dark", castingPeriodText: "1 action", range: "Touch", duration: "Instantaneous", concentration: false, description: "Zap." },
       { name: "Encrypted Message", powerType: "Tech", level: 0, forceAlignment: "None", castingPeriodText: "1 action", range: "120 feet", duration: "1 round", description: "Beep." },
       { name: "Not a power", powerType: "Maneuver", level: 1 },
-    ] };
+    ]) };
   };
   try {
     assert.equal((await browser().call("GET", { op: "powers" })).code, 401, "no session, no list");
@@ -567,7 +567,8 @@ test("the SW5e power list is fetched by the server once, trimmed, cached, and ne
     await p1.call("GET", { op: "powers" });
     assert.equal(calls, 1, "served from the cache the second time");
     await db.del(S.K.powers());
-    global.fetch = async () => { throw new Error("offline"); };
+    calls = 0;
+    global.fetch = async () => { calls++; throw new Error("offline"); };
     assert.equal((await p1.call("GET", { op: "powers" })).code, 503, "a clear error when SW5e can't be reached");
   } finally { global.fetch = realFetch; }
 });
@@ -605,14 +606,14 @@ test("SW5e equipment: standard gear and enhanced items, trimmed, cached, behind 
   global.fetch = async (url) => {
     calls.push(String(url));
     const enhanced = /enhancedItem$/.test(String(url));
-    return { ok: true, json: async () => enhanced ? [
+    return { ok: true, text: async () => JSON.stringify(enhanced ? [
       { name: "AB-75 Bo-Rifle", type: "Weapon", subtype: "bo-rifle", contentSource: "WH", searchableRarity: "Prototype", requiresAttunement: false, text: "+2 to attack." },
       { name: "Turbolaser", type: "ShipWeapon", contentSource: "WH", searchableRarity: "Standard", text: "Starship part." },
     ] : [
       { name: "Blaster pistol", equipmentCategory: "Weapon", contentSource: "PHB", cost: 175, weight: "2.5", damageNumberOfDice: 1, damageDieType: 6, damageDieModifier: 0, damageType: "Energy", weaponClassification: "SimpleBlaster", properties: ["Power cell (range 50/200)", "reload 16"], description: "None" },
       { name: "Combat suit", equipmentCategory: "Armor", contentSource: "PHB", cost: 100, weight: "10", armorClassification: "Light", ac: "11 + Dex modifier", stealthDisadvantage: false, description: "Light armor." },
       { name: "Medpac", equipmentCategory: "Medical", contentSource: "PHB", cost: 300, weight: "0.5", description: "Heals." },
-    ] };
+    ]) };
   };
   try {
     assert.equal((await browser().call("GET", { op: "equipment" })).code, 401);
@@ -625,5 +626,69 @@ test("SW5e equipment: standard gear and enhanced items, trimmed, cached, behind 
     assert.deepEqual(enh.map((x) => `${x.cat}:${x.n}:${x.rar}`), ["Weapon:AB-75 Bo-Rifle:Prototype"], "starship parts are left out");
     await p1.call("GET", { op: "equipment", set: "standard" });
     assert.equal(calls.length, 2, "each list is fetched once, then served from the cache");
+  } finally { global.fetch = realFetch; }
+});
+
+test("SW5e lists: an oversized reply fails cleanly and caches nothing", async () => {
+  const { gm, p1 } = await table();
+  const realFetch = global.fetch;
+  let calls = 0, read = 0;
+  const chunk = new Uint8Array(1024 * 1024).fill(32);   // 1 MB of spaces, over and over
+  global.fetch = async () => {
+    calls++;
+    return { ok: true, headers: { get: () => null }, body: { getReader: () => ({
+      read: async () => { read++; return read > 50 ? { done: true } : { done: false, value: chunk }; },
+      cancel: async () => {},
+    }) } };
+  };
+  try {
+    assert.equal((await p1.call("GET", { op: "powers" })).code, 503, "too big: the picker fails");
+    assert.ok(read <= 4, `stopped reading early (read ${read} MB)`);
+    assert.equal(await db.get(S.K.powers()), null, "nothing cached");
+    // a declared size over the cap isn't read at all
+    await db.del(S.K.sw5eFail("standard"));
+    read = 0;
+    global.fetch = async () => ({ ok: true, headers: { get: (h) => (h === "content-length" ? String(500 * 1024 * 1024) : null) },
+      body: { getReader: () => ({ read: async () => { read++; return { done: true }; }, cancel: async () => {} }) } });
+    assert.equal((await p1.call("GET", { op: "equipment", set: "standard" })).code, 503);
+    assert.equal(read, 0, "never read a reply that says it's too big");
+    // too many entries also fails
+    await db.del(S.K.sw5eFail("powers"));
+    global.fetch = async () => ({ ok: true, text: async () => JSON.stringify(Array.from({ length: 5000 }, (_, i) => ({ name: "P" + i, powerType: "Force", level: 1 }))) });
+    assert.equal((await p1.call("GET", { op: "powers" })).code, 503);
+    assert.equal(await db.get(S.K.powers()), null);
+    // the game is untouched
+    assert.equal((await gm.poll()).code, 200);
+  } finally { global.fetch = realFetch; }
+});
+
+test("SW5e lists: a failed fetch isn't retried for a minute, and only one request fetches at a time", async () => {
+  const { p1, p2 } = await table();
+  const realFetch = global.fetch;
+  let calls = 0;
+  global.fetch = async () => { calls++; return { ok: false, status: 500 }; };
+  try {
+    for (let i = 0; i < 5; i++) assert.equal((await p1.call("GET", { op: "equipment", set: "enhanced" })).code, 503);
+    assert.equal(calls, 1, "four reopenings answered from the remembered failure");
+    assert.equal(await db.get(S.K.sw5eFail("enhanced")), "1", "the failure is remembered (for 60 s)");
+    await db.del(S.K.sw5eFail("enhanced"));
+    await p1.call("GET", { op: "equipment", set: "enhanced" });
+    assert.equal(calls, 2, "once it expires, the next request tries SW5e again");
+    calls = 1;
+    // other lists are separate
+    await p1.call("GET", { op: "powers" });
+    assert.equal(calls, 2);
+    // two people opening the picker at once: one fetch, both get the list
+    calls = 0;
+    let release;
+    const gate = new Promise((ok) => { release = ok; });
+    global.fetch = async () => { calls++; await gate; return { ok: true, text: async () => JSON.stringify([{ name: "Medpac", equipmentCategory: "Medical", contentSource: "PHB" }]) }; };
+    const a = p1.call("GET", { op: "equipment", set: "standard" }), b = p2.call("GET", { op: "equipment", set: "standard" });
+    await new Promise((ok) => setTimeout(ok, 100));
+    release();
+    const [ra, rb] = await Promise.all([a, b]);
+    assert.deepEqual([ra.code, rb.code], [200, 200]);
+    assert.equal(JSON.parse(rb.data)[0].n, "Medpac");
+    assert.equal(calls, 1, "the second request waited for the first instead of fetching");
   } finally { global.fetch = realFetch; }
 });

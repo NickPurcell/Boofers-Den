@@ -12,6 +12,7 @@
 //   ht:libver          bumped when the library changes
 //   ht:rl:<bucket>     rate-limit counters
 //   ht:secret          random secret for signing sessions (only the server reads it)
+//   ht:powers, ht:equip:<set>   SW5e lists, cached for a week; ht:sw5e:lock|fail:<list> short fetch markers
 //   ht:bytes           total bytes of stored images and pack art, checked against the storage cap
 // Nothing here touches Find time to hang's hang:/hang2: keys. The game and images never expire:
 // it is meant to be picked up again next session. Size limits: images + packs <= HOLOTABLE_STORAGE_MB
@@ -37,9 +38,11 @@ const K = {
   libver: () => `${NS}:libver`,
   rl: (b) => `${NS}:rl:${b}`,
   bytes: () => `${NS}:bytes`,
-  secret: () => `${NS}:secret`,
-  powers: () => `${NS}:powers`,
-  equipment: (set) => `${NS}:equip:${set}`,  // SW5e standard gear / enhanced items, also fetched and cached       // the SW5e power list, fetched from SW5e's own API and cached for a week      // random session-signing secret, made once; never sent anywhere
+  secret: () => `${NS}:secret`,                 // random session-signing secret, made once; never sent anywhere
+  powers: () => `${NS}:powers`,                 // the SW5e power list, fetched from SW5e's own API and cached for a week
+  equipment: (set) => `${NS}:equip:${set}`,      // SW5e standard gear / enhanced items, fetched and cached the same way
+  sw5eLock: (name) => `${NS}:sw5e:lock:${name}`,  // short marker: one request at a time fetches that SW5e list
+  sw5eFail: (name) => `${NS}:sw5e:fail:${name}`,  // set for a minute after a failed fetch, so SW5e isn't called again
 };
 const STORAGE_CAP = (+process.env.HOLOTABLE_STORAGE_MB || 250) * 1024 * 1024;
 const MAX_GAME_BYTES = 1.5 * 1024 * 1024;
