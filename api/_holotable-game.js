@@ -261,7 +261,7 @@ function viewFor(camp, cid, gm, online) {
 function doRoll(camp, cid, expr, label, charId, priv, kind) {
   const res = rollDice(expr);
   const msg = { from: playerName(camp, cid), fromId: cid, roll: Object.assign({}, res, { expr: str(expr, 120), label: str(label, 120), kind: kind || null }) };
-  if (charId && camp.characters[charId]) msg.charName = camp.characters[charId].name;
+  if (charById(camp, charId)) msg.charName = charById(camp, charId).name;
   if (priv) { msg.to = ["@gm", cid]; msg.private = true; }
   addChat(camp, msg);
   return res;
@@ -353,7 +353,7 @@ function stashScene(camp) {
 }
 
 function applyLevelUp(camp, cid, gm, p) {
-  const ch = camp.characters[p.charId];
+  const ch = charById(camp, p.charId);
   if (!ch) throw new Invalid("No such character.");
   if (!(gm || ch.owner === cid)) throw new Forbidden("not your character");
   const pend = (camp.levelUps || {})[ch.id];
@@ -423,7 +423,10 @@ function applyLevelUp(camp, cid, gm, p) {
   return { level: before + 1, hpGain: gain, die };
 }
 
-const canEditChar = (camp, cid, gm, id) => { const ch = camp.characters[id]; return !ch || gm || ch.owner === cid; };
+// a character by an id that came from a request or a file: only the table's own, never something every object inherits
+// ("__proto__", "constructor"), which would pass a truthiness check and could be written to (#111)
+const charById = (camp, id) => (typeof id === "string" && Object.prototype.hasOwnProperty.call(camp.characters || {}, id) ? camp.characters[id] : undefined);
+const canEditChar = (camp, cid, gm, id) => { const ch = charById(camp, id); return !ch || gm || ch.owner === cid; };
 
 function sortInit(ini) {
   const cur = ini.entries[ini.turn] && ini.entries[ini.turn].id;
@@ -434,6 +437,16 @@ function sortInit(ini) {
 }
 
 // Returns { result, images: [ids no longer used] } and may throw Forbidden / Invalid.
+// Damage on a character, against its hit points at this moment: temporary hit points go first, hit points stop at 0
+// (audit 8.7, issue #107). The sheet's Damage button and the tracker's -n both come here, as the combat view does in
+// its engine, so all three spend temporary HP the same way; the tracker rows for that character follow.
+function damageChar(camp, ch, amount) {
+  const d = clamp(int(amount), 0, 100000), hp = ch.hp = ch.hp || {}, temp = Math.max(0, +hp.temp || 0), fromTemp = Math.min(temp, d);
+  hp.temp = temp - fromTemp;
+  hp.current = Math.max(0, (+hp.current || 0) - (d - fromTemp));
+  for (const e of camp.initiative.entries) if (e.charId === ch.id) e.hp = hp.current;
+}
+
 function applyAction(camp, cid, gm, type, p) {
   p = p || {};
   const chars = camp.characters, ini = camp.initiative, mp = camp.map;
@@ -446,10 +459,10 @@ function applyAction(camp, cid, gm, type, p) {
     case "char.save": {
       if (!p.char || typeof p.char !== "object" || Array.isArray(p.char)) throw new Invalid("bad character");
       if (JSON.stringify(p.char).length > 400000) throw new Invalid("character sheet too large");
-      const id = /^[a-z0-9]{6,20}$/.test(p.char.id || "") ? p.char.id : rid(12);
+      const id = /^[a-z0-9]{6,20}$/.test(p.char.id || "") && !(p.char.id in Object.prototype) ? p.char.id : rid(12);   // never an inherited name ("constructor")
       need(canEditChar(camp, cid, gm, id), "not your character");
-      if (!chars[id] && Object.keys(chars).length >= 60) throw new Invalid("too many characters at this table");
-      const old = chars[id];
+      if (!charById(camp, id) && Object.keys(chars).length >= 60) throw new Invalid("too many characters at this table");
+      const old = charById(camp, id);
       const clean = cleanChar(Object.assign({}, p.char, { id }));
       clean.owner = old ? old.owner : (gm && p.owner && camp.players[p.owner] ? p.owner : cid);
       // photos change only through an upload (or char.photo.clear), never through a sheet save,
@@ -465,7 +478,7 @@ function applyAction(camp, cid, gm, type, p) {
       return { id };
     }
     case "char.photo.clear": {
-      const ch = chars[p.charId];
+      const ch = charById(camp, p.charId);
       if (!ch) return {};
       need(gm || ch.owner === cid, "not your character");
       const k = p.kind === "token" ? "tokenImage" : "image";
@@ -473,8 +486,15 @@ function applyAction(camp, cid, gm, type, p) {
       ch[k] = "";
       return { dropImages: [old] };
     }
+    case "char.damage": {   // the sheet's Damage button: applied here, so a hit made on another screen at the same moment isn't overwritten
+      const ch = charById(camp, p.id);
+      if (!ch) return {};
+      need(gm || ch.owner === cid, "not your character");
+      damageChar(camp, ch, p.amount);
+      return {};
+    }
     case "char.delete": {
-      const ch = chars[p.id];
+      const ch = charById(camp, p.id);
       if (!ch) return {};
       need(gm || ch.owner === cid, "not your character");
       const said = shownName(camp, { charId: p.id, name: ch.name });   // before its token goes: a hidden name stays hidden
@@ -486,7 +506,7 @@ function applyAction(camp, cid, gm, type, p) {
     }
     case "char.assign": {
       need(gm);
-      const ch = chars[p.id];
+      const ch = charById(camp, p.id);
       if (ch && camp.players[p.owner]) ch.owner = p.owner;
       return {};
     }
@@ -557,7 +577,7 @@ function applyAction(camp, cid, gm, type, p) {
 
     // ---- initiative
     case "init.add": {
-      const charId = p.charId || null;
+      const charId = charById(camp, p.charId) ? p.charId : null;   // only a character the table has (#111)
       if (charId) need(canEditChar(camp, cid, gm, charId), "not your character"); else need(gm);
       let init = p.init;
       if (init === undefined || init === null || init === "") {
@@ -567,7 +587,7 @@ function applyAction(camp, cid, gm, type, p) {
       }
       let entry = charId && ini.entries.find((e) => e.charId === charId);
       if (!entry) { entry = { id: rid() }; ini.entries.push(entry); }
-      const ch = charId ? chars[charId] || {} : {};
+      const ch = charId ? charById(camp, charId) || {} : {};
       const hp = ch.hp || {};
       Object.assign(entry, {
         name: str(p.name || ch.name || "Combatant", 60), init: num(init), charId, npc: !charId,
@@ -589,6 +609,10 @@ function applyAction(camp, cid, gm, type, p) {
       if ("conditions" in f) e.conditions = (Array.isArray(f.conditions) ? f.conditions : []).slice(0, 20).map((c) => str(c, 30));
       if ("hidden" in f && gm) e.hidden = !!f.hidden;
       if ("hp" in f && e.charId && chars[e.charId]) (chars[e.charId].hp = chars[e.charId].hp || {}).current = numOr(f.hp, 0);
+      if ("damage" in f) {   // the tracker's -n: a character's temporary hit points first, on the server (#107); a creature just loses it
+        if (e.charId && chars[e.charId]) damageChar(camp, chars[e.charId], f.damage);
+        else if (e.hp != null) e.hp = Math.max(0, e.hp - clamp(int(f.damage), 0, 100000));
+      }
       if ("init" in f) sortInit(ini);
       return {};
     }
@@ -626,13 +650,13 @@ function applyAction(camp, cid, gm, type, p) {
       return {};
     }
     case "token.add": {
-      const charId = p.charId || null;
+      const charId = charById(camp, p.charId) ? p.charId : null;   // only a character the table has (#111)
       if (charId) {
         need(canEditChar(camp, cid, gm, charId), "not your character");
         if (mp.tokens.some((t) => t.charId === charId)) return {};
       } else need(gm);
       if (mp.tokens.length >= 300) throw new Invalid("too many tokens on this map");
-      const ch = charId ? chars[charId] || {} : {};
+      const ch = charId ? charById(camp, charId) || {} : {};
       mp.tokens.push({
         id: rid(), name: str(p.name || ch.name || "Token", 40), color: validColor(p.color || ch.color),
         x: clamp(int(p.x, 1), -500, 1000), y: clamp(int(p.y, 1), -500, 1000), size: clamp(int(p.size, 1), 1, 4),
@@ -797,7 +821,7 @@ function applyAction(camp, cid, gm, type, p) {
     // ---- level ups: the GM grants, the player (or the GM for an absent player) picks how to level
     case "levelup.grant": {
       need(gm);
-      const ids = (Array.isArray(p.charIds) ? p.charIds : []).filter((id) => chars[id]);
+      const ids = (Array.isArray(p.charIds) ? p.charIds : []).filter((id) => charById(camp, id));
       if (!ids.length) throw new Invalid("Pick at least one character.");
       camp.levelUps = camp.levelUps || {};
       const names = [];
@@ -929,7 +953,7 @@ function cleanMap(g, raw) {
     gridSize: clamp(int(m.gridSize, 70), 5, 200), gridV2: true, cols: clamp(int(m.cols, 24), 5, 200), rows: clamp(int(m.rows, 16), 5, 200), showGrid: m.showGrid !== false,
     tokens: (Array.isArray(m.tokens) ? m.tokens : []).slice(0, 300).filter((t) => t && typeof t === "object").map((t) => ({
       id: /^[a-z0-9]{6,20}$/.test(t.id || "") ? t.id : rid(), name: str(t.name, 40), color: validColor(t.color), x: clamp(int(t.x), -500, 1000), y: clamp(int(t.y), -500, 1000),
-      size: clamp(int(t.size, 1), 1, 4), charId: g.characters[t.charId] ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, nameHidden: !!t.nameHidden, img: validImg(t.img), moves: cleanMoves(t.moves) })),
+      size: clamp(int(t.size, 1), 1, 4), charId: charById(g, t.charId) ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, nameHidden: !!t.nameHidden, img: validImg(t.img), moves: cleanMoves(t.moves) })),
     ...(Array.isArray(m.walls) && m.walls.length ? { walls: Fight.cleanWalls(m.walls) } : {}),   // the combat view's walls (issue #93), only on a map that has some
     ...(m.fog && typeof m.fog === "object" ? { fog: Fight.cleanFog(m.fog) } : {}),   // fog of war (issue #93), only on a map the GM switched it on for
     props: (Array.isArray(m.props) ? m.props : []).slice(0, 1500).filter((p) => p && validImg(p.src)).map((p) => ({
@@ -944,7 +968,7 @@ function cleanGame(g) {
   g.initiative = {
     turn: clamp(int(ini.turn), 0, 300), round: Math.max(1, int(ini.round, 1)), active: !!ini.active,
     entries: (Array.isArray(ini.entries) ? ini.entries : []).slice(0, 300).filter((e) => e && typeof e === "object").map((e) => ({
-      id: /^[a-z0-9]{6,20}$/.test(e.id || "") ? e.id : rid(), name: str(e.name, 60), init: n(e.init, 0), charId: g.characters[e.charId] ? e.charId : null,
+      id: /^[a-z0-9]{6,20}$/.test(e.id || "") ? e.id : rid(), name: str(e.name, 60), init: n(e.init, 0), charId: charById(g, e.charId) ? e.charId : null,
       npc: !!e.npc, hidden: !!e.hidden, hp: nullNum(e.hp), maxHp: nullNum(e.maxHp), ac: nullNum(e.ac), dexTie: n(e.dexTie, 0),
       sb: e.npc && e.sb ? str(e.sb, 80) : undefined,
       conditions: (Array.isArray(e.conditions) ? e.conditions : []).slice(0, 20).map((c) => str(c, 30)) })),
@@ -965,14 +989,14 @@ function cleanGame(g) {
   const fx = g.sceneFx && typeof g.sceneFx === "object" ? g.sceneFx : null;
   g.sceneFx = fx && /^[a-f0-9]{6,20}$/.test(fx.n || "") ? { n: fx.n, k: clamp(int(fx.k), -1, SCENE_WIPES - 1) } : null;
   if (g.fight !== undefined) Fight.restored(g);   // the combat view's own record, checked like a live one (absent: stays absent)
-  g.levelUps = Object.fromEntries(Object.entries(g.levelUps || {}).filter(([id]) => g.characters[id])
+  g.levelUps = Object.fromEntries(Object.entries(g.levelUps || {}).filter(([id]) => charById(g, id))
     .map(([id, v]) => [id, { count: clamp(int((v || {}).count), 0, 20), grantId: rid(), at: now() }]).filter(([, v]) => v.count > 0));
   return g;
 }
 
 module.exports = {
   cleanGame,
-  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, propSightSegments, validImg, validColor, cleanChar, cleanShip, rid,
+  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, propSightSegments, validImg, validColor, cleanChar, cleanShip, rid, charById,
   applyAction: (camp, ...a) => { const out = applyAction(camp, ...a); Fight.noteSeen(camp); return out; },   // fog of war: what players see now joins what they've explored
   Forbidden, Invalid, IMG_PREFIX,
 };
