@@ -1,0 +1,209 @@
+{
+ "segments": [
+  {
+   "card": "title",
+   "dur": 4.0,
+   "fade": [
+    0.8,
+    0.6
+   ]
+  },
+  {
+   "from": "explore+0.2",
+   "to": "explore_end",
+   "layout": "split:gm:251,232,988,624|kira:252,208,986,622",
+   "cap": [
+    [
+     0,
+     7.5,
+     "fog"
+    ],
+    [
+     7.5,
+     99,
+     "gmsees"
+    ]
+   ],
+   "captop": false,
+   "labels": "split"
+  },
+  {
+   "from": "hidden",
+   "to": "hidden_end",
+   "layout": "split:gm:251,232,988,624|kira:252,208,986,622",
+   "cap": "hidden",
+   "captop": false,
+   "labels": "split"
+  },
+  {
+   "from": "meter",
+   "to": "meter_end",
+   "layout": "zoom:gm:240,240,1010,568",
+   "cap": "meter",
+   "captop": false
+  },
+  {
+   "from": "start-0.3",
+   "to": "start_end",
+   "layout": "split:gm:251,199,988,656|kira:252,154,986,676",
+   "cap": "start",
+   "captop": false,
+   "labels": "split"
+  },
+  {
+   "from": "k1+0.3",
+   "to": "k1_attack",
+   "layout": "zoom:kira:230,130,1370,770",
+   "cap": "move",
+   "captop": true
+  },
+  {
+   "from": "k1_attack",
+   "to": "k1_end",
+   "layout": "zoom:kira:230,130,1370,770",
+   "cap": "attack",
+   "captop": true
+  },
+  {
+   "from": "k1_end+0.9",
+   "to": "turnline_end+0.3",
+   "layout": "zoom:kira:800,150,800,450",
+   "cap": "turnline",
+   "captop": true
+  },
+  {
+   "from": "sesh",
+   "to": "sesh_end",
+   "layout": "zoom:gm:230,130,1370,770",
+   "cap": [
+    [
+     0,
+     6.6,
+     "cover"
+    ],
+    [
+     6.6,
+     99,
+     "temp"
+    ]
+   ],
+   "captop": true
+  },
+  {
+   "from": "area",
+   "to": "area_end",
+   "layout": "zoom:gm:230,130,1370,770",
+   "cap": "area",
+   "captop": true
+  },
+  {
+   "from": "oa",
+   "to": "oa_end",
+   "layout": "zoom:kira:230,130,1370,770",
+   "cap": "oa",
+   "captop": true
+  },
+  {
+   "from": "droid",
+   "to": "droid_end",
+   "layout": "zoom:gm:230,320,1030,580",
+   "cap": "recharge1",
+   "captop": true
+  },
+  {
+   "from": "sniper",
+   "to": "sniper_end+0.6",
+   "layout": "split:kira:1000,300,600,526|tobin:1000,300,600,526",
+   "cap": "chatfog",
+   "captop": false,
+   "labels": "chat",
+   "boxh": 556
+  },
+  {
+   "from": "legend",
+   "to": "legend_end",
+   "layout": "zoom:gm:230,320,1030,580",
+   "cap": "legend",
+   "captop": true
+  },
+  {
+   "from": "k2",
+   "to": "k2_dash",
+   "layout": "zoom:kira:230,320,1030,580",
+   "cap": "res",
+   "captop": true
+  },
+  {
+   "from": "k2_dash",
+   "to": "k2_end",
+   "layout": "zoom:kira:230,130,1370,770",
+   "cap": "dash",
+   "captop": true
+  },
+  {
+   "from": "save",
+   "to": "save_end",
+   "layout": "zoom:gm:330,186,1270,714",
+   "cap": "save",
+   "captop": true
+  },
+  {
+   "from": "flank+0.2",
+   "to": "flank_end",
+   "layout": "zoom:tobin:230,130,1370,770",
+   "cap": "flank",
+   "captop": true
+  },
+  {
+   "from": "recharge",
+   "to": "recharge_end+0.6",
+   "layout": "zoom:gm:760,428,840,472",
+   "cap": "recharge2",
+   "captop": true
+  },
+  {
+   "from": "drop",
+   "to": "drop_end",
+   "layout": "zoom:kira:760,428,840,472",
+   "cap": "drop",
+   "captop": true
+  },
+  {
+   "from": "ds",
+   "to": "ds_end",
+   "layout": "zoom:kira:230,130,1370,770",
+   "cap": "ds",
+   "captop": true
+  },
+  {
+   "from": "end",
+   "to": "end_end",
+   "layout": "zoom:gm:230,130,1370,770",
+   "cap": "end",
+   "captop": true
+  },
+  {
+   "from": "rest",
+   "to": "rest_end-4.3",
+   "layout": "zoom:kira:230,130,1370,770",
+   "cap": "rest",
+   "captop": true
+  },
+  {
+   "from": "rest_end-2.5",
+   "to": "rest_end",
+   "layout": "zoom:kira:230,130,1370,770",
+   "cap": "rest",
+   "captop": true
+  },
+  {
+   "card": "credits",
+   "dur": 6.0,
+   "fade": [
+    0.6,
+    1.0
+   ]
+  }
+ ],
+ "crf": 21
+}

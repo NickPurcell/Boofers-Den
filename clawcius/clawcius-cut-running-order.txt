@@ -1,0 +1,64 @@
+HoloTable combat demo reel: running order and captions
+=====================================================
+File: holotable-combat-reel.mp4, 2:48.7, 6.9 MB, H.264 (High), 1280x720, yuv420p, 30 fps, faststart, silent.
+Made by clawcius-engineer12 for jpesus's request on Boofers-Den #65.
+
+How it was made
+- Recorded on HoloTable's own code from main at c88f3d2 (17 Nov 2026), on a local copy of the table: three
+  signed-in browser windows (the GM, Kira's player, Tobin's player), real clicks for everything on screen.
+  No sign-in screen is shown. Cuts only remove waiting; nothing is sped up.
+- Characters, names and the cantina are made up. Art: the vetted prop packs by Maveritchell (P. Thompson),
+  made for Edge of the Empire (SW Tatooine Mos Shuuta, SW Echoes, SW Bendu and Stalitz). Credited at the end.
+- Dice were set in advance so the take could be repeated (said on the end card). Every number, rule and line
+  of chat is the table's own.
+- Where the point depends on walls (cover, an area stopped by a wall) the shot is the GM's screen: players never
+  receive walls, so their previews don't show cover. The captions say so.
+- Flash check (ITU-R BT.1702 style, flashcheck.py on the encoded file's frames): worst one-second window has 0.0%
+  of the screen with more than 3 flashes (limit 25%); 0.3% at 1.5+ flashes/s; at most 1 whole-frame jump a second.
+
+Running order (time, whose screen, caption)
+0:00  [card]  
+0:04  [split screen]  Fog of war: players see only what their characters see / The GM sees the whole room
+0:15  [split screen]  Hidden names: the GM sees Sesh, players see ???
+0:20  [the GM's screen]  The GM's encounter meter: Hard
+0:24  [split screen]  Talks go wrong: the moves the GM queued play as combat starts
+0:32  [Kira's player's screen]  Your turn: hover a square for its cost, SW5e diagonals included
+0:41  [Kira's player's screen]  Pick a weapon, hover a target for the odds, click to roll
+0:49  [Kira's player's screen]  The turn line keeps a hidden name hidden: ???'s turn
+0:52  [the GM's screen]  The GM's screen: walls give cover, here +3 AC / Temporary HP soaks the hit first
+1:02  [the GM's screen]  The GM's screen: an area stops at walls, so the crates shield Sesh
+1:12  [Kira's player's screen]  Reactions: the thug runs, Kira gets an opportunity attack
+1:20  [the GM's screen]  Creature abilities: a recharge 5–6 rocket salvo, tracked for the GM
+1:26  [split screen]  Under fog, chat only tells you what your character could see
+1:30  [the GM's screen]  Legendary actions: the GM spends one on Kira's turn
+1:35  [Kira's player's screen]  Class resources: a superiority die, spent from the bar
+1:42  [Kira's player's screen]  Dash: double the move, round the droid
+1:52  [the GM's screen]  A creature's saving throw, rolled for the GM only
+1:57  [Tobin's player's screen]  Flanking (a variant rule): the droid is −3 AC between them
+2:09  [the GM's screen]  The droid's turn: its recharge rolls a 6, the rockets are back
+2:12  [Kira's player's screen]  At 0 HP, Kira falls unconscious
+2:16  [Kira's player's screen]  On her turn: a death save
+2:22  [the GM's screen]  The GM ends combat and switches the combat view off
+2:33  [Kira's player's screen]  A short rest: a hit die heals, the superiority die comes back
+2:40  [Kira's player's screen]  
+2:43  [card]  
+From the running order on #65: in, and where
+1 exploring under fog (#114): 0:04; hidden-name NPC: 0:15
+2 talks go wrong, queued combat-start moves (#95): 0:24; encounter meter Hard: 0:20; ???'s turn line (#91): 0:49
+3 player's turn: move with SW5e diagonals 0:32; attack preview and roll 0:41; Dash (#94) 1:42; cover from a wall
+  (#102) 0:52; flanking (#105) 1:57; floating damage numbers throughout; temporary HP absorbs first (#109) 0:52
+4 opportunity attack (#94): 1:12
+5 GM's creature turn: Save... menu (#96) 1:52; recharge (#97) 1:20 and 2:09; legendary action (#97) 1:30;
+  an area stopped by a wall (#102) 1:02
+6 class resources (#108): superiority die 1:35, back after the rest 2:40; 0 HP 2:12 and death save (#97) 2:16
+7 fog and chat (#115, merged after the first plan): 1:26
+8 end combat 2:22; short rest refilling resources (#103) 2:33
+
+Left out, and why
+- Light and darkvision (#119), unseen in the dark (#120), objects that block sight like walls (#116), and the
+  senses work (#128-#135): merged to main after this was recorded. A re-cut can add them.
+- Second Wind: shown as a chip in the bar, but spending it is bookkeeping only (it doesn't heal), so the reel spends
+  a superiority die instead, which the short rest then visibly gives back.
+- A creature's own area attack: areas are cast from characters' powers in the combat view, so the area shown is
+  Tobin's power, aimed on the GM's screen.
+- The pale "lit squares" don't stand out on this sand floor; the captions name what does show (each square's cost).
