@@ -1235,6 +1235,24 @@ test("file store: nothing in it, or still in Redis, is readable without a sessio
   assert.ok(!/blob\.vercel-storage\.com|__fakeblob/.test(seen), "no store URL in any response");
 });
 
+test("a store that ignores byte ranges still serves the right bytes, and the log says so once", async () => {
+  const { gm, p1 } = await table();
+  const id = await storedTrack(gm, "tone.wav", WAV);
+  const realGet = store.get.bind(store);
+  store.get = async (p, o) => realGet(p, Object.assign({}, o, { headers: {} }));   // drops the Range header
+  const warned = [], realWarn = console.warn;
+  console.warn = (...a) => warned.push(a.join(" "));
+  try {
+    for (const range of ["bytes=100-199", "bytes=500-"]) {
+      const r = await p1.call("GET", { aud: id }, undefined, { range });
+      const [, a, b] = /bytes=(\d+)-(\d*)/.exec(range);
+      assert.equal(r.code, 206);
+      assert.equal(Buffer.compare(Buffer.from(r.data), WAV.subarray(+a, b ? +b + 1 : WAV.length)), 0);
+    }
+  } finally { store.get = realGet; console.warn = realWarn; }
+  assert.equal(warned.filter((w) => /ignored a byte range/.test(w)).length, 1, "said once, not on every request");
+});
+
 test("moving files out of Redis: everything arrives, nothing is lost, safe to stop part-way and to run again", async () => {
   const { gm, p1 } = await table();
   const old = await seedLegacy();
@@ -1579,4 +1597,39 @@ test("props that block sight: GM-only flag, never sent to players, kept in backu
   const g2 = G.cleanGame(JSON.parse(JSON.stringify((await gm.poll()).data.state)));
   assert.deepEqual(g2.map.props.map((x) => !!x.blocksSight), [true, false, true]);
   assert.equal(G.propSightSegments(g2.map).length, 8);
+});
+
+test("images a kept backup still uses aren't deleted until that backup rolls off (#118)", async () => {
+  const { gm, p1 } = await table();
+  const tenMinutesLater = async () => { const g = JSON.parse(await db.get(S.K.camp("main"))); g.lastBackup = 0; await db.set(S.K.camp("main"), JSON.stringify(g)); };
+  const served = async (url) => (await gm.call("GET", { img: url.split("=")[1] })).code;
+  const mapA = (await gm.post("upload", { purpose: "bg", dataUrl: PNG_URL })).data.url;
+  await gm.act("map.bg", { url: mapA });
+  await tenMinutesLater(); await gm.act("chat", { text: "the cantina" });   // an automatic backup with map A in it
+  const used = await S.used();
+  // a new map: A leaves the game, but a backup still shows it, so it stays
+  const mapB = (await gm.post("upload", { purpose: "bg", dataUrl: PNG_URL })).data.url;
+  await gm.act("map.bg", { url: mapB });
+  assert.equal(await served(mapA), 200, "kept while a backup uses it");
+  assert.deepEqual(await db.smembers(S.K.imgWait()), [mapA]);
+  // restoring that backup shows map A, not a broken image
+  const withA = (await db.lrange(S.K.bk("main"), 0, 9)).findIndex((raw) => raw.includes(mapA) && !raw.includes(mapB));
+  assert.ok(withA >= 0);
+  assert.equal((await gm.post("restore", { backup: withA })).code, 200);
+  const st = (await p1.poll()).data.state;
+  assert.equal(st.map.bgUrl, mapA);
+  assert.equal(await served(mapA), 200, "the restored map is there");
+  // a replaced photo waits the same way (it used to be deleted unchecked)
+  const kira = (await p1.act("char.save", { char: { name: "Kira" } })).data.id;
+  const photo1 = (await p1.post("upload", { purpose: "photo", charId: kira, kind: "token", dataUrl: PNG_URL })).data.url;
+  await tenMinutesLater(); await p1.act("chat", { text: "a backup with the first photo" });
+  await p1.post("upload", { purpose: "photo", charId: kira, kind: "token", dataUrl: PNG_URL });
+  assert.equal(await served(photo1), 200, "the old photo stays while a backup has it");
+  // back to map B, then ten more backups later nothing refers to A or the first photo: both go, and their bytes come back
+  await gm.act("map.bg", { url: mapB });
+  for (let k = 0; k < 10; k++) { await tenMinutesLater(); await gm.act("chat", { text: "later " + k }); }
+  assert.equal(await served(mapA), 404, "deleted once the last backup using it rolled off");
+  assert.equal(await served(photo1), 404);
+  assert.deepEqual(await db.smembers(S.K.imgWait()), []);
+  assert.ok(await S.used() < used + 3 * PNG.length, "storage given back");
 });

@@ -839,11 +839,13 @@ test("combat view: ending the turn passes it on; creatures are the GM's; undo pu
   // the Raider's turn: players can't act for it; the GM can, with an attack from its stat block
   assert.equal((await sam.act("fight.move", { x: 1, y: 0 })).code, 403);
   assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Blaster", bonus: 30, damage: "rm -rf", range: [60, 240] } })).code, 400, "damage must be dice");
-  assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Blaster", bonus: 30, damage: "2d6+2", type: "energy", range: [60, 240] } })).code, 200);
+  // 1d6+2: even a critical hit (2d6+2) can't take Avery's 20 hit points, so no "falls unconscious" line follows (a crit
+  // with 2d6+2 doubled could, and that made this test fail about once in 400 runs)
+  assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Blaster", bonus: 30, damage: "1d6+2", type: "energy", range: [60, 240] } })).code, 200);
   st = await gm.state();
   const hp = st.characters[avery].hp.current;
-  const last = st.chat.filter((m) => m.fight).at(-1);
-  if (last.roll.kind === "damage") assert.equal(hp, 20 - Math.min(20, last.roll.total)); else assert.equal(hp, 20);
+  const dmg = st.chat.filter((m) => m.fight && m.roll && m.roll.kind === "damage").at(-1);   // none on a natural 1
+  assert.equal(hp, dmg ? 20 - dmg.roll.total : 20);
   // undo the attack: Avery's hit points come back
   assert.equal((await sam.act("fight.undo", {})).code, 403);
   assert.equal((await gm.act("fight.undo", {})).code, 200);
@@ -1697,6 +1699,38 @@ test("walls through the API: a whole map's walls set at once (an import), checke
   assert.equal("walls" in (await gm.state()).map, false, "an empty set leaves no walls key");
 });
 
+/* ---------------------------------------------------------------- temporary HP in the tracker and the sheet (audit 8.7, issue #107) */
+test("damage from the tracker's -n and the sheet's Damage button: temporary HP first, on the server; +n and typed numbers as before", async () => {
+  const { gm, sam, rae, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hp: { max: 20, current: 20, temp: 5 } }) });
+  // the tracker: -8 takes the 5 temporary first, then 3
+  assert.equal((await sam.act("init.update", { id: ids.avery, fields: { damage: 8 } })).code, 200);
+  st = await gm.state();
+  assert.deepEqual([st.characters[avery].hp.current, st.characters[avery].hp.temp, st.initiative.entries.find((e) => e.id === ids.avery).hp], [17, 0, 17]);
+  // two hits at once from two screens: both count, neither overwrites the other
+  await Promise.all([gm.act("init.update", { id: ids.avery, fields: { damage: 4 } }), sam.act("char.damage", { id: avery, amount: 3 })]);
+  st = await gm.state();
+  assert.equal(st.characters[avery].hp.current, 10);
+  // the sheet's Damage with temporary HP; stops at 0
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hp: { max: 20, current: 10, temp: 2 } }) });
+  await sam.act("char.damage", { id: avery, amount: 50 });
+  st = await gm.state();
+  assert.deepEqual([st.characters[avery].hp.current, st.characters[avery].hp.temp], [0, 0]);
+  // only the owner or the GM
+  assert.equal((await rae.act("char.damage", { id: avery, amount: 1 })).code, 403);
+  assert.equal((await rae.act("init.update", { id: ids.avery, fields: { damage: 1 } })).code, 403);
+  // a creature just loses it; a typed number still sets HP
+  await gm.act("init.update", { id: ids.raider, fields: { damage: 8 } });
+  assert.equal((await gm.state()).initiative.entries.find((e) => e.id === ids.raider).hp, 30 - 8);
+  await gm.act("init.update", { id: ids.raider, fields: { hp: 25 } });
+  assert.equal((await gm.state()).initiative.entries.find((e) => e.id === ids.raider).hp, 25);
+  // nonsense amounts do nothing harmful
+  await gm.act("init.update", { id: ids.raider, fields: { damage: -40 } });
+  await gm.act("init.update", { id: ids.raider, fields: { damage: "x" } });
+  assert.equal((await gm.state()).initiative.entries.find((e) => e.id === ids.raider).hp, 25);
+});
+
 /* ---------------------------------------------------------------- fog of war (issue #93, step 4): the engine part */
 test("fog: the squares a unit can see through walls; packed for the browser; fast on a big map", () => {
   const ava = unit({ id: "ava", name: "Avery", side: "pc", x: 1, y: 1 });
@@ -1815,6 +1849,47 @@ test("review #102: walls without a usable id get their own on the way in; erasin
   const took = Date.now() - t0;
   assert.deepEqual(Object.keys(lots).length, Object.keys(E.reachable(world([ava], "ava"), "ava", 60)).length);
   assert.ok(took < 400, `took ${took} ms`);
+});
+
+test("review of #109 (and #111): an id that every object inherits (__proto__, constructor) is never taken for a character", async () => {
+  const { gm, sam } = await fight();
+  const before = JSON.stringify(Object.getOwnPropertyNames(Object.prototype).sort());
+  for (const bad of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+    for (const [who, type, p] of [
+      [gm, "char.damage", { id: bad, amount: 5 }], [sam, "char.damage", { id: bad, amount: 5 }],
+      [gm, "char.assign", { id: bad, owner: "x" }], [gm, "char.photo.clear", { charId: bad }], [gm, "char.delete", { id: bad }],
+      [gm, "levelup.grant", { charIds: [bad] }], [gm, "levelup.apply", { charId: bad }],
+      [sam, "init.add", { charId: bad, name: "X", init: 3 }], [sam, "token.add", { charId: bad, x: 1, y: 1 }],
+      [sam, "roll", { expr: "1d20", charId: bad }], [sam, "char.save", { char: { id: bad, name: "Sneaky" } }],
+    ]) {
+      const r = await who.act(type, p);
+      assert.ok(r.code < 500, `${type} ${bad}: ${r.code}`);
+    }
+  }
+  // the combat view's character actions and the photo upload (review of #109)
+  await gm.act("fight.toggle", { on: true });
+  const png = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+  for (const bad of ["__proto__", "constructor", "toString"]) {
+    for (const [type, p] of [["fight.spend", { charId: bad, key: "hitdice", n: 1 }], ["fight.resource", { charId: bad, op: "add", res: { key: "x", name: "X", max: 2, refill: "long" } }],
+      ["fight.defenses", { charId: bad, resist: ["fire"] }]]) {
+      const r = await gm.act(type, p);
+      assert.ok(r.code === 400 || r.code === 404, `${type} ${bad}: ${r.code}`);
+    }
+    const up = await gm.call("POST", { op: "upload" }, { purpose: "photo", charId: bad, kind: "profile", dataUrl: png });
+    assert.equal(up.code, 404, `photo upload ${bad}`);
+  }
+  for (const k of ["image", "tokenImage", "resources", "force", "tech", "hitDiceUsed"]) assert.equal(({})[k], undefined, `nothing set ${k} on Object.prototype`);
+  const after = await gm.state();
+  assert.deepEqual(Object.keys(after.fight.defenses || {}).filter((k) => !Object.prototype.hasOwnProperty.call(after.characters, k)), []);
+  assert.equal(({}).hp, undefined, "nothing was written onto Object.prototype");
+  assert.equal(({}).owner, undefined);
+  assert.ok(!Object.keys((await gm.state()).characters).some((k) => k in Object.prototype), "no character is saved under an inherited name");
+  assert.equal(JSON.stringify(Object.getOwnPropertyNames(Object.prototype).sort()), before);
+  const st = await gm.state();
+  assert.ok(!st.map.tokens.some((t) => t.charId && !Object.prototype.hasOwnProperty.call(st.characters, t.charId)), "no token linked to an inherited name");
+  assert.ok(!st.initiative.entries.some((e) => e.charId && !Object.prototype.hasOwnProperty.call(st.characters, e.charId)));
+  assert.ok(!st.chat.some((m) => m.charName === "Object" || (typeof m.charName === "string" && /function/.test(m.charName))));
+  assert.deepEqual(Object.keys(st.levelUps || {}).filter((k) => !Object.prototype.hasOwnProperty.call(st.characters, k)), []);
 });
 
 /* ---------------------------------------------------------------- fog of war (issue #93, step 4) */
@@ -1938,6 +2013,48 @@ test("fog of war outside the combat view (#93): walls and fog are the map's; a s
   await gm.act("fight.fog", { on: false });
   sv = await sam.state();
   assert.ok(tokenOf(sv, "Raider") && sv.fog === undefined);
+});
+
+test("fog of war: chat follows sight; a player blind to the shooter gets the hit on the one they see, unnamed (#93)", async () => {
+  const { gm, sam, rae, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  const st0 = await gm.state();
+  // a wall at x = 3 from y 0 to 3: Avery (0,0) can't see the Raider (6,0); Bolt, moved to (1,6), sees both
+  await gm.act("token.move", { id: tokenOf(st0, "Bolt").id, x: 1, y: 6 });
+  await gm.act("fight.wall", { op: "add", a: [3, 0], b: [3, 3] });
+  await gm.act("fight.fog", { on: true });
+  assert.equal(tokenOf(await sam.state(), "Raider"), undefined, "Avery can't see the Raider");
+  assert.ok(tokenOf(await rae.state(), "Raider"), "Bolt can");
+  await sam.act("fight.end", {});
+  const n0 = (await gm.state()).chat.length;
+  assert.equal((await gm.act("fight.attack", { target: ids.bolt, attack: { name: "Blaster", bonus: 30, damage: "1d4", type: "energy", range: [60, 240] } })).code, 200);
+  const g = (await gm.state()).chat.slice(n0), sv = (await sam.state()).chat, rv = (await rae.state()).chat;
+  const text = (m) => (m.text || (m.roll && m.roll.label) || "");
+  const full = g.filter((m) => /Raider attacks Bolt/.test(text(m)));
+  assert.equal(full.length, 1, "the GM reads the attack");
+  assert.ok(rv.some((m) => /Raider attacks Bolt/.test(text(m))), "Bolt's player, who sees the Raider, reads it");
+  assert.ok(!sv.some((m) => /Raider/.test(text(m)) && /attacks|takes|hit/.test(text(m))), "Avery's player reads nothing naming the unseen Raider");
+  const hit = g.some((m) => m.roll && m.roll.kind === "damage");
+  if (hit) {   // (a natural 1 misses: then there's nothing to tell)
+    assert.ok(sv.some((m) => /^Bolt is hit for \d+ damage\.$/.test(text(m))), "the hit on Bolt, whom Avery sees, unnamed");
+    assert.ok(!rv.some((m) => /^Bolt is hit for/.test(text(m))), "Bolt's player has the full line instead");
+  }
+  const ev = (await sam.state()).fight.events || [];
+  assert.ok(!ev.some((e) => e.token === tokenOf(st0, "Raider").id), "no floating numbers on the unseen Raider's token");
+  // the tracker's turn line (review of #115): "Round N - Raider's turn." only to those who see the Raider
+  await gm.act("fight.end", {});   // to Bolt
+  await rae.act("fight.end", {});   // to the Lurker (GM-hidden: no line at all)
+  await gm.act("fight.end", {});   // round 2: Avery
+  await sam.act("fight.end", {});   // the Raider's turn again
+  const turnLine = (c) => c.some((m) => /Round 2 - Raider's turn\./.test(m.text || ""));
+  assert.equal(turnLine((await sam.state()).chat), false, "Avery's player isn't told the unseen Raider's turn");
+  assert.equal(turnLine((await rae.state()).chat), true, "Bolt's player, who sees it, is");
+  assert.equal(turnLine((await gm.state()).chat), true);
+  assert.ok(!JSON.stringify(await sam.state()).includes("Raider"), "nowhere in Sam's state");
+  // fog off: lines are for everyone again
+  await gm.act("fight.fog", { on: false });
+  await gm.act("fight.attack", { target: ids.bolt, attack: { name: "Blaster", bonus: 30, damage: "1d4", type: "energy", range: [60, 240] } });   // the Raider's fresh turn
+  assert.ok((await sam.state()).chat.slice(-6).some((m) => /Raider attacks Bolt/.test(text(m))), "fog off: everyone reads it");
 });
 
 test("fog of war (review of #113): an unseen creature's move, hit or heal sends no floating number to a player who can't see it", async () => {

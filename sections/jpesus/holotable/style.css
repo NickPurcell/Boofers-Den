@@ -218,6 +218,7 @@ table.t td.n { width: 70px; }
   .init-step button { width: 30px; }
 }
 .init-row .hp input { width: 70px; }
+.init-row .hp-temp { color: var(--holo); font-weight: 600; cursor: help; }
 .round { font-size: 13px; color: var(--amber); font-weight: 600; }
 .npc-form { display: flex; flex-wrap: wrap; gap: 6px; align-items: flex-end; }
 .npc-form label { flex: 1 1 70px; }

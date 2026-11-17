@@ -455,12 +455,12 @@ async function handlePost(req, res, q, b, ses) {
         throw e;
       }
       await S.saveCampaign(camp);
-      // an image is only deleted when nothing still shows it (another scene, a sheet, a handout, the map)
-      if (drop && drop.length) { const json = JSON.stringify(camp); drop = drop.filter((u) => u && !json.includes(u)); }
+      // an image is only deleted when nothing still shows it (another scene, a sheet, a handout, the map) and no
+      // kept backup does either (#118); dropUnusedImages checks both
+      if (drop && drop.length) await S.dropUnusedImages(drop, JSON.stringify(camp), GAME);
       return null;
     });
     if (err) return fail(res, ...err);
-    if (drop && drop.length) await S.dropImages(drop);
     return res.status(200).json(Object.assign({ ok: true }, result));
   }
 
@@ -475,17 +475,17 @@ async function handlePost(req, res, q, b, ses) {
       let url, old;
       const err = await S.withLock(GAME, async () => {
         const camp = await loadGame();
-        const ch = camp.characters[b.charId];
+        const ch = G.charById(camp, b.charId);   // own characters only: never an inherited name like "__proto__" (#111)
         if (!ch) return [404, "No such character."];
         if (!(gm || ch.owner === ses.pid)) return [403, "You can only change photos for your own characters."];
         ({ url } = await S.putImage(buf));
         old = ch[kind];
         ch[kind] = url;
         await S.saveCampaign(camp);
+        if (old) await S.dropUnusedImages([old], JSON.stringify(camp), GAME);   // still kept if another place or a backup uses it
         return null;
       });
       if (err) return fail(res, ...err);
-      if (old) await S.dropImages([old]);
       return res.status(200).json({ url });
     }
     const { url } = await S.putImage(buf);
