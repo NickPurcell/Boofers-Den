@@ -14,7 +14,11 @@ Set two environment variables in Vercel:
 Until both are set (and different from each other), the API refuses every request. Changing either one signs everybody out.
 Sessions are signed with a random secret the server creates once and keeps in Redis (`ht:secret`). Nobody has to configure it.
 
-Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded images and asset-pack art.
+Uploaded files (images, asset-pack art, table audio) are kept in the project's **private Vercel Blob store**, connected
+to the project in Vercel's Storage tab (it authenticates by OIDC, so there's no token to set). Without it, the table
+still plays and old files still show, but new uploads are refused with a message saying so.
+
+Optional: `HOLOTABLE_STORAGE_MB` (default 1000) caps the total size of uploaded images, asset-pack art and table audio.
 
 ## What it does
 
@@ -130,7 +134,8 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
   the same file from this site and keeps itself in step with the GM. Nothing plays on a device until that person turns
   table audio on there once ("🔈 Turn on table audio" in the top bar); after that, the ♪ button sets their own volume,
   mutes it, or turns it off again. If a browser still waits for a click before playing sound, that button says so.
-- **GM tools:** handouts, GM notes, a backup file download, automatic backups, and restore.
+- **GM tools:** handouts, GM notes, a backup file download, automatic backups, and restore. A File storage box shows
+  what the file store holds and how much of the cap is used, and moves files uploaded before the store out of the database.
 
 ## How it runs
 
@@ -144,14 +149,25 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
     They're compared in constant time.
 - **Input cleaning:** the server cleans every character sheet and table edit. Numbers stay numbers, colours must be `#rrggbb`,
   and images must be ones uploaded to this table.
-- **Storage:** the project's Redis, under `ht:` keys (`htpv:` on preview deployments). Nothing touches Find time to hang's keys.
-  - Uploaded images and pack art share the `HOLOTABLE_STORAGE_MB` cap.
-  - The game document is capped at 1.5 MB, with 10 automatic backups kept.
+- **Storage:** the game, chat, sessions, backups and the file index are in the project's Redis, under `ht:` keys
+  (`htpv:` on preview deployments). Nothing touches Find time to hang's keys.
+  - Files are in the private Blob store under `ht/img/<id>`, `ht/pack/<id>/<n>` and `ht/aud/<id>` (`htpv/` on previews).
+    The store can't be read without the project's credentials, so every file still goes out through `/api/holotable`
+    after the session check, and no store address is ever sent to a browser. `ht:files` lists what's in the store.
+  - Audio goes from the GM's browser straight to the store, on a one-off upload address that accepts only that file,
+    at most its declared size, for 10 minutes. The server then checks what arrived (size, and that it really is audio)
+    before the track is listed; a file that fails, or is never finished, is deleted.
+  - Files uploaded before the store are read from Redis until the GM presses "Move files to file storage". The move goes
+    in batches, writes each file to the store before deleting its Redis copy, and is safe to stop and run again.
+  - Images, pack art and audio share the `HOLOTABLE_STORAGE_MB` cap, enforced by the function before anything is written.
+  - The game document is capped at 1.5 MB, with 10 automatic backups kept. A backup file carries the game's own images;
+    asset packs and audio are the table's library and stay out of it.
 - **If the save goes missing** (for example, a full Redis evicting keys), changes are refused and everyone sees a notice.
   The GM gets a one-click restore from the latest automatic backup, so a blank table is never saved over it.
   A full database shows a clear "database is full" message.
-- **Asset pack uploads** go in numbered ~1.5 MB batches. Each batch is written to Redis in one pipeline, so a distant
-  database can't push a request past Vercel's 10 s limit. A batch retried after a timeout is applied only once.
+- **Asset pack uploads** go in numbered ~1.5 MB batches, each written to the store several images at a time, so a
+  request stays inside Vercel's 10 s limit. A batch retried after a timeout is applied only once, and a batch that
+  fails leaves no half pack behind.
   `node tests/holotable-devserver.js 8789 --slow=80` simulates database delay and the 10 s limit.
 - **Live updates:** long-polling woken by Redis pub/sub. Each request waits up to 8 s, and hidden tabs stop polling.
 
@@ -162,4 +178,5 @@ node --test tests/holotable-api.test.js
 node tests/holotable-devserver.js     # then open http://localhost:8788/sections/jpesus/holotable/
 ```
 
-The dev server runs on an in-memory stand-in for Redis, with local-only passwords `dev-player` and `dev-gm`.
+The dev server runs on in-memory stand-ins for Redis and the Blob store (`tests/holotable-fake-redis.js`,
+`tests/holotable-fake-blob.js`), with local-only passwords `dev-player` and `dev-gm`.

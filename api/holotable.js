@@ -14,8 +14,12 @@
 //   POST ?op=login {name, password}   POST ?op=logout   GET ?op=me
 //   GET  ?op=poll&v                    long-poll: answers as soon as the game changes (or after ~8 s)
 //   GET  ?img=<id> | ?a=<pack>.<n>     images        GET ?op=assets | ?op=pack&id   the asset library
+//   GET  ?aud=<id> (byte ranges)       table audio   GET ?op=audios                 the track list
 //   GET  ?op=export[&backup=n]         GM backup file
+//   GET  ?op=files                     GM: what the file store holds, and what's left in Redis to move
 //   POST ?op=action | upload | backups | restore | packstart | packadd | packdone | packdelete
+//   POST ?op=audiostart | audiodone | audiodelete | filemove   (GM)
+// Files live in the private Blob store (see _holotable-store.js) and are only ever sent through here.
 
 const crypto = require("crypto");
 const G = require("./_holotable-game.js");
@@ -26,8 +30,9 @@ const POLL_MS = 8000;
 const ONLINE_S = 30;
 const MAX_IMAGE = 3 * 1024 * 1024;
 const MAX_PACK_ITEMS = 3000;
-// Table audio: the GM uploads music or ambience; it's stored in 1 MiB parts and streamed back in pieces,
-// because a Vercel function's request and response are each limited to about 4.5 MB.
+// Table audio: the GM's browser uploads the file straight to the Blob store; it's streamed back in pieces,
+// because a Vercel function's response is limited to about 4.5 MB. Tracks uploaded before the store are
+// in Redis in 1 MiB parts (AUDIO_PART) until the GM's move.
 const AUDIO_PART = 1024 * 1024;
 const MAX_AUDIO = 30 * 1024 * 1024;     // one track
 const MAX_AUDIO_TRACKS = 60;
@@ -290,11 +295,10 @@ async function handleGet(req, res, q, ses) {
   const gm = ses.role === "gm";
 
   if (q.img || q.a) { // images are immutable (a new upload gets a new id); cached in this browser only
-    let key;
-    if (q.img && /^[a-f0-9]{16,40}$/.test(q.img)) key = S.K.img(q.img);
-    else if (q.a && /^[a-z0-9-]{3,60}\.\d{1,5}$/.test(q.a)) { const [id, n] = q.a.split("."); key = S.K.asset(id, n); }
-    if (!key) return fail(res, 400, "bad image id");
-    const buf = await r.getBuffer(key);
+    let buf;
+    if (q.img && /^[a-f0-9]{16,40}$/.test(q.img)) buf = await S.readImage(q.img);
+    else if (q.a && /^[a-z0-9-]{3,60}\.\d{1,5}$/.test(q.a)) { const [id, n] = q.a.split("."); buf = await readAsset(id, +n); }
+    else return fail(res, 400, "bad image id");
     if (!buf) return fail(res, 404, "image not found");
     res.setHeader("Content-Type", S.sniff(buf) || "application/octet-stream");
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -314,14 +318,8 @@ async function handleGet(req, res, q, ses) {
     }
     if (start >= t.bytes || start > end) { res.setHeader("Content-Range", `bytes */${t.bytes}`); return fail(res, 416, "range not satisfiable"); }
     end = Math.min(end, start + AUDIO_SEND - 1);
-    const parts = [];
-    for (let n = Math.floor(start / AUDIO_PART); n <= Math.floor(end / AUDIO_PART); n++) {
-      const buf = await r.getBuffer(S.K.audioPart(id, n));
-      if (!buf) return fail(res, 404, "audio not found");
-      parts.push(buf);
-    }
-    const first = Math.floor(start / AUDIO_PART) * AUDIO_PART;
-    const body = Buffer.concat(parts).subarray(start - first, end - first + 1);
+    const body = await readAudio(t, start, end);
+    if (!body || body.length !== end - start + 1) return fail(res, 404, "audio not found");
     res.setHeader("Content-Type", t.type);
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("Accept-Ranges", "bytes");
@@ -405,6 +403,11 @@ async function handleGet(req, res, q, ses) {
     return res.status(200).json({ id, assets: list.map((a, i) => ({ n: a.n, c: a.c, w: a.w, h: a.h, src: `/api/holotable?a=${id}.${i}` })) });
   }
 
+  if (op === "files") { // GM: what the store holds, what the table counts, and what's still waiting in Redis to be moved
+    if (!gm) return fail(res, 403, "GM only");
+    return res.status(200).json(await storageReport());
+  }
+
   if (op === "export") {
     if (!gm) return fail(res, 403, "GM only");
     let camp = await loadGame();
@@ -416,7 +419,7 @@ async function handleGet(req, res, q, ses) {
     // carry the game's own uploaded images inside the file so a restore is complete
     const images = {};
     const ids = new Set([...JSON.stringify(camp).matchAll(/\/api\/holotable\?img=([a-f0-9]{16,40})/g)].map((x) => x[1]));
-    for (const id of ids) { const b = await r.getBuffer(S.K.img(id)); if (b) images[id] = b.toString("base64"); }
+    for (const id of ids) { const b = await S.readImage(id); if (b) images[id] = b.toString("base64"); }
     const out = Object.assign({}, camp, { _format: "holotable-campaign", _images: images });
     const fname = `${String(camp.name || "HoloTable").replace(/[^\w\- ]/g, "") || "HoloTable"} ${new Date().toISOString().slice(0, 10)}.holotable.json`;
     res.setHeader("Content-Type", "application/json");
@@ -432,7 +435,7 @@ async function handlePost(req, res, q, b, ses) {
   const op = q.op;
   const r = S.getClient();
   const gm = ses.role === "gm";
-  if (!gm && (op === "restore" || op === "backups" || String(op).startsWith("pack") || String(op).startsWith("audio"))) return fail(res, 403, "GM only");
+  if (!gm && (op === "restore" || op === "backups" || op === "filemove" || String(op).startsWith("pack") || String(op).startsWith("audio"))) return fail(res, 403, "GM only");
 
   if (op === "action") {
     let result, drop;
@@ -505,7 +508,7 @@ async function handlePost(req, res, q, b, ses) {
     if (file._format !== "holotable-campaign" || !file.characters || typeof file.characters !== "object") return fail(res, 400, "That isn't a HoloTable backup file.");
     const images = file._images || {};
     for (const [id, data] of Object.entries(images).slice(0, 500)) {
-      if (!/^[a-f0-9]{16,40}$/.test(id) || (await r.exists(S.K.img(id)))) continue;
+      if (!/^[a-f0-9]{16,40}$/.test(id) || (await S.imageExists(id))) continue;
       const buf = Buffer.from(String(data), "base64");
       if (S.sniff(buf) && buf.length <= MAX_IMAGE) await S.putImage(buf, id);
     }
@@ -541,73 +544,79 @@ async function handlePost(req, res, q, b, ses) {
     return res.status(200).json({ ok: true });
   }
 
-  // ---- table audio (GM only): start, add 1 MiB parts in order, finish; or delete
+  // ---- table audio (GM only): start, finish; or delete
+  // The browser uploads the file straight to the store, on a URL that only accepts this one file: its
+  // pathname, at most its declared size, for 10 minutes. Then audiodone reads back what arrived and
+  // checks it before the track is listed. Nothing is served until then, and a file that fails the
+  // check, or is never finished, is deleted from the store (sweepAbandoned).
   if (op === "audiostart") {
-    const all = (await r.hgetall(S.K.audios())) || {};
-    for (const raw of Object.values(all)) {   // uploads abandoned for an hour are cleared away
-      try { const t = JSON.parse(raw); if (!t.done && nowS() - (t.added || 0) > 3600) await removeAudio(t); } catch { /* skip */ }
-    }
-    if (Object.keys(all).length >= MAX_AUDIO_TRACKS) return fail(res, 413, `A table can keep up to ${MAX_AUDIO_TRACKS} tracks. Delete one first.`);
+    await sweepAbandoned();
+    if ((await r.hlen(S.K.audios())) >= MAX_AUDIO_TRACKS) return fail(res, 413, `A table can keep up to ${MAX_AUDIO_TRACKS} tracks. Delete one first.`);
     const bytes = Math.floor(+b.bytes || 0);
     if (bytes < 12 || bytes > MAX_AUDIO) return fail(res, 413, `Audio files can be up to ${MAX_AUDIO / 1048576} MB.`);
-    if ((await S.used()) + bytes > S.STORAGE_CAP) return fail(res, 413, `Not enough room: ${Math.round((await S.used()) / 1048576)} of ${Math.round(S.STORAGE_CAP / 1048576)} MB used. Delete a track or an asset pack first.`);
+    if (!S.blobReady()) throw S.noStore();
+    try { await S.reserve(bytes); } catch (e) {
+      if (!(e instanceof S.Full)) throw e;
+      return fail(res, 413, `Not enough room: ${Math.round((await S.used()) / 1048576)} of ${Math.round(S.STORAGE_CAP / 1048576)} MB used. Delete a track or an asset pack first.`);
+    }
     const id = "au" + crypto.randomBytes(6).toString("hex");
     const name = String(b.name || "Track").replace(/\.[a-z0-9]{2,5}$/i, "").slice(0, 80) || "Track";
-    await r.hset(S.K.audios(), id, JSON.stringify({ id, name, bytes, parts: 0, got: 0, type: null, done: false, added: nowS() }));
-    return res.status(200).json({ id, part: AUDIO_PART });
+    const t = { id, name, bytes, reserved: bytes, blob: true, type: null, done: false, added: nowS() };
+    await r.hset(S.K.audios(), id, JSON.stringify(t));
+    let put;
+    try { put = await uploadUrl(S.P.aud(id), bytes); } catch (e) { await removeAudio(t); throw e; }
+    return res.status(200).json({ id, put });
   }
-  if (op === "audioadd" || op === "audiodone" || op === "audiodelete") {
+  if (op === "audiodone" || op === "audiodelete") {
     const id = String(b.id || "");
     const raw = AUDIO_ID.test(id) && (await r.hget(S.K.audios(), id));
     if (!raw) return fail(res, 404, "no such track");
     const t = JSON.parse(raw);
     if (op === "audiodelete") { await removeAudio(t); await r.incr(S.K.libver()); return res.status(200).json({ ok: true }); }
-    if (t.done) return fail(res, 409, "that track is already finished");
-    if (op === "audioadd") {
-      return S.withLock("audio-" + id, async () => {
-        const fresh = JSON.parse((await r.hget(S.K.audios(), id)) || raw);
-        const seq = Math.floor(+b.seq);
-        if (seq < fresh.parts) return res.status(200).json({ ok: true, repeat: true });   // a retried part: already stored
-        if (seq !== fresh.parts) return fail(res, 400, "parts must arrive in order");
-        const buf = Buffer.from(String(b.data || ""), "base64");
-        const last = fresh.got + buf.length >= fresh.bytes;
-        if (!buf.length || buf.length > AUDIO_PART || (!last && buf.length !== AUDIO_PART) || fresh.got + buf.length > fresh.bytes) return fail(res, 400, "bad audio part");
-        if (seq === 0) {
-          fresh.type = S.sniffAudio(buf);
-          if (!fresh.type) { await removeAudio(fresh); return fail(res, 415, "That isn't an audio file HoloTable can play (MP3, OGG, WAV, FLAC, M4A or WebM)."); }
-        }
-        try { await S.reserve(buf.length); } catch (e) {
-          if (!(e instanceof S.Full)) throw e;
-          await removeAudio(fresh);
-          return fail(res, 413, e.message);
-        }
-        await r.set(S.K.audioPart(id, seq), buf);
-        fresh.parts += 1; fresh.got += buf.length;
-        await r.hset(S.K.audios(), id, JSON.stringify(fresh));
-        return res.status(200).json({ ok: true, got: fresh.got });
-      });
-    }
-    // audiodone
-    if (t.got !== t.bytes || !t.type) { await removeAudio(t); return fail(res, 400, "the upload didn't finish; try again"); }
-    t.done = true;
-    await r.hset(S.K.audios(), id, JSON.stringify(t));
-    await r.incr(S.K.libver());
-    return res.status(200).json({ ok: true, track: { id, name: t.name, bytes: t.bytes, type: t.type } });
+    if (t.done) return res.status(200).json({ ok: true, track: { id, name: t.name, bytes: t.bytes, type: t.type } });   // a retried done
+    if (!t.blob) return fail(res, 409, "that upload was started before file storage; start it again");
+    return S.withLock("audio-" + id, async () => {
+      const fresh = JSON.parse((await r.hget(S.K.audios(), id)) || "null");
+      if (!fresh) return fail(res, 404, "no such track");
+      if (fresh.done) return res.status(200).json({ ok: true, track: { id, name: fresh.name, bytes: fresh.bytes, type: fresh.type } });
+      const p = S.P.aud(id);
+      let size = -1;
+      try { size = (await S.getBlob().head(p)).size; } catch (e) { if (!S.isNotFound(e)) throw e; }
+      if (size !== fresh.bytes) { await removeAudio(fresh); return fail(res, 400, "The upload didn't arrive whole. Try again."); }
+      const type = S.sniffAudio(await S.readFile(p, [0, 63]));
+      if (!type) { await removeAudio(fresh); return fail(res, 415, "That isn't an audio file HoloTable can play (MP3, OGG, WAV, FLAC, M4A or WebM)."); }
+      // list it, and move its reservation onto the listing (removing the track gives the bytes back from there)
+      await r.hset(S.K.files(), p, JSON.stringify({ b: size, t: type, at: Math.floor(nowS()) }));
+      Object.assign(fresh, { type, done: true, reserved: 0 });
+      await r.hset(S.K.audios(), id, JSON.stringify(fresh));
+      await r.incr(S.K.libver());
+      return res.status(200).json({ ok: true, track: { id, name: fresh.name, bytes: fresh.bytes, type } });
+    });
+  }
+
+  // ---- moving files uploaded before the store out of Redis (GM). Each call moves what fits in a few
+  // seconds and says whether more is left; the GM tab calls again until nothing is. Safe to stop and
+  // run again: a file is written to the store and listed before its Redis copy is deleted. It also
+  // tidies the store: unfinished uploads and files the table doesn't list are deleted.
+  if (op === "filemove") {
+    if (!S.blobReady()) throw S.noStore();
+    return S.withLock("filemove", async () => {
+      const deadline = Date.now() + MOVE_MS;
+      await sweepAbandoned();
+      const tidied = await tidyStore(deadline);
+      return res.status(200).json(Object.assign({ tidied }, await moveFiles(deadline)));
+    });
   }
 
   // ---- asset library (GM only; shared by the whole table)
   if (op === "packstart") {
-    for (const raw of Object.values((await r.hgetall(S.K.packs())) || {})) {
-      try {
-        const p = JSON.parse(raw);
-        if (!p.done && nowS() - (p.added || 0) > 3600) await removePack(p.id, JSON.parse((await r.get(S.K.pack(p.id))) || "[]").length, p.bytes);
-      } catch { /* skip */ }
-    }
+    if (!S.blobReady()) throw S.noStore();
+    await sweepAbandoned();
     const name = String(b.name || "Asset pack").slice(0, 80);
     const id = (name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "pack") + "-" + crypto.randomBytes(3).toString("hex");
     const incoming = Math.max(0, +b.bytes || 0);
     if ((await S.used()) + incoming > S.STORAGE_CAP) return fail(res, 413, `Not enough room: ${Math.round((await S.used()) / 1048576)} of ${Math.round(S.STORAGE_CAP / 1048576)} MB used. Delete a pack first.`);
-    await r.hset(S.K.packs(), id, JSON.stringify({ id, name, author: String(b.author || "").slice(0, 80), count: 0, bytes: 0, done: false, added: nowS() }));
+    await r.hset(S.K.packs(), id, JSON.stringify({ id, name, author: String(b.author || "").slice(0, 80), count: 0, bytes: 0, done: false, blob: true, added: nowS() }));
     await r.set(S.K.pack(id), "[]");
     return res.status(200).json({ packId: id });
   }
@@ -637,17 +646,15 @@ async function handlePost(req, res, q, b, ses) {
           await removePack(id, list.length, summary.bytes);
           return fail(res, 413, "The asset library is full, so this pack wasn't added. Delete a pack (or ask the site owner to raise HOLOTABLE_STORAGE_MB) and try again.");
         }
-        // one round trip for the whole batch: sending images one by one can run past the
-        // function time limit when the database is a few milliseconds away
-        const pl = r.pipeline();
-        keep.forEach(({ buf }, i) => pl.set(S.K.asset(id, list.length + i), buf));
-        const results = (await pl.exec()) || [];
-        const failed = results.find(([err]) => err);
-        if (failed) { // e.g. the database refused writes because it's full: don't leave half a pack behind
-          await S.release(bytes);
-          await r.del(...keep.map((_, i) => S.K.asset(id, list.length + i)));
+        // into the store, several at once: one by one can run past the function time limit
+        const base = list.length;
+        try {
+          await eachLimit(keep, 8, ({ buf }, i) => S.putFile(S.P.asset(id, base + i), buf, S.sniff(buf)));
+        } catch (e) { // e.g. the store refused a write: don't leave half a pack behind
+          const freed = await S.dropFiles(keep.map((_, i) => S.P.asset(id, base + i)));
+          await S.release(bytes - freed);
           await removePack(id, list.length, summary.bytes);
-          throw failed[0];
+          throw e;
         }
         for (const { it, buf } of keep) {
           list.push({ n: String(it.n || "asset").slice(0, 80), c: /^[a-z]{1,20}$/.test(it.c) ? it.c : "props",
@@ -679,20 +686,251 @@ async function handlePost(req, res, q, b, ses) {
   return fail(res, 404, "unknown op");
 }
 
+// Remove a track and give back its bytes, once: only the call that unlists it does the rest.
 async function removeAudio(t) {
   const r = S.getClient();
+  if (!(await r.hdel(S.K.audios(), t.id))) return;
+  if (t.blob) {
+    await S.dropFiles([S.P.aud(t.id)]);   // a finished track: its listing holds its bytes
+    if (!t.done) {                        // an unfinished upload: whatever reached the store, and its reservation
+      try { await S.getBlob().del(S.P.aud(t.id)); } catch { /* nothing arrived */ }
+      await S.release(t.reserved || 0);
+    }
+    return;
+  }
+  // uploaded before the store: 1 MiB parts in Redis (and, if the move to the store was copying it just
+  // then, that copy too; its bytes are the ones given back here)
   if (t.parts) await r.del(...Array.from({ length: t.parts }, (_, n) => S.K.audioPart(t.id, n)));
-  await r.hdel(S.K.audios(), t.id);
+  if (await r.hdel(S.K.files(), S.P.aud(t.id))) { try { await S.getBlob().del(S.P.aud(t.id)); } catch { /* gone */ } }
   await S.release(t.got || 0);
 }
 
+// Uploads started over an hour ago and never finished (the browser was closed, the network dropped):
+// whatever they sent is deleted and the room they reserved is given back.
+const ABANDONED_S = 3600;
+async function sweepAbandoned() {
+  const r = S.getClient();
+  for (const raw of Object.values((await r.hgetall(S.K.audios())) || {})) {
+    try { const t = JSON.parse(raw); if (!t.done && nowS() - (t.added || 0) > ABANDONED_S) await removeAudio(t); } catch { /* skip */ }
+  }
+  for (const raw of Object.values((await r.hgetall(S.K.packs())) || {})) {
+    try {
+      const p = JSON.parse(raw);
+      if (!p.done && nowS() - (p.added || 0) > ABANDONED_S) await removePack(p.id, JSON.parse((await r.get(S.K.pack(p.id))) || "[]").length, p.bytes);
+    } catch { /* skip */ }
+  }
+}
+
+// What the store really holds under this table's root (ht/ or htpv/), by kind, and how much of it the
+// table doesn't list: left by an upload that failed halfway, waiting for the next tidy-up. Reads at most
+// MAX_LIST files' worth of listings.
+const MAX_LIST = 20000;
+const kindOf = (pathname) => ({ img: "images", pack: "packArt", aud: "audio" })[String(pathname).split("/")[1]] || "other";
+async function storeFiles(each, deadline) {
+  let cursor, seen = 0;
+  do {
+    const page = await S.getBlob().list({ prefix: S.NS + "/", cursor, limit: 1000 });
+    for (const b of page.blobs || []) await each(b);
+    seen += (page.blobs || []).length;
+    cursor = page.hasMore ? page.cursor : null;
+  } while (cursor && seen < MAX_LIST && (!deadline || Date.now() < deadline));
+  return !cursor;   // true when every file was seen
+}
+async function storageReport() {
+  const r = S.getClient();
+  const listed = (await r.hgetall(S.K.files())) || {};
+  const out = { store: S.blobReady(), used: await S.used(), cap: S.STORAGE_CAP, left: await leftInRedis() };
+  const zero = () => ({ images: { n: 0, b: 0 }, packArt: { n: 0, b: 0 }, audio: { n: 0, b: 0 }, other: { n: 0, b: 0 } });
+  out.listed = zero();
+  for (const [p, raw] of Object.entries(listed)) { const k = out.listed[kindOf(p)]; k.n++; try { k.b += JSON.parse(raw).b || 0; } catch { /* skip */ } }
+  if (!out.store) return out;
+  out.held = zero(); out.unlisted = { n: 0, b: 0 };
+  const pending = await pendingUploads();
+  out.complete = await storeFiles(async (b) => {
+    const k = out.held[kindOf(b.pathname)]; k.n++; k.b += b.size || 0;
+    if (!listed[b.pathname] && !pending.has(b.pathname)) { out.unlisted.n++; out.unlisted.b += b.size || 0; }
+  });
+  return out;
+}
+// pathnames of audio uploads still in progress: in the store, deliberately not listed yet
+async function pendingUploads() {
+  const out = new Set();
+  for (const raw of Object.values((await S.getClient().hgetall(S.K.audios())) || {})) {
+    try { const t = JSON.parse(raw); if (t.blob && !t.done) out.add(S.P.aud(t.id)); } catch { /* skip */ }
+  }
+  return out;
+}
+// Delete store files under this table's root that the table doesn't list and that are over an hour
+// old (a file is listed within moments of being written, so an hour-old unlisted one is a leftover).
+// They were never counted against the cap, so no bytes are given back. Returns how many went.
+async function tidyStore(deadline) {
+  const r = S.getClient(), pending = await pendingUploads(), old = Date.now() - ABANDONED_S * 1000;
+  const cand = [];
+  await storeFiles(async (b) => {
+    if (!pending.has(b.pathname) && new Date(b.uploadedAt).getTime() < old) cand.push(b.pathname);
+  }, deadline);
+  let gone = 0;
+  for (let i = 0; i < cand.length && Date.now() < deadline; i += 200) {
+    const chunk = cand.slice(i, i + 200), infos = await r.hmget(S.K.files(), ...chunk);
+    const drop = chunk.filter((_, j) => !infos[j]);
+    if (drop.length) { await S.getBlob().del(drop); gone += drop.length; }
+  }
+  return gone;
+}
+
+// A presigned PUT for one file, for the browser: the URL and the headers to send with it. The store
+// itself refuses anything but this pathname, anything over `bytes`, and anything after 10 minutes.
+const UPLOAD_S = 10 * 60;
+const UPLOAD_TYPE = "application/octet-stream";   // the real type is sniffed from what arrives
+async function uploadUrl(pathname, bytes) {
+  const B = S.getBlob();
+  const validUntil = Date.now() + UPLOAD_S * 1000;
+  const token = await B.issueSignedToken({ pathname, operations: ["put"], maximumSizeInBytes: bytes, allowedContentTypes: [UPLOAD_TYPE], validUntil });
+  const { presignedUrl } = await B.presignUrl(token, {
+    operation: "put", pathname, access: "private", maximumSizeInBytes: bytes, allowedContentTypes: [UPLOAD_TYPE],
+    addRandomSuffix: false, allowOverwrite: false, validUntil,
+  });
+  return {
+    url: presignedUrl, method: "PUT",
+    // what @vercel/blob's own browser upload sends with a presigned PUT (API version of the pinned SDK)
+    headers: { "content-type": UPLOAD_TYPE, "x-content-type": UPLOAD_TYPE, "x-vercel-blob-access": "private", "x-api-version": "13",
+      "x-vercel-blob-store-id": String(process.env.BLOB_STORE_ID || "").replace(/^store_/, "") },
+  };
+}
+
+// A pack's art can be in the store, in Redis (uploaded before the store), or part-way between the two
+// while the GM's move runs. The store gives back what it held; whatever's left of the total was in Redis.
 async function removePack(id, count, bytes) {
   const r = S.getClient();
+  const freed = await S.dropFiles(Array.from({ length: count }, (_, n) => S.P.asset(id, n)));
   for (let i = 0; i < count; i += 200) await r.del(...Array.from({ length: Math.min(200, count - i) }, (_, j) => S.K.asset(id, i + j)));
   await r.del(S.K.pack(id));
   await r.hdel(S.K.packs(), id);
-  await S.release(bytes || 0);
+  await S.release(Math.max(0, (bytes || 0) - freed));
   await r.incr(S.K.libver());
+}
+
+// Run fn(item, index) over items, at most `limit` at a time; the first failure is thrown once all have settled.
+async function eachLimit(items, limit, fn) {
+  let next = 0, err = null;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      try { await fn(items[i], i); } catch (e) { if (!err) err = e; }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  if (err) throw err;
+}
+
+// ---------------------------------------------------------------- the move out of Redis
+const MOVE_MS = 5000;   // stay well inside the function's time limit and the 8 s "filemove" lock
+const legacyImageKeys = async (deadline) => {
+  const r = S.getClient(), prefix = S.K.img(""), keys = [];
+  let cursor = "0";
+  do {
+    const [next, found] = await r.scan(cursor, "MATCH", prefix + "*", "COUNT", 200);
+    keys.push(...found);
+    cursor = String(next);
+  } while (cursor !== "0" && (!deadline || Date.now() < deadline));
+  return keys.map((k) => k.slice(prefix.length)).filter((id) => /^[a-f0-9]{16,40}$/.test(id));
+};
+const packSummaries = async () => Object.values((await S.getClient().hgetall(S.K.packs())) || {})
+  .map((v) => { try { return JSON.parse(v); } catch { return null; } }).filter((x) => x && x.done && !x.blob);
+const trackSummaries = async () => Object.values((await S.getClient().hgetall(S.K.audios())) || {})
+  .map((v) => { try { return JSON.parse(v); } catch { return null; } }).filter((x) => x && x.done && !x.blob);
+
+async function leftInRedis() {
+  return {
+    images: (await legacyImageKeys()).length,
+    packArt: (await packSummaries()).reduce((n, p) => n + Math.max(0, (p.count || 0) - (p.moved || 0)), 0),
+    tracks: (await trackSummaries()).length,
+  };
+}
+
+// Copy one Redis value into the store, then delete it from Redis. If something deleted it from Redis
+// meanwhile (the image stopped being used, the pack was deleted), undo the copy: it's gone on purpose.
+async function moveOne(key, pathname, buf, type) {
+  const r = S.getClient();
+  await S.putFile(pathname, buf, type, true);
+  if (!(await r.del(key))) {
+    await r.hdel(S.K.files(), pathname);
+    await S.getBlob().del(pathname);
+    return false;
+  }
+  return true;
+}
+
+async function moveFiles(deadline) {
+  const r = S.getClient();
+  let moved = 0;
+  const time = () => Date.now() < deadline;
+  // uploaded images
+  for (const id of await legacyImageKeys(deadline)) {
+    if (!time()) break;
+    const buf = await r.getBuffer(S.K.img(id));
+    if (buf && (await moveOne(S.K.img(id), S.P.img(id), buf, S.sniff(buf) || "application/octet-stream"))) moved++;
+  }
+  // pack art, 40 at a time; the summary remembers how far each pack got
+  for (const p of await packSummaries()) {
+    let n = p.moved || 0;
+    while (n < p.count && time()) {
+      const batch = Array.from({ length: Math.min(40, p.count - n) }, (_, j) => n + j);
+      await eachLimit(batch, 8, async (i) => {
+        const buf = await r.getBuffer(S.K.asset(p.id, i));
+        if (buf && (await moveOne(S.K.asset(p.id, i), S.P.asset(p.id, i), buf, S.sniff(buf) || "application/octet-stream"))) moved++;
+      });
+      n += batch.length;
+      await S.withLock("pack-" + p.id, async () => {
+        const cur = JSON.parse((await r.hget(S.K.packs(), p.id)) || "null");
+        if (cur) { cur.moved = n; if (n >= cur.count) cur.blob = true; await r.hset(S.K.packs(), p.id, JSON.stringify(cur)); }
+      });
+    }
+    if (!time()) break;
+  }
+  // table audio: one whole track at a time, re-joined from its 1 MiB parts
+  for (const t of await trackSummaries()) {
+    if (!time()) break;
+    const parts = [];
+    for (let n = 0; n < t.parts; n++) parts.push(await r.getBuffer(S.K.audioPart(t.id, n)));
+    if (parts.some((x) => !x)) continue;   // damaged: leave it where it is, still playable as far as it goes
+    const buf = Buffer.concat(parts), p = S.P.aud(t.id);
+    await S.putFile(p, buf, t.type, true);
+    const ok = await S.withLock("audio-" + t.id, async () => {
+      const cur = JSON.parse((await r.hget(S.K.audios(), t.id)) || "null");
+      if (!cur) return false;
+      Object.assign(cur, { blob: true, reserved: 0 });
+      await r.hset(S.K.audios(), t.id, JSON.stringify(cur));
+      return true;
+    });
+    if (!ok) { await r.hdel(S.K.files(), p); await S.getBlob().del(p); continue; }   // deleted meanwhile
+    await r.del(...Array.from({ length: t.parts }, (_, n) => S.K.audioPart(t.id, n)));
+    moved++;
+  }
+  const left = await leftInRedis();
+  return { moved, left, more: left.images + left.packArt + left.tracks > 0 };
+}
+
+// Bytes start..end (inclusive) of a finished track: from the store, or from its 1 MiB parts in Redis if it
+// was uploaded before the store and hasn't been moved yet.
+async function readAudio(t, start, end) {
+  if (t.blob) return S.readFile(S.P.aud(t.id), [start, end]);
+  const r = S.getClient(), parts = [];
+  for (let n = Math.floor(start / AUDIO_PART); n <= Math.floor(end / AUDIO_PART); n++) {
+    const buf = await r.getBuffer(S.K.audioPart(t.id, n));
+    if (!buf) return null;
+    parts.push(buf);
+  }
+  const first = Math.floor(start / AUDIO_PART) * AUDIO_PART;
+  return Buffer.concat(parts).subarray(start - first, end - first + 1);
+}
+
+// Asset n of a pack: from the store, or from Redis for a pack uploaded before the store and not moved yet.
+async function readAsset(id, n) {
+  if (await S.fileInfo(S.P.asset(id, n))) return S.readFile(S.P.asset(id, n));
+  const old = await S.getClient().getBuffer(S.K.asset(id, n));
+  if (old) return old;
+  return (await S.fileInfo(S.P.asset(id, n))) ? S.readFile(S.P.asset(id, n)) : null;   // moved meanwhile
 }
 
 // ---------------------------------------------------------------- entry point
@@ -755,6 +993,11 @@ module.exports = async function handler(req, res) {
   } catch (e) {
     if (e instanceof S.Busy) return fail(res, 503, e.message);
     if (e instanceof S.Full) return fail(res, 413, e.message);
+    if (e instanceof S.NoStore) return fail(res, 503, e.message);
+    if (S.isBlobError(e)) {   // the file store refused or failed
+      console.error("holotable blob:", e && e.message);
+      return fail(res, 502, "File storage didn't answer properly, so that wasn't saved. Try again in a moment.");
+    }
     if (e instanceof Missing) return fail(res, 409, e.message);
     if (/\bOOM\b/.test(String(e && e.message))) return fail(res, 507, "The database is full, so that change wasn't saved. Delete an asset pack or old images, or ask the site owner to check the database plan.");
     if (e instanceof SyntaxError) return fail(res, 400, "bad JSON");

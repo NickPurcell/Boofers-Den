@@ -16,11 +16,15 @@ process.env.HOLOTABLE_GM_PASSWORD = GM_PW;
 const S = require("../api/_holotable-store.js");
 const G = require("../api/_holotable-game.js");
 const handler = require("../api/holotable.js");
+const FakeBlob = require("./holotable-fake-blob.js");
 let db = new HoloFake();
 let sub = null;
+let store = new FakeBlob();   // the private Blob store
 S.getClient = () => db;
 S.getSub = () => (sub = sub || db.duplicate());
-function fresh() { db = new HoloFake(); sub = null; }
+S.getBlob = () => store;
+S.blobReady = () => true;
+function fresh() { db = new HoloFake(); sub = null; store = new FakeBlob(); }
 
 let ipn = 1;
 // One "browser": keeps its cookie like a real one would.
@@ -86,10 +90,12 @@ test("no session, no data: every read, write and image needs a signed session", 
   const up = await gm.post("upload", { purpose: "bg", dataUrl: PNG_URL });
   const imgId = up.data.url.split("=")[1];
   const anon = browser();
-  for (const q of [{ op: "poll" }, { op: "assets" }, { op: "pack", id: "abc-123456" }, { op: "export" }, { op: "me" }, { img: imgId }, { a: "abc-123456.0" }]) {
+  for (const q of [{ op: "poll" }, { op: "assets" }, { op: "pack", id: "abc-123456" }, { op: "export" }, { op: "me" }, { img: imgId }, { a: "abc-123456.0" },
+    { op: "audios" }, { aud: "au000000000000" }, { op: "files" }]) {
     assert.equal((await anon.call("GET", q)).code, 401, JSON.stringify(q));
   }
-  for (const op of ["action", "upload", "backups", "restore", "packstart", "packadd", "packdone", "packdelete"]) {
+  for (const op of ["action", "upload", "backups", "restore", "packstart", "packadd", "packdone", "packdelete",
+    "audiostart", "audiodone", "audiodelete", "filemove"]) {
     assert.equal((await anon.post(op, { type: "chat", payload: { text: "hi" } })).code, 401, op);
   }
   // a forged or tampered cookie is no better than none
@@ -466,21 +472,37 @@ test("initiative: the GM's step buttons re-order the tracker for everyone; playe
   assert.equal(typeof (await gm.poll()).data.state.initiative.entries.find((e) => e.id === a.id).init, "number", "init stays a number");
 });
 
-test("pack batches: written in one round trip, and a retried batch isn't added twice", async () => {
-  const { gm } = await table();
+test("pack batches: art goes to the file store, not Redis, and a retried batch isn't added twice", async () => {
+  const { gm, p1 } = await table();
   const packId = (await gm.post("packstart", { name: "Retry Pack", bytes: 10 })).data.packId;
   const items = [{ n: "a", c: "props", data: PNG.toString("base64") }, { n: "b", c: "props", data: PNG.toString("base64") }];
-  let pipelines = 0;
-  const realPipe = db.pipeline.bind(db);
-  db.pipeline = () => { pipelines++; return realPipe(); };
-  try {
-    assert.equal((await gm.post("packadd", { packId, seq: 0, items })).data.count, 2);
-    assert.equal(pipelines, 1, "the whole batch goes in one pipeline");
-    const again = await gm.post("packadd", { packId, seq: 0, items }); // the browser retries after a timeout
-    assert.equal(again.data.count, 2);
-    assert.equal(again.data.repeat, true);
-    assert.equal((await gm.post("packadd", { packId, seq: 1, items: items.slice(0, 1) })).data.count, 3);
-  } finally { db.pipeline = realPipe; }
+  assert.equal((await gm.post("packadd", { packId, seq: 0, items })).data.count, 2);
+  assert.deepEqual([...store.files.keys()].sort(), [`ht/pack/${packId}/0`, `ht/pack/${packId}/1`], "each asset is a file in the store");
+  assert.equal(await db.getBuffer(S.K.asset(packId, 0)), null, "and none of it is in Redis");
+  const again = await gm.post("packadd", { packId, seq: 0, items }); // the browser retries after a timeout
+  assert.equal(again.data.count, 2);
+  assert.equal(again.data.repeat, true);
+  assert.equal((await gm.post("packadd", { packId, seq: 1, items: items.slice(0, 1) })).data.count, 3);
+  assert.equal(store.files.size, 3);
+  await gm.post("packdone", { packId });
+  const art = await p1.call("GET", { a: `${packId}.2` });
+  assert.equal(art.code, 200);
+  assert.ok(Buffer.from(art.data).equals(PNG), "a player gets the art back through the function");
+  assert.equal(art.headers["content-type"], "image/png");
+});
+
+test("pack batches: a store that fails partway leaves no half pack and gives every byte back", async () => {
+  const { gm } = await table();
+  const packId = (await gm.post("packstart", { name: "Flaky Pack", bytes: 10 })).data.packId;
+  const items = Array.from({ length: 5 }, (_, i) => ({ n: "x" + i, c: "props", data: PNG.toString("base64") }));
+  assert.equal((await gm.post("packadd", { packId, seq: 0, items })).code, 200);
+  store.failPuts = 1;
+  const r = await gm.post("packadd", { packId, seq: 1, items });
+  assert.ok(r.code >= 500, `the failure is reported (${r.code})`);
+  assert.equal(await db.hget(S.K.packs(), packId), null, "the pack is gone");
+  assert.equal(store.files.size, 0, "and so is all of its art");
+  assert.equal(await db.hlen(S.K.files()), 0);
+  assert.equal(await S.used(), 0, "and the storage count is back to zero");
 });
 
 test("chat: whisper a character (reaches whoever plays it), yell to everyone, out-of-character talk", async () => {
@@ -1062,47 +1084,330 @@ test("token names: shownName gives other code (chat lines, the combat view) the 
 });
 
 // Table audio: the GM uploads a track in 1 MiB parts; everyone streams it by byte range; the GM controls playback.
-test("table audio: GM-only uploads in order, checked by content, streamed in ranges, counted against storage", async () => {
+test("table audio: the GM uploads straight to the store, checked by content, streamed in ranges, counted against storage", async () => {
   const { gm, p1 } = await table();
-  const PART = 1024 * 1024;
-  // a fake MP3: an ID3 header, then filler, 2.5 parts long
-  const mp3 = Buffer.alloc(Math.floor(2.5 * PART));
+  const MiB = 1024 * 1024;
+  // a fake MP3: an ID3 header, then filler, 5.5 MiB long (more than one 4 MiB response)
+  const mp3 = Buffer.alloc(Math.floor(5.5 * MiB));
   mp3.write("ID3", 0, "latin1"); for (let i = 10; i < mp3.length; i++) mp3[i] = i % 251;
   const usedBefore = (await gm.call("GET", { op: "audios" })).data.used;
-  for (const op of ["audiostart", "audioadd", "audiodone", "audiodelete"]) assert.equal((await p1.post(op, {})).code, 403, op);
-  assert.equal((await gm.post("audiostart", { name: "big.mp3", bytes: 40 * PART })).code, 413, "too big");
+  for (const op of ["audiostart", "audiodone", "audiodelete"]) assert.equal((await p1.post(op, {})).code, 403, op);
+  assert.equal((await gm.post("audiostart", { name: "big.mp3", bytes: 40 * MiB })).code, 413, "too big");
   const st = (await gm.post("audiostart", { name: "Cantina Band.mp3", bytes: mp3.length })).data;
-  assert.match(st.id, /^au[a-f0-9]{12}$/); assert.equal(st.part, PART);
-  const part = (i) => mp3.subarray(i * PART, Math.min(mp3.length, (i + 1) * PART)).toString("base64");
-  assert.equal((await gm.post("audioadd", { id: st.id, seq: 1, data: part(1) })).code, 400, "parts arrive in order");
-  for (let i = 0; i < 3; i++) assert.equal((await gm.post("audioadd", { id: st.id, seq: i, data: part(i) })).code, 200);
-  assert.equal((await gm.post("audioadd", { id: st.id, seq: 1, data: part(1) })).data.repeat, true, "a retried part is ignored");
+  assert.match(st.id, /^au[a-f0-9]{12}$/);
+  assert.equal(st.put.method, "PUT");
+  assert.equal(st.put.headers["x-vercel-blob-access"], "private");
+  // the URL only takes this one file, at most its declared size
+  assert.equal((await store.presignedPut(st.put.url, Buffer.concat([mp3, Buffer.alloc(1)]), st.put.headers["content-type"]))[0], 413, "no more than declared");
+  assert.equal((await gm.post("audioadd", { id: st.id, seq: 0, data: "AAAA" })).code, 404, "the old 1 MiB parts are gone");
+  assert.equal((await store.presignedPut(st.put.url, mp3, st.put.headers["content-type"]))[0], 200);
+  assert.ok(store.files.has(`ht/aud/${st.id}`), "the file went straight to the store");
+  assert.equal((await p1.call("GET", { aud: st.id })).code, 404, "nothing plays until the server has checked it");
   assert.equal((await gm.post("audiodone", { id: st.id })).code, 200);
+  assert.equal((await gm.post("audiodone", { id: st.id })).code, 200, "a retried done is harmless");
   const list = (await p1.call("GET", { op: "audios" })).data;
   assert.deepEqual(list.tracks.map((t) => [t.name, t.bytes, t.type]), [["Cantina Band", mp3.length, "audio/mpeg"]]);
-  assert.equal(list.used - usedBefore, mp3.length, "counted against the storage cap");
+  assert.equal(list.used - usedBefore, mp3.length, "counted against the storage cap, once");
   // streaming: needs a session; ranges; never more than 4 MiB per response
   assert.equal((await browser().call("GET", { aud: st.id })).code, 401);
   let r = await p1.call("GET", { aud: st.id });
-  assert.equal(r.code, 206); assert.equal(r.headers["content-type"], "audio/mpeg");
-  assert.equal(r.headers["content-range"], `bytes 0-${mp3.length - 1}/${mp3.length}`);
-  assert.ok(Buffer.compare(r.data, mp3) === 0, "the whole small file comes back intact");
-  r = await p1.call("GET", { aud: st.id }, undefined, { range: `bytes=${PART - 5}-${PART + 4}` });
-  assert.equal(r.code, 206); assert.equal(r.headers["content-range"], `bytes ${PART - 5}-${PART + 4}/${mp3.length}`);
-  assert.ok(Buffer.compare(r.data, mp3.subarray(PART - 5, PART + 5)) === 0, "a range across two parts");
+  assert.equal(r.code, 206); assert.equal(r.headers["content-type"], "audio/mpeg", "the sniffed type, not what the upload said");
+  assert.equal(r.headers["content-range"], `bytes 0-${4 * MiB - 1}/${mp3.length}`);
+  assert.ok(Buffer.compare(r.data, mp3.subarray(0, 4 * MiB)) === 0, "the first 4 MiB come back intact");
+  r = await p1.call("GET", { aud: st.id }, undefined, { range: `bytes=${4 * MiB}-` });
+  assert.ok(Buffer.compare(r.data, mp3.subarray(4 * MiB)) === 0, "and the rest on the next range");
+  r = await p1.call("GET", { aud: st.id }, undefined, { range: `bytes=${MiB - 5}-${MiB + 4}` });
+  assert.equal(r.code, 206); assert.equal(r.headers["content-range"], `bytes ${MiB - 5}-${MiB + 4}/${mp3.length}`);
+  assert.ok(Buffer.compare(r.data, mp3.subarray(MiB - 5, MiB + 5)) === 0, "a range in the middle");
   r = await p1.call("GET", { aud: st.id }, undefined, { range: "bytes=-10" });
   assert.ok(Buffer.compare(r.data, mp3.subarray(mp3.length - 10)) === 0, "a suffix range");
   assert.equal((await p1.call("GET", { aud: st.id }, undefined, { range: `bytes=${mp3.length}-` })).code, 416);
   assert.equal((await p1.call("GET", { aud: "au000000000000" })).code, 404);
-  // not audio: refused on the first part, nothing kept
+  // not audio: refused when it's checked, and nothing kept
   const bad = (await gm.post("audiostart", { name: "notes.txt", bytes: 100 })).data;
-  assert.equal((await gm.post("audioadd", { id: bad.id, seq: 0, data: Buffer.alloc(100, 65).toString("base64") })).code, 415);
-  assert.equal((await gm.call("GET", { op: "audios" })).data.tracks.length, 1);
+  await store.presignedPut(bad.put.url, Buffer.alloc(100, 65), bad.put.headers["content-type"]);
+  assert.equal((await gm.post("audiodone", { id: bad.id })).code, 415);
+  assert.ok(!store.files.has(`ht/aud/${bad.id}`), "the rejected file is deleted from the store");
+  // an upload that didn't arrive whole, or at all
+  const short = (await gm.post("audiostart", { name: "short.mp3", bytes: 1000 })).data;
+  await store.presignedPut(short.put.url, mp3.subarray(0, 900), short.put.headers["content-type"]);
+  assert.equal((await gm.post("audiodone", { id: short.id })).code, 400);
+  const none = (await gm.post("audiostart", { name: "never.mp3", bytes: 1000 })).data;
+  assert.equal((await gm.post("audiodone", { id: none.id })).code, 400);
+  let now = (await gm.call("GET", { op: "audios" })).data;
+  assert.equal(now.tracks.length, 1); assert.equal(now.used - usedBefore, mp3.length, "failed uploads give their reservation back");
   // delete gives the space back
   assert.equal((await gm.post("audiodelete", { id: st.id })).code, 200);
-  const after = (await gm.call("GET", { op: "audios" })).data;
-  assert.equal(after.tracks.length, 0); assert.equal(after.used, usedBefore);
+  now = (await gm.call("GET", { op: "audios" })).data;
+  assert.equal(now.tracks.length, 0); assert.equal(now.used, usedBefore);
   assert.equal((await p1.call("GET", { aud: st.id })).code, 404);
+  assert.equal(store.files.size, 0, "the store is empty again");
+});
+
+test("table audio: room is reserved when an upload starts; an abandoned one is cleared after an hour", async () => {
+  fresh();
+  process.env.HOLOTABLE_STORAGE_MB = "";   // STORAGE_CAP is read at load; work against what's left of it instead
+  const { gm } = await table();
+  const cap = S.STORAGE_CAP;
+  await db.set(S.K.bytes(), String(cap - 1000));
+  const a = await gm.post("audiostart", { name: "a.mp3", bytes: 600 });
+  assert.equal(a.code, 200);
+  assert.equal((await gm.post("audiostart", { name: "b.mp3", bytes: 600 })).code, 413, "the first upload's room is already taken");
+  // an hour later nobody finished it: the next start clears it away and its room comes back
+  const t = JSON.parse(await db.hget(S.K.audios(), a.data.id)); t.added -= 3601; await db.hset(S.K.audios(), a.data.id, JSON.stringify(t));
+  await store.presignedPut(a.data.put.url, Buffer.alloc(600), "application/octet-stream");
+  assert.equal((await gm.post("audiostart", { name: "b.mp3", bytes: 600 })).code, 200);
+  assert.ok(!store.files.has(`ht/aud/${a.data.id}`), "what the abandoned upload sent is deleted");
+  assert.equal(await S.used(), cap - 1000 + 600);
+});
+
+// ---- the private Blob file store (#86)
+// What a table uploaded before the store looks like: everything in Redis. One image, a three-image
+// pack and a 2.5 MiB track in 1 MiB parts, counted against the storage cap as they were.
+async function seedLegacy() {
+  const MiB = 1024 * 1024;
+  const imgId = "0123456789abcdef01234567", packId = "old-pack-abc123", trackId = "au0123456789ab";
+  await db.set(S.K.img(imgId), PNG);
+  await db.hset(S.K.packs(), packId, JSON.stringify({ id: packId, name: "Old Pack", author: "", count: 3, bytes: 3 * PNG.length, done: true, added: 1, categories: { props: 3 } }));
+  await db.set(S.K.pack(packId), JSON.stringify(["a", "b", "c"].map((n) => ({ n, c: "props", w: null, h: null }))));
+  for (let i = 0; i < 3; i++) await db.set(S.K.asset(packId, i), PNG);
+  const mp3 = Buffer.alloc(Math.floor(2.5 * MiB));
+  mp3.write("ID3", 0, "latin1"); for (let i = 10; i < mp3.length; i++) mp3[i] = (i * 7) % 253;
+  for (let n = 0; n < 3; n++) await db.set(S.K.audioPart(trackId, n), mp3.subarray(n * MiB, Math.min(mp3.length, (n + 1) * MiB)));
+  await db.hset(S.K.audios(), trackId, JSON.stringify({ id: trackId, name: "Old Track", bytes: mp3.length, parts: 3, got: mp3.length, type: "audio/mpeg", done: true, added: 1 }));
+  const bytes = 4 * PNG.length + mp3.length;
+  await S.reserve(bytes);
+  return { imgId, packId, trackId, mp3, bytes };
+}
+// a whole track, read the way a browser does: range after range
+async function readTrack(b, id) {
+  const out = [];
+  for (let at = 0; ;) {
+    const r = await b.call("GET", { aud: id }, undefined, { range: `bytes=${at}-` });
+    if (r.code !== 206) return r.code;
+    out.push(Buffer.from(r.data));
+    const m = /bytes (\d+)-(\d+)\/(\d+)/.exec(r.headers["content-range"]);
+    at = +m[2] + 1;
+    if (at >= +m[3]) return Buffer.concat(out);
+  }
+}
+async function storedTrack(gm, name, bytes) {
+  const st = (await gm.post("audiostart", { name, bytes: bytes.length })).data;
+  assert.equal((await store.presignedPut(st.put.url, bytes, st.put.headers["content-type"]))[0], 200);
+  assert.equal((await gm.post("audiodone", { id: st.id })).code, 200);
+  return st.id;
+}
+async function storedPack(gm, name, n) {
+  const packId = (await gm.post("packstart", { name, bytes: n * PNG.length })).data.packId;
+  const items = Array.from({ length: n }, (_, i) => ({ n: "art" + i, c: "props", data: PNG.toString("base64") }));
+  assert.equal((await gm.post("packadd", { packId, seq: 0, items })).code, 200);
+  assert.equal((await gm.post("packdone", { packId })).code, 200);
+  return packId;
+}
+const WAV = Buffer.concat([Buffer.from("RIFF"), Buffer.alloc(4), Buffer.from("WAVE"), Buffer.alloc(1000, 7)]);
+
+test("file store: nothing in it, or still in Redis, is readable without a session; storage ops are the GM's", async () => {
+  const { gm, p1 } = await table();
+  const img = (await gm.post("upload", { purpose: "bg", dataUrl: PNG_URL })).data.url.split("=")[1];
+  const packId = await storedPack(gm, "Gate", 1);
+  const track = await storedTrack(gm, "tone.wav", WAV);
+  const old = await seedLegacy();
+  assert.ok(store.files.has(`ht/img/${img}`) && store.files.has(`ht/pack/${packId}/0`) && store.files.has(`ht/aud/${track}`), "the new files are in the store");
+  const anon = browser();
+  for (const q of [{ img }, { a: `${packId}.0` }, { aud: track }, { img: old.imgId }, { a: `${old.packId}.0` }, { aud: old.trackId }]) {
+    const mine = await p1.call("GET", q);
+    assert.ok(mine.code === 200 || mine.code === 206, `a player reads ${JSON.stringify(q)} (${mine.code})`);
+    assert.equal(mine.headers["x-content-type-options"], "nosniff");
+    assert.match(String(mine.headers["cache-control"] || ""), /private/, "never cached by a CDN");
+    assert.equal((await anon.call("GET", q)).code, 401, `no session: ${JSON.stringify(q)}`);
+  }
+  // a forged session is no better
+  anon.cookie = "ht_session=" + Buffer.from(JSON.stringify({ pid: "a".repeat(24), role: "gm", exp: 9e9 })).toString("base64url") + ".bm9wZQ";
+  assert.equal((await anon.call("GET", { img })).code, 401);
+  assert.equal((await anon.call("GET", { aud: track })).code, 401);
+  // the storage view and the move are the GM's
+  assert.equal((await p1.call("GET", { op: "files" })).code, 403);
+  for (const op of ["filemove", "audiostart", "audiodone", "audiodelete", "packstart"]) assert.equal((await p1.post(op, { id: track })).code, 403, op);
+  // no store address, signed or not, reaches anyone who reads the table
+  const seen = JSON.stringify([(await p1.poll()).data, (await gm.poll()).data, (await p1.call("GET", { op: "assets" })).data,
+    (await p1.call("GET", { op: "pack", id: packId })).data, (await p1.call("GET", { op: "audios" })).data,
+    (await gm.call("GET", { op: "files" })).data, (await gm.call("GET", { op: "export" })).data]);
+  assert.ok(!/blob\.vercel-storage\.com|__fakeblob/.test(seen), "no store URL in any response");
+});
+
+test("moving files out of Redis: everything arrives, nothing is lost, safe to stop part-way and to run again", async () => {
+  const { gm, p1 } = await table();
+  const old = await seedLegacy();
+  await gm.act("map.bg", { url: `/api/holotable?img=${old.imgId}` });   // the game shows the old image
+  const read = async () => ({
+    img: Buffer.from((await p1.call("GET", { img: old.imgId })).data).toString("base64"),
+    art: await Promise.all([0, 1, 2].map(async (n) => Buffer.from((await p1.call("GET", { a: `${old.packId}.${n}` })).data).toString("base64"))),
+    aud: (await readTrack(p1, old.trackId)).toString("base64"),
+  });
+  const before = await read();
+  assert.equal(before.aud, old.mp3.toString("base64"), "the old track plays from Redis");
+  const used = await S.used();
+  let rep = (await gm.call("GET", { op: "files" })).data;
+  assert.deepEqual(rep.left, { images: 1, packArt: 3, tracks: 1 }, "the GM sees what's still in Redis");
+  // the store fails part-way through the first run (the image is done, two of the pack's three images too)
+  let puts = 0;
+  const realPut = store.put.bind(store);
+  store.put = async (...a) => { if (++puts === 3) throw new FakeBlob.BlobServiceNotAvailable("down"); return realPut(...a); };
+  assert.equal((await gm.post("filemove", {})).code, 502, "the failure is reported");
+  store.put = realPut;
+  assert.deepEqual(await read(), before, "nothing is lost: every file still reads the same, from wherever it is");
+  assert.equal(await S.used(), used, "and the storage count hasn't moved");
+  rep = (await gm.call("GET", { op: "files" })).data;
+  assert.equal(rep.left.images, 0); assert.ok(rep.left.packArt >= 1 && rep.left.tracks === 1, JSON.stringify(rep.left));
+  // run again until it says it's finished
+  let r, runs = 0;
+  do { r = await gm.post("filemove", {}); assert.equal(r.code, 200); runs++; } while (r.data.more && runs < 10);
+  assert.deepEqual(r.data.left, { images: 0, packArt: 0, tracks: 0 });
+  assert.deepEqual(await read(), before, "every file reads the same from the store");
+  assert.equal(await S.used(), used, "moving doesn't count anything twice");
+  assert.equal(await db.getBuffer(S.K.img(old.imgId)), null, "the Redis copies are gone");
+  for (let n = 0; n < 3; n++) { assert.equal(await db.getBuffer(S.K.asset(old.packId, n)), null); assert.equal(await db.getBuffer(S.K.audioPart(old.trackId, n)), null); }
+  assert.deepEqual([...store.files.keys()].sort(), [`ht/aud/${old.trackId}`, `ht/img/${old.imgId}`, ...[0, 1, 2].map((n) => `ht/pack/${old.packId}/${n}`)].sort());
+  assert.equal((await gm.call("GET", { op: "files" })).data.listed.audio.b, old.mp3.length);
+  // a third run has nothing to do
+  r = await gm.post("filemove", {});
+  assert.equal(r.data.moved, 0); assert.equal(r.data.more, false);
+  // and deleting the moved files gives back exactly what they took
+  assert.equal((await gm.post("packdelete", { packId: old.packId })).code, 200);
+  assert.equal((await gm.post("audiodelete", { id: old.trackId })).code, 200);
+  await gm.act("map.bg", { url: null });
+  assert.equal(await S.used(), used - old.bytes);
+  assert.equal(store.files.size, 0, "the store is empty");
+  assert.equal(await db.hlen(S.K.files()), 0, "and so is its index");
+});
+
+test("moving files: a file deleted while it's being moved stays deleted, and is counted once", async () => {
+  const { gm } = await table();
+  const old = await seedLegacy();
+  const used = await S.used();
+  // the GM deletes the pack and the track at the moment the move has copied them but not yet removed the Redis copies
+  const realPut = store.put.bind(store);
+  store.put = async (p, ...a) => {
+    const out = await realPut(p, ...a);
+    if (p === `ht/pack/${old.packId}/0`) await gm.post("packdelete", { packId: old.packId });
+    if (p === `ht/aud/${old.trackId}`) await gm.post("audiodelete", { id: old.trackId });
+    return out;
+  };
+  let r;
+  do { r = await gm.post("filemove", {}); } while (r.code === 200 && r.data.more);
+  store.put = realPut;
+  assert.equal(r.code, 200);
+  assert.deepEqual([...store.files.keys()], [`ht/img/${old.imgId}`], "only the image is left, nothing that was deleted");
+  assert.equal(await S.used(), used - 3 * PNG.length - old.mp3.length, "what was deleted was given back once");
+});
+
+test("the GM's storage view shows what the store holds; tidying removes only old leftovers, only in this table's root", async () => {
+  const { gm } = await table();
+  await gm.post("upload", { purpose: "bg", dataUrl: PNG_URL });
+  await storedPack(gm, "Two", 2);
+  await storedTrack(gm, "tone.wav", WAV);
+  const pending = (await gm.post("audiostart", { name: "slow.wav", bytes: WAV.length })).data;   // an upload in progress
+  await store.presignedPut(pending.put.url, WAV, pending.put.headers["content-type"]);
+  const hourAgo = new Date(Date.now() - 2 * 3600e3);
+  const leftover = (p) => { store.files.set(p, { buf: PNG, contentType: "image/png", uploadedAt: hourAgo }); return p; };
+  const oldOne = leftover(`ht/img/${"f".repeat(24)}`);           // an upload that failed halfway, long ago
+  const newOne = `ht/img/${"e".repeat(24)}`;                       // written moments ago: it may be being listed right now
+  store.files.set(newOne, { buf: PNG, contentType: "image/png", uploadedAt: new Date() });
+  const preview = leftover(`htpv/img/${"d".repeat(24)}`);          // the previews' table: never touched from here
+  store.files.get(`ht/aud/${pending.id}`).uploadedAt = hourAgo;
+  const used = await S.used();
+  const rep = (await gm.call("GET", { op: "files" })).data;
+  assert.equal(rep.store, true); assert.equal(rep.complete, true);
+  assert.deepEqual([rep.held.images.n, rep.held.packArt.n, rep.held.audio.n], [3, 2, 2], "what's really in the store under ht/");
+  assert.deepEqual([rep.listed.images.n, rep.listed.packArt.n, rep.listed.audio.n], [1, 2, 1], "what the table lists");
+  assert.equal(rep.listed.audio.b, WAV.length);
+  assert.deepEqual(rep.unlisted, { n: 2, b: 2 * PNG.length }, "leftovers; the upload in progress isn't one");
+  assert.equal(rep.used, used); assert.equal(rep.cap, S.STORAGE_CAP);
+  const r = (await gm.post("filemove", {})).data;
+  assert.equal(r.tidied, 1);
+  assert.ok(!store.files.has(oldOne), "the old leftover is deleted");
+  assert.ok(store.files.has(newOne) && store.files.has(preview) && store.files.has(`ht/aud/${pending.id}`), "nothing else is");
+  assert.equal(await S.used(), used, "leftovers were never counted, so nothing is given back");
+  assert.equal((await gm.post("audiodone", { id: pending.id })).code, 200, "the upload in progress still finishes");
+});
+
+test("no file store connected: new uploads are refused with a clear message, files already kept still read", async () => {
+  const { gm, p1 } = await table();
+  const old = await seedLegacy();
+  const used = await S.used();
+  S.blobReady = () => false;
+  try {
+    for (const [op, body] of [["upload", { purpose: "bg", dataUrl: PNG_URL }], ["audiostart", { name: "a.mp3", bytes: 100 }],
+      ["packstart", { name: "P", bytes: 10 }], ["filemove", {}]]) {
+      const r = await gm.post(op, body);
+      assert.equal(r.code, 503, op); assert.match(r.data.error, /File storage isn't connected/);
+    }
+    assert.equal((await p1.call("GET", { img: old.imgId })).code, 200, "old files still read");
+    assert.equal((await readTrack(p1, old.trackId)).length, old.mp3.length);
+    const rep = (await gm.call("GET", { op: "files" })).data;
+    assert.equal(rep.store, false); assert.equal(rep.held, undefined);
+  } finally { S.blobReady = () => true; }
+  assert.equal(store.files.size, 0); assert.equal(await S.used(), used);
+});
+
+test("file store round trip: a populated table's images go out in the export and come back into an empty store", async () => {
+  let { gm, p1, p2 } = await table();
+  const up = async (b, body) => { const r = await b.post("upload", Object.assign({ dataUrl: PNG_URL }, body)); assert.equal(r.code, 200); return r.data.url; };
+  const kira = (await p1.act("char.save", { char: { name: "Kira", hp: { max: 20, current: 12 } } })).data.id;
+  await p2.act("char.save", { char: { name: "Rook" } });
+  const photo = await up(p1, { purpose: "photo", charId: kira, kind: "profile" });
+  const token = await up(p1, { purpose: "photo", charId: kira, kind: "token" });
+  const desertBg = await up(gm, { purpose: "bg" });
+  await gm.act("map.bg", { url: desertBg });
+  const packId = await storedPack(gm, "Props", 2);
+  await gm.act("prop.add", { src: `/api/holotable?a=${packId}.1`, name: "Crate", x: 1, y: 1, w: 1, h: 1, rot: 0 });
+  await gm.act("token.add", { charId: kira, x: 3, y: 4 });
+  await gm.act("scene.saveAs", { name: "Desert" });
+  await gm.act("scene.new", { name: "Cantina" });
+  const cantinaBg = await up(gm, { purpose: "bg" });
+  await gm.act("map.bg", { url: cantinaBg });
+  const handoutImg = await up(gm, { purpose: "handout" });
+  await gm.act("handout.save", { handout: { title: "Wanted poster", img: handoutImg, shared: true } });
+  const secretImg = await up(gm, { purpose: "handout" });
+  await gm.act("handout.save", { handout: { title: "The twist", img: secretImg, shared: false } });
+  const track = await storedTrack(gm, "Cantina Band.wav", WAV);
+  const images = [photo, token, desertBg, cantinaBg, handoutImg, secretImg];
+  assert.equal(new Set(images).size, 6);
+  for (const u of images) assert.ok(store.files.has(`ht/img/${u.split("=")[1]}`), "every upload is in the store");
+
+  const file = JSON.parse((await gm.call("GET", { op: "export" })).data);
+  assert.deepEqual(Object.keys(file._images).sort(), images.map((u) => u.split("=")[1]).sort(), "the export carries every image the game uses, scenes and handouts included");
+  for (const b64 of Object.values(file._images)) assert.equal(b64, PNG.toString("base64"));
+  const snap = (st) => JSON.stringify({ c: Object.values(st.characters).map((c) => [c.name, c.image, c.tokenImage, c.hp]).sort(),
+    bg: st.map.bgUrl, scenes: st.scenes.map((s) => s.name), handouts: st.handouts.map((h) => [h.title, h.img, h.shared]) });
+  const before = snap((await gm.poll()).data.state);
+
+  // 1. restore onto the same table: the library (pack, track) is the table's, untouched by a restore
+  assert.equal((await gm.post("restore", { campaign: file })).code, 200);
+  assert.equal(snap((await gm.poll()).data.state), before);
+  assert.equal((await p1.call("GET", { a: `${packId}.1` })).code, 200, "the pack still serves");
+  assert.equal(Buffer.compare(await readTrack(p1, track), WAV), 0, "the track still plays");
+
+  // 2. a brand-new deployment: empty database, empty store, then restore the file
+  ({ gm, p1, p2 } = await table());
+  assert.equal(store.files.size, 0);
+  assert.equal((await gm.post("restore", { campaign: file })).code, 200);
+  const st = (await gm.poll()).data.state;
+  assert.equal(snap(st), before.replace(/"Kira"/, '"Kira"'), "the game is back as it was");
+  for (const u of images) {
+    assert.ok(store.files.has(`ht/img/${u.split("=")[1]}`), "each image is back in the store");
+    assert.equal(Buffer.compare(Buffer.from((await gm.call("GET", { img: u.split("=")[1] })).data), PNG), 0);
+  }
+  assert.equal(await S.used(), 6 * PNG.length, "and counted once");
+  // players still see only what they should, and their images read
+  const pv = (await p1.poll()).data.state;
+  assert.deepEqual(pv.handouts.map((h) => h.title), ["Wanted poster"]);
+  assert.equal((await p1.call("GET", { img: handoutImg.split("=")[1] })).code, 200);
+  // restoring the same file again doesn't write anything twice
+  const puts = store.calls.filter(([m]) => m === "put").length;
+  assert.equal((await gm.post("restore", { campaign: file })).code, 200);
+  assert.equal(store.calls.filter(([m]) => m === "put").length, puts);
+  assert.equal(await S.used(), 6 * PNG.length);
 });
 
 test("table audio: the GM plays, pauses, loops and stops; everyone sees it with the server's clock", async () => {
