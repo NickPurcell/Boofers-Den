@@ -267,11 +267,20 @@ const hitDieFor = (name, fallback) => HIT_DIE[String(name || "").toLowerCase()] 
 // The screen wipe everyone sees when the GM changes the scene: a fresh id (so each change plays once)
 // and one of the wipe styles the page knows (left, right, down, up, diagonal, clock, iris, barn doors).
 const SCENE_WIPES = 8;
+// Combat starts (Start in initiative, or the combat view switched on): the movements the GM queued for it play
+// now, without a wipe. Returns how many pieces move.
+function combatMoves(camp) {
+  const moves = playMoves(camp, "combat");
+  if (moves.length) camp.sceneFx = { n: rid(), k: -1, moves };
+  return moves.length;
+}
 const sceneWipe = (camp) => { camp.sceneFx = { n: rid(), k: crypto.randomInt(SCENE_WIPES) }; };
 
 // Scene movements: the GM gives a token (or an asset piece, like a speeder) a scripted path (grid waypoints, like keyframes), an optional exit off
-// one edge of the board, and a start delay. They play once, right after that scene is loaded (or when the GM
-// presses Play): the server moves the tokens to where they end up and tells every screen the path to animate.
+// one edge of the board, and a start delay. Each plays once: right after that scene is loaded, or (when: "combat")
+// the moment combat starts, when the GM presses Start in initiative or switches the combat view on. "▶ Play
+// movements" plays them all now. The server moves the pieces to where they end up and tells every screen the
+// path to animate.
 const EXITS = ["n", "s", "e", "w"];
 function cleanMoves(m) {
   if (!m || typeof m !== "object") return undefined;
@@ -281,13 +290,16 @@ function cleanMoves(m) {
   if (!path.length && !exit) return undefined;
   const out = { path, exit, delay: clamp(Math.round(num(m.delay) * 2) / 2, 0, 20) };
   if (m.face) out.face = true;   // asset pieces: turn to face the way they're going
+  if (m.when === "combat") out.when = "combat";   // waits for combat to start instead of the next scene change
   return out;
 }
-function playMoves(camp) {
+// when: "scene" plays the movements waiting for a scene change, "combat" those waiting for combat; none plays all
+const playsNow = (m, when) => !!m && (!when || (m.when === "combat" ? "combat" : "scene") === when);
+function playMoves(camp, when) {
   const mp = camp.map, out = [];
   for (const t of mp.tokens || []) {
     const m = t.moves;
-    if (!m) continue;
+    if (!playsNow(m, when)) continue;
     delete t.moves;                                   // each scripted move plays once
     const pts = (m.path || []).map((q) => ({ x: q.x, y: q.y }));
     const last = pts.length ? pts[pts.length - 1] : { x: t.x, y: t.y }, sz = t.size || 1;
@@ -301,7 +313,7 @@ function playMoves(camp) {
   const heading = (a, b) => Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
   for (const pr of mp.props || []) {
     const m = pr.moves;
-    if (!m) continue;
+    if (!playsNow(m, when)) continue;
     delete pr.moves;
     const pw = num(pr.w, 1), ph = num(pr.h, 1);
     const pts = (m.path || []).map((q) => ({ x: r3(q.x + 0.5 - pw / 2), y: r3(q.y + 0.5 - ph / 2) }));
@@ -415,7 +427,7 @@ function applyAction(camp, cid, gm, type, p) {
   const chars = camp.characters, ini = camp.initiative, mp = camp.map;
   mp.props = mp.props || [];
   const need = (ok, why = "GM only") => { if (!ok) throw new Forbidden(why); };
-  if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, applyAction, shownName, Forbidden, Invalid });
+  if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, applyAction, shownName, combatMoves, Forbidden, Invalid });
 
   switch (type) {
     // ---- characters
@@ -585,6 +597,7 @@ function applyAction(camp, cid, gm, type, p) {
       } else if (type === "init.start") {
         Object.assign(ini, { active: true, turn: 0, round: 1 });
         addChat(camp, { system: true, text: "Combat begins! Roll initiative." });
+        combatMoves(camp);
       } else if (type === "init.clear") {
         Object.assign(ini, { entries: [], turn: 0, round: 1, active: false });
         addChat(camp, { system: true, text: "Combat has ended." });
@@ -691,7 +704,7 @@ function applyAction(camp, cid, gm, type, p) {
       camp.map.sceneId = sc.id;
       camp.activeScene = sc.id;
       sceneWipe(camp);
-      camp.sceneFx.moves = playMoves(camp);
+      camp.sceneFx.moves = playMoves(camp, "scene");   // movements waiting for combat keep waiting
       addChat(camp, { system: true, text: `The scene changes: ${sc.name}.` });
       return {};
     }

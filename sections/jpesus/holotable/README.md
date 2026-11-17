@@ -68,6 +68,9 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 250) caps the total size of uploaded i
     dashed lines. They play once, for everyone, right after that scene is loaded (after the wipe), and the pieces stay
     where they end. "▶ Play movements" plays the current board's movements without a wipe. Asset pieces can also "turn
     to face their path": point the piece along its first leg and it turns at each waypoint as it goes.
+  - **Movements for when combat starts (GM):** in the same bar, set "Plays" to "⚔ when combat starts". The path is drawn
+    red. It waits through scene changes, and plays the moment you press Start in initiative or switch the combat view on.
+    Say talks go wrong: the bounty hunter dives behind the crates and the sniper runs up to the balcony.
   - **The other buttons:** Save, Save as new, New blank, Rename and Delete. A table can keep up to 30 scenes.
   - **Images:** an uploaded image is deleted only once nothing on the table, saved scenes included, uses it.
 - **Level ups:** the GM grants a level to the party or to chosen characters. Each player gets a pop-up and a guided wizard:
