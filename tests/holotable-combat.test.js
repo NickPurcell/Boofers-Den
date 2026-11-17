@@ -2041,11 +2041,19 @@ test("fog of war: chat follows sight; a player blind to the shooter gets the hit
   }
   const ev = (await sam.state()).fight.events || [];
   assert.ok(!ev.some((e) => e.token === tokenOf(st0, "Raider").id), "no floating numbers on the unseen Raider's token");
+  // the tracker's turn line (review of #115): "Round N - Raider's turn." only to those who see the Raider
+  await gm.act("fight.end", {});   // to Bolt
+  await rae.act("fight.end", {});   // to the Lurker (GM-hidden: no line at all)
+  await gm.act("fight.end", {});   // round 2: Avery
+  await sam.act("fight.end", {});   // the Raider's turn again
+  const turnLine = (c) => c.some((m) => /Round 2 - Raider's turn\./.test(m.text || ""));
+  assert.equal(turnLine((await sam.state()).chat), false, "Avery's player isn't told the unseen Raider's turn");
+  assert.equal(turnLine((await rae.state()).chat), true, "Bolt's player, who sees it, is");
+  assert.equal(turnLine((await gm.state()).chat), true);
+  assert.ok(!JSON.stringify(await sam.state()).includes("Raider"), "nowhere in Sam's state");
   // fog off: lines are for everyone again
   await gm.act("fight.fog", { on: false });
-  const n1 = (await gm.state()).chat.length;
-  await gm.act("fight.undo", {});
-  await gm.act("fight.attack", { target: ids.bolt, attack: { name: "Blaster", bonus: 30, damage: "1d4", type: "energy", range: [60, 240] } });
+  await gm.act("fight.attack", { target: ids.bolt, attack: { name: "Blaster", bonus: 30, damage: "1d4", type: "energy", range: [60, 240] } });   // the Raider's fresh turn
   assert.ok((await sam.state()).chat.slice(-6).some((m) => /Raider attacks Bolt/.test(text(m))), "fog off: everyone reads it");
 });
 
