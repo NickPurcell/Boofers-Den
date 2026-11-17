@@ -32,36 +32,47 @@
     const dy = Math.max(0, b.y - (a.y + as - 1), a.y - (b.y + bs - 1));
     return Math.max(dx, dy);
   }
-  const feetBetween = (a, b) => squaresBetween(a, b) * FT;
+  // SW5e's grid rule (PHB ch. 9, "Playing on a Grid"): diagonals alternate 5 ft and 10 ft when measuring or moving
+  const gridFeet = (dx, dy) => { const d = Math.min(dx, dy), s = Math.max(dx, dy) - d; return (s + d + Math.floor(d / 2)) * FT; };
+  function feetBetween(a, b) {
+    const as = a.size || 1, bs = b.size || 1;
+    return gridFeet(Math.max(0, b.x - (a.x + as - 1), a.x - (b.x + bs - 1)), Math.max(0, b.y - (a.y + as - 1), a.y - (b.y + bs - 1)));
+  }
   const overlaps = (ax, ay, as, b) => ax < b.x + (b.size || 1) && b.x < ax + as && ay < b.y + (b.size || 1) && b.y < ay + as;
   const hostile = (a, b) => a.side !== b.side;
 
   // Every square the unit could move its top-left corner to with `feet` of movement: { "x,y": feet spent }.
-  // Each step to any of the 8 neighbours is one square. A unit may pass through allies but not through enemies, and
-  // may not stop where another unit stands. Units the mover can't see (hidden ones, for a player) are not in the world
-  // at all, so they never give themselves away by blocking.
+  // By SW5e's grid rule: each straight step is 5 ft, diagonals alternate 5 ft and 10 ft, another creature's space is
+  // difficult terrain (each step into it costs 5 ft more), and a prone unit crawls (every step costs double). A unit
+  // may pass through allies but not through enemies, and may not stop where another unit stands. Units the mover can't
+  // see (hidden ones, for a player) are not in the world at all, so they never give themselves away by blocking.
   function reachable(world, unitId, feet) {
     const u = world.units[unitId];
     if (!u) return {};
     const others = Object.values(world.units).filter((o) => o.id !== u.id && !o.down);
-    const size = u.size || 1, steps = Math.floor(Math.max(0, feet) / FT);
+    const size = u.size || 1, budget = Math.max(0, feet), crawl = (u.conditions || []).includes('Prone') ? 2 : 1;
     const blocked = (x, y) => others.some((o) => hostile(u, o) && overlaps(x, y, size, o));
     const occupied = (x, y) => others.some((o) => overlaps(x, y, size, o));
-    const seen = { [`${u.x},${u.y}`]: 0 }, out = {};
-    let frontier = [[u.x, u.y]];
-    for (let s = 1; s <= steps && frontier.length; s++) {
-      const next = [];
-      for (const [x, y] of frontier) {
-        for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
-          if (!dx && !dy) continue;
-          const nx = x + dx, ny = y + dy, k = `${nx},${ny}`;
-          if (k in seen || nx < -500 || ny < -500 || nx > 1000 || ny > 1000 || blocked(nx, ny)) continue;
-          seen[k] = s * FT;
-          next.push([nx, ny]);
-          if (!occupied(nx, ny)) out[k] = s * FT;
-        }
+    const best = {}, out = {};
+    const key = (x, y, p) => `${x},${y},${p}`;
+    let open = [[0, u.x, u.y, 0]];   // [feet, x, y, diagonal parity]
+    best[key(u.x, u.y, 0)] = 0;
+    while (open.length) {
+      open.sort((p, q) => p[0] - q[0]);
+      const [c, x, y, par] = open.shift();
+      if (c > best[key(x, y, par)]) continue;
+      for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+        if (!dx && !dy) continue;
+        const nx = x + dx, ny = y + dy;
+        if (nx < -500 || ny < -500 || nx > 1000 || ny > 1000 || blocked(nx, ny)) continue;
+        const diag = dx && dy, np = diag ? 1 - par : par;
+        const step = ((diag && par ? 2 * FT : FT) + (occupied(nx, ny) ? FT : 0)) * crawl;
+        const nc = c + step, k = key(nx, ny, np);
+        if (nc > budget || (best[k] !== undefined && best[k] <= nc)) continue;
+        best[k] = nc;
+        open.push([nc, nx, ny, np]);
+        if (!occupied(nx, ny) && (out[`${nx},${ny}`] === undefined || out[`${nx},${ny}`] > nc)) out[`${nx},${ny}`] = nc;
       }
-      frontier = next;
     }
     return out;
   }
@@ -105,27 +116,34 @@
   // What each condition does to the arithmetic, following HoloTable's own descriptions in rules.js (CONDITIONS).
   // Only the plainly mechanical parts are here; a condition with no entry is a label, as it is today. Later
   // conditions (levels of Slowed or Exhaustion, Ignited's damage) are new entries, not new code.
+  // Checked against SW5e's Player's Handbook, appendix A (not only HoloTable's one-line tooltips), in our own words.
+  // Conditions with levels or amounts (Slowed, Corroded, Ignited) and line-of-sight parts are not here yet.
   const CONDITION_EFFECTS = {
     Blinded: { attacks: 'dis', attacked: 'adv' },
-    Frightened: { attacks: 'dis' },
+    Charmed: { charmed: true },                              // can't attack whoever charmed it (when the combat view knows who)
+    Frightened: { attacks: 'dis' },                          // the book: while the source is in sight (sight isn't modelled)
     Grappled: { speed0: true },
-    Incapacitated: { noActions: true },
+    Incapacitated: { noActions: true },                      // no actions and no reactions
     Invisible: { attacks: 'adv', attacked: 'dis' },
-    Paralyzed: { noActions: true, speed0: true, autoFail: ['str', 'dex'], attacked: 'adv', meleeCrit: true },
-    Petrified: { noActions: true, speed0: true, autoFail: ['str', 'dex'], attacked: 'adv' },
+    Paralyzed: { noActions: true, speed0: true, autoFail: ['str', 'dex'], attacked: 'adv', closeCrit: true },
+    Petrified: { noActions: true, speed0: true, autoFail: ['str', 'dex'], attacked: 'adv', resistAll: true, immune: ['poison'], condImmune: ['Poisoned', 'Diseased'] },
     Poisoned: { attacks: 'dis' },
-    Prone: { attacks: 'dis', attacked: 'near' },          // near: advantage within 5 ft, disadvantage beyond
-    Restrained: { speed0: true, attacks: 'dis', attacked: 'adv', saveDis: ['dex'] },
-    Shocked: { speedHalf: true, noReactions: true },
+    Prone: { attacks: 'prone', attacked: 'near', crawl: true }, // melee, and ranged within 30 ft, at disadvantage; crawls
+    Restrained: { speed0: true, attacks: 'dis', attacked: 'adv', saveDis: ['dex'] },   // the book: 4 slowed levels, so speed 0
+    Shocked: { noReactions: true, oneAction: true },         // an action or a bonus action, not both; speed is not affected
     Stunned: { noActions: true, speed0: true, autoFail: ['str', 'dex'], attacked: 'adv' },
-    Unconscious: { noActions: true, speed0: true, autoFail: ['str', 'dex'], attacked: 'adv', meleeCrit: true },
+    Unconscious: { noActions: true, speed0: true, autoFail: ['str', 'dex'], attacked: 'adv', closeCrit: true },
+    Weakened: { weakened: true },                            // healing halved; half of a positive ability modifier
   };
   const effectsOf = (u) => (u.conditions || []).map((c) => [c, CONDITION_EFFECTS[c]]).filter(([, e]) => e);
   const has = (u, flag) => effectsOf(u).find(([, e]) => e[flag]);
   const INCAPACITATING = (u) => !!has(u, 'noActions');
   // conditions join the reasons a roll tilts: the attacker's own, then the target's
   REASONS.push(
-    { id: 'self', when: (c) => effectsOf(c.actor).some(([, e]) => e.attacks), each: (c) => effectsOf(c.actor).filter(([, e]) => e.attacks).map(([n, e]) => ({ [e.attacks]: true, text: `you are ${n.toLowerCase()}` })) },
+    { id: 'self', when: (c) => effectsOf(c.actor).some(([, e]) => e.attacks), each: (c) => effectsOf(c.actor).filter(([, e]) => e.attacks)
+      .filter(([, e]) => e.attacks !== 'prone' || !c.ranged || c.feet <= 30)   // prone: melee, or ranged at a target within 30 ft
+      .map(([n, e]) => ({ [e.attacks === 'prone' ? 'dis' : e.attacks]: true, text: `you are ${n.toLowerCase()}` })) },
+    { id: 'exhausted', when: (c) => (+c.actor.exhaustion || 0) >= 3, each: () => [{ dis: true, text: 'exhaustion' }] },
     { id: 'target', when: (c) => effectsOf(c.target).some(([, e]) => e.attacked), each: (c) => effectsOf(c.target).filter(([, e]) => e.attacked).map(([n, e]) => {
       const way = e.attacked === 'near' ? (c.feet <= FT ? 'adv' : 'dis') : e.attacked;
       return { [way]: true, text: `${c.target.name} is ${n.toLowerCase()}` };
@@ -138,12 +156,14 @@
     if (!a || !t) return { legal: false, why: 'No such target.' };
     if (a.id === t.id) return { legal: false, why: "You can't attack yourself." };
     if (t.ac == null || t.ac === '') return { legal: false, why: `${t.name} has no AC set.` };
+    if ((world.effects || []).some((ef) => ef.unit === a.id && ef.condition === 'Charmed' && ef.source === t.id)) return { legal: false, why: `${a.name} is charmed by ${t.name} and can't attack it.` };
     const feet = feetBetween(a, t);
     const inReach = attack.melee && feet <= attack.melee;
     const inRange = attack.range && feet <= attack.range[1];
     if (!inReach && !inRange) return { legal: false, why: `${t.name} is ${feet} ft away: out of ${attack.range ? 'range' : 'reach'}.`, feet };
     const ranged = !inReach;
-    const enemyClose = Object.values(world.units).some((o) => o.id !== a.id && hostile(a, o) && !o.down && feetBetween(a, o) <= FT);
+    const enemyClose = Object.values(world.units).some((o) => o.id !== a.id && hostile(a, o) && !o.down && feetBetween(a, o) <= FT
+      && !(o.conditions || []).includes('Blinded') && !INCAPACITATING(o));   // an enemy who can see you and isn't incapacitated
     const ctx = { feet, ranged, enemyClose, attack, actor: a, target: t };
     const tilts = REASONS.filter((r) => r.when(ctx)).flatMap((r) => (r.each ? r.each(ctx) : [{ dis: !!r.dis, adv: !!r.adv, text: r.text }]))
       .map((x) => ({ dis: !!x.dis, adv: !!x.adv, text: x.text }));
@@ -326,8 +346,8 @@
   // centre is. Cones open to the same width as their length (a half-angle whose tangent is 1/2); spheres and
   // cylinders are a radius around the point; cubes run from the point away from the caster; lines have a width.
   const HALF_CONE = Math.atan(0.5);
-  function ruler(a, b) { // feet between two points, by the same diagonal rule as movement
-    return Math.max(Math.abs(Math.floor(b.x) - Math.floor(a.x)), Math.abs(Math.floor(b.y) - Math.floor(a.y))) * FT;
+  function ruler(a, b) { // feet between two points, by the same grid rule as movement
+    return gridFeet(Math.abs(Math.floor(b.x) - Math.floor(a.x)), Math.abs(Math.floor(b.y) - Math.floor(a.y)));
   }
   function areaSquares(area, origin, aim) {
     const n = Math.max(1, Math.round((area.size || FT) / FT)), out = [];
@@ -393,9 +413,11 @@
     id = id || world.turnId;
     const u = world.units[id], s = spentOf(world, id);
     let speed = u ? Math.max(0, +u.speed || 0) : 0;
-    if (u && has(u, 'speed0')) speed = 0; else if (u && has(u, 'speedHalf')) speed = Math.floor(speed / 2 / FT) * FT;
+    const ex = u ? +u.exhaustion || 0 : 0;   // exhaustion on the sheet: level 2 is one slowed level, level 5 four
+    if (u && (has(u, 'speed0') || ex >= 5)) speed = 0; else if (ex >= 2) speed = Math.max(0, speed - 15);
     const out = has(u || {}, 'noActions'), noReact = out || has(u || {}, 'noReactions');
-    return { key: s.key, moved: s.move, speed, moveLeft: Math.max(0, speed - s.move), action: !out && s.action < 1, bonus: !out && s.bonus < 1, reaction: !noReact && s.reaction < 1 };
+    const one = has(u || {}, 'oneAction') && (s.action >= 1 || s.bonus >= 1);   // shocked: an action or a bonus action, not both
+    return { key: s.key, moved: s.move, speed, moveLeft: Math.max(0, speed - s.move), action: !out && !one && s.action < 1, bonus: !out && !one && s.bonus < 1, reaction: !noReact && s.reaction < 1 };
   }
   // a new turn gives its unit full movement, an action, a bonus action and its reaction back
   function fresh(world) {
@@ -434,7 +456,7 @@
         const nat = r.nat, fumble = nat === 1;
         let crit = nat === 20;
         const hit = crit || (!fumble && r.total >= t.ac);
-        if (hit && !pv.ranged && pv.feet <= FT && has(t, 'meleeCrit')) crit = true;   // a melee hit on the helpless is a critical
+        if (hit && pv.feet <= FT && has(t, 'closeCrit')) crit = true;   // any hit from within 5 ft on the paralyzed or unconscious
         w.spent[me.id].action += 1;
         const tilt = pv.mode === 'normal' ? '' : ` with ${pv.mode === 'adv' ? 'advantage' : 'disadvantage'} (${pv.tilts.map((x) => x.text).join(', ')})`;
         const log = [{ kind: 'attack', roll: r, expr: pv.expr, text: `${me.name} attacks ${t.name} with ${attack.name}${tilt}: ${r.total} against AC ${t.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}` }];
@@ -518,7 +540,7 @@
           // conditions the ability puts on its target, with how long they last
           if (!half) for (const ap of ab.applies || []) {
             if (!ap.condition) continue;
-            if ((t.condImmune || []).some((c) => String(c).toLowerCase() === String(ap.condition).toLowerCase())) { log.push({ unit: t.id, text: `${t.name} can't be ${String(ap.condition).toLowerCase()}.` }); continue; }
+            if ((t.condImmune || []).concat(...effectsOf(t).map(([, e]) => e.condImmune || [])).some((c) => String(c).toLowerCase() === String(ap.condition).toLowerCase())) { log.push({ unit: t.id, text: `${t.name} can't be ${String(ap.condition).toLowerCase()}.` }); continue; }
             t.conditions = Array.from(new Set((t.conditions || []).concat(ap.condition)));
             const until = ap.until || { ends: 'end', of: 'self', rounds: 1 };
             w.effects.push({ id: `${me.id}-${ab.key}-${t.id}-${w.effects.length}`, unit: t.id, condition: ap.condition, ends: until.ends, of: until.of === 'target' ? t.id : me.id,
@@ -538,13 +560,22 @@
           } else if (ab.heal) {
             const expr = diceExpr(ab.heal.dice, ab.heal.add);
             const d = roll(expr);
-            const amount = Math.max(0, d.total);
+            const amount = Math.max(0, has(t, 'weakened') ? Math.floor(d.total / 2) : d.total);   // weakened: healing halved
             if (t.hp != null) { t.hp = t.maxHp != null ? Math.min(t.maxHp, t.hp + amount) : t.hp + amount; if (t.hp > 0) delete t.down; }
             log.push({ unit: t.id, kind: 'heal', roll: d, expr, text: `${t.name} regains ${amount} hit points.` });
             events.push({ kind: 'heal', unit: t.id, amount });
           } else events.push({ kind: 'hit', unit: t.id, amount: 0 });
         }
         return { ok: true, world: w, log, events, spentPools: cost };
+      }
+      case 'stand': {   // standing up from prone costs half your speed (and can't be done at speed 0)
+        if (!(me.conditions || []).includes('Prone')) return no(`${me.name} isn't prone.`);
+        const half = Math.ceil(b.speed / 2 / FT) * FT;
+        if (!b.speed || b.moveLeft < half) return no(`${me.name} needs ${half || 'some'} ft of movement to stand up.`);
+        w.spent[me.id].move += half;
+        me.conditions = me.conditions.filter((c) => c !== 'Prone');
+        w.effects = (w.effects || []).filter((ef) => !(ef.unit === me.id && ef.condition === 'Prone'));
+        return { ok: true, world: w, log: [{ text: `${me.name} stands up (${half} ft).` }], events: [] };
       }
       case 'end':
         return { ok: true, world: w, log: [{ text: `${me.name} ends the turn.` }], events: [], endTurn: true };
@@ -622,7 +653,11 @@
   // covers unenhanced weapons doesn't apply to an enhanced weapon or to a power.
   function defended(t, amount, type, how) {
     const applies = (list) => (list || []).some((d) => d.type === type && (!d.only || how === 'weapon'));
-    if (!type || amount <= 0) return { amount, note: '' };
+    if (amount <= 0) return { amount, note: '' };
+    const pet = has(t, 'resistAll');
+    if (pet && (pet[1].immune || []).includes(type)) return { amount: 0, note: 'immune' };
+    if (pet) return { amount: Math.floor(amount / 2), note: 'resisted' };   // petrified: resistance to all damage
+    if (!type) return { amount, note: '' };
     if (applies(t.immune)) return { amount: 0, note: 'immune' };
     let n = amount, note = '';
     if (applies(t.resist)) { n = Math.floor(n / 2); note = 'resisted'; }
@@ -658,6 +693,7 @@
         speed: ch ? +ch.speed || 30 : +((table.npcSpeed || {})[e.id]) || 30,
         pools: ch ? Object.fromEntries(resourcesOf(ch, rules).map((r) => [r.key, r])) : {},
         conditions: Array.from(new Set([].concat(e.conditions || [], ch ? ch.conditions || [] : []))),
+        exhaustion: ch ? +ch.exhaustion || 0 : 0,
         ...(() => { const d = ch ? (table.defenses || {})[e.charId] || {} : (table.npcStats || {})[e.id] || {};
           return { resist: d.resist || [], immune: d.immune || [], vuln: d.vuln || [], condImmune: d.condImmune || [] }; })(),
         saves: ch && rules ? Object.fromEntries(ABILS.map((ab) => [ab, rules.saveBonus(ch, ab)])) : Object.assign({}, ((table.npcStats || {})[e.id] || {}).saves),
@@ -673,5 +709,5 @@
 
   return { FT, TURN, squaresBetween, feetBetween, reachable, readRange, attacksOf, attackFromBehavior, REASONS, preview, budget, apply, takeDamage, buildWorld, turnKey,
     cleanResources, resourcesOf, atLevel, spend, rest, powerNumbers, resolvePower, weaponAbility, abilitiesOf, inReachOf, cleanAbility, setPoolUsed,
-    ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE };
+    ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet };
 });

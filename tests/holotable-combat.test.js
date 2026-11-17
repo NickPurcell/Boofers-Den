@@ -24,13 +24,15 @@ function world(units, turnId, extra = {}) {
 const blade = { name: "Vibroblade", bonus: 5, damage: "1d8+3", crit: "2d8+3", type: "kinetic", melee: 5, range: null };
 const rifle = { name: "Blaster rifle", bonus: 5, damage: "1d8+3", crit: "2d8+3", type: "energy", melee: 0, range: [100, 400] };
 
-test("combat engine: distance in feet on the grid, diagonals count as one square", () => {
-  const a = { x: 0, y: 0 }, b = { x: 1, y: 1 }, c = { x: 4, y: 1 }, big = { x: 2, y: 2, size: 2 };
-  assert.equal(E.feetBetween(a, b), 5);
-  assert.equal(E.feetBetween(a, c), 20);
+test("combat engine: distance by SW5e's grid rule, diagonals alternating 5 ft and 10 ft", () => {
+  const a = { x: 0, y: 0 }, big = { x: 3, y: 3, size: 2 };
+  assert.equal(E.feetBetween(a, { x: 1, y: 1 }), 5, "the first diagonal is 5 ft");
+  assert.equal(E.feetBetween(a, { x: 2, y: 2 }), 15, "the second is 10 ft");
+  assert.equal(E.feetBetween(a, { x: 3, y: 3 }), 20);
+  assert.equal(E.feetBetween(a, { x: 4, y: 1 }), 20, "three straight and one diagonal");
   assert.equal(E.feetBetween(a, a), 0);
-  assert.equal(E.feetBetween(a, big), 10, "a 2×2 creature is measured from its nearest square");
-  assert.equal(E.feetBetween(big, { x: 4, y: 3 }), 5);
+  assert.equal(E.feetBetween(a, big), 20, "a 2×2 creature is measured from its nearest square: three diagonals");
+  assert.equal(E.feetBetween(big, { x: 5, y: 4 }), 5);
 });
 
 test("combat engine: reach and range from the weapon's properties", () => {
@@ -69,16 +71,20 @@ test("combat engine: movement reaches 30 ft, passes allies, never stops on anyon
   const raider = unit({ id: "r1", name: "Raider", side: "npc", x: 0, y: 2 });
   const w = world([ava, bo, raider], "ava");
   const reach = E.reachable(w, "ava", 30);
-  assert.equal(reach["6,0"], 30);
-  assert.equal(reach["7,0"], undefined, "31 ft is too far");
-  assert.equal(reach["6,6"], 30, "diagonals cost one square");
+  assert.equal(reach["5,0"], 30, "round the ally diagonally (5 + 10), then three straight");
+  assert.equal(reach["6,0"], undefined, "35 ft: the ally in the way costs extra either way");
+  assert.equal(E.reachable(world([ava], "ava"), "ava", 30)["6,0"], 30, "with nobody in the way, six straight squares");
+  assert.equal(reach["4,4"], 30, "four diagonals: 5 + 10 + 5 + 10");
+  assert.equal(reach["5,5"], undefined, "five diagonals cost 35 ft");
   assert.equal(reach["1,0"], undefined, "an ally's square: may pass, may not stop");
-  assert.equal(reach["2,0"], 10, "through the ally");
+  assert.equal(reach["2,0"], 15, "past the ally: its space is difficult terrain (or round it, diagonally)");
   assert.equal(reach["0,2"], undefined, "an enemy's square");
   assert.equal(E.reachable(w, "ava", 0)["1,1"], undefined);
   // a wall of three enemies: the square behind it costs the way round (20 ft), not the way through (15 ft)
   const wall = [-1, 0, 1].map((x) => unit({ id: "w" + x, name: "Guard", side: "npc", x, y: 2 }));
-  assert.equal(E.reachable(world([ava, ...wall], "ava"), "ava", 30)["0,3"], 20);
+  assert.equal(E.reachable(world([ava, ...wall], "ava"), "ava", 30)["0,3"], 25);
+  // prone: crawling costs double
+  assert.equal(E.reachable(world([Object.assign({}, ava, { conditions: ["Prone"] })], "ava"), "ava", 30)["3,0"], 30);
 });
 
 test("combat engine: whose turn it is, and what the turn has left", () => {
@@ -325,8 +331,8 @@ test("abilities: an attack roll, healing, and a creature whose save bonus isn't 
   assert.match(r.log[1].text, /no save bonus known/);
 });
 
-test("measuring: a ruler by the same diagonal rule as movement", () => {
-  assert.equal(E.ruler({ x: 0.5, y: 0.5 }, { x: 4.5, y: 2.5 }), 20);
+test("measuring: a ruler by the same grid rule as movement", () => {
+  assert.equal(E.ruler({ x: 0.5, y: 0.5 }, { x: 4.5, y: 2.5 }), 25, "two straight, two diagonal (5 + 10)");
   assert.equal(E.ruler({ x: 3.2, y: 1.9 }, { x: 3.7, y: 1.1 }), 0, "the same square");
 });
 
@@ -379,7 +385,10 @@ test("conditions: they tilt attack rolls both ways, and Prone depends on distanc
 test("conditions: speed, actions and saves", () => {
   const w = (c) => world([unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0, conditions: c }), unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 20 })], "ava");
   assert.equal(E.budget(w(["Restrained"])).moveLeft, 0);
-  assert.deepEqual([E.budget(w(["Shocked"])).moveLeft, E.budget(w(["Shocked"])).reaction], [15, false]);
+  assert.deepEqual([E.budget(w(["Shocked"])).moveLeft, E.budget(w(["Shocked"])).reaction], [30, false], "shocked: no reactions; speed is not affected");
+  // shocked: an action or a bonus action, not both
+  const sh = Object.assign({}, w(["Shocked"]), { spent: { ava: { key: "1:ava", move: 0, action: 1, bonus: 0, reaction: 0 } } });
+  assert.deepEqual([E.budget(sh).action, E.budget(sh).bonus], [false, false]);
   assert.deepEqual([E.budget(w(["Stunned"])).action, E.budget(w(["Stunned"])).moveLeft], [false, 0]);
   assert.match(E.apply(w(["Stunned"]), { type: "attack", unit: "ava", target: "r1", attack: blade }, dice().roll).why, /stunned and can't act/);
   // a melee hit against a paralyzed creature within 5 ft is a critical
@@ -469,6 +478,43 @@ test("defences: in an attack, in a power, and against a condition", () => {
   assert.deepEqual([r.world.units.r1.hp, r.world.units.r1.conditions || []], [30, []]);
   assert.ok(r.log.some((l) => /can't be poisoned/.test(l.text)));
   assert.ok(r.log.some((l) => /takes 0 poison damage \(immune\)/.test(l.text)));
+});
+
+test("SW5e's conditions, checked against its appendix: prone, the helpless, petrified, exhaustion, weakened, charmed", () => {
+  const ava = (o) => unit(Object.assign({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 }, o));
+  const r1 = (o) => unit(Object.assign({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0 }, o));
+  // prone: melee at disadvantage; ranged only against a target within 30 ft
+  assert.equal(E.preview(world([ava({ conditions: ["Prone"] }), r1()], "ava"), "ava", "r1", blade).mode, "dis");
+  assert.equal(E.preview(world([ava({ conditions: ["Prone"] }), r1({ x: 5 })], "ava"), "ava", "r1", rifle).mode, "dis", "25 ft away");
+  assert.equal(E.preview(world([ava({ conditions: ["Prone"] }), r1({ x: 8 })], "ava"), "ava", "r1", rifle).mode, "normal", "40 ft away");
+  // standing up costs half your speed
+  let r = E.apply(world([ava({ conditions: ["Prone"] }), r1({ x: 9 })], "ava"), { type: "stand", unit: "ava" }, dice().roll);
+  assert.deepEqual([r.world.units.ava.conditions, E.budget(r.world).moveLeft], [[], 15]);
+  // any hit from within 5 ft of an unconscious target is a critical, a ranged one too
+  const d = dice({ total: 15, nat: 9 }, { total: 9 });
+  r = E.apply(world([ava(), r1({ conditions: ["Unconscious"] })], "ava"), { type: "attack", unit: "ava", target: "r1", attack: Object.assign({}, rifle, { range: [100, 400] }) }, d.roll);
+  assert.equal(r.events[0].kind, "crit");
+  // petrified: resistance to all damage, immune to poison
+  assert.deepEqual(E.defended({ conditions: ["Petrified"] }, 9, "fire", "power"), { amount: 4, note: "resisted" });
+  assert.deepEqual(E.defended({ conditions: ["Petrified"] }, 9, "poison", "power"), { amount: 0, note: "immune" });
+  // exhaustion from the sheet: level 2 slows 15 ft, level 3 adds disadvantage on attacks, level 5 stops movement
+  assert.equal(E.budget(world([ava({ exhaustion: 2 })], "ava")).moveLeft, 15);
+  assert.equal(E.preview(world([ava({ exhaustion: 3 }), r1()], "ava"), "ava", "r1", blade).mode, "dis");
+  assert.equal(E.budget(world([ava({ exhaustion: 5 })], "ava")).moveLeft, 0);
+  // a ranged attack next to an incapacitated or blinded enemy is not at disadvantage for it
+  assert.equal(E.preview(world([ava(), r1({ x: 1, conditions: ["Stunned"] }), unit({ id: "t", name: "T", side: "npc", x: 8, y: 0 })], "ava"), "ava", "t", rifle).mode, "normal");
+  // charmed by someone: can't attack them
+  const w = Object.assign(world([ava({ conditions: ["Charmed"] }), r1()], "ava"), { effects: [{ unit: "ava", condition: "Charmed", source: "r1" }] });
+  assert.match(E.preview(w, "ava", "r1", blade).why, /charmed by Raider/);
+});
+
+test("SW5e: weakened halves healing", () => {
+  const ch = consular();
+  const ab = E.abilitiesOf(ch, R, { "mind shove": { use: "action", range: [30, 30], heal: { dice: "2d4" } } })[0];
+  const me = unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, pools: Object.fromEntries(E.resourcesOf(ch, R).map((x) => [x.key, x])) });
+  const pal = unit({ id: "pal", name: "Pal", side: "pc", x: 1, y: 0, hp: 5, maxHp: 20, conditions: ["Weakened"] });
+  const r = E.apply(world([me, pal], "cass"), { type: "use", unit: "cass", ability: ab, target: "pal" }, dice({ total: 7 }).roll);
+  assert.equal(r.world.units.pal.hp, 8, "7 healing, halved to 3");
 });
 
 /* ---------------------------------------------------------------- the server's fight actions, through the API */
@@ -795,4 +841,14 @@ test("defences through the API: a creature's from its stat block (GM), a charact
   assert.equal((await rae.act("fight.defenses", { charId: avery, resist: ["fire"] })).code, 403);
   assert.equal((await sam.act("fight.defenses", { charId: avery, resist: ["fire", "plasma"], vuln: ["ion"] })).code, 200);
   assert.deepEqual((await rae.state()).fight.defenses[avery], { resist: [{ type: "fire", only: null }], immune: [], vuln: [{ type: "ion", only: null }], condImmune: [] });
+});
+
+test("standing up through the API: a prone character stands for half its speed", async () => {
+  const { gm, sam, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  await gm.act("init.update", { id: ids.avery, fields: { conditions: ["Prone"] } });
+  assert.equal((await sam.act("fight.stand", {})).code, 200);
+  const st = await sam.state();
+  assert.deepEqual([st.initiative.entries.find((e) => e.id === ids.avery).conditions, st.fight.budget.moveLeft], [[], 15]);
+  assert.equal((await sam.act("fight.stand", {})).code, 400, "not prone any more");
 });

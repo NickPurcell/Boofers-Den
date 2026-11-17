@@ -325,7 +325,7 @@ function apply(camp, cid, gm, type, p, G) {
       G.addChat(camp, { system: true, text: `The GM undid the last combat step (${s.label}).` });
       return {};
     }
-    case "fight.move": case "fight.attack": case "fight.end": case "fight.use": {
+    case "fight.move": case "fight.attack": case "fight.end": case "fight.use": case "fight.stand": {
       if (!f.on) throw new G.Invalid("The combat view is off.");
       const cur = ini.entries[ini.turn];
       if (!ini.active || !cur) throw new G.Invalid("Combat hasn't started: start initiative first.");
@@ -347,6 +347,7 @@ function apply(camp, cid, gm, type, p, G) {
       let act;
       if (type === "fight.move") act = { type: "move", unit: cur.id, x: p.x, y: p.y };
       else if (type === "fight.end") act = { type: "end", unit: cur.id };
+      else if (type === "fight.stand") act = { type: "stand", unit: cur.id };
       else if (type === "fight.use") {
         const ch = cur.charId && camp.characters[cur.charId];
         if (!ch) throw new G.Invalid("Creatures use their attacks for now.");
@@ -366,7 +367,7 @@ function apply(camp, cid, gm, type, p, G) {
       }
       const r = E.apply(world, act, (expr) => G.rollDice(expr));
       if (!r.ok) throw new G.Invalid(r.why);
-      const label = type === "fight.move" ? `${cur.name} moved` : type === "fight.end" ? `${cur.name} ended the turn` : type === "fight.use" ? `${cur.name} used ${act.ability.name}` : `${cur.name}'s attack`;
+      const label = type === "fight.stand" ? `${cur.name} stood up` : type === "fight.move" ? `${cur.name} moved` : type === "fight.end" ? `${cur.name} ended the turn` : type === "fight.use" ? `${cur.name} used ${act.ability.name}` : `${cur.name}'s attack`;
       snapshot(camp, label);
       writeBack(camp, cid, world, r.world, G);
       // the roll lines go to chat as rolls, the way HoloTable shows every roll; a hidden creature's go to the GM only
@@ -374,7 +375,7 @@ function apply(camp, cid, gm, type, p, G) {
       const ch = cur.charId && camp.characters[cur.charId];
       for (const line of r.log) {
         if (!line.roll) {   // an ability's opening line (what it costs) goes to chat too; moves and turn ends don't
-          if (type === "fight.use") G.addChat(camp, Object.assign({ system: true, text: str(line.text, 200) }, secret ? { to: ["@gm"], private: true } : {}));
+          if (type === "fight.use" || type === "fight.stand") G.addChat(camp, Object.assign({ system: true, text: str(line.text, 200) }, secret ? { to: ["@gm"], private: true } : {}));
           continue;
         }
         const msg = { from: G.playerName(camp, cid), fromId: cid, fight: true,

@@ -190,6 +190,7 @@
     if (bud) html += `<span class="ct-chips">${chip(bud.moveLeft > 0, `Move ${bud.moveLeft}/${bud.speed} ft`, 'Movement left this turn')}${chip(bud.action, 'Action', 'One action a turn')}${chip(bud.bonus, 'Bonus action', 'One bonus action a turn')}${chip(bud.reaction, 'Reaction', 'One reaction between your turns')}</span>`;
     html += '<span class="spacer"></span>';
     html += `<button class="btn small ghost ${UI.ruler ? 'primary' : ''}" data-ct="measure" aria-pressed="${!!UI.ruler}" title="Measure a distance on the map">📏 Measure</button>`;
+    if (mine && u && f.active && (u.conditions || []).includes('Prone')) html += `<button class="btn small" data-ct="stand" title="Standing up costs half your speed">Stand up (${Math.ceil((bud ? bud.speed : 30) / 2 / 5) * 5} ft)</button>`;
     if (mine && u && f.active) html += '<button class="btn small amber" data-ct="end">End turn ⏭</button>';
     if (gm()) html += `<button class="btn small ghost" data-ct="undo" ${f.undo && f.undo.n ? '' : 'disabled'} title="${esc(f.undo && f.undo.last ? 'Undo: ' + f.undo.last : 'Nothing to undo')}">↶ Undo</button><button class="btn small ghost" data-ct="off" title="Turn the combat view off for everyone">Combat view off</button>`;
     html += '</div>';
@@ -272,6 +273,7 @@
     if (k === 'on' || k === 'off') return send('fight.toggle', { on: k === 'on' });
     if (k === 'undo') return send('fight.undo', {});
     if (k === 'end') { UI.armed = UI.target = null; return send('fight.end', {}); }
+    if (k === 'stand') return send('fight.stand', {});
     if (k === 'custom') return customAttack();
     if (k === 'pool') return poolModal(el.dataset.key);
     if (k === 'addres') return resourceModal();
