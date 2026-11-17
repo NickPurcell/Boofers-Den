@@ -923,3 +923,18 @@ test("scene movements work for asset pieces too, and a speeder can turn to face 
   const after = st.map.props.find((x) => x.id === sp.id);
   assert.deepEqual([after.x, after.y, after.rot], [7.5, 13, 90], "it ends off the bottom edge, turned to face down");
 });
+
+// #79: restoring a save that has initiative entries used to throw (n is not defined) and answer 500.
+test("restore works when the saved table has people in initiative", async () => {
+  const { gm, p1 } = await table();
+  const kira = (await p1.act("char.save", { char: { name: "Kira", hp: { max: 20, current: 20 } } })).data.id;
+  await p1.act("init.add", { charId: kira, name: "Kira", init: 14 });
+  await gm.act("init.add", { name: "Trooper", init: "12", hp: 13 });
+  const file = JSON.parse((await gm.call("GET", { op: "export" })).data);
+  const fromFile = await gm.post("restore", { campaign: file });
+  assert.equal(fromFile.code, 200, "restore from a file");
+  const st = (await gm.poll()).data.state;
+  assert.deepEqual(st.initiative.entries.map((e) => [e.name, e.init]), [["Kira", 14], ["Trooper", 12]]);
+  assert.equal((await gm.post("restore", { backup: 0 })).code, 200, "restore the latest backup");
+});
+

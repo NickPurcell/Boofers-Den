@@ -804,6 +804,7 @@ function cleanMap(g, raw) {
   };
 }
 function cleanGame(g) {
+  const n = (v, d) => (Number.isFinite(+v) ? +v : d);   // initiative numbers (cleanMap has its own copy)
   g.map = cleanMap(g, g.map);
   const ini = g.initiative && typeof g.initiative === "object" ? g.initiative : {};
   g.initiative = {
