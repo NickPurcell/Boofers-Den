@@ -291,6 +291,46 @@
     return REASONS.filter((r) => r.when(ctx)).flatMap((r) => (r.each ? r.each(ctx) : [{ dis: !!r.dis, adv: !!r.adv, text: r.text }]))
       .map((x) => (x.note ? { note: true, text: x.text } : { dis: !!x.dis, adv: !!x.adv, text: x.text }));
   }
+  /* ---------------- SW5e's variant rules (audit 9.16), applied only when the GM has marked them for this table ---------------- */
+  const variant = (w, name) => ((w && w.variants) || []).includes(name);
+  // the d20s for a roll: plain advantage and disadvantage cancel; with Compound Advantage, sources stack up to three
+  // (super- and hyperadvantage: three and four d20s) and opposite sources cancel one for one
+  function d20(w, advN, disN) {
+    if (!variant(w, 'Compound Advantage')) { const a = advN > 0, d = disN > 0; return a && !d ? { mode: 'adv', k: 2 } : d && !a ? { mode: 'dis', k: 2 } : { mode: 'normal', k: 1 }; }
+    const net = Math.max(-3, Math.min(3, advN - disN));
+    return net > 0 ? { mode: 'adv', k: net + 1 } : net < 0 ? { mode: 'dis', k: 1 - net } : { mode: 'normal', k: 1 };
+  }
+  const d20expr = (m) => (m.mode === 'normal' ? '1d20' : `${m.k}d20${m.mode === 'adv' ? 'kh1' : 'kl1'}`);
+  const modeName = (m) => (m.mode === 'normal' ? '' : (m.k === 3 ? 'super' : m.k === 4 ? 'hyper' : '') + (m.mode === 'adv' ? 'advantage' : 'disadvantage'));
+  const d20chance = (m, p) => (m.mode === 'adv' ? 1 - (1 - p) ** m.k : m.mode === 'dis' ? p ** m.k : p);
+  // Flanking (the variant): a creature engaged by more than one enemy within 5 ft is flanked against sources within 5 ft
+  // of it. SW5e measures it as how surrounded it is; the default here counts the sides (north, east, south, west) its
+  // enemies within 5 ft stand on: one side is one-quarter (-2), two half (-3), three or four three-quarters (-5).
+  function flankOf(w, t, src) {
+    if (!variant(w, 'Flanking') || !t || !src || feetBetween(src, t) > FT) return 0;
+    const near = Object.values(w.units).filter((o) => o.id !== t.id && hostile(o, t) && !o.down && !INCAPACITATING(o) && feetBetween(o, t) <= FT);
+    if (near.length < 2) return 0;
+    const ts = t.size || 1, cx = t.x + ts / 2, cy = t.y + ts / 2, sides = new Set();
+    for (const o of near) {
+      const dx = o.x + (o.size || 1) / 2 - cx, dy = o.y + (o.size || 1) / 2 - cy;
+      sides.add(Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'E' : 'W') : (dy > 0 ? 'S' : 'N'));
+    }
+    return [0, 2, 3, 5, 5][sides.size];
+  }
+  // a dice expression's lowest or highest total ("2d6+3": 5 or 15), for Critical Saving Throws and Crueler Criticals
+  function fixedTotal(expr, top) {
+    let n = 0;
+    for (const m of String(expr).replace(/\s+/g, '').matchAll(/([+-]?)(\d*d\d+|\d+)/gi)) {
+      const sg = m[1] === '-' ? -1 : 1, t = m[2];
+      const dm = /^(\d*)d(\d+)$/i.exec(t);
+      n += sg * (dm ? (+dm[1] || 1) * (top ? +dm[2] : 1) : +t);
+    }
+    return n;
+  }
+  // the dice alone at their maximum ("1d8+3": 8)
+  const maxDice = (expr) => [...String(expr).matchAll(/(\d*)d(\d+)/gi)].reduce((n, m) => n + (+m[1] || 1) * +m[2], 0);
+  // Crueler Criticals: one set of the dice at their maximum, the other rolled, the modifier once
+  const cruel = (expr) => `${expr}+${maxDice(expr)}`;
   // Can `actorId` hit `targetId` with `attack` right now, and what would it take?
   function preview(world, actorId, targetId, attack, opts = {}) {
     const a = world.units[actorId], t = world.units[targetId];
@@ -307,17 +347,17 @@
     const tilts = all.filter((x) => !x.note), notes = all.filter((x) => x.note).map((x) => x.text);
     if (opts.adv) tilts.push({ adv: true, text: 'chosen' });
     if (opts.dis) tilts.push({ dis: true, text: 'chosen' });
-    const adv = tilts.some((x) => x.adv), dis = tilts.some((x) => x.dis);
-    const mode = adv && !dis ? 'adv' : dis && !adv ? 'dis' : 'normal';
+    const m = d20(world, tilts.filter((x) => x.adv).length, tilts.filter((x) => x.dis).length), mode = m.mode;
     const weak = weakPenalty(a, attack.abil), bonus = attack.bonus - weak;
     const cover = coverOf(world, a, t);
     if (cover && cover.bonus == null) return { legal: false, why: `${t.name} has total cover.`, feet };
-    const ac = +t.ac + (cover ? cover.bonus : 0);
+    const flank = flankOf(world, t, a);
     if (cover) notes.push(`${cover.name} cover, +${cover.bonus} AC`);
+    if (flank) notes.push(`${t.name} is flanked, -${flank} AC`);
+    const ac = +t.ac + (cover ? cover.bonus : 0) - flank;
     const need = Math.min(20, Math.max(2, ac - bonus));   // the d20 needed; a 20 always hits, a 1 always misses
-    const p = (21 - need) / 20;
-    const chance = mode === 'adv' ? 1 - (1 - p) ** 2 : mode === 'dis' ? p * p : p;
-    return { legal: true, feet, ranged, mode, tilts, notes, need, chance, weak, bonus, ac, cover, expr: (mode === 'adv' ? '2d20kh1' : mode === 'dis' ? '2d20kl1' : '1d20') + sgn(bonus) };
+    const chance = d20chance(m, (21 - need) / 20);
+    return { legal: true, feet, ranged, mode, k: m.k, tilts, notes, need, chance, weak, bonus, ac, cover, expr: d20expr(m) + sgn(bonus) };
   }
 
   /* ---------------- resources (audit 3.1) ---------------- */
@@ -680,33 +720,41 @@
         const costText = Object.entries(cost).filter(([, n]) => n).map(([pool, n]) => `${n} ${(me.pools[pool] || {}).name || pool}`).join(', ');
         const log = [{ text: `${me.name} uses ${ab.name}${up ? ` at level ${ab.level + up}` : ''}${costText ? ` (${costText})` : ''}.` }], events = [];   // never says who or how many: a hidden creature may be among them
         const extra = up && ab.upcast ? Array.from({ length: up }, () => ab.upcast.damage).join('+') : '';
-        const dmgExpr = (crit) => ab.damage.map((d) => diceExpr(crit ? doubleDice(d.dice) : d.dice, d.add)).join('+') + (extra ? '+' + (crit ? doubleDice(extra) : extra) : '');
+        const cruelV = variant(w, 'Crueler Criticals');
+        const dmgExpr = (crit) => ab.damage.map((d) => diceExpr(crit ? (cruelV ? `${d.dice}+${maxDice(d.dice)}` : doubleDice(d.dice)) : d.dice, d.add)).join('+') + (extra ? '+' + (crit ? (cruelV ? `${extra}+${maxDice(extra)}` : doubleDice(extra)) : extra) : '');
         const dtype = (ab.damage[0] || {}).type || '';
         for (const id of ids) {
           const t = w.units[id];
-          let hit = true, crit = false, half = false;
+          let hit = true, crit = false, half = false, fixed = null;
           if (ab.attack) {
             if (t.ac == null || t.ac === '' || !Number.isFinite(+t.ac)) { log.push({ unit: t.id, text: `${t.name} has no AC set: ${ab.name} can't be rolled against it.` }); continue; }
             const r0 = inReachOf(w, me, t, ab);
             const all = me.id === t.id ? [] : reasons(w, me, t, { melee: r0.melee ? ab.reach : 0, range: ab.range }, r0.feet, !r0.melee);
             const tl = all.filter((x) => !x.note), notes = all.filter((x) => x.note).map((x) => x.text);
-            const adv = !!act.adv || tl.some((x) => x.adv), dis = !!act.dis || tl.some((x) => x.dis);
-            const tilts = tl.filter((x) => (adv && !dis ? x.adv : x.dis)).map((x) => x.text).concat(notes);
-            const expr = (adv && !dis ? '2d20kh1' : dis && !adv ? '2d20kl1' : '1d20') + sgn(ab.attack.bonus - weakPenalty(me, ab.attack.abil));
-            const cv = me.id === t.id || ab.area ? null : coverOf(w, me, t), ac = +t.ac + (cv ? cv.bonus || 0 : 0);
+            const md = d20(w, tl.filter((x) => x.adv).length + (act.adv ? 1 : 0), tl.filter((x) => x.dis).length + (act.dis ? 1 : 0));
+            const adv = md.mode === 'adv', dis = md.mode === 'dis';
+            const cv = me.id === t.id || ab.area ? null : coverOf(w, me, t);
+            const pfl = me.id === t.id ? 0 : flankOf(w, t, me), ac = +t.ac + (cv ? cv.bonus || 0 : 0) - pfl;
+            const tilts = tl.filter((x) => (adv ? x.adv : x.dis)).map((x) => x.text).concat(notes, pfl ? [`${t.name} is flanked, -${pfl} AC`] : []);
+            const expr = d20expr(md) + sgn(ab.attack.bonus - weakPenalty(me, ab.attack.abil));
             const r = roll(expr);
             crit = r.nat === 20; hit = crit || (r.nat !== 1 && r.total >= ac);
-            log.push({ unit: t.id, kind: 'attack', roll: r, expr, text: `${ab.name} against ${t.name}${tilts.length ? ` (${adv && !dis ? 'advantage: ' : dis && !adv ? 'disadvantage: ' : ''}${tilts.join(', ')})` : ''}${cv ? ` (${cv.name} cover, +${cv.bonus} AC)` : ''}: ${r.total} against AC ${ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : 'a miss.'}` });
+            log.push({ unit: t.id, kind: 'attack', roll: r, expr, text: `${ab.name} against ${t.name}${tilts.length ? ` (${adv ? 'advantage: ' : dis ? 'disadvantage: ' : ''}${tilts.join(', ')})` : ''}${cv ? ` (${cv.name} cover, +${cv.bonus} AC)` : ''}: ${r.total} against AC ${ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : 'a miss.'}` });
           } else if (ab.save) {
             const bonus = (t.saves || {})[ab.save.ability];
             const fail = effectsOf(t).find(([, e]) => (e.autoFail || []).includes(ab.save.ability));
             const sdis = effectsOf(t).some(([, e]) => (e.saveDis || []).includes(ab.save.ability));
             const sadv = ab.save.ability === 'dex' && dodging(w, t);
-            // cover helps a Dex save: from the caster for a power aimed at the target, from the origin for an area
+            // cover helps a Dex save: from the caster for a power aimed at the target, from the origin for an area; flanked makes it worse
             const scv = ab.save.ability !== 'dex' || t.id === me.id ? null : ab.area ? coverFrom(w, origin, t) : coverOf(w, me, t);
-            const sexpr = (sdis && !sadv ? '2d20kl1' : sadv && !sdis ? '2d20kh1' : '1d20') + sgn((+bonus || 0) - weakPenalty(t, ab.save.ability) + (scv ? scv.bonus || 0 : 0));
+            const sfl = ab.save.ability === 'dex' && t.id !== me.id ? flankOf(w, t, me) : 0;
+            const sm = d20(w, sadv ? 1 : 0, sdis ? 1 : 0);
+            const sexpr = d20expr(sm) + sgn((+bonus || 0) - weakPenalty(t, ab.save.ability) + (scv ? scv.bonus || 0 : 0) - sfl);
             const r = roll(sexpr);
-            const saved = !fail && r.total >= ab.save.dc;
+            // Critical Saving Throws (the variant): a 20 always saves (any damage at its minimum), a 1 always fails (at its maximum)
+            const critSaves = variant(w, 'Critical Saving Throws'), snat = r.nat;
+            const saved = !fail && (critSaves && snat === 20 ? true : critSaves && snat === 1 ? false : r.total >= ab.save.dc);
+            fixed = critSaves && !fail && snat === 20 ? 'min' : critSaves && snat === 1 ? 'max' : null;
             hit = !saved || ab.save.onSave === 'half'; half = saved && ab.save.onSave === 'half';
             log.push({ unit: t.id, kind: 'save', roll: r, expr: sexpr, text: `${t.name} makes a ${ab.save.ability.toUpperCase()} save against DC ${ab.save.dc}${bonus == null ? ' (no save bonus known)' : ''}${scv ? ` (${scv.name} cover, +${scv.bonus})` : ''}${sdis && !sadv ? ' with disadvantage' : sadv && !sdis ? ' with advantage (dodging)' : ''}: ${r.total}, ${fail ? `an automatic failure (${fail[0].toLowerCase()})` : saved ? 'a success' : 'a failure'}.` });
           }
@@ -725,7 +773,7 @@
           }
           if (ab.damage.length) {
             const expr = dmgExpr(crit);
-            const d = roll(expr);
+            const d = fixed ? { total: fixedTotal(expr, fixed === 'max'), detail: fixed === 'max' ? 'the maximum (a natural 1 on the save)' : 'the minimum (a natural 20 on the save)', nat: null } : roll(expr);
             const raw = Math.max(0, half ? Math.floor(d.total / 2) : d.total) + (ab.kind === 'weapon' ? levelOf(w, t, 'Corroded') : 0);
             const df = defended(t, raw, String(dtype || '').toLowerCase(), ab.kind === 'weapon' ? 'weapon' : 'power');
             const amount = df.amount;
@@ -796,11 +844,11 @@
     let crit = nat === 20;
     const hit = crit || (!fumble && r.total >= pv.ac);
     if (hit && pv.feet <= FT && has(t, 'closeCrit')) crit = true;   // any hit from within 5 ft on the paralyzed or unconscious
-    const tilt = pv.mode === 'normal' ? '' : ` with ${pv.mode === 'adv' ? 'advantage' : 'disadvantage'} (${pv.tilts.map((x) => x.text).join(', ')})`;
+    const tilt = pv.mode === 'normal' ? '' : ` with ${modeName(pv)} (${pv.tilts.map((x) => x.text).join(', ')})`;
     const log = [{ unit: me.id, kind: 'attack', roll: r, expr: pv.expr, text: `${me.name} ${how ? `makes ${how} against` : 'attacks'} ${t.name} with ${attack.name}${tilt}${pv.notes.length ? ` (${pv.notes.join('; ')})` : ''}${pv.weak ? ` (weakened, −${pv.weak})` : ''}: ${r.total} against AC ${pv.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}` }];
     const events = [];
     if (!hit) { events.push({ kind: 'miss', unit: t.id }); return { ok: true, log, events }; }
-    const expr = crit ? attack.crit || attack.damage : attack.damage;
+    const expr = !crit ? attack.damage : variant(w, 'Crueler Criticals') ? cruel(attack.damage) : attack.crit || attack.damage;
     const d = roll(expr);
     const corr = levelOf(w, t, 'Corroded');   // corroded: 1 more damage from weapons for each level
     const df = defended(t, Math.max(0, d.total) + corr, String(attack.type || '').toLowerCase(), attack.enhanced ? 'enhanced' : 'weapon');
@@ -1076,7 +1124,7 @@
     const cur = table.turnId !== undefined ? (table.entries || []).find((e) => e.id === table.turnId) : (table.entries || [])[table.turn];
     return {
       active: !!table.active && !!cur, round: table.round || 1, turnId: cur ? cur.id : null, units,
-      spent: table.spent || {}, effects: table.effects || [], conc: table.conc || {}, walls: cleanWalls(table.walls),
+      spent: table.spent || {}, effects: table.effects || [], conc: table.conc || {}, walls: cleanWalls(table.walls), variants: Array.isArray(table.variants) ? table.variants.map(String) : [],
     };
   }
 
@@ -1084,5 +1132,5 @@
     cleanResources, resourcesOf, atLevel, spend, rest, powerNumbers, resolvePower, weaponAbility, abilitiesOf, inReachOf, cleanAbility, setPoolUsed,
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
-    SENSES, readSenses, cleanSenses, senseFor, reasons, crosses, sees, cleanWalls, WALL_KINDS, coverOf, isDead, isStable, isDying };
+    SENSES, readSenses, cleanSenses, senseFor, reasons, crosses, sees, cleanWalls, WALL_KINDS, coverOf, isDead, isStable, isDying, d20, flankOf, fixedTotal, cruel, modeName };
 });

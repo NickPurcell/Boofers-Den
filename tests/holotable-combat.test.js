@@ -1390,6 +1390,7 @@ test("walls: Frightened counts only while its source is in sight; in sight, no m
   assert.ok(E.apply(world([ava({ y: 0 }), r1], "ava", { effects: fx, walls: [{ a: [2, -9], b: [2, 9], kind: "wall" }] }), { type: "move", unit: "ava", x: 1, y: 0 }, dice().roll).ok);
 });
 
+
 /* ---------------------------------------------------------------- 0 hit points (audit 7.6) */
 test("0 hit points: a character falls unconscious, or dies outright from damage left over at its maximum; creatures just drop", () => {
   const ava = (o) => unit(Object.assign({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0, hp: 6, maxHp: 12, deathSaves: { s: 1, f: 1 } }, o));
@@ -1536,6 +1537,7 @@ test("cover (issue #93, step 2): from walls by the grid method, from creatures b
   assert.equal(E.apply(blocked, { type: "use", unit: "cass", ability: ab, target: "r1" }, dice().roll).why, "Raider has total cover.");
 });
 
+
 test("review #94: a reaction prompt survives the tracker's index moving, and lapses once either side is hidden", async () => {
   const setup = async () => {
     const t = await fight();
@@ -1584,6 +1586,7 @@ test("areas stopped by walls (issue #93, step 3): no clear line from the origin,
   const save = r.log.find((l) => l.kind === "save");
   assert.match(save.text, /one-quarter cover, \+2\)/, save.text);
 });
+
 
 /* ---------------------------------------------------------------- creatures' limited abilities (audit 9.5, issue #76) */
 test("creature resources through the API: recharge rolls at the start of its turn, per day and legendary counts, all the GM's", async () => {
@@ -1645,4 +1648,42 @@ test("walls through the API: a whole map's walls set at once (an import), checke
   assert.equal("walls" in (await sam.state()).map, false);
   assert.equal((await gm.act("fight.wall", { op: "set", walls: [] })).code, 200);
   assert.equal("walls" in (await gm.state()).map, false, "an empty set leaves no walls key");
+});
+
+/* ---------------------------------------------------------------- variant rules (audit 9.16) */
+test("variants, only when the GM marks them: Crueler Criticals, Critical Saving Throws, Compound Advantage, Flanking", () => {
+  const ava = (o) => unit(Object.assign({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 }, o));
+  const r1 = (o) => unit(Object.assign({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, ac: 13 }, o));
+  const V = (...names) => ({ variants: names });
+  // Crueler Criticals: 1d8+3 on a critical is 1d8+3+8, not 2d8+3
+  let d = dice({ total: 20, nat: 20 }, { total: 15 });
+  E.apply(world([ava(), r1()], "ava", V("Crueler Criticals")), { type: "attack", unit: "ava", target: "r1", attack: blade }, d.roll);
+  assert.equal(d.asked[1], "1d8+3+8");
+  d = dice({ total: 20, nat: 20 }, { total: 15 });
+  E.apply(world([ava(), r1()], "ava"), { type: "attack", unit: "ava", target: "r1", attack: blade }, d.roll);
+  assert.equal(d.asked[1], "2d8+3", "without the variant, as before");
+  // Compound Advantage: two sources stack to three d20s; two against one is plain advantage
+  const two = world([ava(), r1({ conditions: ["Restrained"] })], "ava", V("Compound Advantage"));
+  assert.deepEqual([E.preview(two, "ava", "r1", blade, { adv: true }).expr, E.modeName(E.preview(two, "ava", "r1", blade, { adv: true }))], ["3d20kh1+5", "superadvantage"]);
+  assert.equal(E.preview(two, "ava", "r1", blade, { adv: true, dis: true }).expr, "2d20kh1+5");
+  assert.equal(E.preview(world([ava(), r1({ conditions: ["Restrained"] })], "ava"), "ava", "r1", blade, { adv: true }).expr, "2d20kh1+5", "without it, two sources are plain advantage");
+  // Flanking: Avery and Bolt on opposite sides of the Raider: half flanked, -3 AC against them; not from 20 ft away
+  const bolt = unit({ id: "bolt", name: "Bolt", side: "pc", x: 2, y: 0 });
+  const fl = world([ava(), r1(), bolt], "ava", V("Flanking"));
+  const pv = E.preview(fl, "ava", "r1", blade);
+  assert.deepEqual([pv.ac, pv.notes], [10, ["Raider is flanked, -3 AC"]]);
+  assert.equal(E.preview(world([ava({ x: -3 }), r1(), bolt], "ava", V("Flanking")), "ava", "r1", rifle).ac, 13, "a source 20 ft away isn't flanking");
+  assert.equal(E.preview(world([ava(), r1()], "ava", V("Flanking")), "ava", "r1", blade).ac, 13, "one enemy alone doesn't flank");
+  assert.equal(E.preview(world([ava(), r1(), bolt], "ava"), "ava", "r1", blade).ac, 13, "without the variant");
+  // Critical Saving Throws: a 20 saves whatever the total (damage at its minimum, halved); a 1 fails (damage at its maximum)
+  const ch = consular();
+  const ab = E.abilitiesOf(ch, R, { "mind shove": { use: "action", range: [30, 30], save: { ability: "dex", dc: 30, onSave: "half" }, damage: [{ dice: "2d6", type: "force" }] } })[0];
+  const me = unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, pools: Object.fromEntries(E.resourcesOf(ch, R).map((x) => [x.key, x])) });
+  const cs = (nat, total) => E.apply(world([me, r1({ x: 3, hp: 30, maxHp: 30 })], "cass", V("Critical Saving Throws")), { type: "use", unit: "cass", ability: ab, target: "r1" }, dice({ total, nat }).roll);
+  let r = cs(20, 20);
+  assert.match(r.log[1].text, /a success/);
+  assert.equal(r.world.units.r1.hp, 30 - 1, "2d6 at its minimum (2), halved");
+  r = cs(1, 35);
+  assert.match(r.log[1].text, /a failure/);
+  assert.equal(r.world.units.r1.hp, 30 - 12, "2d6 at its maximum");
 });

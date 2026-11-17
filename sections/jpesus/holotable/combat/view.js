@@ -22,7 +22,7 @@
     const w = E.buildWorld({
       characters: s.characters, entries: s.initiative.entries, active: f.active, turnId: f.turn, round: f.round, tokens: s.map.tokens,
       unitTokens: Object.fromEntries(Object.entries(f.units || {}).map(([id, u]) => [id, u.token])), npcSpeed: f.npcSpeed,
-      spent: f.spent, defenses: f.defenses || {}, effects: f.effects || [], conc: f.conc || {}, walls: (s.map && s.map.walls) || [],
+      spent: f.spent, defenses: f.defenses || {}, effects: f.effects || [], conc: f.conc || {}, walls: (s.map && s.map.walls) || [], variants: s.variants || [],
       npcStats: Object.fromEntries(Array.from(new Set(Object.keys(f.npcDefenses || {}).concat(Object.keys(f.npcBody || {})))).map((k) => [k,
         Object.assign({ saves: (f.npcSaves || {})[k] || {}, mods: (f.npcMods || {})[k] || {} }, (f.npcDefenses || {})[k] || {}, (f.npcBody || {})[k] || {})])),
     }, R);
@@ -246,6 +246,7 @@
         const down = e.hp != null && +e.hp <= 0, cur = e.id === f.turn, n = (e.conditions || []).length;
         return `<span class="ct-ord ${cur ? 'cur' : ''} ${down ? 'down' : ''}" title="${esc(e.name)}${n ? ': ' + esc(e.conditions.join(', ')) : ''}">${esc(e.name)}${n ? ` <b>${n}</b>` : ''}</span>`;
       }).join('<span class="ct-sep" aria-hidden="true">›</span>')}<span class="spacer"></span>
+        ${(() => { const on = ['Flanking', 'Compound Advantage', 'Crueler Criticals', 'Critical Saving Throws'].filter((v) => (s.variants || []).includes(v)); return on.length ? `<span class="muted ct-variants" title="SW5e variant rules this table uses that change the combat view's arithmetic">${esc(on.join(' · '))}</span>` : ''; })()}
         <button class="btn tiny ghost ${UI.log ? 'primary' : ''}" data-ct="log" aria-pressed="${!!UI.log}" title="The last combat lines">📜 Log</button></div>`;
       if (UI.log) {
         const lines = (s.chat || []).filter((m) => m.fight).slice(-8);
@@ -365,7 +366,7 @@
         const pv = t && E.preview(w, u.id, t.id, spec, { adv: UI.adv, dis: UI.dis });
         html += `<div class="ct-row ct-preview" aria-live="polite">${!t ? `<span>${esc(spec.name)}: pick a target on the map (lit in red).</span><button class="btn tiny ghost" data-ct="disarm">Cancel</button>`
           : !pv.legal ? `<span>${esc(pv.why)}</span>`
-          : `<span><b>${esc(t.name)}</b>, ${pv.feet} ft: you need <b>${pv.need}+</b> on the d20 (${Math.round(pv.chance * 100)}%)${pv.mode !== 'normal' ? ` · ${pv.mode === 'adv' ? 'advantage' : 'disadvantage'}: ${esc(pv.tilts.map((x) => x.text).join(', '))}` : ''}${pv.weak ? ` · weakened: −${pv.weak}` : ''}${(pv.notes || []).length ? ` · ${esc(pv.notes.join('; '))}` : ''}. Hit: ${esc(spec.damage)}${spec.type ? ' ' + esc(spec.type) : ''}.</span>
+          : `<span><b>${esc(t.name)}</b>, ${pv.feet} ft: you need <b>${pv.need}+</b> on the d20 (${Math.round(pv.chance * 100)}%)${pv.mode !== 'normal' ? ` · ${E.modeName(pv)}: ${esc(pv.tilts.map((x) => x.text).join(', '))}` : ''}${pv.weak ? ` · weakened: −${pv.weak}` : ''}${(pv.notes || []).length ? ` · ${esc(pv.notes.join('; '))}` : ''}. Hit: ${esc(spec.damage)}${spec.type ? ' ' + esc(spec.type) : ''}.</span>
              <button class="btn small primary" data-ct="go">Attack</button>`}</div>`;
       } else if (bud && bud.moveLeft > 0) html += `<div class="ct-row muted ct-hint">Tap a lit square to move there, or pick an attack.</div>`;
     }
