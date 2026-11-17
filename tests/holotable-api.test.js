@@ -1030,6 +1030,37 @@ test("restore round trip: a fully populated table comes back the same, from the 
   assert.equal((await gm.poll()).data.state.sceneFx.moves.length, 2);
 });
 
+test("token names: the GM can hide a name; players get ??? (and no sheet link), in initiative too", async () => {
+  const { gm, p1 } = await table();
+  await gm.act("token.add", { name: "Grand Inquisitor", x: 3, y: 3, nameHidden: true });
+  await gm.act("token.add", { name: "Stormtrooper", x: 4, y: 3 });
+  await gm.act("init.add", { name: "Grand Inquisitor", init: 18, hp: 90 });
+  assert.equal((await p1.act("token.add", { name: "Me", nameHidden: true })).code, 403, "players can't place loose tokens");
+  let gv = (await gm.poll()).data.state;
+  const inq = gv.map.tokens.find((t) => t.name === "Grand Inquisitor");
+  assert.equal(inq.nameHidden, true, "the GM still sees the name, marked hidden");
+  let pv = (await p1.poll()).data.state;
+  assert.deepEqual(pv.map.tokens.map((t) => t.name), ["???", "Stormtrooper"]);
+  assert.equal(pv.map.tokens[0].nameHidden, undefined);
+  const e = pv.initiative.entries.find((x) => x.init === 18);
+  assert.equal(e.name, "???"); assert.equal(e.tok, inq.id, "the client can still ring the right token");
+  assert.ok(!JSON.stringify(pv).includes("Inquisitor"), "the name isn't sent to players anywhere");
+  assert.equal((await p1.act("token.update", { id: inq.id, fields: { nameHidden: false } })).code, 403);
+  await gm.act("token.update", { id: inq.id, fields: { nameHidden: false } });
+  pv = (await p1.poll()).data.state;
+  assert.equal(pv.map.tokens[0].name, "Grand Inquisitor", "revealed");
+  assert.equal(pv.initiative.entries.find((x) => x.init === 18).name, "Grand Inquisitor");
+});
+
+test("token names: shownName gives other code (chat lines, the combat view) the name players see", () => {
+  const camp = { map: { tokens: [{ id: "t1", name: "Grand Inquisitor", nameHidden: true }, { id: "t2", name: "Vexx", charId: "c1", nameHidden: true }, { id: "t3", name: "Rook" }] } };
+  assert.equal(G.shownName(camp, { name: "Grand Inquisitor" }), "???");
+  assert.equal(G.shownName(camp, { name: "Darth Vexx", charId: "c1" }), "???", "matched by sheet, whatever the entry is called");
+  assert.equal(G.shownName(camp, { name: "Rook" }), "Rook");
+  camp.map.tokens[0].hidden = true;
+  assert.equal(G.shownName(camp, { name: "Grand Inquisitor" }), "Grand Inquisitor", "a token hidden outright masks nothing (its entry is hidden on its own)");
+});
+
 // Table audio: the GM uploads a track in 1 MiB parts; everyone streams it by byte range; the GM controls playback.
 test("table audio: GM-only uploads in order, checked by content, streamed in ranges, counted against storage", async () => {
   const { gm, p1 } = await table();
@@ -1091,4 +1122,18 @@ test("table audio: the GM plays, pauses, loops and stops; everyone sees it with 
   assert.deepEqual([au.loop, au.vol], [false, 1], "volume is clamped");
   await gm.act("audio.stop", {});
   assert.equal((await p1.poll()).data.state.audio, null);
+});
+
+test("token names: a hidden name on a token linked to a sheet hides the sheet from other players", async () => {
+  const { gm, p1 } = await table();
+  const id = (await gm.act("char.save", { char: { name: "Darth Vexx" } })).data.id;
+  await gm.act("token.add", { charId: id, x: 2, y: 2 });
+  const tok = (await gm.poll()).data.state.map.tokens.find((t) => t.charId === id);
+  await gm.act("token.update", { id: tok.id, fields: { nameHidden: true } });
+  const pv = (await p1.poll()).data.state;
+  assert.equal(pv.characters[id], undefined, "the sheet isn't sent");
+  assert.ok(!JSON.stringify(Object.assign({}, pv, { chat: [] })).includes("Vexx"), "nor the name, outside the earlier chat line");
+  assert.ok((await gm.poll()).data.state.characters[id], "the GM keeps it");
+  await gm.act("token.update", { id: tok.id, fields: { nameHidden: false } });
+  assert.equal((await p1.poll()).data.state.characters[id].name, "Darth Vexx", "back once revealed");
 });

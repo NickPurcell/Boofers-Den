@@ -166,6 +166,38 @@ function cleanChar(ch) {
   return out;
 }
 
+// Tokens whose name the GM is hiding, looked up by sheet ("c:<charId>") or, for loose tokens, by name
+// ("n:<name>"). The value is the token's id, or null when two loose tokens share the name.
+function unknownNames(camp) {
+  const m = new Map();
+  for (const t of ((camp.map && camp.map.tokens) || [])) {
+    if (!t.nameHidden || t.hidden) continue;
+    const k = t.charId ? "c:" + t.charId : "n:" + t.name;
+    m.set(k, m.has(k) ? null : t.id);
+  }
+  return m;
+}
+// undefined: this initiative entry isn't masked; otherwise the masked token's id (or null)
+function unknownTokenFor(unk, e) {
+  const k = e && (e.charId ? "c:" + e.charId : "n:" + e.name);
+  return k && unk.has(k) ? unk.get(k) : undefined;
+}
+// The name players are shown for an initiative entry: "???" while the GM hides its token's name.
+// For anything players can read (chat lines, the combat view); GM-only text keeps the real name.
+function shownName(camp, entry) {
+  return unknownTokenFor(unknownNames(camp), entry) === undefined ? (entry && entry.name) || "" : "???";
+}
+
+// A sheet whose token's name the GM is hiding isn't sent to other players at all (its name, photo and
+// numbers would give it away); the player who owns it still gets it.
+function sheetsFor(camp, cid) {
+  const secret = new Set(((camp.map && camp.map.tokens) || []).filter((t) => t.nameHidden && t.charId).map((t) => t.charId));
+  if (!secret.size) return camp.characters;
+  const out = {};
+  for (const [id, c] of Object.entries(camp.characters || {})) if (!secret.has(id) || c.owner === cid) out[id] = c;
+  return out;
+}
+
 function viewFor(camp, cid, gm, online) {
   const chat = camp.chat.filter((m) => !m.to || gm || m.to.includes(cid) || m.fromId === cid);
   const ini = Object.assign({}, camp.initiative);
@@ -174,13 +206,28 @@ function viewFor(camp, cid, gm, online) {
       .map((e) => Object.assign({}, e, e.npc ? { hp: null, maxHp: null, sb: undefined } : {}));
   }
   const map = Object.assign({}, camp.map);
-  if (!gm) map.tokens = map.tokens.filter((t) => !t.hidden).map((t) => (t.moves ? Object.assign({}, t, { moves: undefined }) : t));
+  if (!gm) {
+    // tokens whose name the GM hasn't revealed yet: players get "???" and no sheet link, and the
+    // matching initiative entries are masked the same way (tok tells the client which token is up)
+    const unk = unknownNames(camp);
+    if (unk.size) ini.entries = ini.entries.map((e) => {
+      const tok = unknownTokenFor(unk, e);
+      if (tok === undefined) return e;
+      return Object.assign({}, e, { name: "???", charId: null, sb: undefined, hp: null, maxHp: null, tok: tok || undefined });
+    });
+    map.tokens = map.tokens.filter((t) => !t.hidden).map((t) => {
+      if (!t.moves && !t.nameHidden) return t;
+      const v = Object.assign({}, t, { moves: undefined });
+      if (t.nameHidden) Object.assign(v, { name: "???", charId: null, nameHidden: undefined });
+      return v;
+    });
+  }
   if (!gm) map.props = (map.props || []).map((x) => (x.moves ? Object.assign({}, x, { moves: undefined }) : x));
   const shown = new Set([...map.tokens.map((t) => t.id), ...(map.props || []).map((x) => x.id)]);
   const fxView = camp.sceneFx ? Object.assign({}, camp.sceneFx, { moves: (camp.sceneFx.moves || []).filter((m) => shown.has(m.id)) }) : null;
   return {
     name: camp.name, you: cid, isGM: !!gm, updated: camp.updated,
-    players: camp.players, online: online || [], characters: camp.characters,
+    players: camp.players, online: online || [], characters: gm ? camp.characters : sheetsFor(camp, cid),
     chat: chat.slice(-200), initiative: ini, map,
     notes: gm ? camp.notes : null,
     handouts: (camp.handouts || []).filter((h) => gm || h.shared),
@@ -558,7 +605,7 @@ function applyAction(camp, cid, gm, type, p) {
       mp.tokens.push({
         id: rid(), name: str(p.name || ch.name || "Token", 40), color: validColor(p.color || ch.color),
         x: clamp(int(p.x, 1), -500, 1000), y: clamp(int(p.y, 1), -500, 1000), size: clamp(int(p.size, 1), 1, 4),
-        charId, owner: cid, hidden: !!p.hidden && gm, img: validImg(p.img),
+        charId, owner: cid, hidden: !!p.hidden && gm, img: validImg(p.img), nameHidden: !!p.nameHidden && gm,
       });
       return {};
     }
@@ -595,6 +642,7 @@ function applyAction(camp, cid, gm, type, p) {
       if ("color" in f) t.color = validColor(f.color);
       if ("size" in f) t.size = clamp(int(f.size, 1), 1, 4);
       if ("hidden" in f && gm) t.hidden = !!f.hidden;
+      if ("nameHidden" in f && gm) t.nameHidden = !!f.nameHidden;
       if ("img" in f) t.img = validImg(f.img);
       return {};
     }
@@ -822,7 +870,7 @@ function cleanMap(g, raw) {
     gridSize: clamp(int(m.gridSize, 70), 5, 200), gridV2: true, cols: clamp(int(m.cols, 24), 5, 200), rows: clamp(int(m.rows, 16), 5, 200), showGrid: m.showGrid !== false,
     tokens: (Array.isArray(m.tokens) ? m.tokens : []).slice(0, 300).filter((t) => t && typeof t === "object").map((t) => ({
       id: /^[a-z0-9]{6,20}$/.test(t.id || "") ? t.id : rid(), name: str(t.name, 40), color: validColor(t.color), x: clamp(int(t.x), -500, 1000), y: clamp(int(t.y), -500, 1000),
-      size: clamp(int(t.size, 1), 1, 4), charId: g.characters[t.charId] ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, img: validImg(t.img), moves: cleanMoves(t.moves) })),
+      size: clamp(int(t.size, 1), 1, 4), charId: g.characters[t.charId] ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, nameHidden: !!t.nameHidden, img: validImg(t.img), moves: cleanMoves(t.moves) })),
     props: (Array.isArray(m.props) ? m.props : []).slice(0, 1500).filter((p) => p && validImg(p.src)).map((p) => ({
       id: /^[a-z0-9]{6,20}$/.test(p.id || "") ? p.id : rid(), src: p.src, name: str(p.name, 60), x: n(p.x, 0), y: n(p.y, 0), w: n(p.w, 1), h: n(p.h, 1), rot: n(p.rot, 0), moves: cleanMoves(p.moves) })),
     sceneId: /^[a-z0-9]{6,20}$/.test(m.sceneId || "") ? m.sceneId : undefined,
@@ -862,6 +910,6 @@ function cleanGame(g) {
 
 module.exports = {
   cleanGame,
-  rollDice, blankCampaign, playerName, addChat, viewFor, applyAction, validImg, validColor, cleanChar, cleanShip, rid,
+  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, applyAction, validImg, validColor, cleanChar, cleanShip, rid,
   Forbidden, Invalid, IMG_PREFIX,
 };
