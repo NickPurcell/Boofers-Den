@@ -603,7 +603,7 @@
         await act('map.bg', { url: up.url });
       }
       await act('map.settings', { cols: Math.max(5, Math.min(200, Math.round(+size.x))), rows: Math.max(5, Math.min(200, Math.round(+size.y))) });
-      await send('fight.wall', { op: 'set', walls: walls.slice(0, 2000) });
+      await wallSend({ op: 'set', walls: walls.slice(0, 2000) });
       toast(`Imported ${file.name}: ${Math.min(2000, walls.length)} walls and doors${walls.length > 2000 ? ' (the first 2000)' : ''}.`);
     } catch (err) { toast(err.message || "Couldn't import that file.", true); }
   }
@@ -623,7 +623,7 @@
         const b = e.target.closest('[data-wb]'); if (!b) return;
         const a = b.dataset.wb;
         if (a === 'done') UI.walls = null;
-        else if (a === 'clear') { if (confirm('Remove every wall, door and window from this map?')) send('fight.wall', { op: 'clear' }); return; }
+        else if (a === 'clear') { if (confirm('Remove every wall, door and window from this map?')) wallSend({ op: 'clear' }); return; }
         else UI.walls = { mode: a, from: null };
         renderWallBar(); render(); H.drawMap();
       });
@@ -656,13 +656,17 @@
     }
     return best;
   };
+  // wall edits go out one after another, never dropped: a GM draws faster than a save comes back from real hosting
+  // (the one-at-a-time guard on other actions would swallow the next segment)
+  let wallChain = Promise.resolve();
+  const wallSend = (p) => (wallChain = wallChain.then(() => act('fight.wall', p)).catch(() => null));
   function wallClick(gx, gy) {
     const T = UI.walls, pt = [Math.round(gx), Math.round(gy)];
-    if (T.mode === 'erase') { const wl = nearestWall(gx, gy); if (wl) send('fight.wall', { op: 'remove', id: wl.id }); return; }
-    if (T.mode === 'toggle') { const wl = nearestWall(gx, gy, ['door']); if (wl) send('fight.wall', { op: 'door', id: wl.id, open: !wl.open }); return; }
+    if (T.mode === 'erase') { const wl = nearestWall(gx, gy); if (wl) wallSend({ op: 'remove', id: wl.id }); return; }
+    if (T.mode === 'toggle') { const wl = nearestWall(gx, gy, ['door']); if (wl) wallSend({ op: 'door', id: wl.id, open: !wl.open }); return; }
     if (!T.from) { T.from = pt; H.drawMap(); return; }
     if (T.from[0] === pt[0] && T.from[1] === pt[1]) { T.from = null; H.drawMap(); return; }
-    send('fight.wall', { op: 'add', a: T.from, b: pt, kind: T.mode });
+    wallSend({ op: 'add', a: T.from, b: pt, kind: T.mode });
     T.from = T.mode === 'wall' ? pt : null;
     H.drawMap();
   }
