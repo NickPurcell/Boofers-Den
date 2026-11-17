@@ -226,7 +226,7 @@ function viewFor(camp, cid, gm, online) {
       return v;
     });
   }
-  if (!gm) map.props = (map.props || []).map((x) => (x.moves ? Object.assign({}, x, { moves: undefined }) : x));
+  if (!gm) map.props = (map.props || []).map((x) => (x.moves || x.blocksSight ? Object.assign({}, x, { moves: undefined, blocksSight: undefined }) : x));
   const shown = new Set([...map.tokens.map((t) => t.id), ...(map.props || []).map((x) => x.id)]);
   const fxView = camp.sceneFx ? Object.assign({}, camp.sceneFx, { moves: (camp.sceneFx.moves || []).filter((m) => shown.has(m.id)) }) : null;
   return {
@@ -749,6 +749,7 @@ function applyAction(camp, cid, gm, type, p) {
       if (mp.props.length >= 1500) throw new Invalid("too many props on this map");
       const pr = { id: rid(), src, name: str(p.name, 60) };
       for (const [k, d] of [["x", 0], ["y", 0], ["w", 1], ["h", 1], ["rot", 0]]) pr[k] = Math.round(num(p[k], d) * 1000) / 1000;
+      if (p.blocksSight) pr.blocksSight = true;   // a duplicate keeps it
       mp.props.push(pr);
       return { id: pr.id };
     }
@@ -759,6 +760,7 @@ function applyAction(camp, cid, gm, type, p) {
       if (type === "prop.remove") mp.props.splice(mp.props.indexOf(pr), 1);
       else if (type === "prop.update") {
         for (const [k, v] of Object.entries(p.fields || {})) if (["x", "y", "w", "h", "rot"].includes(k)) pr[k] = Math.round(num(v, pr[k]) * 1000) / 1000;
+        if ("blocksSight" in (p.fields || {})) { if (p.fields.blocksSight) pr.blocksSight = true; else delete pr.blocksSight; }
       } else { mp.props.splice(mp.props.indexOf(pr), 1); p.dir === "back" ? mp.props.unshift(pr) : mp.props.push(pr); }
       return {};
     }
@@ -894,6 +896,20 @@ function applyAction(camp, cid, gm, type, p) {
 }
 
 // A whole game coming back from a backup file gets the same checks as live edits.
+// Props the GM marked "Blocks sight" (a crate stack, a parked freighter, a pillar), as wall-like segments for line of
+// sight: each one's rotated rectangle, four edges in grid squares ({ a: [x, y], b: [x, y] }, rounded to 0.01 like walls).
+function propSightSegments(map) {
+  const out = [], r2 = (v) => Math.round(v * 100) / 100;
+  for (const p of (map && map.props) || []) {
+    if (!p || !p.blocksSight) continue;
+    const w = +p.w || 1, h = +p.h || 1, cx = (+p.x || 0) + w / 2, cy = (+p.y || 0) + h / 2, a = ((+p.rot || 0) * Math.PI) / 180;
+    const c = Math.cos(a), s = Math.sin(a);
+    const pts = [[-w / 2, -h / 2], [w / 2, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]].map(([dx, dy]) => [r2(cx + dx * c - dy * s), r2(cy + dx * s + dy * c)]);
+    for (let i = 0; i < 4; i++) out.push({ a: pts[i], b: pts[(i + 1) % 4], prop: p.id });
+  }
+  return out;
+}
+
 function cleanMap(g, raw) {
   const m = raw && typeof raw === "object" ? raw : {};
   const n = (v, d) => (Number.isFinite(+v) ? +v : d);
@@ -905,7 +921,7 @@ function cleanMap(g, raw) {
       size: clamp(int(t.size, 1), 1, 4), charId: g.characters[t.charId] ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, nameHidden: !!t.nameHidden, img: validImg(t.img), moves: cleanMoves(t.moves) })),
     ...(Array.isArray(m.walls) && m.walls.length ? { walls: Fight.cleanWalls(m.walls) } : {}),   // the combat view's walls (issue #93), only on a map that has some
     props: (Array.isArray(m.props) ? m.props : []).slice(0, 1500).filter((p) => p && validImg(p.src)).map((p) => ({
-      id: /^[a-z0-9]{6,20}$/.test(p.id || "") ? p.id : rid(), src: p.src, name: str(p.name, 60), x: n(p.x, 0), y: n(p.y, 0), w: n(p.w, 1), h: n(p.h, 1), rot: n(p.rot, 0), moves: cleanMoves(p.moves) })),
+      id: /^[a-z0-9]{6,20}$/.test(p.id || "") ? p.id : rid(), src: p.src, name: str(p.name, 60), x: n(p.x, 0), y: n(p.y, 0), w: n(p.w, 1), h: n(p.h, 1), rot: n(p.rot, 0), moves: cleanMoves(p.moves), ...(p.blocksSight ? { blocksSight: true } : {}) })),
     sceneId: /^[a-z0-9]{6,20}$/.test(m.sceneId || "") ? m.sceneId : undefined,
   };
 }
@@ -944,6 +960,6 @@ function cleanGame(g) {
 
 module.exports = {
   cleanGame,
-  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, applyAction, validImg, validColor, cleanChar, cleanShip, rid,
+  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, propSightSegments, applyAction, validImg, validColor, cleanChar, cleanShip, rid,
   Forbidden, Invalid, IMG_PREFIX,
 };
