@@ -1595,6 +1595,22 @@ test("rests through the API: a sheet keeps its hit dice per size, and an old num
   assert.equal((await sam.state()).characters[avery].hitDiceUsed, 2);
 });
 
+test("rests through the API: the combat view's undo keeps every sheet's hit dice per size (review of #103)", async () => {
+  const { gm, sam, rae, avery, bolt } = await fight();
+  let st = await sam.state();
+  const multi = [{ name: "Fighter", level: 3 }, { name: "Consular", level: 1 }];
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { classes: multi, hitDiceUsed: { d10: 2, d6: 1 } }) });
+  await rae.act("char.save", { char: Object.assign({}, st.characters[bolt], { classes: multi, hitDiceUsed: { d10: 1 } }) });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.move", { x: 1, y: 0 })).code, 200);
+  assert.equal((await gm.act("fight.undo", {})).code, 200);
+  st = await gm.state();
+  assert.deepEqual([st.characters[avery].hitDiceUsed, st.characters[bolt].hitDiceUsed], [{ d10: 2, d6: 1 }, { d10: 1 }], "the one who acted and the one who didn't");
+  // a crafted undo record is cleaned with the sheet's own rules, not read as a number
+  assert.deepEqual(R.cleanHitDiceUsed({ d10: "2", d7: 4, d6: -3 }), { d10: 2, d6: 0 });
+  assert.deepEqual([R.cleanHitDiceUsed(3), R.cleanHitDiceUsed(""), R.cleanHitDiceUsed("x"), R.cleanHitDiceUsed(null)], [3, 0, 0, 0], "an old number reads as before");
+});
+
 /* ---------------------------------------------------------------- creatures' limited abilities (audit 9.5, issue #76) */
 test("creature resources through the API: recharge rolls at the start of its turn, per day and legendary counts, all the GM's", async () => {
   const { gm, sam, ids } = await fight();
