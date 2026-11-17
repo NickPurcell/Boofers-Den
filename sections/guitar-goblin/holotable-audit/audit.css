@@ -1,0 +1,90 @@
+/* HoloTable against SW5e: an audit. The same paper and ink as the trip pages in this section, kept plain.
+   No webfonts, no outside requests. */
+:root {
+  --paper: #f6f1e7; --card: #fffdf8; --ink: #1d1a17; --dim: #5f5850; --line: #ddd3c2;
+  --red: #c8341f; --indigo: #2f4a7a;
+  --done: #1f6f3c; --done-soft: #e2f1e6; --partial: #8a5a00; --partial-soft: #fbf0d2; --missing: #a32a17; --missing-soft: #fbe6e0;
+  --serif: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+  --sans: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 1rem/1.6 var(--sans); }
+a { color: var(--indigo); text-underline-offset: .16em; }
+a:hover { color: var(--red); }
+code { font: .86em var(--mono); background: rgba(29, 26, 23, .06); padding: 0 .2em; overflow-wrap: anywhere; }
+.top { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 0 1rem; }
+.back { display: inline-block; padding: 1rem 1.25rem; color: var(--red); text-decoration: none; font-weight: 600; }
+.back:hover { text-decoration: underline; }
+.wrap { width: 100%; max-width: 860px; margin: 0 auto; padding: 0 1.1rem 2rem; }
+button:focus-visible, a:focus-visible, summary:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+
+/* ---- top ---- */
+.hero { padding: .6rem 0 1.4rem; border-bottom: 3px double var(--line); }
+.kicker { margin: 0 0 .5rem; font: 600 .72rem/1.4 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--red); }
+.hero h1 { margin: 0; font: 400 clamp(2.1rem, 7vw, 3.6rem)/1.05 var(--serif); }
+.hero h1 span { display: block; font-size: .45em; line-height: 1.3; color: var(--dim); font-style: italic; margin-top: .4rem; }
+.lead { margin: 1rem 0 0; max-width: 46rem; font-size: 1.05rem; }
+.counts { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1.2rem 0 0; padding: 0; list-style: none; }
+.counts li { padding: .5rem .8rem; border: 1px solid; font-weight: 600; }
+.counts b { font: 400 1.6rem/1 var(--serif); margin-right: .2rem; }
+.counts .done { color: var(--done); background: var(--done-soft); }
+.counts .partial { color: var(--partial); background: var(--partial-soft); }
+.counts .missing { color: var(--missing); background: var(--missing-soft); }
+
+h2 { margin: 2.6rem 0 .8rem; font: 400 clamp(1.6rem, 4.6vw, 2.1rem)/1.15 var(--serif); }
+h2 small { display: block; margin-top: .3rem; font: 400 .92rem/1.5 var(--sans); color: var(--dim); }
+p { margin: 0 0 .9rem; }
+.gaps { margin: 0; padding-left: 1.6rem; }
+.gaps li { margin: 0 0 .7rem; padding-left: .2rem; }
+.gaps li::marker { font: 400 1.1rem var(--serif); color: var(--red); }
+.after { color: var(--dim); margin-top: 1rem; }
+.well { margin: 0; padding-left: 1.2rem; }
+.well li { margin: 0 0 .6rem; }
+.well li::marker { content: "✓  "; color: var(--done); }
+
+/* ---- the checklist ---- */
+.legend { margin: 0 0 1rem; font-size: .86rem; color: var(--dim); }
+.legend div { display: flex; gap: .6rem; margin: 0 0 .3rem; }
+.legend dt { flex: none; width: 4.6rem; font-weight: 700; color: var(--ink); }
+.legend dd { margin: 0; }
+.legend b { color: var(--ink); font-weight: 600; }
+.filters { display: flex; flex-wrap: wrap; gap: .5rem 1.2rem; padding: .2rem 0 .8rem; margin: 0 0 .6rem; border-bottom: 1px solid var(--line); }
+.fgroup { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.filters button { font: 600 .82rem/1 var(--sans); padding: .55rem .7rem; min-height: 40px; border: 1px solid var(--ink); background: var(--card); color: var(--ink); cursor: pointer; }
+.filters button[aria-pressed="false"] { background: transparent; color: var(--dim); border-style: dashed; text-decoration: line-through; }
+.shownall { font-size: .84rem; color: var(--dim); margin-left: .2rem; }
+
+details.sec { border-top: 1px solid var(--line); }
+details.sec:last-of-type { border-bottom: 1px solid var(--line); }
+details.sec > summary { cursor: pointer; padding: .8rem .2rem; list-style: none; display: flex; flex-wrap: wrap; gap: .1rem .5rem; align-items: baseline; }
+details.sec > summary::-webkit-details-marker { display: none; }
+details.sec > summary::before { content: "▸"; color: var(--red); width: .9rem; flex: none; }
+details.sec[open] > summary::before { content: "▾"; }
+.sn { font: 400 1.15rem var(--serif); color: var(--red); }
+.st { font: 600 1.02rem/1.35 var(--sans); flex: 1 1 14rem; }
+.sc { font-size: .8rem; color: var(--dim); width: 100%; padding-left: 1.4rem; }
+.intro { font-size: .92rem; color: var(--dim); margin: 0 0 .6rem 1.4rem; }
+.items { list-style: none; margin: 0 0 1rem; padding: 0; }
+.item { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--line); padding: .6rem .8rem; margin: 0 0 .5rem; }
+.item.done { border-left-color: var(--done); }
+.item.partial { border-left-color: var(--partial); }
+.item.missing { border-left-color: var(--missing); }
+.item.flash { box-shadow: 0 0 0 3px var(--red); }
+.item p { margin: 0; }
+.row { display: flex; flex-wrap: wrap; gap: .2rem .6rem; align-items: center; font-size: .8rem; margin-bottom: .3rem !important; }
+.state { font-weight: 700; padding: .1rem .4rem; }
+.state.done { color: var(--done); background: var(--done-soft); }
+.state.partial { color: var(--partial); background: var(--partial-soft); }
+.state.missing { color: var(--missing); background: var(--missing-soft); }
+.id { font: 700 .8rem var(--mono); }
+.meta { color: var(--dim); }
+.text { font-size: .95rem; }
+.ev { font-size: .8rem; color: var(--dim); margin-top: .35rem !important; overflow-wrap: anywhere; }
+.nomatch { color: var(--dim); font-size: .88rem; margin: 0 0 1rem 1.4rem; }
+
+details.how { margin: 2rem 0 0; font-size: .9rem; }
+details.how summary { cursor: pointer; font-weight: 600; color: var(--indigo); padding: .4rem 0; }
+details.how ul { padding-left: 1.2rem; color: var(--dim); }
+.foot { margin: 2rem 0 0; padding-top: 1rem; border-top: 3px double var(--line); font-size: .86rem; color: var(--dim); }
