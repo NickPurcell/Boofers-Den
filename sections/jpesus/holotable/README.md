@@ -25,6 +25,9 @@ Optional: `HOLOTABLE_STORAGE_MB` (default 1000) caps the total size of uploaded 
 - **Character sheets:** upload the SW5e.com builder's Roll20 export or character JSON. Foundry VTT (sw5e) exports also work.
   Uploading the same character again updates it, keeping its photos and current HP.
 - **Profile and token photos** for each character.
+- **Senses** (darkvision, blindsight, tremorsense, truesight) show under the sheet's stats. They decide what a player sees
+  under fog and lighting, so they're the GM's: choosing a species sets that species' senses (the server looks them up
+  in SW5e's list itself), and only the GM changes them by hand (✎). A player's own edits to them are ignored.
 - **Click-to-roll:** checks, saves, skills, attacks and damage, rolled on the server.
 - **Class resources** (Attacks & Powers page): "＋ Add …" fills in the uses a character's classes give at its level,
   from SW5e's class tables: Rages, Superiority dice (count and die), Second Wind, Action Surge, Indomitable, Focus points,

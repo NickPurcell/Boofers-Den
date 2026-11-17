@@ -432,13 +432,11 @@ function mapTools(camp, cid, gm, type, p, G) {
 // without writing anything; "set" changes one character's senses and leaves its resistances as they are.
 function gmSenses(camp, gm, p, G) {
   if (!gm) throw new G.Forbidden("GM only");
-  const defs = plainObj(plainObj(camp.fight).defenses);
-  if (p.op === "get") return { senses: Object.fromEntries(Object.keys(camp.characters || {}).map((id) => [id, E.cleanSenses(plainObj(defs[id]).senses)])) };
-  if (p.op !== "set") throw new G.Invalid("Get or set.");
+  if (p.op !== "set") throw new G.Invalid("Set a character's senses.");
   const ch = charOf(camp, p.charId);
   if (!ch) throw new G.Invalid("No such character.");
-  const f = state(camp);   // with the combat view off this keeps it off; only the senses change
-  f.defenses[ch.id] = defences(Object.assign({}, plainObj(f.defenses[ch.id]), { senses: p.senses }));
+  sheetSenses(camp);
+  setSheetSenses(ch, p.senses);   // on the sheet (#92): the one place, the GM the one writer
   return {};
 }
 
@@ -451,6 +449,7 @@ function apply(camp, cid, gm, type, p, G) {
     if (!gm) throw new G.Forbidden("GM only");
     if (!p.on && !camp.fight) return {};
   }
+  sheetSenses(camp);   // senses the combat view kept before #92 move onto the sheet, once
   const f = state(camp), ini = camp.initiative;
   const need = (ok, why = "GM only") => { if (!ok) throw new G.Forbidden(why); };
   const entry = (id) => ini.entries.find((e) => e.id === id);
@@ -480,8 +479,14 @@ function apply(camp, cid, gm, type, p, G) {
       if (!ch) throw new G.Invalid("No such character.");
       need(gm || ch.owner === cid, "not your character");
       const types = (v) => (Array.isArray(v) ? v : []).filter((x) => E.DAMAGE.includes(x)).map((type) => ({ type, only: null }));
-      // senses: until the sheet has a field for them (audit 5.12, proposed on the queue), they live here
-      f.defenses[ch.id] = defences({ resist: types(p.resist), immune: types(p.immune), vuln: types(p.vuln), senses: p.senses });
+      // senses live on the sheet now (#92) and are the GM's (jpesus's ruling): a player's save never touches them; the GM's
+      // senses from this dialog go to the sheet
+      if (gm && Array.isArray(p.senses)) setSheetSenses(ch, p.senses);
+      else if (p.senses !== undefined) {   // a player sending different senses is refused, not quietly ignored
+        const sig = (l) => R.cleanSenses(l).map((x) => `${x.kind}:${x.range}`).sort().join();
+        if (sig(p.senses) !== sig(ch.senses)) throw new G.Forbidden("Only the GM sets senses.");
+      }
+      f.defenses[ch.id] = defences({ resist: types(p.resist), immune: types(p.immune), vuln: types(p.vuln), senses: [] });
       return {};
     }
     case "fight.ability": {  // the GM teaches the table a power's numbers (or forgets them: data null)
@@ -814,10 +819,21 @@ function litOf(camp) {
   }
   return lit;
 }
-// a token's senses: a character's from the combat view's defences (until #92 puts them on the sheet)
+// a token's senses: its character's, from the sheet (#92), which only the GM changes; the combat view keeps no copy
 function sensesOf(camp, t) {
-  const f = camp.fight || {};
-  return (t && t.charId && plainObj((f.defenses || {})[t.charId]).senses) || [];
+  const ch = t && charOf(camp, t.charId);
+  return (ch && Array.isArray(ch.senses) && ch.senses) || [];
+}
+// Senses the combat view kept for characters before they lived on the sheet (#94 to #128) are dropped, once: players
+// could write them, so they don't move into the GM's field; the GM sets senses on the sheet (or a species fills them)
+function sheetSenses(camp) {
+  const defs = plainObj(plainObj(camp.fight).defenses);
+  for (const [id, d] of Object.entries(defs)) if (d && Array.isArray(d.senses) && d.senses.length) defs[id] = Object.assign({}, d, { senses: [] });
+}
+// the GM sets a character's senses on its sheet, with the sheet's own cleaning (an empty list takes them off)
+function setSheetSenses(ch, list) {
+  const s = R.cleanSenses(list);
+  if (s.length) ch.senses = s; else delete ch.senses;
 }
 const senseRange = (camp, t, kinds) => Math.max(0, ...sensesOf(camp, t).filter((x) => x && kinds.includes(x.kind)).map((x) => +x.range || 0));
 // the squares some tokens see, remembered for the last few boards asked about: the answer only changes when a wall,

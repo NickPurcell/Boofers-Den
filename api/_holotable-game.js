@@ -8,6 +8,7 @@
 
 const crypto = require("crypto");
 const Fight = require("./_holotable-fight.js");   // the combat view (fight.*), off until the GM switches it on
+const R = globalThis.SW5E;   // rules.js, loaded by the fight module (senses)
 
 const CHAT_LIMIT = 400;
 const rid = (n = 10) => crypto.randomBytes(16).toString("hex").slice(0, n);
@@ -132,6 +133,9 @@ const cleanVariants = (v) => [...new Set((Array.isArray(v) ? v : []).slice(0, 80
 
 // A character sheet as the server keeps it: every number really is a number, every list is a
 // list of plain objects with string fields, images and colours are checked.
+// set by the server (holotable.js) on a player's char.save: the senses of the species they chose, from SW5e's own list.
+// A Symbol, so it can't arrive in a client's JSON.
+const SPECIES_SENSES = Symbol("speciesSenses");
 function cleanChar(ch) {
   const s = (v, n = 200) => str(v, n);
   const list = (v, max, fn) => (Array.isArray(v) ? v.slice(0, max).filter((x) => x && typeof x === "object").map(fn) : []);
@@ -153,6 +157,7 @@ function cleanChar(ch) {
     tech: { max: optNum((ch.tech || {}).max), used: numOr((ch.tech || {}).used, 0) },
     // the combat view's resource tracker (audit 3.1): kept only on a sheet that has some, so other sheets are as before
     ...(Array.isArray(ch.resources) && ch.resources.length ? { resources: Fight.cleanResources(ch.resources) } : {}),
+    ...(Array.isArray(ch.senses) && R.cleanSenses(ch.senses).length ? { senses: R.cleanSenses(ch.senses) } : {}),
     attacks: list(ch.attacks, 40, (a) => ({ name: s(a.name, 80), ab: ["str", "dex", "con", "int", "wis", "cha", "finesse"].includes(a.ab) ? a.ab : "str",
       damage: s(a.damage, 40), damageFull: a.damageFull ? s(a.damageFull, 60) : undefined, type: s(a.type, 30), props: s(a.props, 200),
       proficient: a.proficient !== false, magic: optNum(a.magic), bonus: optNum(a.bonus), noModDamage: !!a.noModDamage })),
@@ -468,6 +473,15 @@ function applyAction(camp, cid, gm, type, p) {
       clean.owner = old ? old.owner : (gm && p.owner && camp.players[p.owner] ? p.owner : cid);
       // photos change only through an upload (or char.photo.clear), never through a sheet save,
       // so a save carrying a stale copy can't undo or delete a photo that was just uploaded
+      // senses shape what a player is shown under fog and lighting, so they're the GM's (jpesus's ruling on #92).
+      // A player's save keeps the sheet's senses; choosing a different species takes that species' own senses,
+      // which the server looks up itself (p[SPECIES_SENSES], set by holotable.js from SW5e's list, never by a client).
+      if (!gm) {
+        const lc = (v) => String(v || "").trim().toLowerCase();
+        const newSpecies = !old || lc(old.species) !== lc(clean.species);
+        const s = newSpecies && Array.isArray(p[SPECIES_SENSES]) ? R.cleanSenses(p[SPECIES_SENSES]) : (old && old.senses) || [];
+        if (s.length) clean.senses = s; else delete clean.senses;
+      }
       clean.image = old ? old.image || "" : "";
       clean.tokenImage = old ? old.tokenImage || "" : "";
       clean.updated = now();
@@ -1001,7 +1015,7 @@ function cleanGame(g) {
 
 module.exports = {
   cleanGame,
-  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, propSightSegments, validImg, validColor, cleanChar, cleanShip, rid, charById,
+  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, propSightSegments, SPECIES_SENSES, validImg, validColor, cleanChar, cleanShip, rid, charById,
   applyAction: (camp, ...a) => { const out = applyAction(camp, ...a); Fight.noteSeen(camp); return out; },   // fog of war: what players see now joins what they've explored
   Forbidden, Invalid, IMG_PREFIX,
 };

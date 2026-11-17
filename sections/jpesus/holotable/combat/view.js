@@ -505,14 +505,14 @@
   // they do HP and AC, and the GM sees them all here and corrects any (under fog and light they decide what a player sees)
   async function sensesTable() {
     if (!gm()) return;
-    const got = await act('fight.senses', { op: 'get' });
-    if (!got || !got.senses) return;
+    // the sheets' senses (#92), which the GM's screen already has: opening the table writes nothing
     const chars = Object.values(st().characters || {}).sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    const got = { senses: Object.fromEntries(chars.map((c) => [c.id, Array.isArray(c.senses) ? c.senses : []])) };
     if (!chars.length) return H.toast('No characters at the table yet.');
     const val = (id, k) => ((got.senses[id] || []).find((x) => x.kind === k) || {}).range || '';
     const owner = (c) => ((st().players || {})[c.owner] || {}).name || '';
     H.modal(`<h3>👁 Senses</h3>
-      <p class="muted">Every character's senses, in feet (blank for none). Players set their own in the combat view's Defences; you can correct any here. Under fog and light, they decide what each player sees.</p>
+      <p class="muted">Every character's senses, in feet (blank for none), as on their sheets. They're yours to set: a species fills them, players see them but can't change them, and under fog and light they decide what each player sees.</p>
       <table class="ct-senses"><tr><th></th>${E.SENSES.map((k) => `<th>${esc(k)}</th>`).join('')}</tr>
         ${chars.map((c) => `<tr data-char="${esc(c.id)}"><td><b>${esc(c.name)}</b>${owner(c) ? ` <span class="muted">· ${esc(owner(c))}</span>` : ''}</td>${E.SENSES.map((k) => `<td><input type="number" min="0" max="9999" step="5" data-sense="${k}" value="${val(c.id, k)}" aria-label="${esc(c.name)} ${k}"></td>`).join('')}</tr>`).join('')}
       </table>
@@ -533,18 +533,18 @@
     if (!u || !u.charId) return;
     const d = (F().defenses || {})[u.charId] || {}, on = (list, t) => (d[list] || []).some((x) => x.type === t);
     const row = (list, label) => `<div class="lbl">${label}</div><div class="ct-types">${E.DAMAGE.map((t) => `<label class="check"><input type="checkbox" data-l="${list}" value="${t}" ${on(list, t) ? 'checked' : ''}> ${t}</label>`).join('')}</div>`;
-    const sense = (k) => ((d.senses || []).find((x) => x.kind === k) || {}).range || '';
+    const sheet = (st().characters || {})[u.charId] || {}, sense = (k) => (((Array.isArray(sheet.senses) && sheet.senses) || []).find((x) => x.kind === k) || {}).range || '';   // the sheet's (#92)
     H.modal(`<h3>${esc(u.name)}: defences and senses</h3>
       <p class="muted">Applied when ${esc(u.name)} takes damage in the combat view: resisted is halved, immune is ignored, vulnerable is doubled.</p>
       ${row('resist', 'Resistant to')}${row('immune', 'Immune to')}${row('vuln', 'Vulnerable to')}
-      <div class="lbl">Senses, in feet (blank for none)</div><div class="row2">${E.SENSES.map((k) => `<label>${k} <input type="number" min="0" max="9999" step="5" data-sense="${k}" value="${sense(k)}"></label>`).join('')}</div>
+      <div class="lbl">Senses, in feet (blank for none)${gm() ? '' : ' <span class="muted">· the GM sets these</span>'}</div><div class="row2">${E.SENSES.map((k) => `<label>${k} <input type="number" min="0" max="9999" step="5" data-sense="${k}" value="${sense(k)}" ${gm() ? '' : 'disabled'}></label>`).join('')}</div>
       <div class="row"><span class="spacer"></span><button class="btn" id="ctdCancel">Cancel</button><button class="btn primary" id="ctdOk">Save</button></div>`, (box) => {
       $('#ctdCancel', box).onclick = H.closeModal;
       $('#ctdOk', box).onclick = async () => {
         const pick = (l) => [...box.querySelectorAll(`input[data-l=${l}]:checked`)].map((x) => x.value);
         H.closeModal();
         const senses = [...box.querySelectorAll('input[data-sense]')].map((x) => ({ kind: x.dataset.sense, range: +x.value || 0 })).filter((x) => x.range > 0);
-        await send('fight.defenses', { charId: u.charId, resist: pick('resist'), immune: pick('immune'), vuln: pick('vuln'), senses });
+        await send('fight.defenses', Object.assign({ charId: u.charId, resist: pick('resist'), immune: pick('immune'), vuln: pick('vuln') }, gm() ? { senses } : {}));
       };
     });
   }

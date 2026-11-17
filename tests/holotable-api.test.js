@@ -1633,3 +1633,36 @@ test("images a kept backup still uses aren't deleted until that backup rolls off
   assert.deepEqual(await db.smembers(S.K.imgWait()), []);
   assert.ok(await S.used() < used + 3 * PNG.length, "storage given back");
 });
+
+test("senses on the sheet are the GM's: players get their species' senses, never their own edits (#92)", async () => {
+  const { gm, p1 } = await table();
+  await db.set(S.K.sw5e("species"), JSON.stringify([
+    { n: "Advozse", traits: [{ n: "Darkvision", d: "You can see in dim light within 60 feet of you as if it were bright light." }] },
+    { n: "Kaleesh", traits: [{ n: "Energy Sensors", d: "You have blindsight out to 30 feet." }] },
+    { n: "Human", traits: [{ n: "Versatile", d: "Skill." }] },
+  ]));
+  handler.resetSpeciesSenses();
+  const senses = async (id) => ((await gm.poll()).data.state.characters[id].senses || []);
+  // a player can't give themselves senses by typing them
+  const kira = (await p1.act("char.save", { char: { name: "Kira", species: "Human", senses: [{ kind: "truesight", range: 9999 }] } })).data.id;
+  assert.deepEqual(await senses(kira), []);
+  // choosing a species gives that species' senses, whatever the client sends with it
+  let ch = (await p1.poll()).data.state.characters[kira];
+  await p1.act("char.save", { char: Object.assign({}, ch, { species: "Advozse", senses: [{ kind: "darkvision", range: 9999 }] }) });
+  assert.deepEqual(await senses(kira), [{ kind: "darkvision", range: 60 }]);
+  // later saves keep them, even if a client tries to change them
+  ch = (await p1.poll()).data.state.characters[kira];
+  await p1.act("char.save", { char: Object.assign({}, ch, { hp: { current: 5, max: 10 }, senses: [] }) });
+  assert.deepEqual(await senses(kira), [{ kind: "darkvision", range: 60 }]);
+  // the GM sets them by hand, and a player's save keeps the GM's choice
+  ch = (await gm.poll()).data.state.characters[kira];
+  await gm.act("char.save", { char: Object.assign({}, ch, { senses: [{ kind: "darkvision", range: 120 }, { kind: "tremorsense", range: 30 }, { kind: "xray", range: 5 }] }) });
+  assert.deepEqual(await senses(kira), [{ kind: "darkvision", range: 120 }, { kind: "tremorsense", range: 30 }], "only the four kinds");
+  ch = (await p1.poll()).data.state.characters[kira];
+  await p1.act("char.save", { char: Object.assign({}, ch, { notes: "x" }) });
+  assert.deepEqual(await senses(kira), [{ kind: "darkvision", range: 120 }, { kind: "tremorsense", range: 30 }]);
+  // switching species again takes the new species' senses
+  ch = (await p1.poll()).data.state.characters[kira];
+  await p1.act("char.save", { char: Object.assign({}, ch, { species: "Kaleesh" }) });
+  assert.deepEqual(await senses(kira), [{ kind: "blindsight", range: 30 }]);
+});

@@ -76,3 +76,11 @@ test("class resources: adding keeps the player's own resources and used counts; 
   const t = R.classTableAt(char([["Operative", 5], ["Monk", 6]]));
   assert.deepEqual(t.map((x) => [x.cls, Object.fromEntries(x.cols)["Sneak Attack"] || Object.fromEntries(x.cols)["Martial Arts"]]), [["Operative", "3d6"], ["Monk", "d6"]]);
 });
+
+test("senses: species traits read as senses; the GM's typing parsed; only the four kinds", () => {
+  assert.deepEqual(R.sensesFromTraits([{ n: "Superior Darkvision", d: "within 120 feet" }, { n: "Speed", d: "30 feet" }]), [{ kind: "darkvision", range: 120 }]);
+  assert.deepEqual(R.sensesFromTraits([{ n: "Montral Reception", d: "You have tremorsense out to 30 feet." }]), [{ kind: "tremorsense", range: 30 }]);
+  assert.deepEqual(R.parseSenses("darkvision 60, Blindsight 30 ft; xray 10"), [{ kind: "darkvision", range: 60 }, { kind: "blindsight", range: 30 }]);
+  assert.deepEqual(R.cleanSenses([{ kind: "truesight", range: 99999 }, { kind: "darkvision", range: 0 }]), [{ kind: "truesight", range: 9999 }]);
+  assert.equal(R.sensesText([{ kind: "darkvision", range: 60 }, { kind: "blindsight", range: 10 }]), "Darkvision 60 ft · Blindsight 10 ft");
+});
