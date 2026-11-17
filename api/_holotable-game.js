@@ -218,6 +218,7 @@ function viewFor(camp, cid, gm, online) {
       if (tok === undefined) return e;
       return Object.assign({}, e, { name: "???", charId: null, sb: undefined, hp: null, maxHp: null, tok: tok || undefined });
     });
+    delete map.walls;   // walls are the GM's: a player's browser never learns the shape of a room it hasn't seen (issue #93)
     map.tokens = map.tokens.filter((t) => !t.hidden).map((t) => {
       if (!t.moves && !t.nameHidden) return t;
       const v = Object.assign({}, t, { moves: undefined });
@@ -902,6 +903,7 @@ function cleanMap(g, raw) {
     tokens: (Array.isArray(m.tokens) ? m.tokens : []).slice(0, 300).filter((t) => t && typeof t === "object").map((t) => ({
       id: /^[a-z0-9]{6,20}$/.test(t.id || "") ? t.id : rid(), name: str(t.name, 40), color: validColor(t.color), x: clamp(int(t.x), -500, 1000), y: clamp(int(t.y), -500, 1000),
       size: clamp(int(t.size, 1), 1, 4), charId: g.characters[t.charId] ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, nameHidden: !!t.nameHidden, img: validImg(t.img), moves: cleanMoves(t.moves) })),
+    ...(Array.isArray(m.walls) && m.walls.length ? { walls: Fight.cleanWalls(m.walls) } : {}),   // the combat view's walls (issue #93), only on a map that has some
     props: (Array.isArray(m.props) ? m.props : []).slice(0, 1500).filter((p) => p && validImg(p.src)).map((p) => ({
       id: /^[a-z0-9]{6,20}$/.test(p.id || "") ? p.id : rid(), src: p.src, name: str(p.name, 60), x: n(p.x, 0), y: n(p.y, 0), w: n(p.w, 1), h: n(p.h, 1), rot: n(p.rot, 0), moves: cleanMoves(p.moves) })),
     sceneId: /^[a-z0-9]{6,20}$/.test(m.sceneId || "") ? m.sceneId : undefined,
