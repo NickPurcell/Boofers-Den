@@ -220,6 +220,7 @@ function viewFor(camp, cid, gm, online) {
       if (tok === undefined) return e;
       return Object.assign({}, e, { name: "???", charId: null, sb: undefined, hp: null, maxHp: null, tok: tok || undefined });
     });
+    delete map.walls;   // walls are the GM's: a player's browser never learns the shape of a room it hasn't seen (issue #93)
     map.tokens = map.tokens.filter((t) => !t.hidden).map((t) => {
       if (!t.moves && !t.nameHidden) return t;
       const v = Object.assign({}, t, { moves: undefined });
@@ -826,6 +827,18 @@ function applyAction(camp, cid, gm, type, p) {
     case "player.rename":
       (camp.players[cid] = camp.players[cid] || {}).name = str(p.name, 40) || "Player";
       return {};
+    case "player.remove": {   // the GM clears a stale entry from the player list (an old sign-in nobody uses any more)
+      need(gm);
+      const id = String(p.id || "");
+      if (!Object.prototype.hasOwnProperty.call(camp.players, id)) throw new Invalid("No such player.");
+      if (id === cid) throw new Invalid("That's you.");
+      // nobody's character is left without an owner: the GM gives it to someone else first
+      const owns = Object.values(chars).filter((c) => c && c.owner === id).map((c) => c.name || "a character");
+      if (owns.length) throw new Invalid(`${playerName(camp, id)} still owns ${owns.join(", ")}. Give ${owns.length > 1 ? "them" : "it"} to someone else first (Owner, on the sheet).`);
+      // chat keeps the names it was written with; someone still signed in comes back as the same person next time
+      delete camp.players[id];
+      return {};
+    }
     case "chat.clear": need(gm); camp.chat = []; return {};
 
     // ---- which SW5e variant rules this table uses (the GM decides; everyone sees the list)
@@ -892,6 +905,7 @@ function cleanMap(g, raw) {
     tokens: (Array.isArray(m.tokens) ? m.tokens : []).slice(0, 300).filter((t) => t && typeof t === "object").map((t) => ({
       id: /^[a-z0-9]{6,20}$/.test(t.id || "") ? t.id : rid(), name: str(t.name, 40), color: validColor(t.color), x: clamp(int(t.x), -500, 1000), y: clamp(int(t.y), -500, 1000),
       size: clamp(int(t.size, 1), 1, 4), charId: g.characters[t.charId] ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, nameHidden: !!t.nameHidden, img: validImg(t.img), moves: cleanMoves(t.moves) })),
+    ...(Array.isArray(m.walls) && m.walls.length ? { walls: Fight.cleanWalls(m.walls) } : {}),   // the combat view's walls (issue #93), only on a map that has some
     props: (Array.isArray(m.props) ? m.props : []).slice(0, 1500).filter((p) => p && validImg(p.src)).map((p) => ({
       id: /^[a-z0-9]{6,20}$/.test(p.id || "") ? p.id : rid(), src: p.src, name: str(p.name, 60), x: n(p.x, 0), y: n(p.y, 0), w: n(p.w, 1), h: n(p.h, 1), rot: n(p.rot, 0), moves: cleanMoves(p.moves) })),
     sceneId: /^[a-z0-9]{6,20}$/.test(m.sceneId || "") ? m.sceneId : undefined,
