@@ -373,7 +373,7 @@ test("conditions: they tilt attack rolls both ways, and Prone depends on distanc
   const ava = (c) => unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0, conditions: c || [] });
   const r1 = (x, c) => unit({ id: "r1", name: "Raider", side: "npc", x, y: 0, conditions: c || [] });
   const pv = (a, t, atk) => E.preview(world([a, t], "ava"), "ava", "r1", atk);
-  assert.deepEqual([pv(ava(["Poisoned"]), r1(1), blade).mode, pv(ava(["Poisoned"]), r1(1), blade).tilts[0].text], ["dis", "you are poisoned"]);
+  assert.deepEqual([pv(ava(["Poisoned"]), r1(1), blade).mode, pv(ava(["Poisoned"]), r1(1), blade).tilts[0].text], ["dis", "Avery is poisoned"]);
   assert.equal(pv(ava(), r1(1, ["Restrained"]), blade).mode, "adv");
   assert.equal(pv(ava(["Invisible"]), r1(1), blade).mode, "adv");
   assert.equal(pv(ava(), r1(1, ["Prone"]), blade).mode, "adv", "prone, within 5 ft: advantage");
@@ -1503,7 +1503,7 @@ test("walls through the API: Frightened only while its source is in sight", asyn
     assert.equal((await sam.act("fight.attack", { target: thug, attack: "0" })).code, 200);
     return (await gm.state()).chat.filter((m) => m.fight && m.roll && m.roll.kind === "attack").pop().roll.label;
   };
-  assert.match(await swing(), /disadvantage \(you are frightened\)/, "the Raider in sight");
+  assert.match(await swing(), /disadvantage \(Avery is frightened\)/, "the Raider in sight");
   await gm.act("fight.undo", {});
   await gm.act("fight.wall", { op: "add", a: [3, -9], b: [3, 9] });   // a wall between Avery (0,0) and the Raider (6,0)
   const line = await swing();
