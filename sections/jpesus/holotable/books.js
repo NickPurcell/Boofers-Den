@@ -186,6 +186,54 @@
   const ABN = { str: 'Str', dex: 'Dex', con: 'Con', int: 'Int', wis: 'Wis', cha: 'Cha' };
   const asiText = a => Object.entries(a || {}).map(([k, v]) => `${v > 0 ? '+' : ''}${v} ${ABN[k]}`).join(', ');
   const SKIP_TRAITS = new Set(['ability score increase', 'age', 'alignment', 'size', 'speed', 'languages']);
+  // A species' increase when it's a choice (audit 1.6). alts: the list's asiChoices, one alternative per entry, each a list
+  // of grants { from (null: any ability), n, amount }. picks: per grant, the ability keys chosen. Every chosen ability is
+  // different ("two other ability scores"); returns { str: 1, ... } or null when the picks don't fit.
+  const asiChoiceText = alts => (alts || []).map(alt => alt.map(g => `+${g.amount} ${g.from ? g.from.map(k => ABN[k]).join(' or ') : `any ${['', 'one', 'two', 'three', 'four'][g.n] || g.n}`}`).join(', ')).join('; or ');
+  function asiFromPicks(alt, picks) {
+    if (!Array.isArray(alt) || !Array.isArray(picks) || picks.length !== alt.length) return null;
+    const seen = new Set(), out = {};
+    for (let i = 0; i < alt.length; i++) {
+      const g = alt[i], got = Array.isArray(picks[i]) ? picks[i] : [];
+      if (got.length !== g.n) return null;
+      for (const k of got) {
+        if (!Object.prototype.hasOwnProperty.call(ABN, k) || seen.has(k) || (g.from && !g.from.includes(k))) return null;
+        seen.add(k); out[k] = (out[k] || 0) + g.amount;
+      }
+    }
+    return out;
+  }
+  // the picker for it: done(asi) with the increase, or done(null) to skip it
+  function asiDialog(x, scores, done, skipLabel) {
+    const alts = x.asiChoices || [], keys = Object.keys(ABN);
+    let a = 0;
+    const firstPicks = alt => { const used = new Set(); return alt.map(g => Array.from({ length: g.n }, () => { const k = (g.from || keys).find(y => !used.has(y)) || ''; used.add(k); return k; })); };
+    let picks = firstPicks(alts[0]);
+    const draw = box => {
+      const alt = alts[a], asi = asiFromPicks(alt, picks);
+      box.querySelector('#asBody').innerHTML = `${alts.length > 1 ? `<div class="choices">${alts.map((al, i) => `<label class="choice ${i === a ? 'on' : ''}"><input type="radio" name="asAlt" value="${i}" ${i === a ? 'checked' : ''}> ${esc(asiChoiceText([al]))}</label>`).join('')}</div>` : ''}
+        ${alt.map((g, i) => `<div class="row" style="margin:6px 0">+${g.amount} to ${g.n > 1 ? `${g.n} abilities` : 'one ability'}${g.from ? ` (${g.from.map(k => ABN[k]).join(' or ')})` : ''}:
+          ${picks[i].map((k, j) => `<select data-as="${i}.${j}">${(g.from || keys).map(y => `<option value="${y}" ${y === k ? 'selected' : ''}>${ABN[y]}${scores ? ` (${n0(scores[y])})` : ''}</option>`).join('')}</select>`).join(' ')}</div>`).join('')}
+        <p class="${asi ? 'muted' : 'error'}" style="font-size:12px">${asi ? 'Gives ' + esc(asiText(asi)) + '.' : 'Pick a different ability for each increase.'}</p>`;
+      box.querySelector('[data-as=ok]').disabled = !asi;
+    };
+    H.modal(`<h3>${esc(x.n)}: ability score increase</h3>
+      <p class="muted" style="margin-top:0;font-size:12px">${esc(asiChoiceText(alts))}</p>
+      <div id="asBody"></div>
+      <div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn" data-as="skip">${esc(skipLabel || 'Skip')}</button><button class="btn primary" data-as="ok">Use this increase</button></div>`, box => {
+      draw(box);
+      box.onchange = e => {
+        if (e.target.name === 'asAlt') { a = +e.target.value; picks = firstPicks(alts[a]); return draw(box); }
+        const at = e.target.dataset.as; if (!at) return;
+        const [i, j] = at.split('.').map(Number); picks[i][j] = e.target.value; draw(box);
+      };
+      box.onclick = e => {
+        const t = e.target.closest('[data-as]'); if (!t || t.tagName === 'SELECT') return;
+        if (t.dataset.as === 'skip') done(null);
+        if (t.dataset.as === 'ok') { const asi = asiFromPicks(alts[a], picks); if (asi) done(asi); }
+      };
+    });
+  }
   function openSpeciesPicker(charId) {
     picker({
       title: '◈ Choose a species', intro: "Sets the species, adds its traits to Features &amp; Traits, and can apply its ability score increase. Picking another species replaces the old traits.",
@@ -193,7 +241,7 @@
       facets: [{ key: 'src', label: 'books', get: x => x.src }, { key: 'size', label: 'sizes', get: x => x.size }],
       search: x => x.n + ' ' + x.home + ' ' + x.traits.map(t => t.n).join(' '),
       row: x => `<b>${esc(x.n)}</b>${srcTag(x.src)}<span class="pp-lvl">${esc(x.size)}</span>
-        <div class="pp-meta">${esc([x.home && 'Homeworld: ' + x.home, x.asi ? asiText(x.asi) : 'ability increase: your choice', x.lang && 'Speaks ' + x.lang].filter(Boolean).join(' · '))}</div>`,
+        <div class="pp-meta">${esc([x.home && 'Homeworld: ' + x.home, x.asi ? asiText(x.asi) : x.asiChoices ? asiChoiceText(x.asiChoices) : 'ability increase: your choice', x.lang && 'Speaks ' + x.lang].filter(Boolean).join(' · '))}</div>`,
       detail: x => x.traits.map(t => `<p><b>${esc(t.n)}.</b> ${md(t.d).replace(/^<p>|<\/p>$/g, '')}</p>`).join(''),
       detailLabel: 'Traits',
       action: (x, i) => pickBtn(i, lc(charOf(charId).species) === lc(x.n) ? 'Re-apply' : 'Choose'),
@@ -212,6 +260,12 @@
         });
         H.toast(`${x.n} chosen${apply ? ' (ability scores updated)' : ''}`);
         H.closeModal();
+        if (x.asiChoices) asiDialog(x, charOf(charId).abilities, asi => {   // a choice: picked here, or skipped if the sheet has it
+          H.closeModal();
+          if (!asi) return;
+          mutateChar(charId, c => { for (const [k, v] of Object.entries(asi)) c.abilities[k] = Math.min(30, n0(c.abilities[k]) + v); });
+          H.toast(`${x.n}: ${asiText(asi)}`);
+        }, 'Skip: my sheet has it');
       },
     });
   }
@@ -333,6 +387,9 @@
       c.senses = R.sensesFromTraits(x.traits);
       const lang = x.traits.find(t => lc(t.n) === 'languages'); if (lang) c.languages = lang.d.slice(0, 300);
       if (D.asi && x.asi) for (const [k, v] of Object.entries(x.asi)) c.abilities[k] = Math.min(30, n0(c.abilities[k]) + v);
+      if (!x.asi && D.asiPick) for (const [k, v] of Object.entries(D.asiPick)) {   // a chosen increase (1.6): the six abilities only, small numbers
+        if (Object.prototype.hasOwnProperty.call(ABN, k)) c.abilities[k] = Math.min(30, n0(c.abilities[k]) + Math.max(-5, Math.min(5, n0(v))));
+      }
     }
     const cl = D.cls;
     if (cl) {
@@ -372,7 +429,7 @@
       facets: [{ key: 'src', label: 'books', get: x => x.src }, { key: 'size', label: 'sizes', get: x => x.size }],
       search: x => x.n + ' ' + x.home + ' ' + x.traits.map(t => t.n).join(' '),
       row: x => `<b>${esc(x.n)}</b>${srcTag(x.src)}<span class="pp-lvl">${esc(x.size)}</span>
-        <div class="pp-meta">${esc([x.home && 'Homeworld: ' + x.home, x.asi ? asiText(x.asi) : 'ability increase: your choice', x.lang && 'Speaks ' + x.lang].filter(Boolean).join(' · '))}</div>`,
+        <div class="pp-meta">${esc([x.home && 'Homeworld: ' + x.home, x.asi ? asiText(x.asi) : x.asiChoices ? asiChoiceText(x.asiChoices) : 'ability increase: your choice', x.lang && 'Speaks ' + x.lang].filter(Boolean).join(' · '))}</div>`,
       detail: x => x.traits.map(t => `<p><b>${esc(t.n)}.</b> ${md(t.d).replace(/^<p>|<\/p>$/g, '')}</p>`).join(''),
       detailLabel: 'Traits', action: (x, i) => pickBtn(i, 'Choose'), pickedLabel: '✓ Chosen',
       onPick: x => { box0.removeEventListener('click', skip); D.species = x; D.asi = !!x.asi; stepClass(); },
@@ -410,7 +467,11 @@
           if (b.dataset.gb === 'next') {
             b.disabled = true; b.textContent = 'Loading the class features…';   // the first load of the features list takes a moment
             D.classFeatures = (await featuresFor(D.cls.n, 'class', 1, 1).catch(() => [])).map(f => ({ n: f.n, text: f.text }));
-            H.scoresDialog({ name: D.name }, sc => { D.scores = sc; stepBackground(); });
+            H.scoresDialog({ name: D.name }, sc => {
+              D.scores = sc; D.asiPick = null;
+              if (!D.species.asiChoices) return stepBackground();
+              asiDialog(D.species, sc, asi => { D.asiPick = asi; stepBackground(); }, 'Skip: add it later');   // 1.6: the species' increase, chosen
+            });
           }
         };
       });
@@ -438,7 +499,7 @@
         <label>Name<input id="gbName" value="${esc(c.name)}" maxlength="80"></label>
         <p style="margin:8px 0 4px"><b>${esc(c.species)}</b> · <b>${esc(D.cls.n)} 1</b> · ${esc(c.background)}${D.feat ? ' · feat: ' + esc(D.feat.n) : ''}</p>
         <p style="margin:0 0 4px">${R.ABILITIES.map(a => `${a.key.toUpperCase()} <b>${c.abilities[a.key]}</b>`).join(' · ')}
-          ${D.species.asi ? `<span class="muted">(with ${esc(D.species.n)}'s ${esc(asiText(D.species.asi))})</span>` : `<br><span class="muted">${esc(D.species.n)}'s ability increase is your choice: add it on the sheet.</span>`}</p>
+          ${D.species.asi ? `<span class="muted">(with ${esc(D.species.n)}'s ${esc(asiText(D.species.asi))})</span>` : D.asiPick ? `<span class="muted">(with ${esc(D.species.n)}'s ${esc(asiText(D.asiPick))}, your choice)</span>` : `<br><span class="muted">${esc(D.species.n)}'s ability increase is your choice: add it on the sheet.</span>`}</p>
         <p style="margin:0 0 4px">HP <b>${c.hp.max}</b> · AC <b>${c.ac}</b> (unarmored) · saves ${Object.keys(c.saves).map(a => a.toUpperCase()).join(', ')} · skills ${esc(sk.join(', '))}</p>
         <h4 style="margin-top:10px">Starting equipment</h4><div class="muted" style="font-size:12px;white-space:pre-wrap;max-height:180px;overflow:auto">${esc(c.notes)}</div>
         <p class="muted" style="font-size:12px">This goes into your sheet's Notes; add the items you choose on the Features &amp; Gear tab.</p>
@@ -932,7 +993,7 @@
 
   window.HTB = {
     list, mdBlock, libraryBar, openBook, openSpeciesPicker, openBackgroundPicker, openArchetypePicker, openFeaturePicker,
-    guidedBuild, buildLevel1, skillChoice, applyBackground, backgroundSkillOptions, heldSkills,
+    guidedBuild, buildLevel1, skillChoice, applyBackground, backgroundSkillOptions, heldSkills, asiFromPicks, asiChoiceText,
     levelFeatures, archetypesOf, featNamed, featNames, openMonsterPicker, openStatBlock, rollCreatureSave, bonuses, saveBonus, difficulty, xpMultiplier, renderEncounter, renderShips, renderShipsSafe,
   };
   // the rules tab and ships tab were drawn before this file loaded

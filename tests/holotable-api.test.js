@@ -1686,7 +1686,7 @@ test("images a kept backup still uses aren't deleted until that backup rolls off
 
 test("senses on the sheet are the GM's: players get their species' senses, never their own edits (#92)", async () => {
   const { gm, p1 } = await table();
-  await db.set(S.K.sw5e("species"), JSON.stringify([
+  await db.set(S.K.sw5e("species-2"), JSON.stringify([
     { n: "Advozse", traits: [{ n: "Darkvision", d: "You can see in dim light within 60 feet of you as if it were bright light." }] },
     { n: "Kaleesh", traits: [{ n: "Energy Sensors", d: "You have blindsight out to 30 feet." }] },
     { n: "Human", traits: [{ n: "Versatile", d: "Skill." }] },
@@ -1722,7 +1722,7 @@ test("sheets made before #129 get their species' senses once; never over senses 
   // a table from before #129: sheets with a species but no senses (the GM's saves keep what they're given)
   const make = async (name, species, senses) => (await gm.act("char.save", { char: Object.assign({ name, species }, senses ? { senses } : {}) })).data.id;
   // SW5e's species list unreachable at first: nothing changes, and the next action tries again
-  await db.del(S.K.sw5e("species"));
+  await db.del(S.K.sw5e("species-2"));
   await db.set(S.K.sw5eFail("species"), "1");
   handler.resetSpeciesSenses();
   const vel = await make("Vel", "Sith Pureblood"), ana = await make("Ana", "Sith Pureblood", [{ kind: "truesight", range: 30 }]), hal = await make("Hal", "Human"), nos = await make("Nos", "");
@@ -1735,7 +1735,7 @@ test("sheets made before #129 get their species' senses once; never over senses 
   assert.equal(await senses(vel), undefined, "the list unreachable: left alone");
   // the list back: the next action fills Vel from its species; Ana keeps the GM's; Hal's species has none; Nos has no species
   await db.del(S.K.sw5eFail("species"));
-  await db.set(S.K.sw5e("species"), JSON.stringify([
+  await db.set(S.K.sw5e("species-2"), JSON.stringify([
     { n: "Sith Pureblood", traits: [{ n: "Darkvision", d: "You can see in dim light within 60 feet of you as if it were bright light." }] },
     { n: "Human", traits: [{ n: "Versatile", d: "Skill." }] },
   ]));
@@ -1769,7 +1769,7 @@ test("the one-time senses fill never reads SW5e inside the game lock, and only r
   const file = JSON.parse((await gm.call("GET", { op: "export" })).data);
   delete file.sensesFilled;
   assert.equal((await gm.post("restore", { campaign: file })).code, 200);
-  await db.del(S.K.sw5e("species"));
+  await db.del(S.K.sw5e("species-2"));
   await db.del(S.K.sw5eFail("species"));
   handler.resetSpeciesSenses();
   const realFetch = global.fetch;
@@ -1796,7 +1796,7 @@ test("the senses fill holds an action at most about a second while SW5e is slow,
   let file = JSON.parse((await gm.call("GET", { op: "export" })).data);
   delete file.sensesFilled;
   await gm.post("restore", { campaign: file });
-  await db.del(S.K.sw5e("species")); await db.del(S.K.sw5eFail("species"));
+  await db.del(S.K.sw5e("species-2")); await db.del(S.K.sw5eFail("species"));
   handler.resetSpeciesSenses();
   const realFetch = global.fetch;
   global.fetch = () => new Promise((ok, bad) => setTimeout(() => bad(new Error("slow, then out")), 2500));
@@ -1807,7 +1807,7 @@ test("the senses fill holds an action at most about a second while SW5e is slow,
   } finally { await new Promise((ok) => setTimeout(ok, 2700)); global.fetch = realFetch; }
   // the list back: filled; then an old backup (no mark, no senses) restored on a warm instance is filled again
   await db.del(S.K.sw5eFail("species"));
-  await db.set(S.K.sw5e("species"), JSON.stringify([{ n: "Sith Pureblood", traits: [{ n: "Darkvision", d: "You can see in dim light within 60 feet of you as if it were bright light." }] }]));
+  await db.set(S.K.sw5e("species-2"), JSON.stringify([{ n: "Sith Pureblood", traits: [{ n: "Darkvision", d: "You can see in dim light within 60 feet of you as if it were bright light." }] }]));
   handler.resetSpeciesSenses();
   await gm.act("notes.save", { notes: "filled" });
   const vel = () => gm.poll().then((r) => Object.values(r.data.state.characters).find((c) => c.name === "Vel").senses);
