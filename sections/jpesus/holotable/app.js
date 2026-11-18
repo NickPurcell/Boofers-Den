@@ -841,7 +841,7 @@
           <td>${inp(`powers.${i}.notes`, p.notes || '', { ro, ph: 'range, duration, effect…' })}</td>
           <td style="width:60px">${(over => `<button class="btn small ${over ? 'ghost' : 'amber'}" data-act="cast" data-i="${i}"${over ? ` title="${esc(over.text)}"` : ''}>Cast</button>`)(R.overMaxPowerLevel(ch, p, ci))}</td>
           <td style="white-space:nowrap">${!ro ? `<button class="btn tiny ghost" data-act="power-desc" data-i="${i}" title="Write or edit this power's description">✎</button><button class="btn tiny ghost" data-act="del" data-list="powers" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">No powers.</td></tr>'}</tbody></table>
-        <p class="muted" style="font-size:12px;margin:6px 0 0">Hover a power for its details. Casting costs 1 + power level points (level 0 at-wills are free).</p></div>`;
+        <p class="muted" style="font-size:12px;margin:6px 0 0">Hover (or tap) a power for its details. Casting costs 1 + power level points (level 0 at-wills are free).</p></div>`;
     }
 
     if (sub === 'gear') {
@@ -862,7 +862,7 @@
             <span class="spacer"></span>
             <button class="btn tiny" data-act="share-feature" data-i="${i}" title="Post to chat">💬</button>
             ${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="features" data-i="${i}" title="Remove">✕</button>` : ''}</div>`).join('') || '<p class="muted">None.</p>'}</div>
-          ${(ch.features || []).length ? '<p class="muted" style="font-size:12px;margin:6px 0 0">Hover a feature for its description.</p>' : ''}
+          ${(ch.features || []).length ? '<p class="muted" style="font-size:12px;margin:6px 0 0">Hover (or tap) a feature for its description.</p>' : ''}
         </div>
         <div class="box"><h4>Proficiencies</h4>${inp('proficiencies', ch.proficiencies || '', { ro, type: 'textarea', rows: 3, ph: 'Armor, weapons, tools…' })}
           <h4 style="margin-top:10px">Languages</h4>${inp('languages', ch.languages || '', { ro, type: 'textarea', rows: 2 })}</div>
@@ -1415,7 +1415,7 @@
     if (!pw) return;
     tip.innerHTML = powerCard(ch, pw); tip.classList.remove('hidden'); placeTip(x, y);
   }
-  const hideTip = () => tip.classList.add('hidden');
+  const hideTip = () => { if (!tip.classList.contains('hc-sheet')) tip.classList.add('hidden'); };
   const tipTarget = e => e.target.closest('[data-power-tip], [data-feature-tip]');
   const showTip = (el, x, y) => (el.dataset.featureTip !== undefined ? showFeatureTip(el, x, y) : showPowerTip(el, x, y));
   $('#sheet').addEventListener('mouseover', e => { const el = tipTarget(e); if (el) showTip(el, e.clientX, e.clientY); });
@@ -1423,7 +1423,22 @@
   $('#sheet').addEventListener('mouseout', e => { const el = tipTarget(e); if (el && !el.contains(e.relatedTarget)) hideTip(); });
   $('#sheet').addEventListener('focusin', e => { const el = tipTarget(e); if (el) { const r = el.getBoundingClientRect(); showTip(el, r.left, r.bottom); } });
   $('#sheet').addEventListener('focusout', hideTip);
-  document.addEventListener('scroll', hideTip, true);
+  document.addEventListener('scroll', e => { if (!tip.classList.contains('hc-sheet')) hideTip(e); }, true);
+  // phones and tablets (audit 12.11): there's no hover, so a tap on a power or feature (not on its inputs or buttons)
+  // opens its card as a sheet along the bottom of the screen, with ✕; a tap anywhere else closes it
+  $('#sheet').addEventListener('pointerup', e => {
+    if (e.pointerType !== 'touch') return;
+    const el = tipTarget(e);
+    if (!el || e.target.closest('input, select, textarea, button')) return;
+    showTip(el, 0, 0);
+    tip.classList.add('hc-sheet');
+    tip.insertAdjacentHTML('afterbegin', '<button class="btn tiny ghost hc-close" aria-label="Close">✕</button>');
+    tip.style.left = ''; tip.style.top = '';
+  });
+  document.addEventListener('pointerdown', e => {
+    if (!tip.classList.contains('hc-sheet')) return;
+    if (e.target.closest('.hc-close') || !tip.contains(e.target)) { tip.classList.add('hidden'); tip.classList.remove('hc-sheet'); }
+  }, true);
 
   // --------------------------------------------------------------------------- combat
   function renderCombat(el) {
