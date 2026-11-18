@@ -477,12 +477,15 @@ function damageChar(camp, ch, amount) {
   for (const e of camp.initiative.entries) if (e.charId === ch.id) e.hp = hp.current;
 }
 
+// what the combat module is given to work with
+const fightHelpers = () => ({ rollDice, addChat, playerName, applyAction, shownName, combatMoves, reviveChar, Forbidden, Invalid });
+
 function applyAction(camp, cid, gm, type, p) {
   p = p || {};
   const chars = camp.characters, ini = camp.initiative, mp = camp.map;
   mp.props = mp.props || [];
   const need = (ok, why = "GM only") => { if (!ok) throw new Forbidden(why); };
-  if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, applyAction, shownName, combatMoves, reviveChar, Forbidden, Invalid });
+  if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, fightHelpers());
   if (Ships.handles(type)) return Ships.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
 
   switch (type) {
@@ -535,6 +538,7 @@ function applyAction(camp, cid, gm, type, p) {
       if (!ch) return {};
       need(gm || ch.owner === cid, "not your character");
       damageChar(camp, ch, p.amount);
+      Fight.afterDamage(camp, cid, ch, clamp(int(p.amount), 0, 100000), fightHelpers());   // concentration (audit 4.6)
       return {};
     }
     case "char.delete": {
@@ -654,7 +658,7 @@ function applyAction(camp, cid, gm, type, p) {
       if ("hidden" in f && gm) e.hidden = !!f.hidden;
       if ("hp" in f && e.charId && chars[e.charId]) (chars[e.charId].hp = chars[e.charId].hp || {}).current = numOr(f.hp, 0);
       if ("damage" in f) {   // the tracker's -n: a character's temporary hit points first, on the server (#107); a creature just loses it
-        if (e.charId && chars[e.charId]) damageChar(camp, chars[e.charId], f.damage);
+        if (e.charId && chars[e.charId]) { damageChar(camp, chars[e.charId], f.damage); Fight.afterDamage(camp, cid, chars[e.charId], clamp(int(f.damage), 0, 100000), fightHelpers()); }
         else if (e.hp != null) e.hp = Math.max(0, e.hp - clamp(int(f.damage), 0, 100000));
       }
       if ("init" in f) sortInit(ini);
