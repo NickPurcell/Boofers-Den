@@ -20,6 +20,7 @@ const SIZES = ["Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"];
 // the conditions the DM can set from the combat view: HoloTable's list, plus SW5e's levelled ones until #77 brings them to rules.js
 const CONDS = new Set([...Object.keys((R && R.CONDITIONS) || {}), ...Object.keys(E.CONDITION_EFFECTS), "Deafened", "Diseased"]);
 const ID = /^[a-z0-9]{6,20}$/;
+const idOr = (v) => (ID.test(String(v || "")) ? String(v) : "");   // a unit id from a request, or nothing (never "__proto__")
 const str = (v, n) => String(v == null ? "" : v).slice(0, n);
 const int = (v, d = 0) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : d; };
 // a creature's Athletics and Acrobatics bonuses, the only skills the combat view rolls (#144)
@@ -171,6 +172,7 @@ function worldOf(camp, forPlayer, G, cid) {
   if (!forPlayer) for (const e of entries) if (w.units[e.id] && hiddenEntry(camp, e, ut[e.id])) w.units[e.id].hidden = true;
   // the dark matters in a fight where it matters to fog: a dimmed or dark map with fog on (step 5)
   if (fogOn(camp) && lightOn(camp)) { const { cols, rows } = sizeOf(camp); w.light = { lit: litOf(camp), cols, rows }; }
+  w.board = sizeOf(camp);   // the board's edge, which a push can't go past (#147)
   return w;
 }
 
@@ -675,11 +677,11 @@ function apply(camp, cid, gm, type, p, G) {
       if (type === "fight.move") act = { type: "move", unit: cur.id, x: p.x, y: p.y };
       else if (type === "fight.end") act = { type: "end", unit: cur.id };
       else if (type === "fight.stand") act = { type: "stand", unit: cur.id };
-      else if (type === "fight.douse") act = { type: "douse", unit: cur.id, target: String(p.target || "") };
-      else if (type === "fight.common") act = { type: "common", unit: cur.id, key: String(p.key || ""), target: str(p.target, 40) };   // Help names its target (#144)
-      else if (type === "fight.grapple" || type === "fight.shove") act = { type: type.slice(6), unit: cur.id, target: str(p.target, 40), push: !!p.push, multi: gm && !cur.charId ? clamp(int(p.multi, 1), 1, 6) : 1 };
+      else if (type === "fight.douse") act = { type: "douse", unit: cur.id, target: idOr(p.target) };
+      else if (type === "fight.common") act = { type: "common", unit: cur.id, key: String(p.key || ""), target: idOr(p.target) };   // Help names its target (#144)
+      else if (type === "fight.grapple" || type === "fight.shove") act = { type: type.slice(6), unit: cur.id, target: idOr(p.target), push: !!p.push, multi: gm && !cur.charId ? clamp(int(p.multi, 1), 1, 6) : 1 };
       else if (type === "fight.escape") act = { type: "escape", unit: cur.id, skill: p.skill === "athletics" ? "athletics" : "acrobatics" };
-      else if (type === "fight.release") act = { type: "release", unit: cur.id, target: str(p.target, 40) };
+      else if (type === "fight.release") act = { type: "release", unit: cur.id, target: idOr(p.target) };
       else if (type === "fight.deathsave") act = { type: "deathsave", unit: cur.id };
       else if (type === "fight.use") {
         const ch = cur.charId && camp.characters[cur.charId];
@@ -687,7 +689,7 @@ function apply(camp, cid, gm, type, p, G) {
         const ability = E.abilitiesOf(ch, R, f.lib).find((a) => a.key === String(p.ability || ""));
         if (!ability) throw new G.Invalid("The table has no data for that ability on this sheet.");
         const point = p.point && Number.isFinite(+p.point.x) && Number.isFinite(+p.point.y) ? { x: clamp(+p.point.x, -500, 1000), y: clamp(+p.point.y, -500, 1000) } : null;
-        act = { type: "use", unit: cur.id, ability, point, targets: Array.isArray(p.targets) ? p.targets.slice(0, 40).map(String) : [String(p.target || "")], upcast: clamp(int(p.upcast), 0, 9), adv: !!p.adv, dis: !!p.dis };
+        act = { type: "use", unit: cur.id, ability, point, targets: Array.isArray(p.targets) ? p.targets.slice(0, 40).map(idOr).filter(Boolean) : [idOr(p.target)].filter(Boolean), upcast: clamp(int(p.upcast), 0, 9), adv: !!p.adv, dis: !!p.dis };
       }
       else {
         let spec;
@@ -696,7 +698,7 @@ function apply(camp, cid, gm, type, p, G) {
           spec = ch && E.attacksOf(ch, R).find((a) => a.key === String(p.attack));
           if (!spec) throw new G.Invalid("That attack isn't on the sheet.");
         } else spec = cleanSpec(p.attack, G);
-        act = { type: "attack", unit: cur.id, target: String(p.target || ""), attack: spec, adv: !!p.adv, dis: !!p.dis, no: Array.isArray(p.no) ? p.no.slice(0, 4).map((x) => str(x, 20)) : [],
+        act = { type: "attack", unit: cur.id, target: idOr(p.target), attack: spec, adv: !!p.adv, dis: !!p.dis, no: Array.isArray(p.no) ? p.no.slice(0, 4).map((x) => str(x, 20)) : [],
           add: { fes: clamp(int(p.add && p.add.fes), 0, 20), double: !!(p.add && p.add.double) }, twoHands: !!p.twoHands,   // only how many, never the dice: the engine works those out
           multi: gm && !cur.charId ? clamp(int(p.multi, 1), 1, 6) : 1,
           offhand: !!cur.charId && !!p.offhand };   // Two- or Double-Weapon Fighting (5.8): the engine checks it may   // a creature's Multiattack (#139): the GM's screen reads it from the stat block

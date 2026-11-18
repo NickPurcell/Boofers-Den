@@ -220,6 +220,8 @@
   }
   const overlaps = (ax, ay, as, b) => ax < b.x + (b.size || 1) && b.x < ax + as && ay < b.y + (b.size || 1) && b.y < ay + as;
   const hostile = (a, b) => a.side !== b.side;
+  // a unit by id, from the world's own units only: an id like "__proto__" or "constructor" is no unit (#147 review)
+  const unitAt = (w, id) => (w && w.units && typeof id === 'string' && Object.prototype.hasOwnProperty.call(w.units, id) ? w.units[id] : null);
 
   // Every square the unit could move its top-left corner to with `feet` of movement: { "x,y": feet spent }.
   // By SW5e's grid rule: each straight step is 5 ft, diagonals alternate 5 ft and 10 ft, another creature's space is
@@ -651,7 +653,7 @@
     return out;
   }
   function preview(world, actorId, targetId, attack, opts = {}) {
-    const a = world.units[actorId], t = world.units[targetId];
+    const a = unitAt(world, actorId), t = unitAt(world, targetId);
     if (!a || !t) return { legal: false, why: 'No such target.' };
     if (a.id === t.id) return { legal: false, why: "You can't attack yourself." };
     if (t.ac == null || t.ac === '') return { legal: false, why: `${t.name} has no AC set.` };
@@ -1011,7 +1013,7 @@
     return '';
   }
   // the help a unit is getting: an effect on the target, used up by the first attack an ally of the helper makes on it
-  const helpOn = (w, a, t) => (w.effects || []).find((ef) => ef.unit === t.id && ef.condition === 'Helped' && ef.source && ef.source !== a.id && w.units[ef.source] && w.units[ef.source].side === a.side);
+  const helpOn = (w, a, t) => (w.effects || []).find((ef) => ef.unit === t.id && ef.condition === 'Helped' && ef.source && ef.source !== a.id && unitAt(w, ef.source) && unitAt(w, ef.source).side === a.side);
   // one attack of the Attack action (#139): the first takes the action. Returns why not, or what to record once it's made
   function attackSlot(w, me, b, act) {
     const more = b.attacks > 0;
@@ -1030,7 +1032,7 @@
   }
   function applyOne(world, act, roll) {
     if (!world.active) return no('Combat has not started: start initiative first.');
-    const u = world.units[act.unit];
+    const u = unitAt(world, act.unit);
     if (!u) return no('That combatant is not on the map.');
     if (act.unit !== world.turnId) return no(`It's not ${u.name}'s turn.`);
     const w = fresh(world), me = w.units[u.id], b = budget(w);
@@ -1076,7 +1078,7 @@
         return { ok: true, world: w, log: s.log, events: s.events };
       }
       case 'grapple': case 'shove': {   // #144: one attack of the Attack action, a contest instead of an attack roll
-        const t = w.units[act.target], what = act.type === 'grapple' ? 'grapple' : 'shove';
+        const t = unitAt(w, act.target), what = act.type === 'grapple' ? 'grapple' : 'shove';
         const why = maneuverCheck(w, me, t, what);
         if (why) return no(why);
         if (what === 'grapple' && (w.effects || []).some((ef) => ef.unit === t.id && ef.condition === 'Grappled' && ef.source === me.id)) return no(`${me.name} is already grappling ${t.name}.`);
@@ -1098,7 +1100,8 @@
           // 5 ft straight away from the shover, if the square is free and no wall is in the way
           const c = (u) => [u.x + (u.size || 1) / 2, u.y + (u.size || 1) / 2], [mx, my] = c(me), [tx, ty] = c(t);
           const dx = Math.sign(Math.round(tx - mx)), dy = Math.sign(Math.round(ty - my)), nx = t.x + dx, ny = t.y + dy, ts = t.size || 1;
-          const taken = Object.values(w.units).some((o) => o.id !== t.id && !o.down && overlaps(nx, ny, ts, o));
+          const taken = Object.values(w.units).some((o) => o.id !== t.id && !o.down && overlaps(nx, ny, ts, o))
+            || nx < 0 || ny < 0 || (w.board && (nx + ts > w.board.cols || ny + ts > w.board.rows));   // the board's edge is a wall
           const walled = !clear((w.walls || []).filter(blocksMove), [tx, ty], [tx + dx, ty + dy], () => true);
           if ((!dx && !dy) || taken || walled) log.push({ unit: t.id, text: `There's no room to push ${t.name}: it stays where it is.` });
           else { t.x = nx; t.y = ny; log.push({ unit: t.id, text: `${t.name} is pushed 5 ft.` }); }
@@ -1106,10 +1109,10 @@
         return { ok: true, world: w, log, events: won && act.push ? [{ kind: 'move', unit: t.id, feet: FT }] : [] };
       }
       case 'escape': {   // #144: the grappled unit's action, a contest against its grappler
-        const ef = (w.effects || []).find((e) => e.unit === me.id && e.condition === 'Grappled' && e.source && w.units[e.source]);
+        const ef = (w.effects || []).find((e) => e.unit === me.id && e.condition === 'Grappled' && e.source && unitAt(w, e.source));
         if (!ef) return no((me.conditions || []).includes('Grappled') ? `The combat view doesn't know who is grappling ${me.name}: the GM can take the condition off.` : `${me.name} isn't grappled.`);
         if (!b.action) return no(`${me.name} has already used the action this turn.`);
-        const g = w.units[ef.source], log = [];
+        const g = unitAt(w, ef.source), log = [];
         const won = contest(w, me, g, act.skill === 'athletics' ? 'athletics' : 'acrobatics', ['athletics'], roll, log, 'escape');
         w.spent[me.id].action += 1;
         if (won) {
@@ -1121,15 +1124,15 @@
       }
       case 'release': {   // #144: letting go needs no action
         const mine = (w.effects || []).filter((e) => e.condition === 'Grappled' && e.source === me.id && (!act.target || e.unit === act.target));
-        if (!mine.length) return no(`${me.name} isn't grappling anyone${act.target && w.units[act.target] ? ` (not ${w.units[act.target].name})` : ''}.`);
+        if (!mine.length) return no(`${me.name} isn't grappling anyone${unitAt(w, act.target) ? ` (not ${unitAt(w, act.target).name})` : ''}.`);
         w.effects = w.effects.filter((e) => !mine.includes(e));
         const log = [];
-        for (const ef of mine) { dropCondition(w, ef); const u = w.units[ef.unit]; if (u) log.push({ unit: u.id, text: `${me.name} lets go of ${u.name}.` }); }
+        for (const ef of mine) { dropCondition(w, ef); const u = unitAt(w, ef.unit); if (u) log.push({ unit: u.id, text: `${me.name} lets go of ${u.name}.` }); }
         return { ok: true, world: w, log, events: [] };
       }
       case 'common': {   // Dash, Disengage, Dodge; and a Berserker's Rage
         if (act.key === 'help') {   // #144: the first attack an ally makes on a creature within 5 ft of me, before my next turn, has advantage
-          const t = w.units[act.target];
+          const t = unitAt(w, act.target);
           if (!t || t.id === me.id) return no('Pick a creature within 5 ft to help against.');
           if (feetBetween(me, t) > FT) return no(`${t.name} is ${feetBetween(me, t)} ft away: Help needs it within 5 ft.`);
           if (!b.action) return no(`${me.name} has already used the action this turn.`);
@@ -1183,7 +1186,7 @@
           if (!ids.length) return no('Pick a target.');
           if (new Set(ids).size !== ids.length || ids.length > max) return no(`${ab.name} affects ${max === 1 ? 'one target' : `up to ${max} targets`}.`);
           for (const id of ids) {
-            const t = w.units[id];
+            const t = unitAt(w, id);
             if (!t) return no('No such target.');
             if (t.id !== me.id && (w.effects || []).some((ef) => ef.unit === me.id && ef.condition === 'Charmed' && ef.source === t.id) && (ab.attack || ab.save || ab.damage.length)) return no(`${me.name} is charmed by ${t.name} and can't target it with that.`);
             if (ab.attack && (t.ac == null || t.ac === '' || !Number.isFinite(+t.ac))) return no(`${t.name} has no AC set.`);
@@ -1205,7 +1208,7 @@
         const dmgExpr = (crit) => ab.damage.map((d) => diceExpr(crit ? (cruelV ? `${d.dice}+${maxDice(d.dice)}` : doubleDice(d.dice)) : d.dice, d.add)).join('+') + (extra ? '+' + (crit ? (cruelV ? `${extra}+${maxDice(extra)}` : doubleDice(extra)) : extra) : '');
         const dtype = (ab.damage[0] || {}).type || '';
         for (const id of ids) {
-          const t = w.units[id];
+          const t = unitAt(w, id);
           let hit = true, crit = false, half = false, fixed = null;
           if (ab.attack) {
             if (t.ac == null || t.ac === '' || !Number.isFinite(+t.ac)) { log.push({ unit: t.id, text: `${t.name} has no AC set: ${ab.name} can't be rolled against it.` }); continue; }
@@ -1219,6 +1222,8 @@
             const tilts = tl.filter((x) => (adv ? x.adv : x.dis)).map((x) => x.text).concat(notes, pfl ? [`${t.name} is flanked, -${pfl} AC`] : []);
             const expr = d20expr(md) + sgn(ab.attack.bonus - weakPenalty(me, ab.attack.abil));
             const r = roll(expr);
+            const helped = me.id === t.id ? null : helpOn(w, me, t);   // Help (#144) is used up by a power's attack roll too
+            if (helped) w.effects = w.effects.filter((ef) => ef !== helped);
             crit = r.nat === 20; hit = crit || (r.nat !== 1 && r.total >= ac);
             log.push({ unit: t.id, kind: 'attack', roll: r, expr, text: `${ab.name} against ${t.name}${tilts.length ? ` (${adv ? 'advantage: ' : dis ? 'disadvantage: ' : ''}${tilts.join(', ')})` : ''}${cv ? ` (${cv.name} cover, +${cv.bonus} AC)` : ''}: ${r.total} against AC ${ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : 'a miss.'}` });
           } else if (ab.save) {
@@ -1296,7 +1301,7 @@
       }
       case 'douse': {   // putting out the flames, on yourself or on someone within 5 ft, takes an action
         if (!b.action) return no(`${me.name} has already used the action this turn.`);
-        const t = w.units[act.target];
+        const t = unitAt(w, act.target);
         if (!t || !(t.conditions || []).includes('Ignited')) return no('Nobody there is on fire.');
         if (t.id !== me.id && feetBetween(me, t) > FT) return no(`${t.name} is out of reach: within 5 ft only.`);
         w.spent[me.id].action += 1;
@@ -1324,7 +1329,7 @@
   // One weapon attack, rolled and applied: on your turn (the Attack action) or as a reaction. `how` names a reaction.
   function strike(w, me, targetId, attack, opts, roll, how) {
     if (!attack || !Number.isFinite(+attack.bonus) || !attack.damage) return no('Pick an attack.');
-    const t = w.units[targetId];
+    const t = unitAt(w, targetId);
     const pv = preview(w, me.id, targetId, attack, opts);
     if (!pv.legal) return no(pv.why);
     const r = roll(pv.expr);

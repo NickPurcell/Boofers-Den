@@ -2871,3 +2871,55 @@ test("Grapple, Shove and Help through the API: the server rolls both sides from 
   st = await gm.state();
   assert.ok(st.fight.effects.some((ef) => ef.condition === "Helped" && ef.unit === ids.avery));
 });
+
+test("review of #147: a target named like Object's own keys is no target; a push stops at the board's edge; Help counts for a power's attack", async () => {
+  const ft = unit({ id: "ft", name: "Fenn", side: "pc", x: 0, y: 0, skills: { athletics: 5 } });
+  const r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, mods: { str: 0, dex: 0 } });
+  for (const bad of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+    for (const act of [{ type: "grapple" }, { type: "shove" }, { type: "shove", push: true }, { type: "release" }, { type: "common", key: "help" }]) {
+      const r = E.apply(world([ft, r1], "ft"), Object.assign({ unit: "ft", target: bad }, act), dice({ total: 15 }, { total: 2 }).roll);
+      assert.equal(r.ok, false, `${act.type} on ${bad}`);
+    }
+    assert.equal(E.preview(world([ft, r1], "ft"), "ft", bad, blade).legal, false);
+  }
+  // the older paths too: a power with a save (no AC needed), putting out flames, an attack
+  const zap = { key: "pw:zap", name: "Zap", kind: "power", level: 0, use: "action", cost: {}, reach: null, range: [60, 60], area: null, targets: 1, attack: null,
+    save: { ability: "con", dc: 30, onSave: "none" }, damage: [{ dice: "1d6", add: 0, type: "lightning" }], applies: [{ condition: "Stunned" }], concentration: false };
+  for (const bad of ["__proto__", "constructor"]) {
+    assert.equal(E.apply(world([ft, r1], "ft"), { type: "use", unit: "ft", ability: zap, targets: [bad] }, dice({ total: 1 }, { total: 3 }).roll).ok, false, `use on ${bad}`);
+    assert.equal(E.apply(world([ft, r1], "ft"), { type: "douse", unit: "ft", target: bad }, dice().roll).ok, false);
+    assert.equal(E.apply(world([ft, r1], "ft"), { type: "attack", unit: "ft", target: bad, attack: blade }, dice({ total: 15, nat: 12 }, { total: 3 }).roll).ok, false);
+    assert.equal(E.apply(world([ft, r1], "ft"), { type: "move", unit: bad, x: 1, y: 1 }, dice().roll).ok, false);
+  }
+  assert.ok(!("conditions" in {}) && !("x" in {}) && !("hp" in {}), "nothing reached Object.prototype");
+  // the board's edge: pushed from x 1 towards x 0 by someone at x 2, on a board known to the world
+  const edge = E.apply(world([unit({ id: "ft", name: "Fenn", side: "pc", x: 1, y: 0, skills: { athletics: 5 } }), unit({ id: "r1", name: "Raider", side: "npc", x: 0, y: 0 })], "ft"),
+    { type: "shove", unit: "ft", target: "r1", push: true }, dice({ total: 15 }, { total: 2 }).roll);
+  assert.deepEqual([edge.world.units.r1.x, edge.log[2].text], [0, "There's no room to push Raider: it stays where it is."]);
+  const far = E.apply(world([ft, r1], "ft", { board: { cols: 2, rows: 2 } }), { type: "shove", unit: "ft", target: "r1", push: true }, dice({ total: 15 }, { total: 2 }).roll);
+  assert.equal(far.world.units.r1.x, 1, "a 2-square board: x 2 is off it");
+  // Help and a power's attack roll: advantage, and used up
+  const bo = unit({ id: "bo", name: "Bolt", side: "pc", x: 0, y: 4 });   // 20 ft off: no close-enemy disadvantage to cancel it
+  let r = E.apply(world([ft, bo, unit(Object.assign({}, r1, { ac: 10, hp: 50, maxHp: 50 }))], "ft"), { type: "common", unit: "ft", key: "help", target: "r1" }, dice().roll);
+  const bolt = { key: "pw:shock", name: "Shock", kind: "power", level: 0, use: "action", cost: {}, reach: null, range: [60, 60], area: null, targets: 1,
+    attack: { bonus: 5, abil: "wis" }, save: null, damage: [{ dice: "1d8", add: 0, type: "lightning" }], applies: [], concentration: false };
+  const d = dice({ total: 15, nat: 12 }, { total: 4 });
+  r = E.apply(Object.assign({}, r.world, { turnId: "bo" }), { type: "use", unit: "bo", ability: bolt, targets: ["r1"] }, d.roll);
+  assert.equal(r.ok, true, r.why);
+  assert.equal(d.asked[0], "2d20kh1+5", "helped");
+  assert.equal(r.world.effects.filter((ef) => ef.condition === "Helped").length, 0, "and used up");
+});
+
+test("review of #147 through the API: fight.grapple, shove, release and help on \"__proto__\" are refused and touch nothing", async () => {
+  const { gm, sam, ids } = await fight();
+  const st = await sam.state();
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  for (const bad of ["__proto__", "constructor"]) {
+    for (const [type, p] of [["fight.grapple", {}], ["fight.shove", {}], ["fight.shove", { push: true }], ["fight.release", {}], ["fight.common", { key: "help" }]]) {
+      assert.equal((await sam.act(type, Object.assign({ target: bad }, p))).code, 400, `${type} ${bad}`);
+    }
+  }
+  assert.ok(!("conditions" in {}) && !("x" in {}) && !("y" in {}), "Object.prototype untouched");
+  assert.equal((await sam.act("fight.grapple", { target: ids.raider })).code, 200, "a real target still works");
+});
