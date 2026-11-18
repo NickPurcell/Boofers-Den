@@ -346,6 +346,25 @@ test("speed (5.11, #254): a Monk's Unarmored Movement from its table column, onl
   assert.equal(R.speedOf(monk(5, [], { features: [{ name: "Wings", text: "You have a flying speed equal to your walking speed." }] })).other.fly, 45, "a speed equal to walking follows it");
 });
 
+test("blueprints (audit 11.2, second part): how many by tool and level, rarities by level, the DCs, and the shape kept", () => {
+  const k = (level, profs, blueprints = []) => ({ name: "Kel", classes: [{ name: "Engineer", level }], proficiencies: profs, blueprints });
+  const A = "Armstech's implements";
+  // half the level, rounded up, per tool; the level with expertise; none without the tool
+  assert.deepEqual([R.blueprintLimit(k(5, A), A), R.blueprintLimit(k(5, `${A} (expertise)`), A), R.blueprintLimit(k(5, "Slicer's kit"), A)], [3, 5, 0]);
+  const bp = (name, rar = "Standard", tool = A) => ({ name, rar, tool });
+  assert.equal(R.blueprintBlocked(k(1, A), bp("Blaster Pistol (Fine)")), null);
+  assert.match(R.blueprintBlocked(k(4, A), bp("Shocking Blaster", "Premium")), /Premium blueprints open at level 5; Kel is level 4/);
+  assert.match(R.blueprintBlocked(k(4, "Slicer's kit"), bp("X")), /isn't proficient with Armstech's implements/);
+  const full = k(3, A, [bp("A"), bp("B")]);
+  assert.match(R.blueprintBlocked(full, bp("C")), /knows 2 Armstech's implements blueprints, the most for level 3/);
+  assert.equal(R.blueprintBlocked(full, bp("C"), true), null, "a found one isn't held to the count");
+  assert.match(R.blueprintBlocked(full, bp(" a ")), /already knows the blueprint for/);
+  assert.equal(R.blueprintBlocked(k(3, A, [bp("A"), Object.assign(bp("F"), { found: true })]), bp("C")), null, "found ones don't fill the count");
+  assert.deepEqual([R.reverseDC("Standard"), R.reverseDC("Artifact"), R.reverseDC(undefined), R.reverseCredits(5000), R.reverseCredits(-3)], [15, 35, 15, 1250, 0]);
+  assert.deepEqual(R.cleanBlueprints([{ name: " A ", rar: "Shiny", tool: "x".repeat(99), found: 1 }, { name: "" }, "x", null]), [{ name: "A", tool: "x".repeat(60), found: true }]);
+  assert.equal(R.cleanBlueprints(Array.from({ length: 80 }, (_, i) => ({ name: `B${i}` }))).length, 60);
+});
+
 test("speed (audit 5.11): SW5e's strength and cumbersome armor properties, the encumbrance variant, other movement from traits", () => {
   assert.deepEqual(R.armorFromItem({ accl: "Heavy", ac: "17", props: ["Bulky", "cumbersome", "strength 15"] }), { kind: "heavy", ac: 17, str: 15, cumbersome: true });
   assert.deepEqual(R.armorFromItem({ accl: "Light", ac: "11", props: [] }), { kind: "light", ac: 11 });

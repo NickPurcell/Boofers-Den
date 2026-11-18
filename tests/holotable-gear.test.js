@@ -127,6 +127,15 @@ test("cybernetics and droid customizations (6.4): the sheet keeps the installed 
   assert.ok(!("motor" in c2) && !("implants" in c2), "two motor slots and nothing installed: nothing stored");
 });
 
+test("blueprints (11.2): the sheet keeps the list, checked, and a variant switch is the GM's", async () => {
+  const { gm, sam, avery } = await table();
+  const av = await sheet(sam, avery);
+  await sam.act("char.save", { char: Object.assign({}, av, { blueprints: [{ name: "Shocking Blaster", rar: "Premium", tool: "Armstech's implements" }, { name: "Odd", rar: "__proto__", found: "yes" }, { name: "" }] }) });
+  assert.deepEqual((await sheet(gm, avery)).blueprints, [{ name: "Shocking Blaster", tool: "Armstech's implements", rar: "Premium" }, { name: "Odd", tool: "", found: true }]);
+  assert.equal((await sam.act("variants.set", { variants: ["Crafting with Blueprints"] })).code, 403);
+  assert.equal((await gm.act("variants.set", { variants: ["Crafting with Blueprints"] })).code, 200);
+});
+
 test("item modification (6.4): a chassis and a modification keep their checked shapes", async () => {
   const { gm, sam, avery } = await table();
   const av = await sheet(sam, avery);

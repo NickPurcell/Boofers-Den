@@ -746,7 +746,8 @@
         if (!x) return null;
         const v = R.craftValue(x.it, x.enh);
         $('#craftInfo', box).textContent = `${x.it.n}: about ${v.toLocaleString()} cr · ${R.craftDays(v)} day${R.craftDays(v) === 1 ? '' : 's'} · ${Math.floor(v / 2).toLocaleString()} cr in materials · ${R.craftTool(x.it, x.enh)}`
-          + (x.enh ? '. An enhanced item also needs its blueprint and a rare material; the GM decides.' : '');
+          + (x.enh ? (vOn(R.BLUEPRINTS) ? (R.knowsBlueprint(ch, x.it.n) ? `. ${ch.name} knows its blueprint; it also needs a rare material.` : `. ${ch.name} doesn't know its blueprint (the GM decides), and it needs a rare material.`)
+            : '. An enhanced item also needs its blueprint and a rare material; the GM decides.') : '');
         return Object.assign(x, { v });
       };
       box.oninput = e => { if (e.target.id === 'craftName') info(); };
@@ -767,7 +768,7 @@
         <label>Days <input id="caDays" type="number" min="0" value="${R.craftDays(q.value)}" style="width:80px"></label>
         <label>Materials (cr) <input id="caCost" type="number" min="0" value="${Math.floor(n0(q.value) / 2)}" style="width:110px"></label></div>
       <label style="margin-top:8px">Tool <input id="caTool" value="${esc(tool)}" style="width:100%"></label>
-      <p class="muted" style="font-size:12px">Approving takes the days and the materials from ${esc(ch.name)}'s downtime and credits. ${q.item.rar ? 'An enhanced item needs its blueprint and a rare material: approve only if they have them.' : ''}</p>
+      <p class="muted" style="font-size:12px">Approving takes the days and the materials from ${esc(ch.name)}'s downtime and credits. ${q.item.rar ? (vOn(R.BLUEPRINTS) ? `${R.knowsBlueprint(ch, q.item.name) ? `${esc(ch.name)} knows its blueprint.` : `<b>${esc(ch.name)} doesn't know this blueprint.</b>`} It also needs a rare material: approve only if they have it.` : 'An enhanced item needs its blueprint and a rare material: approve only if they have them.') : ''}</p>
       <div class="row"><span class="spacer"></span><button class="btn" id="caNo">Cancel</button><button class="btn primary" id="caOk">Approve</button></div>`, box => {
       $('#caValue', box).oninput = () => { const v = +$('#caValue', box).value || 0; $('#caDays', box).value = R.craftDays(v); $('#caCost', box).value = Math.floor(v / 2); };
       box.onclick = async e => {
@@ -1048,9 +1049,11 @@
             <td class="n eq-wt">${inp(`equipment.${i}.wt`, +e.wt || '', { ro, type: 'number', ph: '0' })}</td>
             <td class="armor-cell">${inp(`equipment.${i}.armor.kind`, (e.armor || {}).kind || '', { ro, type: 'select', options: [{ v: '', t: '—' }, ...R.ARMOR_KINDS] })}${e.armor && e.armor.kind ? inp(`equipment.${i}.armor.ac`, +e.armor.ac || 0, { ro, type: 'number' }) : ''}</td>
             <td class="eq-cell">${inp(`equipment.${i}.equipped`, e.equipped, { ro, type: 'checkbox' })}${e.att ? `<span class="attune" title="Attuned (Wretched Hives: it takes a short rest with the item)${e.rar ? ` · ${esc(e.rar)}` : ''}">⟡${inp(`equipment.${i}.attuned`, !!e.attuned, { ro, type: 'checkbox' })}</span>` : ''}</td>
-            <td style="white-space:nowrap">${!ro ? `${e.chassis ? `<button class="btn tiny" data-act="mods" data-i="${i}" title="Modifications: install and remove (Wretched Hives)">Mods ${(e.chassis.mods || []).length}/${R.modSlots(e.rar).base + R.modSlots(e.rar).aug}</button>` : ''}${e.use ? `<button class="btn tiny" data-act="use-item" data-i="${i}" title="Use one: ${esc(useText(e.use) || 'lowers the count')}">Use</button>` : ''}<button class="btn tiny ghost" data-act="sell" data-i="${i}" title="Sell one${+e.cost > 0 ? ` (half its cost: ${R.sellPrice(e).toLocaleString()} cr)` : ''}">Sell</button><button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Empty.</td></tr>'}
-          </tbody></table></div>${craftRows(ch, ro)}</div>
+            <td style="white-space:nowrap">${!ro ? `${e.chassis ? `<button class="btn tiny" data-act="mods" data-i="${i}" title="Modifications: install and remove (Wretched Hives)">Mods ${(e.chassis.mods || []).length}/${R.modSlots(e.rar).base + R.modSlots(e.rar).aug}</button>` : ''}${e.use ? `<button class="btn tiny" data-act="use-item" data-i="${i}" title="Use one: ${esc(useText(e.use) || 'lowers the count')}">Use</button>` : ''}${e.rar && vOn(R.BLUEPRINTS) ? `<button class="btn tiny ghost" data-act="reverse" data-i="${i}" title="Reverse engineer one (Wretched Hives): an hour and a check against DC ${R.reverseDC(e.rar)}; its blueprint and a quarter of its value back, or it's destroyed">⚙</button>` : ''}<button class="btn tiny ghost" data-act="sell" data-i="${i}" title="Sell one${+e.cost > 0 ? ` (half its cost: ${R.sellPrice(e).toLocaleString()} cr)` : ''}">Sell</button><button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Empty.</td></tr>'}
+          </tbody></table></div>${craftRows(ch, ro)}
+          ${isGM() ? `<label class="muted carry-var" style="margin-top:6px" title="Wretched Hives: characters know blueprints by tool and level, learn found ones, and reverse engineer enhanced items (the GM's call, for the whole table)"><input type="checkbox" data-act-change="blueprints" ${vOn(R.BLUEPRINTS) ? 'checked' : ''}> Crafting with blueprints</label>` : ''}</div>
         ${stashBox(ch, ro)}
+        ${blueprintBox(ch, ro)}
         ${implantBox(ch, ro)}
         <div class="box"><h4>Features & Traits <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-feature" title="Feats, class features, maneuvers, fighting styles, lightsaber forms, ventures">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-feature" title="Write a feature by hand">custom</button>' : ''}</h4>
           <div class="feature-list">${(ch.features || []).map((f, i) => `<div class="feature-row">
@@ -1098,6 +1101,10 @@
   $('#sheet').addEventListener('change', e => {
     const t = e.target;
     const ch = selChar(); if (!ch) return;
+    if (t.dataset.actChange === 'blueprints') {   // the GM's switch for the whole table (audit 11.2)
+      const v = new Set(S.st.variants || []); t.checked ? v.add(R.BLUEPRINTS) : v.delete(R.BLUEPRINTS);
+      return act('variants.set', { variants: [...v] });
+    }
     if (t.dataset.actChange === 'simple-attune') {   // the GM's switch for the whole table (audit 6.3)
       const v = new Set(S.st.variants || []); t.checked ? v.add(R.SIMPLE_ATTUNEMENT) : v.delete(R.SIMPLE_ATTUNEMENT);
       return act('variants.set', { variants: [...v] });
@@ -1265,6 +1272,9 @@
       }
       case 'craft': openCraft(ch); break;
       case 'implants': implantDialog(ch); break;
+      case 'blueprint-add': blueprintDialog(ch); break;
+      case 'blueprint-rm': if (confirm(`Forget the blueprint for ${((ch.blueprints || [])[i] || {}).name}?`)) mutate(c => { (c.blueprints || []).splice(i, 1); }); break;
+      case 'reverse': reverseEngineer(ch, i); break;
       case 'implant-rm': implantDialog(ch, i); break;
       case 'motor-up': motorUp(ch); break;
       case 'craft-cancel': act('craft.cancel', { charId: ch.id, id: b.dataset.id }); break;
@@ -1703,6 +1713,80 @@
         act('chat', { text: `*installs ${e.name} (${hrs} hours of work).*` });
       };
     });
+  }
+  // --------------------------------------------------------------------------- blueprints (audit 11.2, second part)
+  // Under the GM's "Crafting with blueprints" variant: the blueprints a character knows (Wretched Hives: by tool and level),
+  // one it chooses within the limit, one it learns from a found blueprint with a check, and reverse engineering (from the
+  // inventory's ⚙). A player is held to the book; the GM may add any, or skip the check.
+  function blueprintBox(ch, ro) {
+    if (!vOn(R.BLUEPRINTS)) return '';
+    const list = ch.blueprints || [];
+    return `<div class="box blueprints"><h4>📐 Blueprints <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="blueprint-add">＋ Blueprint…</button>' : ''}</h4>
+      ${list.length ? `<div class="list-rows">${list.map((x, i) => `<div class="lr"><span class="nm">${esc(x.name)} <span class="muted">${esc(x.rar || 'Standard')} · ${esc(x.tool)}${x.found ? ' · learned' : ''}</span></span><span class="spacer"></span>
+        ${!ro ? `<button class="btn tiny ghost" data-act="blueprint-rm" data-i="${i}" title="Forget it (Wretched Hives: one can be exchanged at each new level)">✕</button>` : ''}</div>`).join('')}</div>`
+        : '<p class="muted">None yet. With a tool, a character knows half its level in blueprints (rounded up), and learns found ones.</p>'}
+    </div>`;
+  }
+  async function blueprintDialog(ch) {
+    let enh = [];
+    try { enh = await equipList('enhanced'); } catch (err) { return toast(err.message, true); }
+    const byName = new Map(enh.map(it => [it.n.toLowerCase(), it]));
+    modal(`<h3>📐 A blueprint for ${esc(ch.name)}</h3>
+      <input id="bpName" list="dlBp" placeholder="An enhanced item from SW5e" style="width:100%">
+      <datalist id="dlBp">${enh.map(it => `<option value="${esc(it.n)}">${esc(`${it.rar || ''} ${it.cat}`)}</option>`).join('')}</datalist>
+      <p class="muted" id="bpInfo" style="font-size:12px;margin:8px 0">Choose one ${esc(ch.name)} knows from training (half the level per tool, rounded up), or learn a found one: 10 minutes and a check against its rarity's DC.</p>
+      ${isGM() ? '<label class="muted carry-var"><input type="checkbox" id="bpNoCheck"> GM: add it, no check</label>' : ''}
+      <div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn" id="bpNo">Cancel</button><button class="btn" id="bpKnow">Knows it</button><button class="btn primary" id="bpLearn">Learn a found one</button></div>`, box => {
+      const pick = () => { const it = byName.get($('#bpName', box).value.trim().toLowerCase()); return it ? { it, bp: { name: it.n, rar: R.RARITIES.includes(it.rar) ? it.rar : 'Standard', tool: R.craftTool(it, true) } } : null; };
+      box.oninput = () => { const x = pick(); if (!x) return;
+        const why = R.blueprintBlocked(ch, x.bp, false), whyFound = R.blueprintBlocked(ch, x.bp, true);
+        $('#bpInfo', box).textContent = `${x.bp.name}: ${x.bp.rar}, with ${x.bp.tool}. Learning it is a check against DC ${R.modDC(x.bp.rar)}.${whyFound ? ` ${whyFound}` : why ? ` As one it knows: ${why}` : ''}`; };
+      box.onclick = async e => {
+        if (e.target.id === 'bpNo') return closeModal();
+        if (e.target.id !== 'bpKnow' && e.target.id !== 'bpLearn') return;
+        const x = pick(); if (!x) return toast('Pick an item from the list.', true);
+        const learn = e.target.id === 'bpLearn', skip = isGM() && $('#bpNoCheck', box) && $('#bpNoCheck', box).checked;
+        const why = R.blueprintBlocked(ch, x.bp, learn);
+        if (why && !isGM()) return toast(why, true);
+        if (why && !confirm(`${why} Add it anyway?`)) return;
+        closeModal();
+        if (learn && !skip) {   // a found blueprint: Int with its tool against the rarity's DC (no character named on the roll, #187)
+          const t = R.toolTierFromText(ch, x.bp.tool), b = R.toolBonus(ch, 'int', t), dc = R.modDC(x.bp.rar);
+          const res = await roll(R.checkRollExpr(ch, t, b).expr, `Learn the blueprint for ${x.bp.name}: ${x.bp.tool} (Int) against DC ${dc}`, { d20: true });
+          if (!res || !res.roll) return;
+          if (res.roll.total < dc) return act('chat', { text: `*fails to learn the blueprint for ${x.bp.name}; try again after 24 hours.*` });
+        }
+        mutate(c => { if (!R.knowsBlueprint(c, x.bp.name)) c.blueprints = R.cleanBlueprints((c.blueprints || []).concat([Object.assign({}, x.bp, learn ? { found: true } : {})])); });
+        if (learn) act('chat', { text: `*learns the blueprint for ${x.bp.name}.*` });
+      };
+    });
+  }
+  // reverse engineering one of an enhanced item (Wretched Hives): an hour and a check with its tool against 15 to 35 by
+  // rarity. Success: it's broken down, a quarter of its value comes back in credits, and its blueprint is learned; failure:
+  // it's destroyed, and nothing is learned.
+  async function reverseEngineer(ch, i) {
+    const e = ch.equipment[i]; if (!e || !e.rar) return;
+    const found = await itemInfo(e.name), tool = found ? R.craftTool(found.it, true) : "Tinker's implements";
+    const value = found ? R.craftValue(found.it, true) : 0, back = R.reverseCredits(value), dc = R.reverseDC(e.rar);
+    if (!R.toolTierFromText(ch, tool) && !isGM()) return toast(`${ch.name} isn't proficient with ${tool} (Proficiencies), which reverse engineering ${e.name} needs.`, true);
+    if (!confirm(`Reverse engineer ${e.name}? An hour of work and a check with ${tool} against DC ${dc}. On a success it's broken down: ${back.toLocaleString()} cr of materials back and its blueprint learned. On a failure it's destroyed.`)) return;
+    const skip = isGM() && confirm('GM: skip the check (it succeeds)?');
+    let ok = true;
+    if (!skip) {
+      const t = R.toolTierFromText(ch, tool), b = R.toolBonus(ch, 'int', t);
+      const res = await roll(R.checkRollExpr(ch, t, b).expr, `Reverse engineer ${e.name}: ${tool} (Int) against DC ${dc}`, { d20: true });
+      if (!res || !res.roll) return;
+      ok = res.roll.total >= dc;
+    }
+    mutate(c => {
+      const x = c.equipment[i]; if (!x || x.name !== e.name) return;
+      if ((n0(x.qty) || 1) > 1) x.qty = (n0(x.qty) || 1) - 1; else c.equipment.splice(i, 1);
+      if (!ok) return;
+      c.credits = n0(c.credits) + back;
+      if (!R.knowsBlueprint(c, e.name)) c.blueprints = R.cleanBlueprints((c.blueprints || []).concat([{ name: e.name, rar: R.RARITIES.includes(e.rar) ? e.rar : 'Standard', tool, found: true }]));
+    });
+    const knew = R.knowsBlueprint(ch, e.name);
+    act('chat', { text: ok ? `*reverse engineers ${e.name}: ${back.toLocaleString()} cr of materials back${knew ? '' : ', and its blueprint learned'}.*` : `*tries to reverse engineer ${e.name}, but it's destroyed.*` });
   }
   // a droid's motor, one slot up: the book's price times the size's modifier, from the droid's credits (the GM may waive it)
   function motorUp(ch) {

@@ -219,6 +219,8 @@ function cleanChar(ch) {
       ...(R.cleanImplant(e.implant) ? { implant: R.cleanImplant(e.implant) } : {}) })),   // a cybernetic augmentation or droid customization (6.4)
     // installed cybernetics and droid customizations, and a droid's motor slots past the two it starts with (6.4)
     ...(R.cleanImplants(ch.implants).length ? { implants: R.cleanImplants(ch.implants) } : {}), ...(R.motorSlots(ch) > 2 ? { motor: R.motorSlots(ch) } : {}),
+    // the blueprints the character knows (11.2, under the GM's "Crafting with blueprints" variant; kept when it's off)
+    ...(R.cleanBlueprints(ch.blueprints).length ? { blueprints: R.cleanBlueprints(ch.blueprints) } : {}),
     conditions: (Array.isArray(ch.conditions) ? ch.conditions : []).slice(0, 20).map((c) => s(c, 30)),
     exhaustion: clamp(int(ch.exhaustion), 0, 6), inspiration: !!ch.inspiration,
     // variant rules on the sheet (9.16): Simplified Forcecasting's one ability, and Hunted's disturbance points

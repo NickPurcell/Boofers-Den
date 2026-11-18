@@ -451,6 +451,39 @@
   const craftDays = value => Math.max(1, Math.ceil((+value || 0) / 250));
   Object.assign(SW5E, { craftTool, craftValue, craftDays });
 
+  // Blueprints (audit 11.2's second part; Wretched Hives, "Crafting and Blueprints", "Learning Blueprints" and "Reverse
+  // Engineering"). A table variant, off until the GM marks it. A character knows, for each tool it's proficient with, half
+  // its level rounded up (its level with expertise, written "(expertise)" after the tool in Proficiencies); a rarity from
+  // the level it opens at. A found blueprint is learned with a check against its rarity's DC (MOD_DC: 10 to 30); reverse
+  // engineering an enhanced item is a check against 15 to 35: on a success its blueprint is learned and half its raw
+  // materials (a quarter of its value) come back; on a failure it's destroyed.
+  const BLUEPRINTS = 'Crafting with Blueprints';
+  const BLUEPRINT_LEVEL = { Standard: 1, Premium: 5, Prototype: 9, Advanced: 13, Legendary: 17, Artifact: 20 };
+  const REVERSE_DC = { Standard: 15, Premium: 19, Prototype: 23, Advanced: 27, Legendary: 31, Artifact: 35 };
+  const sameName = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+  const knowsBlueprint = (c, name) => ((c && c.blueprints) || []).some(x => sameName(x.name, name));
+  function blueprintLimit(c, tool) {
+    if (!toolTierFromText(c, tool)) return 0;
+    const t = String(tool).trim().toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`${t}\\s*\\(expertise\\)`, 'i').test(String(c.proficiencies || '')) ? totalLevel(c) : Math.ceil(totalLevel(c) / 2);
+  }
+  // why this character can't take this blueprint ({ name, rar, tool }) as one it knows, or null; `found` (learned from a
+  // found blueprint or by reverse engineering) skips the count, which is for the ones it knows from its training
+  function blueprintBlocked(c, bp, found) {
+    const who = (c && c.name) || 'This character', rar = RARITIES.includes(bp && bp.rar) ? bp.rar : 'Standard', tool = String((bp && bp.tool) || '');
+    if (knowsBlueprint(c, bp && bp.name)) return `${who} already knows the blueprint for ${bp.name}.`;
+    if (!toolTierFromText(c, tool)) return `${who} isn't proficient with ${tool || 'the tool it needs'} (Proficiencies).`;
+    if (totalLevel(c) < BLUEPRINT_LEVEL[rar]) return `${rar} blueprints open at level ${BLUEPRINT_LEVEL[rar]}; ${who} is level ${totalLevel(c)}.`;
+    const n = ((c && c.blueprints) || []).filter(x => !x.found && sameName(x.tool, tool)).length, max = blueprintLimit(c, tool);
+    if (!found && n >= max) return `${who} knows ${n} ${tool} blueprint${n === 1 ? '' : 's'}, the most for level ${totalLevel(c)} (half the level, rounded up; the level with expertise).`;
+    return null;
+  }
+  const reverseDC = rar => REVERSE_DC[rar] || 15;
+  const reverseCredits = value => Math.floor(Math.max(0, +value || 0) / 4);
+  const cleanBlueprints = list => (Array.isArray(list) ? list : []).filter(x => x && typeof x === 'object' && String(x.name || '').trim()).slice(0, 60)
+    .map(x => Object.assign({ name: String(x.name).trim().slice(0, 80), tool: String(x.tool || '').trim().slice(0, 60) }, RARITIES.includes(x.rar) ? { rar: x.rar } : {}, x.found ? { found: true } : {}));
+  Object.assign(SW5E, { BLUEPRINTS, BLUEPRINT_LEVEL, REVERSE_DC, knowsBlueprint, blueprintLimit, blueprintBlocked, reverseDC, reverseCredits, cleanBlueprints });
+
   // Item modification (audit 6.4; Wretched Hives, "Modifiable Items"). A chassis ("Blaster Chassis (Premium)") has four
   // base slots for modifications of its own kind, plus one augment slot at prototype and advanced and two at legendary and
   // artifact. A modification fits a chassis of its kind (an augment fits any) at the chassis's rarity or lower, and no two of
