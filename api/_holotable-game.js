@@ -163,6 +163,8 @@ const cleanVariants = (v) => [...new Set((Array.isArray(v) ? v : []).slice(0, 80
 // set by the server (holotable.js) on a player's char.save: the senses of the species they chose, from SW5e's own list.
 // A Symbol, so it can't arrive in a client's JSON.
 const SPECIES_SENSES = Symbol("speciesSenses");
+// set by holotable.js on char.save with a species: that species' resistances (audit 1.5), from SW5e's list, never a client's
+const SPECIES_DEFENSES = Symbol("speciesDefenses");
 // set by holotable.js on levelup.apply: the abilities a feat's own +1 may go to (audit 2.5), from SW5e's feat list,
 // never from a client. Missing when the list couldn't be read.
 const FEAT_ASI = Symbol("featAsi");
@@ -173,6 +175,7 @@ function cleanChar(ch) {
   const out = {
     _format: "holotable-sw5e", id: ch.id, name: s(ch.name, 80) || "Unnamed", species: s(ch.species, 60), background: s(ch.background, 60),
     alignment: s(ch.alignment, 60), xp: numOr(ch.xp, 0), credits: numOr(ch.credits, 0),
+    ...((d) => (d ? { defenses: d } : {}))(R.cleanDefenses(ch.defenses)),   // damage defences (1.5): the GM's, filled by the species
     ...((d) => (d ? { downtime: d } : {}))(Downtime.clean(ch.downtime)),   // downtime days and log (11.1): the server's to write
     ...((c) => (c ? { craft: c } : {}))(Craft.clean(ch.craft)),             // crafting requests (11.2): the server's to write
     classes: list(ch.classes, 6, (k) => ({ name: s(k.name, 40) || "Fighter", level: clamp(int(k.level, 1), 0, 20), archetype: s(k.archetype, 60) })),
@@ -324,7 +327,7 @@ function viewFor(camp, cid, gm, online) {
     ...((pg) => (pg.length ? { pings: pg } : {}))((camp.pings || []).filter((q) => q && now() - q.ts < 10).map((q) => ({ id: q.id, x: q.x, y: q.y, gm: q.gm, name: playerName(camp, q.by) }))),
     ...(camp.fight && camp.fight.on ? { fight: Fight.view(camp, cid, gm, shownName) } : {}),
     // the sheet's Cast (#73), combat view on or off: which powers the table has data for, and who concentrates on what
-    ...((sc) => (sc ? { sheetCast: sc } : {}))(Fight.sheetView(camp, gm ? camp.characters : sheetsFor(camp, cid))),
+    ...((sc) => (sc ? { sheetCast: sc } : {}))(Fight.sheetView(camp, gm ? camp.characters : sheetsFor(camp, cid), gm, gm ? null : new Set(ini.entries.map((e) => e.id)))),
     ...((a) => (a ? { ask: a } : {}))(Ask.view(camp, cid, gm)),
     ...Story.view(camp, gm),   // factions and rivals the GM shows (11.3, 11.4)   // an open roll request (9.12), for whom it names
     ...(fogState ? { fog: fogState } : {}),   // the map's fog of war (#93), combat view or not: only while the GM has it on   // the combat view, only while it is on
@@ -608,6 +611,13 @@ function applyAction(camp, cid, gm, type, p) {
         const s = newSpecies && Array.isArray(p[SPECIES_SENSES]) ? R.cleanSenses(p[SPECIES_SENSES]) : (old && old.senses) || [];
         if (s.length) clean.senses = s; else delete clean.senses;
       }
+      // damage defences (audit 1.5; jpesus on #198: the senses pattern): the GM sets them by hand, a player's save keeps
+      // what the sheet had, and a new species brings its resistances (looked up by holotable.js) without wiping the GM's
+      if (!gm) { if (old && old.defenses) clean.defenses = old.defenses; else delete clean.defenses; }
+      if ((!old || String(old.species || "").trim().toLowerCase() !== String(clean.species || "").trim().toLowerCase()) && p[SPECIES_DEFENSES] && typeof p[SPECIES_DEFENSES] === "object") {
+        const d = R.withSpeciesDefenses(clean.defenses, p[SPECIES_DEFENSES]);
+        if (d) clean.defenses = d; else delete clean.defenses;
+      }
       clean.image = old ? old.image || "" : "";
       clean.tokenImage = old ? old.tokenImage || "" : "";
       if (old && old.downtime) clean.downtime = old.downtime; else delete clean.downtime;   // only downtime actions change it (11.1)
@@ -791,9 +801,11 @@ function applyAction(camp, cid, gm, type, p) {
         const i = ini.entries.findIndex((e) => e.id === p.id);
         if (i >= 0) { ini.entries.splice(i, 1); if (i < ini.turn) ini.turn--; ini.turn = clamp(ini.turn, 0, Math.max(0, ini.entries.length - 1)); }
       } else if (type === "init.next" && n) {
+        const prev = ini.active ? ini.entries[ini.turn] : null, round = ini.round;
         ini.active = true; ini.turn++;
         if (ini.turn >= n) { ini.turn = 0; ini.round++; }
         const cur = ini.entries[ini.turn];
+        Fight.sheetTurn(camp, prev, cur, ini.round > round, { shownName, addChat });   // the sheet's Cast's conditions count down (4.10)
         // "???" while the GM hides the name; under fog, only to those who can see whose turn it is (#93, chat follows sight)
         if (!cur.hidden) { const to = Fight.sightTo(camp, null, [cur.id]); addChat(camp, Object.assign({ system: true, text: `Round ${ini.round} - ${shownName(camp, cur)}'s turn.` }, to ? { to } : {})); }
       } else if (type === "init.prev" && n) {
@@ -801,11 +813,13 @@ function applyAction(camp, cid, gm, type, p) {
         if (ini.turn < 0) { ini.turn = n - 1; ini.round = Math.max(1, ini.round - 1); }
       } else if (type === "init.start") {
         Object.assign(ini, { active: true, turn: 0, round: 1 });
+        Fight.sheetFight(camp, true);   // the clock's countdowns from the sheet's Cast count rounds now (4.10)
         if (camp.fight) camp.fight.strenuousAt = "";   // a new fight: Strenuous Combat's saves can be made again (#233)
         addChat(camp, { system: true, text: "Combat begins! Roll initiative." });
         combatMoves(camp);
       } else if (type === "init.clear") {
         Object.assign(ini, { entries: [], turn: 0, round: 1, active: false });
+        Fight.sheetFight(camp, false);   // the sheet's Cast's conditions go back on the in-game clock (4.10)
         addChat(camp, { system: true, text: "Combat has ended." });
       }
       return {};
@@ -1212,6 +1226,7 @@ function applyAction(camp, cid, gm, type, p) {
         const why = str(p.why, 60).trim();
         addChat(camp, { system: true, text: `🕑 ${span} pass${why ? ` (${why})` : ""}. It's now ${clockText(camp.clock)}.` });
       }
+      if (!ini.active) Fight.sheetClock(camp, mins, { shownName, addChat });   // what the sheet's Cast gave runs its SW5e duration (4.10)
       return { clock: camp.clock };
     }
 
@@ -1432,7 +1447,7 @@ function cleanGame(g) {
 
 module.exports = {
   cleanGame,
-  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, propSightSegments, SPECIES_SENSES, DOWNTIME_ACTS: Downtime.ACT_TABLES, FEAT_ASI, validImg, validColor, cleanChar, cleanShip, rid, charById,
+  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, propSightSegments, SPECIES_SENSES, SPECIES_DEFENSES, DOWNTIME_ACTS: Downtime.ACT_TABLES, FEAT_ASI, validImg, validColor, cleanChar, cleanShip, rid, charById,
   applyAction: (camp, ...a) => { const out = applyAction(camp, ...a); Fight.noteSeen(camp); return out; },   // fog of war: what players see now joins what they've explored
   Forbidden, Invalid, IMG_PREFIX,
 };

@@ -721,6 +721,14 @@
   // the superiority pool with a die left (a Fighter's, or a Scholar's)
   const superiorityOf = (u) => ['superiority', 'superiority-scholar'].map((k) => ((u && u.pools) || {})[k]).find((p) => p && p.used < p.max && /^d\d+$/.test(String(p.die || ''))) || null;
   const maneuverUsed = (w, id, key) => !!((+spentOf(w, id).mv || 0) & (1 << MANEUVER_KEYS.indexOf(key)));
+  // a miss against one who knows Riposte (melee) or Return Fire (ranged) and can use it: a prompt, like an opportunity
+  // attack. Any melee or ranged attack that misses it counts, a power's attack roll too (SW5e: "a melee attack").
+  function missReaction(w, me, t, ranged) {
+    const rk = ranged ? 'return-fire' : 'riposte';
+    const can = t.id !== me.id && t.maneuvers && t.maneuvers.known.includes(rk) && superiorityOf(t) && !INCAPACITATING(t) && budget(w, t.id).reaction && !maneuverUsed(w, t.id, rk)
+      && (rk !== 'riposte' || feetBetween(t, me) <= Math.max(FT, +t.reach || FT));   // a riposte needs the attacker in its reach (#163 review)
+    return can ? { reactor: t.id, against: me.id, kind: rk } : null;
+  }
   // the creature a Scout has marked as its quarry (one at a time), or null
   const quarryOf = (w, id) => { const ef = (w.effects || []).find((e) => e.condition === 'Quarry' && e.source === id); return ef ? ef.unit : null; };
   /* ---------------- bonus damage from class features (audit 5.9) ---------------- */
@@ -1395,9 +1403,10 @@
         const cruelV = variant(w, 'Crueler Criticals');
         const dmgExpr = (crit) => ab.damage.map((d) => diceExpr(crit ? (cruelV ? `${d.dice}+${maxDice(d.dice)}` : doubleDice(d.dice)) : d.dice, d.add)).join('+') + (extra ? '+' + (crit ? (cruelV ? `${extra}+${maxDice(extra)}` : doubleDice(extra)) : extra) : '');
         const dtype = (ab.damage[0] || {}).type || '';
+        const reactions = [];   // Riposte or Return Fire from one its attack roll missed (#163's follow-up)
         for (const id of ids) {
           const t = unitAt(w, id);
-          let hit = true, crit = false, half = false, fixed = null;
+          let hit = true, crit = false, half = false, fixed = null, missed = null;
           if (ab.attack) {
             if (t.ac == null || t.ac === '' || !Number.isFinite(+t.ac)) { log.push({ unit: t.id, text: `${t.name} has no AC set: ${ab.name} can't be rolled against it.` }); continue; }
             const r0 = inReachOf(w, me, t, ab);
@@ -1413,6 +1422,7 @@
             const helped = me.id === t.id ? null : helpOn(w, me, t);   // Help (#144) is used up by a power's attack roll too
             if (helped) w.effects = w.effects.filter((ef) => ef !== helped);
             crit = r.nat === 20; hit = crit || (r.nat !== 1 && r.total >= ac);
+            if (!hit && me.id !== t.id) missed = missReaction(w, me, t, !r0.melee);
             log.push({ unit: t.id, kind: 'attack', roll: r, expr, text: `${ab.name} against ${t.name}${tilts.length ? ` (${adv ? 'advantage: ' : dis ? 'disadvantage: ' : ''}${tilts.join(', ')})` : ''}${cv ? ` (${cv.name} cover, +${cv.bonus} AC)` : ''}: ${r.total} against AC ${ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : 'a miss.'}` });
           } else if (ab.save) {
             const bonus = (t.saves || {})[ab.save.ability];
@@ -1439,7 +1449,7 @@
             hit = !saved || ab.save.onSave === 'half'; half = saved && ab.save.onSave === 'half';
             log.push({ unit: t.id, kind: 'save', roll: r, expr: sexpr, text: `${t.name} makes a ${ab.save.ability.toUpperCase()} save against DC ${ab.save.dc}${bonus == null ? ' (no save bonus known)' : ''}${scv ? ` (${scv.name} cover, +${scv.bonus})` : ''}${sdis && !sadv ? ' with disadvantage' : sadv && !sdis ? ' with advantage (dodging)' : ''}: ${r.total}, ${fail ? `an automatic failure (${fail[0].toLowerCase()})` : saved ? 'a success' : 'a failure'}.` });
           }
-          if (!hit) { events.push({ kind: 'miss', unit: t.id }); continue; }
+          if (!hit) { events.push({ kind: 'miss', unit: t.id }); if (missed && !reactions.some((x) => x.reactor === t.id)) reactions.push(missed); continue; }
           // conditions the ability puts on its target, with how long they last
           if (!half) for (const ap of ab.applies || []) {
             if (!ap.condition) continue;
@@ -1476,7 +1486,7 @@
             events.push({ kind: 'heal', unit: t.id, amount });
           } else events.push({ kind: 'hit', unit: t.id, amount: 0 });
         }
-        return { ok: true, world: w, log, events, spentPools: cost };
+        return { ok: true, world: w, log, events, spentPools: cost, reactions };
       }
       case 'stand': {   // standing up from prone costs half your speed (and can't be done at speed 0)
         if (!(me.conditions || []).includes('Prone')) return no(`${me.name} isn't prone.`);
@@ -1539,11 +1549,8 @@
     const events = [];
     if (!hit) {
       events.push({ kind: 'miss', unit: t.id });
-      // a miss against one who knows Riposte (melee) or Return Fire (ranged) and can use it: a prompt, like an opportunity attack
-      const rk = pv.ranged ? 'return-fire' : 'riposte';
-      const can = !how && t.maneuvers && t.maneuvers.known.includes(rk) && superiorityOf(t) && !INCAPACITATING(t) && budget(w, t.id).reaction && !maneuverUsed(w, t.id, rk)
-        && (rk !== 'riposte' || feetBetween(t, me) <= Math.max(FT, +t.reach || FT));   // a riposte needs the attacker in its reach (#163 review)
-      return { ok: true, log, events, reactions: can ? [{ reactor: t.id, against: me.id, kind: rk }] : [] };
+      const re = how ? null : missReaction(w, me, t, pv.ranged);   // not off a reaction's own attack
+      return { ok: true, log, events, reactions: re ? [re] : [] };
     }
     // versatile in two hands (5.8): its larger die for a melee attack, in place of the weapon's own
     const twoHands = !!(opts.twoHands && attack.versatile && !pv.ranged), dmg0 = twoHands ? String(attack.damage).replace(/\d*d\d+/i, attack.versatile) : attack.damage;
@@ -1972,7 +1979,10 @@
         // the Wounds variant (9.16): its wounded levels and how far the save's DC has risen; back at its hit point maximum, gone
         wounds: ch && (table.wounds || {})[e.charId] && !(+hp.current >= +hp.max) ? Object.assign({ level: 0, step: 0 }, table.wounds[e.charId]) : { level: 0, step: 0 },
         ...(() => { const d = ch ? (table.defenses || {})[e.charId] || {} : (table.npcStats || {})[e.id] || {};
-          return { resist: d.resist || [], immune: d.immune || [], vuln: d.vuln || [], condImmune: d.condImmune || [],
+          // a character's: the sheet's own (audit 1.5: species-filled, the GM's) and the combat view's additions, each once
+          const sh = (ch && ch.defenses) || {}, both = (k) => (ch ? [...(sh[k] || []), ...(d[k] || [])] : d[k] || [])
+            .filter((x, i, a) => x && DAMAGE.includes(x.type) && a.findIndex((y) => y && y.type === x.type && (y.only || null) === (x.only || null)) === i);
+          return { resist: both('resist'), immune: both('immune'), vuln: both('vuln'), condImmune: d.condImmune || [],
             senses: cleanSenses(ch ? ch.senses : d.senses) }; })(),   // a character's from its sheet (#92, the GM's), a creature's from its stat block
         saves: ch && rules ? Object.fromEntries(ABILS.map((ab) => [ab, rules.saveBonus(ch, ab)])) : Object.assign({}, ((table.npcStats || {})[e.id] || {}).saves),
         mods: ch && rules ? Object.fromEntries(ABILS.map((ab) => [ab, rules.abilityMod(ch, ab)])) : Object.assign({}, ((table.npcStats || {})[e.id] || {}).mods),

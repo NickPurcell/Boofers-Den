@@ -3607,6 +3607,35 @@ test("Unarmored Movement: a Monk's column adds to the sheet's speed out of armor
   assert.deepEqual([at(monk(5, [medium])).speed, E.martialDieOf(monk(5, [medium]), R)], [30, null], "no vow, medium armor");
 });
 
+/* ---------------------------------------------------------------- #163's follow-up: a missed power attack raises Riposte or Return Fire */
+test("Riposte and Return Fire off a power: a power's attack roll that misses one who knows them gives the same prompt", () => {
+  const ch = consular();
+  const pw = (o) => E.abilitiesOf(ch, R, { "mind shove": Object.assign({ use: "action", attack: { bonus: "power" }, damage: [{ dice: "1d6", type: "force" }] }, o) })[0];
+  const sup = (used) => ({ superiority: { key: "superiority", name: "Superiority dice", max: 3, die: "d6", used, refill: "short" } });
+  const ft = (o) => unit(Object.assign({ id: "ft", name: "Fenn", side: "npc", x: 1, y: 0, ac: 18, hp: 40, maxHp: 40, pools: sup(0), maneuvers: { known: ["riposte", "return-fire"], dc: { physical: 14, mental: 12, general: 14 } } }, o));
+  const me = () => unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, pools: Object.fromEntries(E.resourcesOf(ch, R).map((x) => [x.key, x])) });
+  const use = (ab, fenn, d) => E.apply(world([me(), fenn], "cass"), { type: "use", unit: "cass", ability: ab, target: "ft" }, d.roll);
+  // a melee power (in reach) that misses: a riposte
+  let r = use(pw({ reach: 5 }), ft(), dice({ total: 8, nat: 6 }));
+  assert.ok(r.ok, r.why);
+  assert.deepEqual(r.reactions, [{ reactor: "ft", against: "cass", kind: "riposte" }]);
+  // a ranged power that misses: return fire
+  r = use(pw({ reach: null, range: [30, 60] }), ft({ x: 4 }), dice({ total: 8, nat: 6 }));
+  assert.deepEqual(r.reactions, [{ reactor: "ft", against: "cass", kind: "return-fire" }]);
+  // a hit, no die left, not knowing it: none
+  assert.deepEqual(use(pw({ reach: 5 }), ft(), dice({ total: 25, nat: 19 }, { total: 3 })).reactions, []);
+  assert.deepEqual(use(pw({ reach: 5 }), ft({ pools: sup(3) }), dice({ total: 8, nat: 6 })).reactions, [], "no dice left");
+  assert.deepEqual(use(pw({ reach: 5 }), ft({ maneuvers: { known: ["trip-attack"], dc: {} } }), dice({ total: 8, nat: 6 })).reactions, [], "doesn't know it");
+  // a save power never asks for one
+  assert.deepEqual(use(pw({ attack: null, save: { ability: "str", dc: 13 }, range: [30, 30] }), ft({ x: 3, saves: { str: 0 } }), dice({ total: 20, nat: 20 })).reactions, []);
+  // the prompt answered: Fenn's riposte against Cass
+  r = use(pw({ reach: 5 }), ft(), dice({ total: 8, nat: 6 }));
+  const wpn = Object.assign({}, blade, { weapon: true });
+  const rr = E.react(r.world, { kind: "riposte", reactor: "ft", against: "cass", attack: wpn }, dice({ total: 20, nat: 15 }, { total: 9 }).roll);
+  assert.ok(rr.ok, rr.why);
+  assert.match(rr.log[0].text, /Fenn makes a riposte against Cass/);
+});
+
 /* ---------------------------------------------------------------- the Wounds and Strenuous Combat variants (9.16, the combat view's half) */
 test("Wounds (variant): dropping to 0 asks a Con save; a failure is a wounded level, and each level is a death save failure", () => {
   const V = { variants: ["Wounds"] };
@@ -3847,4 +3876,19 @@ test("#212 review: an undo gives back a shot, and a reload's power cell, as they
   assert.equal((await gm.act("fight.undo", {})).code, 200);
   st = await gm.state();
   assert.deepEqual([st.characters[avery].attacks[0].shots, st.characters[avery].equipment[0].qty], [1, 2], "one shot left and both cells, as before the reload");
+});
+
+test("a character's sheet defences reach the engine with the combat view's additions, each once (audit 1.5)", () => {
+  const ch = { id: "c1", name: "Kix", species: "Droid, Class I", hp: { max: 20, current: 20 }, abilities: {}, classes: [{ name: "Scout", level: 2 }],
+    defenses: { resist: [{ type: "necrotic", only: null }, { type: "poison", only: null }], immune: [], vuln: [], fromSpecies: ["resist:necrotic", "resist:poison"] } };
+  const table = { characters: { c1: ch }, entries: [{ id: "e1", name: "Kix", charId: "c1" }, { id: "e2", name: "Raider", hp: 20, ac: 5 }], active: true, turn: 0,
+    tokens: [{ id: "t1", x: 0, y: 0 }, { id: "t2", x: 1, y: 0 }], unitTokens: { e1: "t1", e2: "t2" },
+    defenses: { c1: { resist: [{ type: "poison", only: null }, { type: "kinetic", only: "unenhanced" }], immune: [{ type: "__proto__", only: null }], vuln: [] } } };
+  const w = E.buildWorld(table, R);
+  assert.deepEqual(w.units.e1.resist, [{ type: "necrotic", only: null }, { type: "poison", only: null }, { type: "kinetic", only: "unenhanced" }], "the union, poison once");
+  assert.deepEqual(w.units.e1.immune, [], "a type that isn't SW5e's is dropped");
+  assert.deepEqual(E.defended(w.units.e1, 10, "necrotic", "power"), { amount: 5, note: "resisted" }, "the species' resistance halves a hit");
+  assert.equal(E.defended(w.units.e1, 10, "kinetic", "power").amount, 10, "the unenhanced one is weapons only");
+  // a creature keeps its stat block's, untouched by any sheet
+  assert.deepEqual(w.units.e2.resist, []);
 });

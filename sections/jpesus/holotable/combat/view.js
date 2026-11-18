@@ -646,8 +646,10 @@
     const d = (F().defenses || {})[u.charId] || {}, on = (list, t) => (d[list] || []).some((x) => x.type === t);
     const row = (list, label) => `<div class="lbl">${label}</div><div class="ct-types">${E.DAMAGE.map((t) => `<label class="check"><input type="checkbox" data-l="${list}" value="${t}" ${on(list, t) ? 'checked' : ''}> ${t}</label>`).join('')}</div>`;
     const sheet = (st().characters || {})[u.charId] || {}, sense = (k) => (((Array.isArray(sheet.senses) && sheet.senses) || []).find((x) => x.kind === k) || {}).range || '';   // the sheet's (#92)
+    const fromSheet = R && R.defensesText ? R.defensesText(sheet.defenses) : '';   // audit 1.5: the sheet's own, applied too
     H.modal(`<h3>${esc(u.name)}: defences and senses</h3>
       <p class="muted">Applied when ${esc(u.name)} takes damage in the combat view: resisted is halved, immune is ignored, vulnerable is doubled.</p>
+      ${fromSheet ? `<p style="font-size:13px"><b>From the sheet:</b> ${esc(fromSheet)} <span class="muted">· the species' or the GM's, applied as well; the ticks below are this fight's additions</span></p>` : ''}
       ${row('resist', 'Resistant to')}${row('immune', 'Immune to')}${row('vuln', 'Vulnerable to')}
       ${gm() ? `<div class="lbl">Senses, in feet (blank for none)</div><div class="row2">${E.SENSES.map((k) => `<label>${k} <input type="number" min="0" max="9999" step="5" data-sense="${k}" value="${sense(k)}"></label>`).join('')}</div>`
         : `<div class="lbl">Senses <span class="muted">· the GM sets these</span></div><p>${esc((R && R.sensesText ? R.sensesText(sheet.senses) : '') || 'None')}</p>`}

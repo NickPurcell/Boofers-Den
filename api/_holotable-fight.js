@@ -82,9 +82,22 @@ function state(camp) {
     sheetHeld: Object.fromEntries(Object.entries(plainObj(f.sheetHeld)).filter(([k, v]) => ID.test(k) && Array.isArray(v) && charOf(camp, k)).slice(0, 60)
       .map(([k, v]) => [k, v.filter((h) => h && typeof h === "object" && typeof h.condition === "string" && (ID.test(String(h.char || "")) || ID.test(String(h.entry || "")))).slice(0, 40)
         .map((h) => Object.assign(ID.test(String(h.char || "")) ? { char: h.char } : { entry: h.entry }, { condition: str(h.condition, 30) }))])),
+    // how long each condition the sheet's Cast gave in a fight lasts (audit 4.10): the tracker's turns count it down
+    sheetFx: cleanSheetFx(f.sheetFx),
     lastTurn: str(f.lastTurn, 60),
   };
   return camp.fight;
+}
+// { id, char | entry (who has it), condition, power, ends, of: { char | entry } | null (whose turn counts), left (rounds),
+// save: { ability, dc } | null }: at most 60, every id checked. `ends`: 'start' or 'end' of `of`'s turn; 'round', each new
+// round; 'clock', the in-game clock's minutes out of a fight (ten rounds a minute; up to 30 days, 432,000 rounds)
+const FX_ENDS = ["start", "end", "round", "clock"];
+const fxRef = (r) => (r && typeof r === "object" ? (ID.test(String(r.char || "")) ? { char: r.char } : ID.test(String(r.entry || "")) ? { entry: r.entry } : null) : null);
+function cleanSheetFx(list) {
+  return (Array.isArray(list) ? list : []).filter((x) => x && typeof x === "object" && fxRef(x) && typeof x.condition === "string" && x.condition).slice(-60).map((x) => Object.assign(
+    { id: ID.test(String(x.id || "")) ? x.id : require("crypto").randomBytes(5).toString("hex") }, fxRef(x), {
+      condition: str(x.condition, 30), power: str(x.power, 80), ends: FX_ENDS.includes(x.ends) ? x.ends : "end", of: fxRef(x.of),
+      left: clamp(int(x.left, 1), 1, x.ends === "clock" ? 432000 : 100), save: x.save && typeof x.save === "object" && ["str", "dex", "con", "int", "wis", "cha"].includes(x.save.ability) ? { ability: x.save.ability, dc: clamp(int(x.save.dc, 10), 1, 40) } : null }));
 }
 
 // { key, name, max, used, refill: 'turn' | 'short' | 'long' | 'manual', recharge: 2..6 or null, cost }
@@ -131,6 +144,7 @@ function cleanSnap(x) {
     effects: Array.isArray(x.effects) ? state({ fight: { effects: x.effects } }).effects : [],
     wounds: cleanWounds(x.wounds),
     strenuousAt: str(x.strenuousAt, 60),
+    sheetFx: Array.isArray(x.sheetFx) ? cleanSheetFx(x.sheetFx) : undefined,   // a step from before 4.10 has none: undo leaves them
     conc: Object.fromEntries(Object.entries(plainObj(x.conc)).filter(([k, v]) => ID.test(k) && typeof v === "string").map(([k, v]) => [k, str(v, 80)])),
     lastTurn: str(x.lastTurn, 60),
     pending: (Array.isArray(x.pending) ? x.pending : []).slice(0, 12).map(cleanPending).filter(Boolean),
@@ -242,6 +256,7 @@ function snapshot(camp, label) {
     spent: JSON.parse(JSON.stringify(f.spent || {})),
     effects: JSON.parse(JSON.stringify(f.effects || [])), conc: Object.assign({}, f.conc), lastTurn: f.lastTurn || "", pending: JSON.parse(JSON.stringify(f.pending || [])),
     npcres: JSON.parse(JSON.stringify(f.npcres || {})), wounds: JSON.parse(JSON.stringify(f.wounds || {})), strenuousAt: f.strenuousAt || "",
+    sheetFx: JSON.parse(JSON.stringify(f.sheetFx || [])),   // the sheet's Cast's countdowns (4.10), which a turn moves on
     conds: ini.entries.map((e) => [e.id, (e.conditions || []).slice(), e.charId && camp.characters[e.charId] ? (camp.characters[e.charId].conditions || []).slice() : null]),
     chars: Object.values(camp.characters).map((c) => [c.id, JSON.parse(JSON.stringify({ resources: c.resources || [], force: c.force, tech: c.tech, hitDiceUsed: c.hitDiceUsed, deathSaves: c.deathSaves, exhaustion: c.exhaustion || 0,
       // shots in each Reload weapon and the power cells or slug cartridges in the gear (6.6, #212 review), so Undo gives them back
@@ -280,6 +295,7 @@ function restore(camp, s) {
   if (s.npcres) f.npcres = s.npcres;
   if (s.wounds) f.wounds = s.wounds;
   if (typeof s.strenuousAt === "string") f.strenuousAt = s.strenuousAt;
+  if (Array.isArray(s.sheetFx)) f.sheetFx = s.sheetFx;
   for (const [id, ec, cc] of s.conds || []) {
     const e = ini.entries.find((k) => k.id === id);
     if (e) e.conditions = ec;
@@ -580,6 +596,62 @@ function dropHeld(camp, charId) {
     if (e) e.conditions = off(e.conditions);
   }
 }
+const sameRef = (a, b) => !!a && !!b && ((a.char && a.char === b.char) || (a.entry && a.entry === b.entry));
+// does this tracker entry stand for that holder?
+const isRef = (ref, en) => !!ref && !!en && (ref.char ? en.charId === ref.char : en.id === ref.entry);
+// The tracker's Next (init.next, the GM's; the combat view's End turn goes through it too): the sheet's Cast's conditions
+// count down as the combat view's do (E.turnPassed). One that ends at the end of `prev`'s turn or the start of `cur`'s
+// loses a round; one counted on a turn that isn't in the tracker loses one each new round. A save-ends one posts its save
+// at the end of its holder's turn, for the GM or the player to roll: the table doesn't decide it (jpesus, #65). A
+// condition taken off by hand, or by concentration ending, takes its record with it. Lines name only what players see.
+function sheetTurn(camp, prev, cur, wrapped, G) {
+  fxEach(camp, G, (x, tell, who) => {
+    const ini = camp.initiative, lc = x.condition.toLowerCase();
+    if (x.save && isRef(x, prev)) tell(`${who} can try to shake off ${lc} (${x.power}): a ${x.save.ability.toUpperCase()} save against DC ${x.save.dc}. On a success, take it off.`);
+    if ((x.ends === "end" && isRef(x.of, prev)) || (x.ends === "start" && isRef(x.of, cur))
+      || (wrapped && (x.ends === "round" || ((x.ends === "start" || x.ends === "end") && !ini.entries.some((k) => isRef(x.of, k)))))) x.left -= 1;
+    return x.left > 0;
+  });
+}
+// The in-game clock moved on `mins` minutes (clock.advance, the GM's; 4.10's second part): out of a fight, what the
+// sheet's Cast gave ends once its SW5e duration has run, ten rounds a minute.
+function sheetClock(camp, mins, G) {
+  fxEach(camp, G, (x) => { if (x.ends === "clock") x.left -= Math.round(mins * 10); return x.left > 0; });
+}
+// A fight starts: the clock's countdowns count each new round instead, at ten rounds a minute (up to 100). The fight is
+// cleared: the rounds left go back on the clock.
+function sheetFight(camp, starting) {
+  const f = camp.fight;
+  for (const x of (f && Array.isArray(f.sheetFx) ? f.sheetFx : [])) {
+    if (starting && x.ends === "clock") Object.assign(x, { ends: "round", of: null, left: Math.min(100, x.left) });
+    else if (!starting && x.ends !== "clock") Object.assign(x, { ends: "clock", of: null });
+  }
+}
+// each record whose condition is still on its holder: `step` counts it down and says whether it lasts; one that doesn't
+// comes off its holder with a line; one whose condition already went (by hand, or concentration ending) is dropped
+function fxEach(camp, G, step) {
+  const f = camp.fight;
+  if (!f || !Array.isArray(f.sheetFx) || !f.sheetFx.length) return;
+  const ini = camp.initiative, keep = [];
+  for (const x of f.sheetFx) {
+    const c = x.char ? charOf(camp, x.char) : null, e = x.entry ? ini.entries.find((k) => k.id === x.entry) : null;
+    const conds = c ? c.conditions || [] : e ? e.conditions || [] : null;
+    if (!conds || !conds.includes(x.condition)) continue;
+    const who = c ? G.shownName(camp, { charId: c.id, name: c.name }) : G.shownName(camp, e);
+    const secret = ini.entries.some((k) => isRef(x, k) && k.hidden);
+    // under fog, only to those who can see who has it (#256's review), as the turn line beside it: by its tracker entry,
+    // or out of one by its tokens; a hidden creature's to the GM only
+    const ids = ini.entries.filter((k) => isRef(x, k)).map((k) => k.id);
+    const to = secret ? null : ids.length ? sightTo(camp, null, ids) : sightToTokens(camp, null, ((camp.map && camp.map.tokens) || []).filter((t) => c && t.charId === c.id).map((t) => t.id));
+    const tell = (text) => G.addChat(camp, Object.assign({ system: true, text: str(text, 200) }, secret ? { to: ["@gm"], private: true } : to ? { to } : {}));
+    if (step(x, tell, who)) { keep.push(x); continue; }
+    const off = (list) => (list || []).filter((k) => k !== x.condition);
+    if (c) { c.conditions = off(c.conditions); for (const k of ini.entries) if (k.charId === c.id) k.conditions = off(k.conditions); }
+    if (e) e.conditions = off(e.conditions);
+    tell(`${who} is no longer ${x.condition.toLowerCase()} (${x.power}).`);
+  }
+  f.sheetFx = keep;
+}
 function sheetCast(camp, cid, gm, p, G) {
   if (!camp.fight) throw new G.Invalid("The table has no data for that power.");   // never switched on: no data, and no record made
   if (!ID.test(String(p.charId || ""))) throw new G.Invalid("No such character.");
@@ -681,6 +753,21 @@ function sheetCast(camp, cid, gm, p, G) {
       if (a.hp !== b.hp && a.hp != null) e.hp = a.hp;
       if (JSON.stringify(a.conditions || []) !== JSON.stringify(b.conditions || [])) e.conditions = (a.conditions || []).slice(0, 20).map((x) => str(x, 30));
       if (ab.concentration) for (const condition of gained) held.push({ entry: e.id, condition });
+    }
+  }
+  // each condition it gave keeps its countdown (audit 4.10). In a fight on the tracker: the power's own data (until the
+  // start or end of whose turn, how many rounds, or a save), for the tracker's Next to count (sheetTurn). Out of one:
+  // SW5e's duration for the power, as the sheet noted it when the power was added, for the clock (sheetClock); none
+  // (instantaneous, until dispelled, a power typed by hand) and it stays until taken off, as before.
+  const dur = ini.active ? null : R.durationRounds(pw.notes);
+  if (ini.active || dur) {
+    const ref = (u) => { const en = entries.find((x) => x.id === u); return en && en.charId && charOf(camp, en.charId) ? { char: en.charId } : ini.entries.some((x) => x.id === u) ? { entry: u } : null; };
+    for (const ef of r.world.effects || []) {
+      const holder = ref(ef.unit), a = r.world.units[ef.unit];
+      if (!holder || ef.ends === "never" || !a || !(a.conditions || []).includes(ef.condition)) continue;
+      f.sheetFx = (f.sheetFx || []).filter((x) => !(sameRef(x, holder) && x.condition === ef.condition)).concat([Object.assign({ id: require("crypto").randomBytes(5).toString("hex") }, holder, {
+        condition: str(ef.condition, 30), power: str(ab.name, 80), save: ef.save ? { ability: ef.save.ability, dc: ef.save.dc } : null },
+        ini.active ? { ends: ef.ends === "start" ? "start" : "end", of: ref(ef.of), left: clamp(int(ef.rounds, 1), 1, 100) } : { ends: "clock", of: null, left: clamp(dur, 1, 432000) })]).slice(-60);
     }
   }
   // concentration: the combat view's record when the caster is in the tracker, the sheet's otherwise
@@ -810,9 +897,14 @@ function afterDamage(camp, cid, ch, amount, G) {
 }
 // What the sheet needs of the combat view's records, on or off: the table's power data (which powers roll), and who
 // is concentrating on what, by character, for the characters this viewer is sent. Null when there's nothing to show.
-function sheetView(camp, chars) {
+function sheetView(camp, chars, gm, entryIds) {
   const f = camp.fight;
   if (!f) return null;
+  // the countdowns (4.10) on the characters this viewer is sent, and on the tracker entries it can see: not hidden, and
+  // under fog only those in its own tracker (`entryIds`, from viewFor; #256's review)
+  const has = (x) => (x.char ? ((charOf(camp, x.char) || {}).conditions || []) : ((camp.initiative.entries.find((k) => k.id === x.entry) || {}).conditions || [])).includes(x.condition);
+  const fx = (f.sheetFx || []).filter((x) => (x.char ? own(chars, x.char) : gm || (camp.initiative.entries.some((k) => k.id === x.entry && !k.hidden) && (!entryIds || entryIds.has(x.entry)))) && has(x))
+    .map((x) => Object.assign(x.char ? { char: x.char } : { entry: x.entry }, { condition: x.condition, power: x.power, left: x.left, save: !!x.save }, x.ends === "clock" ? { clock: true } : {}));
   const conc = {};
   for (const [id, name] of Object.entries(concOf(camp))) {
     const e = camp.initiative.entries.find((x) => x.id === id);
@@ -820,7 +912,7 @@ function sheetView(camp, chars) {
   }
   for (const [charId, name] of Object.entries(f.sheetConc || {})) if (own(chars, charId) && !conc[charId]) conc[charId] = name;
   const lib = f.lib || {};
-  return Object.keys(lib).length || Object.keys(conc).length ? { lib, conc } : null;
+  return Object.keys(lib).length || Object.keys(conc).length || fx.length ? Object.assign({ lib, conc }, fx.length ? { fx } : {}) : null;
 }
 
 function apply(camp, cid, gm, type, p, G) {
@@ -1472,5 +1564,5 @@ function onRest(camp, charId, kind) {
   wd.step = 0;
 }
 
-module.exports = { apply, view, sheetView, afterDamage, woundsHealed, onRest, cleanHigh, canWalk, fogFor, fogView, cleanFog, cleanLight, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
+module.exports = { apply, view, sheetView, sheetTurn, sheetClock, sheetFight, afterDamage, woundsHealed, onRest, cleanHigh, canWalk, fogFor, fogView, cleanFog, cleanLight, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
   cleanHitDiceUsed: R.cleanHitDiceUsed };   // for cleanChar: the sheet and the undo record clean hit dice the same way

@@ -534,6 +534,17 @@
   }
   Object.assign(SW5E, { nextRarity, upgradeChassis });
 
+  // A power's SW5e duration in rounds (audit 4.10: ten a minute), from the note the sheet writes when a power is added
+  // from SW5e ("1 action · Range 60 feet · up to 1 minute · Concentration"), or null: instantaneous, until dispelled,
+  // until a rest, or no duration written. A round or a turn is one; a day 14,400; at most 30 days.
+  const DUR_ROUNDS = { round: 1, turn: 1, minute: 10, hour: 600, day: 14400 };
+  function durationRounds(notes) {
+    const parts = String(notes || '').split(' · '), d = parts.find((x, i) => i > 0 && !/^Range\b/i.test(x) && !/^Concentration$/i.test(x) && !/^Requires\b/i.test(x));
+    const m = /^(?:up to )?(\d{1,3}) (round|turn|minute|hour|day)s?$/i.exec(String(d || '').trim());
+    return m ? Math.min(432000, +m[1] * DUR_ROUNDS[m[2].toLowerCase()]) || null : null;
+  }
+  Object.assign(SW5E, { durationRounds });
+
   // Cybernetic augmentations and droid customizations (audit 6.4's second part; Wretched Hives, chapter 7). In the
   // inventory such an item carries `implant: { kind }`: enhancement or replacement (cybernetics), part or protocol (droids).
   // Installed, it moves into the character's own `implants` list, as a modification moves into its chassis.
@@ -895,6 +906,51 @@
     return { level: lvl + 1, need, left: Math.max(0, need - xp), ready: xp >= need };
   }
   Object.assign(SW5E, { XP_FOR_LEVEL, xpNext });
+
+  // ---- a character's damage defences on the sheet (audit 1.5; jpesus on #198: the senses pattern). resist / immune / vuln
+  // are the combat engine's { type, only } entries (only "unenhanced": weapon damage from unenhanced weapons); fromSpecies
+  // keeps what its species gave ("resist:necrotic"), so a later species change swaps those and leaves what the GM set.
+  const defList = v => (Array.isArray(v) ? v : []).filter(d => d && typeof d === 'object' && DAMAGE_TYPES.includes(d.type))
+    .map(d => ({ type: d.type, only: d.only === 'unenhanced' ? 'unenhanced' : null }))
+    .filter((d, i, a) => a.findIndex(x => x.type === d.type && x.only === d.only) === i).slice(0, 13);
+  function cleanDefenses(o) {
+    if (!o || typeof o !== 'object') return null;
+    const out = { resist: defList(o.resist), immune: defList(o.immune), vuln: defList(o.vuln),
+      fromSpecies: [...new Set((Array.isArray(o.fromSpecies) ? o.fromSpecies : []).filter(t => typeof t === 'string' && /^(resist|immune|vuln):/.test(t) && DAMAGE_TYPES.includes(t.split(':')[1])))].slice(0, 39) };
+    return out.resist.length || out.immune.length || out.vuln.length || out.fromSpecies.length ? out : null;
+  }
+  // a species' defences from its traits (SW5e's wording: "You are resistant to necrotic, poison, and psychic damage",
+  // "You are vulnerable to ion damage"); only "… damage" counts, and a choice ("cold or fire") gives none: the GM sets it
+  const DEF_WORDS = { resist: /(?:resistance|resistant) to ([a-z ,]+?) damage/gi, immune: /(?:immune|immunity) to ([a-z ,]+?) damage/gi, vuln: /(?:vulnerable|vulnerability) to ([a-z ,]+?) damage/gi };
+  function defensesFromTraits(traits) {
+    const out = { resist: [], immune: [], vuln: [] };
+    for (const t of Array.isArray(traits) ? traits : []) for (const [k, re] of Object.entries(DEF_WORDS)) {
+      for (const m of String((t && (t.d || t.description)) || '').matchAll(re)) {
+        if (/\bor\b/i.test(m[1])) continue;
+        for (const w of m[1].split(/,\s*(?:and\s+)?|\s+and\s+/)) { const x = w.trim().toLowerCase(); if (DAMAGE_TYPES.includes(x) && !out[k].includes(x)) out[k].push(x); }
+      }
+    }
+    return out;
+  }
+  // a new species: the bare entries the old one gave go, the new one's come in; everything else (the GM's) stays.
+  // fromSpecies keeps "list:type" ("resist:necrotic", "vuln:ion") for the next change.
+  function withSpeciesDefenses(d, spec) {
+    const cur = cleanDefenses(d) || { resist: [], immune: [], vuln: [], fromSpecies: [] }, next = Object.assign({}, cur), from = [];
+    for (const k of ['resist', 'immune', 'vuln']) {
+      const now = ((spec && spec[k]) || []).filter(t => DAMAGE_TYPES.includes(t));
+      next[k] = cur[k].filter(x => x.only || !cur.fromSpecies.includes(`${k}:${x.type}`));
+      for (const t of now) { if (!next[k].some(x => x.type === t && !x.only)) next[k].push({ type: t, only: null }); from.push(`${k}:${t}`); }
+    }
+    return cleanDefenses(Object.assign(next, { fromSpecies: from }));
+  }
+  // words for one list and back: "necrotic, poison, kinetic (unenhanced)"
+  const defListText = list => (list || []).map(d => d.type + (d.only ? ' (unenhanced)' : '')).join(', ');
+  const parseDefList = text => defList(String(text || '').split(/[,;]+/).map(part => {
+    const t = part.trim().toLowerCase(), type = DAMAGE_TYPES.find(d => new RegExp(`\\b${d}\\b`).test(t));
+    return type ? { type, only: /unenhanced|non-?enhanced/.test(t) ? 'unenhanced' : null } : null;
+  }));
+  const defensesText = d => { const c = cleanDefenses(d); return c ? [['resist', 'resists'], ['immune', 'immune to'], ['vuln', 'vulnerable to']].filter(([k]) => c[k].length).map(([k, w]) => `${w} ${defListText(c[k])}`).join(' · ') : ''; };
+  Object.assign(SW5E, { cleanDefenses, defensesFromTraits, withSpeciesDefenses, defListText, parseDefList, defensesText });
 
   // ---- senses (audit 5.12): [{ kind, range }] on the sheet. The four kinds SW5e's creatures and species use; feet 1-9999.
   const SENSES = ['darkvision', 'blindsight', 'tremorsense', 'truesight'];

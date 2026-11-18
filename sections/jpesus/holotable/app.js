@@ -660,6 +660,15 @@
   }
   // the variant rules the GM marks (9.16): the sheet and the table act on these
   const vOn = name => (S.st.variants || []).includes(name);
+  // how long a condition from the sheet's Cast has left (audit 4.10): " · 2 rounds · Force Push", or " · 9 minutes · ..." on the clock
+  function fxNote(ref, c) {
+    const x = ((S.st.sheetCast || {}).fx || []).find(y => (ref.char ? y.char === ref.char : y.entry === ref.entry) && y.condition === c);
+    if (!x) return '';
+    const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`, r = n0(x.left);
+    // out of a fight it runs on the in-game clock, ten rounds a minute
+    const left = !x.clock ? plural(r, 'round') : r < 10 ? 'under a minute' : r < 600 ? plural(Math.ceil(r / 10), 'minute') : r < 14400 ? plural(Math.ceil(r / 600), 'hour') : plural(Math.ceil(r / 14400), 'day');
+    return ` <span class="muted fx-note" title="From the sheet's Cast: ${x.clock ? 'it ends when the in-game clock passes its duration' : 'the tracker counts it down'}${x.save ? '; a save at the end of each of its turns can end it sooner' : ''}">· ${left}${x.save ? ' or a save' : ''} · ${esc(x.power)}</span>`;
+  }
   function mutate(fn) {
     const ch = clone(selChar()); fn(ch); saveChar(ch); guarded('sheet', renderSheet);
   }
@@ -893,7 +902,10 @@
       <span class="lbl">Senses</span> <span>${esc(R.sensesText(ch.senses)) || '<span class="muted">none (normal sight)</span>'}</span>
       ${isGM() ? '<button class="btn tiny ghost" data-act="senses" title="Set the senses of this character (GM)">✎</button>' : ''}
       <span class="lbl" style="margin-left:14px" title="Choosing a species sets it; the GM can change it. A token placed for this character takes its size.">Size</span>
-      ${isGM() ? inp('size', ch.size || 'Medium', { type: 'select', w: '120px', options: R.SIZES }) : `<span>${esc(ch.size || 'Medium')}</span>`}</div>
+      ${isGM() ? inp('size', ch.size || 'Medium', { type: 'select', w: '120px', options: R.SIZES }) : `<span>${esc(ch.size || 'Medium')}</span>`}
+      <span class="lbl" style="margin-left:14px" title="Damage resistances, immunities and vulnerabilities (audit 1.5). Choosing a species fills in its resistances; only the GM changes them by hand. The combat view applies them.">Defences</span>
+      <span>${esc(R.defensesText(ch.defenses)) || '<span class="muted">none</span>'}</span>
+      ${isGM() ? '<button class="btn tiny ghost" data-act="defenses" title="Set this character\'s resistances, immunities and vulnerabilities (GM)">✎</button>' : ''}</div>
     <div class="subtabs">${[['main', 'Abilities & Skills'], ['actions', 'Attacks & Powers'], ['gear', 'Features & Gear'], ['bio', 'Bio & Notes']]
       .map(([k, t]) => `<button data-act="sub" data-sub="${k}" class="${sub === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
 
@@ -922,7 +934,7 @@
             <span class="muted">Failures</span><span class="dots">${[1, 2, 3].map(n => `<span class="dot f ${ch.deathSaves.f >= n ? 'on' : ''}" data-act="ds" data-k="f" data-n="${n}"></span>`).join('')}</span>
             ${!ro ? '<button class="btn tiny" data-act="death-roll">Roll</button>' : ''}</div>
           <h4 style="margin-top:12px">Conditions</h4>
-          <div>${(ch.conditions || []).map((c, i) => `<span class="chip" title="${esc(R.CONDITIONS[c] || '')}">${esc(c)}${!ro ? `<button data-act="rm-cond" data-i="${i}">✕</button>` : ''}</span>`).join('') || '<span class="muted">None</span>'}
+          <div>${(ch.conditions || []).map((c, i) => `<span class="chip" title="${esc(R.CONDITIONS[c] || '')}">${esc(c)}${fxNote({ char: ch.id }, c)}${!ro ? `<button data-act="rm-cond" data-i="${i}">✕</button>` : ''}</span>`).join('') || '<span class="muted">None</span>'}
             ${!ro ? `<select data-act-change="add-cond"><option value="">+ add…</option>${Object.keys(R.CONDITIONS).map(c => `<option>${c}</option>`).join('')}</select>` : ''}</div>
           <div class="row" style="margin-top:8px" title="${esc(R.CONDITIONS.Exhaustion)}"><span class="muted">Exhaustion ⓘ</span>${inp('exhaustion', +ch.exhaustion || 0, { ro, type: 'number', w: '56px' })}</div>
         </div>
@@ -1319,6 +1331,7 @@
         const row = R.resourceRows(c).find(x => x.i === i), max = row ? row.max : 0;
         r.used = Math.max(0, Math.min(max, (+r.used || 0) + (a === 'res-use' ? 1 : -1)));
       }); break;
+      case 'defenses': if (isGM()) defensesDialog(ch); break;
       case 'senses': {   // the GM sets senses by hand (players' sheets get them from their species)
         if (!isGM()) return;
         const t = prompt('Senses, e.g. "darkvision 60, blindsight 30" (empty for none):', R.cleanSenses(ch.senses).map(x => `${x.kind} ${x.range}`).join(', '));
@@ -1988,7 +2001,7 @@
       return `<div class="init-row ${ini.active && i === ini.turn ? 'cur' : ''} ${en.hidden ? 'hid' : ''}" data-id="${esc(en.id)}">
         <div class="init${gm ? ' gm-init' : ''}">${gm ? `<input type="number" value="${n0(en.init)}" data-cf="init" aria-label="Initiative for ${esc(en.name)}"><span class="init-step"><button type="button" data-cact="init-up" title="Raise initiative by 1" aria-label="Raise initiative for ${esc(en.name)}">▲</button><button type="button" data-cact="init-down" title="Lower initiative by 1" aria-label="Lower initiative for ${esc(en.name)}">▼</button></span>` : Math.round(n0(en.init))}</div>
         <div><b>${esc(en.name)}</b>${en.hidden ? ' <span class="muted">(hidden)</span>' : ''}${ch ? ` <span class="muted">· ${esc((S.st.players[ch.owner] || {}).name || '')}</span>` : ''}
-          <div>${(en.conditions || []).map((c, ci) => `<span class="chip" title="${esc(R.CONDITIONS[c] || '')}">${esc(c)}${gm || canHp ? `<button data-cact="rm-cond" data-ci="${ci}">✕</button>` : ''}</span>`).join('')}
+          <div>${(en.conditions || []).map((c, ci) => `<span class="chip" title="${esc(R.CONDITIONS[c] || '')}">${esc(c)}${fxNote(en.charId ? { char: en.charId } : { entry: en.id }, c)}${gm || canHp ? `<button data-cact="rm-cond" data-ci="${ci}">✕</button>` : ''}</span>`).join('')}
           ${gm || canHp ? `<select data-cf="add-cond" style="font-size:12px;padding:1px 4px"><option value="">+ condition</option>${Object.keys(R.CONDITIONS).map(c => `<option>${c}</option>`).join('')}</select>` : ''}</div></div>
         <div class="hp">${hp !== '' ? (canHp ? `HP <input data-cf="hp" value="${esc(hp)}" title="Type a number, or -7 / +5">` : `HP ${esc(hp)}`) + (en.maxHp != null ? ` <span class="muted">/ ${n0(en.maxHp)}</span>` : '') + (temp > 0 ? ` <span class="hp-temp" title="${temp} temporary hit point${temp === 1 ? '' : 's'}">+${temp}</span>` : '') : ''}</div>
         <div class="muted">${en.ac != null ? 'AC ' + esc(en.ac) : ''}</div>
@@ -4014,6 +4027,25 @@
           ${g.kind === 'expertise' ? `<input type="text" data-w="expTools" value="${esc(W.expTools)}" placeholder="or a tool, e.g. Slicer's kit (comma between two)" style="margin-top:4px;width:100%">` : ''}</div>`;
       }).join('');
     return `<section class="wiz-step"><h4><span class="step">4</span> Choices at this level</h4>${body}</section>`;
+  }
+
+  // The GM sets a character's damage defences on the sheet (audit 1.5): one line each, "necrotic, poison, kinetic
+  // (unenhanced)". What the species gave stays marked, so a later species change swaps only those.
+  function defensesDialog(ch) {
+    const d = R.cleanDefenses(ch.defenses) || { resist: [], immune: [], vuln: [], fromSpecies: [] };
+    const row = (k, label) => `<label style="margin-top:6px">${label}<input id="def_${k}" value="${esc(R.defListText(d[k]))}" placeholder="e.g. necrotic, poison, kinetic (unenhanced)"></label>`;
+    modal(`<h3>${esc(ch.name)}: damage defences</h3>
+      <p class="muted" style="margin-top:0;font-size:12px">Damage types: ${esc(R.DAMAGE_TYPES.join(', '))}. Add "(unenhanced)" for weapon damage from unenhanced weapons only.
+        ${d.fromSpecies.length ? `From the species (${esc(ch.species || '')}): ${esc(d.fromSpecies.map(x => { const [k, t] = x.split(':'); return `${t} (${({ resist: 'resistant', immune: 'immune', vuln: 'vulnerable' })[k]})`; }).join(', '))}.` : ''}</p>
+      ${row('resist', 'Resistant to')}${row('immune', 'Immune to')}${row('vuln', 'Vulnerable to')}
+      <div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn" id="defNo">Cancel</button><button class="btn primary" id="defOk">Save</button></div>`, box => {
+      $('#defNo', box).onclick = closeModal;
+      $('#defOk', box).onclick = () => {
+        const next = { resist: R.parseDefList($('#def_resist', box).value), immune: R.parseDefList($('#def_immune', box).value), vuln: R.parseDefList($('#def_vuln', box).value), fromSpecies: d.fromSpecies };
+        closeModal();
+        mutate(c => { const n = R.cleanDefenses(next); if (n) c.defenses = n; else delete c.defenses; });
+      };
+    });
   }
 
   // --------------------------------------------------------------------------- shared with books.js
