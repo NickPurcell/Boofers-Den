@@ -605,6 +605,7 @@
             }
           });
           closeModal();
+          act('char.rest', { charId: ch.id, kind: 'short' });   // what else a rest resets (the combat view's Wounds DC)
           act('chat', { text: `*${ch.name} takes a short rest${half ? ' (8 hours; up to half their hit points back)' : ''}.${tech ? ' Tech points restored.' : ''}${useFR ? ` Force Recovery: ${fr} force points back.` : ''}*`, as: ch.name });
         }
       };
@@ -1063,6 +1064,7 @@
           c.exhaustion = Math.max(0, (+c.exhaustion || 0) - 1);
           if (vOn('Hunted') && c.disturbance) c.disturbance = Math.max(0, c.disturbance - R.totalLevel(c));   // Hunted: down by the character's level
         });
+        act('char.rest', { charId: ch.id, kind: 'long' });
         act('chat', { text: `*${ch.name} takes a long rest${vOn('Longer Rests') ? ' (2 days)' : ''}. HP, force & tech points restored.*`, as: ch.name });
         break;
       case 'exert': {   // Exertion (variant, 9.16): the largest hit die, rolled without spending it; its roll in hit points

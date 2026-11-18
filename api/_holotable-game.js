@@ -634,6 +634,15 @@ function applyAction(camp, cid, gm, type, p) {
       addChat(camp, { system: true, text: `${said === "???" ? "An unknown character" : said} left the table.` });
       return { dropImages: [ch.image, ch.tokenImage] };
     }
+    case "char.rest": {   // the sheet says a character finished a short or long rest (it saves the numbers itself, through
+      // char.save); this tells what else resets on a rest, such as the combat view's Wounds DC (#233), through Fight.onRest
+      const id = String(p.charId || ""), ch = charById(camp, id), kind = p.kind === "long" ? "long" : p.kind === "short" ? "short" : "";
+      if (!ch) throw new Invalid("No such character.");
+      if (!kind) throw new Invalid("A short or a long rest.");
+      if (!gm && ch.owner !== cid) throw new Forbidden("Not your character");
+      if (typeof Fight.onRest === "function") Fight.onRest(camp, id, kind);
+      return { rested: kind };
+    }
     case "char.assign": {
       need(gm);
       const ch = charById(camp, p.id);
