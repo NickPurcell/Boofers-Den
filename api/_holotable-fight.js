@@ -276,6 +276,11 @@ function writeBack(camp, cid, before, after, G) {
       camp.characters[a.charId].deathSaves = { s: clamp(int(a.deathSaves.s), 0, 3), f: clamp(int(a.deathSaves.f), 0, 3) };
     // points spent by an ability go back where the sheet keeps them
     if (a.charId && camp.characters[a.charId]) {
+      // shots left in a Reload weapon (6.6, #179) go back to its attack row
+      for (const [key, n] of Object.entries(a.shots || {})) {
+        const row = /^\d{1,2}$/.test(key) && (camp.characters[a.charId].attacks || [])[+key];
+        if (row && (b.shots || {})[key] !== n) row.shots = clamp(int(n), 0, 999);
+      }
       for (const [key, pool] of Object.entries(a.pools || {})) {
         if (!b.pools[key] || b.pools[key].used === pool.used) continue;
         const ch = camp.characters[a.charId], next = E.setPoolUsed(ch, key, pool.used, R);
@@ -995,7 +1000,8 @@ function apply(camp, cid, gm, type, p, G) {
       else if (type === "fight.end") act = { type: "end", unit: cur.id };
       else if (type === "fight.stand") act = { type: "stand", unit: cur.id };
       else if (type === "fight.douse") act = { type: "douse", unit: cur.id, target: idOr(p.target) };
-      else if (type === "fight.common") act = { type: "common", unit: cur.id, key: String(p.key || ""), target: idOr(p.target) };   // Help names its target (#144)
+      else if (type === "fight.common") act = { type: "common", unit: cur.id, key: String(p.key || ""), target: idOr(p.target),
+        ...(String(p.key || "") === "reload" ? { weapon: /^\d{1,2}$/.test(String(p.weapon)) ? String(p.weapon) : "", asBonus: !!p.asBonus } : {}) };   // Reload (6.6, #179)   // Help names its target (#144)
       else if (type === "fight.grapple" || type === "fight.shove") act = { type: type.slice(6), unit: cur.id, target: idOr(p.target), push: !!p.push, multi: gm && !cur.charId ? clamp(int(p.multi, 1), 1, 6) : 1 };
       else if (type === "fight.escape") act = { type: "escape", unit: cur.id, skill: p.skill === "athletics" ? "athletics" : "acrobatics" };
       else if (type === "fight.release") act = { type: "release", unit: cur.id, target: idOr(p.target) };
@@ -1026,11 +1032,22 @@ function apply(camp, cid, gm, type, p, G) {
       }
       const limited = act.type === "attack" && !cur.charId && p.attack && p.attack.res && ((f.npcres || {})[cur.id] || []).find((x) => x.key === String(p.attack.res));
       if (limited && limited.used >= limited.max) throw new G.Invalid(`${limited.name} is spent${limited.recharge ? ` until it recharges (${limited.recharge}-6 at the start of ${cur.name}'s turn)` : ""}.`);
+      let ammo = null;   // Reload's power cell or slug cartridge, from the sheet's gear (as #179's sheet does)
+      if (act.type === "common" && act.key === "reload" && cur.charId) {
+        const ch = charOf(camp, cur.charId), row = ch && act.weapon !== "" && (ch.attacks || [])[+act.weapon];
+        const kind = row && R.ammoOf ? R.ammoOf(row) : null;
+        if (kind) {
+          ammo = (ch.equipment || []).find((x) => x && String(x.name || "").toLowerCase().startsWith(kind.toLowerCase()) && +x.qty > 0) || null;
+          if (!ammo && !(gm && p.anyway)) throw new G.Invalid(gm ? `No ${kind.toLowerCase()}s in ${ch.name}'s gear. Reload anyway?` : `No ${kind.toLowerCase()}s in your gear. Add some in Features & Gear (or ask the GM).`);
+          act.weaponName = row.name;
+        }
+      }
       const r = E.apply(world, act, (expr) => G.rollDice(expr));
       if (!r.ok) throw new G.Invalid(r.why);
       const label = type === "fight.deathsave" ? `${G.shownName(camp, cur)}'s death save` : type === "fight.common" ? `${G.shownName(camp, cur)} took ${String(p.key || "an action")}` : type === "fight.douse" ? `${G.shownName(camp, cur)} put out flames` : type === "fight.grapple" || type === "fight.shove" || type === "fight.escape" || type === "fight.release" ? `${G.shownName(camp, cur)}: ${type.slice(6)}` : type === "fight.stand" ? `${G.shownName(camp, cur)} stood up` : type === "fight.move" ? `${G.shownName(camp, cur)} moved` : type === "fight.end" ? `${G.shownName(camp, cur)} ended the turn` : type === "fight.use" ? `${G.shownName(camp, cur)} used ${act.ability.name}` : `${G.shownName(camp, cur)}'s attack`;
       snapshot(camp, label);
       if (limited) limited.used += 1;   // after the snapshot, so Undo gives it back
+      if (ammo) ammo.qty = Math.max(0, +ammo.qty - 1);   // the cell or cartridge, likewise
       writeBack(camp, cid, world, r.world, G);
       if (act.type === "use" && act.ability.kind === "power" && cur.charId) noteHighCast(charOf(camp, cur.charId), act.ability, act.ability.level + act.upcast);   // after the snapshot too
       report(camp, cid, gm, G, cur, world, r, type === "fight.move" || type === "fight.end");
