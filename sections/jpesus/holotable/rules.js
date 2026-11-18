@@ -614,7 +614,11 @@
     if (!cw.variant) for (const e of worn) if (+e.armor.str > str) { slow += 10; parts.push(`${e.name} needs Str ${e.armor.str}: -10 ft`); break; }
     for (const e of worn) if (e.armor.cumbersome) { slow += 5; parts.push(`${e.name} is cumbersome: -5 ft`); }
     if (cw.slow) { slow += cw.slow; parts.push(`carrying ${cw.weight} lb: -${cw.slow} ft`); }
-    const other = {}, now = Math.max(0, base - slow);
+    // a Monk with no armor or shield on: Unarmored Movement, from the Monk table's own column at its level
+    const monk = worn.length ? null : classTableAt(c || {}).find(x => x.cls === 'Monk');
+    const umv = monk && (monk.cols.find(([h]) => h === 'Unarmored Movement') || [])[1], um = +(/^\+?(\d+)\s*ft/i.exec(String(umv || '')) || [])[1] || 0;
+    if (um) parts.push(`Unarmored Movement: +${um} ft`);
+    const other = {}, now = Math.max(0, base + um - slow);
     const midHeavy = worn.some(e => e.armor.kind === 'medium' || e.armor.kind === 'heavy');
     for (const f of (c && c.features) || []) {
       const text = String((f && f.text) || '');
@@ -626,7 +630,7 @@
         other[k] = Math.max(other[k] || 0, v);
       }
     }
-    return { base, speed: now, slow, parts, other };
+    return { base, speed: now, slow, bonus: um, parts, other };
   }
   Object.assign(SW5E, { speedOf });
 
