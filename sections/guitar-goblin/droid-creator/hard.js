@@ -75,6 +75,22 @@ export const profile = {
   sphere: (R, yc = 0) => { const f = (s) => { const e = s / R; return [R * cos(e), yc + R * sin(e), cos(e), sin(e)]; }; f.len = (R * PI) / 2; return f; },
   // a flat top at height y, from its rim (s = 0) in to the centre
   top: (y, r1) => { const f = (s) => [r1 - s, y, 0, 1]; f.len = r1; return f; },
+  // a smooth curve through points [[r, y], ...], walked with the outside on the right. f.sAt(y) gives s at a height
+  // (for curves that only climb).
+  path: (pts) => {
+    const K = pts.length, cum = [0], nrm = [], seg = [];
+    for (let i = 0; i < K - 1; i++) { const dr = pts[i + 1][0] - pts[i][0], dy = pts[i + 1][1] - pts[i][1], L = hypot(dr, dy) || 1e-9; seg.push([dy / L, -dr / L]); cum.push(cum[i] + L); }
+    for (let i = 0; i < K; i++) { const a = seg[max(i - 1, 0)], b = seg[min(i, K - 2)], x = a[0] + b[0], y = a[1] + b[1], l = hypot(x, y) || 1; nrm.push([x / l, y / l]); }
+    const f = (s) => {
+      s = max(0, min(cum[K - 1], s)); let i = 0; while (i < K - 2 && cum[i + 1] < s) i++;
+      const t = (s - cum[i]) / (cum[i + 1] - cum[i] || 1e-9), nx = nrm[i][0] + (nrm[i + 1][0] - nrm[i][0]) * t, ny = nrm[i][1] + (nrm[i + 1][1] - nrm[i][1]) * t, l = hypot(nx, ny) || 1;
+      return [pts[i][0] + (pts[i + 1][0] - pts[i][0]) * t, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * t, nx / l, ny / l];
+    };
+    f.len = cum[K - 1];
+    f.sAt = (y) => { let i = 0; while (i < K - 2 && pts[i + 1][1] < y) i++; const t = (y - pts[i][1]) / (pts[i + 1][1] - pts[i][1] || 1e-9); return cum[i] + (cum[i + 1] - cum[i]) * max(0, min(1, t)); };
+    f.pts = pts;
+    return f;
+  },
 };
 // the local xy plane, facing +z: u is x and v is y, both in metres. Put it where it is wanted with the builder's transform.
 export const PLANE = {

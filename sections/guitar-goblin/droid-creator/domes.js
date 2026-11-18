@@ -26,7 +26,7 @@ export function lens(K, mat, r, color, o = {}) {
   K.glow.color = color;
   K.glow.at(mat, (b) => b.frame(PLANE, [-r * 1.08, r * 1.08, -r * 1.08, r * 1.08], [-r * 0.985, r * 0.985, -r * 0.985, r * 0.985], { h: 0.0008, gap: 0, rad: 1, holeRad: 1, holeDrop: 0, wall: null, cornerSegs: 7 }));
   const p = new THREE.Vector3(0, 0, hc + 0.004).applyMatrix4(mat), n = new THREE.Vector3(0, 0, 1).transformDirection(mat);
-  K.halo([p.x, p.y, p.z], [n.x, n.y, n.z], color, r * (o.halo ?? 3.6));
+  K.halo([p.x, p.y, p.z], [n.x, n.y, n.z], color, r * (o.halo ?? 2.9));
 }
 // a holoprojector: a collar, a ball and a short nozzle with a pale lens
 function projector(K, mat, tilt = 0) {

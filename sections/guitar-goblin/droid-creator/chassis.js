@@ -7,6 +7,7 @@ import { LAYOUTS, SCHEMES } from './layout.js';
 import { DOMES } from './domes.js';
 import { FITTINGS, addFittings, antennaAt, boltAt } from './fittings.js';
 import { buildPower, posePower, BOX } from './power.js';
+import { buildProtocol, poseProtocol } from './protocol.js';
 
 const named = (o) => Object.entries(o).map(([key, v]) => ({ key, name: v.name }));
 const schemes = named(SCHEMES);
@@ -32,12 +33,13 @@ export const CHASSIS = {
       look: { label: 'Looking', items: [{ key: 'left', name: 'Left' }, { key: 'ahead', name: 'Ahead' }, { key: 'right', name: 'Right' }] },
       kit: { label: 'Attachments', multi: true, items: named(FITTINGS) },
     },
-    defaults: { form: 'round', layout: 'standard', scheme: 'service', stance: 'three', look: 'ahead', kit: '' },
-    anim: { stance: (k) => (k === 'three' ? 1 : 0), look: (k) => (k === 'left' ? -1 : k === 'right' ? 1 : 0) },
+    defaults: { form: 'round', layout: 'standard', scheme: 'service', stance: 'three', look: 'ahead', kit: '', finish: 'paint' },
+    moves: ['stance', 'look'],
+    anim: { stance: (s) => (s.stance === 'three' ? 1 : 0), look: (s) => (s.look === 'left' ? -1 : s.look === 'right' ? 1 : 0) },
     build(state, on) { const st = { ...state, dome: state.form }, kits = buildUtility(st); addFittings(kits, st, on); return kits; },
     place(g, root) { g.body.add(g.dome, g.midLeg); g.midLeg.add(g.midFoot); root.add(g.body, g.legL, g.legR, g.footL, g.footR); },
     pose: (g, a) => poseUtility(g, a.stance, a.look),
-    views: { whole: { target: [0, 0.54, 0], pos: [1.0, 0.86, 2.55] }, head: { target: [0, 0.9, 0.02], pos: [0.5, 1.06, 1.22] } },
+    views: { whole: { target: [0, 0.53, 0], pos: [1.07, 0.9, 2.74] }, head: { target: [0, 0.9, 0.02], pos: [0.5, 1.06, 1.22] } },
     token(g) { const y = g.body.position.y + 0.2; return { pos: [0.3, y + 0.16, 1.5], target: [0, y, -0.04] }; },
     describe: (n) => `${n('form')} dome, ${n('layout')} panels`,
   },
@@ -48,8 +50,9 @@ export const CHASSIS = {
       stance: { label: 'Stance', items: [{ key: 'stand', name: 'Standing' }, { key: 'step', name: 'Mid-step' }] },
       kit: { label: 'Attachments', multi: true, items: [{ key: 'antenna', name: 'Antenna' }, { key: 'bolt', name: 'Restraining bolt' }, { key: 'leads', name: 'Jump leads' }] },
     },
-    defaults: { scheme: 'solid', stance: 'stand', kit: '' },
-    anim: { stance: (k) => (k === 'step' ? 1 : 0) },
+    defaults: { scheme: 'solid', stance: 'stand', kit: '', finish: 'paint' },
+    moves: ['stance'],
+    anim: { stance: (s) => (s.stance === 'step' ? 1 : 0) },
     build(state, on) {
       const kits = buildPower(state);
       if (on.has('antenna')) antennaAt(kits.body, [-0.115, BOX.top + 0.022, 0.14], 0.19);
@@ -59,8 +62,27 @@ export const CHASSIS = {
     },
     place(g, root) { root.add(g.body, g.legL, g.legR); },
     pose: (g, a) => posePower(g, a.stance),
-    views: { whole: { target: [0, 0.48, 0], pos: [1.05, 0.82, 2.5] }, head: { target: [0, 0.8, 0.27], pos: [0.44, 0.94, 1.32] } },
+    views: { whole: { target: [0, 0.47, 0], pos: [1.1, 0.86, 2.66] }, head: { target: [0, 0.8, 0.27], pos: [0.44, 0.94, 1.32] } },
     token() { return { pos: [0.36, 0.96, 1.66], target: [0, 0.72, 0] }; },
     describe: () => 'a walking battery',
+  },
+  protocol: {
+    name: 'Protocol', noun: 'Protocol droid', headName: 'Head',
+    options: {
+      form: { label: 'Head', items: [{ key: 'twin', name: 'Twin-eye' }, { key: 'visor', name: 'Visor' }] },
+      scheme: { label: 'Paint scheme', items: schemes },
+      stance: { label: 'Pose', items: [{ key: 'ease', name: 'At ease' }, { key: 'attend', name: 'Attending' }, { key: 'greet', name: 'Greeting' }] },
+      look: { label: 'Looking', items: [{ key: 'left', name: 'Left' }, { key: 'ahead', name: 'Ahead' }, { key: 'right', name: 'Right' }] },
+      kit: { label: 'Attachments', multi: true, items: [{ key: 'bolt', name: 'Restraining bolt' }, { key: 'comm', name: 'Comlink aerial' }, { key: 'limb', name: 'Replacement leg' }] },
+    },
+    defaults: { form: 'twin', scheme: 'solid', stance: 'ease', look: 'ahead', kit: '', finish: 'metal' },
+    moves: ['stance', 'look'],
+    anim: { attend: (s) => (s.stance === 'attend' ? 1 : 0), greet: (s) => (s.stance === 'greet' ? 1 : 0), look: (s) => (s.look === 'left' ? -1 : s.look === 'right' ? 1 : 0) },
+    build(state, on) { const kits = buildProtocol(state, on); if (kits.body.bolt) boltAt(kits.body, kits.body.bolt); return kits; },
+    place(g, root) { g.armL.add(g.foreL); g.armR.add(g.foreR); g.body.add(g.head, g.armL, g.armR); root.add(g.body); },
+    pose: (g, a) => poseProtocol(g, a),
+    views: { whole: { target: [0, 0.87, 0], pos: [1.32, 1.2, 3.75] }, head: { target: [0, 1.58, 0.02], pos: [0.38, 1.68, 1.12] } },
+    token() { return { pos: [0.26, 1.63, 1.36], target: [0, 1.54, 0] }; },
+    describe: (n) => `${n('form')} head`,
   },
 };

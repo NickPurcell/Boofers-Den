@@ -1,7 +1,7 @@
 // Droid creator: the page. A droid is built from hard-surface parts made in code (hard.js: bevelled panels laid on
 // curved surfaces, turned and lofted solids), painted by one material that also wears it (paint.js). chassis.js
 // lists the kinds of droid: utility.js is the astromech-style one (domes.js its heads, layout.js its panel layouts
-// and the paint schemes, fittings.js its attachments), power.js the walking battery. This file builds the scene and
+// and the paint schemes, fittings.js its attachments), power.js the walking battery, protocol.js the plated humanoid. This file builds the scene and
 // the lights, puts the pieces together, runs the panel and saves pictures.
 // three.js is the copy vendored in ../vendor/three (r185), loaded through the page's import map.
 import * as THREE from 'three';
@@ -88,10 +88,10 @@ scene.environmentIntensity = 0.75;
 
 // three-point light: a warm key that casts soft shadows, a cool fill, and rims from behind
 const key = new THREE.DirectionalLight(0xffecd6, 2.5);
-key.position.set(1.5, 2.7, 2.1); key.target.position.set(0, 0.5, 0);
+key.position.set(1.6, 3.0, 2.3); key.target.position.set(0, 0.75, 0);
 key.castShadow = true;
 key.shadow.mapSize.set(phone ? 1024 : 2048, phone ? 1024 : 2048);
-Object.assign(key.shadow.camera, { left: -1.0, right: 1.0, top: 1.0, bottom: -1.0, near: 1.2, far: 6 });
+Object.assign(key.shadow.camera, { left: -1.25, right: 1.25, top: 1.35, bottom: -1.25, near: 1.2, far: 7 });
 key.shadow.bias = -0.0003; key.shadow.normalBias = 0.006; key.shadow.radius = 4; key.shadow.intensity = 0.8;
 scene.add(key, key.target);
 const fill = new THREE.DirectionalLight(0xb9d4ff, 0.5); fill.position.set(-2.2, 1.2, 1.6); fill.target.position.set(0, 0.5, 0); scene.add(fill, fill.target);
@@ -124,7 +124,7 @@ function frameView(which = 'whole') {
   controls.target.set(...v.target); camera.position.set(...v.pos); controls.update(); redraw();
 }
 controls.enablePan = false; controls.enableDamping = true; controls.dampingFactor = 0.08;
-controls.minDistance = 0.55; controls.maxDistance = 4.2; controls.minPolarAngle = 0.35; controls.maxPolarAngle = 1.72;
+controls.minDistance = 0.55; controls.maxDistance = 6; controls.minPolarAngle = 0.35; controls.maxPolarAngle = 1.72;
 frameView('whole');
 
 /* ---------------- the droid ---------------- */
@@ -135,7 +135,7 @@ const droid = new THREE.Group(); scene.add(droid);
 let pieces = null, halos = [], info = { tris: 0 };
 // what moves smoothly (the stance, a turn of the head): where each is, and where it is heading
 const anim = {}, goal = {};
-function aim(jump) { const A = chassis().anim || {}; for (const k of Object.keys(anim)) if (!A[k]) { delete anim[k]; delete goal[k]; } for (const [k, f] of Object.entries(A)) { goal[k] = f(state[k]); if (jump || anim[k] === undefined) anim[k] = goal[k]; } }
+function aim(jump) { const A = chassis().anim || {}; for (const k of Object.keys(anim)) if (!A[k]) { delete anim[k]; delete goal[k]; } for (const [k, f] of Object.entries(A)) { goal[k] = f(state); if (jump || anim[k] === undefined) anim[k] = goal[k]; } }
 
 function assemble(kits) {
   const g = {}; halos = [];
@@ -206,9 +206,9 @@ function set(opt, k) {
   else {
     if (state[opt] === k) return;
     state[opt] = k;
-    if (opt === 'chassis') { settle(); aim(true); panel(); rebuild(); frameView('whole'); }
+    if (opt === 'chassis') { for (const [q, v] of Object.entries(chassis().defaults)) if (SHARED_LAST[q]) state[q] = v; settle(); aim(true); panel(); rebuild(); frameView('whole'); }
     else if (opt === 'primary' || opt === 'secondary' || opt === 'wear' || opt === 'finish') colours();
-    else if (chassis().anim && chassis().anim[opt]) aim(false);
+    else if ((chassis().moves || []).includes(opt)) aim(false);
     else rebuild();
   }
   paint(); writeHash(); redraw();
