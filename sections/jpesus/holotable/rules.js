@@ -339,6 +339,10 @@
   }
   Object.assign(SW5E, { carrying, ENCUMBRANCE });
 
+  // Selling (audit 6.8): equipment fetches half its cost (PHB, "Selling Treasure"), whole credits, rounded down
+  const sellPrice = e => Math.floor(Math.max(0, +(e && e.cost) || 0) / 2);
+  Object.assign(SW5E, { sellPrice });
+
   // the d20 a weapon crits on: 20, or lower for an attack's own crit range or a "Keen N" weapon (SW5e: the range grows by N)
   // Reliable Talent (Operative 11, SW5e): ability checks that add the proficiency bonus get the d20's minimum roll
   // threshold, 8 (PHB chapter 7). Skill rolls with proficiency or expertise use 1d20min8.
