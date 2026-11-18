@@ -419,6 +419,45 @@
     };
     inp.click();
   }
+  // Import fidelity (audit 1.2): what an export leaves out, filled in from SW5e's own lists before the sheet is saved:
+  // each power's level, alignment, text and prerequisite (the builder's JSON names its powers only), and worn armor's
+  // kind and AC, so the sheet works its AC out (acAuto, #165) instead of 10 + Dex. Each fill is said in the import notes.
+  async function enrichImport(res) {
+    const c = res.char, lc = s => String(s || '').trim().toLowerCase();
+    if (S.st.sw5eBooks === false) return;
+    if ((c.powers || []).length) {
+      const list = await powerList().catch(() => null);
+      if (list) {
+        let n = 0;
+        for (const p of c.powers) {
+          const x = list.find(y => lc(y.n) === lc(p.name) && y.t === (p.type === 'tech' ? 'tech' : 'force')) || list.find(y => lc(y.n) === lc(p.name));
+          if (!x) continue;
+          n++;
+          if (!+p.level && x.l) p.level = x.l;
+          p.type = x.t;
+          if (x.t === 'force' && (!p.alignment || p.alignment === 'universal')) p.alignment = x.a || 'universal';
+          if (!p.notes) p.notes = [x.ct, x.r && 'Range ' + x.r, x.d].filter(Boolean).join(' · ').slice(0, 300);
+          if (!p.description) p.description = (x.desc + (x.hl ? '\n\nAt higher levels. ' + x.hl : '')).slice(0, 4000);
+          if (x.pre && !p.pre) p.pre = x.pre;
+        }
+        if (n) {
+          res.notes = res.notes.filter(t => !/include power levels/.test(t));
+          res.notes.push(`Power levels and descriptions filled in from SW5e for ${n} of ${c.powers.length} powers${n < c.powers.length ? '; set the rest by hand' : ''}.`);
+        }
+      }
+    }
+    if (res.acFromDex) {
+      const list = await equipList('standard').catch(() => null);
+      let worn = 0;
+      for (const e of (list ? c.equipment || [] : [])) {
+        const it = list.find(y => lc(y.n) === lc(e.name)), a = it && R.armorFromItem(it);
+        if (a) { e.armor = a; if (e.equipped) worn++; }
+      }
+      c.acAuto = true;   // the sheet works the AC out: worn armor and shield, or the class's unarmored rules
+      res.notes = res.notes.filter(t => !/AC set to 10 \+ Dex/.test(t));
+      res.notes.push(worn ? 'AC is worked out from the armor and shield you wear (their numbers are from SW5e\'s gear).' : 'AC is worked out on the sheet (no armor from SW5e\'s gear is worn); check it.');
+    }
+  }
   async function importText(text, src) {
     let results;
     try { results = window.SheetImporter.importAny(text); }
@@ -433,6 +472,7 @@
         res.char.force.used = n0(same.force.used); res.char.tech.used = n0(same.tech.used);
         res.char.conditions = same.conditions || [];
       }
+      await enrichImport(res);
       const r = await act('char.save', { char: res.char });
       if (r) {
         S.importNotes[r.id] = { source: res.source, notes: res.notes };
