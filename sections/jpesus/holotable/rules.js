@@ -318,7 +318,10 @@
       best = opts.sort((x, y) => y.v - x.v)[0];
     }
     const infB = inf && (inf === body || inf.armor.kind === 'shield') ? infuseBonus(c) : 0;
-    return { total: best.v + misc + infB, text: [...best.parts, infB ? `infused ${inf.name} +${infB}` : '', misc ? `misc ${fmt(misc)}` : ''].filter(Boolean).join(' · ') };
+    // enhanced items' AC bonuses (audit 6.2): each one worn, and attuned when it needs attunement
+    const plus = (c.equipment || []).filter((e) => e && e.equipped && e.bonus && +e.bonus.ac > 0 && (!e.att || e.attuned));
+    const bonus = plus.reduce((n, e) => n + (+e.bonus.ac || 0), 0);
+    return { total: best.v + misc + infB + bonus, text: [...best.parts, infB ? `infused ${inf.name} +${infB}` : '', ...plus.map((e) => `${e.name} +${+e.bonus.ac}`), misc ? `misc ${fmt(misc)}` : ''].filter(Boolean).join(' · ') };
   }
   // Carrying (audit 6.5). Each item's weight (wt, in pounds each, from SW5e's gear) times its quantity, against the carrying
   // capacity (PHB, "Lifting and Carrying": Strength score x 15). With the table's "Encumbrance" variant (PHB, the same
@@ -395,6 +398,24 @@
   // the Hit Die a creature has most of (a medpac's die; on a tie the larger)
   const commonHitDie = c => (hitDice(c).slice().sort((a, b) => b.total - a.total || b.die - a.die)[0] || { die: 8 }).die;
   Object.assign(SW5E, { consumableUse, cleanUse, commonHitDie });
+
+  // Enhanced items' plain bonuses (audit 6.2), read once from their SW5e text when added: a weapon's "+N bonus to attack
+  // and damage rolls" (or attack rolls only), armor's or a shield's "+N bonus to AC". Anything subtler stays text.
+  function enhancedBonus(text) {
+    const t = String(text || ''), out = {};
+    let m = /\+(\d) bonus to attack and damage rolls/.exec(t);
+    if (m) { out.hit = +m[1]; out.dmg = +m[1]; }
+    else if ((m = /\+(\d) bonus to attack rolls/.exec(t))) out.hit = +m[1];
+    if ((m = /\+(\d) bonus to AC\b/.exec(t))) out.ac = +m[1];
+    return cleanBonus(out);
+  }
+  function cleanBonus(b) {
+    if (!b || typeof b !== 'object') return null;
+    const out = {};
+    for (const k of ['hit', 'dmg', 'ac']) if (Number.isInteger(+b[k]) && +b[k] >= 1 && +b[k] <= 5) out[k] = +b[k];
+    return Object.keys(out).length ? out : null;
+  }
+  Object.assign(SW5E, { enhancedBonus, cleanBonus });
 
   // Selling (audit 6.8): equipment fetches half its cost (PHB, "Selling Treasure"), whole credits, rounded down
   const sellPrice = e => Math.floor(Math.max(0, +(e && e.cost) || 0) / 2);
