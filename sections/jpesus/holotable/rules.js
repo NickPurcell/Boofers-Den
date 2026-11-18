@@ -358,6 +358,44 @@
   }
   Object.assign(SW5E, { RARITIES, SIMPLE_ATTUNEMENT, attunement, attuneBlocked });
 
+  // Consumables (audit 6.7): what using one does, read once from its SW5e text when it's added (its healing, or the save
+  // it asks for and the damage it deals), kept on the item as `use` ({} when there's nothing to roll: a count to lower).
+  //   { hd: n } the creature rolls n of its Hit Dice + Con (medpacs); { heal: '2d4+2' }; { save: { ab, dc } };
+  //   { dmg: [['2d10', 'kinetic'], ...], half: true }
+  const ABBR = { Strength: 'str', Dexterity: 'dex', Constitution: 'con', Intelligence: 'int', Wisdom: 'wis', Charisma: 'cha' };
+  const WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6 };
+  const DICE_RE = /^\d{1,2}d\d{1,3}(\+\d{1,3})?$/;
+  function consumableUse(text) {
+    const t = String(text || ''), out = {};
+    let m = /rolls (one|two|three|four|five|six) dic?e? equal to the size of their Hit Die/.exec(t);
+    if (m) out.hd = WORDS[m[1]];
+    m = /regains? (\d+d\d+(?:\s*\+\s*\d+)?) hit points/.exec(t);
+    if (m && !out.hd) out.heal = m[1].replace(/\s+/g, '');
+    m = /DC (\d+) (Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma) saving throw/.exec(t);
+    if (m) out.save = { ab: ABBR[m[2]], dc: +m[1] };
+    // "takes 2d6 fire and 2d10 kinetic damage": every dice-and-type pair in the clause that ends in "damage"
+    const pair = new RegExp(`(\\d+d\\d+(?:\\s*\\+\\s*\\d+)?) (${DAMAGE_TYPES.join('|')})\\b`, 'g');
+    const dmg = [...t.matchAll(/(?:takes?|taking|deals?|dealing) ([^.;]*?) damage/g)].flatMap(c => [...c[1].matchAll(pair)]).slice(0, 3).map(x => [x[1].replace(/\s+/g, ''), x[2]]);
+    if (dmg.length) out.dmg = dmg;
+    if (out.save && /half as much/.test(t)) out.half = true;
+    return cleanUse(out);
+  }
+  // the `use` of an item, checked (the server keeps only this shape)
+  function cleanUse(u) {
+    if (!u || typeof u !== 'object' || Array.isArray(u)) return null;
+    const out = {};
+    if (Number.isInteger(+u.hd) && +u.hd >= 1 && +u.hd <= 9) out.hd = +u.hd;
+    if (typeof u.heal === 'string' && DICE_RE.test(u.heal)) out.heal = u.heal;
+    if (u.save && ABILITIES.some(a => a.key === u.save.ab) && +u.save.dc >= 1 && +u.save.dc <= 40) out.save = { ab: u.save.ab, dc: Math.round(+u.save.dc) };
+    const dmg = (Array.isArray(u.dmg) ? u.dmg : []).slice(0, 3).filter(d => Array.isArray(d) && DICE_RE.test(String(d[0])) && DAMAGE_TYPES.includes(d[1])).map(d => [String(d[0]), d[1]]);
+    if (dmg.length) out.dmg = dmg;
+    if (u.half && out.save) out.half = true;
+    return out;
+  }
+  // the Hit Die a creature has most of (a medpac's die; on a tie the larger)
+  const commonHitDie = c => (hitDice(c).slice().sort((a, b) => b.total - a.total || b.die - a.die)[0] || { die: 8 }).die;
+  Object.assign(SW5E, { consumableUse, cleanUse, commonHitDie });
+
   // Selling (audit 6.8): equipment fetches half its cost (PHB, "Selling Treasure"), whole credits, rounded down
   const sellPrice = e => Math.floor(Math.max(0, +(e && e.cost) || 0) / 2);
   Object.assign(SW5E, { sellPrice });
@@ -628,4 +666,37 @@
     ARCHETYPE_CASTERS, casterArchetype, castingSources,
     attackBonus, damageExpr, critExpr, armorClass, armorFromItem, critFrom, ARMOR_KINDS, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
     CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt, refillOf });
+
+  // ---- feat prerequisites (audit 2.5), read from SW5e's own wording, which is regular: "4th level", "Strength 13",
+  // "Dexterity, Intelligence, Wisdom, or Charisma 13", "the ability to cast 2nd-level force powers", "Lucky feat",
+  // "size Small", "Type droid". Each part is met, unmet or (Type: the GM's call; size not on the sheet) unknown.
+  // { ok: true | false | null, unmet: [text], unknown: [text] }; ok is false when any part is unmet.
+  const ABIL_NAMES = ABILITIES.map(a => a.name).join('|');
+  function featPrereq(ch, pre) {
+    const text = String(pre || '').trim(), unmet = [], unknown = [];
+    if (!text || /^none$/i.test(text)) return { ok: true, unmet, unknown };
+    const ordinal = n => n + (['th', 'st', 'nd', 'rd'][(n % 100 - 20) % 10] || ['th', 'st', 'nd', 'rd'][n % 100] || 'th');
+    const lv = /(\d+)(?:st|nd|rd|th) level(?!-)/i.exec(text);
+    if (lv && totalLevel(ch) < +lv[1]) unmet.push(`${ordinal(+lv[1])} level`);
+    const ab = new RegExp(`((?:(?:${ABIL_NAMES})(?:,\\s*(?:or\\s+)?|\\s+or\\s+))*(?:${ABIL_NAMES}))\\s+(\\d+)`).exec(text);
+    if (ab) {
+      const names = ab[1].split(/,\s*(?:or\s+)?|\s+or\s+/).map(x => x.trim()).filter(Boolean), need = +ab[2];
+      const keys = names.map(n => (ABILITIES.find(a => a.name === n) || {}).key).filter(Boolean);
+      if (!keys.some(k => +((ch.abilities || {})[k]) >= need)) unmet.push(`${names.join(' or ')} ${need}`);
+    }
+    const cast = /ability to cast (?:(\d+)(?:st|nd|rd|th)-level )?(force or tech|force|tech) powers/i.exec(text);
+    if (cast) {
+      const at = +(cast[1] || 1), ci = casterInfo(ch), kind = cast[2].toLowerCase();
+      const can = (kind.includes('force') && (ci.forceMaxLevel || 0) >= at) || (kind.includes('tech') && (ci.techMaxLevel || 0) >= at);
+      if (!can) unmet.push(cast[0].replace(/^ability/i, 'the ability'));
+    }
+    const feat = /([A-Z][A-Za-z' -]*?) feat\b/.exec(text);
+    if (feat && !(ch.features || []).some(f => String(f.name || '').toLowerCase() === feat[1].toLowerCase())) unmet.push(`the ${feat[1]} feat`);
+    const size = /size (Tiny|Small|Medium|Large|Huge)/i.exec(text);
+    if (size) { if (!ch.size) unknown.push(`size ${size[1]}`); else if (String(ch.size).toLowerCase() !== size[1].toLowerCase()) unmet.push(`size ${size[1]}`); }
+    const type = /\bType ([a-z]+(?: or [a-z]+)*)/i.exec(text);
+    if (type) unknown.push(`type ${type[1]}`);
+    return { ok: unmet.length ? false : unknown.length ? null : true, unmet, unknown };
+  }
+  Object.assign(SW5E, { featPrereq });
 })(typeof window !== 'undefined' ? window : globalThis);
