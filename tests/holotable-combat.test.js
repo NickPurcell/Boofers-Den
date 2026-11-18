@@ -3206,6 +3206,12 @@ test("Riposte and Return Fire (#67): a miss against one who knows them gives a r
   const miss = E.react(r.world, { kind: "riposte", reactor: "ft", against: "r1", attack: wpn }, dice({ total: 2, nat: 2 }).roll);
   assert.equal(miss.world.units.ft.pools.superiority.used, 1);
   assert.equal(E.react(r.world, { kind: "riposte", reactor: "__proto__", against: "r1", attack: wpn }, dice().roll).ok, false);
+  // a reach-10 attacker 10 ft away: Fenn's 5 ft reach can't answer, so no prompt (#163 review)
+  const pike = { name: "Pike", bonus: 2, damage: "1d10", type: "kinetic", melee: 10, range: null };
+  const far = E.apply(world([ft({ x: 2, reach: 5 }), r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: pike }, dice({ total: 8, nat: 6 }).roll);
+  assert.deepEqual(far.reactions, []);
+  const near = E.apply(world([ft({ x: 2, reach: 10 }), r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: pike }, dice({ total: 8, nat: 6 }).roll);
+  assert.deepEqual(near.reactions.map((x) => x.kind), ["riposte"], "with reach 10 it can");
 });
 
 test("Riposte through the API: the creature's miss raises the prompt, the player takes it from the sheet", async () => {
@@ -3215,10 +3221,14 @@ test("Riposte through the API: the creature's miss raises the prompt, the player
   await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
   await gm.act("fight.toggle", { on: true });
   assert.equal((await sam.act("fight.end", {})).code, 200);
-  assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 0, damage: "1d4", type: "kinetic", melee: 5 } })).code, 200);
+  // the creature's d20 is loaded to a 2 (a natural 20 would hit even AC 25), so the miss and its prompt always happen
+  const crypto = require("crypto"), real = crypto.randomInt;
+  crypto.randomInt = (a, b) => (b === 21 ? 2 : real(a, b));   // every d20 in this request: a 2
+  try { assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 0, damage: "1d4", type: "kinetic", melee: 5 } })).code, 200); }
+  finally { crypto.randomInt = real; }
   st = await sam.state();
   const pend = (st.fight.pending || []).find((x) => x.kind === "riposte");
-  if (!pend) return;   // a natural 20 hits even AC 25: no prompt this time
+  assert.ok(pend, "a riposte prompt for Avery");
   assert.equal((await gm.act("fight.end", {})).code, 400, "the turn waits for the answer");
   assert.equal((await sam.act("fight.react", { id: pend.id, take: true, attack: "0" })).code, 200);
   st = await gm.state();
@@ -3227,3 +3237,107 @@ test("Riposte through the API: the creature's miss raises the prompt, the player
   assert.equal((st.characters[avery].resources || []).find((r) => r.key === "superiority").used, 1);
   assert.deepEqual(st.fight.pending, []);
 });
+
+test("Parry (#67): a melee hit on one who knows it waits; parried, a die plus the best physical modifier comes off; let go, it lands in full", () => {
+  const sup = (used) => ({ superiority: { key: "superiority", name: "Superiority dice", max: 3, die: "d6", used, refill: "short" } });
+  const ft = (o) => unit(Object.assign({ id: "ft", name: "Fenn", side: "pc", x: 1, y: 0, ac: 10, hp: 30, maxHp: 30, mods: { str: 1, dex: 3, con: 2 }, pools: sup(0), maneuvers: { known: ["parry"], dc: { physical: 14, mental: 12, general: 14 } } }, o));
+  const r1 = () => unit({ id: "r1", name: "Raider", side: "npc", x: 0, y: 0, hp: 60, maxHp: 60 });
+  const claw = { name: "Claw", bonus: 5, damage: "2d6", type: "kinetic", melee: 5, range: null };
+  let r = E.apply(world([ft(), r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: claw }, dice({ total: 15, nat: 12 }, { total: 9 }).roll);
+  assert.equal(r.world.units.ft.hp, 30, "nothing lands yet");
+  assert.match(r.log[1].text, /Fenn is hit for 9 kinetic damage: Fenn can parry\./);
+  assert.deepEqual(r.reactions, [{ reactor: "ft", against: "r1", kind: "parry", hit: { amount: 9, crit: false, type: "kinetic", mv: null, dc: 0 } }]);
+  // parried: 1d6+3 (Dex, the best of Str, Dex and Con) off
+  let d = dice({ total: 5 });
+  let p = E.react(r.world, Object.assign({ take: true }, r.reactions[0]), d.roll);
+  assert.equal(p.ok, true, p.why);
+  assert.deepEqual([d.asked[0], p.world.units.ft.hp, p.world.units.ft.pools.superiority.used, E.budget(p.world, "ft").reaction], ["1d6+3", 26, 1, false]);
+  assert.deepEqual(p.log.map((x) => x.text), ["Fenn parries: 5 less damage.", "Fenn takes 4 kinetic damage."]);
+  // a parry bigger than the hit: nothing lands
+  p = E.react(r.world, Object.assign({ take: true }, r.reactions[0]), dice({ total: 12 }).roll);
+  assert.deepEqual([p.world.units.ft.hp, p.log[0].text], [30, "Fenn parries: 9 less damage."]);
+  // let go: the full hit, no die spent
+  p = E.react(r.world, Object.assign({ take: false }, r.reactions[0]), dice().roll);
+  assert.deepEqual([p.world.units.ft.hp, p.world.units.ft.pools.superiority.used], [21, 0]);
+  // no prompt without the maneuver, a die, or a reaction; nor for a ranged hit
+  const none = (u, atk = claw, x = 1) => E.apply(world([u, r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: atk }, dice({ total: 15, nat: 12 }, { total: 9 }).roll);
+  assert.equal(none(ft({ pools: sup(3) })).world.units.ft.hp, 21);
+  assert.equal(none(ft({ maneuvers: null })).world.units.ft.hp, 21);
+  assert.equal(none(ft({ x: 5 }), { name: "Blaster", bonus: 5, damage: "2d6", type: "energy", melee: 0, range: [60, 240] }).world.units.ft.hp, 21);
+  // a hit that drops it to 0 lands through the same path: unconscious at 0
+  r = E.apply(world([ft({ hp: 5 }), r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: claw }, dice({ total: 15, nat: 12 }, { total: 9 }).roll);
+  p = E.react(r.world, Object.assign({ take: false }, r.reactions[0]), dice().roll);
+  assert.equal(p.world.units.ft.hp, 0);
+  assert.match(p.log[0].text, /drops to 0 hit points/);
+  // the attacker's maneuver waits with the hit and comes after it (Trip: a Str save, prone)
+  const atk = unit({ id: "r1", name: "Reya", side: "npc", x: 0, y: 0, pools: sup(0), maneuvers: { known: ["trip-attack"], dc: { physical: 15, mental: 12, general: 15 } } });
+  r = E.apply(world([ft({ saves: { str: 0 } }), atk], "r1"), { type: "attack", unit: "r1", target: "ft", attack: Object.assign({}, claw, { weapon: true }), add: { maneuver: "trip-attack" } }, dice({ total: 15, nat: 12 }, { total: 9 }).roll);
+  assert.equal(r.reactions[0].hit.mv, "trip-attack");
+  p = E.react(r.world, Object.assign({ take: false }, r.reactions[0]), dice({ total: 3 }).roll);
+  assert.ok(p.world.units.ft.conditions.includes("Prone"));
+});
+
+test("Parry through the API: the creature's hit waits for the player's answer, and lands in full if the turn moves on", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { ac: 1, classes: [{ name: "Fighter", level: 5 }], features: [{ name: "Parry", text: "" }] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  const claw = { name: "Claw", bonus: 30, damage: "1d6+2", type: "kinetic", melee: 5 };
+  const hitOnce = async () => {
+    assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: claw })).code, 200);
+    return ((await sam.state()).fight.pending || []).find((x) => x.kind === "parry");
+  };
+  let pend = await hitOnce();
+  if (!pend) return;   // a natural 1 misses even at +30
+  assert.ok(pend.hit.amount >= 3 && pend.mine, JSON.stringify(pend));
+  assert.equal((await gm.state()).characters[avery].hp.current, 20, "it waits");
+  assert.equal((await sam.act("fight.react", { id: pend.id, take: true })).code, 200);
+  st = await gm.state();
+  const res = (st.characters[avery].resources || []).find((r) => r.key === "superiority");
+  assert.equal(res.used, 1);
+  assert.ok(st.chat.some((m) => m.fight && m.roll && /Avery parries: \d+ less damage/.test(m.roll.label || "")));
+  assert.ok(st.characters[avery].hp.current >= 20 - pend.hit.amount && st.characters[avery].hp.current <= 20);
+  // its reaction is spent: the next hit lands at once, with no prompt
+  const hp0 = st.characters[avery].hp.current;
+  assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: claw, multi: 2 })).code, 400, "the Raider's one attack is used");
+  assert.ok(hp0 > 0);
+});
+
+test("Parry, unanswered: when the tracker moves the turn on, the hit that waited lands in full", async () => {
+  const { gm, sam, rae, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { ac: 1, classes: [{ name: "Fighter", level: 5 }], features: [{ name: "Parry", text: "" }] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 30, damage: "1d6+2", type: "kinetic", melee: 5 } })).code, 200);
+  const pend = ((await gm.state()).fight.pending || []).find((x) => x.kind === "parry");
+  if (!pend) return;   // a natural 1
+  assert.equal((await gm.act("init.next", {})).code, 200, "the tracker's own Next");
+  assert.equal((await rae.act("fight.end", {})).code, 200, "Bolt's turn: the combat view catches up");
+  st = await gm.state();
+  assert.equal(st.characters[avery].hp.current, 20 - pend.hit.amount, "landed in full");
+  assert.deepEqual(st.fight.pending, []);
+  assert.ok(st.chat.some((m) => m.fight && /Avery takes \d+ kinetic damage/.test(m.text || (m.roll && m.roll.label) || "")));
+});
+
+test("Parry, lapsed by hiding: the GM hides the attacker while the prompt is up; the hit lands in full at the next step, and the prompt is gone", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { ac: 1, classes: [{ name: "Fighter", level: 5 }], features: [{ name: "Parry", text: "" }] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 30, damage: "1d6+2", type: "kinetic", melee: 5 } })).code, 200);
+  const pend = ((await gm.state()).fight.pending || []).find((x) => x.kind === "parry");
+  if (!pend) return;
+  assert.equal((await gm.act("init.update", { id: ids.raider, fields: { hidden: true } })).code, 200);
+  assert.equal((await gm.act("fight.end", {})).code, 200, "the turn isn't blocked by a lapsed prompt");
+  st = await gm.state();
+  assert.equal(st.characters[avery].hp.current, 20 - pend.hit.amount);
+  assert.ok(!JSON.stringify((await sam.state()).chat).includes("Raider"), "the hidden Raider is not named to the player");
+});
+
+

@@ -206,6 +206,7 @@
   const specOut = (spec) => ({ name: spec.name, bonus: spec.bonus, damage: spec.damage, type: spec.type, melee: spec.melee, range: spec.range, res: spec.res || undefined });
   // what a reaction can be made with: Return Fire takes a ranged weapon from the sheet; the rest, a melee attack (#67)
   function reactOptions(re, kind) {
+    if (kind === 'riposte') return meleeOf(re).filter((a) => a.weapon);   // a riposte is a melee weapon attack
     if (kind !== 'return-fire') return meleeOf(re);
     const ch = re.charId && st().characters[re.charId];
     return ch ? E.attacksOf(ch, R).filter((a) => a.range) : [];
@@ -313,11 +314,18 @@
       if (!re || !ag) continue;
       const what = pr.kind === 'riposte' ? `a riposte against <b>${esc(ag.name)}</b>, who missed it (a superiority die, added on a hit)`
         : pr.kind === 'return-fire' ? `return fire at <b>${esc(ag.name)}</b>, who missed it (a superiority die, added on a hit)` : `an opportunity attack on <b>${esc(ag.name)}</b>, who is leaving its reach`;
+      if (pr.kind === 'parry') {   // #67: the hit waits; parry it (a die off) or take it
+        const h = pr.hit || {};
+        html += pr.mine ? `<div class="ct-row ct-react" role="alert"><span>⚡ <b>${esc(ag.name)}</b> hits <b>${esc(re.name)}</b> for ${esc(String(h.amount))}${h.type ? ' ' + esc(h.type) : ''} damage. Parry it? A superiority die plus your best of Str, Dex and Con comes off.</span>
+            <button class="btn small primary" data-ct="parry" data-id="${esc(pr.id)}">🛡 Parry</button><button class="btn small ghost" data-ct="letgo" data-id="${esc(pr.id)}">Take the hit</button></div>`
+          : `<div class="ct-row ct-react muted">Waiting for ${esc(re.name)}: parry ${esc(ag.name)}'s hit, or take it.</div>`;
+        continue;
+      }
       if (pr.mine) {
         const opts = reactOptions(re, pr.kind);
         html += `<div class="ct-row ct-react" role="alert"><span>⚡ <b>${esc(re.name)}</b> can make ${what}.</span>
           ${opts.map((a) => `<button class="btn small primary" data-ct="react" data-id="${esc(pr.id)}" data-key="${esc(a.key)}" data-unit="${esc(re.id)}" data-kind="${esc(pr.kind || 'opportunity')}">${esc(a.name)} <b>${esc(sgn(a.bonus))}</b></button>`).join('')}
-          ${opts.length ? '' : `<span class="muted">${UI.npc[re.id] && UI.npc[re.id].loading ? 'Reading the stat block…' : 'No melee attack known.'}</span>`}
+          ${opts.length ? '' : `<span class="muted">${UI.npc[re.id] && UI.npc[re.id].loading ? 'Reading the stat block…' : pr.kind === 'return-fire' ? 'No ranged weapon known.' : pr.kind === 'riposte' ? 'No melee weapon known.' : 'No melee attack known.'}</span>`}
           ${gm() && !re.charId ? `<button class="btn small ghost" data-ct="custom" data-unit="${esc(re.id)}">＋ Custom attack</button>` : ''}
           <button class="btn small ghost" data-ct="letgo" data-id="${esc(pr.id)}">Let it go</button></div>`;
       } else html += `<div class="ct-row ct-react muted">Waiting for ${esc(re.name)}: ${pr.kind === 'riposte' ? 'a riposte' : pr.kind === 'return-fire' ? 'return fire' : 'an opportunity attack'} against ${esc(ag.name)}, to take or let go.</div>`;
@@ -487,6 +495,7 @@
     if (k === 'log') { UI.log = !UI.log; return render(); }
 
     if (k === 'letgo') return send('fight.react', { id: el.dataset.id, take: false });
+    if (k === 'parry') return send('fight.react', { id: el.dataset.id, take: true });
     if (k === 'react') {
       const re = world().units[el.dataset.unit], a = re && reactOptions(re, el.dataset.kind).find((x) => x.key === el.dataset.key);
       if (!a) return;
