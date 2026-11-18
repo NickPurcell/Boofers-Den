@@ -872,7 +872,8 @@ test("burst over a hidden token, and Cool and Reload on the ship's own turn", as
   await gm.act("space.place", { id: ambush, x: 7, y: 6, f: 6, hidden: true });   // in the cube, off the players' map
   const before = (await p2.state()).chat.length;
   const r = await p1.act("space.fire", { id: party, target: enemy, weapon: 0 });
-  assert.equal(r.code, 200); assert.equal(r.data.ships.length, 2, "the burst catches the unseen ship too");
+  assert.equal(r.code, 200); assert.equal(r.data.ships.length, 1, "the response to the player lists only the ship they can see");
+  assert.ok(shipIn(await gm.state(), ambush).hull.current < 20 || (await gm.state()).chat.some((m) => /Grey Wake: Dexterity save/.test((m.roll || {}).label || "")), "but the burst caught the unseen ship too");
   const seen = (await p2.state()).chat.slice(before);
   assert.equal(seen.filter((m) => /saves|fails/.test(m.text || "")).length, 1, "players read one ship's result: the one they can see");
   assert.ok(!JSON.stringify(seen).includes("Grey Wake"));

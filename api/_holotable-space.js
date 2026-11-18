@@ -246,7 +246,7 @@ function apply(camp, cid, gm, type, p, h) {
           // a ship in the cube whose token is off the players' map: its save and its lines are the GM's (jpesus, #65)
           line(`${shownOf(ship, tok)} ${saved ? "saves: no damage" : `fails: ${dmg.total} ${SR.damageType(w.type)} damage`}.`, !!tok.hidden);
           if (!saved && dmg.total) hurtShip(ship, dmg.total, false, tok);
-          result.ships.push({ saved, damage: saved ? 0 : dmg.total });
+          if (gm || !tok.hidden) result.ships.push({ saved, damage: saved ? 0 : dmg.total });   // a player isn't told of a ship they can't see
         }
       } else if (chk.kind === "attack") {
         const mode = SR.rollMode({ adv: chk.adv, dis: chk.dis }, ["adv", "dis"].includes(p.mode) ? p.mode : "normal");
