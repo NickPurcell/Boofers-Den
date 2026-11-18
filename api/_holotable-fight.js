@@ -72,6 +72,9 @@ function state(camp) {
       rounds: clamp(int(x.rounds, 1), 1, 100), save: x.save && typeof x.save === "object" ? { ability: ["str", "dex", "con", "int", "wis", "cha"].includes(x.save.ability) ? x.save.ability : "con", dc: clamp(int(x.save.dc, 10), 1, 40) } : null,
       source: ID.test(String(x.source || "")) ? x.source : null, conc: !!x.conc })),
     conc: Object.fromEntries(Object.entries(plainObj(f.conc)).filter(([k, v]) => ID.test(k) && typeof v === "string").map(([k, v]) => [k, str(v, 80)])),
+    // the Wounds variant (9.16): each character's wounded levels and how far its save's DC has risen
+    wounds: cleanWounds(f.wounds),
+    strenuousAt: str(f.strenuousAt, 60),   // set once Strenuous Combat's saves are made this fight (the turn, or "made"); a new fight clears it
     // concentration begun from the sheet's Cast outside a fight (#73), by character id; it joins `conc` when the
     // character is in the tracker (worldOf), so a fight that starts later keeps it
     sheetConc: Object.fromEntries(Object.entries(plainObj(f.sheetConc)).filter(([k, v]) => ID.test(k) && typeof v === "string" && charOf(camp, k)).slice(0, 60).map(([k, v]) => [k, str(v, 80)])),
@@ -94,6 +97,10 @@ function cleanNpcRes(list) {
       refill: ["turn", "short", "long", "manual"].includes(r.refill) ? r.refill : "manual", recharge: r.recharge == null ? null : clamp(int(r.recharge, 6), 2, 6),
       ...(points ? { points: true } : {}) };
   }).filter((r) => r.key && r.name);
+}
+function cleanWounds(x) {
+  return Object.fromEntries(Object.entries(plainObj(x)).filter(([k, v]) => ID.test(k) && v && typeof v === "object").slice(0, 60)
+    .map(([k, v]) => [k, { level: clamp(int(v.level), 0, 10), step: clamp(int(v.step), 0, 20) }]).filter(([, v]) => v.level || v.step));
 }
 function cleanPending(x) {
   if (!x || typeof x !== "object" || !ID.test(String(x.reactor || "")) || !ID.test(String(x.against || ""))) return null;
@@ -122,6 +129,8 @@ function cleanSnap(x) {
     hp: (Array.isArray(x.hp) ? x.hp : []).slice(0, 300).filter((h) => Array.isArray(h) && typeof h[0] === "string")
       .map((h) => [h[0], nul(h[1]), Array.isArray(h[2]) ? [num(h[2][0], -1000, 100000), num(h[2][1], 0, 100000)] : null]),
     effects: Array.isArray(x.effects) ? state({ fight: { effects: x.effects } }).effects : [],
+    wounds: cleanWounds(x.wounds),
+    strenuousAt: str(x.strenuousAt, 60),
     conc: Object.fromEntries(Object.entries(plainObj(x.conc)).filter(([k, v]) => ID.test(k) && typeof v === "string").map(([k, v]) => [k, str(v, 80)])),
     lastTurn: str(x.lastTurn, 60),
     pending: (Array.isArray(x.pending) ? x.pending : []).slice(0, 12).map(cleanPending).filter(Boolean),
@@ -135,7 +144,7 @@ function cleanSnap(x) {
         hitDiceUsed: R.cleanHitDiceUsed(r.hitDiceUsed),   // the sheet's own cleaner: per die size or an old number
         deathSaves: { s: num(plainObj(r.deathSaves).s, 0, 3), f: num(plainObj(r.deathSaves).f, 0, 3) },
         shots: (Array.isArray(r.shots) ? r.shots : []).slice(0, 40).filter((x) => Array.isArray(x)).map(([i, n]) => [clamp(int(i), 0, 39), n == null ? null : num(n, 0, 999)]),
-        ammo: (Array.isArray(r.ammo) ? r.ammo : []).slice(0, 40).filter((x) => Array.isArray(x)).map(([i, name, q]) => [clamp(int(i), 0, 199), str(name, 80), num(q, 0, 9999)]) }]),
+        ammo: (Array.isArray(r.ammo) ? r.ammo : []).slice(0, 40).filter((x) => Array.isArray(x)).map(([i, name, q]) => [clamp(int(i), 0, 199), str(name, 80), num(q, 0, 9999)]), exhaustion: num(r.exhaustion, 0, 6) }]),
   };
 }
 
@@ -177,6 +186,7 @@ function worldOf(camp, forPlayer, G, cid) {
     tokens: camp.map.tokens, unitTokens: ut, spent: f.spent || {}, effects: f.effects || [], conc: concOf(camp),
     npcSpeed: Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v.speed : v])),
     npcStats: Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v : {}])),
+    wounds: f.wounds || {},
     defenses: f.defenses || {}, walls: mapWalls(camp), variants: camp.variants || [],
   }, R);
   if (G && G.shownName) for (const e of entries) if (w.units[e.id]) w.units[e.id].name = G.shownName(camp, e);
@@ -231,9 +241,9 @@ function snapshot(camp, label) {
     ini: { turnId: (ini.entries[ini.turn] || {}).id || null, round: ini.round, active: ini.active },
     spent: JSON.parse(JSON.stringify(f.spent || {})),
     effects: JSON.parse(JSON.stringify(f.effects || [])), conc: Object.assign({}, f.conc), lastTurn: f.lastTurn || "", pending: JSON.parse(JSON.stringify(f.pending || [])),
-    npcres: JSON.parse(JSON.stringify(f.npcres || {})),
+    npcres: JSON.parse(JSON.stringify(f.npcres || {})), wounds: JSON.parse(JSON.stringify(f.wounds || {})), strenuousAt: f.strenuousAt || "",
     conds: ini.entries.map((e) => [e.id, (e.conditions || []).slice(), e.charId && camp.characters[e.charId] ? (camp.characters[e.charId].conditions || []).slice() : null]),
-    chars: Object.values(camp.characters).map((c) => [c.id, JSON.parse(JSON.stringify({ resources: c.resources || [], force: c.force, tech: c.tech, hitDiceUsed: c.hitDiceUsed, deathSaves: c.deathSaves,
+    chars: Object.values(camp.characters).map((c) => [c.id, JSON.parse(JSON.stringify({ resources: c.resources || [], force: c.force, tech: c.tech, hitDiceUsed: c.hitDiceUsed, deathSaves: c.deathSaves, exhaustion: c.exhaustion || 0,
       // shots in each Reload weapon and the power cells or slug cartridges in the gear (6.6, #212 review), so Undo gives them back
       shots: (c.attacks || []).map((a, i) => [i, a]).filter(([, a]) => a && R.reloadOf && R.reloadOf(a)).map(([i, a]) => [i, a.shots == null || a.shots === "" ? null : a.shots]),
       ammo: (c.equipment || []).map((x, i) => [i, x]).filter(([, x]) => x && /^(power cell|slug cartridge)/i.test(String(x.name || ""))).map(([i, x]) => [i, x.name, x.qty]) }))]),
@@ -268,6 +278,8 @@ function restore(camp, s) {
   if (typeof s.lastTurn === "string") f.lastTurn = s.lastTurn;
   if (Array.isArray(s.pending)) f.pending = s.pending;
   if (s.npcres) f.npcres = s.npcres;
+  if (s.wounds) f.wounds = s.wounds;
+  if (typeof s.strenuousAt === "string") f.strenuousAt = s.strenuousAt;
   for (const [id, ec, cc] of s.conds || []) {
     const e = ini.entries.find((k) => k.id === id);
     if (e) e.conditions = ec;
@@ -307,6 +319,12 @@ function writeBack(camp, cid, before, after, G) {
         Object.assign(ch, { resources: next.resources, force: next.force, tech: next.tech, hitDiceUsed: next.hitDiceUsed });
       }
     }
+  }
+  for (const a of Object.values(after.units || {})) {   // the Wounds variant: what changed goes back to the record, by character
+    const b = (before.units || {})[a.id];
+    if (!a.charId || !a.wounds || !b || JSON.stringify(a.wounds) === JSON.stringify(b.wounds)) continue;
+    f.wounds = f.wounds || {};
+    if (a.wounds.level || a.wounds.step) f.wounds[a.charId] = { level: a.wounds.level, step: a.wounds.step }; else delete f.wounds[a.charId];
   }
   f.spent = after.spent || {};
   if (after.effects) f.effects = after.effects;
@@ -821,6 +839,24 @@ function apply(camp, cid, gm, type, p, G) {
   const need = (ok, why = "GM only") => { if (!ok) throw new G.Forbidden(why); };
   const entry = (id) => ini.entries.find((e) => e.id === id);
   switch (type) {
+    case "fight.conclude": {   // the Strenuous Combat variant (9.16): each surviving character saves (Con) or gains exhaustion
+      need(gm);
+      if (!(camp.variants || []).includes("Strenuous Combat")) throw new G.Invalid("The Strenuous Combat variant isn't on for this table.");
+      if (!ini.active) throw new G.Invalid("There's no fight to conclude.");
+      if (f.strenuousAt) throw new G.Invalid("Those saves are already made for this fight.");   // once a fight: init.start clears it (#233 review)
+      const dc = 10 + Math.max(0, (+ini.round || 1) - 1);   // the complete rounds: the one in progress isn't
+      const who = ini.entries.filter((e) => e.charId && charOf(camp, e.charId)).map((e) => [e, charOf(camp, e.charId)])
+        .filter(([, ch]) => !(+((ch.deathSaves || {}).f) >= 3));
+      if (!who.length) throw new G.Invalid("No surviving characters are in the fight.");
+      snapshot(camp, "Strenuous Combat saves");
+      for (const [e, ch] of who) {
+        const bonus = R.saveBonus(ch, "con"), r = G.rollDice("1d20" + (bonus >= 0 ? "+" : "") + bonus), ok = r.total >= dc;
+        if (!ok) ch.exhaustion = Math.min(6, (+ch.exhaustion || 0) + 1);
+        say(camp, G, { system: true, fight: true, text: str(`${G.shownName(camp, e)} makes a CON save against Strenuous Combat (DC ${dc}): ${r.total}, ${ok ? "a success" : `a failure: 1 level of exhaustion (now ${ch.exhaustion})`}.`, 200) }, cid, [e.id]);
+      }
+      f.strenuousAt = f.lastTurn || "made";
+      return {};
+    }
     case "fight.toggle": {
       need(gm);
       const was = !!f.on;
@@ -1153,6 +1189,12 @@ function view(camp, cid, gm, shownName) {
     npcSkills: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, (v && v.skills) || {}])) : {},   // Athletics, Acrobatics (#144): the GM's
     ...(gm ? { propWalls: propWalls(camp) } : {}),   // the GM's previews see what the server sees (#110's sight-blocking objects)
     npcRes: gm ? f.npcres || {} : {},   // a creature's limited abilities: the GM's
+    // the Wounds variant's levels, by character: as visible as the character's defences (not one whose token's name the GM
+    // is hiding, except to its owner), so a hidden character's id never reaches a player (#233 review)
+    wounds: Object.fromEntries(Object.entries(f.wounds || {}).filter(([id]) => {
+      const c = charOf(camp, id);
+      return c && (gm || !shownName || c.owner === cid || shownName(camp, { charId: id, name: c.name }) === c.name);
+    })),
     npcDefenses: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, defences(plainObj(v))])) : {},
     // characters' own: as visible as their sheets (not a sheet whose token's name the GM is hiding, except to its owner)
     defenses: gm || !shownName ? f.defenses || {} : Object.fromEntries(Object.entries(f.defenses || {}).filter(([id]) => {
@@ -1411,5 +1453,24 @@ function cleanWalls(list) {
   });
 }
 
-module.exports = { apply, view, sheetView, afterDamage, cleanHigh, canWalk, fogFor, fogView, cleanFog, cleanLight, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
+// the Wounds variant (9.16, #233). A sheet saved back at its hit point maximum loses its wounded levels: the sheet's
+// rests, its Heal button and a hand edit all save through char.save (jpesus's agent on #65). A short or long rest (the
+// sheet's char.rest, #235, calls this) sets the save's DC back to 10 and keeps the levels, except for a character in a
+// fight that's still going on.
+function woundsHealed(camp, charId, ch) {
+  const ws = camp.fight && camp.fight.wounds, hp = (ch && ch.hp) || {};
+  if (ws && typeof ws === "object" && Object.prototype.hasOwnProperty.call(ws, charId) && +hp.max > 0 && +hp.current >= +hp.max) delete ws[charId];
+}
+function onRest(camp, charId, kind) {
+  const ws = camp.fight && camp.fight.wounds;
+  if (kind !== "short" && kind !== "long") return;
+  if (!ws || typeof ws !== "object" || !Object.prototype.hasOwnProperty.call(ws, charId)) return;
+  const ini = camp.initiative;   // no rest in the middle of a fight: a character in one keeps its DC (#233 review)
+  if (ini && ini.active && (ini.entries || []).some((e) => e && e.charId === charId)) return;
+  const wd = ws[charId];
+  if (!wd || typeof wd !== "object" || !(+wd.level > 0)) { delete ws[charId]; return; }
+  wd.step = 0;
+}
+
+module.exports = { apply, view, sheetView, afterDamage, woundsHealed, onRest, cleanHigh, canWalk, fogFor, fogView, cleanFog, cleanLight, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
   cleanHitDiceUsed: R.cleanHitDiceUsed };   // for cleanChar: the sheet and the undo record clean hit dice the same way
