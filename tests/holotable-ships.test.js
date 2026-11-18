@@ -391,3 +391,112 @@ test("ship actions: start of turn, power dice, Boost and Regenerate Shields on t
   assert.ok((await gm.state()).chat.some((m) => m.roll && m.roll.label === "Black Lance: destruction save"), "the start of its turn rolls the save");
   assert.ok(!(await p1.state()).chat.some((m) => /Black Lance/.test((m.text || "") + ((m.roll || {}).label || ""))));
 });
+
+// ---------------------------------------------------------------- the space map (jpesus's call on #146)
+test("space map geometry: 50 ft squares with alternating diagonals, turning, ship sizes, gaps and firing arcs", () => {
+  assert.deepEqual([SR.gridFeet(3, 0), SR.gridFeet(1, 1), SR.gridFeet(2, 2), SR.gridFeet(4, 3)], [150, 50, 150, 250], "diagonals: 50, then 100, and so on");
+  assert.deepEqual([SR.turnCost({ turn: 100 }, 0, 2), SR.turnCost({ turn: 100 }, 0, 1), SR.turnCost({ turn: 100 }, 1, 7), SR.turnCost({ turn: 150 }, 0, 4)], [100, 50, 100, 300]);
+  assert.equal(SR.moveCost({ turn: 100 }, { x: 0, y: 0, f: 0 }, { x: 0, y: 4, f: 4 }), 400, "4 squares and an about-turn");
+  assert.deepEqual(["Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"].map((size) => SR.squaresOf({ size })), [1, 1, 2, 4, 8, 16], "SotG's sizes on a grid");
+  assert.deepEqual(SR.inBounds({ x: 50, y: -3, f: 9 }, 4, 40, 28), { x: 36, y: 0, f: 1 }, "the board's edge stops a token");
+  assert.equal(SR.shipGap({ x: 0, y: 0 }, 2, { x: 2, y: 0 }, 1), 50, "side by side: 50 ft");
+  assert.equal(SR.shipGap({ x: 0, y: 0 }, 2, { x: 5, y: 0 }, 1), 200);
+  const a = { x: 10, y: 10, f: 0 };
+  assert.deepEqual([[10, 5], [15, 10], [10, 15], [5, 10]].map(([x, y]) => SR.arcOf(a, 1, { x, y }, 1)), ["forward", "starboard", "aft", "port"]);
+  assert.equal(SR.arcOf({ x: 10, y: 10, f: 2 }, 1, { x: 15, y: 10 }, 1), "forward", "facing east, a ship to the east is ahead");
+  assert.equal(SR.npcInitBonus({ size: "Medium", abilities: { dex: 14 } }), -5, "Dex +2 and Medium's -7");
+});
+
+test("space map: the GM switches the table to it; ships on the map, moved and turned inside it; who may move what", async () => {
+  const { gm, p1, p2, party, enemy } = await table();
+  assert.equal((await p1.act("space.on", { on: true })).code, 403, "only the GM switches the table");
+  assert.equal((await gm.act("space.on", { on: true })).code, 200);
+  let sp = (await p1.state()).space;
+  assert.ok(sp.on && /^[a-z0-9]{6,20}$/.test(sp.n), "every screen learns it, with a fresh id to turn to it once");
+  assert.equal((await p1.act("space.place", { id: party, x: 5, y: 5, f: 2 })).code, 200, "a player puts a party ship on the map");
+  assert.equal((await p1.act("space.place", { id: enemy, x: 9, y: 9 })).code, 403, "not the GM's ship");
+  for (const id of ["__proto__", "constructor", "toString"]) {
+    assert.equal((await p1.act("space.place", { id, x: 1, y: 1 })).code, 400, id);
+    assert.equal((await gm.act("space.token", { id, hidden: true })).code, 400, id);
+  }
+  assert.equal(({}).x, undefined, "nothing reached Object.prototype");
+  assert.equal((await gm.act("space.place", { id: enemy, x: 999, y: -40, f: 13 })).code, 200);
+  sp = (await gm.state()).space;
+  const e = sp.tok.find((t) => t.id === enemy);
+  assert.deepEqual([e.x, e.y, e.f], [39, 0, 5], "kept inside a 40 x 28 map for a 1-square ship; facing wraps");
+  // players: an enemy ship is on their map as "???" until the GM names it, and gone while the GM hides its token
+  let mine = (await p2.state()).space.tok;
+  assert.deepEqual(mine.map((t) => t.name).sort(), ["???", "Dawn Skiff"]);
+  assert.ok(!JSON.stringify((await p2.state()).space).includes("Black Lance"), "the enemy's name isn't sent at all");
+  await gm.act("space.token", { id: enemy, named: true });
+  assert.ok((await p2.state()).space.tok.some((t) => t.name === "Black Lance"));
+  await gm.act("space.token", { id: enemy, hidden: true });
+  assert.deepEqual((await p2.state()).space.tok.map((t) => t.id), [party], "a hidden token isn't sent");
+  assert.equal((await p1.act("space.token", { id: party, hidden: true })).code, 403);
+  await gm.act("space.size", { cols: 5, rows: 500 });
+  sp = (await gm.state()).space;
+  assert.deepEqual([sp.cols, sp.rows], [10, 120], "between 10 and 120 squares");
+  assert.ok(sp.tok.every((t) => t.x <= sp.cols - 1), "a smaller map pulls tokens inside it");
+  // deleting a ship takes it off the map
+  await p1.act("ship.delete", { id: party });
+  assert.deepEqual((await gm.state()).space.tok.map((t) => t.id), [enemy]);
+  assert.equal((await gm.act("space.on", { on: false })).code, 200);
+  assert.equal((await p1.state()).space.on, false);
+});
+
+test("space map: initiative, the order, a ship's turn starting its power and shields, and movement in feet", async () => {
+  const { gm, p1, p2, party, enemy } = await table();
+  // a crew with sheets: the party ship goes at their lowest roll
+  const kira = (await p1.act("char.save", { char: { name: "Kira", abilities: { dex: 30 } } })).data.id;
+  const tobin = (await p2.act("char.save", { char: { name: "Tobin", abilities: { dex: 1 } } })).data.id;
+  let sh = shipIn(await p1.state(), party);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { reactor: "Fuel Cell", coupling: "Direct", turn: 100, crew: [{ charId: kira }, { charId: tobin }] }) });
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 2, f: 2 });
+  await gm.act("space.place", { id: enemy, x: 20, y: 2, f: 6 });
+  assert.equal((await p1.act("space.init", {})).code, 403);
+  assert.equal((await gm.act("space.init", {})).code, 200);
+  let st = await gm.state();
+  const ini = st.space.order;
+  assert.equal(ini.length, 2); assert.ok(ini[0].init >= ini[1].init, "highest first");
+  const line = st.chat.find((m) => /Dawn Skiff: initiative \(the lowest of its crew: Kira \d+, Tobin -?\d+\)/.test(m.text || ""));
+  assert.ok(line, "the party ship's line names its crew's rolls");
+  const tobinRoll = +/Tobin (-?\d+)/.exec(line.text)[1], kiraRoll = +/Kira (\d+)/.exec(line.text)[1];
+  assert.equal(ini.find((x) => x.id === party).init, Math.min(tobinRoll, kiraRoll));
+  assert.ok(!(await p1.state()).chat.some((m) => /Black Lance/.test(m.text || "")), "the enemy's initiative line is the GM's");
+  assert.ok(st.chat.some((m) => /Black Lance: initiative \(Dexterity -3 with its size\)/.test(m.text || "")), "an enemy ship: Dexterity +0 and Small's -3");
+  // whoever is first has started its turn
+  const first = ini[0].id;
+  // play to the party ship's turn and check its turn started: a fuel cell's power die
+  if (first !== party) await gm.act("space.next", {});
+  st = await p1.state();
+  assert.equal(st.space.turnId, party);
+  assert.equal(shipIn(st, party).status.power.central, 1, "its turn started: the reactor's die");
+  // movement this turn, in feet: 3 squares east and a 90-degree turn
+  await p1.act("space.place", { id: party, x: 5, y: 2, f: 4 });
+  assert.equal((await p1.state()).space.moved[party], 250, "150 ft and a 100 ft turn");
+  assert.equal((await p2.act("space.place", { id: party, x: 5, y: 2, f: 4 })).code, 200, "anyone at the table moves a party ship");
+  // the party's crew ends its own turn; they can't end the enemy's
+  assert.equal((await p1.act("space.next", {})).code, 200);
+  st = await p1.state();
+  assert.notEqual(st.space.turnId, party);
+  assert.equal((await p1.act("space.next", {})).code, 403, "not the enemy's turn");
+  assert.equal((await p1.act("space.prev", {})).code, 403);
+  await gm.act("space.next", {});
+  st = await gm.state();
+  assert.equal(st.space.turnId, party); assert.equal(st.space.moved[party], 0, "a new turn, no feet moved yet");
+  // a player's Next can start an enemy ship's turn: its destruction save at 0 hull stays the GM's (no sender id on it)
+  await gm.act("ship.damage", { id: enemy, amount: 25, type: "kinetic" });
+  if ((await gm.state()).space.turnId !== party) await gm.act("space.next", {});
+  const nx = await p1.act("space.next", {});
+  assert.equal(nx.code, 200, "the party ends its turn; the enemy's starts");
+  assert.deepEqual(nx.data, { ok: true }, "nothing of the enemy's turn comes back to the player");
+  assert.ok((await gm.state()).chat.some((m) => m.roll && m.roll.label === "Black Lance: destruction save" && m.from === "Ship combat (GM only)" && !m.fromId), "the enemy's turn rolled its save, the GM's alone");
+  for (const who of [p1, p2]) assert.ok(!JSON.stringify((await who.state()).chat).includes("Black Lance"), "not even the player who pressed Next reads it");
+  assert.equal((await gm.act("space.end", {})).code, 200);
+  st = await p1.state();
+  assert.deepEqual([st.space.active, st.space.order.length, st.space.turnId], [false, 0, null]);
+  // the space map survives a backup and restore
+  const g = G.cleanGame(Object.assign(G.blankCampaign("Test"), { ships: st.ships, space: { on: true, n: "abcdef12", tok: [{ id: party, x: -5, y: 3, f: 2 }, { id: "__proto__", x: 1, y: 1 }, { id: party, x: 1, y: 1 }] } }));
+  assert.deepEqual(g.space.tok, [{ x: 0, y: 3, f: 2, id: party, hidden: false, named: false }], "cleaned: inside the map, only real ships, once each");
+});

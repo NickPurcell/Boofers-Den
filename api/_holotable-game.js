@@ -8,8 +8,9 @@
 
 const crypto = require("crypto");
 const Fight = require("./_holotable-fight.js");   // the combat view (fight.*), off until the GM switches it on
-const Ships = require("./_holotable-ships.js");
-const Ask = require("./_holotable-ask.js");   // the GM asking for a roll (audit 9.12)   // a ship in a fight (ship.damage, destruction saves, ship conditions): Starships of the Galaxy
+const Ships = require("./_holotable-ships.js");   // a ship in a fight (ship.damage, destruction saves, ship conditions): Starships of the Galaxy
+const Space = require("./_holotable-space.js");   // the space map (space.*): ship fights on their own map, jpesus's call on #146
+const Ask = require("./_holotable-ask.js");   // the GM asking for a roll (audit 9.12)
 const R = globalThis.SW5E;   // rules.js, loaded by the fight module (senses)
 
 const CHAT_LIMIT = 400;
@@ -173,27 +174,32 @@ function cleanChar(ch) {
     skillMisc: Object.fromEntries(Object.entries(ch.skillMisc || {}).slice(0, 40).filter(([k]) => /^[a-zA-Z]{1,30}$/.test(k)).map(([k, v]) => [k, numOr(v, 0)])),
     saveMisc: nums(ch.saveMisc, ABILS, 0),
     ac: numOr(ch.ac, 10), speed: numOr(ch.speed, 30),
+    // AC worked out from armor (audit 5.3): kept only when switched on, so other sheets are as before
+    ...(ch.acAuto ? { acAuto: true } : {}), ...(numOr(ch.acMisc, 0) ? { acMisc: clamp(numOr(ch.acMisc, 0), -20, 20) } : {}),
     hp: nums(ch.hp, ["max", "current", "temp"], 0), hitDiceUsed: Fight.cleanHitDiceUsed(ch.hitDiceUsed),   // per die size (audit 7.2), or an old single number
     deathSaves: { s: clamp(int((ch.deathSaves || {}).s), 0, 3), f: clamp(int((ch.deathSaves || {}).f), 0, 3) },
     initMisc: numOr(ch.initMisc, 0), profOverride: optNum(ch.profOverride),
-    force: { max: optNum((ch.force || {}).max), used: numOr((ch.force || {}).used, 0) },
-    tech: { max: optNum((ch.tech || {}).max), used: numOr((ch.tech || {}).used, 0) },
+    force: Object.assign({ max: optNum((ch.force || {}).max), used: numOr((ch.force || {}).used, 0) }, Fight.cleanHigh((ch.force || {}).high)),   // high: levels cast once per long rest (#160)
+    tech: Object.assign({ max: optNum((ch.tech || {}).max), used: numOr((ch.tech || {}).used, 0) }, Fight.cleanHigh((ch.tech || {}).high)),
     // the combat view's resource tracker (audit 3.1): kept only on a sheet that has some, so other sheets are as before
     ...(Array.isArray(ch.resources) && ch.resources.length ? { resources: Fight.cleanResources(ch.resources) } : {}),
     ...(Array.isArray(ch.senses) && R.cleanSenses(ch.senses).length ? { senses: R.cleanSenses(ch.senses) } : {}),
     attacks: list(ch.attacks, 40, (a) => ({ name: s(a.name, 80), ab: ["str", "dex", "con", "int", "wis", "cha", "finesse"].includes(a.ab) ? a.ab : "str",
       damage: s(a.damage, 40), damageFull: a.damageFull ? s(a.damageFull, 60) : undefined, type: s(a.type, 30), props: s(a.props, 200),
-      proficient: a.proficient !== false, magic: optNum(a.magic), bonus: optNum(a.bonus), noModDamage: !!a.noModDamage })),
+      proficient: a.proficient !== false, magic: optNum(a.magic), bonus: optNum(a.bonus), noModDamage: !!a.noModDamage,
+      ...(int(a.critRange, 20) < 20 ? { critRange: clamp(int(a.critRange, 20), 15, 20) } : {}) })),   // crits on this d20 or higher (19 = 19-20)
     powers: list(ch.powers, 150, (pw) => ({ name: s(pw.name, 80), level: clamp(int(pw.level), 0, 9), type: pw.type === "tech" ? "tech" : "force",
       alignment: ["light", "dark"].includes(pw.alignment) ? pw.alignment : "universal", notes: s(pw.notes, 300), description: s(pw.description, 4000) })),
     features: list(ch.features, 150, (f) => ({ name: s(f.name, 80), text: s(f.text, 4000) })),
-    equipment: list(ch.equipment, 200, (e) => ({ name: s(e.name, 80), qty: numOr(e.qty, 1), equipped: !!e.equipped, notes: s(e.notes, 200) })),
+    equipment: list(ch.equipment, 200, (e) => ({ name: s(e.name, 80), qty: numOr(e.qty, 1), equipped: !!e.equipped, notes: s(e.notes, 200),
+      ...(e.armor && R.ARMOR_KINDS.includes(e.armor.kind) ? { armor: { kind: e.armor.kind, ac: clamp(int(e.armor.ac), 0, 30) } } : {}) })),
     conditions: (Array.isArray(ch.conditions) ? ch.conditions : []).slice(0, 20).map((c) => s(c, 30)),
     exhaustion: clamp(int(ch.exhaustion), 0, 6), inspiration: !!ch.inspiration,
     proficiencies: s(ch.proficiencies, 2000), languages: s(ch.languages, 500), notes: s(ch.notes, 20000),
     image: validImg(ch.image) || "", tokenImage: validImg(ch.tokenImage) || "", color: validColor(ch.color),
   };
   if (!out.classes.length) out.classes = [{ name: "Fighter", level: 1, archetype: "" }];
+  if (out.acAuto) out.ac = R.armorClass(out).total;   // worked out here too, so the tracker and the combat view read the same AC
   return out;
 }
 
@@ -279,6 +285,7 @@ function viewFor(camp, cid, gm, online) {
     hpMax: camp.hpMax !== false,
     audio: camp.audio ? Object.assign({}, camp.audio, { now: now() }) : null,   // "now" lets each screen line its clock up
     ships: (camp.ships || []).filter((x) => gm || !x.hidden),
+    ...(camp.space ? { space: Space.view(camp, gm) } : {}),   // the space map (#146)
     sceneFx: fxView,
     ...(camp.fight && camp.fight.on ? { fight: Fight.view(camp, cid, gm, shownName) } : {}),
     // the sheet's Cast (#73), combat view on or off: which powers the table has data for, and who concentrates on what
@@ -490,6 +497,7 @@ function applyAction(camp, cid, gm, type, p) {
   if (type.startsWith("ask.")) return Ask.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
   if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, fightHelpers());
   if (Ships.handles(type)) return Ships.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
+  if (Space.handles(type)) return Space.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, applyAction, rid, Forbidden, Invalid });
 
   switch (type) {
     // ---- characters
@@ -1040,6 +1048,7 @@ function cleanGame(g) {
   g.hpMax = g.hpMax !== false;
   g.ask = Ask.clean(g.ask, g.characters);
   g.ships = (Array.isArray(g.ships) ? g.ships : []).slice(0, MAX_SHIPS).filter((x) => x && typeof x === "object").map((x) => cleanShip(x, g.characters));
+  if (g.space) g.space = Space.clean(g.space, g.ships);
   g.scenes = (Array.isArray(g.scenes) ? g.scenes : []).slice(0, 30).filter((x) => x && typeof x === "object")
     .map((x) => ({ id: /^[a-z0-9]{6,20}$/.test(x.id || "") ? x.id : rid(), name: str(x.name, 60) || "Scene", savedAt: num(x.savedAt, now()), map: cleanMap(g, x.map) }));
   if (!g.scenes.some((x) => x.id === g.activeScene)) g.activeScene = null;

@@ -650,6 +650,9 @@
     'weak-point-strike': { name: 'Weak Point Strike', type: 'physical', save: 'con', then: 'stunned' },
     'exploit-weakness': { name: 'Exploit Weakness', type: 'physical', trueDmg: true },
     'precision-attack': { name: 'Precision Attack', type: 'general', onRoll: true },
+    // reactions: offered as a prompt when a creature misses the one who knows it (#67, second batch)
+    'riposte': { name: 'Riposte', type: 'physical', reaction: 'melee' },
+    'return-fire': { name: 'Return Fire', type: 'physical', reaction: 'ranged' },
   };
   const MANEUVER_KEYS = Object.keys(MANEUVERS);
   const MANEUVER_ABILS = { physical: ['str', 'dex', 'con'], mental: ['int', 'wis', 'cha'], general: ABILS_ALL };
@@ -696,7 +699,7 @@
     // a maneuver (#67): the ones it knows and hasn't used this turn, while a superiority die is left
     const sup = superiorityOf(a), mk = a.maneuvers;
     if (sup && mk && attack.weapon) {
-      const options = mk.known.filter((k) => !maneuverUsed(world, a.id, k)).map((k) => { const m = MANEUVERS[k]; return { key: k, name: m.name, save: m.save || null, dc: m.save ? mk.dc[m.type] : null }; });
+      const options = mk.known.filter((k) => !MANEUVERS[k].reaction && !maneuverUsed(world, a.id, k)).map((k) => { const m = MANEUVERS[k]; return { key: k, name: m.name, save: m.save || null, dc: m.save ? mk.dc[m.type] : null }; });
       if (options.length) out.push({ key: 'maneuver', name: 'Maneuver', optIn: true, die: sup.die, options });
     }
     return out;
@@ -1116,7 +1119,7 @@
           if (!s.ok) return s;
           const sp = w.spent[me.id];
           if (sp.off) sp.off += 1; else Object.assign(sp, { bonus: sp.bonus + 1, off: 1 });
-          return { ok: true, world: w, log: s.log, events: s.events };
+          return { ok: true, world: w, log: s.log, events: s.events, reactions: s.reactions || [] };
         }
         // Extra Attack and Multiattack (#139): the first attack takes the action; the rest of that Attack action don't,
         // and the unit can move between them. A creature's count comes with the attack (its stat block, the GM's).
@@ -1130,7 +1133,7 @@
           if (!sp.lt) sp.lt = 1 + +act.attack.key;
           if (act.attack.otherEnd && !sp.dw) sp.dw = 1 + +act.attack.key;
         }
-        return { ok: true, world: w, log: s.log, events: s.events };
+        return { ok: true, world: w, log: s.log, events: s.events, reactions: s.reactions || [] };
       }
       case 'grapple': case 'shove': {   // #144: one attack of the Attack action, a contest instead of an attack roll
         const t = unitAt(w, act.target), what = act.type === 'grapple' ? 'grapple' : 'shove';
@@ -1398,7 +1401,13 @@
     const tilt = pv.mode === 'normal' ? '' : ` with ${modeName(pv)} (${pv.tilts.map((x) => x.text).join(', ')})`;
     const log = [{ unit: me.id, kind: 'attack', roll: r, expr: rexpr, text: `${me.name} ${how ? `makes ${how} against` : 'attacks'} ${t.name} with ${attack.name}${tilt}${mv && mv.onRoll ? ` (${mv.name}, +1${sup.die})` : ''}${pv.notes.length ? ` (${pv.notes.join('; ')})` : ''}${pv.weak ? ` (weakened, −${pv.weak})` : ''}: ${r.total} against AC ${pv.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}` }];
     const events = [];
-    if (!hit) { events.push({ kind: 'miss', unit: t.id }); return { ok: true, log, events }; }
+    if (!hit) {
+      events.push({ kind: 'miss', unit: t.id });
+      // a miss against one who knows Riposte (melee) or Return Fire (ranged) and can use it: a prompt, like an opportunity attack
+      const rk = pv.ranged ? 'return-fire' : 'riposte';
+      const can = !how && t.maneuvers && t.maneuvers.known.includes(rk) && superiorityOf(t) && !INCAPACITATING(t) && budget(w, t.id).reaction && !maneuverUsed(w, t.id, rk);
+      return { ok: true, log, events, reactions: can ? [{ reactor: t.id, against: me.id, kind: rk }] : [] };
+    }
     // versatile in two hands (5.8): its larger die for a melee attack, in place of the weapon's own
     const twoHands = !!(opts.twoHands && attack.versatile && !pv.ranged), dmg0 = twoHands ? String(attack.damage).replace(/\d*d\d+/i, attack.versatile) : attack.damage;
     const thr = thresholdFor(me, attack, pv.ranged, pv.feet, twoHands);   // a fighting style's minimum roll threshold (#150)
@@ -1418,6 +1427,7 @@
       return null;
     }).filter(Boolean);
     if (mv && !mv.onRoll) spendMv();   // a superiority die goes on the hit
+    if (opts.extra) riders.push(opts.extra);   // a reaction maneuver's die (Riposte, Return Fire), on its hit
     const paid = riders.reduce((n, x) => n + (x.points || 0), 0);
     if (paid && fp) fp.used = Math.min(fp.max, fp.used + paid);   // the force points go on the hit
     if (riders.some((x) => x.key === 'double')) w.spent[me.id] = Object.assign(spentOf(w, me.id), { double: 1 });   // once a turn
@@ -1504,11 +1514,24 @@
   function react(world, re, roll) {
     const w = clone(world);
     w.spent = w.spent || {}; w.effects = w.effects || []; w.conc = w.conc || {};
-    const me = w.units[re.reactor], t = w.units[re.against];
+    const me = unitAt(w, re.reactor), t = unitAt(w, re.against);
     if (!me || !t) return no('That combatant is not on the map.');
     if (t.down) return no(`${t.name} is already down.`);
     if (INCAPACITATING(me)) return no(`${me.name} can't react right now.`);
     if (!budget(w, me.id).reaction) return no(`${me.name} has no reaction left.`);
+    if (re.kind === 'riposte' || re.kind === 'return-fire') {   // a reaction maneuver (#67): a superiority die, spent as it's used
+      const mv = MANEUVERS[re.kind], sup = superiorityOf(me);
+      if (!me.maneuvers || !me.maneuvers.known.includes(re.kind)) return no(`${me.name} doesn't know ${mv.name}.`);
+      if (!sup) return no(`${me.name} has no superiority dice left.`);
+      if (maneuverUsed(w, me.id, re.kind)) return no(`${me.name} has used ${mv.name} this turn.`);
+      if (!re.attack || !re.attack.weapon || (re.kind === 'riposte' ? !(+re.attack.melee > 0) : !re.attack.range)) return no(re.kind === 'riposte' ? 'A riposte is a melee weapon attack.' : 'Return fire is a ranged weapon attack.');
+      const s = strike(w, me, t.id, re.attack, { adv: !!re.adv, dis: !!re.dis, extra: { key: 'maneuver', name: mv.name, dice: '1' + sup.die } }, roll, re.kind === 'riposte' ? 'a riposte' : 'return fire');
+      if (!s.ok) return s;
+      sup.used += 1;
+      w.spent[me.id] = Object.assign(spentOf(w, me.id), { reaction: spentOf(w, me.id).reaction + 1, mv: (+spentOf(w, me.id).mv || 0) | (1 << MANEUVER_KEYS.indexOf(re.kind)) });
+      settle(w, s.log);
+      return { ok: true, world: w, log: s.log, events: s.events };
+    }
     if (!re.attack || !(+re.attack.melee > 0)) return no('An opportunity attack is a melee attack.');
     const there = { x: t.x, y: t.y };
     if (re.at) { t.x = re.at.x; t.y = re.at.y; }
