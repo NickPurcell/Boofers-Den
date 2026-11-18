@@ -297,6 +297,18 @@
   // the d20 a weapon crits on: 20, or lower for an attack's own crit range or a "Keen N" weapon (SW5e: the range grows by N)
   function critFrom(props) { const k = /\bkeen\s*(\d)/i.exec(String(props || '')); return k ? Math.max(15, 20 - +k[1]) : 20; }
 
+  // Size (audit 5.12): SW5e's sizes, and the squares a token takes (Tiny shares a square, drawn small)
+  const SIZES = ['Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan'];
+  const tokenSquares = (size) => ({ Large: 2, Huge: 3, Gargantuan: 4 }[size] || 1);
+  // Temporary force or tech points (audit 4.9): spent before the character's own, one source at a time, gone after a
+  // long rest. pointsSpend gives the new { temp, used } for a cost, or null when there aren't enough.
+  function pointsSpend(pool, cost, max) {
+    const temp = Math.max(0, +(pool || {}).temp || 0), used = Math.max(0, +(pool || {}).used || 0);
+    if (cost > temp + Math.max(0, max - used)) return null;
+    const fromTemp = Math.min(temp, cost);
+    return { temp: temp - fromTemp, used: used + cost - fromTemp, fromTemp };
+  }
+
   function attackBonus(c, a) {
     if (a.bonus !== undefined && a.bonus !== '' && a.bonus !== null && !isNaN(+a.bonus)) return +a.bonus;
     let ab = a.ab || 'str';
@@ -449,7 +461,7 @@
   root.SW5E = { ABILITIES, SKILLS, CLASSES, SPECIES, BACKGROUNDS, DAMAGE_TYPES, WEAPONS, CONDITIONS, REFERENCE,
     mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo, techOnShortRest, overMaxPowerLevel, highCastFrom, highCastUsed, highCastBlocked,
     ARCHETYPE_CASTERS, casterArchetype, castingSources,
-    attackBonus, damageExpr, critExpr, armorClass, armorFromItem, critFrom, ARMOR_KINDS, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
+    SIZES, tokenSquares, pointsSpend, attackBonus, damageExpr, critExpr, armorClass, armorFromItem, critFrom, ARMOR_KINDS, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
     STANDARD_ARRAY, POINT_COST, POINT_BUDGET, pointBuyCost, usesEachOnce,
     CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt,
     SENSES, cleanSenses, sensesFromTraits, sensesText, parseSenses };

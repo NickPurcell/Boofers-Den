@@ -631,7 +631,9 @@
     </div>
     <div class="senses-row" title="What this character perceives in the dark or unseen. Choosing a species sets them; only the GM changes them by hand.">
       <span class="lbl">Senses</span> <span>${esc(R.sensesText(ch.senses)) || '<span class="muted">none (normal sight)</span>'}</span>
-      ${isGM() ? '<button class="btn tiny ghost" data-act="senses" title="Set the senses of this character (GM)">✎</button>' : ''}</div>
+      ${isGM() ? '<button class="btn tiny ghost" data-act="senses" title="Set the senses of this character (GM)">✎</button>' : ''}
+      <span class="lbl" style="margin-left:14px" title="Choosing a species sets it; the GM can change it. A token placed for this character takes its size.">Size</span>
+      ${isGM() ? inp('size', ch.size || 'Medium', { type: 'select', w: '120px', options: R.SIZES }) : `<span>${esc(ch.size || 'Medium')}</span>`}</div>
     <div class="subtabs">${[['main', 'Abilities & Skills'], ['actions', 'Attacks & Powers'], ['gear', 'Features & Gear'], ['bio', 'Bio & Notes']]
       .map(([k, t]) => `<button data-act="sub" data-sub="${k}" class="${sub === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
 
@@ -699,10 +701,11 @@
       const fMax = ch.force.max !== '' && ch.force.max != null ? +ch.force.max : ci.forceMax;
       const tMax = ch.tech.max !== '' && ch.tech.max != null ? +ch.tech.max : ci.techMax;
       const pts = (k, max, used, cls, label, extra) => `<div class="box"><h4>${label}</h4>
-        <div class="points"><b>${Math.max(0, max - used)}</b><span class="muted">/ ${max}</span>
+        <div class="points"><b>${Math.max(0, max - used) + (+ch[k].temp || 0)}</b><span class="muted">/ ${max}${+ch[k].temp ? ` (+${n0(ch[k].temp)} temp)` : ''}</span>
           <div class="meter ${cls}"><div style="width:${max ? 100 * Math.max(0, max - used) / max : 0}%"></div></div>
           <span class="muted">used</span>${inp(k + '.used', +used || 0, { ro, type: 'number' })}
-          <span class="muted">max override</span>${inp(k + '.max', ch[k].max ?? '', { ro, type: 'number', ph: String(k === 'force' ? ci.forceMax : ci.techMax) })}</div>
+          <span class="muted">max override</span>${inp(k + '.max', ch[k].max ?? '', { ro, type: 'number', ph: String(k === 'force' ? ci.forceMax : ci.techMax) })}
+          <span class="muted" title="Temporary points: spent first, gone after a long rest. A new source replaces them; they don't add up.">temp</span>${inp(k + '.temp', +ch[k].temp || 0, { ro, type: 'number', w: '56px' })}</div>
         <div class="muted" style="margin-top:6px;font-size:12px">${extra}</div></div>`;
       html += `<div class="box"><h4>Attacks <span class="spacer"></span>${!ro ? `<button class="btn tiny" data-act="pick-weapon">＋ weapon from SW5e</button><button class="btn tiny ghost" data-act="add-attack">custom</button>` : ''}</h4>
         <table class="t"><thead><tr><th>Name</th><th>Ability</th><th title="Tick if proficient with this weapon">Prof.</th><th>Hit</th><th title="The d20 this attack crits on (19 = 19-20)">Crit</th><th>Damage die</th><th>Type</th><th>Properties</th><th></th></tr></thead><tbody>
@@ -828,7 +831,7 @@
       case 'short-rest': case 'short-rest-done': shortRestDialog(); break;   // hit dice by size, then the rest itself (#71)
       case 'long-rest':
         mutate(c => {
-          c.hp.current = +c.hp.max; c.hp.temp = 0; c.force.used = 0; c.tech.used = 0; c.deathSaves = { s: 0, f: 0 };
+          c.hp.current = +c.hp.max; c.hp.temp = 0; c.force.used = 0; c.tech.used = 0; c.force.temp = 0; c.tech.temp = 0; c.deathSaves = { s: 0, f: 0 };
           delete c.force.high; delete c.tech.high;   // high-level powers can be cast again (#160)
           // half the total hit dice back (at least one), the largest first (audit 7.5)
           const dice = R.hitDice(c); let back = Math.max(1, Math.floor(dice.reduce((n, d) => n + d.total, 0) / 2));
@@ -1155,10 +1158,11 @@
     if (ov && !isGM()) return toast(ov.text, true);
     if (ov && !ovAsked && !confirm(`${ov.text}\n\nCast anyway?`)) return;
     const max = ch[k].max !== '' && ch[k].max != null ? +ch[k].max : (k === 'force' ? ci.forceMax : ci.techMax);
-    if (cost && (+ch[k].used || 0) + cost > max) return toast(`Not enough ${k} points (${cost} needed).`, true);
+    const spend = R.pointsSpend(ch[k], cost, max);   // temporary points first (audit 4.9)
+    if (cost && !spend) return toast(`Not enough ${k} points (${cost} needed).`, true);
     const from = R.highCastFrom(ch, k);   // a level that goes once per long rest is noted (#160)
     if (cost || (from && L >= from)) mutate(c => {
-      c[k].used = (+c[k].used || 0) + cost;
+      if (cost) { c[k].used = spend.used; c[k].temp = spend.temp; }
       if (from && L >= from) c[k].high = [...new Set(R.highCastUsed(c, k).concat(L))].sort((a, b) => a - b);
     });
     const dc = k === 'tech' ? `DC ${ci.techDC}, atk ${R.fmt(ci.techAtk)}` : p.alignment === 'dark' ? `DC ${ci.darkDC}, atk ${R.fmt(ci.darkAtk)}` : p.alignment === 'light' ? `DC ${ci.lightDC}, atk ${R.fmt(ci.lightAtk)}` : `DC ${Math.max(ci.lightDC, ci.darkDC)}, atk ${R.fmt(Math.max(ci.lightAtk, ci.darkAtk))}`;
