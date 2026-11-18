@@ -205,7 +205,7 @@
     if (window.HTA) HTA.sync();   // table audio: keep this screen in step, refresh the GM's audio box
     if (window.HTB) {
       HTB.renderShipsSafe();
-      const v = JSON.stringify(S.st.variants || []);
+      const v = JSON.stringify([S.st.variants || [], !!S.st.statBlocksHidden]);   // the variants, and the GM's stat-block switch (9.17)
       if (v !== S.variantsSeen) { S.variantsSeen = v; if (!$('#rules .lib') && !($('#rulesSearch') || {}).value) renderRules(); }
     }
     renderMapTools(); loadMapBg(); drawMap();
@@ -585,8 +585,8 @@
 
   // The way into the archetype picker (audit 2.7): SW5e's classes take their archetype at 3rd level. A class at 3+ with
   // none (an import, a missed pick) gets a button; one that has it gets a small ◈ to change it. Needs the SW5e books.
-  function archetypeButton(ch, k, i, ro) {
-    const cls = R.CLASSES[k.name];
+  function archetypeButton(k, i, ro) {
+    const cls = Object.prototype.hasOwnProperty.call(R.CLASSES, k.name) ? R.CLASSES[k.name] : null;   // a class named "constructor" is no class
     if (ro || !cls || n0(k.level) < 3 || !window.HTB || S.st.sw5eBooks === false) return '';
     return k.archetype ? `<button class="btn tiny ghost" data-act="pick-archetype" data-i="${i}" title="Change the ${esc(cls.arch)}">◈</button>`
       : `<button class="btn tiny amber" data-act="pick-archetype" data-i="${i}" title="${esc(k.name)} ${n0(k.level)} has no ${esc(cls.arch)} yet">◈ Choose ${esc(cls.arch)}</button>`;
@@ -720,7 +720,7 @@
           <span class="row">${inp(`classes.${i}.name`, k.name, { ro, list: 'dlClasses', w: '110px' })}
           ${inp(`classes.${i}.level`, +k.level || 1, { ro: lock, type: 'number', w: '58px' })}
           ${k.archetype ? `<span class="muted class-arch" title="${esc((R.CLASSES[k.name] || {}).arch || 'Archetype')}">${esc(k.archetype)}</span>` : ''}
-          ${archetypeButton(ch, k, i, ro)}
+          ${archetypeButton(k, i, ro)}
           ${!ro && ch.classes.length > 1 ? `<button class="btn tiny ghost" data-act="del-class" data-i="${i}">✕</button>` : ''}</span>`).join('')}
         </div>
       </div>
@@ -3153,7 +3153,7 @@
           <label class="choice ${W.cls === '__new' ? 'on' : ''}"><input type="radio" name="cls" data-w="cls" value="__new" ${W.cls === '__new' ? 'checked' : ''}><b>Multiclass</b><br><span class="muted">start a new class at 1</span></label></div>
         ${W.cls === '__new' ? `<div class="row" style="margin-top:6px"><select data-w="newCls"><option value="">Pick a class…</option>${others.map(c => `<option ${c === W.newCls ? 'selected' : ''}>${c}</option>`).join('')}</select>
           ${(un => un.length ? `<span class="wiz-warn" style="font-size:12px">⚠ ${esc(un.join('; '))}. ${isGM() ? 'As GM you can allow it anyway.' : 'Ask your GM: only they can allow it.'}</span>`
-            : W.newCls ? `<span class="muted" style="font-size:12px">Prerequisites met. A new class gives its multiclass proficiencies: ${esc(R.MC_PROFS[W.newCls] || 'none')}.</span>` : '')(W.newCls ? R.multiclassUnmet(ch, W.newCls) : [])}</div>` : ''}
+            : W.newCls ? `<span class="muted" style="font-size:12px">Prerequisites met. A new class gives its multiclass proficiencies: ${esc(R.mcProfs(W.newCls) || 'none')}.</span>` : '')(W.newCls ? R.multiclassUnmet(ch, W.newCls) : [])}</div>` : ''}
         ${P.archDue ? `<div class="arch-pick">
           <p class="muted" style="margin:6px 0 4px">At ${esc(P.cls)} level 3 you choose your ${esc(P.archTerm)}. You choose it once, and it gives you features as you level.</p>
           <div class="row wrap"><button class="btn small ${W.archetype ? '' : 'amber'}" data-wa="arch-menu" aria-expanded="${W.archMenu ? 'true' : 'false'}">${W.archetype ? 'Change' : 'Pick'} ${esc(P.archTerm)} ▾</button>

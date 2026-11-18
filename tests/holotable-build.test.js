@@ -120,3 +120,17 @@ test("a background skill already held can be traded for any other skill, one tra
   assert.deepEqual(plain(B.heldSkills({ deception: 0.5, lore: 1, insight: 2, stealth: 0 })), ["lore", "insight"]);
   assert.deepEqual(plain(B.heldSkills(undefined)), []);
 });
+
+test("changing an archetype takes the old one's added features off the sheet, and nothing typed by hand", () => {
+  const B = loadBooks();
+  const c = { features: [
+    { name: "Forcecasting", text: "Archetype feature (Adept Specialist, level 3)\nYou learn..." },
+    { name: "Growing Momentum", text: "Archetype feature (Adept Specialist, level 3)\n..." },
+    { name: "Second Wind", text: "Class feature (Fighter, level 1)\n..." },
+    { name: "My note", text: "Archetype feature (Adept Specialist is cool)" },
+    { name: "Other", text: "Archetype feature (Adept Specialist Two, level 3)" },
+  ] };
+  assert.equal(B.dropArchetypeFeatures(c, "Adept Specialist"), 2);
+  assert.deepEqual(c.features.map((f) => f.name), ["Second Wind", "My note", "Other"]);
+  assert.equal(B.dropArchetypeFeatures({}, "X"), 0);
+});
