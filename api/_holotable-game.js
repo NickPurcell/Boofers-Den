@@ -1072,6 +1072,7 @@ function applyAction(camp, cid, gm, type, p) {
       const back = cleanChar(Object.assign({}, u.sheet, { id }));
       back.owner = cur.owner; back.image = cur.image || ""; back.tokenImage = cur.tokenImage || ""; back.updated = now();
       if (cur.downtime) back.downtime = cur.downtime; else delete back.downtime;   // days granted and spent since stay (11.1, #226 review)
+      if (cur.craft) back.craft = cur.craft; else delete back.craft;   // and the crafts asked for since, which spent them (11.2)
       chars[id] = back;
       for (const e of camp.initiative.entries) if (e.charId === id) { e.hp = (back.hp || {}).current; e.maxHp = (back.hp || {}).max; }
       camp.levelUps = camp.levelUps || {};

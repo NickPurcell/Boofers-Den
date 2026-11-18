@@ -2387,6 +2387,7 @@ test("multiclassing prerequisites and proficiencies (2.12, 2.13); the GM undoes 
   assert.equal(s.levelUndo[id], 4, "the GM can take level 4 back");
   assert.equal((await p1.poll()).data.state.levelUndo, undefined, "the GM's");
   await gm.act("downtime.grant", { days: 6, chars: [id], reason: "after the level" });
+  assert.equal((await p1.act("craft.request", { charId: id, item: { name: "Medpac" }, value: 300 })).code, 200);
   assert.equal((await p1.act("levelup.undo", { charId: id })).code, 403);
   assert.equal((await gm.act("levelup.undo", { charId: id })).code, 200);
   s = (await gm.poll()).data.state;
@@ -2396,6 +2397,7 @@ test("multiclassing prerequisites and proficiencies (2.12, 2.13); the GM undoes 
   assert.equal(ch.proficiencies, "Light armor");
   assert.equal(s.levelUps[id].count, 1, "and the level is granted again");
   assert.deepEqual([ch.downtime.days, ch.downtime.log.at(-1).text], [6, "after the level"], "downtime since the level stays (11.1)");
+  assert.deepEqual(ch.craft.pending.map((q) => q.item.name), ["Medpac"], "and so does the craft asked for since (11.2)");
   assert.equal(s.levelUndo, undefined);
   assert.equal((await gm.act("levelup.undo", { charId: id })).code, 400, "once");
   assert.equal((await p1.act("levelup.apply", { charId: id, className: "Berserker", hpMode: "average", hitDie: 12 })).code, 200, "taken again, properly");
