@@ -280,7 +280,12 @@ function writeBack(camp, cid, before, after, G) {
     if (a.charId && camp.characters[a.charId]) {
       for (const [key, pool] of Object.entries(a.pools || {})) {
         if (!b.pools[key] || b.pools[key].used === pool.used) continue;
-        const ch = camp.characters[a.charId], next = E.setPoolUsed(ch, key, pool.used, R);
+        const ch = camp.characters[a.charId];
+        let next = E.setPoolUsed(ch, key, pool.used, R);
+        if (next === ch && R.withClassResources) {   // a class pool the sheet hasn't stored yet (the world fills them in): store it, then spend
+          ch.resources = E.cleanResources(R.withClassResources(ch));
+          next = E.setPoolUsed(ch, key, pool.used, R);
+        }
         Object.assign(ch, { resources: next.resources, force: next.force, tech: next.tech, hitDiceUsed: next.hitDiceUsed });
       }
     }
