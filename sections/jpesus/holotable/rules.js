@@ -350,6 +350,24 @@
     return { temp: temp - fromTemp, used: used + cost - fromTemp, fromTemp };
   }
 
+  // Multiclassing (audit 2.12, 2.13; SW5e PHB, Customization Options). Prerequisites: each group needs one of its
+  // abilities at 13+, for every class the character has and the new one. Proficiencies: the new class's smaller set.
+  const MC_PREREQ = { Berserker: [['str']], Consular: [['wis', 'cha']], Engineer: [['int']], Fighter: [['str', 'dex']],
+    Guardian: [['con'], ['wis', 'cha']], Monk: [['dex'], ['wis', 'cha']], Operative: [['dex']], Scholar: [['int']],
+    Scout: [['str', 'dex'], ['int']], Sentinel: [['dex'], ['wis', 'cha']] };
+  const MC_PROFS = { Berserker: 'Light armor, all vibroweapons', Consular: 'Simple lightweapons', Engineer: 'Light armor',
+    Fighter: 'Light armor, medium armor, all blasters, all vibroweapons', Guardian: 'Light armor, medium armor, all lightweapons, all vibroweapons',
+    Monk: 'Simple vibroweapons, techblades', Operative: 'Light armor', Scholar: 'Light armor',
+    Scout: 'Light armor, medium armor, all blasters, all vibroweapons', Sentinel: 'Light armor, simple lightweapons, simple vibroweapons' };
+  const AB_NAME = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
+  // what's not met to add newClass: [] when it's fine (or the class isn't one of SW5e's ten)
+  function multiclassUnmet(c, newClass) {
+    const score = (k) => +((c.abilities || {})[k]) || 10, out = [];
+    const names = [...new Set([...(c.classes || []).map((k) => k.name), newClass])];
+    for (const n of names) for (const g of MC_PREREQ[n] || []) if (!g.some((k) => score(k) >= 13)) out.push(`${n} needs ${g.map((k) => AB_NAME[k]).join(' or ')} 13`);
+    return out;
+  }
+
   function attackBonus(c, a) {
     if (a.bonus !== undefined && a.bonus !== '' && a.bonus !== null && !isNaN(+a.bonus)) return +a.bonus;
     let ab = a.ab || 'str';
@@ -503,7 +521,7 @@
     mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo, techOnShortRest, overMaxPowerLevel, highCastFrom, highCastUsed, highCastBlocked,
     ARCHETYPE_CASTERS, casterArchetype, castingSources,
     SIZES, tokenSquares, pointsSpend,
-    infuseBonus, infuseBonusFor, attackBonus, damageExpr, critExpr, armorClass, armorFromItem, critFrom, ARMOR_KINDS, reliableTalent, skillRollExpr, brutalDice, critDamage, isMelee, reloadOf, ammoOf, shotsOf, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
+    MC_PREREQ, MC_PROFS, multiclassUnmet, infuseBonus, infuseBonusFor, attackBonus, damageExpr, critExpr, armorClass, armorFromItem, critFrom, ARMOR_KINDS, reliableTalent, skillRollExpr, brutalDice, critDamage, isMelee, reloadOf, ammoOf, shotsOf, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
     STANDARD_ARRAY, POINT_COST, POINT_BUDGET, pointBuyCost, usesEachOnce,
     CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt,
     SENSES, cleanSenses, sensesFromTraits, sensesText, parseSenses };
