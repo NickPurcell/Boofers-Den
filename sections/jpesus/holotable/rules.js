@@ -422,6 +422,22 @@
     return { cls, level: L, cols: Object.entries(CLASS_TABLE[cls]).map(([h, v]) => [h, v[L - 1]]).filter(([, v]) => v) };
   }).filter(Boolean);
 
+  // The counted choices a class makes as it levels (audit 2.9): for each "...Known", Instincts, Exploits, Vows, Discoveries
+  // or Casting Options column of SW5e's class table, how many the class has at this level and had at the one before.
+  // kind: 'maneuvers' (SW5e's maneuver list), 'powers' (force or tech powers) or 'opts' (the class's own list at the end
+  // of its description: Berserker Instincts, Fighter Strategies, Operative Exploits...).
+  const CHOICE_COLS = { 'Maneuvers Known': 'maneuvers', 'Force Powers Known': 'powers', 'Tech Powers Known': 'powers', 'Strategies Known': 'opts',
+    'Berserker Instincts': 'opts', 'Force-Empowered Casting Options': 'opts', 'Auras Known': 'opts', 'Monastic Vows': 'opts',
+    'Operative Exploits': 'opts', 'Discoveries': 'opts', 'Routines Known': 'opts', 'Ideals Known': 'opts' };
+  function choiceCounts(clsName, level) {
+    const cls = classOf(clsName), L = Math.min(20, Math.max(0, +level || 0));
+    if (!cls || L < 1) return [];
+    const at = (v, l) => (l >= 1 ? parseInt(v[l - 1], 10) || 0 : 0);
+    return Object.entries(CLASS_TABLE[cls]).filter(([h]) => CHOICE_COLS[h])
+      .map(([h, v]) => ({ col: h, kind: CHOICE_COLS[h], total: at(v, L), prev: at(v, L - 1) }))
+      .filter(x => x.total > 0);
+  }
+
   // ---- senses (audit 5.12): [{ kind, range }] on the sheet. The four kinds SW5e's creatures and species use; feet 1-9999.
   const SENSES = ['darkvision', 'blindsight', 'tremorsense', 'truesight'];
   function cleanSenses(list) {
@@ -451,6 +467,6 @@
     ARCHETYPE_CASTERS, casterArchetype, castingSources,
     attackBonus, damageExpr, critExpr, armorClass, armorFromItem, critFrom, ARMOR_KINDS, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
     STANDARD_ARRAY, POINT_COST, POINT_BUDGET, pointBuyCost, usesEachOnce,
-    CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt,
+    CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt, CHOICE_COLS, choiceCounts,
     SENSES, cleanSenses, sensesFromTraits, sensesText, parseSenses };
 })(typeof window !== 'undefined' ? window : globalThis);

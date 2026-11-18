@@ -418,6 +418,12 @@ function applyLevelUp(camp, cid, gm, p) {
     if (total !== 2) throw new Invalid("An ability score increase is +2 to one score or +1 to two.");
   }
   const feat = p.feat && str(p.feat.name, 80).trim();
+  // Expertise (audit 2.9): at most two skills at a time, each one the character is already proficient in
+  const expertise = Array.isArray(p.expertise) ? [...new Set(p.expertise.slice(0, 4).map((x) => str(x, 30)))] : [];
+  if (expertise.length > 2) throw new Invalid("Expertise is two proficiencies at a time.");
+  for (const sk of expertise) {
+    if (!/^[a-zA-Z]{1,30}$/.test(sk) || !ch.skills || !Object.prototype.hasOwnProperty.call(ch.skills, sk) || +ch.skills[sk] !== 1) throw new Invalid("Expertise goes on a skill you're proficient in.");
+  }
   if (p.hpMode === "max" && camp.hpMax === false) throw new Invalid("The GM has turned off taking maximum hit points.");
 
   // hit points: rolled on the server (shown in chat), the fixed average, or the die's maximum (a table's choice);
@@ -448,6 +454,7 @@ function applyLevelUp(camp, cid, gm, p) {
     ch.powers.push({ name: str(pw.name, 80).trim(), level: clamp(int(pw.level), 0, 9), type: pw.type === "tech" ? "tech" : "force",
       alignment: ["light", "dark"].includes(pw.alignment) ? pw.alignment : "universal", notes: str(pw.notes, 300), description: str(pw.description, 4000) });
   }
+  for (const sk of expertise) ch.skills[sk] = 2;
   ch.updated = now();
   pend.count -= 1;
   if (pend.count < 1) delete camp.levelUps[ch.id];
@@ -456,6 +463,7 @@ function applyLevelUp(camp, cid, gm, p) {
   const bits = [`HP +${gain}`];
   if (p.asi) bits.push(Object.entries(p.asi).filter(([, v]) => int(v)).map(([ab, v]) => `${ab.toUpperCase()} +${int(v)}`).join(", "));
   if (feat) bits.push(`feat: ${feat}`);
+  if (expertise.length) bits.push(`expertise: ${expertise.join(", ")}`);
   addChat(camp, { levelup: true, text: `🎉 ${ch.name} reached level ${before + 1}! ${multiclass ? "Multiclassed into " : ""}${k.name} ${k.level}${k.archetype ? " (" + k.archetype + ")" : ""} · ${bits.join(" · ")}` });
   return { level: before + 1, hpGain: gain, die };
 }
