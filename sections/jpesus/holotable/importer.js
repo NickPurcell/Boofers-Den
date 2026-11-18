@@ -222,7 +222,11 @@
     }
     for (const e of o.customEquipment || []) {
       c.equipment.push({ name: e.name, qty: num(e.quantity, 1), equipped: !!e.equipped, notes: e.description || e.equipmentCategory || '' });
-      if (e.equipmentCategory === 'Weapon') c.attacks.push({ name: e.name, ab: 'str', damage: `${e.damageNumberOfDice || 1}d6`, type: String(e.damageType || 'kinetic').toLowerCase(), props: '', proficient: true });
+      if (e.equipmentCategory === 'Weapon') {   // the export's own die where it has one (1.2), else 1d6
+        const die = parseInt(String(e.damageDieType || e.damageDie || '').replace(/^d/i, ''), 10);
+        c.attacks.push({ name: e.name, ab: /finesse|ranged|blaster/i.test(String(e.properties || e.weaponClassification || '')) && c.abilities.dex > c.abilities.str ? 'dex' : 'str',
+          damage: `${num(e.damageNumberOfDice, 1) || 1}d${[4, 6, 8, 10, 12].includes(die) ? die : 6}`, type: String(e.damageType || 'kinetic').toLowerCase(), props: String(e.properties || '').slice(0, 200), proficient: true });
+      }
     }
     if (!c.attacks.some(a => /unarmed/i.test(a.name))) c.attacks.push(attackFromWeapon('Unarmed strike'));
     c.features = (o.customFeatures || []).map(f => ({ name: f.name, text: cleanHtml(f.content) }));
@@ -235,7 +239,8 @@
     const g = k => ch[k] || ch[k.toLowerCase()];
     c.notes = [g('Backstory'), g('Personality Traits') && 'Personality: ' + g('Personality Traits'), g('Ideal') && 'Ideal: ' + g('Ideal'),
       g('Bond') && 'Bond: ' + g('Bond'), g('Flaw') && 'Flaw: ' + g('Flaw'), g('Appearance') && 'Appearance: ' + g('Appearance'), o.notes].filter(Boolean).join('\n\n');
-    return { char: c, notes, source: 'SW5e.com builder (character JSON)' };
+    // the AC wasn't in the export: the sheet works it out (acAuto, #165) once the importer has the armor's numbers (1.2)
+    return { char: c, notes, source: 'SW5e.com builder (character JSON)', acFromDex: !T.armorClass || T.armorClass.override == null };
   }
 
   // ---------------------------------------------------------------- Foundry VTT
