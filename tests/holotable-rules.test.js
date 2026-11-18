@@ -229,6 +229,44 @@ test("item modification (audit 6.4): chassis kinds, slots by rarity, what fits, 
   assert.deepEqual(R.cleanChassis({ kind: "blaster", mods: [{ name: " A ", rar: "Premium", aug: 1, bonus: { hit: 9 } }, { name: "" }, "x"] }), { kind: "blaster", mods: [{ name: "A", rar: "Premium", aug: true }] });
   assert.equal(R.cleanChassis({ kind: "__proto__", mods: [] }), null);
   assert.deepEqual([R.cleanMod({ kind: "augment" }), R.cleanMod({ kind: "toaster" })], [{ kind: "augment" }, null]);
+  assert.deepEqual(R.cleanChassis({ kind: "blaster", mods: [], att0: false }), { kind: "blaster", mods: [], att0: false });
+  assert.deepEqual(R.cleanChassis({ kind: "blaster", mods: [], att0: "yes" }), { kind: "blaster", mods: [] });
+});
+
+test("installing and removing a modification (audit 6.4, #236's review): the list's order doesn't matter, and attunement goes back", () => {
+  const barrel = () => ({ name: "Barrel Mod", qty: 1, rar: "Standard", mod: { kind: "blaster" }, bonus: { hit: 1 } });
+  const chassis = () => ({ name: "Blaster Chassis (Premium)", qty: 1, rar: "Premium", chassis: { kind: "blaster", mods: [] } });
+  const blade = () => ({ name: "Vibroblade +2", qty: 1, bonus: { hit: 2, dmg: 2 }, att: false, chassis: { kind: "vibroweapon", mods: [] } });
+  // the modification listed above the chassis, and another chassis after it: the right one gets it, and the other is untouched
+  const c = { equipment: [barrel(), chassis(), blade()] };
+  assert.equal(R.installMod(c, 1, 0), null);
+  assert.deepEqual(c.equipment.map((e) => e.name), ["Blaster Chassis (Premium)", "Vibroblade +2"]);
+  assert.deepEqual(c.equipment[0].chassis.mods, [{ name: "Barrel Mod", rar: "Standard", bonus: { hit: 1 } }]);
+  assert.deepEqual([c.equipment[0].bonus, c.equipment[0].att], [{ hit: 1 }, true]);
+  assert.deepEqual(c.equipment[1], blade());
+  // listed below it: the same
+  const d = { equipment: [chassis(), barrel()] };
+  assert.equal(R.installMod(d, 0, 1), null);
+  assert.deepEqual([d.equipment.length, d.equipment[0].bonus], [1, { hit: 1 }]);
+  // two in the pack: one goes in, one stays
+  const e = { equipment: [Object.assign(barrel(), { qty: 2 }), chassis()] };
+  assert.equal(R.installMod(e, 1, 0), null);
+  assert.deepEqual([e.equipment[0].qty, e.equipment[1].chassis.mods.length], [1, 1]);
+  // what doesn't fit is refused, and nothing moves
+  const f = { equipment: [barrel(), blade()] };
+  assert.match(R.installMod(f, 1, 0), /a blaster modification/);
+  assert.equal(f.equipment.length, 2);
+  // salvaged: back in the pack, and the chassis needs no attunement again; destroyed: gone
+  assert.equal(R.removeMod(c, 0, 0, true), null);
+  assert.deepEqual([c.equipment[0].chassis.mods, c.equipment[0].bonus, c.equipment[0].att, "att0" in c.equipment[0].chassis], [[], undefined, undefined, false]);
+  assert.deepEqual(c.equipment[2], { name: "Barrel Mod", qty: 1, equipped: false, notes: "Standard modification", rar: "Standard", mod: { kind: "blaster" }, bonus: { hit: 1 } });
+  assert.equal(R.removeMod(d, 0, 0, false), null);
+  assert.deepEqual(d.equipment.map((x) => x.name), ["Blaster Chassis (Premium)"]);
+  // a chassis that needed attunement anyway still does with everything out
+  const g = { equipment: [Object.assign(chassis(), { att: true }), barrel()] };
+  R.installMod(g, 0, 1); R.removeMod(g, 0, 0, false);
+  assert.equal(g.equipment[0].att, true);
+  assert.match(R.removeMod(g, 0, 0, true), /gone/);
 });
 
 test("Engineers and Scouts get tech points back on a short rest; others don't", () => {

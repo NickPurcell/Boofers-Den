@@ -1433,7 +1433,6 @@
       const res = await roll(exprOf(kind), `${what}: ${tool(kind)} (Int) against DC ${dc}`, { d20: true });   // no character named (#187's review)
       return res && res.roll ? res.roll.total >= dc : null;
     };
-    const rebonus = c => { const it = c.equipment[i]; const b = R.chassisBonus(it); if (b) it.bonus = b; else delete it.bonus; it.att = (it.chassis.mods || []).length > 0 || !!it.att; };
     modal(`<h3>${esc(item.name)}: modifications</h3>
       <p class="muted">${esc(item.rar || 'Standard')} ${esc(item.chassis.kind)} chassis · ${slots.base} slots${slots.aug ? ` + ${slots.aug} augment` : ''} · checks with ${esc(tool(item.chassis.kind))} (augments: ${esc(tool('augment'))})</p>
       ${mods.length ? mods.map((m, k) => `<div class="row" style="margin:4px 0"><span style="flex:1">${m.aug ? '⟡ ' : ''}${esc(m.name)} <span class="muted">${esc(m.rar || '')}</span></span>
@@ -1454,9 +1453,7 @@
           if (!ok) return act('chat', { text: `*fails to install ${m.name} in ${item.name}: it stays in the pack; try again after 24 hours.*` });
           mutate(c => {
             const it = c.equipment[i], mm = c.equipment[j]; if (!it || !mm || it.name !== item.name || mm.name !== m.name) return;
-            it.chassis.mods = (it.chassis.mods || []).concat([Object.assign({ name: mm.name }, mm.rar ? { rar: mm.rar } : {}, mm.mod.kind === 'augment' ? { aug: true } : {}, mm.bonus ? { bonus: mm.bonus } : {})]);
-            if ((n0(mm.qty) || 1) > 1) mm.qty = (n0(mm.qty) || 1) - 1; else c.equipment.splice(j, 1);
-            rebonus(c);
+            R.installMod(c, i, j);
           });
           act('chat', { text: `*installs ${m.name} in ${item.name}.*` });
         }
@@ -1467,11 +1464,8 @@
           const ok = skip ? true : await check(`Remove ${m.name} from ${item.name}`, m.aug ? 'augment' : item.chassis.kind, m.rar);
           if (ok === null) return;
           mutate(c => {
-            const it = c.equipment[i]; if (!it || it.name !== item.name || !it.chassis.mods[k] || it.chassis.mods[k].name !== m.name) return;
-            it.chassis.mods.splice(k, 1);
-            if (ok) c.equipment.push(Object.assign({ name: m.name, qty: 1, equipped: false, notes: `${m.rar || ''} modification`.trim() }, m.rar ? { rar: m.rar } : {},
-              { mod: { kind: m.aug ? 'augment' : item.chassis.kind } }, m.bonus ? { bonus: m.bonus } : {}));
-            rebonus(c);
+            const it = c.equipment[i]; if (!it || it.name !== item.name || !it.chassis || !(it.chassis.mods || [])[k] || it.chassis.mods[k].name !== m.name) return;
+            R.removeMod(c, i, k, ok);
           });
           act('chat', { text: ok ? `*removes ${m.name} from ${item.name} and salvages it.*` : `*removes ${m.name} from ${item.name}, but it's destroyed.*` });
         }

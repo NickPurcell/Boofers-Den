@@ -454,10 +454,38 @@
     if (!x || typeof x !== 'object' || !Object.values(CHASSIS_KINDS).includes(x.kind)) return null;
     const mods = (Array.isArray(x.mods) ? x.mods : []).slice(0, 6).filter(m => m && typeof m === 'object' && String(m.name || '').trim())
       .map(m => Object.assign({ name: String(m.name).trim().slice(0, 80) }, RARITIES.includes(m.rar) ? { rar: m.rar } : {}, m.aug ? { aug: true } : {}, cleanBonus(m.bonus) ? { bonus: cleanBonus(m.bonus) } : {}));
-    return { kind: x.kind, mods };
+    // att0: whether the chassis needed attunement before anything went in, so taking the last one out restores it
+    return Object.assign({ kind: x.kind, mods }, typeof x.att0 === 'boolean' ? { att0: x.att0 } : {});
   }
   const cleanMod = x => (x && MOD_KINDS.includes(x.kind) ? { kind: x.kind } : null);
-  Object.assign(SW5E, { CHASSIS_KINDS, MOD_KINDS, MOD_DC, MOD_TOOL, chassisKind, modSlots, modDC, installBlocked, chassisBonus, cleanChassis, cleanMod });
+  // after the chassis's modifications change: its bonus is theirs added up, and it needs attunement while anything is in
+  function rechassis(it) {
+    const b = chassisBonus(it); if (b) it.bonus = b; else delete it.bonus;
+    if ((it.chassis.mods || []).length) { if (!('att0' in it.chassis)) it.chassis.att0 = !!it.att; it.att = true; }
+    else { if (it.chassis.att0) it.att = true; else delete it.att; delete it.chassis.att0; }
+  }
+  // install equipment[j] (a modification) in equipment[i] (a chassis): one comes out of the pack (or the line goes). Both
+  // are looked up by index before anything moves, so the order they're listed in doesn't matter. The reason it can't, or null.
+  function installMod(c, i, j) {
+    const eq = (c && c.equipment) || [], it = eq[i], mm = eq[j];
+    if (!it || !mm || i === j) return 'That item is gone.';
+    const why = installBlocked(it, mm); if (why) return why;
+    it.chassis.mods = (it.chassis.mods || []).concat([Object.assign({ name: mm.name }, mm.rar ? { rar: mm.rar } : {}, mm.mod.kind === 'augment' ? { aug: true } : {}, cleanBonus(mm.bonus) ? { bonus: cleanBonus(mm.bonus) } : {})]);
+    rechassis(it);
+    if ((+mm.qty || 1) > 1) mm.qty = (+mm.qty || 1) - 1; else eq.splice(j, 1);
+    return null;
+  }
+  // take modification k out of equipment[i]: salvaged, it goes back in the pack; otherwise it's destroyed
+  function removeMod(c, i, k, salvaged) {
+    const eq = (c && c.equipment) || [], it = eq[i], m = it && it.chassis && (it.chassis.mods || [])[k];
+    if (!m) return 'That modification is gone.';
+    it.chassis.mods.splice(k, 1);
+    rechassis(it);
+    if (salvaged) eq.push(Object.assign({ name: m.name, qty: 1, equipped: false, notes: `${m.rar || ''} modification`.trim() }, m.rar ? { rar: m.rar } : {},
+      { mod: { kind: m.aug ? 'augment' : it.chassis.kind } }, m.bonus ? { bonus: m.bonus } : {}));
+    return null;
+  }
+  Object.assign(SW5E, { CHASSIS_KINDS, MOD_KINDS, MOD_DC, MOD_TOOL, chassisKind, modSlots, modDC, installBlocked, chassisBonus, cleanChassis, cleanMod, rechassis, installMod, removeMod });
 
   // Selling (audit 6.8): equipment fetches half its cost (PHB, "Selling Treasure"), whole credits, rounded down
   const sellPrice = e => Math.floor(Math.max(0, +(e && e.cost) || 0) / 2);
