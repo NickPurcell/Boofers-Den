@@ -2410,6 +2410,33 @@ test("between fights (section 11): factions and renown, rivals and complications
   assert.equal((await p1.poll()).data.state.factions, undefined);
 });
 
+test("factions, the rest of 11.3: insignia, rank names, dues the GM collects, training, stockpile, the party's own", async () => {
+  const { gm, p1 } = await table();
+  const kira = (await p1.act("char.save", { char: { name: "Kira", credits: 30 } })).data.id;
+  const item = { name: "Rebel cell", shown: true, insignia: "a starbird pin", ranks: ["Recruit", "Operative"], dues: 20, duesPer: "week", training: "Slicing, from Operative",
+    stockpile: [{ name: "medpac", qty: 4 }, { name: "" }], ours: true, hq: "Echo Base", ideals: "Hope", recruitment: "By word of mouth", scores: [{ name: "Influence", value: 14 }, { name: "Big", value: 99 }],
+    members: { [kira]: { rank: 1, renown: 0 } } };
+  assert.equal((await p1.act("faction.dues", { id: "x" })).code, 403);
+  const id = (await gm.act("faction.save", { item })).data.id;
+  let f = (await p1.poll()).data.state.factions[0];
+  assert.deepEqual([f.insignia, f.ranks, f.dues, f.duesPer, f.training, f.stockpile, f.ours, f.hq, f.ideals, f.recruitment, f.scores],
+    ["a starbird pin", ["Recruit", "Operative"], 20, "week", "Slicing, from Operative", [{ name: "medpac", qty: 4 }], true, "Echo Base", "Hope", "By word of mouth", [{ name: "Influence", value: 14 }, { name: "Big", value: 30 }]]);
+  await gm.act("faction.dues", { id });
+  await gm.act("faction.dues", { id });
+  const st = (await p1.poll()).data.state;
+  assert.equal(st.characters[kira].credits, 0, "30, then 10, then it stops at 0");
+  assert.ok(st.chat.some((m) => m.text === "⚑ Dues to Rebel cell: Kira 20 cr. Kira couldn't cover it all."), JSON.stringify(st.chat.slice(-2)));
+  // not the party's own: those parts go
+  await gm.act("faction.save", { item: Object.assign({}, item, { id, ours: false }) });
+  f = (await gm.poll()).data.state.factions[0];
+  assert.deepEqual([f.ours, f.hq, f.scores, f.insignia], [undefined, undefined, undefined, "a starbird pin"]);
+  // a hidden faction's dues are collected quietly
+  await gm.act("faction.save", { item: Object.assign({}, item, { id, shown: false }) });
+  const before = (await gm.poll()).data.state.chat.length;
+  await gm.act("faction.dues", { id });
+  assert.equal((await gm.poll()).data.state.chat.length, before);
+});
+
 test("renown and lifestyle lines don't name a character whose name the GM hides (#199 review)", async () => {
   const { gm, p1 } = await table();
   const id = (await gm.act("char.save", { char: { name: "Darth Secret", credits: 100, lifestyle: "Wealthy" } })).data.id;
