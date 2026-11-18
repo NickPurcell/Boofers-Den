@@ -846,17 +846,20 @@
 
     if (sub === 'gear') {
       html += `<div class="grid g2">
-        <div class="box"><h4>Equipment <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-equip">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-item" title="Add an item by hand">custom</button>' : ''}</h4>
+        <div class="box eq-box"><h4>Equipment <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-equip">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-item" title="Add an item by hand">custom</button>' : ''}</h4>
           <div class="row" style="margin-bottom:8px"><span class="muted">Credits</span>${inp('credits', +ch.credits || 0, { ro, type: 'number', w: '120px' })}</div>
           ${(cw => `<div class="row carry ${cw.state ? 'carry-' + cw.state : ''}" style="margin-bottom:8px" title="Carrying capacity: Strength x 15 (PHB, Lifting and Carrying)${cw.variant ? '. Encumbrance variant: over 5 x Strength, speed -10 ft; over 10 x Strength, speed -20 ft and disadvantage on Str, Dex and Con rolls' : ''}">
             <span class="muted">Carrying</span> <b>${n0(cw.weight)}</b> <span class="muted">of ${n0(cw.capacity)} lb</span>${cw.text ? ` <span class="carry-state">${esc(cw.text)}</span>` : ''}
             ${isGM() ? `<label class="muted carry-var" title="PHB variant: weight slows characters down (the GM's call, for the whole table)"><input type="checkbox" data-act-change="encumbrance" ${cw.variant ? 'checked' : ''}> Encumbrance variant</label>` : ''}</div>`)(R.carrying(ch, S.st.variants))}
+          ${(at => (ch.equipment || []).some(e => e.att) || at.simple ? `<div class="row carry ${at.used > at.max ? 'carry-over' : ''}" style="margin-bottom:8px" title="Wretched Hives: as many slots as the proficiency bonus; advanced, legendary and artifact items take two">
+            <span class="muted">Attunement</span> <b>${n0(at.used)}</b> <span class="muted">of ${n0(at.max)} slots</span>${at.used > at.max ? ' <span class="carry-state">over the limit</span>' : ''}
+            ${isGM() ? `<label class="muted carry-var" title="Wretched Hives variant: three slots, every item takes one (the GM's call, for the whole table)"><input type="checkbox" data-act-change="simple-attune" ${at.simple ? 'checked' : ''}> Simpler attunement</label>` : ''}</div>` : '')(R.attunement(ch, S.st.variants))}
           <div class="eq-wrap"><table class="t eq-table"><thead><tr><th>Qty</th><th>Item</th><th>Notes</th><th title="Weight in pounds, each">Wt</th><th title="Armor or shield, for the auto AC: its kind and AC (a shield's bonus)">Armor</th><th>Eq.</th><th></th></tr></thead><tbody>
           ${(ch.equipment || []).map((e, i) => `<tr><td class="n">${inp(`equipment.${i}.qty`, +e.qty || 1, { ro, type: 'number' })}</td>
             <td>${inp(`equipment.${i}.name`, e.name, { ro })}</td><td>${inp(`equipment.${i}.notes`, e.notes || '', { ro })}</td>
             <td class="n eq-wt">${inp(`equipment.${i}.wt`, +e.wt || '', { ro, type: 'number', ph: '0' })}</td>
             <td class="armor-cell">${inp(`equipment.${i}.armor.kind`, (e.armor || {}).kind || '', { ro, type: 'select', options: [{ v: '', t: '—' }, ...R.ARMOR_KINDS] })}${e.armor && e.armor.kind ? inp(`equipment.${i}.armor.ac`, +e.armor.ac || 0, { ro, type: 'number' }) : ''}</td>
-            <td>${inp(`equipment.${i}.equipped`, e.equipped, { ro, type: 'checkbox' })}</td>
+            <td class="eq-cell">${inp(`equipment.${i}.equipped`, e.equipped, { ro, type: 'checkbox' })}${e.att ? `<span class="attune" title="Attuned (Wretched Hives: it takes a short rest with the item)${e.rar ? ` · ${esc(e.rar)}` : ''}">⟡${inp(`equipment.${i}.attuned`, !!e.attuned, { ro, type: 'checkbox' })}</span>` : ''}</td>
             <td style="white-space:nowrap">${!ro ? `<button class="btn tiny ghost" data-act="sell" data-i="${i}" title="Sell one${+e.cost > 0 ? ` (half its cost: ${R.sellPrice(e).toLocaleString()} cr)` : ''}">Sell</button><button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Empty.</td></tr>'}
           </tbody></table></div></div>
         ${stashBox(ch, ro)}
@@ -898,6 +901,15 @@
   $('#sheet').addEventListener('change', e => {
     const t = e.target;
     const ch = selChar(); if (!ch) return;
+    if (t.dataset.actChange === 'simple-attune') {   // the GM's switch for the whole table (audit 6.3)
+      const v = new Set(S.st.variants || []); t.checked ? v.add(R.SIMPLE_ATTUNEMENT) : v.delete(R.SIMPLE_ATTUNEMENT);
+      return act('variants.set', { variants: [...v] });
+    }
+    const att = /^equipment\.(\d+)\.attuned$/.exec(t.dataset.path || '');
+    if (att && t.checked && canEdit(ch)) {   // attuning past the slots (audit 6.3): a player is refused; the GM is asked
+      const no = R.attuneBlocked(ch, +att[1], S.st.variants);
+      if (no && (!isGM() || !confirm(`${no.text}\n\nAttune anyway?`))) { if (!isGM()) toast(no.text, true); t.checked = false; return; }
+    }
     if (t.dataset.actChange === 'encumbrance') {   // the GM's switch for the whole table (audit 6.5), kept with the variant rules
       const v = new Set(S.st.variants || []); t.checked ? v.add(R.ENCUMBRANCE) : v.delete(R.ENCUMBRANCE);
       return act('variants.set', { variants: [...v] });
@@ -1229,7 +1241,8 @@
             const ex = c.equipment.find(x => String(x.name).toLowerCase() === it.n.toLowerCase());
             if (ex) ex.qty = (n0(ex.qty) || 1) + 1;
             else { const armor = !enh && R.armorFromItem(it); c.equipment.push({ name: it.n, qty: 1, equipped: false, notes: itemNotes(it, enh).slice(0, 200), ...(armor ? { armor } : {}),
-              ...(!enh && parseFloat(it.wt) > 0 ? { wt: parseFloat(it.wt) } : {}), ...(!enh && it.cost > 0 ? { cost: it.cost } : {}) }); }   // weight (6.5) and cost (6.8)
+              ...(!enh && parseFloat(it.wt) > 0 ? { wt: parseFloat(it.wt) } : {}), ...(!enh && it.cost > 0 ? { cost: it.cost } : {}),   // weight (6.5) and cost (6.8)
+              ...(enh && R.RARITIES.includes(it.rar) ? { rar: it.rar } : {}), ...(enh && it.att ? { att: true } : {}) }); }   // rarity and attunement (6.3)
             if (!enh && it.cat === 'Weapon' && !c.attacks.some(x => String(x.name).toLowerCase() === it.n.toLowerCase())) c.attacks.push(weaponAttack(it));
           });
           toast(`${buy ? 'Bought' : 'Added'} ${it.n}${!enh && it.cat === 'Weapon' ? ' (and its attack)' : ''}${buy ? ` for ${it.cost.toLocaleString()} cr` : ''}`);

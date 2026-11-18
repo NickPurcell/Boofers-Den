@@ -62,3 +62,15 @@ test("carrying (6.5): an item keeps its weight and cost; bad values are dropped;
   assert.equal((await gm.act("variants.set", { variants: ["Encumbrance"] })).code, 200);
   assert.deepEqual((await sam.state()).variants, ["Encumbrance"]);
 });
+
+test("attunement (6.3): an item keeps its rarity and attunement; attuned only when it requires it; bad values dropped", async () => {
+  const { gm, sam, avery } = await table();
+  const av = await sheet(sam, avery);
+  await sam.act("char.save", { char: Object.assign({}, av, { equipment: [
+    { name: "Focus crystal", qty: 1, rar: "Prototype", att: true, attuned: true },
+    { name: "Plain thing", qty: 1, rar: "Shiny", attuned: true },
+    { name: "Proto", qty: 1, rar: "__proto__", att: "yes" },
+  ] }) });
+  const eq = (await sheet(gm, avery)).equipment;
+  assert.deepEqual(eq.map((e) => [e.rar, e.att, e.attuned]), [["Prototype", true, true], [undefined, undefined, undefined], [undefined, true, undefined]]);
+});

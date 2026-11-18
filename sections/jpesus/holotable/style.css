@@ -779,3 +779,10 @@ canvas.drawing { cursor: crosshair; }
 .carry.carry-heavy .carry-state, .carry.carry-over .carry-state { color: var(--red); }
 /* buying (audit 6.8): Buy beside Add in the gear picker */
 .eq-btns { display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
+/* attunement (audit 6.3): the tick beside Equipped, for items that require it */
+.eq-table .attune { margin-left: 6px; color: var(--violet); font-size: 12px; white-space: nowrap; }
+/* the inventory has grown (armor, weight, attunement): its box takes the gear tab's full width */
+.grid.g2 > .eq-box { grid-column: 1 / -1; }
+.eq-table td.eq-cell { white-space: nowrap; width: 1%; }
+.eq-table td.eq-cell input[type=checkbox] { width: 18px; min-width: 0; margin: 0; vertical-align: middle; }
+.eq-table .attune { display: inline-flex; align-items: center; gap: 2px; }

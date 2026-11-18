@@ -161,6 +161,19 @@ test("selling (audit 6.8): half the cost, rounded down; no cost, nothing", () =>
   assert.deepEqual([R.sellPrice({ cost: 50 }), R.sellPrice({ cost: 75 }), R.sellPrice({ cost: 1 }), R.sellPrice({}), R.sellPrice({ cost: -10 })], [25, 37, 0, 0, 0]);
 });
 
+test("attunement (audit 6.3): slots as the proficiency bonus; advanced and up take two; the simpler variant three of one", () => {
+  const c = (level, items) => ({ name: "Vee", classes: [{ name: "Operative", level }], equipment: items.map(([rar, attuned, att = true]) => ({ name: rar + " item", rar, att, attuned })) });
+  assert.deepEqual([R.attunement(c(1, [])).max, R.attunement(c(5, [])).max, R.attunement(c(17, [])).max], [2, 3, 6]);
+  const vee = c(1, [["Premium", true], ["Advanced", false], ["Standard", false], ["Legendary", true, false]]);
+  assert.equal(R.attunement(vee).used, 1, "an item that doesn't need attunement doesn't count");
+  assert.equal(R.attuneBlocked(vee, 2), null, "a second one-slot item fits in two");
+  assert.equal(R.attuneBlocked(vee, 1).text, "Vee has 1 of 2 attunement slots free; Advanced item takes 2.");
+  assert.equal(R.attuneBlocked(vee, 1, [R.SIMPLE_ATTUNEMENT]), null, "the simpler variant: three slots, one each");
+  vee.equipment[1].name = "Focus Lens";
+  assert.equal(R.attuneBlocked(vee, 1).text, "Vee has 1 of 2 attunement slots free; Focus Lens (Advanced) takes 2.");
+  assert.equal(R.attunement(vee, [R.SIMPLE_ATTUNEMENT]).max, 3);
+});
+
 test("Engineers and Scouts get tech points back on a short rest; others don't", () => {
   assert.equal(R.techOnShortRest(char([["Engineer", 1]])), true);
   assert.equal(R.techOnShortRest(char([["Scout", 2]])), true);
