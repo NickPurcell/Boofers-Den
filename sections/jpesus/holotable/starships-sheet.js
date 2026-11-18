@@ -91,6 +91,20 @@
         <button class="btn tiny" data-sx="startup" title="An action: the crew leader's Intelligence (Piloting); advantage at full hull and shields, disadvantage under full hull">Emergency start-up check</button>`}</div>
     </details>`;
   }
+  // what a ship like this costs to buy, build, upgrade, dock and crew (SotG chapters 3, 5 and 8)
+  function costsBlock(s) {
+    const c = SR.costs(s), cr = (n) => `${Math.round(n).toLocaleString('en-US')} cr`, n = (x) => x.toLocaleString('en-US');
+    const crew = (s.crew || []).length;
+    return `<details class="ship-build" data-sid="${esc(s.id)}-cost" style="margin-top:8px" ${buildOpen[s.id + '-cost'] ? 'open' : ''}><summary>Costs and crew <span class="muted" style="font-size:12px">(buying, upgrading, docking)</span></summary>
+      <table class="t" style="margin-top:6px"><tbody>
+        <tr><td>A new ${esc(s.size || 'Small')} ship (tier 0)</td><td><b>${cr(c.stock)}</b>; a bank loan: ${cr(c.bankDown)} down and ${cr(c.bankMonthly)} a month for 5 years; a loan shark: about ${cr(c.sharkMonthly)} a month for 3 years</td></tr>
+        <tr><td>Building one</td><td>${cr(c.build)} at a shipyard; a workforce of ${n(c.buildWorkforce[0])} to ${n(c.buildWorkforce[1])}: ${c.buildDays[0]} days at the smallest, ${c.buildDays[1]} at the largest</td></tr>
+        <tr><td>Upgrading to tier ${(+s.tier || 0) + 1}</td><td>${c.nextTier == null ? 'already tier 5' : `<b>${cr(c.nextTier)}</b> (half if the party does the work), a workforce of ${n(c.upgradeWorkforce)}: ${c.upgradeDays} days`}</td></tr>
+        <tr><td>Docking</td><td>about ${cr(c.docking)} a day${['Large', 'Huge', 'Gargantuan'].includes(s.size) ? ' at an orbital station (too big to land), or nothing staying in orbit' : ''}</td></tr>
+        <tr><td>Minimum crew</td><td><b>${n(c.minCrew)}</b> (by size and Intelligence)${c.minCrew && crew < c.minCrew ? ` · ${crew} on the sheet: a skeleton crew runs as if with more system damage (¾: 1 level, ½: 2, ¼: 3, a tenth: 4)` : ''}</td></tr>
+        <tr><td>Hired crew</td><td>salaried: 10 cr a day each and a 300 cr hiring bonus; or a share: 60% of the profits split among them</td></tr>
+      </tbody></table></details>`;
+  }
   const buildOpen = {};   // per ship, whether the panel below is open (the sheet is redrawn on every change)
   document.addEventListener('toggle', (e) => { const d = e.target; if (d && d.classList && d.classList.contains('ship-build')) buildOpen[d.dataset.sid] = d.open; }, true);
   // what the ship's size, tier and role give it (SotG chapters 1, 3 and 5), next to what the sheet says, with Apply
@@ -148,6 +162,7 @@
       ${ro || SR.isLost(st) && st.zero.destroyed || inFight() ? '' : betweenBlock(s, st)}
       ${buildBlock(s, ro)}
       ${travelBlock(s, ro)}
+      ${costsBlock(s)}
     </div>`;
   }
 
