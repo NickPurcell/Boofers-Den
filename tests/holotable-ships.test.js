@@ -1175,6 +1175,9 @@ test("Dogfight, Harass, Attack Run and Conceal on the server", async () => {
   while ((await gm.state()).space.turnId !== party) await gm.act("space.next", {});
   // Attack Run: only after 150 ft this turn
   assert.match((await p1.act("space.run", { id: party, target: enemy })).data.error || "", /150 ft or more/);
+  await p1.act("space.place", { id: party, x: 2, y: 2, f: 2 });   // 150 ft north: sideways, away from the target
+  assert.match((await p1.act("space.run", { id: party, target: enemy })).data.error || "", /moved 0 ft toward \?\?\? this turn/, "movement that doesn't close on the target doesn't count");
+  await p1.act("space.place", { id: party, x: 2, y: 5, f: 2 });   // back: closes 50 ft
   await p1.act("space.place", { id: party, x: 5, y: 5, f: 2 });   // 150 ft east
   r = await p1.act("space.run", { id: party, target: enemy });
   assert.equal(r.code, 200);
@@ -1188,6 +1191,9 @@ test("Dogfight, Harass, Attack Run and Conceal on the server", async () => {
   await p1.act("space.next", {}); while ((await gm.state()).space.turnId !== party) await gm.act("space.next", {});
   r = await p1.act("space.conceal", { id: party });
   assert.equal(r.code, 200);
+  const hideLine = (await gm.state()).chat.find((m) => /Dawn Skiff's Hide \d+ against the opposing side's best passive Scan, \d+/.test(m.text || ""));
+  assert.ok(hideLine && hideLine.to[0] === "@gm" && !hideLine.fromId, "the numbers are the GM's");
+  assert.ok(!(await p1.state()).chat.some((m) => /passive Scan|spotted \(/.test(m.text || "")), "a player sees no passive Scan");
   if (r.data.ok) {
     assert.equal(shipIn(await gm.state(), party).status.fx.concealed, true);
     await p1.act("space.fire", { id: party, target: enemy, weapon: 0, crew: 1 });

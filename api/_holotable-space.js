@@ -42,9 +42,11 @@ function clean(sp, ships) {
     .map((e) => ({ id: e.id, init: clamp(int(e.init), -50, 99) }));
   const moved = {};
   for (const [k, v] of Object.entries(plain(sp.moved))) if (onMap.has(k)) moved[k] = clamp(int(v), 0, 100000);
+  // the squares the ship whose turn it is has moved through this turn (for an Attack Run's movement toward a target)
+  const trail = (Array.isArray(sp.trail) ? sp.trail : []).slice(-60).filter((q) => Array.isArray(q) && q.length === 2).map((q) => [clamp(int(q[0]), 0, cols), clamp(int(q[1]), 0, rows)]);
   return {
     on: !!sp.on, n: ID.test(sp.n || "") ? sp.n : "", cols, rows, tok, order,
-    turn: order.length ? clamp(int(sp.turn), 0, order.length - 1) : 0, round: clamp(int(sp.round, 1), 1, 9999), active: !!sp.active && order.length > 0, moved,
+    turn: order.length ? clamp(int(sp.turn), 0, order.length - 1) : 0, round: clamp(int(sp.round, 1), 1, 9999), active: !!sp.active && order.length > 0, moved, trail,
   };
 }
 
@@ -57,7 +59,7 @@ function view(camp, gm) {
     return Object.assign({}, t, { name: gm || !s.hidden || t.named ? s.name : "???", size: s.size, color: s.color, enemy: !!s.hidden }); });
   const shown = new Set(tok.map((t) => t.id)), cur = sp.order[sp.turn] && sp.order[sp.turn].id;
   const order = sp.order.filter((e) => shown.has(e.id));
-  return Object.assign({}, sp, { tok, order, turn: Math.max(0, order.findIndex((e) => e.id === cur)), turnId: sp.active && shown.has(cur) ? cur : null,
+  return Object.assign({}, sp, { trail: undefined, tok, order, turn: Math.max(0, order.findIndex((e) => e.id === cur)), turnId: sp.active && shown.has(cur) ? cur : null,
     moved: gm ? sp.moved : Object.fromEntries(Object.entries(sp.moved).filter(([k]) => shown.has(k))) });
 }
 
@@ -125,6 +127,10 @@ function apply(camp, cid, gm, type, p, h) {
           st.fx.hardTurn = false; putShip(Object.assign({}, s, { status: st }));
         }
         sp.moved[s.id] = (sp.moved[s.id] || 0) + cost;
+        if (to.x !== from.x || to.y !== from.y) {
+          sp.trail = Array.isArray(sp.trail) && sp.trail.length ? sp.trail : [[from.x, from.y]];
+          sp.trail.push([to.x, to.y]); if (sp.trail.length > 60) sp.trail.splice(0, sp.trail.length - 60);
+        }
       }
       sp.tok[i] = Object.assign({}, from, to);
       return { moved: sp.moved[s.id] || 0 };
@@ -172,7 +178,7 @@ function apply(camp, cid, gm, type, p, h) {
         say(s, `${str(label, 300)}: ${init}.`);
       }
       order.sort((a, b) => b.init - a.init);
-      Object.assign(sp, { order, turn: 0, round: 1, active: true, moved: {} });
+      Object.assign(sp, { order, turn: 0, round: 1, active: true, moved: {}, trail: [] });
       camp.space = clean(sp, camp.ships);
       addChat(camp, { system: true, text: "Ship combat starts: round 1." });
       return startTurn(camp, cid, gm, h);
@@ -408,11 +414,18 @@ function apply(camp, cid, gm, type, p, h) {
       };
       const s1 = JSON.parse(JSON.stringify(s0)); s1.status = SR.statusOf(s1); s1.status.fx.helm = true;
       if (type === "space.run") {
-        const moved = int(sp.moved[s0.id]);
         if (!sp.active || curId() !== s0.id) throw new Invalid("An Attack Run comes after this turn's movement in ship combat.");
-        if (moved < 150) throw new Invalid(`${A} has moved ${moved} ft this turn: an Attack Run takes 150 ft or more toward the target.`);
-        Object.assign(s1.status.fx, { runVs: t0.id, runFeet: moved });
-        putShip(s1); line(`${A} makes an attack run at ${T} (${moved} ft): its next shot from forward or its ram at it gets the run's edge.`);
+        // movement toward the target: what each step of this turn's path closed on it (a step sideways or away adds nothing)
+        const pts = Array.isArray(sp.trail) ? sp.trail : [], sz = SR.squaresOf(s0), tsz = SR.squaresOf(t0);
+        let toward = 0;
+        for (let k = 1; k < pts.length; k++) {
+          const g0 = SR.shipGap({ x: pts[k - 1][0], y: pts[k - 1][1] }, sz, ta, tsz), g1 = SR.shipGap({ x: pts[k][0], y: pts[k][1] }, sz, ta, tsz);
+          if (g1 < g0) toward += g0 - g1;
+        }
+        toward = Math.min(toward, int(sp.moved[s0.id]));
+        if (toward < 150) throw new Invalid(`${A} has moved ${toward} ft toward ${T} this turn: an Attack Run takes 150 ft or more.`);
+        Object.assign(s1.status.fx, { runVs: t0.id, runFeet: toward });
+        putShip(s1); line(`${A} makes an attack run at ${T} (${toward} ft toward it): its next shot from forward or its ram at it gets the run's edge.`);
         return { ok: true };
       }
       if (type === "space.conceal") {
@@ -422,7 +435,9 @@ function apply(camp, cid, gm, type, p, h) {
         const total = roll(s0, "hide", p.crew, `${s0.hidden ? s0.name : A}: Dexterity (Hide)${heavy.length ? " [reinforced armor]" : ""}`, [], heavy);
         const ok = total > passive;
         if (ok) s1.status.fx.concealed = true;
-        putShip(s1); line(ok ? `${A} slips out of sight: unseen until it attacks.` : `${A} tries to conceal itself, and is spotted (${total} against ${passive}).`);
+        // the opposing passive Scan can be a hidden-token ship's: the numbers are the GM's
+        putShip(s1); line(ok ? `${A} slips out of sight: unseen until it attacks.` : `${A} tries to conceal itself, and is spotted.`);
+        addChat(camp, { system: true, text: str(`${s0.hidden ? s0.name : A}'s Hide ${total} against the opposing side's best passive Scan, ${passive}.`, 400), to: ["@gm"], private: true });
         return { ok };
       }
       if (type === "space.harass") {
@@ -450,7 +465,7 @@ function apply(camp, cid, gm, type, p, h) {
     }
     case "space.end": {
       need(gm);
-      Object.assign(sp, { order: [], turn: 0, round: 1, active: false, moved: {} });
+      Object.assign(sp, { order: [], turn: 0, round: 1, active: false, moved: {}, trail: [] });
       addChat(camp, { system: true, text: "Ship combat ends." });
       return {};
     }
@@ -463,7 +478,7 @@ function apply(camp, cid, gm, type, p, h) {
 function startTurn(camp, cid, gm, h) {
   const sp = camp.space, e = sp.order[sp.turn];
   if (!e) return {};
-  sp.moved[e.id] = 0;
+  sp.moved[e.id] = 0; sp.trail = [];
   // an Interfere or a Harass by this ship lasts until the start of its next turn
   for (let k = 0; k < camp.ships.length; k++) {
     const x = camp.ships[k], st = x && SR.statusOf(x);
