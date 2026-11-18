@@ -1,0 +1,99 @@
+/* HoloTable starships: the "In a fight" box on the ship sheet, and what a ship's conditions do to its rolls.
+   The rules are in starships.js (HTShips); every change goes to the server as a ship.* action, which rolls the dice
+   and decides. books.js draws the rest of the ship sheet and calls block() and rollOpts() from here. */
+(function () {
+  const H = window.HT, SR = window.HTShips;
+  if (!H || !SR) return;
+  const { $, esc } = H;
+  const cap = (w) => w.charAt(0).toUpperCase() + w.slice(1);
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+
+  // the box: the ship's state at 0 hull, damage by type, repairs, conditions and what they do right now
+  function block(s, ro) {
+    const st = SR.statusOf(s), gm = H.isGM(), z = st.zero, hullNow = +((s.hull || {}).current) || 0;
+    const lost = SR.isLost(st), dying = SR.dying(s), atZero = hullNow <= 0 && SR.hullMax(s) > 0;
+    let state = '';
+    if (z.destroyed) state = `<div class="ship-state lost">💥 Destroyed${gm ? ' <button class="btn tiny ghost" data-sx="reset" title="Undo the destruction (a mistake, or the story says it survived)">undo</button>' : ''}</div>`;
+    else if (st.system >= 6) state = `<div class="ship-state lost">All primary systems failed (system damage 6)${gm ? ' <button class="btn tiny ghost" data-sx="reset" data-system="5" title="Back to system damage 5">undo</button>' : ''}</div>`;
+    else if (atZero) {
+      const pips = [0, 1, 2].map(i => `<span class="dpip ${i < z.s ? 'on' : ''}"></span>`).join('');
+      state = `<div class="ship-state">At 0 hull points · ${z.stable ? '<b>stable</b>' : `destruction saves ${pips} <span class="muted">${plural(z.f, 'failure')} so far</span>`}
+        ${dying && !ro ? `<button class="btn small amber" data-sx="dsave" title="d20: 10 or more is a success, three make it stable. A failure is a level of system damage; a 1 counts twice; a 20 brings back 1 hull point.">Destruction save</button>
+        <button class="btn small ghost" data-sx="stabilize" title="After a crew member's successful DC 10 Intelligence (mechanic's kit) check">Stabilized</button>` : ''}</div>`;
+    }
+    const types = SR.DAMAGE_TYPES.map(t => `<option value="${t}">${cap(t)}</option>`).join('');
+    const chips = SR.CONDITIONS.map(c => { const on = st.cond.includes(c), auto = c === 'Used' && st.system >= 5;
+      return `<button class="btn tiny ${on ? 'primary' : 'ghost'}" data-sx="cond" data-c="${c}" ${ro || auto ? 'disabled' : ''} title="${esc(SR.CONDITION_NOTES[c] + (auto ? ' (from system damage 5; it stays)' : ''))}">${c}</button>`; }).join('');
+    const lvSel = (k, n, notes) => `<select data-sxc="${k}" ${ro ? 'disabled' : ''}>${Array.from({ length: n + 1 }, (_, i) => `<option value="${i}" ${st[k] === i ? 'selected' : ''} title="${esc(notes(i))}">${i}</option>`).join('')}</select>`;
+    const sysTitle = i => (i ? SR.SYSTEM_NOTES.slice(1, i + 1).join('; ') : 'None');
+    const fx = effects(s);
+    return `<div class="box ship-fight" style="margin-top:12px"><h4>In a fight</h4>
+      ${fx.length ? `<p class="muted" style="font-size:12px;margin:0 0 6px">${esc(fx.join(' · '))}</p>` : ''}
+      ${state}
+      ${!ro && !lost ? `<div class="row wrap ship-dmg"><input id="shipAmt" type="number" min="0" placeholder="12" style="width:80px" title="How many points">
+        <select id="shipDmgType" title="Damage type: shields take half of acid, cold, fire and necrotic; the hull takes half of ion, lightning and necrotic; neither takes poison or psychic; sonic does nothing in space">${types}</select>
+        <label class="toggle" title="A critical hit: at 0 hull points it does two levels of system damage"><input type="checkbox" id="shipCrit"> critical</label>
+        <label class="toggle" title="The attacker disables the ship instead of destroying it (a primary or secondary weapon, or ion or lightning damage). Ion damage always only disables."><input type="checkbox" id="shipDisable"> disable, don't destroy</label>
+        <button class="btn small danger" data-sx="dmg">Damage</button><button class="btn small" data-sx="repair">Repair hull</button><button class="btn small" data-sx="shields">Restore shields</button></div>` : ''}
+      <div class="row wrap" style="margin-top:8px;gap:4px">${chips}
+        <span class="spacer"></span><label class="ship-lv" title="${esc('Speed -150 / -250 / -300 ft; at 4, speed 0')}">Slowed ${lvSel('slowed', 4, i => (i ? (i >= 4 ? 'Speed 0' : `Speed -${SR.SLOWED_FEET[i]} ft`) : 'None'))}</label>
+        <label class="ship-lv" title="${esc(SR.SYSTEM_NOTES.slice(1).map((t, i) => `${i + 1}: ${t}`).join('\n'))}">System damage ${lvSel('system', 6, sysTitle)}</label></div>
+    </div>`;
+  }
+
+  // the ship's conditions in effect, as short phrases for the box's heading
+  function effects(s) {
+    const st = SR.statusOf(s), out = [], sp = SR.speedOf(s), lv = SR.slowedLevel(s);
+    if (lv) out.push(`Speed ${sp} ft (slowed ${lv})`);
+    if (st.system >= 4) out.push(`Maximums halved: hull ${SR.hullMax(s)}, shields ${SR.shieldMax(s)}; regeneration halved`);
+    const fx = (k, ab) => SR.rollEffects(s, k, ab);
+    const words = (f) => [f.adv.length && 'advantage', f.dis.length && 'disadvantage'].filter(Boolean).join(' and ');
+    const chk = fx('check'), sav = fx('save', 'con'), atk = fx('attack'), vs = fx('against');
+    if (words(chk)) out.push(`Checks: ${words(chk)}`);
+    if (words(atk)) out.push(`Its attacks: ${words(atk)}`);
+    if (words(sav)) out.push(`Saves: ${words(sav)}`);
+    if (fx('save', 'dex').fail.length) out.push('Fails Str and Dex saves');
+    if (words(vs)) out.push(`Attacks against it: ${words(vs)}`);
+    if (SR.isDisabled(st)) out.push('No actions or reactions');
+    else if (st.cond.includes('Shocked')) out.push('No reactions; action or bonus action');
+    return out;
+  }
+
+  // a roll from the ship sheet: the mode after the ship's conditions, and the label saying why
+  function rollOpts(s, el, asked) {
+    const kind = el.dataset.kind, ab = el.dataset.ab;
+    let label = el.dataset.label || '';
+    if (!kind) return { mode: asked, label };
+    const fx = SR.rollEffects(s, kind, ab), mode = SR.rollMode(fx, asked);
+    const why = [...fx.adv, ...fx.dis];
+    if (fx.fail.length) label += ` (fails automatically: ${fx.fail.join(', ')})`;
+    else if (why.length) label += ` [${why.join(', ')}]`;
+    return { mode, label };
+  }
+
+  // the box's buttons; returns true when it handled the click
+  async function click(e, s) {
+    const b = e.target.closest('[data-sx]'); if (!b || !s) return false;
+    const a = b.dataset.sx, id = s.id;
+    if (a === 'dmg' || a === 'repair' || a === 'shields') {
+      const n = Math.abs(parseInt(($('#shipAmt') || {}).value, 10)); if (!n) { H.toast('How many points?', true); return true; }
+      if (a === 'dmg') await H.act('ship.damage', { id, amount: n, type: ($('#shipDmgType') || {}).value, crit: !!($('#shipCrit') || {}).checked, disable: !!($('#shipDisable') || {}).checked });
+      else await H.act('ship.restore', { id, what: a === 'shields' ? 'shield' : 'hull', amount: n });
+      return true;
+    }
+    if (a === 'dsave') { await H.act('ship.dsave', { id }); return true; }
+    if (a === 'stabilize') { await H.act('ship.stabilize', { id }); return true; }
+    if (a === 'cond') { const c = b.dataset.c; await H.act('ship.condition', { id, name: c, on: !SR.statusOf(s).cond.includes(c) }); return true; }
+    if (a === 'reset') { if (confirm(`Undo ${s.name}'s destruction?`)) await H.act('ship.reset', Object.assign({ id }, b.dataset.system ? { system: +b.dataset.system } : {})); return true; }
+    return false;
+  }
+  // the slowed and system damage pickers; returns true when it handled the change
+  async function change(e, s) {
+    const t = e.target, k = t.dataset && t.dataset.sxc; if (!k || !s) return false;
+    await H.act('ship.condition', { id: s.id, name: k, level: +t.value || 0 });
+    return true;
+  }
+
+  window.HTShipSheet = { block, effects, rollOpts, click, change };
+  if (window.HTB && H.S.st) window.HTB.renderShipsSafe();   // the ships tab may have been drawn before this file loaded
+})();

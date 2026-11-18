@@ -593,9 +593,8 @@
         <div class="stat"><div class="lbl">Turning (ft)</div>${shipInp('turn', n0(s.turn), { ro })}</div>
         <div class="stat"><div class="lbl">Hyperdrive</div>${shipInp('hyper', s.hyper, { ro, ph: 'class' })}</div>
       </div>
-      ${!ro ? `<div class="row wrap ship-dmg"><input id="shipDelta" placeholder="-12 or +8" style="width:110px">
-        <button class="btn small danger" data-sa="dmg">Damage (shields first)</button><button class="btn small" data-sa="heal-hull">Repair hull</button><button class="btn small" data-sa="heal-shield">Restore shields</button>
-        <span class="muted" style="font-size:12px">Hull dice ${shipInp('hullDice', s.hullDice, { ro, w: '80px', ph: 'e.g. 3d10' })} Shield dice ${shipInp('shieldDice', s.shieldDice, { ro, w: '80px', ph: 'e.g. 3d10' })} Regen ${shipInp('shieldRegen', s.shieldRegen, { ro, w: '90px' })}</span></div>` : ''}
+      ${!ro ? `<div class="row wrap ship-dmg"><span class="muted" style="font-size:12px">Hull dice ${shipInp('hullDice', s.hullDice, { ro, w: '80px', ph: 'e.g. 3d10' })} Shield dice ${shipInp('shieldDice', s.shieldDice, { ro, w: '80px', ph: 'e.g. 3d10' })} Regen ${shipInp('shieldRegen', s.shieldRegen, { ro, w: '90px' })}</span></div>` : ''}
+      ${window.HTShipSheet ? HTShipSheet.block(s, ro) : ''}
       <div class="grid g2" style="margin-top:12px">
         <div class="box"><h4>Crew &amp; deployments</h4>
           <table class="t"><thead><tr><th>Crew member</th><th>Deployment</th><th>Rank</th><th>Prof.</th><th></th></tr></thead><tbody>
@@ -608,17 +607,17 @@
           <p class="muted" style="font-size:12px;margin:6px 0 0">Ship rolls add the acting crew member's proficiency bonus when the ship is proficiently equipped.</p></div>
         <div class="box"><h4>Ship abilities <span class="spacer"></span><span class="muted" style="text-transform:none;letter-spacing:0">Rolling as</span>
           <select data-sa-change="as">${crew.length ? crew.map((c, i) => `<option value="${i}" ${i === as ? 'selected' : ''}>${esc(crewName(c))} (${R.fmt(crewPb(s, c))})</option>`).join('') : '<option>no crew (+2)</option>'}</select></h4>
-          <div class="ship-abil">${R.ABILITIES.map(a => `<div class="stat ability"><div class="lbl">${a.name}</div><div class="val sb-roll" data-shiproll="1d20${fmt(m(a.key))}" data-label="${esc(s.name)}: ${a.name} check">${fmt(m(a.key))}</div>
+          <div class="ship-abil">${R.ABILITIES.map(a => `<div class="stat ability"><div class="lbl">${a.name}</div><div class="val sb-roll" data-shiproll="1d20${fmt(m(a.key))}" data-kind="check" data-ab="${a.key}" data-label="${esc(s.name)}: ${a.name} check">${fmt(m(a.key))}</div>
             ${shipInp('abilities.' + a.key, n0(s.abilities[a.key]), { ro })}
-            <label class="toggle" title="Proficiently equipped for this saving throw">${shipInp('saves.' + a.key, s.saves[a.key], { ro, type: 'checkbox' })}<span class="sb-roll" data-shiproll="1d20${fmt(m(a.key) + (s.saves[a.key] ? pb : 0))}" data-label="${esc(s.name)}: ${a.name} save">save ${fmt(m(a.key) + (s.saves[a.key] ? pb : 0))}</span></label></div>`).join('')}</div>
+            <label class="toggle" title="Proficiently equipped for this saving throw">${shipInp('saves.' + a.key, s.saves[a.key], { ro, type: 'checkbox' })}<span class="sb-roll" data-shiproll="1d20${fmt(m(a.key) + (s.saves[a.key] ? pb : 0))}" data-kind="save" data-ab="${a.key}" data-label="${esc(s.name)}: ${a.name} save">save ${fmt(m(a.key) + (s.saves[a.key] ? pb : 0))}</span></label></div>`).join('')}</div>
           <h4 style="margin-top:10px">Ship skills <span class="muted" style="text-transform:none;letter-spacing:0">dot: none → proficiently → expertly equipped</span></h4>
           <div class="list-rows ship-skills">${SKILLS.map(([k, name, ab]) => { const lv = n0(s.skills[k]), b = m(ab) + lv * pb; return `<div class="lr"><button class="prof ${lv === 2 ? 'p2' : lv === 1 ? 'p1' : ''}" data-sa="skill" data-k="${k}" ${ro ? 'disabled' : ''}></button>
-            <span class="bonus">${fmt(b)}</span><span class="nm rollable" data-shiproll="1d20${fmt(b)}" data-label="${esc(s.name)}: ${name}">${name}</span><span class="ab">${ab}</span></div>`; }).join('')}</div></div>
+            <span class="bonus">${fmt(b)}</span><span class="nm rollable" data-shiproll="1d20${fmt(b)}" data-kind="check" data-ab="${ab}" data-label="${esc(s.name)}: ${name}">${name}</span><span class="ab">${ab}</span></div>`; }).join('')}</div></div>
       </div>
       <div class="box" style="margin-top:12px"><h4>Weapons <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-sa="pick-equip" data-weapons="1">＋ weapon from SotG</button><button class="btn tiny ghost" data-sa="add-weapon">custom</button>' : ''}</h4>
         <table class="t"><thead><tr><th>Weapon</th><th>Attack</th><th>Damage</th><th>Type</th><th>Range</th><th>Properties</th><th></th></tr></thead><tbody>
         ${(s.weapons || []).map((w, i) => { const atk = m('wis') + pb + n0(w.atkMisc), dmg = w.dmg ? w.dmg + (m('str') ? fmt(m('str')) : '') : ''; return `<tr><td>${shipInp(`weapons.${i}.name`, w.name, { ro })}</td>
-          <td style="white-space:nowrap"><button class="btn small amber" data-shiproll="1d20${fmt(atk)}" data-label="${esc(s.name)}: ${esc(w.name)} (attack)" title="Wis ${fmt(m('wis'))} + crew prof. ${fmt(pb)}">${fmt(atk)}</button> ${shipInp(`weapons.${i}.atkMisc`, n0(w.atkMisc), { ro, w: '50px' })}</td>
+          <td style="white-space:nowrap"><button class="btn small amber" data-shiproll="1d20${fmt(atk)}" data-kind="attack" data-label="${esc(s.name)}: ${esc(w.name)} (attack)" title="Wis ${fmt(m('wis'))} + crew prof. ${fmt(pb)}">${fmt(atk)}</button> ${shipInp(`weapons.${i}.atkMisc`, n0(w.atkMisc), { ro, w: '50px' })}</td>
           <td style="white-space:nowrap">${shipInp(`weapons.${i}.dmg`, w.dmg, { ro, w: '64px' })}${dmg ? ` <button class="btn small" data-shiproll="${esc(dmg)}" data-label="${esc(s.name)}: ${esc(w.name)} (${esc(w.type)} damage)" title="+ Str ${fmt(m('str'))}">Dmg</button>` : ''}</td>
           <td>${shipInp(`weapons.${i}.type`, w.type, { ro, w: '80px' })}</td><td>${shipInp(`weapons.${i}.range`, w.range, { ro, w: '100px' })}</td><td>${shipInp(`weapons.${i}.props`, w.props, { ro })}</td>
           <td>${!ro ? `<button class="btn tiny ghost" data-sa="del" data-list="weapons" data-i="${i}">✕</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="7" class="muted">No weapons.</td></tr>'}</tbody></table>
@@ -641,6 +640,7 @@
     shipsEl().addEventListener('change', e => {
       const t = e.target;
       if (t.dataset.saChange === 'as') { SH.as = +t.value || 0; return renderShips(shipsEl()); }
+      if (t.dataset.sxc && window.HTShipSheet) return HTShipSheet.change(e, ships().find(x => x.id === SH.sel));
       const path = t.dataset.sp; if (!path) return;
       const s = ships().find(x => x.id === SH.sel); if (!canEditShip(s)) return;
       let v = t.type === 'checkbox' ? t.checked : t.type === 'number' ? +t.value || 0 : t.value;
@@ -650,7 +650,11 @@
     });
     shipsEl().addEventListener('click', async e => {
       const r = e.target.closest('[data-shiproll]');
-      if (r) return H.roll(r.dataset.shiproll, r.dataset.label, { d20: /^1d20/.test(r.dataset.shiproll), mode: H.rollModeFromEvent(e) });
+      if (r) {
+        const o = window.HTShipSheet ? HTShipSheet.rollOpts(ships().find(x => x.id === SH.sel), r, H.rollModeFromEvent(e)) : { mode: H.rollModeFromEvent(e), label: r.dataset.label };
+        return H.roll(r.dataset.shiproll, o.label, { d20: /^1d20/.test(r.dataset.shiproll), mode: o.mode });
+      }
+      if (e.target.closest('[data-sx]') && window.HTShipSheet) return HTShipSheet.click(e, ships().find(x => x.id === SH.sel));
       const b = e.target.closest('[data-sa]'); if (!b) return;
       const a = b.dataset.sa, s = ships().find(x => x.id === SH.sel);
       if (a === 'sel') { SH.sel = b.dataset.id; SH.as = 0; return renderShips(shipsEl()); }
@@ -669,14 +673,6 @@
       if (a === 'add-eq') return mutateShip(x => x.equipment.push({ name: 'Equipment', notes: '' }));
       if (a === 'add-mod') return mutateShip(x => x.mods.push({ name: 'Modification', notes: '' }));
       if (a === 'skill') return mutateShip(x => { const k = b.dataset.k; x.skills[k] = (n0(x.skills[k]) + 1) % 3; });
-      if (a === 'dmg' || a === 'heal-hull' || a === 'heal-shield') {
-        const raw = $('#shipDelta').value.trim(), n = Math.abs(parseInt(raw, 10)); if (!n) return;
-        return mutateShip(x => {
-          if (a === 'dmg') { const sh = Math.min(n0(x.shield.current), n); x.shield.current = n0(x.shield.current) - sh; x.hull.current = Math.max(0, n0(x.hull.current) - (n - sh)); }
-          if (a === 'heal-hull') x.hull.current = Math.min(n0(x.hull.max), n0(x.hull.current) + n);
-          if (a === 'heal-shield') x.shield.current = Math.min(n0(x.shield.max), n0(x.shield.current) + n);
-        });
-      }
       if (a === 'pick-equip') return openShipEquipPicker(!!b.dataset.weapons);
       if (a === 'pick-mod') return openShipModPicker();
     });

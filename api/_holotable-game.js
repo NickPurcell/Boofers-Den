@@ -8,6 +8,7 @@
 
 const crypto = require("crypto");
 const Fight = require("./_holotable-fight.js");   // the combat view (fight.*), off until the GM switches it on
+const Ships = require("./_holotable-ships.js");   // a ship in a fight (ship.damage, destruction saves, ship conditions): Starships of the Galaxy
 const R = globalThis.SW5E;   // rules.js, loaded by the fight module (senses)
 
 const CHAT_LIMIT = 400;
@@ -138,7 +139,7 @@ function cleanShip(sh, chars) {
       range: s(w.range, 40), props: s(w.props, 300) })),
     equipment: list(sh.equipment, 60, (e) => ({ name: s(e.name, 80), notes: s(e.notes, 300) })),
     mods: list(sh.mods, 80, (e) => ({ name: s(e.name, 80), notes: s(e.notes, 300) })),
-    notes: s(sh.notes, 10000), updated: now(),
+    notes: s(sh.notes, 10000), status: Ships.cleanStatus(sh.status), updated: now(),
   };
 }
 const cleanVariants = (v) => [...new Set((Array.isArray(v) ? v : []).slice(0, 80).map((x) => str(x, 80).trim()).filter(Boolean))];
@@ -471,6 +472,7 @@ function applyAction(camp, cid, gm, type, p) {
   mp.props = mp.props || [];
   const need = (ok, why = "GM only") => { if (!ok) throw new Forbidden(why); };
   if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, applyAction, shownName, combatMoves, reviveChar, Forbidden, Invalid });
+  if (Ships.handles(type)) return Ships.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
 
   switch (type) {
     // ---- characters
@@ -945,6 +947,7 @@ function applyAction(camp, cid, gm, type, p) {
       if (old) need(gm || !old.hidden, "That ship is the GM's.");
       else if (camp.ships.length >= MAX_SHIPS) throw new Invalid(`A table can have up to ${MAX_SHIPS} ships.`);
       const sh = cleanShip(Object.assign({}, p.ship, { id: old ? old.id : rid(), owner: old ? old.owner : cid }), chars);
+      Ships.keepStatus(sh, old);   // the fight state (conditions, destruction saves) is the server's; points stay inside the maximums
       if (!gm) sh.hidden = old ? old.hidden : false;
       if (old) camp.ships[i] = sh; else camp.ships.push(sh);
       return { id: sh.id };
