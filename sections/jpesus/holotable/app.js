@@ -706,6 +706,10 @@
           <span class="bonus">${r.max - r.used}/${r.max}</span>
           ${!ro ? `<button class="btn tiny" data-act="res-use" data-i="${r.i}" ${r.used >= r.max ? 'disabled' : ''} title="Spend one">Use</button><button class="btn tiny ghost" data-act="res-back" data-i="${r.i}" ${r.used <= 0 ? 'disabled' : ''} title="Get one back">+1</button>` : ''}
           <span class="muted res-refill">${refill[r.refill] || ''}</span></div>`).join('')}</div>` : '<p class="muted">Nothing to track yet.</p>'}
+        ${R.infuseBonus(ch) ? `<div class="lr res-row" title="Infuse Item (Engineer): one armor, shield or weapon until your next long rest. +${R.infuseBonus(ch)} to AC, or to attack and damage rolls.">
+          <span class="nm">Infuse Item <span class="muted">+${R.infuseBonus(ch)}</span></span>
+          ${ro ? `<span>${esc(String(ch.infused || '').replace(/^(attack|equipment):/, '') || '—')}</span>` : `<select data-act-change="infuse"><option value="">— nothing infused —</option>${(ch.attacks || []).map(a => `<option value="attack:${esc(a.name)}" ${ch.infused === 'attack:' + a.name ? 'selected' : ''}>⚔ ${esc(a.name)}</option>`).join('')}${(ch.equipment || []).filter(e => e.armor && e.armor.kind).map(e => `<option value="equipment:${esc(e.name)}" ${ch.infused === 'equipment:' + e.name ? 'selected' : ''}>🛡 ${esc(e.name)}</option>`).join('')}</select>`}
+          <span class="muted res-refill">until long rest</span></div>` : ''}
         ${tbl.filter(t => t.cols.length).map(t => `<div class="class-tbl"><b>${esc(t.cls)} ${t.level}</b> ${t.cols.map(([h, v]) => `<span><span class="muted">${esc(h)}</span> ${esc(v)}</span>`).join(' · ')}</div>`).join('')}
       </div>`;
     }
@@ -812,10 +816,12 @@
     else setTimeout(() => guarded('sheet', renderSheet), 0);
   });
   function sheetChangeAction(kind, val, t) {
+    if (kind === 'infuse' && !val) return mutate(c => { c.infused = ''; });   // nothing infused
     if (!val) return;
     if (kind === 'add-cond') mutate(c => { c.conditions = [...new Set([...(c.conditions || []), val])]; });
     if (kind === 'add-weapon') { const w = R.WEAPONS[+val]; mutate(c => c.attacks.push({ name: w.name, ab: w.ab, damage: w.damage, type: w.type, props: w.props, proficient: true })); }
     if (kind === 'assign') act('char.assign', { id: S.selected, owner: val });
+    if (kind === 'infuse') return mutate(c => { c.infused = val; });
     t.value = '';
   }
   $('#sheet').addEventListener('click', async e => {
@@ -843,7 +849,7 @@
       case 'short-rest': case 'short-rest-done': shortRestDialog(); break;   // hit dice by size, then the rest itself (#71)
       case 'long-rest':
         mutate(c => {
-          c.hp.current = +c.hp.max; c.hp.temp = 0; c.force.used = 0; c.tech.used = 0; c.deathSaves = { s: 0, f: 0 };
+          c.hp.current = +c.hp.max; c.hp.temp = 0; c.force.used = 0; c.tech.used = 0; c.deathSaves = { s: 0, f: 0 }; c.infused = '';   // Infuse Item ends; infuse again
           delete c.force.high; delete c.tech.high;   // high-level powers can be cast again (#160)
           // half the total hit dice back (at least one), the largest first (audit 7.5)
           const dice = R.hitDice(c); let back = Math.max(1, Math.floor(dice.reduce((n, d) => n + d.total, 0) / 2));

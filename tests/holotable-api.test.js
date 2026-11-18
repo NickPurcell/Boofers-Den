@@ -2137,3 +2137,28 @@ test("map: anyone pings (once a second each); the GM draws and clears (audit 8.1
   await gm.act("map.drawClear", {});
   assert.equal((await gm.poll()).data.state.map.drawings, undefined, "none left");
 });
+
+test("Infuse Item (Engineer): +1/+2/+3 to the infused weapon's attack and damage or the armor's AC (#67, 3.4)", async () => {
+  require("../sections/jpesus/holotable/rules.js");
+  const R = globalThis.SW5E;
+  const eng = (lvl, o) => Object.assign({ classes: [{ name: "Engineer", level: lvl }], abilities: { str: 14, dex: 12 }, equipment: [] }, o);
+  const blade = { name: "Vibrosword", ab: "str", damage: "1d8" };
+  assert.deepEqual([1, 2, 9, 10, 15].map((l) => R.infuseBonus(eng(l))), [0, 1, 1, 2, 3]);
+  const c = eng(10, { infused: "attack:Vibrosword", attacks: [blade] });
+  assert.equal(R.attackBonus(c, blade), 2 + 4 + 2, "Str +2, proficiency +4, infused +2");
+  assert.equal(R.damageExpr(c, blade), "1d8+4");
+  assert.equal(R.attackBonus(eng(10, { attacks: [blade] }), blade), 6, "not infused: as before");
+  const suit = { name: "Combat suit", equipped: true, armor: { kind: "light", ac: 11 } };
+  assert.equal(R.armorClass(eng(15, { equipment: [suit], infused: "equipment:Combat suit" })).total, 15, "11 + Dex 1 + 3");
+  assert.equal(R.armorClass(eng(15, { equipment: [Object.assign({}, suit, { equipped: false })], infused: "equipment:Combat suit" })).total, 11, "only while worn");
+  assert.equal(R.armorClass(eng(2, { equipment: [{ name: "Light shield", equipped: true, armor: { kind: "shield", ac: 1 } }], infused: "equipment:Light shield" })).total, 13, "10 + 1 + shield 1 + infused 1");
+  assert.equal(R.attackBonus({ classes: [{ name: "Fighter", level: 10 }], abilities: { str: 14 }, infused: "attack:Vibrosword" }, blade), 6, "only an Engineer's");
+
+  const { gm, p1 } = await table();
+  const id = (await p1.act("char.save", { char: eng(10, { name: "Tink", acAuto: true, infused: "equipment:Combat suit", equipment: [suit] }) })).data.id;
+  let s = (await gm.poll()).data.state.characters[id];
+  assert.equal(s.infused, "equipment:Combat suit");
+  assert.equal(s.ac, 14, "the server's auto AC includes it");
+  const id2 = (await p1.act("char.save", { char: eng(10, { name: "Odd", infused: "javascript:alert(1)" }) })).data.id;
+  assert.equal((await gm.poll()).data.state.characters[id2].infused, undefined);
+});
