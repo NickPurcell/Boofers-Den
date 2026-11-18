@@ -393,6 +393,8 @@
       return Object.assign({ key: a.key || String(i), name: a.name || 'Attack', bonus, abil: ab, damage, crit: rules.critExpr(damage), type: a.type || '', enhanced: +a.magic > 0,
         finesse: a.ab === 'finesse' || /\bfinesse\b/i.test(String(a.props || '')), weapon: true, proficient: a.proficient !== false,
         ...(a.martial ? { martial: true, unarmed: isUnarmed(a) } : {}),
+        ...(rules.reloadOf && rules.reloadOf(a) ? { reload: rules.reloadOf(a), ammo: rules.ammoOf(a) } : {}),   // shots and reload (6.6, #179); Brutal Critical and the crit range next
+        ...(rules.brutalDice && rules.isMelee && rules.isMelee(a) && rules.brutalDice(ch) ? { brutal: rules.brutalDice(ch) } : {}),
         ...(() => { const k = Math.min(+a.critRange >= 15 && +a.critRange < 20 ? Math.round(+a.critRange) : 20, rules.critFrom ? +rules.critFrom(a.props) || 20 : 20); return k < 20 ? { critFrom: k } : {}; })() }, readRange(a.props), wp, offhandNumbers(ch, a, ab, bonus, wp, st, rules));
     }).filter((a) => a.melee || a.range);
   }
@@ -930,9 +932,9 @@
     const base = { kind: 'volley', use: 'action', cost: {}, reach: null, range: a.range, attack: null, applies: [], concentration: false, weapon: a.key,
       save: { ability: 'dex', dc: 8 + (+a.bonus || 0), onSave: 'none' } };
     const out = [];
-    if (a.burst) out.push(Object.assign({}, base, { key: 'burst:' + a.key, name: `${a.name}, burst`, targets: 'area', area: { shape: 'cube', size: 10, width: 10, from: 'point' },
+    if (a.burst) out.push(Object.assign({}, base, { shots: a.burst, key: 'burst:' + a.key, name: `${a.name}, burst`, targets: 'area', area: { shape: 'cube', size: 10, width: 10, from: 'point' },
       damage: [{ dice: a.damage, add: 0, type: a.type }], hint: `Burst ${a.burst}: a 10-ft cube; Dex save DC ${8 + (+a.bonus || 0)} or ${a.damage}` }));
-    if (a.rapid) out.push(Object.assign({}, base, { key: 'rapid:' + a.key, name: `${a.name}, rapid`, targets: 1,
+    if (a.rapid) out.push(Object.assign({}, base, { shots: a.rapid, key: 'rapid:' + a.key, name: `${a.name}, rapid`, targets: 1,
       damage: [{ dice: doubleDice(a.damage), add: 0, type: a.type }], hint: `Rapid ${a.rapid}: one target; Dex save DC ${8 + (+a.bonus || 0)} or ${doubleDice(a.damage)}` }));
     return out;
   }
@@ -1095,6 +1097,14 @@
   // dodging counts only while the unit can see trouble coming: not incapacitated, and not at speed 0
   const dodging = (w, t) => !!spentOf(w, t.id).dodge && !INCAPACITATING(t) && budget(w, t.id).speed > 0;
 
+  /* ---------------- shots and reload (6.6, the combat view's half of #179) ---------------- */
+  // a Reload weapon's shots, kept per attack key on the unit (and written back to the sheet's row): why not, or ''
+  function noShots(me, attack, n = 1) {
+    if (!attack || !attack.reload || !me.shots || me.shots[attack.key] == null) return '';
+    const left = +me.shots[attack.key] || 0;
+    return left >= n ? '' : left ? `${attack.name} has ${left} shot${left === 1 ? '' : 's'} left; this needs ${n}. Reload first.` : `${attack.name} is out of shots: reload first.`;
+  }
+  const spendShots = (me, attack, n = 1) => { if (attack && attack.reload && me.shots && me.shots[attack.key] != null) me.shots[attack.key] = Math.max(0, (+me.shots[attack.key] || 0) - n); };
   /* ---------------- Grapple, Shove, escaping a grapple, Help (#144) ---------------- */
   // A contest's bonus: a character's Athletics or Acrobatics from its sheet, a creature's from its stat block's skills,
   // or else the ability's modifier. Frightened and poisoned roll their checks at disadvantage.
@@ -1105,7 +1115,8 @@
   }
   // `me` against `t`: me's skill against the better of t's (it picks); a tie leaves things as they are, so me loses it
   function contest(w, me, t, mine, theirs, roll, log, what) {
-    const side = (u, k) => { const b = contestBonus(u, k), m = d20(w, 0, has(u, 'checksDis') || heavyDis(u, SKILL_AB[k]) ? 1 : 0); return { k, b, expr: d20expr(m) + sgn(b) }; };
+    // Reliable Talent (#179): a proficient check's d20 counts at least 8
+    const side = (u, k) => { const b = contestBonus(u, k), m = d20(w, 0, has(u, 'checksDis') || heavyDis(u, SKILL_AB[k]) ? 1 : 0); return { k, b, expr: d20expr(m) + ((u.reliable || {})[k] ? 'min8' : '') + sgn(b) }; };
     const a = side(me, mine), d = theirs.map((k) => side(t, k)).sort((p, q) => q.b - p.b)[0];
     const ra = roll(a.expr), rt = roll(d.expr), won = ra.total > rt.total;
     log.push({ unit: me.id, kind: 'check', roll: ra, expr: a.expr, text: `${me.name} tries to ${what} ${t.name} (${SKILL_NAME[a.k]}): ${ra.total}.` });
@@ -1179,8 +1190,11 @@
         if (act.offhand) {   // Two- or Double-Weapon Fighting (audit 5.8): a bonus action attack after the Attack action
           const o = offhandOf(w, me, act.attack);
           if (!o.spec) return no(o.why);
+          const dry = noShots(me, act.attack);
+          if (dry) return no(dry);
           const s = strike(w, me, act.target, o.spec, { adv: !!act.adv, dis: !!act.dis, no: act.no || [], add: act.add || {} }, roll, '');
           if (!s.ok) return s;
+          spendShots(me, act.attack);
           const sp = w.spent[me.id];
           if (sp.off) sp.off += 1; else Object.assign(sp, { bonus: sp.bonus + 1, off: 1 });
           return { ok: true, world: w, log: s.log, events: s.events, reactions: s.reactions || [] };
@@ -1189,8 +1203,11 @@
         // and the unit can move between them. A creature's count comes with the attack (its stat block, the GM's).
         const slot = attackSlot(w, me, b, act);
         if (!slot.take) return no(slot.why);
+        const dry = noShots(me, act.attack);
+        if (dry) return no(dry);
         const s = strike(w, me, act.target, act.attack, { adv: !!act.adv, dis: !!act.dis, no: act.no || [], add: act.add || {}, twoHands: !!act.twoHands }, roll, '');
         if (!s.ok) return s;
+        spendShots(me, act.attack);
         const sp = slot.take();
         if (me.monk && act.attack.martial) sp.ma = 1;   // Martial Arts: a bonus-action unarmed strike after this (#67)
         // the light (or light and double) weapon it attacked with, for a bonus attack after (audit 5.8)
@@ -1248,6 +1265,15 @@
         return { ok: true, world: w, log, events: [] };
       }
       case 'common': {   // Dash, Disengage, Dodge; and a Berserker's Rage
+        if (act.key === 'reload') {   // Reload N (6.6, #179): an action or a bonus action, the weapon full again
+          const key = String(act.weapon || ''), full = Object.prototype.hasOwnProperty.call(me.reloads || {}, key) ? me.reloads[key] : 0;
+          if (!full) return no('That weapon has no Reload number.');
+          const use = act.asBonus ? 'bonus' : 'action';
+          if (!b[use]) return no(`${me.name} has already used the ${use === 'bonus' ? 'bonus action' : 'action'} this turn.`);
+          w.spent[me.id][use] += 1;
+          me.shots = Object.assign({}, me.shots, { [key]: full });
+          return { ok: true, world: w, log: [{ unit: me.id, text: `${me.name} reloads${act.weaponName ? ' ' + String(act.weaponName).slice(0, 80) : ''}: ${full} shots${use === 'bonus' ? ' (a bonus action)' : ''}.` }], events: [] };
+        }
         if (act.key === 'surge') {   // a Fighter's Action Surge (#67): one more action this turn, once a turn, a use of its pool
           const pool = (me.pools || {})['action-surge'];
           if (!pool) return no(`${me.name} has no Action Surge.`);
@@ -1294,6 +1320,10 @@
         const ab = act.ability;
         if (!ab || !ab.name) return no('Pick an ability.');
         const slot = ab.use || 'action';
+        // Burst and Rapid use as many shots as their number (SW5e), from the weapon they fire
+        const gun = ab.kind === 'volley' && ab.weapon != null ? { key: String(ab.weapon), name: ab.name.replace(/, (burst|rapid)$/, ''), reload: (me.shots || {})[String(ab.weapon)] != null } : null;
+        const dryV = gun ? noShots(me, gun, +ab.shots || 1) : '';
+        if (dryV) return no(dryV);
         if (slot !== 'free' && !b[slot]) return no(`${me.name} has already used the ${slot === 'bonus' ? 'bonus action' : slot} this turn.`);
         const up = Math.max(0, Math.round(+act.upcast || 0));
         // a power's level, upcast included, can't pass the caster's highest level (an at-will power's upcast too)
@@ -1327,6 +1357,7 @@
         }
         // pay first: the turn slot and the points; a new concentration power ends the old one
         if (slot !== 'free') w.spent[me.id][slot] += 1;
+        if (gun) spendShots(me, gun, +ab.shots || 1);   // a volley's shots
         if (ab.concentration && w.conc[me.id]) endConcentration(w, me.id, `${me.name} starts concentrating on ${ab.name}`, null);
         if (ab.concentration) w.conc[me.id] = ab.name;
         for (const [pool, n] of Object.entries(cost)) if (n) me.pools[pool] = payPool(Object.assign({}, me.pools[pool]), n);   // temporary points first (#190)
@@ -1489,7 +1520,8 @@
     // versatile in two hands (5.8): its larger die for a melee attack, in place of the weapon's own
     const twoHands = !!(opts.twoHands && attack.versatile && !pv.ranged), dmg0 = twoHands ? String(attack.damage).replace(/\d*d\d+/i, attack.versatile) : attack.damage;
     const thr = thresholdFor(me, attack, pv.ranged, pv.feet, twoHands);   // a fighting style's minimum roll threshold (#150)
-    const base0 = !crit ? dmg0 : variant(w, 'Crueler Criticals') ? cruel(dmg0) : twoHands ? doubleDice(dmg0) : attack.crit || dmg0;
+    const die0 = /d(\d+)/i.exec(String(dmg0 || '')), brutal = crit && !pv.ranged && +attack.brutal > 0 && die0 ? `+${+attack.brutal}d${die0[1]}` : '';   // Brutal Critical (#179)
+    const base0 = (!crit ? dmg0 : variant(w, 'Crueler Criticals') ? cruel(dmg0) : twoHands ? doubleDice(dmg0) : attack.crit || dmg0) + brutal;
     const base = (thr ? withThreshold(base0) : base0) + (attack.heavy ? '+' + attack.heavy : '');
     // bonus damage from class features (audit 5.9); a rider the attacker turned down (opts.no) isn't added
     const add = opts.add || {}, fp = (me.pools || {}).force;
@@ -1516,7 +1548,7 @@
     const df = defended(t, Math.max(0, d.total) + corr, String(attack.type || '').toLowerCase(), attack.enhanced ? 'enhanced' : 'weapon');
     const tr = mv && mv.trueDmg ? roll('1' + sup.die) : null;   // Exploit Weakness: true damage, past any resistance
     const amount = df.amount + (tr ? Math.max(0, tr.total) : 0);
-    const what = `${amount}${attack.type ? ' ' + attack.type : ''} damage${twoHands ? ' (two-handed)' : ''}${attack.heavy ? ` (heavy +${attack.heavy})` : ''}${thr ? ` (${thr}: no die under its threshold)` : ''}${riders.length ? ` (with ${riders.map((x) => `${x.name} ${x.dice ? (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat}${x.points ? `, ${x.points} force point${x.points === 1 ? '' : 's'}` : ''}`).join('; ')})` : ''}${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${tr ? ` (${mv.name}: ${tr.total} true damage)` : ''}`;
+    const what = `${amount}${attack.type ? ' ' + attack.type : ''} damage${twoHands ? ' (two-handed)' : ''}${attack.heavy ? ` (heavy +${attack.heavy})` : ''}${thr ? ` (${thr}: no die under its threshold)` : ''}${brutal ? ` (Brutal Critical ${brutal.slice(1)})` : ''}${riders.length ? ` (with ${riders.map((x) => `${x.name} ${x.dice ? (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat}${x.points ? `, ${x.points} force point${x.points === 1 ? '' : 's'}` : ''}`).join('; ')})` : ''}${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${tr ? ` (${mv.name}: ${tr.total} true damage)` : ''}`;
     const landing = { amount, crit, type: attack.type || '', mv: mv && mv.then ? mvKey : null, dc: mv && mv.then ? me.maneuvers.dc[mv.type] : 0 };
     // Parry (#67): a melee hit on one who knows it, with its reaction and a die, waits for its answer before it lands
     if (!how && !pv.ranged && amount > 0 && t.maneuvers && t.maneuvers.known.includes('parry') && superiorityOf(t) && !INCAPACITATING(t)
@@ -1641,8 +1673,11 @@
       if (!sup) return no(`${me.name} has no superiority dice left.`);
       if (maneuverUsed(w, me.id, re.kind)) return no(`${me.name} has used ${mv.name} this turn.`);
       if (!re.attack || !re.attack.weapon || (re.kind === 'riposte' ? !(+re.attack.melee > 0) : !re.attack.range)) return no(re.kind === 'riposte' ? 'A riposte is a melee weapon attack.' : 'Return fire is a ranged weapon attack.');
+      const dry = noShots(me, re.attack);
+      if (dry) return no(dry);
       const s = strike(w, me, t.id, re.attack, { adv: !!re.adv, dis: !!re.dis, extra: { key: 'maneuver', name: mv.name, dice: '1' + sup.die } }, roll, re.kind === 'riposte' ? 'a riposte' : 'return fire');
       if (!s.ok) return s;
+      spendShots(me, re.attack);
       sup.used += 1;
       w.spent[me.id] = Object.assign(spentOf(w, me.id), { reaction: spentOf(w, me.id).reaction + 1, mv: (+spentOf(w, me.id).mv || 0) | (1 << MANEUVER_KEYS.indexOf(re.kind)) });
       settle(w, s.log);
@@ -1651,8 +1686,11 @@
     if (!re.attack || !(+re.attack.melee > 0)) return no('An opportunity attack is a melee attack.');
     const there = { x: t.x, y: t.y };
     if (re.at) { t.x = re.at.x; t.y = re.at.y; }
+    const dry = noShots(me, re.attack);
+    if (dry) return no(dry);
     const s = strike(w, me, t.id, re.attack, { adv: !!re.adv, dis: !!re.dis }, roll, 'an opportunity attack');
     if (!s.ok) return s;
+    spendShots(me, re.attack);
     if (!(t.hp != null && t.hp <= 0)) { t.x = there.x; t.y = there.y; }
     w.spent[me.id] = Object.assign(spentOf(w, me.id), { reaction: spentOf(w, me.id).reaction + 1 });
     settle(w, s.log);
@@ -1879,7 +1917,11 @@
         // the sheet the first time it's spent (writeBack), so Action Surge, maneuvers and the rest work on any sheet
         pools: ch ? Object.fromEntries(resourcesOf(rules && rules.withClassResources ? Object.assign({}, ch, { resources: cleanResources(rules.withClassResources(ch)) }) : ch, rules).map((r) => [r.key, r])) : {},
         riders: ch ? ridersOf(ch, rules) : {},
-        attacks: ch ? attacksPerAction(ch) : 1, offhands: ch ? bonusAttacksOf(ch) : 0, maneuvers: ch ? maneuversOf(ch, rules) : null, styles: ch ? stylesOf(ch) : {},   // per Attack action (#139); a creature's Multiattack comes with its attack
+        attacks: ch ? attacksPerAction(ch) : 1, offhands: ch ? bonusAttacksOf(ch) : 0,
+        // shots left in each Reload weapon (6.6, #179), by attack key; Reliable Talent on the contest skills
+        shots: ch && rules && rules.shotsOf ? Object.fromEntries((ch.attacks || []).map((a, i) => [String(i), rules.shotsOf(a)]).filter(([, v]) => v != null)) : {},
+        reloads: ch && rules && rules.reloadOf ? Object.fromEntries((ch.attacks || []).map((a, i) => [String(i), rules.reloadOf(a)]).filter(([, v]) => v)) : {},
+        reliable: ch && rules && rules.reliableTalent && rules.reliableTalent(ch) ? Object.fromEntries(['athletics', 'acrobatics'].map((k) => [k, +((ch.skills || {})[k] || 0) >= 1])) : {}, maneuvers: ch ? maneuversOf(ch, rules) : null, styles: ch ? stylesOf(ch) : {},   // per Attack action (#139); a creature's Multiattack comes with its attack
         // Raging is a rage in progress: without its live effect (the fight ended, a new one began) it's dropped here
         conditions: Array.from(new Set([].concat(e.conditions || [], ch ? ch.conditions || [] : [])))
           .filter((c) => c !== 'Raging' || (table.effects || []).some((ef) => ef.unit === e.id && ef.condition === 'Raging')),
@@ -1909,5 +1951,5 @@
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
     SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf, d20, flankOf, fixedTotal, cruel, modeName,
-    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, poolLeft, payPool, ridersOf, ridersFor, attacksPerAction, multiattackOf, offhandOf, stylesOf, withThreshold, thresholdFor, MIN_THRESHOLD, contestBonus, helpOn, maneuverCheck, unitAt, weaponProps, volleysOf, MANEUVERS, maneuversOf, superiorityOf, saveVs, pushAway, landHit, martialOf, martialDieOf };
+    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, poolLeft, payPool, ridersOf, ridersFor, attacksPerAction, multiattackOf, offhandOf, stylesOf, withThreshold, thresholdFor, MIN_THRESHOLD, contestBonus, helpOn, maneuverCheck, unitAt, weaponProps, volleysOf, MANEUVERS, maneuversOf, superiorityOf, saveVs, pushAway, landHit, martialOf, martialDieOf, noShots };
 });
