@@ -38,14 +38,14 @@ export function tendrilPaths(style, thick, head) {
     const d = [Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)];
     const hit = cast(head, [C[0] + d[0] * 0.25, C[1] + d[1] * 0.25, C[2] + d[2] * 0.25], [-d[0], -d[1], -d[2]], 0.3);
     if (!hit || hit.p[1] < hairline(Math.atan2(hit.p[0], hit.p[2])) + 0.006) continue;   // only behind the hairline
-    const p = hit.p, n0 = hit.n, L = (LEN[style] || LEN.swept) * (0.78 + 0.44 * hash(id, 2)), rad = (i) => Math.max(0.003, r0 * (style === 'bound' ? (i < 5 ? 0.72 : 0.5) : 1 - 0.55 * (i / N)) * (0.9 + 0.2 * hash(id, 7)));   // bound ones are pulled thin and even
+    const p = hit.p, n0 = hit.n, L = (LEN[style] || LEN.swept) * (0.78 + 0.44 * hash(id, 2)), rad = (i) => Math.max(0.003, r0 * (style === 'bound' ? (i < 3.5 ? 0.7 : i < 5.5 ? 0.92 : 0.6) : 1 - 0.55 * (i / N)) * (0.9 + 0.2 * hash(id, 7)));   // bound ones are pulled thin over the skull, full again where they hang together behind it
     const pts = [[p[0] - n0[0] * 0.004, p[1] - n0[1] * 0.004, p[2] - n0[2] * 0.004]];
     // keep a point outside the head by the tendril's own thickness, so tendrils lie on the skull and never in it
     const clear = (q, r) => { const dd = head(q[0], q[1], q[2]); if (dd < r + 0.002) { const g = gradient(head, q[0], q[1], q[2]), m = r + 0.002 - dd; q[0] += g[0] * m; q[1] += g[1] * m; q[2] += g[2] * m; } return q; };
     if (style === 'bound') {
       const G = [0, 0.018, -0.132], o = [(hash(id, 3) - 0.5) * 0.03, (hash(id, 4) - 0.5) * 0.02, (hash(id, 5) - 0.5) * 0.02];
       for (const t of [0.3, 0.6, 0.85]) pts.push(clear([p[0] + (G[0] - p[0]) * t, p[1] + (G[1] - p[1]) * t, p[2] + (G[2] - p[2]) * t], rad(2) + 0.004));
-      pts.push([G[0] + o[0] * 0.5, G[1] + o[1] * 0.5, G[2]], [o[0] * 1.3, G[1] - 0.065 + o[1], G[2] - 0.016 + o[2]], [o[0] * 2.4, G[1] - 0.07 - L * 0.55 + o[1] * 2, G[2] - 0.008 + o[2]]);
+      pts.push([G[0] + o[0] * 0.5, G[1] + o[1] * 0.5, G[2]], [o[0] * 1.6, G[1] - 0.07 + o[1], G[2] - 0.02 + o[2] * 1.5], [o[0] * 3.2, G[1] - 0.08 - L * 0.75 + o[1] * 2, G[2] - 0.012 + o[2] * 2.5]);
     } else {
       const sweep = norm([n0[0] * 0.3, -0.1, -1]), side = norm([n0[2], 0, -n0[0]]), back = n0[2] > 0 ? 0.55 * n0[2] : 0;   // nothing falls forward over the face
       let q = pts[0].slice();
@@ -53,7 +53,7 @@ export function tendrilPaths(style, thick, head) {
         const u = i / N; let v;
         if (style === 'short') v = [n0[0], n0[1] + 0.2, n0[2] - 0.35 * u - back];
         else if (style === 'loose') { const w = Math.sin(u * 5 + hash(id, 6) * 6.28) * 0.45, k = 1 - 0.55 * u; v = [n0[0] * k + side[0] * w, n0[1] * k - 1.25 * u, n0[2] * k + side[2] * w - 0.15 - back * 1.6]; }   // out, then down, with a wave
-        else { const f = Math.min(1, u * 1.6), flick = u > 0.75 ? (u - 0.75) * 1.6 : 0; v = [n0[0] * (1 - f + flick) + sweep[0] * f, n0[1] * (1 - f) + sweep[1] * f - 1.0 * u * u + flick * 0.3, n0[2] * (1 - f) + sweep[2] * f]; }   // back over the skull, then down behind it, the tips turning out
+        else { const g = Math.min(1, u * 1.8), f = g * (1 - 0.75 * u), flick = u > 0.8 ? (u - 0.8) * 1.5 : 0; v = [n0[0] * (1 - g + flick) + sweep[0] * f, n0[1] * (1 - g) + sweep[1] * f - 1.7 * u, n0[2] * (1 - g) + sweep[2] * f - 0.12]; }   // out of the scalp, back over the skull, then hanging down behind it under its own weight, the tips turning out a little
         v = norm(v); q = clear([q[0] + (v[0] * L) / N, q[1] + (v[1] * L) / N, q[2] + (v[2] * L) / N], rad(i)); pts.push(q.slice());
       }
     }
@@ -64,7 +64,7 @@ export function tendrilPaths(style, thick, head) {
 
 export function tendrils(style, thick, head) {
   const list = tendrilPaths(style, thick, head), ropes = list.map((t) => chain(t.pts, t.rad));
-  const band = style === 'bound' ? ellipsoid(0, 0.008, -0.139, 0.031, 0.012, 0.027) : null;
+  const band = style === 'bound' ? ellipsoid(0, 0.004, -0.142, 0.036, 0.014, 0.032) : null;
   const all = (x, y, z) => { let d = Infinity; for (const f of ropes) { const v = f(x, y, z); if (v < d) d = v; } return d; };
   // they grow straight out of the scalp (their roots are sunk into the head), so there is no cap and no seam
   let field = all;
