@@ -25,6 +25,18 @@ class Invalid extends Error {}
 const TERM = /([+-]?)\s*(?:(\d*)d(\d+)(?:(kh|kl|k|dh|dl)(\d+))?(!)?|(\d+))/iy;
 
 // Roll "2d20kh1+5", "1d8+1d6-2", "4d6dl1", "1d6!". nat = the kept d20 when there is exactly one d20 term.
+// SW5e, as 5e: a creature at 0 hit points that regains any stops being unconscious, and its death saves reset (it
+// stays Prone until it stands). Every way the sheet raises HP goes through char.save, so this runs there (and for the
+// combat view's Second Wind); the combat view's own healing does the same in its engine. #138
+function reviveChar(camp, ch, wasHp) {
+  if (!ch || !(num(wasHp, 1) <= 0) || !(num((ch.hp || {}).current, 0) > 0)) return false;
+  ch.deathSaves = { s: 0, f: 0 };
+  ch.conditions = (ch.conditions || []).filter((c) => c !== "Unconscious");
+  for (const e of (camp.initiative && camp.initiative.entries) || []) {
+    if (e.charId === ch.id) e.conditions = (e.conditions || []).filter((c) => c !== "Unconscious");
+  }
+  return true;
+}
 function rollDice(expr) {
   const src = String(expr || "").replace(/\s+/g, "").toLowerCase();
   if (!src) throw new Invalid("empty dice expression");
@@ -458,7 +470,7 @@ function applyAction(camp, cid, gm, type, p) {
   const chars = camp.characters, ini = camp.initiative, mp = camp.map;
   mp.props = mp.props || [];
   const need = (ok, why = "GM only") => { if (!ok) throw new Forbidden(why); };
-  if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, applyAction, shownName, combatMoves, Forbidden, Invalid });
+  if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, applyAction, shownName, combatMoves, reviveChar, Forbidden, Invalid });
 
   switch (type) {
     // ---- characters
@@ -486,10 +498,14 @@ function applyAction(camp, cid, gm, type, p) {
       clean.tokenImage = old ? old.tokenImage || "" : "";
       clean.updated = now();
       chars[id] = clean;
+      if (old) reviveChar(camp, clean, (old.hp || {}).current);   // healed up from 0: awake, death saves reset (#138)
       const ch = clean;
       for (const e of ini.entries) if (e.charId === id) { e.name = ch.name || e.name; const hp = ch.hp || {}; e.hp = hp.current; e.maxHp = hp.max; }
       for (const t of mp.tokens) if (t.charId === id) t.name = ch.name || t.name;
-      if (!old) addChat(camp, { system: true, text: `${playerName(camp, cid)} brought ${ch.name || "a character"} to the table.` });
+      // a player's new character is announced to all; the GM's is told to the GM only, since an NPC's name may be a
+      // secret the GM hides once its token is down (#142)
+      if (!old) addChat(camp, gm ? { system: true, to: ["@gm"], private: true, text: `You made ${ch.name || "a character"}. Players don't see this line.` }
+        : { system: true, text: `${playerName(camp, cid)} brought ${ch.name || "a character"} to the table.` });
       return { id };
     }
     case "char.photo.clear": {

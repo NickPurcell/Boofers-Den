@@ -740,7 +740,21 @@
       case 'dmg': { const at = ch.attacks[i]; roll(R.damageExpr(ch, at), `${at.name} — ${at.type || ''} damage`, { charId: ch.id, kind: 'damage' }); break; }
       case 'crit': { const at = ch.attacks[i]; roll(R.critExpr(R.damageExpr(ch, at)), `${at.name} — CRITICAL ${at.type || ''} damage`, { charId: ch.id, kind: 'damage' }); break; }
       case 'add-class-res': mutate(c => { c.resources = R.withClassResources(c); }); break;
-      case 'res-use': case 'res-back': mutate(c => {
+      case 'res-use': case 'res-back': {
+        const res0 = (ch.resources || [])[i];
+        if (a === 'res-use' && res0 && res0.key === 'second-wind') {   // Second Wind heals: 1d10 + fighter level (#65)
+          const row = R.resourceRows(ch).find(x => x.i === i);
+          if (!row || row.used >= row.max) break;
+          const lvl = (ch.classes.find(k => /^fighter$/i.test(k.name)) || {}).level || 1;
+          const r = await roll(`1d10+${lvl}`, 'Second Wind (healing)', { charId: ch.id, kind: 'heal' });
+          const heal = r && r.roll ? Math.max(0, r.roll.total) : 0;
+          mutate(c => { const rr = c.resources[i]; rr.used = Math.min(row.max, (+rr.used || 0) + 1); c.hp.current = Math.min(+c.hp.max || 0, (+c.hp.current || 0) + heal); });
+          break;
+        }
+      }
+      // falls through: any other resource just counts
+      // eslint-disable-next-line no-fallthrough
+      case 'res-count': mutate(c => {
         const r = (c.resources || [])[i]; if (!r) return;
         const row = R.resourceRows(c).find(x => x.i === i), max = row ? row.max : 0;
         r.used = Math.max(0, Math.min(max, (+r.used || 0) + (a === 'res-use' ? 1 : -1)));
