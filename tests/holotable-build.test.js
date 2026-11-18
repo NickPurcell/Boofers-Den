@@ -105,3 +105,21 @@ test("SW5e ability names map only to the six: an inherited name like 'constructo
   assert.equal(D.LISTS.species.build([{ name: "Y", abilitiesIncreased: [[{ abilities: ["__proto__"], amount: 2 }]] }])[0].asi, null);
   assert.deepEqual(D.LISTS.species.build([{ name: "Z", abilitiesIncreased: [[{ abilities: ["Wisdom"], amount: 2 }]] }])[0].asi, { wis: 2 });
 });
+
+test("a background skill already held can be traded for any other skill, one trade per held skill (SW5e, Backgrounds)", () => {
+  const B = loadBooks(), plain = (x) => JSON.parse(JSON.stringify(x));
+  const agent = { skills: "Choose two from Deception, Investigation, Lore, and Persuasion" };
+  // an Operative who took Deception: one of the other three listed, plus at most one of any other skill
+  let o = plain(B.backgroundSkillOptions(agent, ["deception", "stealth"]));
+  assert.deepEqual([o.n, o.swaps, o.from], [2, 1, ["investigation", "lore", "persuasion"]]);
+  assert.ok(o.other.includes("athletics") && !o.other.includes("stealth") && !o.other.includes("deception") && !o.other.includes("lore"));
+  // nothing held from the list: no trades, no other skills offered
+  o = plain(B.backgroundSkillOptions(agent, ["athletics"]));
+  assert.deepEqual([o.n, o.swaps, o.other.length], [2, 0, 0]);
+  // three of the four held: one listed left, two trades allowed but only two picks in all
+  o = plain(B.backgroundSkillOptions(agent, ["deception", "investigation", "lore"]));
+  assert.deepEqual([o.n, o.swaps, o.from], [2, 2, ["persuasion"]]);
+  // a half step (0.5) isn't the proficiency, so it isn't held; 1 and 2 (expertise) are
+  assert.deepEqual(plain(B.heldSkills({ deception: 0.5, lore: 1, insight: 2, stealth: 0 })), ["lore", "insight"]);
+  assert.deepEqual(plain(B.heldSkills(undefined)), []);
+});

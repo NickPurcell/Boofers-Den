@@ -228,7 +228,7 @@
         ${x.feats.length ? `<p><b>Suggested feats.</b> ${esc(x.feats.join(', '))}</p>` : ''}`,
       action: (x, i) => pickBtn(i, 'Choose'), pickedLabel: '✓ Chosen',
       onPick: x => {
-        const held = Object.keys(charOf(charId).skills || {}).filter(k => +charOf(charId).skills[k] > 0);
+        const held = heldSkills(charOf(charId).skills);
         backgroundChoices(x, held, `◈ ${esc(x.n)}`, 'Use this background', (skills, feat) => {
           mutateChar(charId, c => applyBackground(c, x, skills, feat));
           H.toast(`${x.n} chosen${skills.length ? ': ' + skills.map(k => R.SKILLS.find(sk => sk.key === k).name).join(', ') : ''}${feat ? ', feat ' + feat.n : ''}`);
@@ -254,28 +254,37 @@
   const classSkills = cl => (cl.skills.some(x => lc(x) === 'any') ? R.SKILLS.map(k => k.key) : cl.skills.map(skillKey).filter(Boolean));
   // Choosing within a background (audit 1.8): the skills from its "Choose two from …" list (minus ones already held) and
   // one of its feats. done(skills, feat) with skill keys and { n, text } (or null when it lists no feats).
+  // What a background's skill choice offers a character who already has some skills (held: sheet keys at full proficiency).
+  // SW5e, Personality and Backgrounds: "If a character would gain the same proficiency from two different sources, he or
+  // she can choose a different proficiency of the same kind instead." So each listed skill already held is a swap: up to
+  // that many picks may come from any other skill. n is how many to pick in all.
+  // the skills a sheet has the proficiency in: a dot at 1 or 2 (expertise); the half step (0.5, #185) isn't it
+  const heldSkills = skills => Object.keys(skills || {}).filter(k => +skills[k] >= 1);
+  function backgroundSkillOptions(b, held) {
+    held = held || [];
+    const ch = skillChoice(b.skills), from = ch.from.filter(k => !held.includes(k)), swaps = Math.min(ch.n, ch.from.length - from.length);
+    const other = swaps > 0 ? R.SKILLS.map(x => x.key).filter(k => !ch.from.includes(k) && !held.includes(k)) : [];
+    return { n: Math.min(ch.n, from.length + Math.min(swaps, other.length)), from, other, swaps, listed: ch.from.length };
+  }
   function backgroundChoices(b, held, title, nextLabel, done) {
-    // a skill the sheet already has can be swapped for any other (SW5e follows 5e here): when fewer of the listed ones are
-    // left than the background gives, every other skill is offered too
-    const ch = skillChoice(b.skills), from = ch.from.filter(k => !(held || []).includes(k));
-    const other = from.length < ch.n ? R.SKILLS.map(x => x.key).filter(k => !from.includes(k) && !(held || []).includes(k)) : [];
-    const n = Math.min(ch.n, from.length + other.length);
+    const { n, from, other, swaps, listed } = backgroundSkillOptions(b, held);
     let skills = [], feat = null;
     const ready = () => skills.length === n && (!b.feats.length || !!feat);
     H.modal(`<h3>${title}</h3>
       <h4>Choose ${n} skill${n === 1 ? '' : 's'} <span class="muted" id="bcCount">(0 of ${n})</span></h4>
       <div class="row wrap" style="gap:4px 14px">${from.map(k => `<label class="toggle"><input type="checkbox" data-bc="skill" value="${k}"> ${esc(R.SKILLS.find(x => x.key === k).name)}</label>`).join('')}</div>
-      ${other.length ? `<p class="muted" style="font-size:12px;margin:8px 0 4px">You already have ${ch.from.length - from.length === 1 ? 'one' : 'some'} of this background's skills, so any other skill can take ${ch.from.length - from.length === 1 ? 'its' : 'their'} place:</p>
-        <div class="row wrap" style="gap:4px 14px">${other.map(k => `<label class="toggle"><input type="checkbox" data-bc="skill" value="${k}"> ${esc(R.SKILLS.find(x => x.key === k).name)}</label>`).join('')}</div>`
-        : ch.from.length > from.length ? '<p class="muted" style="font-size:12px">Skills you already have are left out.</p>' : ''}
+      ${other.length ? `<p class="muted" style="font-size:12px;margin:8px 0 4px">You already have ${swaps === 1 ? 'one' : swaps} of this background's skills, so ${swaps === 1 ? 'one pick' : `up to ${swaps} picks`} can be any other skill instead:</p>
+        <div class="row wrap" style="gap:4px 14px">${other.map(k => `<label class="toggle"><input type="checkbox" data-bc="skill" data-other="1" value="${k}"> ${esc(R.SKILLS.find(x => x.key === k).name)}</label>`).join('')}</div>`
+        : listed > from.length ? '<p class="muted" style="font-size:12px">Skills you already have are left out.</p>' : ''}
       ${b.feats.length ? `<h4 style="margin-top:12px">Choose a feat</h4><select data-bc="feat"><option value="">— choose —</option>${b.feats.map(f => `<option>${esc(f)}</option>`).join('')}</select>
         <div class="muted" id="bcFeat" style="font-size:12px;margin-top:6px"></div>` : ''}
       <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn" data-bc="cancel">Cancel</button>
         <button class="btn primary" data-bc="ok" ${ready() ? '' : 'disabled'}>${esc(nextLabel)}</button></div>`, box => {
       box.onchange = async e => {
         if (e.target.dataset.bc === 'skill') {
+          const swapped = box.querySelectorAll('[data-bc=skill][data-other]:checked').length;
+          if (box.querySelectorAll('[data-bc=skill]:checked').length > n || swapped > swaps) e.target.checked = false;   // too many, or more swaps than held skills
           skills = [...box.querySelectorAll('[data-bc=skill]:checked')].map(i => i.value);
-          if (skills.length > n) { e.target.checked = false; skills = skills.filter(k => k !== e.target.value); }
           box.querySelector('#bcCount').textContent = `(${skills.length} of ${n})`;
         }
         if (e.target.dataset.bc === 'feat') {
@@ -924,7 +933,7 @@
 
   window.HTB = {
     list, mdBlock, libraryBar, openBook, openSpeciesPicker, openBackgroundPicker, openArchetypePicker, openFeaturePicker,
-    guidedBuild, buildLevel1, skillChoice, applyBackground,
+    guidedBuild, buildLevel1, skillChoice, applyBackground, backgroundSkillOptions, heldSkills,
     levelFeatures, archetypesOf, featNamed, featNames, openMonsterPicker, openStatBlock, rollCreatureSave, bonuses, saveBonus, difficulty, xpMultiplier, renderEncounter, renderShips, renderShipsSafe,
   };
   // the rules tab and ships tab were drawn before this file loaded
