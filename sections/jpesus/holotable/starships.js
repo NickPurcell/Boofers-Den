@@ -346,7 +346,7 @@
   function pickFrom(ship, field, table) {
     if (own(table, ship && ship[field])) return ship[field];
     const kind = own(PICK_KIND, field);
-    const names = ((ship && ship.equipment) || []).map((e) => words(e && e.name)).filter((n) => !kind || n.includes(' ' + kind + ' '));
+    const names = ((ship && ship.equipment) || []).map((e) => words(e && e.name)).filter((n) => !kind || n.includes(' ' + kind + ' ') || n.includes(' ' + kind + 's '));   // "Fortress Shields" typed by hand too
     for (const k of Object.keys(table)) {
       const w = words(k);
       if (names.some((n) => n.includes(w))) return k;
