@@ -2460,14 +2460,14 @@ test("Force-Empowered Strikes through the API: the points come off the sheet on 
 test("weapon properties: versatile's two-handed die, heavy's Strength bonus, a Strength or Dexterity requirement", () => {
   const sheet = (abilities) => ({ abilities: Object.assign({ str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 }, abilities), classes: [{ name: "Fighter", level: 1 }] });
   assert.deepEqual(E.weaponProps(sheet({ str: 16 }), { props: "Versatile (1d10)" }, "str", R), { versatile: "1d10" });
-  assert.deepEqual(E.weaponProps(sheet({ str: 16 }), { props: "Dexterity 11, Heavy, shocking 13, two-handed" }, "str", R), { heavy: 1, unmet: "Dexterity 11" }, "an Electrohammer at Dex 10");
-  assert.deepEqual(E.weaponProps(sheet({ str: 16, dex: 12 }), { props: "Dexterity 11, Heavy, shocking 13, two-handed" }, "str", R), { heavy: 1 });
+  assert.deepEqual(E.weaponProps(sheet({ str: 16 }), { props: "Dexterity 11, Heavy, shocking 13, two-handed" }, "str", R), { heavy: 1, unmet: "Dexterity 11", twoHanded: true }, "an Electrohammer at Dex 10");
+  assert.deepEqual(E.weaponProps(sheet({ str: 16, dex: 12 }), { props: "Dexterity 11, Heavy, shocking 13, two-handed" }, "str", R), { heavy: 1, twoHanded: true });
   assert.deepEqual(E.weaponProps(sheet({ str: 20 }), { props: "Heavy" }, "str", R), { heavy: 2 });
   assert.deepEqual(E.weaponProps(sheet({ str: 8 }), { props: "Heavy" }, "str", R), { heavy: 1 }, "at least 1");
   assert.deepEqual(E.weaponProps(sheet({ dex: 16 }), { props: "Heavy" }, "dex", R), {}, "heavy counts only with Strength");
-  assert.deepEqual(E.weaponProps(sheet({ str: 12 }), { props: "Burst 4, power cell (range 90/360), reload 4, strength 15, two-handed" }, "dex", R), { burst: 4, unmet: "Strength 15" });
+  assert.deepEqual(E.weaponProps(sheet({ str: 12 }), { props: "Burst 4, power cell (range 90/360), reload 4, strength 15, two-handed" }, "dex", R), { burst: 4, unmet: "Strength 15", twoHanded: true });
   assert.deepEqual(E.weaponProps(sheet({ str: 16 }), { props: "strength 15" }, "dex", R), {}, "met");
-  assert.deepEqual(E.weaponProps(sheet({}), { props: "Range (40/160), Strength, Two-handed" }, "dex", R), {}, "a bare Strength without a number asks nothing");
+  assert.deepEqual(E.weaponProps(sheet({}), { props: "Range (40/160), Strength, Two-handed" }, "dex", R), { twoHanded: true }, "a bare Strength without a number asks nothing");
   // in an attack: an unmet requirement is disadvantage; two hands use the larger die (doubled on a critical); heavy adds on a hit
   const sword = Object.assign({}, blade, { name: "Vibrosword", abil: "str", weapon: true, versatile: "1d10", heavy: 1 });
   const ava = unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 }), r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 60, maxHp: 60 });
@@ -2683,8 +2683,8 @@ test("Two- and Double-Weapon Fighting: the off-hand numbers from the sheet, and 
     ["Vibrosword", false, null, null, null]]);
   assert.deepEqual(pick(sheet([{ name: "Dual Wield Style" }])).map((x) => x[2]), ["1d6+3", "1d4+4", null, null], "Dual Wield: the modifier on off-hand damage");
   assert.deepEqual(pick(sheet([{ name: "Fighting Style: Twin-Blade" }])).map((x) => x[4]), [6, null, null, null], "Twin-Blade: the modifier on the other end's attack roll");
-  assert.deepEqual(E.stylesOf({ features: [{ name: "Split Style" }] }), { twfDamage: true, dwfAttack: true });
-  assert.deepEqual(E.stylesOf({ features: [{ name: "Duelist Style" }] }), { twfDamage: false, dwfAttack: false });
+  assert.deepEqual(E.stylesOf({ features: [{ name: "Split Style" }] }), { twfDamage: true, dwfAttack: true, greatWeapon: false, snapshot: false });
+  assert.deepEqual(E.stylesOf({ features: [{ name: "Duelist Style" }] }), { twfDamage: false, dwfAttack: false, greatWeapon: false, snapshot: false });
   const weak = Object.assign(sheet([]), { abilities: { str: 6, dex: 6, con: 10, int: 10, wis: 10, cha: 10 } });
   assert.deepEqual(pick(weak).slice(0, 2).map((x) => [x[2], x[4]]), [["1d6-2", 1], ["1d4-1", null]], "a negative modifier always counts (on the roll: -2 + 3 proficiency)");
 });
@@ -2760,4 +2760,68 @@ test("Two-Weapon Fighting through the API: the server works out the off-hand att
   const at = rolls.findIndex((x) => /Shortblade \(off-hand\)/.test(x.label || ""));
   assert.ok(at >= 0, "the off-hand attack is in the log");
   if (/a hit|critical/.test(rolls[at].label)) assert.match(rolls[at + 1].expr, /^[12]d6$/, "no Dex on the off-hand damage");
+});
+
+/* ---------------------------------------------------------------- minimum roll thresholds (#150, audit 12.2) */
+test("minimum roll thresholds: Great Weapon Style on a two-handed melee weapon, Snapshot Style with a blaster within 30 ft", () => {
+  assert.equal(E.withThreshold("1d12+3"), "1d12min5+3");
+  assert.equal(E.withThreshold("2d6+1d8+1d10+1d4-1"), "2d6min2+1d8min3+1d10min4+1d4min2-1");
+  assert.equal(E.withThreshold("2d20kh1+5"), "2d20kh1+5", "a keep term is left alone");
+  assert.equal(E.withThreshold("4"), "4");
+  // read from the sheet
+  const ch = (style, attacks) => ({ classes: [{ name: "Fighter", level: 1 }], abilities: { str: 16, dex: 14, con: 10, int: 10, wis: 10, cha: 10 }, features: style ? [{ name: style }] : [], attacks });
+  const pike = { name: "Vibroglaive", ab: "str", damage: "1d10", type: "kinetic", props: "Heavy, reach, two-handed" };
+  const pistol = { name: "Blaster pistol", ab: "dex", damage: "1d6", type: "energy", props: "Range (40/160)" };
+  assert.deepEqual(E.stylesOf(ch("Fighting Style: Great Weapon", [])).greatWeapon, true);
+  assert.deepEqual(E.stylesOf(ch("Snapshot Style", [])).snapshot, true);
+  const [glaive] = E.attacksOf(ch("", [pike]), R), [gun] = E.attacksOf(ch("", [pistol]), R);
+  assert.deepEqual([glaive.twoHanded, glaive.proficient, gun.twoHanded], [true, true, undefined]);
+  // in an attack
+  const gw = unit({ id: "gw", name: "Grue", side: "pc", x: 0, y: 0, styles: { greatWeapon: true } });
+  const r1 = () => unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 90, maxHp: 90 });
+  let d = dice({ total: 15, nat: 12 }, { total: 9 });
+  let r = E.apply(world([gw, r1()], "gw"), { type: "attack", unit: "gw", target: "r1", attack: glaive }, d.roll);
+  assert.equal(d.asked[1], "1d10min4+3+1", "the weapon's dice, then heavy");
+  assert.match(r.log[1].text, /Great Weapon Style: no die under its threshold/);
+  d = dice({ total: 25, nat: 20 }, { total: 20 });
+  E.apply(world([gw, r1()], "gw"), { type: "attack", unit: "gw", target: "r1", attack: glaive }, d.roll);
+  assert.equal(d.asked[1], "2d10min4+3+1", "a critical's doubled dice too");
+  const sword = Object.assign({}, blade, { weapon: true, versatile: "1d10" });
+  d = dice({ total: 15, nat: 12 }, { total: 9 });
+  E.apply(world([gw, r1()], "gw"), { type: "attack", unit: "gw", target: "r1", attack: sword }, d.roll);
+  assert.equal(d.asked[1], "1d8+3", "one-handed: no threshold");
+  d = dice({ total: 15, nat: 12 }, { total: 9 });
+  E.apply(world([gw, r1()], "gw"), { type: "attack", unit: "gw", target: "r1", attack: sword, twoHands: true }, d.roll);
+  assert.equal(d.asked[1], "1d10min4+3", "versatile in both hands");
+  d = dice({ total: 15, nat: 12 }, { total: 9 });
+  E.apply(world([gw, r1()], "gw"), { type: "attack", unit: "gw", target: "r1", attack: Object.assign({}, glaive, { proficient: false }) }, d.roll);
+  assert.equal(d.asked[1], "1d10+3+1", "not proficient: no threshold");
+  // Snapshot: within 30 ft, and no disadvantage from the enemy next to it
+  const sn = unit({ id: "sn", name: "Sable", side: "pc", x: 0, y: 0, styles: { snapshot: true } });
+  const pv = E.preview(world([sn, r1()], "sn"), "sn", "r1", Object.assign({}, gun, { melee: 0 }));
+  assert.deepEqual([pv.ranged, pv.mode], [true, "normal"], "an enemy within 5 ft gives no disadvantage");
+  assert.equal(E.preview(world([unit({ id: "sn", name: "Sable", side: "pc", x: 0, y: 0 }), r1()], "sn"), "sn", "r1", gun).mode, "dis", "without the style it does");
+  d = dice({ total: 15, nat: 12 }, { total: 4 });
+  E.apply(world([sn, r1()], "sn"), { type: "attack", unit: "sn", target: "r1", attack: gun }, d.roll);
+  assert.equal(d.asked[1], "1d6min2+2");
+  d = dice({ total: 15, nat: 12 }, { total: 4 });
+  E.apply(world([sn, unit({ id: "r1", name: "Raider", side: "npc", x: 7, y: 0, hp: 90, maxHp: 90 })], "sn"), { type: "attack", unit: "sn", target: "r1", attack: gun }, d.roll);
+  assert.equal(d.asked[1], "1d6+2", "35 ft away: none");
+});
+
+test("minimum roll thresholds through the API: the server rolls the threshold from the sheet's style", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { features: [{ name: "Great Weapon Style", text: "" }],
+    attacks: [{ name: "Vibroglaive", ab: "str", damage: "1d10", type: "kinetic", props: "Heavy, two-handed" }] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0" })).code, 200);
+  st = await gm.state();
+  const rolls = st.chat.filter((m) => m.fight && m.roll).map((m) => m.roll);
+  const dmg = rolls.filter((x) => x.kind === "damage").pop();
+  if (dmg) {
+    assert.match(dmg.detail, /^\d?d10min4\[/, dmg.detail);
+    assert.ok(dmg.total >= (/2d10/.test(dmg.detail) ? 8 : 4) + 3 + 1, `${dmg.total}: ${dmg.detail}`);
+  }
 });

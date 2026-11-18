@@ -70,6 +70,25 @@ test("dice: keeps, drops, constants and natural 20s", () => {
   assert.throws(() => G.rollDice("500d6"), G.Invalid);
 });
 
+test("dice: a minimum roll threshold (min N) counts a lower die as N and shows it (#150)", () => {
+  for (let i = 0; i < 300; i++) {
+    const r = G.rollDice("2d6min2+1d12min5+3");
+    assert.ok(r.total >= 2 + 2 + 5 + 3 && r.total <= 6 + 6 + 12 + 3, r.detail);
+  }
+  const crypto = require("crypto"), real = crypto.randomInt;
+  try {
+    const faces = [1, 5, 2, 1];
+    crypto.randomInt = () => faces.shift();
+    const r = G.rollDice("4d6min2");
+    assert.deepEqual([r.total, r.detail], [11, "4d6min2[1→2,5,2,1→2]"], "a 1 counts as 2, and shows it");
+  } finally { crypto.randomInt = real; }
+  const d = G.rollDice("1d20min8+5");
+  assert.ok(d.total >= 13 && d.nat >= 1 && d.nat <= 20, "the natural d20 is the die as rolled");
+  assert.match(G.rollDice("1d8min3").detail, /^1d8min3\[/);
+  assert.equal(G.rollDice("1d4min9").total, 4, "never above the die's own size");
+  assert.ok(G.rollDice("1d8").detail.indexOf("min") < 0, "an expression without min rolls as before");
+});
+
 test("unset or equal passwords: every request is refused", async () => {
   fresh();
   const saved = [process.env.HOLOTABLE_PLAYER_PASSWORD, process.env.HOLOTABLE_GM_PASSWORD];
