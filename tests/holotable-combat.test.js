@@ -3560,3 +3560,27 @@ test("class pools in the world (#164): a sheet that hasn't added its class's res
   const w2 = E.buildWorld({ characters: { c1: kept }, entries: [{ id: "e1", name: "Fenn", charId: "c1" }], active: true, turn: 0, tokens: [{ id: "t1", x: 0, y: 0 }], unitTokens: { e1: "t1" } }, R);
   assert.equal(w2.units.e1.pools.superiority.used, 2, "a stored pool keeps its count");
 });
+
+test("#212 review: an undo gives back a shot, and a reload's power cell, as they were", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], {
+    attacks: [{ name: "Blaster pistol", ab: "dex", damage: "1d6", type: "energy", props: "Ammunition (range 40/160), reload 2" }],
+    equipment: [{ name: "Power cell", qty: 2 }] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 3, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  // an attack, then the GM's undo: the pistol is as it was (never fired, so loaded: no shots stored)
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0" })).code, 200);
+  assert.equal((await gm.state()).characters[avery].attacks[0].shots, 1);
+  assert.equal((await gm.act("fight.undo", {})).code, 200);
+  st = await gm.state();
+  assert.equal(st.characters[avery].attacks[0].shots, undefined, "back to loaded");
+  // two shots, a reload (a cell from the gear), then undo: empty again, and the cell back
+  await sam.act("fight.attack", { target: ids.raider, attack: "0" });
+  assert.equal((await sam.act("fight.common", { key: "reload", weapon: "0", asBonus: true })).code, 200);
+  st = await gm.state();
+  assert.deepEqual([st.characters[avery].attacks[0].shots, st.characters[avery].equipment[0].qty], [2, 1]);
+  assert.equal((await gm.act("fight.undo", {})).code, 200);
+  st = await gm.state();
+  assert.deepEqual([st.characters[avery].attacks[0].shots, st.characters[avery].equipment[0].qty], [1, 2], "one shot left and both cells, as before the reload");
+});

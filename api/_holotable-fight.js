@@ -133,7 +133,9 @@ function cleanSnap(x) {
         force: Object.assign({ max: plainObj(r.force).max == null || plainObj(r.force).max === "" ? "" : num(plainObj(r.force).max, 0, 999), used: num(plainObj(r.force).used, 0, 999) }, num(plainObj(r.force).temp, 0, 999) ? { temp: num(plainObj(r.force).temp, 0, 999) } : {}, cleanHigh(plainObj(r.force).high)),
         tech: Object.assign({ max: plainObj(r.tech).max == null || plainObj(r.tech).max === "" ? "" : num(plainObj(r.tech).max, 0, 999), used: num(plainObj(r.tech).used, 0, 999) }, num(plainObj(r.tech).temp, 0, 999) ? { temp: num(plainObj(r.tech).temp, 0, 999) } : {}, cleanHigh(plainObj(r.tech).high)),
         hitDiceUsed: R.cleanHitDiceUsed(r.hitDiceUsed),   // the sheet's own cleaner: per die size or an old number
-        deathSaves: { s: num(plainObj(r.deathSaves).s, 0, 3), f: num(plainObj(r.deathSaves).f, 0, 3) } }]),
+        deathSaves: { s: num(plainObj(r.deathSaves).s, 0, 3), f: num(plainObj(r.deathSaves).f, 0, 3) },
+        shots: (Array.isArray(r.shots) ? r.shots : []).slice(0, 40).filter((x) => Array.isArray(x)).map(([i, n]) => [clamp(int(i), 0, 39), n == null ? null : num(n, 0, 999)]),
+        ammo: (Array.isArray(r.ammo) ? r.ammo : []).slice(0, 40).filter((x) => Array.isArray(x)).map(([i, name, q]) => [clamp(int(i), 0, 199), str(name, 80), num(q, 0, 9999)]) }]),
   };
 }
 
@@ -231,7 +233,10 @@ function snapshot(camp, label) {
     effects: JSON.parse(JSON.stringify(f.effects || [])), conc: Object.assign({}, f.conc), lastTurn: f.lastTurn || "", pending: JSON.parse(JSON.stringify(f.pending || [])),
     npcres: JSON.parse(JSON.stringify(f.npcres || {})),
     conds: ini.entries.map((e) => [e.id, (e.conditions || []).slice(), e.charId && camp.characters[e.charId] ? (camp.characters[e.charId].conditions || []).slice() : null]),
-    chars: Object.values(camp.characters).map((c) => [c.id, JSON.parse(JSON.stringify({ resources: c.resources || [], force: c.force, tech: c.tech, hitDiceUsed: c.hitDiceUsed, deathSaves: c.deathSaves }))]),
+    chars: Object.values(camp.characters).map((c) => [c.id, JSON.parse(JSON.stringify({ resources: c.resources || [], force: c.force, tech: c.tech, hitDiceUsed: c.hitDiceUsed, deathSaves: c.deathSaves,
+      // shots in each Reload weapon and the power cells or slug cartridges in the gear (6.6, #212 review), so Undo gives them back
+      shots: (c.attacks || []).map((a, i) => [i, a]).filter(([, a]) => a && R.reloadOf && R.reloadOf(a)).map(([i, a]) => [i, a.shots == null || a.shots === "" ? null : a.shots]),
+      ammo: (c.equipment || []).map((x, i) => [i, x]).filter(([, x]) => x && /^(power cell|slug cartridge)/i.test(String(x.name || ""))).map(([i, x]) => [i, x.name, x.qty]) }))]),
     tokens: (camp.map.tokens || []).filter((t) => tok.has(t.id)).map((t) => [t.id, t.x, t.y]),
     hp: ini.entries.map((e) => [e.id, e.hp, e.charId && camp.characters[e.charId] ? [camp.characters[e.charId].hp.current, camp.characters[e.charId].hp.temp] : null]),
   });
@@ -250,7 +255,14 @@ function restore(camp, s) {
   if (i >= 0) ini.turn = i;
   ini.round = s.ini.round; ini.active = s.ini.active;
   f.spent = s.spent || {};
-  for (const [id, r] of s.chars || []) if (charOf(camp, id)) Object.assign(charOf(camp, id), r);
+  for (const [id, r] of s.chars || []) {
+    const ch = charOf(camp, id);
+    if (!ch) continue;
+    const { shots, ammo, ...rest } = r;
+    Object.assign(ch, rest);
+    for (const [i, n] of shots || []) { const a = (ch.attacks || [])[i]; if (a) { if (n == null) delete a.shots; else a.shots = n; } }
+    for (const [i, name, q] of ammo || []) { const x = (ch.equipment || [])[i]; if (x && x.name === name) x.qty = q; }   // the same item, by name too
+  }
   if (Array.isArray(s.effects)) f.effects = s.effects;
   if (s.conc) f.conc = s.conc;
   if (typeof s.lastTurn === "string") f.lastTurn = s.lastTurn;
