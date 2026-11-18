@@ -16,8 +16,8 @@ export async function makeHead(THREE, opts = {}) {
   const object = new THREE.Group(); object.name = 'duros-head-b';
   const skin = skinMaterial();
   const lidMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.48, sheen: 0.4, sheenRoughness: 0.5, sheenColor: new THREE.Color(0x9ec8ff), clearcoat: 0.25, clearcoatRoughness: 0.35 });
-  // B's eyes: glossier than A's, a wet clearcoat over a smooth surface
-  const eyeMat = new THREE.MeshPhysicalMaterial({ roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.02, emissive: 0xffffff, emissiveIntensity: 0.05 });
+  // the eyes: solid colour with a darker rim (eyeTexture), wet but not glassy
+  const eyeMat = new THREE.MeshPhysicalMaterial({ roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.06, emissive: 0xffffff, emissiveIntensity: 0.04 });
   const mouthMat = new THREE.MeshStandardMaterial({ color: 0x14202c, roughness: 0.7 });
 
   // the head and neck, its colours painted from its own occlusion (and the markings and age)
@@ -30,9 +30,11 @@ export async function makeHead(THREE, opts = {}) {
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Object3D();
     pivot.position.set(sx * e.x, e.y, e.z);
-    pivot.lookAt(new THREE.Vector3(sx * e.x + sx * 0.25, e.y - 0.02, e.z + 1));   // wide-set eyes look a little outward
+    pivot.lookAt(new THREE.Vector3(sx * e.x + sx * 0.32, e.y - 0.02, e.z + 1));   // wide-set eyes look a little outward
     pivot.updateMatrix();
-    const at = (g, local) => { if (local) g.applyMatrix4(local); g.applyMatrix4(pivot.matrix); return g; };
+    // the almond: the eye and its lids squashed (wider than tall) and tilted up at the outer corner, as one
+    const shape = new THREE.Matrix4().makeRotationZ(sx * (e.tilt || 0)).multiply(new THREE.Matrix4().makeScale(e.sx || 1, e.sy || 1, 1));
+    const at = (g, local) => { if (local) g.applyMatrix4(local); g.applyMatrix4(shape); g.applyMatrix4(pivot.matrix); return g; };
     const ball = new THREE.SphereGeometry(e.r, 40, 28); ball.rotateX(Math.PI / 2);   // the texture's pole to the front
     eyeGeos.push(at(ball));
     const rl = e.r + 0.0017, tip = (rx) => new THREE.Matrix4().makeRotationX(rx);
