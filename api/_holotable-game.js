@@ -728,6 +728,7 @@ function applyAction(camp, cid, gm, type, p) {
         // a character's token takes the sheet's size (audit 5.12) unless the request says otherwise
         x: clamp(int(p.x, 1), -500, 1000), y: clamp(int(p.y, 1), -500, 1000), size: clamp(int(p.size === undefined && ch.size ? R.tokenSquares(ch.size) : p.size, 1), 1, 4),
         charId, owner: cid, hidden: !!p.hidden && gm, img: validImg(p.img), nameHidden: !!p.nameHidden && gm,
+        ...(p.size === undefined && ch.size === "Tiny" ? { tiny: true } : {}),   // a Tiny character's token is drawn small (8.15)
       });
       return {};
     }

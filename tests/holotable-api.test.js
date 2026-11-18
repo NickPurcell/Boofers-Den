@@ -2036,6 +2036,10 @@ test("temporary force/tech points are spent first (audit 4.9); size from the she
   const toks = (await gm.poll()).data.state.map.tokens;
   assert.equal(toks.find((t) => t.charId === id).size, 2, "a Large character's token takes 2 squares");
   assert.equal(toks.find((t) => t.charId === id2).size, 1);
+  const id3 = (await p1.act("char.save", { char: { name: "Mouse", size: "Tiny" } })).data.id;
+  await p1.act("token.add", { charId: id3, x: 8, y: 1 });
+  const mt = (await gm.poll()).data.state.map.tokens.find((t) => t.charId === id3);
+  assert.deepEqual([mt.size, mt.tiny], [1, true], "a Tiny character's token is Tiny");
 });
 
 test("Reliable Talent, Brutal Critical, and shots for Reload weapons (#67, audit 6.6)", async () => {
