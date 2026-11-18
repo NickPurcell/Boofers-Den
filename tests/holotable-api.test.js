@@ -2196,6 +2196,35 @@ test("Infuse Item (Engineer): +1/+2/+3 to the infused weapon's attack and damage
   assert.equal((await gm.poll()).data.state.characters[id2].infused, undefined);
 });
 
+test("the party stash (6.9) and loot (9.10): the GM puts things in, players take onto their own, the GM shares credits", async () => {
+  const { gm, p1, p2 } = await table();
+  const kira = (await p1.act("char.save", { char: { name: "Kira", credits: 10 } })).data.id;
+  const rex = (await p2.act("char.save", { char: { name: "Rex" } })).data.id;
+  assert.equal((await p1.act("stash.add", { items: [{ name: "Free stuff" }] })).code, 403);
+  assert.equal((await gm.act("stash.add", {})).code, 400);
+  await gm.act("stash.add", { items: [{ name: "Vibroknife of Echoes", rar: "Premium", att: true, notes: "Weapon", id: "__proto__" }, { name: "Medpac", qty: 3, rar: "Bogus" }, { name: "" }], credits: 301 });
+  let st = (await p1.poll()).data.state;
+  assert.equal(st.stash.items.length, 2, "everyone sees the stash; a nameless item is dropped");
+  assert.equal(st.stash.credits, 301);
+  const [blade, med] = st.stash.items;
+  assert.notEqual(blade.id, "__proto__", "ids are the server's");
+  assert.equal(med.rar, undefined, "only SW5e's rarities");
+  assert.ok(st.chat.some((m) => /Into the party stash: Vibroknife of Echoes \(Premium\), 3× Medpac, 301 credits/.test(m.text || "")));
+  assert.equal((await p2.act("stash.take", { id: blade.id, charId: kira })).code, 403, "a player takes onto their own character only");
+  assert.equal((await p1.act("stash.take", { id: blade.id, charId: kira })).code, 200);
+  assert.equal((await p2.act("stash.take", { id: blade.id, charId: rex })).code, 400, "it's gone");
+  st = (await gm.poll()).data.state;
+  const got = st.characters[kira].equipment.find((e) => e.name === "Vibroknife of Echoes");
+  assert.ok(got && /Premium, requires attunement · Weapon/.test(got.notes), "onto the sheet, rarity noted");
+  assert.equal(st.stash.items.length, 1);
+  assert.equal((await p1.act("stash.split", { chars: [kira, rex] })).code, 403, "sharing out is the GM's");
+  await gm.act("stash.split", { chars: [kira, rex] });
+  st = (await gm.poll()).data.state;
+  assert.deepEqual([st.characters[kira].credits, st.characters[rex].credits, st.stash.credits], [160, 150, 1], "even shares; the odd credit stays");
+  await gm.act("stash.remove", { id: med.id, credits: true });
+  assert.equal((await p1.poll()).data.state.stash, undefined, "empty: gone");
+});
+
 test("multiclassing prerequisites and proficiencies (2.12, 2.13); the GM undoes a last level (2.15)", async () => {
   require("../sections/jpesus/holotable/rules.js");
   const R = globalThis.SW5E;
@@ -2281,4 +2310,33 @@ test("the GM's table rules: only the GM changes levels, XP and max HP (12.6); st
   assert.equal(st.statBlocksHidden, true);
   await gm.act("settings.statBlocks", { hidden: false });
   assert.equal((await p1.poll()).data.state.statBlocksHidden, undefined);
+});
+
+test("the GM's lock also holds a player's new sheet and current HP (#191 review follow-up)", async () => {
+  const { gm, p1 } = await table();
+  await gm.act("settings.sheetLock", { on: true });
+  const id = (await p1.act("char.save", { char: { name: "Overpowered", classes: [{ name: "Fighter", level: 20 }, { name: "Consular", level: 5 }], xp: 999999, abilities: { con: 14 }, hp: { max: 500, current: 500, temp: 0 } } })).data.id;
+  let c = (await gm.poll()).data.state.characters[id];
+  assert.deepEqual(c.classes.map((k) => [k.name, k.level]), [["Fighter", 1]], "a new sheet starts at 1st level");
+  assert.deepEqual([c.xp, c.hp.max, c.hp.current], [0, 12, 12], "no XP; d10 max + Con 2; current capped");
+  await p1.act("char.save", { char: Object.assign({}, c, { hp: { max: 12, current: 250, temp: 3 } }) });
+  c = (await gm.poll()).data.state.characters[id];
+  assert.deepEqual([c.hp.current, c.hp.temp], [12, 3], "current HP can't pass the max; temp has its own box");
+  const gid = (await gm.act("char.save", { char: { name: "Boss", classes: [{ name: "Fighter", level: 15 }], hp: { max: 150, current: 150 } } })).data.id;
+  assert.equal((await gm.poll()).data.state.characters[gid].classes[0].level, 15, "the GM's own sheets are the GM's");
+  await gm.act("settings.sheetLock", { on: false });
+  const id2 = (await p1.act("char.save", { char: { name: "Import", classes: [{ name: "Fighter", level: 7 }], xp: 23000 } })).data.id;
+  assert.equal((await gm.poll()).data.state.characters[id2].classes[0].level, 7, "off: as before");
+});
+
+test("multiclassing reads only SW5e's own classes (no inherited names); the PHB's extra skill is noted (#194 review)", async () => {
+  require("../sections/jpesus/holotable/rules.js");
+  const R = globalThis.SW5E;
+  assert.deepEqual(R.multiclassUnmet({ classes: [{ name: "constructor", level: 1 }], abilities: {} }, "toString"), []);
+  assert.equal(R.mcProfs("__proto__"), "");
+  assert.match(R.mcProfs("Engineer"), /^Light armor, \+ one skill and one tool/);
+  const { gm, p1 } = await table();
+  const id = (await p1.act("char.save", { char: { name: "Odd", classes: [{ name: "constructor", level: 2 }], abilities: { str: 14 } } })).data.id;
+  await gm.act("levelup.grant", { charIds: [id] });
+  assert.equal((await p1.act("levelup.apply", { charId: id, className: "hasOwnProperty", hpMode: "average", hitDie: 8 })).code, 200, "no 500: an unknown class has no prerequisites");
 });
