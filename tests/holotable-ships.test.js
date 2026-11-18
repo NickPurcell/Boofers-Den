@@ -926,3 +926,34 @@ test("recharging and refitting: shields and half the shield dice; hull dice by t
   await gm.act("ship.recharge", { id: enemy });
   assert.ok(!JSON.stringify((await p1.state()).chat).includes("Black Lance"), "an enemy's recharge is the GM's");
 });
+
+// ---------------------------------------------------------------- modifications (10.13)
+test("modifications: slots against capacity, suites, the installation DC by grade and tier, cost, prerequisites", async () => {
+  const mods = [{ name: "Hardpoint", type: "Weapon" }, { name: "Hardpoint", type: "Weapon" }, { name: "Broadside Mounting", type: "Weapon", grade: 2, pre: "Two Hardpoints" },
+    { name: "Automated Protocols", type: "Universal", grade: 1, pre: "Damage Control System" }, { name: "Boarding Pods", type: "Suite", pre: "Ship size Large or larger" },
+    { name: "Blinding Rounds", type: "Weapon", pre: "Weapon that deals fire damage" }, { name: "Barracks", type: "Suite", free: true }];
+  const s = { size: "Small", tier: 0, abilities: { con: 14 }, mods };
+  assert.deepEqual(SR.modsSummary(s), { used: 6, cap: 20, over: 0, suites: 1, suiteMax: 1 }, "a tier feature's modification takes no slot and isn't counted as a suite");
+  assert.deepEqual(mods.map((m, i) => SR.installDC(s, i)), [10, 10, 24, 17, 10, 10, 10], "the grade and tier table");
+  assert.equal(SR.installDC(Object.assign({}, s, { tier: 3 }), 2), 13);
+  assert.deepEqual([SR.modCost(s, mods[0]), SR.modCost(s, mods[2]), SR.modCost({ size: "Huge" }, mods[0])], [3000, 6000, 150000], "SotG's own: a hardpoint is 3,000 on a Small ship, 150,000 on a Huge one");
+  assert.deepEqual(mods.slice(2, 6).map((m) => SR.prereqs(s, m)[0].ok), [true, false, false, null]);
+  const tiny = { size: "Tiny", tier: 0, mods: Array.from({ length: 12 }, (_, i) => ({ name: "M" + i, type: "Universal" })) };
+  assert.deepEqual(SR.modsSummary(tiny), { used: 12, cap: 10, over: 2, suites: 0, suiteMax: 0 });
+  assert.deepEqual([SR.installDC(tiny, 9), SR.installDC(tiny, 10), SR.installDC(tiny, 11)], [10, 12, 14], "each one past capacity: 2 more, cumulative");
+  // on the server: the fields are kept, cleaned; the check comes from the sheet
+  const { gm, p1, party, enemy } = await table();
+  const sh = shipIn(await p1.state(), party);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { mods: [{ name: "Hardpoint", type: "Weapon", grade: 9, pre: "x".repeat(500), free: "yes" }, { name: "Odd", type: "__proto__" }] }) });
+  const m = shipIn(await p1.state(), party).mods;
+  assert.deepEqual([m[0].type, m[0].grade, m[0].pre.length, m[0].free, m[1].type], ["Weapon", 5, 200, false, ""]);
+  const r = await p1.act("ship.install", { id: party, mod: 0, bonus: 99 });
+  assert.equal(r.code, 200); assert.equal(r.data.dc, 45, "grade 5 at tier 0");
+  assert.ok((await p1.state()).chat.some((x) => x.roll && /installing Hardpoint \(DC 45\)/.test(x.roll.label) && x.roll.expr === "1d20+2"));
+  for (const bad of ["__proto__", -1, 5]) assert.equal((await p1.act("ship.install", { id: party, mod: bad })).code, 400);
+  assert.equal((await p1.act("ship.install", { id: enemy, mod: 0 })).code, 403);
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 2, f: 2 });
+  await gm.act("space.init", {});
+  assert.match((await p1.act("ship.install", { id: party, mod: 0 })).data.error || "", /Not during ship combat/, "days of work: not mid-fight");
+});
