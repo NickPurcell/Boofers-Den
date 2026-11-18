@@ -1927,3 +1927,32 @@ test("AC from armor, Unarmored Defense and misc (audit 5.3), crit range, misc bo
   c = (await gm.poll()).data.state.characters[id3];
   assert.equal(c.ac, 17, "an old sheet (or an import) filled from the blank keeps its typed AC");
 });
+
+test("Reliable Talent, Brutal Critical, and shots for Reload weapons (#67, audit 6.6)", async () => {
+  require("../sections/jpesus/holotable/rules.js");
+  const R = globalThis.SW5E;
+  const op = (lvl) => ({ classes: [{ name: "Operative", level: lvl }], abilities: { dex: 16 }, skills: { stealth: 2, acrobatics: 0, insight: 1 } });
+  assert.deepEqual(R.skillRollExpr(op(11), "stealth"), { expr: "1d20min8+11", reliable: true }, "Dex +3, expertise 2 x +4");
+  assert.equal(R.skillRollExpr(op(11), "acrobatics").reliable, false, "no proficiency, no Reliable Talent");
+  assert.equal(R.skillRollExpr(op(10), "stealth").reliable, false, "from 11th level");
+  const bz = (lvl) => ({ classes: [{ name: "Berserker", level: lvl }], abilities: { str: 16 } });
+  const axe = { name: "Vibroaxe", ab: "str", damage: "1d12", props: "Heavy, Two-handed" };
+  assert.deepEqual(R.critDamage(bz(8), axe), { expr: "2d12+3", brutal: 0 });
+  assert.deepEqual(R.critDamage(bz(9), axe), { expr: "2d12+3+1d12", brutal: 1 });
+  assert.deepEqual(R.critDamage(bz(17), axe), { expr: "2d12+3+3d12", brutal: 3 });
+  assert.equal(R.critDamage(bz(17), { name: "Blaster rifle", ab: "dex", damage: "1d8", props: "Ammunition (range 100/400), Reload 12" }).brutal, 0, "melee only");
+  const rifle = { name: "Blaster rifle", props: "Power Cell, Reload 12, Two-handed" };
+  assert.equal(R.reloadOf(rifle), 12);
+  assert.equal(R.ammoOf(rifle), "Power cell");
+  assert.equal(R.ammoOf({ props: "Slug Cartridge, Reload 8" }), "Slug cartridge");
+  assert.equal(R.shotsOf(rifle), 12, "a fresh weapon is loaded");
+  assert.equal(R.shotsOf(Object.assign({}, rifle, { shots: 3 })), 3);
+  assert.equal(R.shotsOf({ props: "Finesse" }), null, "no Reload, no count");
+
+  const { gm, p1 } = await table();
+  const id = (await p1.act("char.save", { char: { name: "Kira", attacks: [Object.assign({}, rifle, { shots: 5 }), Object.assign({}, rifle, { shots: -4 }), { name: "Knife" }] } })).data.id;
+  const c = (await gm.poll()).data.state.characters[id];
+  assert.equal(c.attacks[0].shots, 5);
+  assert.equal(c.attacks[1].shots, 0, "clamped at 0");
+  assert.equal(c.attacks[2].shots, undefined, "not stored when unset");
+});
