@@ -532,6 +532,30 @@
       };
     });
   }
+  // a tool or kit check (audit 6.10): the tool, the ability the GM calls for, and the proficiency tier in it
+  function toolCheckDialog(ch) {
+    const tools = R.toolNames(ch), tiers = [[0, 'not proficient'], ...Object.entries(R.PROF_TIERS).map(([k, v]) => [+k, v])];
+    modal(`<h3>🧰 Tool check: ${esc(ch.name)}</h3>
+      <label>Tool or kit<input id="tcName" list="tcList" value="${esc(tools[0] || '')}" maxlength="80" placeholder="e.g. Slicer's kit"><datalist id="tcList">${tools.map(t => `<option value="${esc(t)}">`).join('')}</datalist></label>
+      <div class="row wrap"><label>Ability<select id="tcAb">${R.ABILITIES.map(a => `<option value="${a.key}" ${a.key === 'int' ? 'selected' : ''}>${a.name}</option>`).join('')}</select></label>
+        <label>Proficiency<select id="tcTier">${tiers.map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select></label>
+        <label>Misc<input id="tcMisc" type="number" value="0" style="width:60px"></label></div>
+      <p class="muted" id="tcSum" style="margin:6px 0"></p>
+      <div class="row" style="justify-content:flex-end"><button class="btn ghost" id="tcClose">Cancel</button><button class="btn primary" id="tcRoll">Roll</button></div>`, box => {
+      const sum = () => { const b = R.toolBonus(ch, $('#tcAb').value, +$('#tcTier').value, +$('#tcMisc').value), x = R.checkRollExpr(ch, +$('#tcTier').value, b); $('#tcSum').textContent = `${x.expr}${x.tier ? ` · ${x.tier}: always advantage` : ''}`; return x; };
+      const auto = () => { $('#tcTier').value = String(R.toolTierFromText(ch, $('#tcName').value)); sum(); };
+      auto();
+      box.oninput = e => { if (e.target.id === 'tcName') auto(); else sum(); };
+      box.onchange = sum;
+      box.onclick = async e => {
+        if (e.target.id === 'tcClose') return closeModal();
+        if (e.target.id !== 'tcRoll') return;
+        const x = sum(), name = $('#tcName').value.trim() || 'Tool', ab = $('#tcAb').value;
+        closeModal();
+        roll(x.expr, `${name} check (${ab.toUpperCase()})${x.tier ? ` (${x.tier})` : ''}${x.reliable ? ' (Reliable Talent)' : ''}`, { d20: true, charId: ch.id, kind: 'check' });
+      };
+    });
+  }
   function shortRestDialog() {
     const id = S.selected;
     const draw = () => {
@@ -539,7 +563,8 @@
       if (!ch) return '';
       const con = R.abilityMod(ch, 'con'), fr = R.forceRecovery(ch);
       const frUsed = (ch.resources || []).some(r => r.key === 'force-recovery' && r.used >= 1);
-      return `<h3>Short rest: ${esc(ch.name)}</h3>
+      return `<h3>${vOn('Longer Rests') ? 'Short rest (8 hours)' : 'Short rest'}: ${esc(ch.name)}</h3>
+        ${vOn('Longer Rests') ? `<p class="muted">Longer Rests (variant): finishing gives back missing hit points up to half your maximum (${Math.ceil((+ch.hp.max || 0) / 2)}). One short rest a day. A quick rest (1 hour) is just the hit dice: use Spend Hit Die.</p>` : ''}
         <p class="muted">Each hit die heals its roll ${R.fmt(con)} (Con), at least 0. Hit points ${+ch.hp.current || 0} of ${+ch.hp.max || 0}.</p>
         ${R.hitDice(ch).map(d => `<div class="row" style="margin:4px 0"><span>d${d.die}${d.classes.length ? ` · ${esc(d.classes.join(', '))}` : ''}: <b>${d.total - d.used}</b> of ${d.total} left</span><span class="spacer"></span>
           <button class="btn small" data-hd="${d.die}" ${d.used >= d.total ? 'disabled' : ''}>Roll a d${d.die}</button></div>`).join('')}
@@ -568,10 +593,11 @@
         if (e.target.id === 'srDone') {
           const ch = S.st.characters[id], fr = R.forceRecovery(ch);
           const useFR = fr && $('#srFR', box) && $('#srFR', box).checked && !$('#srFR', box).disabled;
-          const tech = R.techOnShortRest(ch) && (+ch.tech.used || 0) > 0;
+          const tech = R.techOnShortRest(ch) && (+ch.tech.used || 0) > 0, half = vOn('Longer Rests') ? Math.ceil((+ch.hp.max || 0) / 2) : 0;
           mutate(c => {
+            if (half && (+c.hp.current || 0) >= 1) c.hp.current = Math.min(+c.hp.max || 0, (+c.hp.current || 0) + half);
             if (R.techOnShortRest(c)) c.tech.used = 0;
-            c.resources = (c.resources || []).map(r => r.refill === 'short' && r.used ? Object.assign({}, r, { used: 0 }) : r);
+            c.resources = (c.resources || []).map(r => R.refillOf(c, r) === 'short' && r.used ? Object.assign({}, r, { used: 0 }) : r);
             if (useFR) {
               c.force.used = Math.max(0, (+c.force.used || 0) - fr);
               const k = (c.resources || []).find(r => r.key === 'force-recovery');
@@ -579,11 +605,13 @@
             }
           });
           closeModal();
-          act('chat', { text: `*${ch.name} takes a short rest.${tech ? ' Tech points restored.' : ''}${useFR ? ` Force Recovery: ${fr} force points back.` : ''}*`, as: ch.name });
+          act('chat', { text: `*${ch.name} takes a short rest${half ? ' (8 hours; up to half their hit points back)' : ''}.${tech ? ' Tech points restored.' : ''}${useFR ? ` Force Recovery: ${fr} force points back.` : ''}*`, as: ch.name });
         }
       };
     });
   }
+  // the variant rules the GM marks (9.16): the sheet and the table act on these
+  const vOn = name => (S.st.variants || []).includes(name);
   function mutate(fn) {
     const ch = clone(selChar()); fn(ch); saveChar(ch); guarded('sheet', renderSheet);
   }
@@ -745,7 +773,7 @@
         ${ch.acAuto ? `<div class="val">${acx.total}</div>` : inp('ac', +ch.ac || 10, { ro, type: 'number' })}
         <div class="ac-opts"><label class="muted">${inp('acAuto', !!ch.acAuto, { ro, type: 'checkbox' })} auto</label>${ch.acAuto ? `<span class="muted">misc</span>${inp('acMisc', +ch.acMisc || 0, { ro, type: 'number', w: '44px' })}` : ''}</div></div>`)(R.armorClass(ch))}
       <div class="stat rollable" data-roll="${d20(R.initiative(ch))}" data-label="Initiative" data-d20="1"><div class="lbl">Initiative</div><div class="val">${R.fmt(R.initiative(ch))}</div></div>
-      <div class="stat"><div class="lbl">Speed</div>${inp('speed', +ch.speed || 30, { ro, type: 'number' })}</div>
+      <div class="stat"><div class="lbl">Speed</div>${inp('speed', +ch.speed || 30, { ro, type: 'number' })}${(cw => cw.slow ? `<div class="muted" style="font-size:11px" title="${esc(cw.text)}">${Math.max(0, (+ch.speed || 30) - cw.slow)} ft carrying ${n0(cw.weight)} lb</div>` : '')(R.carrying(ch, S.st.variants))}</div>
       <div class="stat"><div class="lbl">Proficiency</div><div class="val">${R.fmt(pb)}</div></div>
       <div class="stat" title="Passive scores: 10 + the skill's bonus (audit 5.13)"><div class="lbl">Passive Perc.</div><div class="val">${R.passive(ch, 'perception')}</div>
         <div class="muted" style="font-size:11px">Insight ${R.passive(ch, 'insight')} · Invest. ${R.passive(ch, 'investigation')}</div></div>
@@ -777,9 +805,10 @@
             <span class="muted">temp</span>${inp('hp.temp', +ch.hp.temp || 0, { ro, type: 'number', w: '60px' })}</div>
           ${!ro ? `<div class="row hp-adjust" style="margin-top:8px"><input id="hpDelta" placeholder="-7 or +5">
             <button class="btn small danger" data-act="hp" data-sign="-1">Damage</button><button class="btn small" data-act="hp" data-sign="1" style="color:var(--green)">Heal</button></div>
-          <div class="row" style="margin-top:8px"><button class="btn small" data-act="short-rest">Spend Hit Die</button>
+          <div class="row wrap" style="margin-top:8px"><button class="btn small" data-act="short-rest">${vOn('Longer Rests') ? 'Quick Rest (1 h)' : 'Spend Hit Die'}</button>
             <button class="btn small" data-act="short-rest-done" title="${R.techOnShortRest(ch) ? 'Regain all tech points (Engineer, Scout, or a tech archetype). Spend Hit Dice to heal.' : 'Spend Hit Dice to heal during it.'}">Short Rest</button>
-            <button class="btn small" data-act="long-rest">Long Rest</button></div>` : ''}
+            <button class="btn small" data-act="long-rest" ${vOn('Longer Rests') ? 'title="Longer Rests (variant): two days, once a week"' : ''}>${vOn('Longer Rests') ? 'Long Rest (2 days)' : 'Long Rest'}</button>
+            ${vOn('Exertion') ? '<button class="btn small amber" data-act="exert" title="Exertion (variant): roll a hit die without spending it and add it to a check, attack or save, or move 5 ft × the roll farther. You lose that many hit points.">💪 Exert</button>' : ''}</div>` : ''}
           <h4 style="margin-top:12px">Death Saves</h4>
           <div class="row"><span class="muted">Successes</span><span class="dots">${[1, 2, 3].map(n => `<span class="dot s ${ch.deathSaves.s >= n ? 'on' : ''}" data-act="ds" data-k="s" data-n="${n}"></span>`).join('')}</span>
             <span class="muted">Failures</span><span class="dots">${[1, 2, 3].map(n => `<span class="dot f ${ch.deathSaves.f >= n ? 'on' : ''}" data-act="ds" data-k="f" data-n="${n}"></span>`).join('')}</span>
@@ -795,15 +824,25 @@
             <span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${d20(b)}" data-label="${a.name} save" data-d20="1">${a.name}</span>
             ${miscBox('saveMisc.' + a.key, (ch.saveMisc || {})[a.key], ro)}</div>`;
         }).join('')}</div></div>
-        <div class="box" style="grid-row: span 2"><h4>Skills <span class="muted" style="text-transform:none;letter-spacing:0">click dot: none → proficient → expertise → half · Alt-click a skill: careful check</span></h4><div class="list-rows">${R.SKILLS.map(s => {
+        <div class="box" style="grid-row: span 2"><h4>Skills <span class="muted" style="text-transform:none;letter-spacing:0">click dot: none → proficient → expertise → half · long-press or right-click a dot: mastery tiers · Alt-click a skill: careful check</span></h4><div class="list-rows">${R.SKILLS.map(s => {
           const b = R.skillBonus(ch, s.key), lv = +(ch.skills[s.key] || 0);
-          return `<div class="lr"><button class="prof ${lv === 2 ? 'p2' : lv === 1 ? 'p1' : lv === 0.5 ? 'p05' : ''}" data-act="skill-prof" data-sk="${s.key}" ${ro ? 'disabled' : ''}></button>
-            ${(sr => `<span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${esc(sr.expr)}" data-label="${s.name}${sr.reliable ? ' (Reliable Talent)' : ''}" data-d20="1" data-check="${b}" title="${sr.reliable ? 'Reliable Talent: the d20 counts as at least 8. ' : ''}Alt-click: a careful check (take 10)">${s.name}</span>`)(R.skillRollExpr(ch, s.key))}<span class="ab">${s.ab}</span>
+          return `<div class="lr"><button class="prof ${lv >= 3 ? 'p2 p' + lv : lv === 2 ? 'p2' : lv === 1 ? 'p1' : lv === 0.5 ? 'p05' : ''}" data-act="skill-prof" data-sk="${s.key}" ${ro ? 'disabled' : ''} title="${lv ? esc(R.PROF_TIERS[lv]) : 'not proficient'}"></button>
+            ${(sr => `<span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${esc(sr.expr)}" data-label="${s.name}${sr.tier ? ` (${sr.tier}${lv >= 5 ? ': may reroll the other die once too' : ''})` : ''}${sr.reliable ? ' (Reliable Talent)' : ''}" data-d20="1" data-check="${b}" title="${sr.tier ? `${sr.tier[0].toUpperCase() + sr.tier.slice(1)}: twice the bonus and always advantage. ` : ''}${sr.reliable ? 'Reliable Talent: the d20 counts as at least 8. ' : ''}Alt-click: a careful check (take 10)">${s.name}</span>`)(R.skillRollExpr(ch, s.key))}<span class="ab">${s.ab}</span>
             ${miscBox('skillMisc.' + s.key, (ch.skillMisc || {})[s.key], ro)}</div>`;
         }).join('')}</div></div>
       </div>`;
     }
 
+    // the variant rules that live on the sheet (9.16), each only while the GM uses it
+    function variantBits(ch, ci, fMax, tMax, ro) {
+      const out = [];
+      if (fMax > 0 && vOn('Simplified Forcecasting')) out.push(`<label class="mini" title="Simplified Forcecasting (variant): one ability for every force power">Forcecasting ability ${ro ? esc(ch.forceAbility === 'cha' ? 'Charisma' : ch.forceAbility === 'wis' ? 'Wisdom' : 'by alignment')
+        : `<select data-act-change="force-ability"><option value="">by alignment (Wis light, Cha dark)</option><option value="wis" ${ch.forceAbility === 'wis' ? 'selected' : ''}>Wisdom</option><option value="cha" ${ch.forceAbility === 'cha' ? 'selected' : ''}>Charisma</option></select>`}</label>`);
+      if (vOn('Saving Throw Checks') && (fMax > 0 || tMax > 0)) out.push(`<span class="muted" title="Saving Throw Checks (variant): you roll d20 + this against the target's defense save DC (14 + its save bonus)">Save checks: ${[fMax > 0 ? `light ${R.fmt(ci.lightDC - 8)}, dark ${R.fmt(ci.darkDC - 8)}` : '', tMax > 0 ? `tech ${R.fmt(ci.techDC - 8)}` : ''].filter(Boolean).join(' · ')}</span>`);
+      if (!ro && vOn('Force and Tech Prowess') && (fMax > 0 || tMax > 0)) out.push(`<span title="Force and Tech Prowess (variant): after a failed check that added your proficiency bonus, without advantage or disadvantage, spend 1 point to reroll it once">${fMax > 0 ? '<button class="btn tiny" data-act="prowess" data-k="force">Force Prowess (1 FP)</button>' : ''}${tMax > 0 ? ' <button class="btn tiny" data-act="prowess" data-k="tech">Tech Prowess (1 TP)</button>' : ''}</span>`);
+      if (vOn('Hunted') && fMax > 0) out.push(`<span title="Hunted (variant): each force power adds its level; the GM rolls d100 after a fight; a long rest takes off the character's level">Disturbance <b>${n0(ch.disturbance)}</b>${isGM() ? ' <button class="btn tiny" data-act="hunted-roll">Roll d100</button>' : ''}</span>`);
+      return out.length ? `<div class="row wrap" style="gap:10px;margin-top:6px;font-size:13px">${out.join('')}</div>` : '';
+    }
     // class resources (audit 3.2-3.11): rages, superiority dice, Second Wind... from SW5e's class tables, spent and
     // given back here (the combat view reads the same list), plus each class's table values at its level
     function classResourcesBox(ch, ro) {
@@ -855,6 +894,8 @@
         ${pts('force', fMax, +ch.force.used || 0, '', 'Force Points', `Light DC ${ci.lightDC} / atk ${R.fmt(ci.lightAtk)} · Dark DC ${ci.darkDC} / atk ${R.fmt(ci.darkAtk)}${ci.forceMaxLevel ? ' · max power level ' + ci.forceMaxLevel : ''}${highNote(ch, 'force', ci.forceMaxLevel)}`)}
         ${pts('tech', tMax, +ch.tech.used || 0, 'tech', 'Tech Points', `Tech DC ${ci.techDC} / atk ${R.fmt(ci.techAtk)}${ci.techMaxLevel ? ' · max power level ' + ci.techMaxLevel : ''}${highNote(ch, 'tech', ci.techMaxLevel)}`)}
       </div>
+      ${variantBits(ch, ci, fMax, tMax, ro)}
+      ${tMax > 0 && !R.hasTechFocus(ch) ? '<p class="muted" style="font-size:12px;margin:6px 0 0" title="SW5e: tech powers are cast through a tech focus. The GM decides how strictly the table holds to it.">⚠ No wristpad or chassis in the gear. SW5e casts tech powers through a tech focus (add one under Equipment).</p>' : ''}
       ${classResourcesBox(ch, ro)}
       <div class="box" style="margin-top:12px"><h4>Powers <span class="spacer"></span>${!ro ? `<button class="btn tiny" data-act="pick-power" data-kind="force">＋ force power</button>
           <button class="btn tiny" data-act="pick-power" data-kind="tech">＋ tech power</button>
@@ -875,13 +916,17 @@
       html += `<div class="grid g2">
         <div class="box"><h4>Equipment <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-equip">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-item" title="Add an item by hand">custom</button>' : ''}</h4>
           <div class="row" style="margin-bottom:8px"><span class="muted">Credits</span>${inp('credits', +ch.credits || 0, { ro, type: 'number', w: '120px' })}</div>
-          <table class="t eq-table"><thead><tr><th>Qty</th><th>Item</th><th>Notes</th><th title="Armor or shield, for the auto AC: its kind and AC (a shield's bonus)">Armor</th><th>Eq.</th><th></th></tr></thead><tbody>
+          ${(cw => `<div class="row carry ${cw.state ? 'carry-' + cw.state : ''}" style="margin-bottom:8px" title="Carrying capacity: Strength x 15 (PHB, Lifting and Carrying)${cw.variant ? '. Encumbrance variant: over 5 x Strength, speed -10 ft; over 10 x Strength, speed -20 ft and disadvantage on Str, Dex and Con rolls' : ''}">
+            <span class="muted">Carrying</span> <b>${n0(cw.weight)}</b> <span class="muted">of ${n0(cw.capacity)} lb</span>${cw.text ? ` <span class="carry-state">${esc(cw.text)}</span>` : ''}
+            ${isGM() ? `<label class="muted carry-var" title="PHB variant: weight slows characters down (the GM's call, for the whole table)"><input type="checkbox" data-act-change="encumbrance" ${cw.variant ? 'checked' : ''}> Encumbrance variant</label>` : ''}</div>`)(R.carrying(ch, S.st.variants))}
+          <div class="eq-wrap"><table class="t eq-table"><thead><tr><th>Qty</th><th>Item</th><th>Notes</th><th title="Weight in pounds, each">Wt</th><th title="Armor or shield, for the auto AC: its kind and AC (a shield's bonus)">Armor</th><th>Eq.</th><th></th></tr></thead><tbody>
           ${(ch.equipment || []).map((e, i) => `<tr><td class="n">${inp(`equipment.${i}.qty`, +e.qty || 1, { ro, type: 'number' })}</td>
             <td>${inp(`equipment.${i}.name`, e.name, { ro })}</td><td>${inp(`equipment.${i}.notes`, e.notes || '', { ro })}</td>
+            <td class="n eq-wt">${inp(`equipment.${i}.wt`, +e.wt || '', { ro, type: 'number', ph: '0' })}</td>
             <td class="armor-cell">${inp(`equipment.${i}.armor.kind`, (e.armor || {}).kind || '', { ro, type: 'select', options: [{ v: '', t: '—' }, ...R.ARMOR_KINDS] })}${e.armor && e.armor.kind ? inp(`equipment.${i}.armor.ac`, +e.armor.ac || 0, { ro, type: 'number' }) : ''}</td>
             <td>${inp(`equipment.${i}.equipped`, e.equipped, { ro, type: 'checkbox' })}</td>
-            <td>${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Empty.</td></tr>'}
-          </tbody></table></div>
+            <td>${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Empty.</td></tr>'}
+          </tbody></table></div></div>
         ${stashBox(ch, ro)}
         <div class="box"><h4>Features & Traits <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-feature" title="Feats, class features, maneuvers, fighting styles, lightsaber forms, ventures">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-feature" title="Write a feature by hand">custom</button>' : ''}</h4>
           <div class="feature-list">${(ch.features || []).map((f, i) => `<div class="feature-row">
@@ -891,7 +936,7 @@
             ${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="features" data-i="${i}" title="Remove">✕</button>` : ''}</div>`).join('') || '<p class="muted">None.</p>'}</div>
           ${(ch.features || []).length ? '<p class="muted" style="font-size:12px;margin:6px 0 0">Hover (or tap) a feature for its description.</p>' : ''}
         </div>
-        <div class="box"><h4>Proficiencies</h4>${inp('proficiencies', ch.proficiencies || '', { ro, type: 'textarea', rows: 3, ph: 'Armor, weapons, tools…' })}
+        <div class="box"><h4>Proficiencies <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="tool-check" title="Roll a check with a tool or kit">🧰 Tool check</button>' : ''}</h4>${inp('proficiencies', ch.proficiencies || '', { ro, type: 'textarea', rows: 3, ph: 'Armor, weapons, tools…' })}
           <h4 style="margin-top:10px">Languages</h4>${inp('languages', ch.languages || '', { ro, type: 'textarea', rows: 2 })}</div>
       </div>`;
     }
@@ -905,7 +950,7 @@
             ${ch.tokenImage ? '<button class="btn small ghost" data-act="clear-token-photo">Token: use profile photo</button>' : ''}</div>` : ''}
           <p class="muted" style="font-size:12px;margin:0 0 6px">The token uses the profile photo unless you upload a separate one.</p>
           <label style="margin-top:8px">Token colour${inp('color', ch.color || '#4fc3f7', { ro, type: 'color' })}</label>
-          <label style="margin-top:8px">Experience points${inp('xp', +ch.xp || 0, { ro: lock, type: 'number' })}</label>
+          <label style="margin-top:8px">Experience points${vOn('Milestone Leveling') ? ' <span class="muted">(Milestone Leveling: the GM decides when you level)</span>' : ''}${inp('xp', +ch.xp || 0, { ro: lock, type: 'number' })}</label>
           <label style="margin-top:8px">Proficiency bonus override${inp('profOverride', ch.profOverride ?? '', { ro, type: 'number', ph: String(2 + Math.floor((lvl - 1) / 4)) })}</label>
           <label style="margin-top:8px" title="Your quality of life between adventures (SW5e, PHB): the GM charges it by the day">Lifestyle${inp('lifestyle', ch.lifestyle || '', { ro, type: 'select', options: [{ v: '', t: '—' }, ...Object.entries(LIFESTYLES).map(([k, v]) => ({ v: k, t: `${k} (${v ? (k === 'Aristocratic' ? '100+' : v) + ' cr' : 'free'}/day)` }))] })}</label>
           <label style="margin-top:8px">Initiative bonus (misc)${inp('initMisc', +ch.initMisc || 0, { ro, type: 'number' })}</label>
@@ -921,6 +966,10 @@
   $('#sheet').addEventListener('change', e => {
     const t = e.target;
     const ch = selChar(); if (!ch) return;
+    if (t.dataset.actChange === 'encumbrance') {   // the GM's switch for the whole table (audit 6.5), kept with the variant rules
+      const v = new Set(S.st.variants || []); t.checked ? v.add(R.ENCUMBRANCE) : v.delete(R.ENCUMBRANCE);
+      return act('variants.set', { variants: [...v] });
+    }
     if (t.dataset.actChange) return sheetChangeAction(t.dataset.actChange, t.value, t);
     const path = t.dataset.path; if (!path || !canEdit(ch)) return;
     let v = t.type === 'checkbox' ? t.checked : t.type === 'number' ? (t.value === '' ? '' : +t.value) : t.value;
@@ -932,6 +981,7 @@
   });
   function sheetChangeAction(kind, val, t) {
     if (kind === 'infuse' && !val) return mutate(c => { c.infused = ''; });   // nothing infused
+    if (kind === 'force-ability') return mutate(c => { if (val) c.forceAbility = val; else delete c.forceAbility; });   // Simplified Forcecasting
     if (!val) return;
     if (kind === 'add-cond') mutate(c => { c.conditions = [...new Set([...(c.conditions || []), val])]; });
     if (kind === 'add-weapon') { const w = R.WEAPONS[+val]; mutate(c => c.attacks.push({ name: w.name, ab: w.ab, damage: w.damage, type: w.type, props: w.props, proficient: true })); }
@@ -939,6 +989,13 @@
     if (kind === 'infuse') return mutate(c => { c.infused = val; });
     t.value = '';
   }
+  // the mastery tiers (Wretched Hives, audit 5.7): a long press or right-click on a skill's dot steps through them
+  $('#sheet').addEventListener('contextmenu', e => {
+    const b = e.target.closest('[data-act="skill-prof"]'), ch = selChar();
+    if (!b || !ch || b.disabled || !canEdit(ch)) return;
+    e.preventDefault();
+    mutate(c => { const v = +(c.skills[b.dataset.sk] || 0); c.skills[b.dataset.sk] = v < 2 ? 3 : v >= 5 ? 2 : v + 1; });
+  });
   $('#sheet').addEventListener('click', async e => {
     const ch = selChar();
     const r = e.target.closest('[data-roll]');
@@ -958,6 +1015,7 @@
     switch (a) {
       case 'sub': S.sub = b.dataset.sub; renderSheet($('#sheet')); break;
       case 'gen-scores': scoresDialog(ch); break;
+      case 'tool-check': toolCheckDialog(ch); break;
       case 'dismiss-note': delete S.importNotes[ch.id]; renderSheet($('#sheet')); break;
       case 'del-class': mutate(c => c.classes.splice(i, 1)); break;
       case 'save-prof': mutate(c => { c.saves[b.dataset.ab] = !c.saves[b.dataset.ab]; }); break;
@@ -980,11 +1038,36 @@
           for (const d of dice) { const k = Math.min(d.used, back); d.used -= k; back -= k; }
           c.hitDiceUsed = R.hitDiceUsedOf(dice);
           // tracked resources that come back on a short or long rest (the combat view's tracker, 3.1), Force Recovery among them
-          c.resources = (c.resources || []).map(r => (r.refill === 'short' || r.refill === 'long') && r.used ? Object.assign({}, r, { used: 0 }) : r);
+          c.resources = (c.resources || []).map(r => ['short', 'long'].includes(R.refillOf(c, r)) && r.used ? Object.assign({}, r, { used: 0 }) : r);
           c.exhaustion = Math.max(0, (+c.exhaustion || 0) - 1);
+          if (vOn('Hunted') && c.disturbance) c.disturbance = Math.max(0, c.disturbance - R.totalLevel(c));   // Hunted: down by the character's level
         });
-        act('chat', { text: `*${ch.name} takes a long rest. HP, force & tech points restored.*`, as: ch.name });
+        act('chat', { text: `*${ch.name} takes a long rest${vOn('Longer Rests') ? ' (2 days)' : ''}. HP, force & tech points restored.*`, as: ch.name });
         break;
+      case 'exert': {   // Exertion (variant, 9.16): the largest hit die, rolled without spending it; its roll in hit points
+        const die = Math.max(0, ...R.hitDice(ch).map(d => d.die));
+        if (!die) return toast('No hit dice to exert with.', true);
+        const res = await roll(`1d${die}`, `Exertion: add it to the roll, or move ${'5 ft ×'} the roll farther; loses that many HP`, { charId: ch.id });
+        if (!res) return;
+        const n = Math.max(0, res.roll.total);
+        mutate(c => { c.hp.current = Math.max(0, (+c.hp.current || 0) - n); });
+        if ((+ch.hp.current || 0) - n <= 0) toast(`${ch.name} is at 0 HP: they stay up until the end of the turn, then fall unconscious and stable.`);
+        break;
+      }
+      case 'prowess': {   // Force and Tech Prowess (variant): a point to reroll a failed check that added proficiency
+        const k = b.dataset.k, ci = R.casterInfo(ch), max = ch[k].max !== '' && ch[k].max != null ? +ch[k].max : (k === 'force' ? ci.forceMax : ci.techMax);
+        const spend = R.pointsSpend(ch[k], 1, max);
+        if (!spend) return toast(`No ${k} points left.`, true);
+        mutate(c => { c[k].used = spend.used; c[k].temp = spend.temp; });
+        act('chat', { text: `*spends 1 ${k} point (${k === 'force' ? 'Force' : 'Tech'} Prowess) to reroll a failed check.*`, as: ch.name });
+        break;
+      }
+      case 'hunted-roll': {   // Hunted (variant): the GM's percentile roll after a fight
+        const d = +ch.disturbance || 0;
+        const res = await roll('1d100', `Hunted: ${ch.name}'s disturbance is ${d}; ${d} or lower and hunters find them`, { charId: ch.id });
+        if (res && res.roll.total <= d) toast(`${res.roll.total}: ${ch.name} is detected.`);
+        break;
+      }
       case 'ds': mutate(c => { const k = b.dataset.k, n = +b.dataset.n; c.deathSaves[k] = c.deathSaves[k] >= n ? n - 1 : n; }); break;
       case 'death-roll': {
         const res = await roll('1d20', 'Death save', { charId: ch.id }); if (!res) return;
@@ -1230,7 +1313,8 @@
           mutate(c => {
             const ex = c.equipment.find(x => String(x.name).toLowerCase() === it.n.toLowerCase());
             if (ex) ex.qty = (n0(ex.qty) || 1) + 1;
-            else { const armor = !enh && R.armorFromItem(it); c.equipment.push({ name: it.n, qty: 1, equipped: false, notes: itemNotes(it, enh).slice(0, 200), ...(armor ? { armor } : {}) }); }
+            else { const armor = !enh && R.armorFromItem(it); c.equipment.push({ name: it.n, qty: 1, equipped: false, notes: itemNotes(it, enh).slice(0, 200), ...(armor ? { armor } : {}),
+              ...(!enh && parseFloat(it.wt) > 0 ? { wt: parseFloat(it.wt) } : {}), ...(!enh && it.cost > 0 ? { cost: it.cost } : {}) }); }   // weight (6.5) and cost (6.8)
             if (!enh && it.cat === 'Weapon' && !c.attacks.some(x => String(x.name).toLowerCase() === it.n.toLowerCase())) c.attacks.push(weaponAttack(it));
           });
           toast(!enh && it.cat === 'Weapon' ? `Added ${it.n} (and its attack)` : `Added ${it.n}`);
@@ -1322,7 +1406,9 @@
     const spend = R.pointsSpend(ch[k], cost, max);   // temporary points first (audit 4.9)
     if (cost && !spend) return toast(`Not enough ${k} points (${cost} needed).`, true);
     const from = R.highCastFrom(ch, k);   // a level that goes once per long rest is noted (#160)
-    if (cost || (from && L >= from)) mutate(c => {
+    const hunted = k === 'force' && vOn('Hunted');   // Hunted (variant): a force power adds its level to the pool
+    if (cost || (from && L >= from) || (hunted && L)) mutate(c => {
+      if (hunted && L) c.disturbance = Math.min(999, (+c.disturbance || 0) + L);
       if (cost) { c[k].used = spend.used; c[k].temp = spend.temp; }
       if (from && L >= from) c[k].high = [...new Set(R.highCastUsed(c, k).concat(L))].sort((a, b) => a - b);
     });
@@ -2447,10 +2533,16 @@
   const LIFESTYLES = { Wretched: 0, Squalid: 1, Poor: 2, Modest: 10, Comfortable: 20, Wealthy: 40, Aristocratic: 100 };
   function storyHtml() {
     const gm = isGM(), fs = S.st.factions || [], rs = S.st.rivals || [], name = id => (S.st.characters[id] || {}).name || '?';
-    const facts = fs.map(f => `<div class="box story-item"><h4 style="text-transform:none;letter-spacing:0">⚑ ${esc(f.name)} <span class="muted" style="font-weight:400">tier ${n0(f.tier)} · ${n0(f.renown)} renown${gm && !f.shown ? ' · hidden from players' : ''}</span>
-        ${gm ? `<span class="spacer"></span><button class="btn tiny" data-st="edit-f" data-id="${esc(f.id)}">✎</button>` : ''}</h4>
+    const rankName = (f, r) => ((f.ranks || [])[r] || '').trim() || `rank ${n0(r)}`;
+    const facts = fs.map(f => `<div class="box story-item"><h4 style="text-transform:none;letter-spacing:0">${f.ours ? '★' : '⚑'} ${esc(f.name)} <span class="muted" style="font-weight:400">${f.ours ? "the party's own · " : ''}tier ${n0(f.tier)} · ${n0(f.renown)} renown${f.dues ? ` · dues ${n0(f.dues)} cr a ${esc(f.duesPer)}` : ''}${gm && !f.shown ? ' · hidden from players' : ''}</span>
+        ${gm ? `<span class="spacer"></span>${f.dues && Object.keys(f.members || {}).length ? `<button class="btn tiny" data-st="dues" data-id="${esc(f.id)}" title="Take one period's dues from each member's credits">Collect dues</button>` : ''}<button class="btn tiny" data-st="edit-f" data-id="${esc(f.id)}">✎</button>` : ''}</h4>
+      ${f.insignia ? `<div class="muted">Insignia: ${esc(f.insignia)}</div>` : ''}
       ${f.notes ? `<div>${md(f.notes)}</div>` : ''}${gm && f.gmNotes ? `<div class="muted" style="margin-top:4px">🔒 ${md(f.gmNotes)}</div>` : ''}
-      ${Object.keys(f.members || {}).length ? `<div class="list-rows" style="margin-top:6px">${Object.entries(f.members).map(([id, m]) => `<div class="lr"><span class="nm">${esc(name(id))}</span><span class="muted">rank ${n0(m.rank)}</span><span class="bonus">${n0(m.renown)}</span>
+      ${f.ours && (f.ideals || f.hq || f.recruitment || (f.scores || []).length) ? `<div style="margin-top:6px">${f.hq ? `<div><span class="muted">Headquarters:</span> ${esc(f.hq)}</div>` : ''}${f.ideals ? `<div><span class="muted">Ideals:</span> ${md(f.ideals)}</div>` : ''}${f.recruitment ? `<div><span class="muted">Recruitment:</span> ${md(f.recruitment)}</div>` : ''}
+        ${(f.scores || []).length ? `<div class="row wrap" style="gap:6px;margin-top:4px">${f.scores.map(s => `<span class="pill">${esc(s.name)} ${n0(s.value)}</span>`).join('')}</div>` : ''}</div>` : ''}
+      ${f.training ? `<div style="margin-top:6px"><span class="muted">Training:</span> ${md(f.training)}</div>` : ''}
+      ${(f.stockpile || []).length ? `<div style="margin-top:6px"><span class="muted">Stockpile:</span> ${f.stockpile.map(s => `${s.qty !== 1 ? n0(s.qty) + '× ' : ''}${esc(s.name)}`).join(', ')}</div>` : ''}
+      ${Object.keys(f.members || {}).length ? `<div class="list-rows" style="margin-top:6px">${Object.entries(f.members).map(([id, m]) => `<div class="lr"><span class="nm">${esc(name(id))}</span><span class="muted">${esc(rankName(f, m.rank))}</span><span class="bonus">${n0(m.renown)}</span>
         ${gm ? `<button class="btn tiny" data-st="ren" data-id="${esc(f.id)}" data-c="${esc(id)}" data-d="1">+1</button><button class="btn tiny ghost" data-st="ren" data-id="${esc(f.id)}" data-c="${esc(id)}" data-d="-1">−1</button>` : ''}</div>`).join('')}</div>` : ''}</div>`).join('');
     const rivs = rs.map(r => `<div class="box story-item"><h4 style="text-transform:none;letter-spacing:0">${r.kind === 'complication' ? '⚠' : '☠'} ${esc(r.name)} <span class="muted" style="font-weight:400">${r.kind}${(r.chars || []).length ? ' · ' + r.chars.map(name).map(esc).join(', ') : ''}${gm && !r.known ? ' · not known to players' : ''}</span>
         ${gm ? `<span class="spacer"></span><button class="btn tiny" data-st="edit-r" data-id="${esc(r.id)}">✎</button>` : ''}</h4>
@@ -2463,10 +2555,23 @@
   function openStoryEditor(kind, x) {
     const f = kind === 'f', cs = chars();
     x = x || (f ? { name: '', tier: 1, renown: 0, notes: '', gmNotes: '', shown: true, members: {} } : { name: '', kind: 'rival', notes: '', gmNotes: '', known: false, chars: [] });
+    const lines = a => (a || []).map(s => `${s.qty !== undefined ? s.qty : s.value} ${s.name}`).join('\n');
+    const parse = (t, key, d) => t.split('\n').map(l => l.trim()).filter(Boolean).map(l => { const m = l.match(/^(\d+)\s*[×x]?\s+(.+)$/); return m ? { name: m[2], [key]: +m[1] } : { name: l, [key]: d }; });
     modal(`<h3>${f ? '⚑ Faction' : '☠ Rival or complication'}</h3>
       <label>Name<input id="soName" value="${esc(x.name)}" maxlength="80"></label>
       ${f ? `<div class="row wrap"><label>Tier<input id="soTier" type="number" min="1" max="20" value="${n0(x.tier)}" style="width:70px"></label><label>Faction renown<input id="soRen" type="number" min="0" value="${n0(x.renown)}" style="width:100px"></label>
-        <label class="toggle"><input type="checkbox" id="soShown" ${x.shown ? 'checked' : ''}> players see it</label></div>
+        <label class="toggle"><input type="checkbox" id="soShown" ${x.shown ? 'checked' : ''}> players see it</label>
+        <label class="toggle" title="The party's own faction: ideals, headquarters, recruitment and its scores"><input type="checkbox" id="soOurs" ${x.ours ? 'checked' : ''}> the party's own</label></div>
+        <div class="row wrap"><label style="flex:1">Insignia<input id="soIns" value="${esc(x.insignia || '')}" maxlength="120" placeholder="What members wear or carry"></label>
+          <label>Dues (cr)<input id="soDues" type="number" min="0" value="${n0(x.dues)}" style="width:90px"></label>
+          <label>every<select id="soPer">${['week', 'month', 'year'].map(p => `<option ${(x.duesPer || 'month') === p ? 'selected' : ''}>${p}</option>`).join('')}</select></label></div>
+        <label>Rank names <span class="muted">(0 to 5, one per line; a blank line keeps "rank N")</span><textarea id="soRanks" rows="3">${esc((x.ranks || []).join('\n'))}</textarea></label>
+        <label>Training on offer <span class="muted">(what members can learn, and from which rank)</span><textarea id="soTrain" rows="2">${esc(x.training || '')}</textarea></label>
+        <label>Stockpile <span class="muted">(one per line, e.g. "4 medpac")</span><textarea id="soStock" rows="2">${esc(lines(x.stockpile))}</textarea></label>
+        <div id="soOursBox" ${x.ours ? '' : 'hidden'}><label>Headquarters<input id="soHq" value="${esc(x.hq || '')}" maxlength="200"></label>
+          <label>Ideals<textarea id="soIdeals" rows="2">${esc(x.ideals || '')}</textarea></label>
+          <label>Recruitment<textarea id="soRecruit" rows="2">${esc(x.recruitment || '')}</textarea></label>
+          <label>Scores <span class="muted">(yours to name, one per line, e.g. "14 Influence")</span><textarea id="soScores" rows="2">${esc(lines(x.scores))}</textarea></label></div>
         <h4 style="margin-top:8px">Members <span class="muted" style="text-transform:none;letter-spacing:0">rank 0–5 and renown</span></h4>
         ${cs.map(c => { const m = (x.members || {})[c.id]; return `<div class="row"><label class="toggle" style="flex:1"><input type="checkbox" class="soM" value="${esc(c.id)}" ${m ? 'checked' : ''}> ${esc(c.name)}</label><input class="soRank" data-c="${esc(c.id)}" type="number" min="0" max="5" value="${n0(m && m.rank)}" style="width:60px"><input class="soMR" data-c="${esc(c.id)}" type="number" min="0" value="${n0(m && m.renown)}" style="width:80px"></div>`; }).join('')}`
       : `<div class="row wrap"><label>Kind<select id="soKind"><option value="rival" ${x.kind === 'rival' ? 'selected' : ''}>Rival</option><option value="complication" ${x.kind === 'complication' ? 'selected' : ''}>Complication</option></select></label>
@@ -2475,6 +2580,7 @@
       <label style="margin-top:8px">Notes <span class="muted">(players see these when it's shown)</span><textarea id="soNotes" rows="3">${esc(x.notes || '')}</textarea></label>
       <label style="margin-top:8px">🔒 GM notes<textarea id="soGm" rows="3">${esc(x.gmNotes || '')}</textarea></label>
       <div class="row" style="margin-top:12px">${x.id ? '<button class="btn small danger" id="soDel">Delete</button>' : ''}<span class="spacer"></span><button class="btn ghost" id="soClose">Cancel</button><button class="btn primary" id="soSave">Save</button></div>`, box => {
+      box.onchange = e => { if (e.target.id === 'soOurs') $('#soOursBox').hidden = !e.target.checked; };
       box.onclick = async e => {
         const t = e.target;
         if (t.id === 'soClose') closeModal();
@@ -2482,7 +2588,10 @@
         if (t.id === 'soSave') {
           const item = { id: x.id, name: $('#soName').value, notes: $('#soNotes').value, gmNotes: $('#soGm').value };
           if (f) {
-            Object.assign(item, { tier: +$('#soTier').value || 1, renown: +$('#soRen').value || 0, shown: $('#soShown').checked, members: {} });
+            Object.assign(item, { tier: +$('#soTier').value || 1, renown: +$('#soRen').value || 0, shown: $('#soShown').checked, members: {},
+              insignia: $('#soIns').value, dues: +$('#soDues').value || 0, duesPer: $('#soPer').value, ranks: $('#soRanks').value.split('\n').slice(0, 6), training: $('#soTrain').value,
+              stockpile: parse($('#soStock').value, 'qty', 1), ours: $('#soOurs').checked, hq: $('#soHq').value, ideals: $('#soIdeals').value, recruitment: $('#soRecruit').value,
+              scores: parse($('#soScores').value, 'value', 10) });
             for (const c of box.querySelectorAll('.soM:checked')) item.members[c.value] = { rank: +box.querySelector(`.soRank[data-c="${c.value}"]`).value || 0, renown: +box.querySelector(`.soMR[data-c="${c.value}"]`).value || 0 };
           } else Object.assign(item, { kind: $('#soKind').value, known: $('#soKnown').checked, chars: [...box.querySelectorAll('.soC:checked')].map(c => c.value) });
           if (await act(f ? 'faction.save' : 'rival.save', { item })) closeModal();
@@ -2513,6 +2622,7 @@
       if (a === 'edit-f') return openStoryEditor('f', (S.st.factions || []).find(x => x.id === id));
       if (a === 'edit-r') return openStoryEditor('r', (S.st.rivals || []).find(x => x.id === id));
       if (a === 'ren') return act('faction.renown', { id, charId: sb.dataset.c, delta: +sb.dataset.d });
+      if (a === 'dues') { const f = (S.st.factions || []).find(x => x.id === id), n = Object.keys((f && f.members) || {}).length; if (f && confirm(`Take ${f.dues} cr from each of ${n} member${n === 1 ? '' : 's'} for ${f.name}'s dues?`)) act('faction.dues', { id }); return; }
       if (a === 'charge') { const days = +$('#lsDays').value || 1, ids = chars().filter(c => c.lifestyle).map(c => c.id); if (!ids.length) return toast('Nobody has a lifestyle set yet (Bio & Notes on the sheet).', true); if (confirm(`Charge ${days} day${days === 1 ? '' : 's'} of lifestyle to ${ids.length} character${ids.length === 1 ? '' : 's'}?`)) act('lifestyle.charge', { days, chars: ids }); return; }
     }
     const t = e.target;

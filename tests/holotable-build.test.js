@@ -94,6 +94,7 @@ test("SW5e's class list: the Features column by level, and the class's own optio
   assert.equal(o.opts.items[0].text, "You learn three maneuvers.", "links unwrapped");
   assert.ok(!o.opts.items[0].text.includes("\r"));
   assert.equal(D.LISTS.classes.build([{ name: "Engineer", classFeatureText: "### Tech Mastery\nNo options here." }])[0].opts, null);
+  assert.equal(D.LISTS.classes.cacheAs, "classes-2", "lv and opts are a new shape, so a new cache: a list cached before them has neither");
   assert.deepEqual(D.LISTS.classes.build([{ name: "X" }])[0].lv, []);
 });
 
@@ -184,4 +185,47 @@ test("changing an archetype takes the old one's added features off the sheet, an
   assert.equal(B.dropArchetypeFeatures(c, "Adept Specialist"), 2);
   assert.deepEqual(c.features.map((f) => f.name), ["Second Wind", "My note", "Other"]);
   assert.equal(B.dropArchetypeFeatures({}, "X"), 0);
+});
+
+// audit 1.6: a species' ability increase when it's a choice
+const ASI = (name, inc, text) => ({ name, abilitiesIncreased: inc, traits: [{ name: "Ability Score Increase", description: text }] });
+const SPECIES = [
+  ASI("Bith", [[{ abilities: ["Intelligence"], amount: 2 }, { abilities: ["Dexterity"], amount: 1 }]], "Your Intelligence score increases by 2, and your Dexterity score increases by 1."),
+  ASI("Zabrak", [[{ abilities: ["Constitution"], amount: 2 }, { abilities: ["Strength", "Dexterity"], amount: 1 }]], "Your Constitution score increases by 2, and your Strength or Dexterity score increases by 1."),
+  ASI("Harch", [[{ abilities: ["Strength", "Constitution"], amount: 1 }, { abilities: ["Intelligence"], amount: 1 }]], "Your Strength, Constitution, and Intelligence scores increase by 1."),
+  ASI("Human", [[{ abilities: ["Any one"], amount: 2 }, { abilities: ["Any two"], amount: 1 }], [{ abilities: ["Any four"], amount: 1 }]],
+    "One ability score of your choice increases by 2, and two other ability scores of your choice increase by 1. Alternatively, four ability scores of your choice each increase by 1."),
+  ASI("Odd", [[{ abilities: ["Luck", "constructor"], amount: 1 }]], "Your Luck or something increases by 1."),
+  ASI("Half-human", [[], []], "Half-humans gain the ability score increases of their non-human half."),
+];
+
+test("SW5e's species list: a fixed increase, or the choices, told apart by the species' own text", () => {
+  const by = (n) => D.LISTS.species.build(SPECIES).find((x) => x.n === n);
+  assert.equal(D.LISTS.species.cacheAs, "species-2", "a new shape is a new cache");
+  assert.deepEqual([by("Bith").asi, by("Bith").asiChoices], [{ int: 2, dex: 1 }, null]);
+  assert.deepEqual([by("Zabrak").asi, by("Zabrak").asiChoices], [null, [[{ from: ["con"], n: 1, amount: 2 }, { from: ["str", "dex"], n: 1, amount: 1 }]]]);
+  assert.deepEqual([by("Harch").asi, by("Harch").asiChoices], [{ str: 1, con: 1, int: 1 }, null], "'Strength, Constitution, and Intelligence': each, not one of");
+  assert.deepEqual(by("Human").asiChoices, [[{ from: null, n: 1, amount: 2 }, { from: null, n: 2, amount: 1 }], [{ from: null, n: 4, amount: 1 }]]);
+  assert.deepEqual([by("Odd").asi, by("Odd").asiChoices], [null, null], "a name that isn't one of the six: nothing offered");
+  assert.deepEqual([by("Half-human").asi, by("Half-human").asiChoices], [null, null]);
+});
+
+test("choosing a species' increase: different abilities, from the allowed ones, as many as it says", () => {
+  const B = loadBooks(), plain = (x) => JSON.parse(JSON.stringify(x));
+  const zabrak = [{ from: ["con"], n: 1, amount: 2 }, { from: ["str", "dex"], n: 1, amount: 1 }];
+  assert.deepEqual(plain(B.asiFromPicks(zabrak, [["con"], ["dex"]])), { con: 2, dex: 1 });
+  assert.equal(B.asiFromPicks(zabrak, [["con"], ["wis"]]), null, "Wisdom isn't offered");
+  assert.equal(B.asiFromPicks(zabrak, [["con"]]), null, "one pick per grant");
+  const human = [{ from: null, n: 1, amount: 2 }, { from: null, n: 2, amount: 1 }];
+  assert.deepEqual(plain(B.asiFromPicks(human, [["cha"], ["dex", "wis"]])), { cha: 2, dex: 1, wis: 1 });
+  assert.equal(B.asiFromPicks(human, [["cha"], ["cha", "wis"]]), null, "two OTHER scores");
+  assert.equal(B.asiFromPicks(human, [["cha"], ["dex"]]), null, "two of them");
+  assert.equal(B.asiFromPicks(human, [["__proto__"], ["dex", "wis"]]), null);
+  assert.equal(B.asiChoiceText([zabrak]), "+2 Con, +1 Str or Dex");
+  assert.equal(B.asiChoiceText(D.LISTS.species.build(SPECIES).find((x) => x.n === "Human").asiChoices), "+2 any one, +1 any two; or +1 any four");
+  // the guided build adds a chosen increase on top of the scores
+  const fighter = D.LISTS.classes.build(CLASS_DATA).find((c) => c.n === "Fighter");
+  const zab = { n: "Zabrak", size: "Medium", asi: null, asiChoices: [zabrak], traits: [] };
+  const c = B.buildLevel1({ species: zab, cls: fighter, scores: { str: 15, dex: 13, con: 14, int: 8, wis: 12, cha: 10 }, asiPick: { con: 2, dex: 1, constructor: 5 } });
+  assert.deepEqual(plain(c.abilities), { str: 15, dex: 14, con: 16, int: 8, wis: 12, cha: 10 });
 });

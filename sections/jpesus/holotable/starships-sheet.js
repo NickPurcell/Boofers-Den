@@ -48,6 +48,24 @@
       ${st.recharged ? `<button class="btn tiny" data-sx="hulldie" ${hdLeft && !whole ? '' : 'disabled'} title="An Intelligence (mechanic's kit) check: 10 or less, the die twice and the lower; 21 or more, twice and the higher; plus Constitution">Spend a hull die (${hdLeft} left)</button>` : ''}
       <button class="btn tiny ghost" data-sx="refit" title="Docked at a spaceport or shipyard: hull and shields full, all dice back, system damage one level lower">Refit (${SR.REFIT_TIME[size]}, ${SR.refitCost(s).toLocaleString('en-US')} cr)</button></div>`;
   }
+  // the Modifications box: slots and suites against what the size allows; each row's category, grade, DC, cost and
+  // prerequisites, and its installation check
+  function modsHead(s) {
+    const m = SR.modsSummary(s);
+    return `<p style="font-size:12px;margin:0 0 6px">${m.used} of ${m.cap} slots${m.over ? ` <b class="warn">(${m.over} over: each one past capacity adds 2 to its installation DC)</b>` : ''} · ${s.size === 'Tiny' ? 'no suites on a Tiny ship' : `${m.suites} of ${m.suiteMax} suites${m.suites > m.suiteMax ? ' <b class="warn">(too many)</b>' : ''}`}</p>`;
+  }
+  function modRow(s, x, i, ro, inp) {
+    const pre = SR.prereqs(s, x), dc = SR.installDC(s, i);
+    const preTxt = pre.map((p) => `<span class="${p.ok === false ? 'warn' : 'muted'}" title="${p.ok === null ? 'For the GM to judge' : p.ok ? 'Met' : 'Not met'}">${p.ok === false ? '✗' : p.ok ? '✓' : '?'} ${esc(p.pre)}</span>`).join(' ');
+    return `<div class="row wrap mod-row" style="gap:6px;margin:-2px 0 6px 8px;font-size:12px">${inp(`mods.${i}.type`, x.type || '', { ro, type: 'select', options: ['', ...SR.MOD_TYPES] })}
+      <label class="ship-lv">grade ${inp(`mods.${i}.grade`, String(+x.grade || 0), { ro, type: 'select', options: ['0', '1', '2', '3', '4', '5'] })}</label>
+      <label class="toggle" title="Given by a tier feature: no slot, no suite count, no cost, no check">${inp(`mods.${i}.free`, !!x.free, { ro, type: 'checkbox' })} tier feature</label>
+      ${x.free ? '' : `<span class="muted">DC ${dc} · ${SR.modCost(s, x, i).toLocaleString('en-US')} cr${SR.pastCapacity(s, i) ? ' <span class="warn">(past capacity)</span>' : ''}</span>${ro || inFight() ? '' : `<button class="btn tiny ghost" data-sx="install" data-i="${i}" title="The foremost mechanic's Intelligence (mechanic's kit) check">Install check</button>`}`}
+      ${preTxt}</div>`;
+  }
+  // ship combat is running on the space map: between-fights work (recharge, refit, installing) waits, for players (the
+  // server refuses it; the GM stays free)
+  const inFight = () => !H.isGM() && !!(H.S.st && H.S.st.space && H.S.st.space.active);
   const buildOpen = {};   // per ship, whether the panel below is open (the sheet is redrawn on every change)
   document.addEventListener('toggle', (e) => { const d = e.target; if (d && d.classList && d.classList.contains('ship-build')) buildOpen[d.dataset.sid] = d.open; }, true);
   // what the ship's size, tier and role give it (SotG chapters 1, 3 and 5), next to what the sheet says, with Apply
@@ -102,7 +120,7 @@
         <span class="spacer"></span><label class="ship-lv" title="${esc('Speed -150 / -250 / -300 ft; at 4, speed 0')}">Slowed ${lvSel('slowed', 4, i => (i ? (i >= 4 ? 'Speed 0' : `Speed -${SR.SLOWED_FEET[i]} ft`) : 'None'))}</label>
         <label class="ship-lv" title="${esc(SR.SYSTEM_NOTES.slice(1).map((t, i) => `${i + 1}: ${t}`).join('\n'))}">System damage ${lvSel('system', 6, sysTitle)}</label></div>
       ${powerBlock(s, ro, ctx)}
-      ${ro || SR.isLost(st) && st.zero.destroyed ? '' : betweenBlock(s, st)}
+      ${ro || SR.isLost(st) && st.zero.destroyed || inFight() ? '' : betweenBlock(s, st)}
       ${buildBlock(s, ro)}
     </div>`;
   }
@@ -171,6 +189,7 @@
       H.toast('Applied from size, tier and role');
       return true;
     }
+    if (a === 'install') { await H.act('ship.install', { id, mod: +b.dataset.i, crew: (ctxOf[id] || {}).as || 0 }); return true; }
     if (a === 'recharge') { await H.act('ship.recharge', { id }); return true; }
     if (a === 'hulldie') { await H.act('ship.hulldie', { id, crew: (ctxOf[id] || {}).as || 0 }); return true; }
     if (a === 'refit') { if (confirm(`Refit ${s.name} at a spaceport? ${SR.REFIT_TIME[SR.SIZE_DATA[s.size] ? s.size : 'Small']}, ${SR.refitCost(s).toLocaleString('en-US')} credits.`)) await H.act('ship.refit', { id }); return true; }
@@ -189,6 +208,6 @@
     return true;
   }
 
-  window.HTShipSheet = { block, effects, rollOpts, click, change };
+  window.HTShipSheet = { block, effects, rollOpts, click, change, modsHead, modRow };
   if (window.HTB && H.S.st) window.HTB.renderShipsSafe();   // the ships tab may have been drawn before this file loaded
 })();

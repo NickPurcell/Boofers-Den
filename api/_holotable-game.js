@@ -150,7 +150,7 @@ function cleanShip(sh, chars) {
     weapons: list(sh.weapons, 30, (w) => ({ name: s(w.name, 80), atkMisc: clamp(int(w.atkMisc), -20, 20), dmg: s(w.dmg, 40), type: s(w.type, 30),
       range: s(w.range, 40), props: s(w.props, 300), ...Ships.cleanWeapon(w) })),
     equipment: list(sh.equipment, 60, (e) => ({ name: s(e.name, 80), notes: s(e.notes, 300) })),
-    mods: list(sh.mods, 80, (e) => ({ name: s(e.name, 80), notes: s(e.notes, 300) })),
+    mods: list(sh.mods, 80, (e) => ({ name: s(e.name, 80), notes: s(e.notes, 300), ...Ships.cleanMod(e) })),
     notes: s(sh.notes, 10000), ...Ships.cleanFields(sh), updated: now(),
   };
 }
@@ -171,7 +171,7 @@ function cleanChar(ch) {
     classes: list(ch.classes, 6, (k) => ({ name: s(k.name, 40) || "Fighter", level: clamp(int(k.level, 1), 0, 20), archetype: s(k.archetype, 60) })),
     abilities: nums(ch.abilities, ABILS, 10),
     saves: Object.fromEntries(ABILS.map((a) => [a, !!(ch.saves || {})[a]])),
-    skills: Object.fromEntries(Object.entries(ch.skills || {}).slice(0, 40).filter(([k]) => /^[a-zA-Z]{1,30}$/.test(k)).map(([k, v]) => [k, [0, 0.5, 1, 2].includes(+v) ? +v : 0])),
+    skills: Object.fromEntries(Object.entries(ch.skills || {}).slice(0, 40).filter(([k]) => /^[a-zA-Z]{1,30}$/.test(k)).map(([k, v]) => [k, [0, 0.5, 1, 2, 3, 4, 5].includes(+v) ? +v : 0])),
     skillMisc: Object.fromEntries(Object.entries(ch.skillMisc || {}).slice(0, 40).filter(([k]) => /^[a-zA-Z]{1,30}$/.test(k)).map(([k, v]) => [k, numOr(v, 0)])),
     saveMisc: nums(ch.saveMisc, ABILS, 0),
     ac: numOr(ch.ac, 10), speed: numOr(ch.speed, 30),
@@ -197,9 +197,14 @@ function cleanChar(ch) {
       alignment: ["light", "dark"].includes(pw.alignment) ? pw.alignment : "universal", notes: s(pw.notes, 300), description: s(pw.description, 4000) })),
     features: list(ch.features, 150, (f) => ({ name: s(f.name, 80), text: s(f.text, 4000) })),
     equipment: list(ch.equipment, 200, (e) => ({ name: s(e.name, 80), qty: numOr(e.qty, 1), equipped: !!e.equipped, notes: s(e.notes, 200),
-      ...(e.armor && R.ARMOR_KINDS.includes(e.armor.kind) ? { armor: { kind: e.armor.kind, ac: clamp(int(e.armor.ac), 0, 30) } } : {}) })),
+      ...(e.armor && R.ARMOR_KINDS.includes(e.armor.kind) ? { armor: { kind: e.armor.kind, ac: clamp(int(e.armor.ac), 0, 30) } } : {}),
+      // weight in pounds each (audit 6.5) and cost in credits each (6.8), from SW5e's gear or typed; kept only when set
+      ...(+e.wt > 0 ? { wt: Math.min(10000, Math.round(+e.wt * 100) / 100) } : {}), ...(+e.cost > 0 ? { cost: Math.min(1e9, Math.round(+e.cost)) } : {}) })),
     conditions: (Array.isArray(ch.conditions) ? ch.conditions : []).slice(0, 20).map((c) => s(c, 30)),
     exhaustion: clamp(int(ch.exhaustion), 0, 6), inspiration: !!ch.inspiration,
+    // variant rules on the sheet (9.16): Simplified Forcecasting's one ability, and Hunted's disturbance points
+    ...(ch.forceAbility === "wis" || ch.forceAbility === "cha" ? { forceAbility: ch.forceAbility } : {}),
+    ...(int(ch.disturbance) > 0 ? { disturbance: clamp(int(ch.disturbance), 0, 999) } : {}),
     proficiencies: s(ch.proficiencies, 2000), languages: s(ch.languages, 500), notes: s(ch.notes, 20000),
     ...(Object.prototype.hasOwnProperty.call(Story.LIFESTYLES, ch.lifestyle) ? { lifestyle: ch.lifestyle } : {}),   // 11.5
     image: validImg(ch.image) || "", tokenImage: validImg(ch.tokenImage) || "", color: validColor(ch.color),
@@ -573,6 +578,7 @@ function applyAction(camp, cid, gm, type, p) {
       clean.image = old ? old.image || "" : "";
       clean.tokenImage = old ? old.tokenImage || "" : "";
       clean.updated = now();
+      if (!(camp.variants || []).includes("Simplified Forcecasting")) delete clean.forceAbility;   // only while the GM uses it
       chars[id] = clean;
       if (old) {   // the record of changes (12.5)
         const changes = sheetDiff(old, clean);
@@ -1161,7 +1167,12 @@ function applyAction(camp, cid, gm, type, p) {
     }
 
     // ---- which SW5e variant rules this table uses (the GM decides; everyone sees the list)
-    case "variants.set": need(gm); camp.variants = cleanVariants(p.variants); return {};
+    case "variants.set": {
+      need(gm); camp.variants = cleanVariants(p.variants);
+      // a variant the GM stops using stops counting on the sheets too
+      if (!camp.variants.includes("Simplified Forcecasting")) for (const c of Object.values(chars)) delete c.forceAbility;
+      return {};
+    }
 
     // ---- table audio: the GM plays an uploaded track for everyone; each screen keeps itself in step
     case "audio.play": {   // start (or resume) a track at a position

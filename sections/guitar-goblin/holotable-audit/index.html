@@ -6,21 +6,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#f6f1e7" />
   <title>HoloTable against SW5e: what's done, what's missing</title>
-  <meta name="description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules at commit 4427cbe: 115 done, 31 partial, 15 missing, and the ten gaps that matter most." />
+  <meta name="description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules (first at commit 4427cbe, kept up to date since): 117 done, 29 partial, 15 missing, and the ten gaps that matter most." />
   <meta property="og:title" content="HoloTable against SW5e: what's done, what's missing" />
-  <meta property="og:description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules at commit 4427cbe: 115 done, 31 partial, 15 missing, and the ten gaps that matter most." />
+  <meta property="og:description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules (first at commit 4427cbe, kept up to date since): 117 done, 29 partial, 15 missing, and the ten gaps that matter most." />
   <link rel="stylesheet" href="audit.css" />
 </head>
 <body>
   <nav class="top"><a class="back" href="../">&larr; Guitar Goblin</a><a class="back" href="https://boofers-den.vercel.app/sections/jpesus/holotable/">Open HoloTable &rarr;</a></nav>
   <div class="wrap">
     <header class="hero">
-      <p class="kicker">An audit &middot; 161 lines &middot; at commit 4427cbe</p>
+      <p class="kicker">An audit &middot; 161 lines &middot; first at commit 4427cbe, kept up to date</p>
       <h1>HoloTable against SW5e <span>what a table needs to play the whole system, and what is there</span></h1>
-      <p class="lead">This is a line-by-line check of <a href="https://boofers-den.vercel.app/sections/jpesus/holotable/">HoloTable</a>, the Star Wars 5e tabletop jpesus built on the Den, against what the SW5e rules ask of a table: making and levelling characters, class resources, powers, the sheet's arithmetic, gear, rests and conditions, combat on the map, the GM's side, starships, downtime, and the table itself. It describes HoloTable's code at commit <code>4427cbe</code> (17 Nov 2026, 08:01 PST), so anything changed since then is not counted. It is meant as a to-do list for the group, not a verdict.</p>
+      <p class="lead">This is a line-by-line check of <a href="https://boofers-den.vercel.app/sections/jpesus/holotable/">HoloTable</a>, the Star Wars 5e tabletop jpesus built on the Den, against what the SW5e rules ask of a table: making and levelling characters, class resources, powers, the sheet's arithmetic, gear, rests and conditions, combat on the map, the GM's side, starships, downtime, and the table itself. It was first checked at commit <code>4427cbe</code> (17 Nov 2026, 08:01 PST), and each line marked "Since 17 Nov" says what has landed on main since and which pull request did it, so the counts are today's. It is meant as a to-do list for the group, not a verdict.</p>
       <ul class="counts" aria-label="The 161 lines">
-        <li class="done"><b>115</b> <span aria-hidden="true">✓</span> done</li>
-        <li class="partial"><b>31</b> <span aria-hidden="true">◐</span> partial</li>
+        <li class="done"><b>117</b> <span aria-hidden="true">✓</span> done</li>
+        <li class="partial"><b>29</b> <span aria-hidden="true">◐</span> partial</li>
         <li class="missing"><b>15</b> <span aria-hidden="true">✗</span> missing</li>
       </ul>
     </header>
@@ -67,8 +67,8 @@
       </dl>
       <div class="filters" id="filters" hidden>
         <div class="fgroup" role="group" aria-label="Show by state">
-          <button type="button" data-f="state" data-v="done" aria-pressed="true">✓ Done 115</button>
-          <button type="button" data-f="state" data-v="partial" aria-pressed="true">◐ Partial 31</button>
+          <button type="button" data-f="state" data-v="done" aria-pressed="true">✓ Done 117</button>
+          <button type="button" data-f="state" data-v="partial" aria-pressed="true">◐ Partial 29</button>
           <button type="button" data-f="state" data-v="missing" aria-pressed="true">✗ Missing 15</button>
         </div>
         <div class="fgroup" role="group" aria-label="Show by how much it matters">
@@ -268,7 +268,7 @@
 <li class="item partial" id="l-3-7" data-state="partial" data-matters="every">
 <p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">3.7</span> <span class="meta">computes · every session (for a Monk)</span></p>
 <p class="text">Monk: focus points (equal to Monk level from 2nd), Martial Arts die, vows known, Unarmored Movement bonus, Unarmored Defense AC.</p>
-<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> the sheet tracks focus points and shows the Martial Arts die, vows known and the Unarmored Movement bonus (#108), and Unarmored Defense sets AC (#165). Still missing: the Martial Arts die on unarmed strikes and the bonus-action strikes in the combat view.</p>
+<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> the sheet tracks focus points and shows the Martial Arts die, vows known and the Unarmored Movement bonus (#108), and Unarmored Defense sets AC (#165). In the combat view, unarmed strikes and monk weapons get finesse and the Martial Arts die, the Attack action is followed by a bonus-action unarmed strike and Flurry of Blows' second for a focus point, Dash and Disengage can be bonus actions, and a grapple or shove may use Dex (#173). Still missing: the Unarmored Movement bonus added to speed.</p>
 </li>
 <li class="item partial" id="l-3-8" data-state="partial" data-matters="every">
 <p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">3.8</span> <span class="meta">computes · every session (for an Operative)</span></p>
@@ -784,10 +784,10 @@
 <p class="text">Damage hits shields first, then hull.</p>
 <p class="ev">Evidence: books.js:590–596. Since 17 Nov, damage also follows SotG's damage types: shields take half from acid, cold, fire and necrotic, hull half from ion, lightning and necrotic, and poison, psychic and (in space) sonic do nothing (#151).</p>
 </li>
-<li class="item done" id="l-10-5" data-state="done" data-matters="some">
-<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">10.5</span> <span class="meta">computes · sometimes</span></p>
+<li class="item partial" id="l-10-5" data-state="partial" data-matters="some">
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">10.5</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">What size and tier give a ship: hull and shield dice, hull points per hull die, modification capacity, maximum suites, stock modifications, base ability scores, minimum crew. Every number is typed; changing size or tier changes nothing. (SW5e's <code>starshipBaseSize</code> reply carries these as zeros, so they would come from the SotG chapter tables.)</p>
-<p class="ev">Evidence: <code>blankShip</code> (books.js:469); no code. <strong>Since 17 Nov:</strong> a &quot;From size, tier and role&quot; panel sets hull and shield dice and points, AC (armor and tier), the role's speed and turning, suites, modification slots and the size's saves, checked against SotG's worked example (#154, #183). Ability adjustments are shown as guidance; the scores are typed.</p>
+<p class="ev">Evidence: <code>blankShip</code> (books.js:469); no code. <strong>Since 17 Nov:</strong> a &quot;From size, tier and role&quot; panel sets hull and shield dice and points, AC (armor and tier), the role's speed and turning, suites, modification slots and the size's saves, checked against SotG's worked example (#154, #183). Ability adjustments are shown as guidance; the scores are typed. Still missing: stock modifications and minimum crew.</p>
 </li>
 <li class="item done" id="l-10-6" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">10.6</span> <span class="meta">computes · sometimes</span></p>
@@ -799,10 +799,10 @@
 <p class="text">Shields: regeneration rate and shield types (directional, fortress, quick-charge) as rules, and the Regenerate Shields action. Regen is a text box; &quot;Restore shields&quot; adds a typed number.</p>
 <p class="ev">Evidence: books.js:516, 595. <strong>Since 17 Nov:</strong> regeneration rate from the shield type and die (halved at system damage 4), passive regeneration at the start of the ship's turn (not while shields are down), the Regenerate Shields action, and Boost Shields' temporary points (#154). Shield capacity is still typed (10.5).</p>
 </li>
-<li class="item partial" id="l-10-8" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">10.8</span> <span class="meta">computes · sometimes</span></p>
+<li class="item done" id="l-10-8" data-state="done" data-matters="some">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">10.8</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Hull dice spent while recharging and refitting, and the time it takes by size. &quot;Repair hull&quot; adds a typed number.</p>
-<p class="ev">Evidence: books.js:594. <strong>Since 17 Nov:</strong> hull and shield dice spent are tracked (#154). Recharging, refitting and the time each takes by size aren't built.</p>
+<p class="ev">Evidence: books.js:594. <strong>Since 17 Nov:</strong> a &quot;Between fights&quot; row on the ship sheet: Recharge (an hour, with the size's crew) refills the shields and half the shield dice and lets a crew member spend hull dice with a mechanic's-kit check rolled on the server; Refit (docked) restores hull, shields and every die and drops a system damage level, showing the size's time and cost (#154, #211).</p>
 </li>
 <li class="item done" id="l-10-9" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">10.9</span> <span class="meta">computes · sometimes</span></p>
@@ -863,7 +863,7 @@
 <p class="nomatch" hidden>Nothing in this section matches the filters.</p>
 </details>
 <details class="sec" id="s-11">
-<summary><span class="sn">11.</span> <span class="st">Downtime, factions and the rest of Wretched Hives</span> <span class="sc"><span class="tally">3 done · 1 partial · 2 missing</span><span class="shown" hidden></span></span></summary>
+<summary><span class="sn">11.</span> <span class="st">Downtime, factions and the rest of Wretched Hives</span> <span class="sc"><span class="tally">4 done · 0 partial · 2 missing</span><span class="shown" hidden></span></span></summary>
 
 <ul class="items">
 <li class="item missing" id="l-11-1" data-state="missing" data-matters="some">
@@ -876,10 +876,10 @@
 <p class="text">Crafting: blueprints known (half level, or level with expertise), materials, tool checks, time and cost; experimenting and reverse engineering.</p>
 <p class="ev">Evidence: no code.</p>
 </li>
-<li class="item partial" id="l-11-3" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">11.3</span> <span class="meta">computes · sometimes</span></p>
+<li class="item done" id="l-11-3" data-state="done" data-matters="some">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">11.3</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Factions: membership, ranks, renown, dues, faction training, insignia, stockpiles; and the party's own faction (ideals, headquarters, faction ability scores, recruitment).</p>
-<p class="ev">Evidence: no code; GM notes are free text. <strong>Since 17 Nov:</strong> factions with a tier, renown, members with ranks, public and GM-only notes; the GM moves renown, said in chat when the faction is shown (#199). Dues, training, insignia, stockpiles and the party's own faction aren't built.</p>
+<p class="ev">Evidence: no code; GM notes are free text. <strong>Since 17 Nov:</strong> factions with a tier, renown, members with ranks and rank names, insignia, dues the GM collects from each member's credits, training on offer, a stockpile, public and GM-only notes, and the party's own faction with headquarters, ideals, recruitment and named scores; the GM moves renown, said in chat when the faction is shown (#199, #215).</p>
 </li>
 <li class="item done" id="l-11-4" data-state="done" data-matters="nice">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">11.4</span> <span class="meta">stores · nicety</span></p>
@@ -900,7 +900,7 @@
 <p class="nomatch" hidden>Nothing in this section matches the filters.</p>
 </details>
 <details class="sec" id="s-12">
-<summary><span class="sn">12.</span> <span class="st">The table itself</span> <span class="sc"><span class="tally">11 done · 1 partial · 1 missing</span><span class="shown" hidden></span></span></summary>
+<summary><span class="sn">12.</span> <span class="st">The table itself</span> <span class="sc"><span class="tally">12 done · 0 partial · 1 missing</span><span class="shown" hidden></span></span></summary>
 
 <ul class="items">
 <li class="item done" id="l-12-1" data-state="done" data-matters="every">
@@ -953,10 +953,10 @@
 <p class="text">Live updates for everyone within seconds; hidden tabs stop polling.</p>
 <p class="ev">Evidence: <code>pollLoop</code> (app.js:119).</p>
 </li>
-<li class="item partial" id="l-12-11" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">12.11</span> <span class="meta">stores · sometimes</span></p>
+<li class="item done" id="l-12-11" data-state="done" data-matters="some">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">12.11</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Phones: the layout narrows (breakpoints at 1100, 820, 720, 600 and 480 px) and the map pinches and pans, but power and feature details open on hover (a tap only reaches them through focus), and many controls are small. Not tried on a phone for this audit.</p>
-<p class="ev">Evidence: style.css media queries; tooltips (app.js:961–967).</p>
+<p class="ev">Evidence: style.css media queries; tooltips (app.js:961–967). <strong>Since 17 Nov:</strong> on a touch screen, tapping a power row or a feature opens its card as a sheet along the bottom of the screen, so nothing is hover-only, and buttons, dots and list rows are bigger touch targets (#210). The page has no sideways scroll on a phone.</p>
 </li>
 <li class="item done" id="l-12-12" data-state="done" data-matters="nice">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">12.12</span> <span class="meta">computes · nicety</span></p>

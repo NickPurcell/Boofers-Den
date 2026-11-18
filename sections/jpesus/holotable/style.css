@@ -139,6 +139,10 @@ body.is-gm .gm-only { display: revert !important; }
 .prof { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--muted); cursor: pointer; flex: none; padding: 0; background: transparent; }
 .prof.p1 { background: var(--holo); border-color: var(--holo); }
 .prof.p2 { background: var(--amber); border-color: var(--amber); box-shadow: 0 0 0 2px color-mix(in srgb, var(--amber) 33%, transparent); }
+/* Wretched Hives' masteries (audit 5.7): expertise's dot with one, two or three rings */
+.prof.p3 { box-shadow: 0 0 0 2px var(--panel, #0d1520), 0 0 0 3px var(--holo); }
+.prof.p4 { box-shadow: 0 0 0 2px var(--panel, #0d1520), 0 0 0 3px var(--holo), 0 0 0 5px var(--panel, #0d1520), 0 0 0 6px var(--holo); }
+.prof.p5 { box-shadow: 0 0 0 2px var(--panel, #0d1520), 0 0 0 3px var(--holo), 0 0 0 5px var(--panel, #0d1520), 0 0 0 6px var(--amber); }
 .prof.p05 { background: linear-gradient(90deg, var(--holo) 50%, transparent 50%); border-color: var(--holo); }
 .prof:disabled { cursor: default; }
 .hp-box .big { font-size: 30px; font-weight: 700; }
@@ -635,6 +639,7 @@ table.t td:first-child input { min-width: 140px; }
 .ship-lv select { width: auto; min-width: 0; font-size: 13px; padding: 2px 4px; }
 .ship-fight .btn:disabled { opacity: .45; cursor: default; }
 .ship-build summary { cursor: pointer; font-size: 13px; }
+.ship-sheet .warn { color: var(--red); }
 .ship-build .t td:first-child { color: var(--muted); }
 .ship-power { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
 .ship-pool { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; }
@@ -784,3 +789,12 @@ canvas.drawing { cursor: crosshair; }
   .dot { width: 18px; height: 18px; }
   .lr { min-height: 36px; }
 }
+/* carrying (audit 6.5): the weight against the capacity, and the encumbrance it causes */
+.eq-table .eq-wt { width: 1%; }
+.eq-table .eq-wt input { width: 48px; }
+.eq-wrap { overflow-x: auto; }
+.carry-var { display: inline-flex; flex-direction: row; align-items: center; gap: 4px; font-size: 12px; margin-left: auto; text-transform: none; letter-spacing: 0; }
+.carry-var input { width: auto; margin: 0; }
+.carry { align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.carry .carry-state { color: var(--amber); font-size: 12px; }
+.carry.carry-heavy .carry-state, .carry.carry-over .carry-state { color: var(--red); }

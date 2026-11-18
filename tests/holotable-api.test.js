@@ -1716,7 +1716,7 @@ test("images a kept backup still uses aren't deleted until that backup rolls off
 
 test("senses on the sheet are the GM's: players get their species' senses, never their own edits (#92)", async () => {
   const { gm, p1 } = await table();
-  await db.set(S.K.sw5e("species"), JSON.stringify([
+  await db.set(S.K.sw5e("species-2"), JSON.stringify([
     { n: "Advozse", traits: [{ n: "Darkvision", d: "You can see in dim light within 60 feet of you as if it were bright light." }] },
     { n: "Kaleesh", traits: [{ n: "Energy Sensors", d: "You have blindsight out to 30 feet." }] },
     { n: "Human", traits: [{ n: "Versatile", d: "Skill." }] },
@@ -1752,7 +1752,7 @@ test("sheets made before #129 get their species' senses once; never over senses 
   // a table from before #129: sheets with a species but no senses (the GM's saves keep what they're given)
   const make = async (name, species, senses) => (await gm.act("char.save", { char: Object.assign({ name, species }, senses ? { senses } : {}) })).data.id;
   // SW5e's species list unreachable at first: nothing changes, and the next action tries again
-  await db.del(S.K.sw5e("species"));
+  await db.del(S.K.sw5e("species-2"));
   await db.set(S.K.sw5eFail("species"), "1");
   handler.resetSpeciesSenses();
   const vel = await make("Vel", "Sith Pureblood"), ana = await make("Ana", "Sith Pureblood", [{ kind: "truesight", range: 30 }]), hal = await make("Hal", "Human"), nos = await make("Nos", "");
@@ -1765,7 +1765,7 @@ test("sheets made before #129 get their species' senses once; never over senses 
   assert.equal(await senses(vel), undefined, "the list unreachable: left alone");
   // the list back: the next action fills Vel from its species; Ana keeps the GM's; Hal's species has none; Nos has no species
   await db.del(S.K.sw5eFail("species"));
-  await db.set(S.K.sw5e("species"), JSON.stringify([
+  await db.set(S.K.sw5e("species-2"), JSON.stringify([
     { n: "Sith Pureblood", traits: [{ n: "Darkvision", d: "You can see in dim light within 60 feet of you as if it were bright light." }] },
     { n: "Human", traits: [{ n: "Versatile", d: "Skill." }] },
   ]));
@@ -1799,7 +1799,7 @@ test("the one-time senses fill never reads SW5e inside the game lock, and only r
   const file = JSON.parse((await gm.call("GET", { op: "export" })).data);
   delete file.sensesFilled;
   assert.equal((await gm.post("restore", { campaign: file })).code, 200);
-  await db.del(S.K.sw5e("species"));
+  await db.del(S.K.sw5e("species-2"));
   await db.del(S.K.sw5eFail("species"));
   handler.resetSpeciesSenses();
   const realFetch = global.fetch;
@@ -1826,7 +1826,7 @@ test("the senses fill holds an action at most about a second while SW5e is slow,
   let file = JSON.parse((await gm.call("GET", { op: "export" })).data);
   delete file.sensesFilled;
   await gm.post("restore", { campaign: file });
-  await db.del(S.K.sw5e("species")); await db.del(S.K.sw5eFail("species"));
+  await db.del(S.K.sw5e("species-2")); await db.del(S.K.sw5eFail("species"));
   handler.resetSpeciesSenses();
   const realFetch = global.fetch;
   global.fetch = () => new Promise((ok, bad) => setTimeout(() => bad(new Error("slow, then out")), 2500));
@@ -1837,7 +1837,7 @@ test("the senses fill holds an action at most about a second while SW5e is slow,
   } finally { await new Promise((ok) => setTimeout(ok, 2700)); global.fetch = realFetch; }
   // the list back: filled; then an old backup (no mark, no senses) restored on a warm instance is filled again
   await db.del(S.K.sw5eFail("species"));
-  await db.set(S.K.sw5e("species"), JSON.stringify([{ n: "Sith Pureblood", traits: [{ n: "Darkvision", d: "You can see in dim light within 60 feet of you as if it were bright light." }] }]));
+  await db.set(S.K.sw5e("species-2"), JSON.stringify([{ n: "Sith Pureblood", traits: [{ n: "Darkvision", d: "You can see in dim light within 60 feet of you as if it were bright light." }] }]));
   handler.resetSpeciesSenses();
   await gm.act("notes.save", { notes: "filled" });
   const vel = () => gm.poll().then((r) => Object.values(r.data.state.characters).find((c) => c.name === "Vel").senses);
@@ -2410,6 +2410,33 @@ test("between fights (section 11): factions and renown, rivals and complications
   assert.equal((await p1.poll()).data.state.factions, undefined);
 });
 
+test("factions, the rest of 11.3: insignia, rank names, dues the GM collects, training, stockpile, the party's own", async () => {
+  const { gm, p1 } = await table();
+  const kira = (await p1.act("char.save", { char: { name: "Kira", credits: 30 } })).data.id;
+  const item = { name: "Rebel cell", shown: true, insignia: "a starbird pin", ranks: ["Recruit", "Operative"], dues: 20, duesPer: "week", training: "Slicing, from Operative",
+    stockpile: [{ name: "medpac", qty: 4 }, { name: "" }], ours: true, hq: "Echo Base", ideals: "Hope", recruitment: "By word of mouth", scores: [{ name: "Influence", value: 14 }, { name: "Big", value: 99 }],
+    members: { [kira]: { rank: 1, renown: 0 } } };
+  assert.equal((await p1.act("faction.dues", { id: "x" })).code, 403);
+  const id = (await gm.act("faction.save", { item })).data.id;
+  let f = (await p1.poll()).data.state.factions[0];
+  assert.deepEqual([f.insignia, f.ranks, f.dues, f.duesPer, f.training, f.stockpile, f.ours, f.hq, f.ideals, f.recruitment, f.scores],
+    ["a starbird pin", ["Recruit", "Operative"], 20, "week", "Slicing, from Operative", [{ name: "medpac", qty: 4 }], true, "Echo Base", "Hope", "By word of mouth", [{ name: "Influence", value: 14 }, { name: "Big", value: 30 }]]);
+  await gm.act("faction.dues", { id });
+  await gm.act("faction.dues", { id });
+  const st = (await p1.poll()).data.state;
+  assert.equal(st.characters[kira].credits, 0, "30, then 10, then it stops at 0");
+  assert.ok(st.chat.some((m) => m.text === "⚑ Dues to Rebel cell: Kira 20 cr. Kira couldn't cover it all."), JSON.stringify(st.chat.slice(-2)));
+  // not the party's own: those parts go
+  await gm.act("faction.save", { item: Object.assign({}, item, { id, ours: false }) });
+  f = (await gm.poll()).data.state.factions[0];
+  assert.deepEqual([f.ours, f.hq, f.scores, f.insignia], [undefined, undefined, undefined, "a starbird pin"]);
+  // a hidden faction's dues are collected quietly
+  await gm.act("faction.save", { item: Object.assign({}, item, { id, shown: false }) });
+  const before = (await gm.poll()).data.state.chat.length;
+  await gm.act("faction.dues", { id });
+  assert.equal((await gm.poll()).data.state.chat.length, before);
+});
+
 test("renown and lifestyle lines don't name a character whose name the GM hides (#199 review)", async () => {
   const { gm, p1 } = await table();
   const id = (await gm.act("char.save", { char: { name: "Darth Secret", credits: 100, lifestyle: "Wealthy" } })).data.id;
@@ -2507,4 +2534,32 @@ test("campaign image sets: a campaign saved before the sets existed is still cou
   await gm.act("map.bg", { url: up2.data.url });   // B lets go of the shared image
   assert.equal((await gm.call("GET", { img: shared.split("=")[1] })).code, 200, "main still uses it, so it stays");
   assert.ok((await db.smembers(S.K.refs("main"))).includes(shared), "and main's set was rebuilt once");
+});
+
+test("variant rules on the sheet (9.16): Simplified Forcecasting's ability counts only while the GM uses it; Hunted's pool is kept", async () => {
+  const { gm, p1 } = await table();
+  const sheet = { name: "Vel", classes: [{ name: "Consular", level: 5 }], abilities: { wis: 10, cha: 18 }, forceAbility: "cha", disturbance: 7 };
+  const id = (await p1.act("char.save", { char: sheet })).data.id;
+  let c = (await p1.poll()).data.state.characters[id];
+  assert.deepEqual([c.forceAbility, c.disturbance], [undefined, 7], "the choice needs the variant");
+  await gm.act("variants.set", { variants: ["Simplified Forcecasting", "Hunted"] });
+  await p1.act("char.save", { char: Object.assign({}, sheet, { id, forceAbility: "str", disturbance: 5000 }) });
+  c = (await p1.poll()).data.state.characters[id];
+  assert.deepEqual([c.forceAbility, c.disturbance], [undefined, 999], "only Wisdom or Charisma; the pool tops out");
+  await p1.act("char.save", { char: Object.assign({}, sheet, { id }) });
+  c = (await p1.poll()).data.state.characters[id];
+  assert.equal(c.forceAbility, "cha");
+  require("../sections/jpesus/holotable/rules.js");
+  const ci = globalThis.SW5E.casterInfo(c);
+  assert.equal(ci.lightDC, ci.darkDC, "one ability for light and dark");
+  assert.equal(ci.lightDC, 8 + 3 + 4);
+  await gm.act("variants.set", { variants: ["Hunted"] });
+  assert.equal((await p1.poll()).data.state.characters[id].forceAbility, undefined, "dropping the variant drops the choice");
+});
+
+test("a sheet keeps Wretched Hives' mastery tiers on skills (5.7)", async () => {
+  const { p1 } = await table();
+  const id = (await p1.act("char.save", { char: { name: "Ace", skills: { stealth: 3, insight: 5, athletics: 6, perception: 0.5 } } })).data.id;
+  const sk = (await p1.poll()).data.state.characters[id].skills;
+  assert.deepEqual([sk.stealth, sk.insight, sk.athletics, sk.perception], [3, 5, 0, 0.5]);
 });
