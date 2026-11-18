@@ -303,6 +303,20 @@
     return k ? Math.max(1, Math.floor((+k.level || 0) / 2) + Math.max(abilityMod(c, 'wis'), abilityMod(c, 'cha'))) : 0;
   };
 
+  // ---- ability scores (audit 1.4), from SW5e's Player's Handbook, "Step-By-Step Characters": roll four d6 and keep the
+  // highest three, six times, or use the standard set 15, 14, 13, 12, 10, 8; then place each number on an ability. The
+  // variant "Customizing Ability Scores" (the GM's option) spends 27 points on scores from 8 to 15 at these costs.
+  const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
+  const POINT_COST = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 };
+  const POINT_BUDGET = 27;
+  // what a set of scores ({ str: 8, ... }) costs under point buy; Infinity when one is outside 8-15
+  const pointBuyCost = scores => ABILITIES.reduce((n, a) => n + (POINT_COST[+scores[a.key]] ?? Infinity), 0);
+  // do these scores use each of the six numbers exactly once?
+  const usesEachOnce = (scores, values) => {
+    const got = ABILITIES.map(a => +scores[a.key]).sort((x, y) => x - y), want = (values || []).map(Number).sort((x, y) => x - y);
+    return want.length === 6 && got.every((v, i) => v === want[i]);
+  };
+
   function blankCharacter() {
     return {
       _format: 'holotable-sw5e', name: 'New Character', species: 'Human', background: '', alignment: '',
@@ -385,6 +399,7 @@
     mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo, techOnShortRest, overMaxPowerLevel,
     ARCHETYPE_CASTERS, casterArchetype, castingSources,
     attackBonus, damageExpr, critExpr, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
+    STANDARD_ARRAY, POINT_COST, POINT_BUDGET, pointBuyCost, usesEachOnce,
     CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt,
     SENSES, cleanSenses, sensesFromTraits, sensesText, parseSenses };
 })(typeof window !== 'undefined' ? window : globalThis);

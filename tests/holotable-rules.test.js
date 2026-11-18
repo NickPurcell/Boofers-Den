@@ -163,3 +163,19 @@ test("senses: species traits read as senses; the GM's typing parsed; only the fo
   assert.deepEqual(R.cleanSenses([{ kind: "truesight", range: 99999 }, { kind: "darkvision", range: 0 }]), [{ kind: "truesight", range: 9999 }]);
   assert.equal(R.sensesText([{ kind: "darkvision", range: 60 }, { kind: "blindsight", range: 10 }]), "Darkvision 60 ft · Blindsight 10 ft");
 });
+
+test("ability scores (audit 1.4): SW5e's standard set, and point buy's 27 points from 8 to 15", () => {
+  assert.deepEqual(R.STANDARD_ARRAY, [15, 14, 13, 12, 10, 8]);
+  assert.deepEqual(R.POINT_COST, { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 });
+  assert.equal(R.POINT_BUDGET, 27);
+  const sc = (str, dex, con, int, wis, cha) => ({ str, dex, con, int, wis, cha });
+  assert.equal(R.pointBuyCost(sc(15, 15, 15, 8, 8, 8)), 27, "the PHB's three high, three low example");
+  assert.equal(R.pointBuyCost(sc(13, 13, 13, 12, 12, 12)), 27, "and its nearly equal example");
+  assert.equal(R.pointBuyCost(sc(8, 8, 8, 8, 8, 8)), 0);
+  assert.equal(R.pointBuyCost(sc(16, 8, 8, 8, 8, 8)), Infinity, "above 15 can't be bought");
+  assert.equal(R.pointBuyCost(sc(7, 8, 8, 8, 8, 8)), Infinity, "nor below 8");
+  assert.ok(R.usesEachOnce(sc(8, 15, 12, 13, 10, 14), R.STANDARD_ARRAY), "the PHB's Han Solo placement");
+  assert.ok(!R.usesEachOnce(sc(15, 15, 12, 13, 10, 8), R.STANDARD_ARRAY), "a number used twice");
+  assert.ok(R.usesEachOnce(sc(9, 17, 12, 12, 6, 14), [17, 14, 12, 12, 9, 6]), "rolled numbers, repeats allowed once each");
+  assert.ok(!R.usesEachOnce(sc(9, 17, 12, 12, 6, 14), [17, 14, 12, 9, 6]), "five numbers for six abilities");
+});
