@@ -269,6 +269,17 @@ test("installing and removing a modification (audit 6.4, #236's review): the lis
   assert.match(R.removeMod(g, 0, 0, true), /gone/);
 });
 
+test("upgrading a chassis one rarity step (audit 6.4): the name follows, what's installed stays, none past artifact", () => {
+  const it = { name: "Blaster Chassis (Premium)", rar: "Premium", chassis: { kind: "blaster", mods: [{ name: "Barrel Mod", rar: "Standard" }] } };
+  assert.equal(R.nextRarity(it), "Prototype");
+  assert.equal(R.upgradeChassis(it), "Prototype");
+  assert.deepEqual([it.name, it.rar, it.chassis.mods.length, R.modSlots(it.rar).aug], ["Blaster Chassis (Prototype)", "Prototype", 1, 1]);
+  const plain = { name: "Old blaster frame", chassis: { kind: "blaster", mods: [] } };   // no rarity: Standard, and a name without one stays
+  assert.deepEqual([R.upgradeChassis(plain), plain.name, plain.rar], ["Premium", "Old blaster frame", "Premium"]);
+  assert.equal(R.nextRarity({ name: "X", rar: "Artifact", chassis: { kind: "armor", mods: [] } }), null);
+  assert.equal(R.upgradeChassis({ name: "Rock", rar: "Premium" }), null, "not a chassis");
+});
+
 test("speed (audit 5.11): SW5e's strength and cumbersome armor properties, the encumbrance variant, other movement from traits", () => {
   assert.deepEqual(R.armorFromItem({ accl: "Heavy", ac: "17", props: ["Bulky", "cumbersome", "strength 15"] }), { kind: "heavy", ac: 17, str: 15, cumbersome: true });
   assert.deepEqual(R.armorFromItem({ accl: "Light", ac: "11", props: [] }), { kind: "light", ac: 11 });

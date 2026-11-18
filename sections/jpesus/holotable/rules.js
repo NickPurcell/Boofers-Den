@@ -521,6 +521,19 @@
   }
   Object.assign(SW5E, { CHASSIS_KINDS, MOD_KINDS, MOD_DC, MOD_TOOL, chassisKind, modSlots, modDC, installBlocked, chassisBonus, cleanChassis, cleanMod, rechassis, installMod, removeMod });
 
+  // Upgrading a chassis (Wretched Hives, "Upgrading Modifiable Item Chassis"): one rarity step at a time, eight hours, a
+  // check with the item's tool at the new rarity's DC, and a rare material. Its name follows its rarity when it carries it
+  // ("Blaster Chassis (Premium)" becomes "... (Prototype)"); what's installed stays. The next rarity, or null at the top.
+  const nextRarity = it => (it && it.chassis ? RARITIES[RARITIES.indexOf(RARITIES.includes(it.rar) ? it.rar : 'Standard') + 1] || null : null);
+  function upgradeChassis(it) {
+    const next = nextRarity(it), was = RARITIES.includes(it && it.rar) ? it.rar : 'Standard';
+    if (!next) return null;
+    it.name = String(it.name || '').replace(`(${was})`, `(${next})`);
+    it.rar = next;
+    return next;
+  }
+  Object.assign(SW5E, { nextRarity, upgradeChassis });
+
   // Selling (audit 6.8): equipment fetches half its cost (PHB, "Selling Treasure"), whole credits, rounded down
   const sellPrice = e => Math.floor(Math.max(0, +(e && e.cost) || 0) / 2);
   Object.assign(SW5E, { sellPrice });

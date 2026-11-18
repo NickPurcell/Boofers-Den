@@ -1561,10 +1561,28 @@
       ${ro ? '' : fits.length ? `<div class="row" style="margin-top:10px"><select id="modPick" style="flex:1">${fits.map(({ e, j }) => `<option value="${j}">${esc(e.name)} (${esc(e.rar || 'Standard')}, DC ${R.modDC(e.rar)})</option>`).join('')}</select>
         <button class="btn primary" id="modInstall">Install</button></div>` : '<p class="muted">Nothing in the inventory fits: a modification of this kind (or an augment), at this rarity or lower, with a slot free.</p>'}
       ${isGM() && !ro ? '<label class="muted carry-var" style="margin-top:8px"><input type="checkbox" id="modNoCheck"> GM: no check</label>' : ''}
-      <div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn" id="modClose">Close</button></div>`, box => {
+      <div class="row" style="margin-top:10px">${!ro && R.nextRarity(item) ? `<button class="btn tiny ghost" id="modUpgrade" title="Wretched Hives: one rarity step, 8 hours, a rare material, and a check against DC ${R.modDC(R.nextRarity(item))}. On a failure, wait 24 hours, and a d20 of 1 destroys an installed modification.">Upgrade to ${esc(R.nextRarity(item))}…</button>` : ''}
+        <span class="spacer"></span><button class="btn" id="modClose">Close</button></div>`, box => {
       box.onclick = async e => {
         if (e.target.id === 'modClose') return closeModal();
         const skip = isGM() && $('#modNoCheck', box) && $('#modNoCheck', box).checked;
+        if (e.target.id === 'modUpgrade') {   // a rarity step for the chassis (6.4)
+          const next = R.nextRarity(item); if (!next) return;
+          if (!confirm(`Upgrade ${item.name} to ${next}? It takes 8 hours and an appropriate rare material (see Crafting), and a check against DC ${R.modDC(next)}.`)) return;
+          closeModal();
+          const ok = skip ? true : await check(`Upgrade ${item.name} to ${next}`, item.chassis.kind, next);
+          if (ok === null) return;
+          if (ok) {
+            mutate(c => { const it = c.equipment[i]; if (it && it.name === item.name && it.chassis) R.upgradeChassis(it); });
+            return act('chat', { text: `*upgrades ${item.name} to ${next}.*` });
+          }
+          // a failure: wait 24 hours, and on a d20 of 1 one installed modification, picked at random, is destroyed
+          const d = mods.length ? await roll('1d20', `Failed upgrade of ${item.name}: on a 1, an installed modification is destroyed`) : null;
+          const lost = d && d.roll && d.roll.total === 1 ? await roll(`1d${mods.length}`, `Which modification of ${item.name} is destroyed`) : null;
+          const k = lost && lost.roll ? lost.roll.total - 1 : -1, gone = mods[k];
+          if (gone) mutate(c => { const it = c.equipment[i]; if (it && it.name === item.name && it.chassis && (it.chassis.mods || [])[k] && it.chassis.mods[k].name === gone.name) R.removeMod(c, i, k, false); });
+          return act('chat', { text: `*fails to upgrade ${item.name}; try again after 24 hours${gone ? `. ${gone.name} is destroyed` : ''}.*` });
+        }
         if (e.target.id === 'modInstall') {
           const j = +$('#modPick', box).value, m = ch.equipment[j]; if (!m) return;
           const why = R.installBlocked(item, m); if (why) return toast(why, true);
