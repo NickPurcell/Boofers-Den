@@ -53,7 +53,7 @@ function state(camp) {
     spent: Object.fromEntries(Object.entries(plainObj(f.spent)).filter(([k, v]) => ID.test(k) && v && typeof v === "object")
       .map(([k, v]) => [k, { key: str(v.key, 40), move: clamp(int(v.move), 0, 1000), action: clamp(int(v.action), 0, 9), bonus: clamp(int(v.bonus), 0, 9), reaction: clamp(int(v.reaction), 0, 9), diag: v.diag ? 1 : 0,
         dash: clamp(int(v.dash), 0, 9), disengage: v.disengage ? 1 : 0, dodge: v.dodge ? 1 : 0, ds: v.ds ? 1 : 0, sneak: v.sneak ? 1 : 0, double: v.double ? 1 : 0,
-        atk: clamp(int(v.atk), 0, 9), atkMax: clamp(int(v.atkMax), 0, 9), lt: clamp(int(v.lt), 0, 41), dw: clamp(int(v.dw), 0, 41), off: clamp(int(v.off), 0, 9) }])),
+        atk: clamp(int(v.atk), 0, 9), atkMax: clamp(int(v.atkMax), 0, 9), lt: clamp(int(v.lt), 0, 41), dw: clamp(int(v.dw), 0, 41), off: clamp(int(v.off), 0, 9), mv: clamp(int(v.mv), 0, 1023) }])),
     // reactions waiting for an answer: an opportunity attack someone may take (the turn waits until it's answered)
     pending: (Array.isArray(f.pending) ? f.pending : []).slice(0, 12).map(cleanPending).filter(Boolean),
     // a creature's limited abilities from its stat block (audit 9.5, issue #76): recharge, per day, legendary actions
@@ -72,6 +72,13 @@ function state(camp) {
       rounds: clamp(int(x.rounds, 1), 1, 100), save: x.save && typeof x.save === "object" ? { ability: ["str", "dex", "con", "int", "wis", "cha"].includes(x.save.ability) ? x.save.ability : "con", dc: clamp(int(x.save.dc, 10), 1, 40) } : null,
       source: ID.test(String(x.source || "")) ? x.source : null, conc: !!x.conc })),
     conc: Object.fromEntries(Object.entries(plainObj(f.conc)).filter(([k, v]) => ID.test(k) && typeof v === "string").map(([k, v]) => [k, str(v, 80)])),
+    // concentration begun from the sheet's Cast outside a fight (#73), by character id; it joins `conc` when the
+    // character is in the tracker (worldOf), so a fight that starts later keeps it
+    sheetConc: Object.fromEntries(Object.entries(plainObj(f.sheetConc)).filter(([k, v]) => ID.test(k) && typeof v === "string" && charOf(camp, k)).slice(0, 60).map(([k, v]) => [k, str(v, 80)])),
+    // the conditions each such concentration put on its targets, which come off when it ends
+    sheetHeld: Object.fromEntries(Object.entries(plainObj(f.sheetHeld)).filter(([k, v]) => ID.test(k) && Array.isArray(v) && charOf(camp, k)).slice(0, 60)
+      .map(([k, v]) => [k, v.filter((h) => h && typeof h === "object" && typeof h.condition === "string" && (ID.test(String(h.char || "")) || ID.test(String(h.entry || "")))).slice(0, 40)
+        .map((h) => Object.assign(ID.test(String(h.char || "")) ? { char: h.char } : { entry: h.entry }, { condition: str(h.condition, 30) }))])),
     lastTurn: str(f.lastTurn, 60),
   };
   return camp.fight;
@@ -162,7 +169,7 @@ function worldOf(camp, forPlayer, G, cid) {
   const cur = ini.entries[ini.turn];
   const w = E.buildWorld({
     characters: camp.characters, entries, active: ini.active, turnId: cur && entries.includes(cur) ? cur.id : null, round: ini.round,
-    tokens: camp.map.tokens, unitTokens: ut, spent: f.spent || {}, effects: f.effects || [], conc: f.conc || {},
+    tokens: camp.map.tokens, unitTokens: ut, spent: f.spent || {}, effects: f.effects || [], conc: concOf(camp),
     npcSpeed: Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v.speed : v])),
     npcStats: Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v : {}])),
     defenses: f.defenses || {}, walls: mapWalls(camp), variants: camp.variants || [],
@@ -174,6 +181,17 @@ function worldOf(camp, forPlayer, G, cid) {
   if (fogOn(camp) && lightOn(camp)) { const { cols, rows } = sizeOf(camp); w.light = { lit: litOf(camp), cols, rows }; }
   w.board = sizeOf(camp);   // the board's edge, which a push can't go past (#147)
   return w;
+}
+
+// who concentrates on what, by tracker entry: the combat view's record, plus what a character in the tracker began
+// from the sheet outside a fight (sheetConc, by character)
+function concOf(camp) {
+  const f = camp.fight || {}, out = Object.assign({}, f.conc || {});
+  for (const [charId, name] of Object.entries(f.sheetConc || {})) {
+    const e = camp.initiative.entries.find((x) => x.charId === charId);
+    if (e && !out[e.id]) out[e.id] = name;
+  }
+  return out;
 }
 
 function mayAct(camp, cid, gm, entry) {
@@ -266,7 +284,10 @@ function writeBack(camp, cid, before, after, G) {
   }
   f.spent = after.spent || {};
   if (after.effects) f.effects = after.effects;
-  if (after.conc) f.conc = after.conc;
+  if (after.conc) {
+    f.conc = after.conc;
+    for (const u of Object.values(after.units)) if (u.charId && f.sheetConc) delete f.sheetConc[u.charId];
+  }
   // conditions the engine gave or took away: on the tracker entry, and on the sheet for a character
   for (const [id, a] of Object.entries(after.units)) {
     const b = before.units[id];
@@ -459,9 +480,246 @@ function secondWind(camp, cid, ch, G, units) {
   say(camp, G, Object.assign({ from: shown, fromId: cid, roll: Object.assign({}, res, { expr: `1d10+${lvl}`, label: "Second Wind (healing)", kind: "heal" }) },
     shown === ch.name ? { charName: ch.name } : {}), cid, units || []);
 }
+/* ---------------- the sheet's Cast through the engine (#73, audit 4.4-4.7 outside the combat view) ----------------
+   A power the table has data for (f.lib) rolls from the sheet as it does in the combat view: its attack or each target's
+   save, then its damage or healing, its conditions and its concentration, with the combat view on or off. In a fight the
+   caster is part of, the sheet sends the combat view's own `fight.use`; this is for outside one. The engine resolves it
+   in a pretend turn of the caster's: the targets are tokens picked on the map (a character's numbers from its sheet, a
+   creature's from its tracker entry when it has one, otherwise none), and what changed goes back to the sheets and the
+   tracker. Out of a fight nothing counts rounds, so a condition stays until it's taken off, except one held by
+   concentration, which goes when the concentration ends (sheetHeld). Nothing here is undoable. */
+const SHEET_CASTER = "sheetcaster";   // the caster's unit id when it has no tracker entry
+const own = (o, k) => !!o && Object.prototype.hasOwnProperty.call(o, k);
+// a chat line about tokens, routed by sight under fog like `say`; the sheet's Cast outside a fight has tokens, not units
+function sayTokens(camp, G, msg, cid, tokenIds) {
+  if (!msg.to) { const to = sightToTokens(camp, cid, tokenIds); if (to) msg.to = to; }
+  G.addChat(camp, msg);
+}
+// the conditions a sheet-cast concentration power put on its targets come off when it ends
+function dropHeld(camp, charId) {
+  const f = camp.fight, held = (f.sheetHeld || {})[charId] || [];
+  delete f.sheetHeld[charId];
+  for (const h of held) {
+    const c = h.char && charOf(camp, h.char), e = h.entry && camp.initiative.entries.find((x) => x.id === h.entry);
+    const off = (list) => (list || []).filter((x) => x !== h.condition);
+    if (c) { c.conditions = off(c.conditions); for (const x of camp.initiative.entries) if (x.charId === c.id) x.conditions = off(x.conditions); }
+    if (e) e.conditions = off(e.conditions);
+  }
+}
+function sheetCast(camp, cid, gm, p, G) {
+  if (!camp.fight) throw new G.Invalid("The table has no data for that power.");   // never switched on: no data, and no record made
+  if (!ID.test(String(p.charId || ""))) throw new G.Invalid("No such character.");
+  const f = state(camp), ini = camp.initiative;
+  const ch = charOf(camp, p.charId);
+  if (!ch) throw new G.Invalid("No such character.");
+  if (!gm && ch.owner !== cid) throw new G.Forbidden("not your character");
+  const name = str(p.power, 80).trim().toLowerCase();
+  const pw = (ch.powers || []).find((x) => x && String(x.name || "").trim().toLowerCase() === name);
+  if (!pw) throw new G.Invalid("That power isn't on the sheet.");
+  const ability = E.resolvePower(ch, pw, own(f.lib, name) ? f.lib[name] : null, R);
+  if (!ability) throw new G.Invalid("The table has no data for that power.");
+  const mine = ini.entries.find((e) => e.charId === ch.id);
+  if (f.on && ini.active && mine) throw new G.Invalid(`${ch.name} is in the fight: cast it from the combat view on ${ch.name}'s turn.`);
+  const level = clamp(int(p.level, ability.level), ability.level, 9), up = level - ability.level;
+  // the max power level (audit 4.5): a player is refused; the GM may go past it (jpesus's ruling: the GM has the final say)
+  if (level > ability.maxLevel && (ability.level || up)) {
+    if (!gm) throw new G.Invalid(ability.maxLevel ? `${ch.name} can cast powers up to level ${ability.maxLevel}.` : `${ch.name} can't cast leveled powers yet.`);
+    ability.maxLevel = level;
+  }
+  const tokens = camp.map.tokens || [], fog = gm ? null : fogFor(camp, cid), picked = [];
+  for (const id of new Set((Array.isArray(p.targets) ? p.targets : []).slice(0, 40).map(String))) {
+    const t = ID.test(id) ? tokens.find((x) => x.id === id) : null;
+    // a player picks only from the tokens they're sent: one the GM hides, or out of their sight under fog, is "no such token"
+    if (!t || (!gm && (t.hidden || (fog && fog.tokens.has(t.id))))) throw new G.Invalid("No such token.");
+    picked.push(t);
+  }
+  // How far a player's Cast reaches (#156's review; the question is jpesus's, on #65): their own characters take its
+  // effects; anyone else's character or a creature gets the rolls posted, for its owner or the GM to apply; and while a
+  // fight is on the tracker, a player casts at others only from the combat view, on their turn. The GM's applies everywhere.
+  const others = gm ? [] : picked.filter((t) => { const c = t.charId && charOf(camp, t.charId); return !(c && c.owner === cid); });
+  if (others.length && ini.active) throw new G.Invalid("A fight is on: cast it at others from the combat view, on your turn.");
+  if (others.length) return castUnaimed(camp, cid, ch, ability, up, G, picked);
+  if (!picked.length && ability.targets !== "self") return castUnaimed(camp, cid, ch, ability, up, G);
+  // the caster's pretend turn, with the picked tokens as the units
+  const ut = unitTokens(camp), entryOf = Object.fromEntries(Object.entries(ut).map(([e, t]) => [t, e]));
+  const myTok = tokens.find((t) => t.charId === ch.id);
+  // no token of its own: it stands on its first target's square, so range is never what stops it
+  const meTok = myTok || { id: "sheetcastertok", x: picked[0] ? picked[0].x : 0, y: picked[0] ? picked[0].y : 0, size: 1 };
+  const meId = mine ? mine.id : SHEET_CASTER;
+  const entries = [mine || { id: meId, charId: ch.id, name: ch.name }], tokOf = { [meId]: meTok.id }, ids = [];
+  for (const t of picked) {
+    if (t.charId === ch.id) { ids.push(meId); continue; }
+    const e = own(entryOf, t.id) ? ini.entries.find((x) => x.id === entryOf[t.id]) : null;
+    const tc = t.charId && charOf(camp, t.charId);
+    const id = e ? e.id : t.id;   // a token with no tracker entry stands for itself
+    entries.push(e || { id, charId: tc ? tc.id : null, name: t.name });
+    tokOf[id] = t.id; ids.push(id);
+  }
+  // a new concentration power ends the old one first, and the conditions it held
+  const wasConc = mine ? concOf(camp)[mine.id] : own(f.sheetConc, ch.id) ? f.sheetConc[ch.id] : null;
+  if (ability.concentration) dropHeld(camp, ch.id);
+  const conc = concOf(camp);
+  if (!mine && own(f.sheetConc, ch.id)) conc[meId] = f.sheetConc[ch.id];
+  const world = E.buildWorld({
+    characters: camp.characters, entries, active: true, turnId: meId, round: 1, tokens: myTok ? tokens : tokens.concat([meTok]), unitTokens: tokOf,
+    spent: {}, effects: [], conc,
+    npcSpeed: {}, npcStats: Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v : {}])),
+    defenses: f.defenses || {}, walls: mapWalls(camp), variants: camp.variants || [],
+  }, R);
+  // every name in the log is the one players are shown ("???" for a token whose name the GM hides)
+  for (const e of entries) if (world.units[e.id]) world.units[e.id].name = G.shownName(camp, e);
+  // an area power: the tokens picked are the ones in it (out of a fight nobody places the template, so no range)
+  const ab = ability.area ? Object.assign({}, ability, { area: null, targets: Math.max(1, ids.length), reach: null, range: [10000, 10000] }) : ability;
+  const r = E.apply(world, { type: "use", unit: meId, ability: ab, targets: ab.targets === "self" ? [] : ids, upcast: up, adv: !!p.adv, dis: !!p.dis }, (expr) => G.rollDice(expr));
+  if (!r.ok) throw new G.Invalid(r.why);
+  if (ab.concentration && wasConc) r.log.splice(1, 0, { unit: meId, text: `${world.units[meId].name} stops concentrating on ${wasConc}.` });
+  // what changed: points, hit points, death saves and conditions to the sheets; a creature's to its tracker entry
+  const held = [];
+  for (const [id, a] of Object.entries(r.world.units)) {
+    const b = world.units[id], c = a.charId && charOf(camp, a.charId), e = ini.entries.find((x) => x.id === id);
+    const gained = (a.conditions || []).filter((x) => !(b.conditions || []).includes(x));
+    if (c) {
+      for (const [key, pool] of Object.entries(a.pools || {})) {
+        if (!own(b.pools, key) || b.pools[key].used === pool.used) continue;
+        const next = E.setPoolUsed(c, key, pool.used, R);
+        Object.assign(c, { resources: next.resources, force: next.force, tech: next.tech, hitDiceUsed: next.hitDiceUsed });
+      }
+      if (a.hp !== b.hp && a.hp != null) {
+        const was = +(c.hp || {}).current || 0;
+        c.hp = Object.assign({}, c.hp, { current: a.hp });
+        for (const x of ini.entries) if (x.charId === c.id) x.hp = a.hp;
+        if (G.reviveChar) G.reviveChar(camp, c, was);
+      }
+      if (a.temp !== b.temp) c.hp.temp = a.temp;
+      if (a.deathSaves && JSON.stringify(a.deathSaves) !== JSON.stringify(b.deathSaves)) c.deathSaves = { s: clamp(int(a.deathSaves.s), 0, 3), f: clamp(int(a.deathSaves.f), 0, 3) };
+      if (JSON.stringify(a.conditions || []) !== JSON.stringify(b.conditions || [])) {
+        c.conditions = (a.conditions || []).slice(0, 20).map((x) => str(x, 30));
+        for (const x of ini.entries) if (x.charId === c.id) x.conditions = c.conditions.slice();
+      }
+      if (ab.concentration) for (const condition of gained) held.push({ char: c.id, condition });
+    } else if (e) {
+      if (a.hp !== b.hp && a.hp != null) e.hp = a.hp;
+      if (JSON.stringify(a.conditions || []) !== JSON.stringify(b.conditions || [])) e.conditions = (a.conditions || []).slice(0, 20).map((x) => str(x, 30));
+      if (ab.concentration) for (const condition of gained) held.push({ entry: e.id, condition });
+    }
+  }
+  // concentration: the combat view's record when the caster is in the tracker, the sheet's otherwise
+  const holding = r.world.conc[meId];
+  if (mine) { if (holding) f.conc[mine.id] = holding; else delete f.conc[mine.id]; delete f.sheetConc[ch.id]; }
+  else if (holding) f.sheetConc[ch.id] = holding; else delete f.sheetConc[ch.id];
+  if (holding && held.length) f.sheetHeld[ch.id] = held.slice(0, 40);
+  // chat: the rolls as rolls; a line about a token the GM hides (or by a hidden caster) to the GM only; under fog, to whoever sees it
+  const hiddenTok = (id) => { const t = tokens.find((x) => x.id === tokOf[id]); return !!(t && t.hidden); };
+  const masked = G.shownName(camp, { charId: ch.id, name: ch.name }) !== ch.name;
+  for (const line of r.log) {
+    const toks = [meTok.id, tokOf[line.unit], tokOf[line.about]].filter((x) => x && x !== "sheetcastertok");
+    const secret = hiddenTok(meId) || hiddenTok(line.unit) || hiddenTok(line.about);
+    const msg = line.roll
+      ? { from: masked ? "Combat" : G.playerName(camp, cid), fromId: cid, fight: true,
+        roll: { total: line.roll.total, detail: line.roll.detail, nat: line.roll.nat == null ? null : line.roll.nat, expr: line.expr, label: str(line.text, 200), kind: line.kind } }
+      : { system: true, fight: true, text: str(line.text, 200) };
+    if (line.roll && !masked) msg.charName = ch.name;
+    if (secret) {
+      msg.to = ["@gm"]; msg.private = true;
+      if (!gm && line.roll) { msg.fromId = "@gm"; msg.from = "Combat (GM only)"; delete msg.charName; }   // a message also shows to its sender
+    }
+    sayTokens(camp, G, msg, cid, toks);
+  }
+  return {};
+}
+// No target picked (no map, or a power rolled for the table to read), or a player's Cast at someone not theirs (at):
+// pay, note concentration, roll the damage or the healing once, at the level cast, and say the DC or the attack bonus,
+// and whom it's aimed at. Nobody's hit points change: the target's owner or the GM applies it.
+function castUnaimed(camp, cid, ch, ab, up, G, at) {
+  const f = camp.fight, cost = Object.assign({}, ab.cost || {});
+  if (up && ab.pool) cost[ab.pool] = (cost[ab.pool] || 0) + up;
+  let c = ch;
+  for (const [pool, n] of Object.entries(cost)) {
+    if (!n) continue;
+    const r = E.spend(c, pool, n, R);
+    if (!r.ok) throw new G.Invalid(r.why);
+    c = r.ch;
+  }
+  Object.assign(ch, { resources: c.resources, force: c.force, tech: c.tech, hitDiceUsed: c.hitDiceUsed });
+  const mine = camp.initiative.entries.find((e) => e.charId === ch.id);
+  const was = mine ? concOf(camp)[mine.id] : own(f.sheetConc, ch.id) ? f.sheetConc[ch.id] : null;
+  if (ab.concentration) {
+    dropHeld(camp, ch.id);
+    if (mine) { f.conc[mine.id] = ab.name; delete f.sheetConc[ch.id]; } else f.sheetConc[ch.id] = ab.name;
+  }
+  const who = G.shownName(camp, { charId: ch.id, name: ch.name }), masked = who !== ch.name;
+  const tok = (camp.map.tokens || []).find((t) => t.charId === ch.id), secret = !!(tok && tok.hidden);
+  const sgn = (n) => (n >= 0 ? "+" : "") + n;
+  const costText = Object.entries(cost).filter(([, n]) => n).map(([pool, n]) => `${n} ${pool === "force" ? "force" : pool === "tech" ? "tech" : pool} points`).join(", ");
+  const what = ab.attack ? `attack ${sgn(ab.attack.bonus)}` : ab.save ? `${ab.save.ability.toUpperCase()} save DC ${ab.save.dc}${ab.save.onSave === "half" ? ", half on a save" : ""}` : "";
+  const out = (msg, also) => {
+    if (secret) { msg.to = ["@gm"]; msg.private = true; if (msg.roll) { msg.fromId = "@gm"; msg.from = "Combat (GM only)"; delete msg.charName; } }
+    sayTokens(camp, G, msg, cid, (tok ? [tok.id] : []).concat(also || []));
+  };
+  const names = (at || []).map((t) => (t.charId === ch.id ? who : G.shownName(camp, { charId: t.charId || null, name: t.name })));
+  const aimed = names.length ? ` at ${names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names[names.length - 1] : names[0]}` : "";
+  out({ system: true, fight: true, text: str(`${who} casts ${ab.name}${aimed}${up ? ` at level ${ab.level + up}` : ""}${costText ? ` (${costText})` : ""}${what ? `: ${what}` : ""}.${aimed ? " Its owner or the GM applies it." : ""}`, 240) },
+    (at || []).map((t) => t.id));
+  if (ab.concentration && was && was !== ab.name) out({ system: true, fight: true, text: str(`${who} stops concentrating on ${was}.`, 200) });
+  const extra = up && ab.upcast && ab.upcast.damage ? Array.from({ length: up }, () => ab.upcast.damage) : [];
+  const expr = (parts) => parts.filter(Boolean).join("+").replace(/\+-/g, "-");
+  const dice = (d) => (d && d.dice ? d.dice + (+d.add ? sgn(+d.add) : "") : "");
+  const roll = (e, label, kind) => {
+    if (!e) return;
+    const res = G.rollDice(e);
+    out(Object.assign({ from: masked ? "Combat" : G.playerName(camp, cid), fromId: cid, fight: true, roll: Object.assign({}, res, { expr: e, label: str(label, 200), kind }) },
+      masked ? {} : { charName: ch.name }));
+  };
+  if ((ab.damage || []).length) roll(expr(ab.damage.map(dice).concat(extra)), `${ab.name}: damage${(ab.damage[0] || {}).type ? ` (${ab.damage[0].type})` : ""}${ab.save && ab.save.onSave === "half" ? ", half on a save" : ""}`, "damage");
+  if (ab.heal && ab.heal.dice) roll(expr([dice(ab.heal)]), `${ab.name}: healing`, "heal");
+  return {};
+}
+// the sheet's "Concentrating: X ✕" (its owner or the GM): the concentration ends, and what it held with it
+function endSheetConc(camp, cid, gm, p, G) {
+  if (!camp.fight) return {};
+  if (!ID.test(String(p.charId || ""))) throw new G.Invalid("No such character.");
+  const f = state(camp), ch = charOf(camp, p.charId);
+  if (!ch) throw new G.Invalid("No such character.");
+  if (!gm && ch.owner !== cid) throw new G.Forbidden("not your character");
+  const mine = camp.initiative.entries.find((e) => e.charId === ch.id);
+  const name = (mine && own(f.conc, mine.id) && f.conc[mine.id]) || (own(f.sheetConc, ch.id) && f.sheetConc[ch.id]);
+  if (!name) return {};
+  delete f.sheetConc[ch.id];
+  dropHeld(camp, ch.id);
+  if (mine && own(f.conc, mine.id)) {   // in the tracker: the engine ends it, with the conditions it held there
+    const before = worldOf(camp, false, G);
+    if (before.units[mine.id]) {
+      const after = JSON.parse(JSON.stringify(before));
+      E.endConcentration(after, mine.id, `${G.shownName(camp, mine)} stops concentrating`, null);
+      writeBack(camp, cid, before, after, G);
+    }
+    delete f.conc[mine.id];
+  }
+  const tok = (camp.map.tokens || []).find((t) => t.charId === ch.id);
+  sayTokens(camp, G, Object.assign({ system: true, fight: true, text: str(`${G.shownName(camp, { charId: ch.id, name: ch.name })} stops concentrating on ${name}.`, 200) },
+    tok && tok.hidden ? { to: ["@gm"], private: true } : {}), cid, tok ? [tok.id] : []);
+  return {};
+}
+// What the sheet needs of the combat view's records, on or off: the table's power data (which powers roll), and who
+// is concentrating on what, by character, for the characters this viewer is sent. Null when there's nothing to show.
+function sheetView(camp, chars) {
+  const f = camp.fight;
+  if (!f) return null;
+  const conc = {};
+  for (const [id, name] of Object.entries(concOf(camp))) {
+    const e = camp.initiative.entries.find((x) => x.id === id);
+    if (e && e.charId && own(chars, e.charId)) conc[e.charId] = name;
+  }
+  for (const [charId, name] of Object.entries(f.sheetConc || {})) if (own(chars, charId) && !conc[charId]) conc[charId] = name;
+  const lib = f.lib || {};
+  return Object.keys(lib).length || Object.keys(conc).length ? { lib, conc } : null;
+}
+
 function apply(camp, cid, gm, type, p, G) {
   if (type === "fight.wall" || type === "fight.fog" || type === "fight.light") return mapTools(camp, cid, gm, type, p, G);
   if (type === "fight.senses") return gmSenses(camp, gm, p, G);
+  if (type === "fight.cast") return sheetCast(camp, cid, gm, p, G);
+  if (type === "fight.unconc") return endSheetConc(camp, cid, gm, p, G);
   // off (the default): only the GM's switch does anything, and switching it off when it was never on writes nothing
   if (!camp.fight || !camp.fight.on) {
     if (type !== "fight.toggle") throw new G.Invalid("The combat view is off.");
@@ -661,6 +919,12 @@ function apply(camp, cid, gm, type, p, G) {
         return !!(ab && ab.area);
       })();
       // Rage counts its uses: a sheet from before #108 gets its class's Rages resource from the class table first
+      // a maneuver (#67) spends superiority dice: a sheet from before #108 gets its class's pool from the class table first
+      const mover = type === "fight.attack" && p.add && typeof p.add.maneuver === "string" && p.add.maneuver && cur.charId && charOf(camp, cur.charId);
+      if (mover && R.withClassResources && !(mover.resources || []).some((r) => r && /^superiority/.test(String(r.key)))) {
+        const withSup = E.cleanResources(R.withClassResources(mover));
+        if (withSup.some((r) => /^superiority/.test(r.key))) mover.resources = withSup;
+      }
       const rager = type === "fight.common" && String(p.key || "") === "rage" && cur.charId && charOf(camp, cur.charId);
       if (rager && R.withClassResources && !(rager.resources || []).some((r) => r && r.key === "rage")) {
         const withRage = E.cleanResources(R.withClassResources(rager));
@@ -699,7 +963,8 @@ function apply(camp, cid, gm, type, p, G) {
           if (!spec) throw new G.Invalid("That attack isn't on the sheet.");
         } else spec = cleanSpec(p.attack, G);
         act = { type: "attack", unit: cur.id, target: idOr(p.target), attack: spec, adv: !!p.adv, dis: !!p.dis, no: Array.isArray(p.no) ? p.no.slice(0, 4).map((x) => str(x, 20)) : [],
-          add: { fes: clamp(int(p.add && p.add.fes), 0, 20), double: !!(p.add && p.add.double) }, twoHands: !!p.twoHands,   // only how many, never the dice: the engine works those out
+          add: { fes: clamp(int(p.add && p.add.fes), 0, 20), double: !!(p.add && p.add.double),
+            maneuver: p.add && typeof p.add.maneuver === "string" && /^[a-z-]{3,30}$/.test(p.add.maneuver) ? p.add.maneuver : "" }, twoHands: !!p.twoHands,   // a maneuver by name; the engine checks the sheet knows it   // only how many, never the dice: the engine works those out
           multi: gm && !cur.charId ? clamp(int(p.multi, 1), 1, 6) : 1,
           offhand: !!cur.charId && !!p.offhand };   // Two- or Double-Weapon Fighting (5.8): the engine checks it may   // a creature's Multiattack (#139): the GM's screen reads it from the stat block
       }
@@ -772,7 +1037,7 @@ function view(camp, cid, gm, shownName) {
     lib: f.lib || {},
     effects: (f.effects || []).filter((ef) => units[ef.unit]).map((ef) => ({ unit: ef.unit, condition: ef.condition, ends: ef.ends, of: units[ef.of] ? ef.of : null, rounds: ef.rounds, save: ef.save, conc: ef.conc,
       level: ef.level || 0, amount: ef.amount || "", source: units[ef.source] ? ef.source : null })),   // a grappler or charmer the viewer can't see stays unnamed
-    conc: Object.fromEntries(Object.entries(f.conc || {}).filter(([id]) => units[id])),
+    conc: Object.fromEntries(Object.entries(concOf(camp)).filter(([id]) => units[id])),   // with what was begun from the sheet (#73)
     // with walls on the map, the squares this viewer can move to on their own turn: their browser has no walls to work
     // them out with (players never receive walls)
     reach: (camp.map.walls || []).length && turn && (gm || (units[turn] || {}).mine) ? fogReach(camp, cid, fog, E.reachable(world, turn, E.budget(world).moveLeft)) : null,
@@ -963,7 +1228,13 @@ function fogView(camp, cid, gm, fog) {
 // (fog off, or nobody is blind to any of them). Lines already kept to the GM are left as they are.
 function sightTo(camp, cid, ids) {
   if (!fogOn(camp)) return null;
-  const ut = unitTokens(camp), toks = [...new Set(ids.filter(Boolean).map((id) => ut[id]).filter(Boolean))];
+  const ut = unitTokens(camp);
+  return sightToTokens(camp, cid, ids.filter(Boolean).map((id) => ut[id]));
+}
+// the same, for tokens (the sheet's Cast outside a fight has no tracker entries to go by)
+function sightToTokens(camp, cid, tokenIds) {
+  if (!fogOn(camp)) return null;
+  const toks = [...new Set(tokenIds.filter(Boolean))];
   if (!toks.length) return null;
   const pids = Object.keys(camp.players || {}).filter((pid) => (camp.players[pid] || {}).role !== "gm");
   const sees = (pid) => { const fog = fogFor(camp, pid); return !fog || toks.every((t) => !fog.tokens.has(t)); };
@@ -1014,5 +1285,5 @@ function cleanWalls(list) {
   });
 }
 
-module.exports = { apply, view, canWalk, fogFor, fogView, cleanFog, cleanLight, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
+module.exports = { apply, view, sheetView, canWalk, fogFor, fogView, cleanFog, cleanLight, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
   cleanHitDiceUsed: R.cleanHitDiceUsed };   // for cleanChar: the sheet and the undo record clean hit dice the same way
