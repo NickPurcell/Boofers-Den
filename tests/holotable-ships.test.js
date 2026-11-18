@@ -1344,5 +1344,12 @@ test("Dogfight, Harass, Attack Run and Conceal on the server", async () => {
     assert.equal(shipIn(await gm.state(), party).status.fx.concealed, false, "firing gives it away");
   }
   for (const bad of [{ target: "__proto__" }, { target: party }, { target: "constructor" }]) assert.equal((await p1.act("space.dogfight", Object.assign({ id: party }, bad))).code >= 400, true);
+  // a line only the GM reads names the GM's ships (not "???"): two GM ships, one on a hidden token
+  const g2 = (await gm.act("ship.save", { ship: { name: "Grey Wake", hidden: true, size: "Small" } })).data.id;
+  await gm.act("space.place", { id: g2, x: 12, y: 9, f: 6, hidden: true });
+  await gm.act("space.conceal", { id: g2 });
+  const gl = (await gm.state()).chat.filter((m) => /Grey Wake (slips out of sight|tries to conceal itself)/.test(m.text || ""));
+  assert.ok(gl.length === 1 && gl[0].to[0] === "@gm", "named for the GM, and the GM's only");
+  assert.ok(!JSON.stringify((await p2.state()).chat).includes("Grey Wake"));
   assert.equal((await p1.act("space.harass", { id: party, target: enemy, weapon: "__proto__" })).code, 400);
 });

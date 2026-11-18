@@ -446,7 +446,9 @@ function apply(camp, cid, gm, type, p, h) {
         t0 = shipOf(p.target); ta = t0 && sp.tok.find((x) => x.id === t0.id);
         if (!t0 || !ta || (!gm && ta.hidden) || t0.id === s0.id) throw new Invalid("Pick another ship on the space map.");
       }
-      const secret = !!a.hidden || !!(ta && ta.hidden), T = t0 ? shownOf(t0, ta) : "";
+      const secret = !!a.hidden || !!(ta && ta.hidden), gmOnly = secret || !!s0.hidden;
+      // a line only the GM reads names the ships for the GM; one the players read, as they may
+      const T = t0 ? (gmOnly ? t0.name : shownOf(t0, ta)) : "", N = gmOnly ? s0.name : A;
       const line = (text) => addChat(camp, Object.assign({ system: true, text: str(text, 400) }, secret || s0.hidden ? { to: ["@gm"], private: true } : {}));
       const roll = (ship, skill, crew, label, adv, dis) => {
         const ab = SR.SKILL_ABILITY[skill], fx = SR.rollEffects(ship, "check", ab), mode = SR.rollMode({ adv: [...fx.adv, ...(adv || [])], dis: [...fx.dis, ...(dis || [])] }, "normal");
@@ -466,9 +468,9 @@ function apply(camp, cid, gm, type, p, h) {
           if (g1 < g0) toward += g0 - g1;
         }
         toward = Math.min(toward, int(sp.moved[s0.id]));
-        if (toward < 150) throw new Invalid(`${A} has moved ${toward} ft toward ${T} this turn: an Attack Run takes 150 ft or more.`);
+        if (toward < 150) throw new Invalid(`${A} has moved ${toward} ft toward ${shownOf(t0, ta)} this turn: an Attack Run takes 150 ft or more.`);   // the asker's reading
         Object.assign(s1.status.fx, { runVs: t0.id, runFeet: toward });
-        putShip(s1); line(`${A} makes an attack run at ${T} (${toward} ft toward it): its next shot from forward or its ram at it gets the run's edge.`);
+        putShip(s1); line(`${N} makes an attack run at ${T} (${toward} ft toward it): its next shot from forward or its ram at it gets the run's edge.`);
         return { ok: true };
       }
       if (type === "space.conceal") {
@@ -479,7 +481,7 @@ function apply(camp, cid, gm, type, p, h) {
         const ok = total > passive;
         if (ok) s1.status.fx.concealed = true;
         // the opposing passive Scan can be a hidden-token ship's: the numbers are the GM's
-        putShip(s1); line(ok ? `${A} slips out of sight: unseen until it attacks.` : `${A} tries to conceal itself, and is spotted.`);
+        putShip(s1); line(ok ? `${N} slips out of sight: unseen until it attacks.` : `${N} tries to conceal itself, and is spotted.`);
         addChat(camp, { system: true, text: str(`${s0.hidden ? s0.name : A}'s Hide ${total} against the opposing side's best passive Scan, ${passive}.`, 400), to: ["@gm"], private: true });
         return { ok };
       }
@@ -501,9 +503,9 @@ function apply(camp, cid, gm, type, p, h) {
         const t1 = JSON.parse(JSON.stringify(shipOf(t0.id))); t1.status = SR.statusOf(t1);
         Object.assign(t1.status.fx, { harassedBy: s0.id, harassedWeapon: s1.status.fx.harassWeapon }); putShip(t1);
       }
-      line(!won ? `${A} tries to ${type === "space.harass" ? "harass" : "dogfight"} ${T}, and fails (${mine} against ${theirs}).`
-        : type === "space.dogfight" ? `${A} dogfights ${T}: its next attack on ${A} has disadvantage, another ship's has advantage.`
-        : `${A} harasses ${T}: if it leaves its square before ${A}'s next turn, it takes a critical hit.`);
+      line(!won ? `${N} tries to ${type === "space.harass" ? "harass" : "dogfight"} ${T}, and fails (${mine} against ${theirs}).`
+        : type === "space.dogfight" ? `${N} dogfights ${T}: its next attack on ${N} has disadvantage, another ship's has advantage.`
+        : `${N} harasses ${T}: if it leaves its square before ${N}'s next turn, it takes a critical hit.`);
       return { ok: won };
     }
     case "space.end": {
