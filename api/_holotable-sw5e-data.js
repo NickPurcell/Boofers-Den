@@ -20,17 +20,38 @@ const unlink = (s) => String(s || "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
 const ABIL = { Strength: "str", Dexterity: "dex", Constitution: "con", Intelligence: "int", Wisdom: "wis", Charisma: "cha" };
 // an ability's key from SW5e's full name, only for the six: never something every object inherits ("constructor")
 const abil = (name) => (typeof name === "string" && Object.prototype.hasOwnProperty.call(ABIL, name) ? ABIL[name] : null);
-// A species' ability score increase, when it's one fixed choice (e.g. +2 Int, +1 Dex); null when the
-// player chooses ("Any one", or several options), so the sheet doesn't guess.
-function fixedAsi(opts) {
-  if (!Array.isArray(opts) || opts.length !== 1 || !Array.isArray(opts[0])) return null;
+// A species' ability score increase as choices (audit 1.6): one list per alternative (Human has two), each a list of
+// grants { from, n, amount }: n different abilities from `from` (null: any ability) each go up by amount. A fixed
+// grant is { from: ["con"], n: 1 }. SW5e's data writes "Strength or Dexterity" and "Strength, Constitution, and
+// Intelligence" the same way (a list of names), so the species' own Ability Score Increase text decides: a list
+// is a choice only where that text says "or" or "choice"; otherwise each named ability goes up.
+const ANY = { "any one": 1, "any two": 2, "any three": 3, "any four": 4, "any other": 1 };
+function asiChoices(opts, traits) {
+  if (!Array.isArray(opts)) return null;
+  const tr = (Array.isArray(traits) ? traits : []).find((x) => x && /ability score increase/i.test(String(x.name || "")));
+  const choosy = /\bor\b|choice/i.test(String((tr && tr.description) || ""));
+  const alts = opts.slice(0, 4).filter(Array.isArray).map((alt) => {
+    const grants = [];
+    for (const o of alt.slice(0, 6)) {
+      const names = o && Array.isArray(o.abilities) ? o.abilities.slice(0, 6).map((x) => String(x)) : [], amount = int(o && o.amount, -5, 5);
+      if (!names.length || !amount) continue;
+      const any = names.length === 1 ? ANY[names[0].trim().toLowerCase()] : 0;
+      if (any) { grants.push({ from: null, n: any, amount }); continue; }
+      const keys = names.map(abil);
+      if (keys.some((k) => !k)) return null;   // a name we don't know: no choice offered, the player types it
+      if (keys.length > 1 && choosy) grants.push({ from: keys, n: 1, amount });
+      else for (const k of keys) grants.push({ from: [k], n: 1, amount });
+    }
+    return grants.length ? grants : null;
+  }).filter(Boolean);
+  return alts.length ? alts : null;
+}
+// the increase when nothing is chosen: one alternative of fixed grants only
+function fixedAsi(alts) {
+  if (!alts || alts.length !== 1 || alts[0].some((g) => !g.from || g.from.length !== 1)) return null;
   const out = {};
-  for (const o of opts[0]) {
-    const ab = o && Array.isArray(o.abilities) && o.abilities.length === 1 ? abil(o.abilities[0]) : null;
-    if (!ab) return null;
-    out[ab] = (out[ab] || 0) + int(o.amount, -5, 5);
-  }
-  return Object.keys(out).length ? out : null;
+  for (const g of alts[0]) out[g.from[0]] = (out[g.from[0]] || 0) + g.amount;
+  return out;
 }
 
 function species(d) {
@@ -38,7 +59,7 @@ function species(d) {
     n: t(e.name, 60), src: t(e.contentSource, 10), size: t(e.size, 20), lang: t(e.language, 200), home: t(e.homeworld, 80),
     dist: t(e.distinctions, 200),
     traits: arr(e.traits, 30, (x) => ({ n: t(x && x.name, 80), d: t(x && x.description, 2500) })).filter((x) => x.n),
-    asi: fixedAsi(e.abilitiesIncreased),
+    ...((alts) => ({ asi: fixedAsi(alts), asiChoices: fixedAsi(alts) ? null : alts }))(asiChoices(e.abilitiesIncreased, e.traits)),
   })).sort(byName);
 }
 function archetypes(d) {
@@ -173,7 +194,7 @@ const MB = 1024 * 1024;
 // name -> { path (fixed SW5e API path), build, maxBytes (largest reply we'll read), maxItems }
 // Today's raw sizes are noted; the caps leave room for growth without accepting anything huge.
 const LISTS = {
-  species: { path: "species", build: species, maxBytes: 4 * MB, maxItems: 600 },                  // 0.97 MB, 141
+  species: { path: "species", build: species, maxBytes: 4 * MB, maxItems: 600, cacheAs: "species-2" },   // 0.97 MB, 141; species-2: asiChoices (1.6)
   archetypes: { path: "archetype", build: archetypes, maxBytes: 4 * MB, maxItems: 600 },           // 0.81 MB, 137
   backgrounds: { path: "background", build: backgrounds, maxBytes: 3 * MB, maxItems: 400 },        // 0.59 MB, 61
   classes: { path: "class", build: classes, maxBytes: 2 * MB, maxItems: 40 },                       // 0.24 MB, 10
