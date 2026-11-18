@@ -68,6 +68,7 @@
     st = st && typeof st === 'object' && !Array.isArray(st) ? st : {};
     const z = st.zero && typeof st.zero === 'object' && !Array.isArray(st.zero) ? st.zero : {};
     const b = st.boost && typeof st.boost === 'object' && !Array.isArray(st.boost) ? st.boost : {};
+    const f = st.fx && typeof st.fx === 'object' && !Array.isArray(st.fx) ? st.fx : {};
     const out = {
       cond: [...new Set((Array.isArray(st.cond) ? st.cond : []).filter((c) => CONDITIONS.includes(c)))],
       slowed: clamp(int(st.slowed), 0, 4), system: clamp(int(st.system), 0, 6),
@@ -75,6 +76,12 @@
       power: Object.fromEntries(['central', 'engines', 'shields', 'weapons', 'sensors', 'comms'].map((k) => [k, clamp(int((st.power || {})[k]), 0, 99)])),
       sdUsed: clamp(int(st.sdUsed), 0, 200), hdUsed: clamp(int(st.hdUsed), 0, 200), tempShield: clamp(int(st.tempShield), 0, 1000),
       boost: { tries: clamp(int(b.tries), 0, 20), engines: clamp(int(b.engines), 0, 2), weapons: b.weapons === true, shields: b.shields === true, regen: b.regen === true },
+      // the Helm and crew actions' effects: evade / fly count down at the start of the ship's turns (2: this turn and
+      // until the start of the next; 1: through the next turn); helm: a Helm action taken this turn
+      fx: { evade: clamp(int(f.evade), 0, 2), fly: clamp(int(f.fly), 0, 2), hardTurn: f.hardTurn === true, helm: f.helm === true,
+        interfered: f.interfered === true, directed: f.directed === true,
+        interferedBy: typeof f.interferedBy === 'string' && /^[a-z0-9]{6,20}$/.test(f.interferedBy) ? f.interferedBy : '' },   // the ship whose next turn ends it
+      recharged: st.recharged === true,   // a recharge just finished: the crew may spend hull dice
     };
     if (out.system >= 5 && !out.cond.includes('Used')) out.cond.push('Used');   // system damage 5 makes it used for good
     return out;
@@ -115,6 +122,17 @@
   function rollEffects(ship, kind, ability) {
     const st = statusOf(ship), out = { adv: [], dis: [], fail: [] };
     const add = (k, why) => out[k].push(why);
+    const fx = st.fx;
+    // Evade ends when the ship is incapacitated (disabled) or its speed drops to 0 (SotG ch. 9)
+    const evade = isDisabled(st) || has(st, 'Stunned') || has(st, 'Tractored') || st.slowed >= 4 ? 0 : fx.evade;
+    if (kind === 'check' || kind === 'attack') {   // Evade and Fly cost the whole ship its aim; Interfere the next roll
+      if (evade >= 1) add('dis', 'Evade');
+      if (fx.fly >= 1) add('dis', 'Fly');
+      if (fx.interfered) add('dis', 'Interfered');
+    }
+    if (kind === 'attack' && fx.directed) add('adv', 'Directed');
+    if (kind === 'save' && ability === 'dex' && evade >= 2) add('adv', 'Evade');
+    if (kind === 'against' && evade >= 2) add('dis', 'Evading');
     if (kind === 'check') {
       if (st.system >= 1) add('dis', 'System damage ' + st.system);
       if (has(st, 'Ionized')) add('dis', 'Ionized');
@@ -155,6 +173,7 @@
     s.status = st;
     if (isLost(st)) return { ship: s, shieldLost, hullLost, outcome, log: [`${name} is already lost.`] };
     if (!raw) return { ship: s, shieldLost, hullLost, outcome, log };
+    st.recharged = false;
     const temp = int(st.tempShield);
     if (temp > 0 && mult.shield > 0) {   // temporary shield points (Boost Shields) go first
       const wouldTake = Math.floor(left * mult.shield);
@@ -280,14 +299,14 @@
 
   // ---- power and shields (SotG chapter 5, "Armor and Shields" and "Ship Power"; chapter 9, Boost and Regenerate Shields)
   // Per size, from SW5e's own size data (starshipBaseSize): the hull and shield die, how many of each by tier, and each
-  // role's reactor, power coupling, shields (Large and up) and speed / turning speed.
+  // role's reactor, power coupling, shields (Large and up), speed / turning speed, ability adjustment and armor.
   const SIZE_DATA = {
-    Tiny: { die: 4, dice: [1, 2, 3, 4, 5, 6], roles: { "Droid": ["Fuel Cell", "Distributed", "", 450, 200], "Munition": ["Fuel Cell", "Direct", "", 450, 200], "Predator": ["Ionization", "Direct", "", 350, 100], "Probe": ["Ionization", "Direct", "", 400, 150], "Satellite": ["Ionization", "Direct", "", 400, 150], "Worker": ["Fuel Cell", "Direct", "", 350, 100] } },
-    Small: { die: 6, dice: [3, 4, 5, 6, 7, 8], roles: { "Attack Fighter": ["Power Core", "Direct", "", 350, 100], "Bomber": ["Fuel Cell", "Hub & Spoke", "", 450, 200], "Scout": ["Ionization", "Distributed", "", 450, 200], "Scrambler": ["Power Core", "Direct", "", 400, 150], "Shuttle": ["Fuel Cell", "Direct", "", 350, 100], "Superiority Fighter": ["Ionization", "Hub & Spoke", "", 400, 150] } },
-    Medium: { die: 8, dice: [5, 6, 7, 8, 9, 10], roles: { "Courier": ["Ionization", "Hub & Spoke", "", 400, 250], "Freighter": ["Fuel Cell", "Hub & Spoke", "", 300, 150], "Gunship": ["Power Core", "Hub & Spoke", "", 300, 150], "Missile Boat": ["Power Core", "Direct", "", 400, 250], "Navigator": ["Ionization", "Distributed", "", 350, 200], "Yacht": ["Fuel Cell", "Distributed", "", 350, 200] } },
-    Large: { die: 10, dice: [7, 8, 9, 10, 11, 12], roles: { "Ambassador": ["Ionization", "Hub & Spoke", "Fortress", 350, 250], "Corvette": ["Fuel Cell", "Direct", "Directional", 400, 300], "Cruiser": ["Power Core", "Distributed", "Fortress", 400, 300], "Explorer": ["Ionization", "Distributed", "Directional", 350, 250], "Picket Ship": ["Power Core", "Hub & Spoke", "Quick-Charge", 300, 200], "Ship's Tender": ["Fuel Cell", "Direct", "Quick-Charge", 300, 200] } },
-    Huge: { die: 12, dice: [9, 11, 13, 15, 17, 19], roles: { "Battleship": ["Power Core", "Hub & Spoke", "Directional", 200, 400], "Carrier": ["Ionization", "Hub & Spoke", "Directional", 300, 500], "Colonizer": ["Ionization", "Distributed", "Quick-Charge", 400, 600], "Command Ship": ["Fuel Cell", "Distributed", "Fortress", 300, 500], "Interdictor": ["Power Core", "Distributed", "Quick-Charge", 200, 400], "Juggernaut": ["Power Core", "Direct", "Fortress", 400, 600] } },
-    Gargantuan: { die: 20, dice: [11, 13, 15, 17, 19, 21], roles: { "Blockade Ship": ["Fuel Cell", "Direct", "Directional", 100, 400], "Flag Ship": ["Power Core", "Distributed", "Quick-Charge", 200, 500], "Industrial Center": ["Fuel Cell", "Hub & Spoke", "Quick-Charge", 300, 600], "Mobile Metropolis": ["Ionization", "Distributed", "Directional", 300, 600], "Researcher": ["Fuel Cell", "Hub & Spoke", "Fortress", 100, 400], "Warship": ["Power Core", "Distributed", "Fortress", 200, 500] } },
+    Tiny: { die: 4, dice: [1, 2, 3, 4, 5, 6], roles: { "Droid": ["Fuel Cell", "Distributed", "", 450, 200, {"int": 1}, "Deflection"], "Munition": ["Fuel Cell", "Direct", "", 450, 200, {"con": 1}, "Reinforced"], "Predator": ["Ionization", "Direct", "", 350, 100, {"dex": 1}, "Lightweight"], "Probe": ["Ionization", "Direct", "", 400, 150, {"wis": 1}, "Lightweight"], "Satellite": ["Ionization", "Direct", "", 400, 150, {"cha": 1}, "Lightweight"], "Worker": ["Fuel Cell", "Direct", "", 350, 100, {"str": 1}, "Reinforced"] } },
+    Small: { die: 6, dice: [3, 4, 5, 6, 7, 8], roles: { "Attack Fighter": ["Power Core", "Direct", "", 350, 100, {"str": 1}, "Reinforced"], "Bomber": ["Fuel Cell", "Hub & Spoke", "", 450, 200, {"wis": 1}, "Deflection"], "Scout": ["Ionization", "Distributed", "", 450, 200, {"int": 1}, "Lightweight"], "Scrambler": ["Power Core", "Direct", "", 400, 150, {"cha": 1}, "Deflection"], "Shuttle": ["Fuel Cell", "Direct", "", 350, 100, {"con": 1}, "Deflection"], "Superiority Fighter": ["Ionization", "Hub & Spoke", "", 400, 150, {"dex": 1}, "Lightweight"] } },
+    Medium: { die: 8, dice: [5, 6, 7, 8, 9, 10], roles: { "Courier": ["Ionization", "Hub & Spoke", "", 400, 250, {"dex": 1}, "Lightweight"], "Freighter": ["Fuel Cell", "Hub & Spoke", "", 300, 150, {"con": 1}, "Deflection"], "Gunship": ["Power Core", "Hub & Spoke", "", 300, 150, {"str": 1}, "Reinforced"], "Missile Boat": ["Power Core", "Direct", "", 400, 250, {"wis": 1}, "Reinforced"], "Navigator": ["Ionization", "Distributed", "", 350, 200, {"int": 1}, "Deflection"], "Yacht": ["Fuel Cell", "Distributed", "", 350, 200, {"cha": 1}, "Lightweight"] } },
+    Large: { die: 10, dice: [7, 8, 9, 10, 11, 12], roles: { "Ambassador": ["Ionization", "Hub & Spoke", "Fortress", 350, 250, {"cha": 1, "con": 1}, "Deflection"], "Corvette": ["Fuel Cell", "Direct", "Directional", 400, 300, {"str": 1, "dex": 1}, "Deflection"], "Cruiser": ["Power Core", "Distributed", "Fortress", 400, 300, {"wis": 1, "str": 1}, "Reinforced"], "Explorer": ["Ionization", "Distributed", "Directional", 350, 250, {"dex": 1, "int": 1}, "Lightweight"], "Picket Ship": ["Power Core", "Hub & Spoke", "Quick-Charge", 300, 200, {"dex": 1, "wis": 1}, "Deflection"], "Ship's Tender": ["Fuel Cell", "Direct", "Quick-Charge", 300, 200, {"con": 1, "str": 1}, "Reinforced"] } },
+    Huge: { die: 12, dice: [9, 11, 13, 15, 17, 19], roles: { "Battleship": ["Power Core", "Hub & Spoke", "Directional", 200, 400, {"wis": 1, "str": 1}, "Reinforced"], "Carrier": ["Ionization", "Hub & Spoke", "Directional", 300, 500, {"cha": 1, "int": 1}, "Deflection"], "Colonizer": ["Ionization", "Distributed", "Quick-Charge", 400, 600, {"con": 1, "int": 1}, "Deflection"], "Command Ship": ["Fuel Cell", "Distributed", "Fortress", 300, 500, {"cha": 1, "wis": 1}, "Reinforced"], "Interdictor": ["Power Core", "Distributed", "Quick-Charge", 200, 400, {"dex": 1, "str": 1}, "Deflection"], "Juggernaut": ["Power Core", "Direct", "Fortress", 400, 600, {"con": 1, "str": 1}, "Reinforced"] } },
+    Gargantuan: { die: 20, dice: [11, 13, 15, 17, 19, 21], roles: { "Blockade Ship": ["Fuel Cell", "Direct", "Directional", 100, 400, {"dex": 1, "str": 1}, "Reinforced"], "Flag Ship": ["Power Core", "Distributed", "Quick-Charge", 200, 500, {"cha": 1, "wis": 1}, "Reinforced"], "Industrial Center": ["Fuel Cell", "Hub & Spoke", "Quick-Charge", 300, 600, {"con": 1, "str": 1}, "Deflection"], "Mobile Metropolis": ["Ionization", "Distributed", "Directional", 300, 600, {"con": 1, "wis": 1}, "Deflection"], "Researcher": ["Fuel Cell", "Hub & Spoke", "Fortress", 100, 400, {"int": 1, "wis": 1}, "Deflection"], "Warship": ["Power Core", "Distributed", "Fortress", 200, 500, {"wis": 1, "str": 1}, "Reinforced"] } },
   };
   const SHIELD_TYPES = { Directional: { cap: 1, regen: 1 }, Fortress: { cap: 3 / 2, regen: 2 / 3 }, 'Quick-Charge': { cap: 2 / 3, regen: 3 / 2 } };
   // power dice back at the start of each of the ship's turns, by reactor; fuel use is chapter 8's (travel)
@@ -300,7 +319,7 @@
   const POWER_DIE = [1, 4, 6, 8, 10, 12];   // by tier; at tier 0 a power die is a flat 1
 
   const sizeOf = (ship) => own(SIZE_DATA, ship && ship.size) || SIZE_DATA.Small;
-  const roleOf = (ship) => { const r = own(sizeOf(ship).roles, String((ship && ship.role) || '').trim()); return r ? { reactor: r[0], coupling: r[1], shields: r[2], speed: r[3], turn: r[4] } : null; };
+  const roleOf = (ship) => { const r = own(sizeOf(ship).roles, String((ship && ship.role) || '').trim()); return r ? { reactor: r[0], coupling: r[1], shields: r[2], speed: r[3], turn: r[4], adj: r[5] || {}, armor: r[6] || '' } : null; };
   const tierOf = (ship) => clamp(int(ship && ship.tier), 0, 5);
   // the ship's reactor, coupling and shields: what the sheet says, else what its equipment says, else its role's
   function pickFrom(ship, field, table) {
@@ -346,6 +365,8 @@
   const regenDC = (ship) => Math.max(10, Math.floor((shieldMax(ship) - int(ship && ship.shield && ship.shield.current)) / 2));
   // speed with this turn's boosts
   const boostedSpeed = (ship) => { const lv = slowedLevel(ship); return speedOf(ship) + (lv < 4 && int(statusOf(ship).boost.engines) > 0 ? 50 : 0); };
+  // the feet the ship may move this turn: its speed, twice over after Fly
+  const moveBudget = (ship) => boostedSpeed(ship) * (statusOf(ship).fx.fly >= 2 ? 2 : 1);
 
   // The start of the ship's turn. roll(expr) -> { total } is the server's dice.
   // opts.regen: the crew regenerates shields this turn (it costs a shield die).
@@ -357,6 +378,9 @@
     const st = s.status = statusOf(s), name = s.name || 'The ship', log = [];
     if (isLost(st)) return { ship: s, log: [`${name} is lost.`] };
     st.tempShield = 0; st.boost = { tries: 0, engines: Math.max(0, int(st.boost.engines) - 1), weapons: false, shields: false, regen: false };
+    // Direct lasts until the start of the directing ship's next turn (Interfere ends at the interfering ship's: the space map)
+    st.fx = Object.assign(st.fx, { evade: Math.max(0, st.fx.evade - 1), fly: Math.max(0, st.fx.fly - 1), hardTurn: false, helm: false, directed: false });
+    st.recharged = false;
     // power
     const rx = own(REACTORS, reactorOf(s));
     if (rx && !isDisabled(st)) {
@@ -472,6 +496,224 @@
   const INIT_SIZE_MOD = { Tiny: 0, Small: -3, Medium: -7, Large: -9, Huge: -10, Gargantuan: -11 };
   const npcInitBonus = (ship) => Math.floor((int((ship && ship.abilities || {}).dex, 10) - 10) / 2) + (own(INIT_SIZE_MOD, ship && ship.size) || 0);
 
+
+  // ---- firing a ship weapon (SotG chapter 5, "Weapons" and "Weapon Properties"; chapter 9, "Making an Attack")
+  const WEAPON_CATS = ['primary', 'secondary', 'tertiary', 'quaternary'];
+  const MOUNTS = ['forward', 'starboard', 'aft', 'port', 'turret'];   // a fixed hardpoint fires in one arc; a turret in any
+  const SIZE_ORDER = ['Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan'];
+  const sizeRank = (ship) => Math.max(0, SIZE_ORDER.indexOf(ship && ship.size));
+  const catOf = (w) => (WEAPON_CATS.includes(w && w.cat) ? w.cat : 'primary');
+  // "1200/4800", or the "(range 1200/4800)" in its properties
+  function weaponRange(w) {
+    const m = /(\d{1,6})\s*\/\s*(\d{1,6})/.exec(String((w && w.range) || '')) || /range\s*(\d{1,6})\s*\/\s*(\d{1,6})/i.exec(String((w && w.props) || ''));
+    return m ? { a: int(m[1]), b: int(m[2]) } : null;
+  }
+  // a property from the weapon's list: its number ("keen 1", "vicious 2", "con. 15"), true when it has no number
+  function weaponProp(w, name) {
+    const text = String((w && w.props) || '').toLowerCase(), alias = name === 'constitution' ? '(?:constitution|con\\.?)' : name;
+    const m = new RegExp(`(?:^|[,;(]\\s*|\\s)${alias}(?:\\s+(\\d{1,3}))?(?=\\s*(?:[,;)]|$))`).exec(text);
+    return m ? (m[1] !== undefined ? int(m[1]) : true) : null;
+  }
+  const crewPbOf = (pb) => clamp(int(pb, 2), 0, 10);
+  // the attack bonus (primary and secondary) and save DC (tertiary and quaternary): the ship's Wisdom, the gunner's
+  // proficiency, the weapon's own bonus
+  const wisMod = (ship) => Math.floor((int((ship && ship.abilities || {}).wis, 10) - 10) / 2);
+  const strMod = (ship) => Math.floor((int((ship && ship.abilities || {}).str, 10) - 10) / 2);
+  // saturate: the better of Strength and Wisdom
+  const aimMod = (ship, w) => (weaponProp(w, 'saturate') ? Math.max(wisMod(ship), strMod(ship)) : wisMod(ship));
+  const attackBonusOf = (ship, w, pb) => aimMod(ship, w) + crewPbOf(pb) + int(w && w.atkMisc);
+  const saveDcOf = (ship, w, pb) => 8 + crewPbOf(pb) + aimMod(ship, w) + int(w && w.atkMisc);
+  // Firing modes: a single shot, and rapid or burst for weapons with those properties (auto weapons fire only in those).
+  // Rapid: one target saves (Dexterity, DC 8 + the attack bonus) or takes the damage plus its dice again; nothing on a
+  // success. Burst: every ship in a 150-ft cube on the target saves or takes the damage; nothing on a success. Each
+  // uses as many shots of heat or ammunition as its number.
+  function weaponModes(w) {
+    const out = weaponProp(w, 'auto') ? [] : ['single'];
+    if (weaponProp(w, 'rapid')) out.push('rapid');
+    if (weaponProp(w, 'burst')) out.push('burst');
+    return out.length ? out : ['single'];
+  }
+  const shotCost = (w, mode) => (mode === 'rapid' || mode === 'burst' ? Math.max(1, typeof weaponProp(w, mode) === 'number' ? weaponProp(w, mode) : 1) : 1);
+  // overheat N: shots before the weapon must be cooled (an action); null when it doesn't overheat
+  const heatCap = (w) => (typeof weaponProp(w, 'overheat') === 'number' ? weaponProp(w, 'overheat') : null);
+  const reloadOf = (w) => (typeof weaponProp(w, 'reload') === 'number' ? weaponProp(w, 'reload') : null);
+  // the squares of a 150-ft cube (3 x 3) on a ship token, and whether a ship of n squares at t has a square in it
+  function burstBox(t, n) { const c = { x: t.x + n / 2, y: t.y + n / 2 }; return { x0: c.x - 1.5, y0: c.y - 1.5, x1: c.x + 1.5, y1: c.y + 1.5 }; }
+  const inBox = (box, t, n) => t.x < box.x1 && t.x + n > box.x0 && t.y < box.y1 && t.y + n > box.y0;
+  // The damage of a hit: the weapon's dice (twice on a critical) plus the ship's Strength for primary and secondary
+  // weapons, plus half of it (rounded up, at least 1) for a heavy weapon.
+  function damageExpr(ship, w, crit) {
+    const m = /^\s*(\d{1,2})d(\d{1,3})\s*([+-]\s*\d{1,3})?\s*$/i.exec(String((w && w.dmg) || ''));
+    if (!m) return '';
+    const n = int(m[1]) * (crit ? 2 : 1), flat = m[3] ? int(m[3].replace(/\s/g, '')) : 0, cat = catOf(w);
+    let bonus = flat;
+    if (cat === 'primary' || cat === 'secondary') bonus += strMod(ship);
+    if (weaponProp(w, 'heavy')) bonus += Math.max(1, Math.ceil(strMod(ship) / 2));
+    return `${n}d${m[2]}` + (bonus ? (bonus > 0 ? '+' : '') + bonus : '');
+  }
+  // Can this weapon fire at that ship from here, and how? a / ta: the two tokens (x, y, f); returns
+  // { ok, why, feet, arc, kind: 'attack' | 'save', adv: [reasons], dis: [reasons] } where adv / dis are for the attack
+  // roll, or (kind 'save') for the target's saving throw.
+  function fireCheck(ship, a, w, target, ta) {
+    const sa = squaresOf(ship), st = squaresOf(target), feet = shipGap(a, sa, ta, st), arc = arcOf(a, sa, ta, st), cat = catOf(w);
+    const big = sizeRank(ship) >= 4;   // Huge or larger: its primary weapons (point-defense) call for a save, like tertiary ones
+    const out = { ok: true, why: '', feet, arc, kind: cat === 'tertiary' || cat === 'quaternary' || (cat === 'primary' && big) ? 'save' : 'attack', adv: [], dis: [] };
+    const no = (why) => Object.assign(out, { ok: false, why });
+    if (w && w.arc && w.arc !== 'turret' && MOUNTS.includes(w.arc) && arc !== w.arc) return no(`it is in the ${arc} arc, and this weapon fires ${w.arc}`);
+    if (cat === 'quaternary') return no('bombs and mines are dropped or launched, not fired at a ship');
+    const r = weaponRange(w);
+    // primary: past normal range, disadvantage on the attack (a Huge or larger ship's: advantage on the target's save)
+    if (cat === 'primary' && r) { if (feet > r.b) return no(`${feet} ft is beyond its long range (${r.b} ft)`); if (feet > r.a) (big ? out.adv : out.dis).push('long range'); }
+    if (cat === 'secondary') {
+      if (big && sizeRank(target) <= 1) return no('a Huge or larger ship\'s secondary weapons can\'t target Small or Tiny ships');
+      if (r) { if (feet > r.b) return no(`${feet} ft is beyond its range (${r.b} ft)`); if (feet <= r.a) out.dis.push('close range'); }
+      if (big && sizeRank(target) <= 3) out.dis.push('a smaller target');
+    }
+    if (cat === 'tertiary') {
+      if (r && feet > r.b) return no(`${feet} ft is beyond its long range (${r.b} ft)`);
+      const homing = !!weaponProp(w, 'homing');
+      if (r && feet > r.a && !homing) out.adv.push('long range');
+      if (homing && (!r || feet <= r.a)) out.dis.push('homing');
+      const d = sizeRank(target) - sizeRank(ship);
+      if (d <= -2) out.adv.push('a much smaller ship'); if (d >= 2) out.dis.push('a much larger ship');
+    }
+    if (out.kind === 'attack') {
+      if (feet <= 50) out.dis.push('within 50 ft');
+      const mine = rollEffects(ship, 'attack'), theirs = rollEffects(target, 'against');
+      out.adv.push(...mine.adv, ...theirs.adv); out.dis.push(...mine.dis, ...theirs.dis);
+      const con = weaponProp(w, 'constitution');
+      if (typeof con === 'number' && int((ship.abilities || {}).con, 10) < con) out.dis.push(`Constitution under ${con}`);
+    }
+    return out;
+  }
+
+
+  // ---- the Helm and crew actions (SotG chapter 9, "Actions in Combat")
+  const HELM = ['evade', 'fly', 'hardturn', 'ram'];
+  // a ship's skill check bonus with a crew member's proficiency bonus: the ability, plus pb once or twice (proficiently or
+  // expertly equipped)
+  const SKILL_ABILITY = { astrogation: 'int', boost: 'str', data: 'int', hide: 'dex', impress: 'cha', interfere: 'cha', maneuvering: 'dex', menace: 'cha',
+    patch: 'con', probe: 'int', ram: 'str', regulation: 'con', scan: 'wis', swindle: 'cha' };
+  function skillBonus(ship, skill, pb) {
+    const ab = own(SKILL_ABILITY, skill); if (!ab) return 0;
+    const mod = Math.floor((int((ship && ship.abilities || {})[ab], 10) - 10) / 2);
+    return mod + clamp(int((ship && ship.skills || {})[skill]), 0, 2) * crewPbOf(pb);
+  }
+  // Evade, Fly or Hard Turn (one Helm action a turn): Evade gives attacks against it disadvantage and its Dexterity
+  // saves advantage until the start of its next turn, and its own checks and attacks disadvantage until the end of
+  // its next turn; Fly doubles this turn's movement at the same cost to its aim; Hard Turn makes its next turn of up
+  // to 90 degrees cost nothing.
+  function helm(ship, what) {
+    const s = copy(ship), st = s.status = statusOf(s), name = s.name || 'The ship';
+    if (!['evade', 'fly', 'hardturn'].includes(what)) return { ship: s, ok: false, log: [] };
+    if (st.fx.helm) return { ship: s, ok: false, log: [`${name} has already taken a Helm action this turn.`] };
+    st.fx.helm = true;
+    if (what === 'evade') st.fx.evade = 2;
+    if (what === 'fly') st.fx.fly = 2;
+    if (what === 'hardturn') st.fx.hardTurn = true;
+    const said = { evade: `${name} evades: attacks against it have disadvantage until its next turn, and its own rolls have disadvantage through it.`,
+      fly: `${name} flies flat out: twice its speed this turn, and disadvantage on its rolls through its next turn.`,
+      hardturn: `${name} makes a hard turn: its next turn of up to 90° costs no movement.` }[what];
+    return { ship: s, ok: true, log: [said] };
+  }
+  // Patch (the action, any number a turn): a Constitution (Patch) check against 10 or half the missing hull points,
+  // spending a hull die: rolled on a success, rolled twice and the lower kept on a failure.
+  const patchDC = (ship) => Math.max(10, Math.floor((hullMax(ship) - int(ship && ship.hull && ship.hull.current)) / 2));
+  function patch(ship, check, roll) {
+    const s = capPoints(copy(ship)), st = s.status = statusOf(s), name = s.name || 'The ship';
+    if (isLost(st)) return { ship: s, done: false, log: [`${name} is lost.`] };
+    if (diceLeft(s, 'hull') <= 0) return { ship: s, done: false, log: [`${name} has no hull dice left.`] };
+    if (int(s.hull.current) >= hullMax(s)) return { ship: s, done: false, log: [`${name}'s hull needs no patching.`] };
+    const dc = patchDC(s), ok = int(check) >= dc, d = diceOf(s, 'hull').die;
+    const a = int(roll('1d' + d).total), b = ok ? a : int(roll('1d' + d).total), got = ok ? a : Math.min(a, b);
+    st.hdUsed += 1;
+    const r = restore(s, 'hull', got);
+    return { ship: r.ship, done: true, ok, dc, gain: r.gained, log: [`${name} is patched up: ${check} against DC ${dc}, ${ok ? 'a success' : 'a failure (the lower of two rolls)'}, +${r.gained} hull point${r.gained === 1 ? '' : 's'}.`] };
+  }
+
+
+  // ---- what size, tier and role give a ship (SotG chapters 1, 3 and 5; SW5e's size data)
+  // armor: how much Dexterity counts toward AC, and the damage reduction against attack rolls
+  const ARMORS = { Lightweight: { cap: 99, dr: 0 }, Deflection: { cap: 2, dr: 3 }, Reinforced: { cap: 0, dr: 6 } };
+  const armorOf = (ship) => pickFrom(ship, 'armor', ARMORS);
+  const SIZE_ADJ = { Tiny: { dex: 4, con: -4 }, Small: { dex: 2, con: -2 }, Medium: {}, Large: { dex: -2, con: 2 }, Huge: { dex: -4, con: 4 }, Gargantuan: { dex: -6, con: 6 } };
+  const SLOTS = { Tiny: 10, Small: 20, Medium: 30, Large: 50, Huge: 60, Gargantuan: 70 };
+  const SUITES = { Small: [-1, 1], Medium: [3, 1], Large: [3, 2], Huge: [6, 3], Gargantuan: [10, 4] };   // base + k x Con modifier, at least 0; Tiny: none
+  const SAVES = { Tiny: ['dex', 'int'], Small: ['str', 'dex'], Medium: [], Large: ['wis'], Huge: ['wis'], Gargantuan: ['wis'] };
+  const SAVE_NOTE = { Medium: 'your choice of two', Large: 'Wisdom and your choice of Strength or Constitution', Huge: 'Wisdom and your choice of Strength or Constitution', Gargantuan: 'Wisdom and your choice of Strength or Constitution' };
+  const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
+  const modOf = (ship, ab) => Math.floor((int((ship && ship.abilities || {})[ab], 10) - 10) / 2);
+  const avgDie = (d) => Math.floor(d / 2) + 1;   // the fixed value for a die after the first (rounded up)
+  // points from dice: the first die's maximum, the fixed value for each one after, and the ability modifier on each
+  const dicePoints = (n, d, mod) => (n > 0 ? d + avgDie(d) * (n - 1) + mod * n : 0);
+  // everything the rules work out from the ship's size, tier, role, armor, shields and ability scores
+  function derive(ship) {
+    const size = own(SIZE_DATA, ship && ship.size) ? ship.size : 'Small', tier = tierOf(ship), role = roleOf(ship);
+    const hd = diceOf(Object.assign({}, ship, { hullDice: '' }), 'hull'), sd = diceOf(Object.assign({}, ship, { shieldDice: '' }), 'shield');
+    const con = modOf(ship, 'con'), str = modOf(ship, 'str'), dex = modOf(ship, 'dex');
+    const shieldType = own(SHIELD_TYPES, shieldTypeOf(ship)), shieldBase = dicePoints(sd.n, sd.die, str);
+    const armor = armorOf(ship), cap = (own(ARMORS, armor) || ARMORS.Lightweight).cap;
+    const suite = own(SUITES, size);
+    return {
+      size, tier, role: role ? ship.role : '', armor,
+      hullDice: `${hd.n}d${hd.die}`, shieldDice: `${sd.n}d${sd.die}`,
+      hull: Math.max(1, dicePoints(hd.n, hd.die, con)),
+      shieldBase, shield: shieldType ? Math.floor(shieldBase * shieldType.cap) : 0, shieldType: shieldType ? shieldTypeOf(ship) : '',
+      ac: 10 + Math.min(dex, cap) + Math.max(0, tier - 1),
+      speed: role ? role.speed : null, turn: role ? role.turn : null,
+      suites: suite ? Math.max(0, suite[0] + suite[1] * con) : 0, slots: own(SLOTS, size) || 0,
+      saves: own(SAVES, size) || [], saveNote: own(SAVE_NOTE, size) || '',
+      sizeAdj: own(SIZE_ADJ, size) || {}, roleAdj: role ? role.adj : {},
+    };
+  }
+  // the armor's damage reduction against a hit from an attack roll; damage it would bring to 0 is 1 instead
+  const armorDR = (ship) => (own(ARMORS, armorOf(ship)) || { dr: 0 }).dr;
+  const afterDR = (ship, amount) => { const n = int(amount), dr = armorDR(ship); return n <= 0 || !dr ? n : Math.max(1, n - dr); };
+
+
+  // ---- between fights: recharging and refitting (SotG chapter 8)
+  const REFIT_TIME = { Tiny: '4 hours', Small: '8 hours', Medium: '1 day', Large: '3 days', Huge: '1 week', Gargantuan: '1 month' };
+  const UPGRADE_COST = { Tiny: 0.5, Small: 1, Medium: 2, Large: 10, Huge: 100, Gargantuan: 1000 };
+  const EQUIP_WORKFORCE = { Tiny: 1, Small: 1, Medium: 2, Large: 5, Huge: 50, Gargantuan: 500 };     // recharging
+  const UPGRADE_WORKFORCE = { Tiny: 1, Small: 1, Medium: 5, Large: 50, Huge: 500, Gargantuan: 5000 }; // refitting
+  const sizeKey = (ship) => (own(SIZE_DATA, ship && ship.size) ? ship.size : 'Small');
+  // Recharging (an hour, with the crew for the size): shields back to full and half the shield dice back; then the crew
+  // may spend hull dice (rechargeHullDie)
+  function recharge(ship) {
+    const s = capPoints(copy(ship)), st = s.status = statusOf(s), name = s.name || 'The ship';
+    if (isLost(st)) return { ship: s, done: false, log: [`${name} is lost.`] };
+    const back = Math.min(st.sdUsed, Math.floor(diceOf(s, 'shield').n / 2));
+    st.sdUsed -= back; s.shield.current = shieldMax(s); st.recharged = true;
+    return { ship: s, done: true, log: [`${name} recharges (an hour, a crew of ${own(EQUIP_WORKFORCE, sizeKey(s))}): shields full, ${back} shield ${back === 1 ? 'die' : 'dice'} back. Its crew can spend hull dice now.`] };
+  }
+  // after a recharge, a hull die spent with an Intelligence (mechanic's kit) check: 10 or less, the die twice and the
+  // lower; 11 to 20, the die; 21 or more, the die twice and the higher; plus the ship's Constitution
+  function rechargeHullDie(ship, check, roll) {
+    const s = capPoints(copy(ship)), st = s.status = statusOf(s), name = s.name || 'The ship';
+    if (!st.recharged) return { ship: s, done: false, log: [`${name} needs to recharge first.`] };
+    if (diceLeft(s, 'hull') <= 0) return { ship: s, done: false, log: [`${name} has no hull dice left.`] };
+    if (int(s.hull.current) >= hullMax(s)) return { ship: s, done: false, log: [`${name}'s hull is whole.`] };
+    const d = diceOf(s, 'hull').die, c = int(check), a = int(roll('1d' + d).total);
+    const got = c <= 10 ? Math.min(a, int(roll('1d' + d).total)) : c >= 21 ? Math.max(a, int(roll('1d' + d).total)) : a;
+    st.hdUsed += 1;
+    const r = restore(s, 'hull', Math.max(0, got + modOf(s, 'con')));
+    r.ship.status.recharged = true;
+    return { ship: r.ship, done: true, gain: r.gained, log: [`${name} spends a hull die (${c}: ${c <= 10 ? 'the lower of two' : c >= 21 ? 'the higher of two' : 'one roll'}): +${r.gained} hull point${r.gained === 1 ? '' : 's'}.`] };
+  }
+  // Refitting (docked at a spaceport or shipyard): hull and shields full, every hull and shield die back, system damage
+  // one level lower (which also repairs failed primary systems); costs 100 credits per missing hull die times the size's
+  // upgrade cost, and takes the size's time
+  function refitCost(ship) { return Math.round(100 * Math.min(statusOf(ship).hdUsed, diceOf(ship, 'hull').n) * own(UPGRADE_COST, sizeKey(ship))); }
+  function refit(ship) {
+    const s = copy(ship), st = s.status = statusOf(s), name = s.name || 'The ship', cost = refitCost(ship), size = sizeKey(s);
+    if (st.zero.destroyed) return { ship: s, done: false, log: [`${name} was destroyed.`] };
+    const was = st.system;
+    st.system = Math.max(0, st.system - 1); st.hdUsed = 0; st.sdUsed = 0; st.recharged = false;
+    st.zero = { s: 0, f: 0, stable: false, destroyed: false }; st.cond = st.cond.filter((c) => c !== 'Disabled');
+    capPoints(s); s.hull.current = hullMax(s); s.shield.current = shieldMax(s);
+    return { ship: s, done: true, cost, log: [`${name} is refitted (${own(REFIT_TIME, size)}, a crew of ${own(UPGRADE_WORKFORCE, size).toLocaleString('en-US')}, ${cost.toLocaleString('en-US')} cr): hull and shields full, all dice back${was ? `, system damage ${st.system}` : ''}.`] };
+  }
+
   // what the sheet shows of a ship's state, in short phrases
   function summary(ship) {
     const st = statusOf(ship), hullNow = int(ship && ship.hull && ship.hull.current), out = [];
@@ -486,5 +728,5 @@
     setCondition, summary, SIZE_DATA, SHIELD_TYPES, REACTORS, COUPLINGS, SYSTEMS, POOLS, SYSTEM_NAMES, POWER_DIE, sizeOf, roleOf, reactorOf, couplingOf,
     shieldTypeOf, powerDie, powerDieText, powerCaps, diceOf, diceLeft, regenRate, boostDC, regenDC, boostedSpeed, startTurn, usePower, setPower,
     setDiceUsed, boost, regenerateShields, SQUARE_FT, SQUARES, squaresOf, FACING_NAMES, DIRS, gridFeet, turnSteps, turnCost, moveCost, inBounds, shipGap,
-    arcOf, INIT_SIZE_MOD, npcInitBonus };
+    arcOf, INIT_SIZE_MOD, npcInitBonus, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck };
 });

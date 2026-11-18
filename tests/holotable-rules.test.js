@@ -60,6 +60,24 @@ test("archetypes that cast (audit 3.13): points and max power level from each on
   assert.equal(bg.lightDC, 8 + 3 + 1, "other force archetypes use Wisdom for light side");
 });
 
+test("Mechanist Technique and Rakatan Order (#160's review): their Techcasting tables in SW5e's feature data", () => {
+  const ci = (cls, L, archetype, abilities = {}) => R.casterInfo({ classes: [{ name: cls, level: L, archetype }], abilities });
+  const series = (cls, a, key) => Array.from({ length: 20 }, (_, i) => ci(cls, i + 1, a)[key]);
+  // Mechanist Technique improves the Scout's own casting from 3rd: 1.5 points per level (rounded up), 2nd at 3 ... 7th at 17
+  assert.deepEqual(series("Scout", "Mechanist Technique", "techMax"), [0, 2, 5, 6, 8, 9, 11, 12, 14, 15, 17, 18, 20, 21, 23, 24, 26, 27, 29, 30]);
+  assert.deepEqual(series("Scout", "Mechanist Technique", "techMaxLevel"), [0, 1, 2, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 7]);
+  assert.equal(R.highCastFrom({ classes: [{ name: "Scout", level: 17, archetype: "Mechanist Technique" }] }, "tech"), 5, "5th to 7th once per long rest");
+  assert.equal(R.highCastFrom({ classes: [{ name: "Scout", level: 17, archetype: "" }] }, "tech"), 4);
+  assert.equal(ci("Scout", 9, "Mechanist").techMaxLevel, 4, "without its last word");
+  // Rakatan Order (Monk): a tech archetype like the others, casting with Int, Wis or Cha
+  assert.deepEqual(series("Monk", "Rakatan Order", "techMax"), [0, 0, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10]);
+  assert.deepEqual(series("Monk", "Rakatan Order", "techMaxLevel"), [0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4]);
+  const rk = ci("Monk", 5, "Rakatan Order", { int: 10, wis: 16, cha: 8 });
+  assert.deepEqual([rk.techDC, rk.techAtk, rk.techMax], [8 + 3 + 3, 3 + 3, 3 + 3]);
+  assert.equal(R.techOnShortRest({ classes: [{ name: "Monk", level: 3, archetype: "Rakatan Order" }] }), true);
+  assert.equal(R.highCastFrom({ classes: [{ name: "Monk", level: 17, archetype: "Rakatan Order" }] }, "tech"), 4);
+});
+
 test("multiclass max power level (audit 3.14): the PHB's weighted caster level and its table", () => {
   const mc = (...classes) => R.casterInfo({ classes: classes.map(([name, level, archetype]) => ({ name, level, archetype: archetype || "" })), abilities: {} });
   // the PHB's own example: Marauder Approach berserker 4 (4/9 x 4 = 1.77) + guardian 3 (5/9 x 3 = 1.67) = 3rd: 2nd-level powers
@@ -182,4 +200,34 @@ test("senses: species traits read as senses; the GM's typing parsed; only the fo
   assert.deepEqual(R.parseSenses("darkvision 60, Blindsight 30 ft; xray 10"), [{ kind: "darkvision", range: 60 }, { kind: "blindsight", range: 30 }]);
   assert.deepEqual(R.cleanSenses([{ kind: "truesight", range: 99999 }, { kind: "darkvision", range: 0 }]), [{ kind: "truesight", range: 9999 }]);
   assert.equal(R.sensesText([{ kind: "darkvision", range: 60 }, { kind: "blindsight", range: 10 }]), "Darkvision 60 ft · Blindsight 10 ft");
+});
+
+test("ability scores (audit 1.4): SW5e's standard set, and point buy's 27 points from 8 to 15", () => {
+  assert.deepEqual(R.STANDARD_ARRAY, [15, 14, 13, 12, 10, 8]);
+  assert.deepEqual(R.POINT_COST, { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 });
+  assert.equal(R.POINT_BUDGET, 27);
+  const sc = (str, dex, con, int, wis, cha) => ({ str, dex, con, int, wis, cha });
+  assert.equal(R.pointBuyCost(sc(15, 15, 15, 8, 8, 8)), 27, "the PHB's three high, three low example");
+  assert.equal(R.pointBuyCost(sc(13, 13, 13, 12, 12, 12)), 27, "and its nearly equal example");
+  assert.equal(R.pointBuyCost(sc(8, 8, 8, 8, 8, 8)), 0);
+  assert.equal(R.pointBuyCost(sc(16, 8, 8, 8, 8, 8)), Infinity, "above 15 can't be bought");
+  assert.equal(R.pointBuyCost(sc(7, 8, 8, 8, 8, 8)), Infinity, "nor below 8");
+  assert.ok(R.usesEachOnce(sc(8, 15, 12, 13, 10, 14), R.STANDARD_ARRAY), "the PHB's Han Solo placement");
+  assert.ok(!R.usesEachOnce(sc(15, 15, 12, 13, 10, 8), R.STANDARD_ARRAY), "a number used twice");
+  assert.ok(R.usesEachOnce(sc(9, 17, 12, 12, 6, 14), [17, 14, 12, 12, 9, 6]), "rolled numbers, repeats allowed once each");
+  assert.ok(!R.usesEachOnce(sc(9, 17, 12, 12, 6, 14), [17, 14, 12, 9, 6]), "five numbers for six abilities");
+});
+
+test("level-up choice counts come from the class table (audit 2.9)", () => {
+  const at = (c, L) => Object.fromEntries(R.choiceCounts(c, L).map((x) => [x.col, [x.kind, x.prev, x.total]]));
+  // SW5e's Operative: "You've adopted two exploits ... You adopt an additional exploit at 7th, 13th, and 17th level."
+  assert.deepEqual(at("Operative", 2), { "Operative Exploits": ["opts", 0, 2] });
+  assert.deepEqual(at("Operative", 6), { "Operative Exploits": ["opts", 2, 2] });
+  assert.deepEqual(at("Operative", 7), { "Operative Exploits": ["opts", 2, 3] });
+  assert.deepEqual(at("operative", 17)["Operative Exploits"], ["opts", 4, 5], "any case");
+  assert.deepEqual(at("Fighter", 3), { "Maneuvers Known": ["maneuvers", 1, 2], "Strategies Known": ["opts", 0, 1] });
+  assert.deepEqual(at("Consular", 2)["Force Powers Known"], ["powers", 9, 11]);
+  assert.deepEqual(at("Monk", 1), {}, "nothing counted yet");
+  assert.deepEqual(R.choiceCounts("Jedi", 3), []);
+  assert.deepEqual(R.choiceCounts("Fighter", 0), []);
 });

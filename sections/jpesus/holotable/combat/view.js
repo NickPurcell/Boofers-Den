@@ -69,7 +69,10 @@
       const w = world(), me = w && w.units[u.id];
       const offs = me ? weapons.map((a) => ({ a, o: E.offhandOf(w, me, a) })).filter((x) => x.o.spec)
         .map(({ a, o }) => Object.assign({}, o.spec, { key: 'off:' + a.key, base: a.key, offhand: o.kind })) : [];
-      return weapons.concat(offs, powers, MANEUVERS);
+      // a monk's Martial Arts bonus strike, then Flurry of Blows (#67)
+      const mas = me ? weapons.filter((a) => a.unarmed).map((a) => ({ a, o: E.martialOf(w, me, a) })).filter((x) => x.o.spec)
+        .map(({ a, o }) => Object.assign({}, o.spec, { key: 'ma:' + a.key, base: a.key, martialBonus: true, flurry: !!o.flurry })) : [];
+      return weapons.concat(offs, mas, powers, MANEUVERS);
     }
     if (!gm()) return [];
     const known = UI.npc[u.id];
@@ -204,6 +207,13 @@
     try { return await act(type, payload); } finally { UI.busy = false; }
   }
   const specOut = (spec) => ({ name: spec.name, bonus: spec.bonus, damage: spec.damage, type: spec.type, melee: spec.melee, range: spec.range, res: spec.res || undefined });
+  // what a reaction can be made with: Return Fire takes a ranged weapon from the sheet; the rest, a melee attack (#67)
+  function reactOptions(re, kind) {
+    if (kind === 'riposte') return meleeOf(re).filter((a) => a.weapon);   // a riposte is a melee weapon attack
+    if (kind !== 'return-fire') return meleeOf(re);
+    const ch = re.charId && st().characters[re.charId];
+    return ch ? E.attacksOf(ch, R).filter((a) => a.range) : [];
+  }
   // the melee attacks a reacting combatant has: its sheet's, or (for the GM) its stat block's
   function meleeOf(re) {
     if (re.charId) { const ch = st().characters[re.charId]; return ch ? E.attacksOf(ch, R).filter((a) => a.melee > 0) : []; }
@@ -221,7 +231,7 @@
       return;
     }
     const r = spec.power ? await send('fight.use', Object.assign({ ability: spec.key, upcast: UI.upcast || 0, adv: UI.adv, dis: UI.dis }, spec.power.area ? { point: UI.aim } : { target: targetId }))
-      : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.base || spec.key : specOut(spec), offhand: !!spec.offhand, no: UI.noRiders || [], add: UI.addRiders || {}, twoHands: !!UI.twoHands,
+      : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.base || spec.key : specOut(spec), offhand: !!spec.offhand, martial: !!spec.martialBonus, no: UI.noRiders || [], add: UI.addRiders || {}, twoHands: !!UI.twoHands,
         multi: u.charId ? undefined : (UI.npc[u.id] || {}).multi || 1 });
     if (r) { UI.armed = null; UI.target = null; UI.aim = null; UI.adv = UI.dis = false; UI.upcast = 0; UI.noRiders = []; UI.addRiders = {}; render(); }
   }
@@ -305,14 +315,23 @@
     for (const pr of f.pending || []) {
       const re = w.units[pr.reactor], ag = w.units[pr.against];
       if (!re || !ag) continue;
+      const what = pr.kind === 'riposte' ? `a riposte against <b>${esc(ag.name)}</b>, who missed it (a superiority die, added on a hit)`
+        : pr.kind === 'return-fire' ? `return fire at <b>${esc(ag.name)}</b>, who missed it (a superiority die, added on a hit)` : `an opportunity attack on <b>${esc(ag.name)}</b>, who is leaving its reach`;
+      if (pr.kind === 'parry') {   // #67: the hit waits; parry it (a die off) or take it
+        const h = pr.hit || {};
+        html += pr.mine ? `<div class="ct-row ct-react" role="alert"><span>⚡ <b>${esc(ag.name)}</b> hits <b>${esc(re.name)}</b> for ${esc(String(h.amount))}${h.type ? ' ' + esc(h.type) : ''} damage. Parry it? A superiority die plus your best of Str, Dex and Con comes off.</span>
+            <button class="btn small primary" data-ct="parry" data-id="${esc(pr.id)}">🛡 Parry</button><button class="btn small ghost" data-ct="letgo" data-id="${esc(pr.id)}">Take the hit</button></div>`
+          : `<div class="ct-row ct-react muted">Waiting for ${esc(re.name)}: parry ${esc(ag.name)}'s hit, or take it.</div>`;
+        continue;
+      }
       if (pr.mine) {
-        const opts = meleeOf(re);
-        html += `<div class="ct-row ct-react" role="alert"><span>⚡ <b>${esc(re.name)}</b> can make an opportunity attack on <b>${esc(ag.name)}</b>, who is leaving its reach.</span>
-          ${opts.map((a) => `<button class="btn small primary" data-ct="react" data-id="${esc(pr.id)}" data-key="${esc(a.key)}" data-unit="${esc(re.id)}">${esc(a.name)} <b>${esc(sgn(a.bonus))}</b></button>`).join('')}
-          ${opts.length ? '' : `<span class="muted">${UI.npc[re.id] && UI.npc[re.id].loading ? 'Reading the stat block…' : 'No melee attack known.'}</span>`}
+        const opts = reactOptions(re, pr.kind);
+        html += `<div class="ct-row ct-react" role="alert"><span>⚡ <b>${esc(re.name)}</b> can make ${what}.</span>
+          ${opts.map((a) => `<button class="btn small primary" data-ct="react" data-id="${esc(pr.id)}" data-key="${esc(a.key)}" data-unit="${esc(re.id)}" data-kind="${esc(pr.kind || 'opportunity')}">${esc(a.name)} <b>${esc(sgn(a.bonus))}</b></button>`).join('')}
+          ${opts.length ? '' : `<span class="muted">${UI.npc[re.id] && UI.npc[re.id].loading ? 'Reading the stat block…' : pr.kind === 'return-fire' ? 'No ranged weapon known.' : pr.kind === 'riposte' ? 'No melee weapon known.' : 'No melee attack known.'}</span>`}
           ${gm() && !re.charId ? `<button class="btn small ghost" data-ct="custom" data-unit="${esc(re.id)}">＋ Custom attack</button>` : ''}
           <button class="btn small ghost" data-ct="letgo" data-id="${esc(pr.id)}">Let it go</button></div>`;
-      } else html += `<div class="ct-row ct-react muted">Waiting for ${esc(re.name)}: an opportunity attack on ${esc(ag.name)}, to take or let go.</div>`;
+      } else html += `<div class="ct-row ct-react muted">Waiting for ${esc(re.name)}: ${pr.kind === 'riposte' ? 'a riposte' : pr.kind === 'return-fire' ? 'return fire' : 'an opportunity attack'} against ${esc(ag.name)}, to take or let go.</div>`;
     }
     // the current combatant's conditions (how long each lasts) and what it is concentrating on
     const flags = u ? E.spentOf(w, u.id) : {};
@@ -362,7 +381,7 @@
     // the current character's resources (its owner and the GM): use one, or add one
     if (f.active && u && u.charId && (mine || gm())) {
       const pools = Object.values(u.pools || {}).filter((r) => r.key !== 'hitdice');
-      html += `<div class="ct-row ct-pools">${pools.map((r) => `<button class="ct-chip ct-pool ${r.used >= r.max ? 'spent' : ''}" data-ct="pool" data-key="${esc(r.key)}" title="${esc(r.name)}: ${r.max - r.used} of ${r.max} left${r.refill === 'short' ? ', back on a short or long rest' : r.refill === 'long' ? ', back on a long rest' : ''}">${esc(r.name)} ${r.max - r.used}/${r.max}${r.die ? ' ' + esc(r.die) : ''}</button>`).join('')}
+      html += `<div class="ct-row ct-pools">${pools.map((r) => `<button class="ct-chip ct-pool ${r.used >= r.max ? 'spent' : ''}" data-ct="pool" data-key="${esc(r.key)}" title="${esc(r.name)}: ${r.max - r.used} of ${r.max} left${r.refill === 'short' ? ', back on a short or long rest' : r.refill === 'long' ? ', back on a long rest' : ''}">${esc(r.name)} ${r.max - r.used}/${r.max}${r.temp ? ` +${r.temp}` : ''}${r.die ? ' ' + esc(r.die) : ''}</button>`).join('')}
         <button class="btn tiny ghost" data-ct="addres" title="Add a resource with a maximum (uses, or a pool of dice)">＋ Resource</button>
         ${gm() ? '<button class="btn tiny ghost" data-ct="senses" title="Every character\'s senses at a glance">👁 Senses</button>' : ''}
         <button class="btn tiny ghost" data-ct="defs" title="Damage resistances, immunities and vulnerabilities, and senses">🛡 ${(() => { const d = (f.defenses || {})[u.charId] || {}; const n = (d.resist || []).length + (d.immune || []).length + (d.vuln || []).length; return n ? `Defences (${n})` : 'Defences'; })()}</button></div>`;
@@ -374,11 +393,11 @@
       html += '<div class="ct-row ct-actions" role="group" aria-label="Attacks">';
       for (const a of atks) {
         const n = targets(a).length;
-        const slot = a.power ? a.power.use : a.offhand ? 'bonus' : 'action';
+        const slot = a.power ? a.power.use : a.offhand || a.martialBonus ? 'bonus' : 'action';
         const lim = !u.charId && a.res && ((f.npcRes || {})[u.id] || []).find((r) => r.key === a.res);
-        const slotSpent = (bud && slot !== 'free' && !bud[slot] && !a.offhand && !(slot === 'action' && !a.power && a.maneuver !== 'help' && bud.attacks)) || (lim && lim.used >= lim.max);   // a weapon attack: also the rest of an Attack action (#139)
+        const slotSpent = (bud && slot !== 'free' && !bud[slot] && !a.offhand && !a.martialBonus && !(slot === 'action' && !a.power && a.maneuver !== 'help' && bud.attacks)) || (lim && lim.used >= lim.max);   // a weapon attack: also the rest of an Attack action (#139)
         const pool = a.power && Object.entries(a.power.cost || {})[0];
-        const poorly = pool && (!u.pools[pool[0]] || u.pools[pool[0]].max - u.pools[pool[0]].used < pool[1]);
+        const poorly = pool && (!u.pools[pool[0]] || E.poolLeft(u.pools[pool[0]]) < pool[1]);   // temporary points count (#190)
         const off = slotSpent || !n || poorly;
         const why = slotSpent ? `Your ${slot === 'bonus' ? 'bonus action' : slot} is used this turn` : poorly ? `Not enough ${pool[0] === 'force' ? 'force' : pool[0] === 'tech' ? 'tech' : pool[0]} points` : !n ? 'Nothing in reach or range' : a.power && a.power.targets === 'self' ? 'Use it on yourself' : 'Pick a target on the map';
         const tag = a.maneuver ? (a.maneuver === 'help' ? '' : sgn(E.contestBonus(u, 'athletics'))) : a.power ? (a.power.attack ? sgn(a.power.attack.bonus) : a.power.save ? `DC ${a.power.save.dc}` : '') : sgn(a.bonus);
@@ -388,6 +407,13 @@
       for (const c of E.COMMON) {
         const used = bud && !bud[c.use];
         html += `<button class="btn small ghost ct-common" data-ct="common" data-key="${esc(c.key)}" ${used ? 'disabled' : ''} title="${esc(used ? `Your ${c.use === 'bonus' ? 'bonus action' : c.use} is used this turn` : c.hint)}">${esc(c.name)}</button>`;
+        // a monk's Dash or Disengage as a bonus action (Martial Arts, #67)
+        if (u.monk && (c.key === 'dash' || c.key === 'disengage')) html += `<button class="btn small ghost ct-common" data-ct="common" data-key="${esc(c.key)}" data-bonus="1" ${bud && !bud.bonus ? 'disabled' : ''} title="Martial Arts: as a bonus action">${esc(c.name)} (bonus)</button>`;
+      }
+      const surge = (u.pools || {})['action-surge'];   // a Fighter's Action Surge (#67): free, once a turn, one more action
+      if (surge) {
+        const why = +E.spentOf(w, u.id).surge ? 'Already surged this turn' : surge.used >= surge.max ? 'No Action Surge left until a short or long rest' : `One more action this turn (${surge.max - surge.used} of ${surge.max} left)`;
+        html += `<button class="btn small ghost ct-common" data-ct="common" data-key="surge" ${+E.spentOf(w, u.id).surge || surge.used >= surge.max ? 'disabled' : ''} title="${esc(why)}">⚡ Action Surge</button>`;
       }
       if ((u.riders || {}).rage) {   // a Berserker's Rage (audit 5.9): a bonus action and a use of Rages
         const raging = (u.conditions || []).includes('Raging'), pool = (u.pools || {}).rage, out = pool && pool.used >= pool.max, used = bud && !bud.bonus;
@@ -462,7 +488,7 @@
     if (k === 'douse') return send('fight.douse', { target: el.dataset.id });
     if (k === 'escape') { const u = cur(); return send('fight.escape', { skill: u && E.contestBonus(u, 'athletics') > E.contestBonus(u, 'acrobatics') ? 'athletics' : 'acrobatics' }); }
     if (k === 'release') return send('fight.release', { target: el.dataset.id });
-    if (k === 'common') return send('fight.common', { key: el.dataset.key });
+    if (k === 'common') return send('fight.common', Object.assign({ key: el.dataset.key }, el.dataset.bonus ? { asBonus: true } : {}));
     if (k === 'deathsave') return send('fight.deathsave', {});
     if (k === 'legend') return send('fight.npcres', { id: el.dataset.unit, op: 'use', key: 'legendary', n: +el.dataset.n || 1 });
     if (k === 'npcres') {
@@ -474,8 +500,9 @@
     if (k === 'log') { UI.log = !UI.log; return render(); }
 
     if (k === 'letgo') return send('fight.react', { id: el.dataset.id, take: false });
+    if (k === 'parry') return send('fight.react', { id: el.dataset.id, take: true });
     if (k === 'react') {
-      const re = world().units[el.dataset.unit], a = re && meleeOf(re).find((x) => x.key === el.dataset.key);
+      const re = world().units[el.dataset.unit], a = re && reactOptions(re, el.dataset.kind).find((x) => x.key === el.dataset.key);
       if (!a) return;
       return send('fight.react', { id: el.dataset.id, take: true, attack: re.charId ? a.key : specOut(a) });
     }

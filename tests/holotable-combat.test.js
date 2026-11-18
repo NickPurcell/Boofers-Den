@@ -258,7 +258,9 @@ test("turn budget: each unit's own turn refills its movement, action, bonus acti
   const hers = Object.assign({}, w, { turnId: "ava", round: 2 });
   assert.deepEqual([E.budget(hers).reaction, E.budget(hers).moveLeft, E.budget(hers).action], [true, 30, true]);
   const r = E.apply(hers, { type: "move", unit: "ava", x: 2, y: 0 }, dice().roll);
-  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0 });
+  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0, surge: 0, ma: 0, mab: 0 });
+
+  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0, surge: 0, ma: 0, mab: 0 });
 });
 
 // a level-3 Consular with two powers; the table has data for one of them (numbers invented for the test)
@@ -3146,4 +3148,358 @@ test("crit range (#165): an attack row's critRange makes the engine crit on that
   assert.equal(E.preview(world([ft, r1(30)], "ft"), "ft", "r1", keen).need, 19, "the preview counts it");
   assert.equal(E.attacksOf(Object.assign({}, ch, { attacks: [{ name: "Odd", ab: "str", damage: "1d8", critRange: 3 }] }), R)[0].critFrom, undefined, "out of range: ignored");
   assert.equal(E.attacksOf(Object.assign({}, ch, { attacks: [{ name: "Keen saber", ab: "str", damage: "1d8", props: "Keen 2, luminous" }] }), R)[0].critFrom, 18, "Keen 2: 18-20");
+});
+
+/* ---------------------------------------------------------------- Action Surge (#67) */
+test("Action Surge: one more action this turn, once a turn, a use of the pool; with Extra Attack, a second Attack action", () => {
+  const pool = (used, max = 1) => ({ "action-surge": { key: "action-surge", name: "Action Surge", max, used, refill: "short" } });
+  const ft = (o) => unit(Object.assign({ id: "ft", name: "Fenn", side: "pc", x: 0, y: 0, attacks: 2, pools: pool(0) }, o));
+  const r1 = () => unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 200, maxHp: 200 });
+  const hit = () => dice({ total: 15, nat: 12 }, { total: 5 }).roll;
+  const atk = (w) => E.apply(w, { type: "attack", unit: "ft", target: "r1", attack: blade }, hit());
+  let r = atk(world([ft(), r1()], "ft")); r = atk(r.world);
+  assert.equal(atk(r.world).ok, false, "two attacks, then the action is spent");
+  r = E.apply(r.world, { type: "common", unit: "ft", key: "surge" }, dice().roll);
+  assert.equal(r.ok, true, r.why);
+  assert.match(r.log[0].text, /Fenn surges: one more action this turn \(0 of 1 Action Surge left\)/);
+  assert.deepEqual([E.budget(r.world).action, r.world.units.ft.pools["action-surge"].used], [true, 1]);
+  r = atk(r.world);
+  assert.deepEqual([r.ok, E.budget(r.world).attacks], [true, 1], "a new Attack action: its own two attacks");
+  r = atk(r.world);
+  assert.equal(atk(r.world).ok, false, "and then it's spent");
+  // once a turn, even with two uses (17th level); none left; none at all
+  let two = E.apply(world([ft({ pools: pool(0, 2) }), r1()], "ft"), { type: "common", unit: "ft", key: "surge" }, dice().roll);
+  assert.equal(E.apply(two.world, { type: "common", unit: "ft", key: "surge" }, dice().roll).why, "Fenn has already surged this turn.");
+  assert.equal(E.apply(world([ft({ pools: pool(1) }), r1()], "ft"), { type: "common", unit: "ft", key: "surge" }, dice().roll).why, "Fenn has no Action Surge left until a short or long rest.");
+  assert.equal(E.apply(world([ft({ pools: {} }), r1()], "ft"), { type: "common", unit: "ft", key: "surge" }, dice().roll).why, "Fenn has no Action Surge.");
+  // the extra action can be something else: Dash after attacking
+  r = atk(world([ft({ attacks: 1 }), r1()], "ft"));
+  r = E.apply(r.world, { type: "common", unit: "ft", key: "surge" }, dice().roll);
+  assert.equal(E.apply(r.world, { type: "common", unit: "ft", key: "dash" }, dice().roll).ok, true);
+  // the next turn: a fresh budget, surge again allowed (a new turn key)
+  const next = Object.assign({}, two.world, { round: 2 });
+  assert.equal(+E.spentOf(next, "ft").surge, 0);
+});
+
+test("Action Surge through the API: a Fighter 2's pool from the class table, one more attack", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { classes: [{ name: "Fighter", level: 2 }] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0" })).code, 200);
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0" })).code, 400, "one attack at level 2");
+  assert.equal((await sam.act("fight.common", { key: "surge" })).code, 200);
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0" })).code, 200, "the surged action");
+  assert.equal((await sam.act("fight.common", { key: "surge" })).code, 400, "once a turn");
+  st = await gm.state();
+  assert.equal((st.characters[avery].resources || []).find((r) => r.key === "action-surge").used, 1);
+});
+
+/* ---------------------------------------------------------------- the Monk's Martial Arts (#67, 3.7's combat half) */
+test("Martial Arts: unarmed strikes and monk weapons get finesse and the Martial Arts die; an unarmed strike if the sheet has none", () => {
+  const ch = { classes: [{ name: "Monk", level: 5 }], abilities: { str: 10, dex: 16, con: 12, int: 10, wis: 14, cha: 8 },
+    attacks: [{ name: "Vibrostaff", ab: "str", damage: "1d4", type: "kinetic", props: "Versatile (1d6)" },
+      { name: "Blaster pistol", ab: "dex", damage: "1d6", type: "energy", props: "Range (40/160)" },
+      { name: "Vibrohammer", ab: "str", damage: "2d6", type: "kinetic", props: "Heavy, two-handed" },
+      { name: "Vibroknuckler", ab: "str", damage: "1d8", type: "kinetic", props: "" }] };
+  const out = E.attacksOf(ch, R).map((a) => [a.key, a.name, a.bonus, a.damage, !!a.martial, !!a.unarmed]);
+  assert.deepEqual(out, [
+    ["0", "Vibrostaff", 6, "1d6+3", true, false],         // finesse (Dex), and the d6 beats its d4
+    ["1", "Blaster pistol", 6, "1d6+3", false, false],    // not a monk weapon
+    ["2", "Vibrohammer", 3, "2d6", false, false],         // heavy, two-handed
+    ["3", "Vibroknuckler", 6, "1d8+3", true, false],      // its own d8 is better than the d6
+    ["ua", "Unarmed strike", 6, "1d6+3", true, true]]);
+  assert.equal(E.martialDieOf(ch, R), "d6");
+  assert.equal(E.attacksOf({ classes: [{ name: "Fighter", level: 5 }], abilities: ch.abilities, attacks: [] }, R).length, 0, "no unarmed strike added for a non-monk");
+});
+
+test("Martial Arts in a turn: the bonus unarmed strike after the Attack action, Flurry of Blows for a focus point, bonus Dash, Dex for a grapple", () => {
+  const ch = { classes: [{ name: "Monk", level: 5 }], abilities: { str: 10, dex: 16, con: 12, int: 10, wis: 14, cha: 8 }, attacks: [{ name: "Blaster pistol", ab: "dex", damage: "1d6", type: "energy", props: "Range (40/160)" }] };
+  const [gun, ua] = E.attacksOf(ch, R);
+  const focus = (used) => ({ focus: { key: "focus", name: "Focus points", max: 5, used, refill: "short" } });
+  const mk = (o) => unit(Object.assign({ id: "mk", name: "Mira", side: "pc", x: 0, y: 0, attacks: 2, monk: "d6", pools: focus(0) }, o));
+  const r1 = () => unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 200, maxHp: 200 });
+  const hit = () => dice({ total: 15, nat: 12 }, { total: 4 }).roll;
+  const atk = (w, a, extra = {}) => E.apply(w, Object.assign({ type: "attack", unit: "mk", target: "r1", attack: a }, extra), hit());
+  assert.equal(E.martialOf(world([mk(), r1()], "mk"), mk(), ua).why, "Mira takes the Attack action first, with an unarmed strike or a monk weapon.");
+  // the Attack action with the blaster: no bonus strike
+  let r = atk(world([mk(), r1()], "mk"), Object.assign({}, gun, { melee: 0 }));
+  assert.equal(E.martialOf(r.world, r.world.units.mk, ua).why, "Mira takes the Attack action first, with an unarmed strike or a monk weapon.");
+  // with an unarmed strike: the bonus strike, then Flurry of Blows' second for a focus point
+  r = atk(world([mk(), r1()], "mk"), ua);
+  r = atk(r.world, ua, { martial: true });
+  assert.equal(r.ok, true, r.why);
+  assert.deepEqual([E.budget(r.world).bonus, r.world.spent.mk.mab], [false, 1]);
+  r = atk(r.world, ua, { martial: true });
+  assert.equal(r.ok, true, r.why);
+  assert.match(r.log[0].text, /Flurry of Blows, 1 focus point/);
+  assert.deepEqual([r.world.units.mk.pools.focus.used, r.world.spent.mk.mab], [1, 2]);
+  assert.equal(atk(r.world, ua, { martial: true }).why, "Mira has made both Martial Arts strikes this turn.");
+  assert.equal(E.budget(r.world).attacks, 1, "the Attack action's second attack is still there");
+  // no focus left: one bonus strike only
+  r = atk(world([mk({ pools: focus(5) }), r1()], "mk"), ua);
+  r = atk(r.world, ua, { martial: true });
+  assert.equal(atk(r.world, ua, { martial: true }).why, "Mira has no focus points left for Flurry of Blows.");
+  // only a monk, only an unarmed strike
+  assert.equal(atk(world([mk({ monk: null }), r1()], "mk"), ua, { martial: true }).ok, false);
+  r = atk(world([mk(), r1()], "mk"), ua);
+  assert.equal(atk(r.world, Object.assign({}, ua, { unarmed: false }), { martial: true }).why, "The Martial Arts bonus attack is a monk's unarmed strike.");
+  // Dash and Disengage as a bonus action
+  let c = E.apply(world([mk(), r1()], "mk"), { type: "common", unit: "mk", key: "dash", asBonus: true }, dice().roll);
+  assert.deepEqual([c.ok, E.budget(c.world).action, E.budget(c.world).bonus, E.budget(c.world).total], [true, true, false, 60]);
+  assert.match(c.log[0].text, /Dash action as a bonus action/);
+  assert.equal(E.apply(world([mk({ monk: null }), r1()], "mk"), { type: "common", unit: "mk", key: "dash", asBonus: true }, dice().roll).why, "Mira can't take Dash as a bonus action.");
+  assert.equal(E.apply(world([mk(), r1()], "mk"), { type: "common", unit: "mk", key: "dodge", asBonus: true }, dice().roll).ok, false, "not Dodge");
+});
+
+test("Martial Arts through the API: a Monk 5 attacks with its unarmed strike, then a bonus strike and Flurry from the sheet's focus", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { classes: [{ name: "Monk", level: 5 }], abilities: { str: 10, dex: 16, con: 12, int: 10, wis: 14, cha: 8 }, attacks: [] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "ua", martial: true })).code, 400, "not before the Attack action");
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "ua" })).code, 200);
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "ua", martial: true })).code, 200);
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "ua", martial: true })).code, 200, "Flurry of Blows");
+  st = await gm.state();
+  assert.equal((st.characters[avery].resources || []).find((r) => r.key === "focus").used, 1);
+  const dmg = st.chat.filter((m) => m.fight && m.roll && m.roll.kind === "damage").map((m) => m.roll.expr);
+  assert.ok(dmg.every((e) => /^[12]d6\+3$/.test(e)), dmg.join(" "));
+  assert.equal((await sam.act("fight.common", { key: "disengage", asBonus: true })).code, 400, "the bonus action is spent");
+});
+
+
+
+test("Riposte and Return Fire (#67): a miss against one who knows them gives a reaction prompt; taking it spends the die and adds it on a hit", () => {
+  const sup = (used) => ({ superiority: { key: "superiority", name: "Superiority dice", max: 3, die: "d6", used, refill: "short" } });
+  const ft = (o) => unit(Object.assign({ id: "ft", name: "Fenn", side: "pc", x: 1, y: 0, ac: 18, pools: sup(0), maneuvers: { known: ["riposte", "return-fire", "trip-attack"], dc: { physical: 14, mental: 12, general: 14 } } }, o));
+  const r1 = () => unit({ id: "r1", name: "Raider", side: "npc", x: 0, y: 0, hp: 60, maxHp: 60 });
+  const claw = { name: "Claw", bonus: 2, damage: "1d4", type: "kinetic", melee: 5, range: null };
+  // the Raider's melee miss: a riposte prompt for Fenn
+  let r = E.apply(world([ft(), r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: claw }, dice({ total: 8, nat: 6 }).roll);
+  assert.deepEqual(r.reactions, [{ reactor: "ft", against: "r1", kind: "riposte" }]);
+  // a hit, or a ranged miss, or no die, reaction or maneuver: other or no prompt
+  assert.deepEqual(E.apply(world([ft(), r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: claw }, dice({ total: 20, nat: 18 }, { total: 2 }).roll).reactions, []);
+  const shot = { name: "Blaster", bonus: 2, damage: "1d6", type: "energy", melee: 0, range: [60, 240] };
+  assert.deepEqual(E.apply(world([ft({ x: 5 }), r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: shot }, dice({ total: 8, nat: 6 }).roll).reactions.map((x) => x.kind), ["return-fire"]);
+  assert.deepEqual(E.apply(world([ft({ pools: sup(3) }), r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: claw }, dice({ total: 8, nat: 6 }).roll).reactions, [], "no dice left");
+  assert.deepEqual(E.apply(world([ft({ maneuvers: { known: ["trip-attack"], dc: {} } }), r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: claw }, dice({ total: 8, nat: 6 }).roll).reactions, [], "doesn't know it");
+  // the on-hit list never offers a reaction maneuver
+  const wpn = Object.assign({}, blade, { weapon: true });
+  assert.deepEqual(E.preview(world([ft(), r1()], "ft"), "ft", "r1", wpn).riders.find((x) => x.key === "maneuver").options.map((o) => o.key), ["trip-attack"]);
+  // taking the riposte: a melee weapon attack, the die on its damage, the die and the reaction spent
+  const d = dice({ total: 16, nat: 13 }, { total: 9 });
+  const rr = E.react(r.world, { kind: "riposte", reactor: "ft", against: "r1", attack: wpn }, d.roll);
+  assert.equal(rr.ok, true, rr.why);
+  assert.equal(d.asked[1], "1d8+3+1d6");
+  assert.match(rr.log[0].text, /Fenn makes a riposte against Raider/);
+  assert.match(rr.log[1].text, /with Riposte 1d6/);
+  assert.deepEqual([rr.world.units.ft.pools.superiority.used, E.budget(rr.world, "ft").reaction], [1, false]);
+  assert.equal(E.react(rr.world, { kind: "riposte", reactor: "ft", against: "r1", attack: wpn }, dice({ total: 16, nat: 13 }, { total: 9 }).roll).ok, false, "one reaction");
+  // a riposte must be a melee weapon attack; return fire a ranged one
+  assert.equal(E.react(r.world, { kind: "riposte", reactor: "ft", against: "r1", attack: Object.assign({}, rifle, { weapon: true }) }, dice().roll).why, "A riposte is a melee weapon attack.");
+  assert.equal(E.react(r.world, { kind: "return-fire", reactor: "ft", against: "r1", attack: wpn }, dice().roll).why, "Return fire is a ranged weapon attack.");
+  // a missed riposte still spends the die
+  const miss = E.react(r.world, { kind: "riposte", reactor: "ft", against: "r1", attack: wpn }, dice({ total: 2, nat: 2 }).roll);
+  assert.equal(miss.world.units.ft.pools.superiority.used, 1);
+  assert.equal(E.react(r.world, { kind: "riposte", reactor: "__proto__", against: "r1", attack: wpn }, dice().roll).ok, false);
+  // a reach-10 attacker 10 ft away: Fenn's 5 ft reach can't answer, so no prompt (#163 review)
+  const pike = { name: "Pike", bonus: 2, damage: "1d10", type: "kinetic", melee: 10, range: null };
+  const far = E.apply(world([ft({ x: 2, reach: 5 }), r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: pike }, dice({ total: 8, nat: 6 }).roll);
+  assert.deepEqual(far.reactions, []);
+  const near = E.apply(world([ft({ x: 2, reach: 10 }), r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: pike }, dice({ total: 8, nat: 6 }).roll);
+  assert.deepEqual(near.reactions.map((x) => x.kind), ["riposte"], "with reach 10 it can");
+});
+
+test("Riposte through the API: the creature's miss raises the prompt, the player takes it from the sheet", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { ac: 25, classes: [{ name: "Fighter", level: 5 }], features: [{ name: "Riposte", text: "" }] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  // the creature's d20 is loaded to a 2 (a natural 20 would hit even AC 25), so the miss and its prompt always happen
+  const crypto = require("crypto"), real = crypto.randomInt;
+  crypto.randomInt = (a, b) => (b === 21 ? 2 : real(a, b));   // every d20 in this request: a 2
+  try { assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 0, damage: "1d4", type: "kinetic", melee: 5 } })).code, 200); }
+  finally { crypto.randomInt = real; }
+  st = await sam.state();
+  const pend = (st.fight.pending || []).find((x) => x.kind === "riposte");
+  assert.ok(pend, "a riposte prompt for Avery");
+  assert.equal((await gm.act("fight.end", {})).code, 400, "the turn waits for the answer");
+  assert.equal((await sam.act("fight.react", { id: pend.id, take: true, attack: "0" })).code, 200);
+  st = await gm.state();
+  const rolls = st.chat.filter((m) => m.fight && m.roll).map((m) => m.roll);
+  assert.ok(rolls.some((x) => x.kind === "attack" && /riposte against Raider/.test(x.label)));
+  assert.equal((st.characters[avery].resources || []).find((r) => r.key === "superiority").used, 1);
+  assert.deepEqual(st.fight.pending, []);
+});
+
+test("Parry (#67): a melee hit on one who knows it waits; parried, a die plus the best physical modifier comes off; let go, it lands in full", () => {
+  const sup = (used) => ({ superiority: { key: "superiority", name: "Superiority dice", max: 3, die: "d6", used, refill: "short" } });
+  const ft = (o) => unit(Object.assign({ id: "ft", name: "Fenn", side: "pc", x: 1, y: 0, ac: 10, hp: 30, maxHp: 30, mods: { str: 1, dex: 3, con: 2 }, pools: sup(0), maneuvers: { known: ["parry"], dc: { physical: 14, mental: 12, general: 14 } } }, o));
+  const r1 = () => unit({ id: "r1", name: "Raider", side: "npc", x: 0, y: 0, hp: 60, maxHp: 60 });
+  const claw = { name: "Claw", bonus: 5, damage: "2d6", type: "kinetic", melee: 5, range: null };
+  let r = E.apply(world([ft(), r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: claw }, dice({ total: 15, nat: 12 }, { total: 9 }).roll);
+  assert.equal(r.world.units.ft.hp, 30, "nothing lands yet");
+  assert.match(r.log[1].text, /Fenn is hit for 9 kinetic damage: Fenn can parry\./);
+  assert.deepEqual(r.reactions, [{ reactor: "ft", against: "r1", kind: "parry", hit: { amount: 9, crit: false, type: "kinetic", mv: null, dc: 0 } }]);
+  // parried: 1d6+3 (Dex, the best of Str, Dex and Con) off
+  let d = dice({ total: 5 });
+  let p = E.react(r.world, Object.assign({ take: true }, r.reactions[0]), d.roll);
+  assert.equal(p.ok, true, p.why);
+  assert.deepEqual([d.asked[0], p.world.units.ft.hp, p.world.units.ft.pools.superiority.used, E.budget(p.world, "ft").reaction], ["1d6+3", 26, 1, false]);
+  assert.deepEqual(p.log.map((x) => x.text), ["Fenn parries: 5 less damage.", "Fenn takes 4 kinetic damage."]);
+  // a parry bigger than the hit: nothing lands
+  p = E.react(r.world, Object.assign({ take: true }, r.reactions[0]), dice({ total: 12 }).roll);
+  assert.deepEqual([p.world.units.ft.hp, p.log[0].text], [30, "Fenn parries: 9 less damage."]);
+  // let go: the full hit, no die spent
+  p = E.react(r.world, Object.assign({ take: false }, r.reactions[0]), dice().roll);
+  assert.deepEqual([p.world.units.ft.hp, p.world.units.ft.pools.superiority.used], [21, 0]);
+  // no prompt without the maneuver, a die, or a reaction; nor for a ranged hit
+  const none = (u, atk = claw, x = 1) => E.apply(world([u, r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: atk }, dice({ total: 15, nat: 12 }, { total: 9 }).roll);
+  assert.equal(none(ft({ pools: sup(3) })).world.units.ft.hp, 21);
+  assert.equal(none(ft({ maneuvers: null })).world.units.ft.hp, 21);
+  assert.equal(none(ft({ x: 5 }), { name: "Blaster", bonus: 5, damage: "2d6", type: "energy", melee: 0, range: [60, 240] }).world.units.ft.hp, 21);
+  // a hit that drops it to 0 lands through the same path: unconscious at 0
+  r = E.apply(world([ft({ hp: 5 }), r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: claw }, dice({ total: 15, nat: 12 }, { total: 9 }).roll);
+  p = E.react(r.world, Object.assign({ take: false }, r.reactions[0]), dice().roll);
+  assert.equal(p.world.units.ft.hp, 0);
+  assert.match(p.log[0].text, /drops to 0 hit points/);
+  // the attacker's maneuver waits with the hit and comes after it (Trip: a Str save, prone)
+  const atk = unit({ id: "r1", name: "Reya", side: "npc", x: 0, y: 0, pools: sup(0), maneuvers: { known: ["trip-attack"], dc: { physical: 15, mental: 12, general: 15 } } });
+  r = E.apply(world([ft({ saves: { str: 0 } }), atk], "r1"), { type: "attack", unit: "r1", target: "ft", attack: Object.assign({}, claw, { weapon: true }), add: { maneuver: "trip-attack" } }, dice({ total: 15, nat: 12 }, { total: 9 }).roll);
+  assert.equal(r.reactions[0].hit.mv, "trip-attack");
+  p = E.react(r.world, Object.assign({ take: false }, r.reactions[0]), dice({ total: 3 }).roll);
+  assert.ok(p.world.units.ft.conditions.includes("Prone"));
+});
+
+test("Parry through the API: the creature's hit waits for the player's answer, and lands in full if the turn moves on", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { ac: 1, classes: [{ name: "Fighter", level: 5 }], features: [{ name: "Parry", text: "" }] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  const claw = { name: "Claw", bonus: 30, damage: "1d6+2", type: "kinetic", melee: 5 };
+  const hitOnce = async () => {
+    const crypto = require("crypto"), real = crypto.randomInt;
+    crypto.randomInt = (a, b) => (b === 21 ? 15 : real(a, b));   // the creature's d20: a 15, a hit
+    try { assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: claw })).code, 200); } finally { crypto.randomInt = real; }
+    return ((await sam.state()).fight.pending || []).find((x) => x.kind === "parry");
+  };
+  let pend = await hitOnce();
+  assert.ok(pend, "a parry prompt");
+  assert.ok(pend.hit.amount >= 3 && pend.mine, JSON.stringify(pend));
+  assert.equal((await gm.state()).characters[avery].hp.current, 20, "it waits");
+  assert.equal((await sam.act("fight.react", { id: pend.id, take: true })).code, 200);
+  st = await gm.state();
+  const res = (st.characters[avery].resources || []).find((r) => r.key === "superiority");
+  assert.equal(res.used, 1);
+  assert.ok(st.chat.some((m) => m.fight && m.roll && /Avery parries: \d+ less damage/.test(m.roll.label || "")));
+  assert.ok(st.characters[avery].hp.current >= 20 - pend.hit.amount && st.characters[avery].hp.current <= 20);
+  // its reaction is spent: the next hit lands at once, with no prompt
+  const hp0 = st.characters[avery].hp.current;
+  assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: claw, multi: 2 })).code, 400, "the Raider's one attack is used");
+  assert.ok(hp0 > 0);
+});
+
+test("Parry, unanswered: when the tracker moves the turn on, the hit that waited lands in full", async () => {
+  const { gm, sam, rae, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { ac: 1, classes: [{ name: "Fighter", level: 5 }], features: [{ name: "Parry", text: "" }] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  const crypto = require("crypto"), real = crypto.randomInt;
+  crypto.randomInt = (a, b) => (b === 21 ? 15 : real(a, b));   // the creature's d20: a 15, a hit
+  try { assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 30, damage: "1d6+2", type: "kinetic", melee: 5 } })).code, 200); }
+  finally { crypto.randomInt = real; }
+  const pend = ((await gm.state()).fight.pending || []).find((x) => x.kind === "parry");
+  assert.ok(pend, "a parry prompt");
+  assert.equal((await gm.act("init.next", {})).code, 200, "the tracker's own Next");
+  assert.equal((await rae.act("fight.end", {})).code, 200, "Bolt's turn: the combat view catches up");
+  st = await gm.state();
+  assert.equal(st.characters[avery].hp.current, 20 - pend.hit.amount, "landed in full");
+  assert.deepEqual(st.fight.pending, []);
+  assert.ok(st.chat.some((m) => m.fight && /Avery takes \d+ kinetic damage/.test(m.text || (m.roll && m.roll.label) || "")));
+});
+
+test("Parry, lapsed by hiding: the GM hides the attacker while the prompt is up; the hit lands in full at the next step, and the prompt is gone", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { ac: 1, classes: [{ name: "Fighter", level: 5 }], features: [{ name: "Parry", text: "" }] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  const crypto = require("crypto"), real = crypto.randomInt;
+  crypto.randomInt = (a, b) => (b === 21 ? 15 : real(a, b));   // the creature's d20: a 15, a hit
+  try { assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 30, damage: "1d6+2", type: "kinetic", melee: 5 } })).code, 200); }
+  finally { crypto.randomInt = real; }
+  const pend = ((await gm.state()).fight.pending || []).find((x) => x.kind === "parry");
+  assert.ok(pend, "a parry prompt (the class's superiority pool is there without being stored, #164's follow-up)");
+  const seen = (await sam.state()).chat.length;
+  assert.equal((await gm.act("init.update", { id: ids.raider, fields: { hidden: true } })).code, 200);
+  assert.equal((await gm.act("fight.end", {})).code, 200, "the turn isn't blocked by a lapsed prompt");
+  st = await gm.state();
+  assert.equal(st.characters[avery].hp.current, 20 - pend.hit.amount);
+  const after = (await sam.state()).chat.slice(seen);
+  assert.ok(!JSON.stringify(after).includes("Raider"), "nothing after the hiding names the Raider to the player");
+});
+
+
+
+/* ---------------------------------------------------------------- temporary force and tech points in the combat view (#190, after #185) */
+test("#190: the combat view spends temporary points first, a pool with none of its own left still casts, and an undo keeps them", async () => {
+  const { gm, sam, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  let st = await sam.state();
+  const av = Object.values(st.characters).find((c) => c.name === "Avery");
+  await sam.act("char.save", { char: Object.assign({}, av, { classes: [{ name: "Consular", level: 3 }], abilities: Object.assign({}, av.abilities, { wis: 16 }),
+    force: { max: 4, used: 4, temp: 3 }, powers: [{ name: "Mind Shove", level: 1, type: "force", alignment: "universal" }] }) });
+  await gm.act("fight.ability", { name: "Mind Shove", data: SHOVE });
+  st = await gm.state();
+  assert.deepEqual([st.characters[av.id].force.used, st.characters[av.id].force.temp], [4, 3], "none of its own left, 3 temporary");
+  const r = await sam.act("fight.use", { ability: "pw:mind shove", target: ids.raider });
+  assert.equal(r.code, 200, JSON.stringify(r.data));
+  st = await gm.state();
+  assert.deepEqual([st.characters[av.id].force.used, st.characters[av.id].force.temp], [4, 1], "the 2 points came from the temporary ones");
+  // an undo gives them back, and keeps the temporary points (the snapshot's cleaner kept temp)
+  assert.equal((await gm.act("fight.undo", {})).code, 200);
+  st = await gm.state();
+  assert.deepEqual([st.characters[av.id].force.used, st.characters[av.id].force.temp], [4, 3]);
+});
+
+test("#190 in the engine: poolLeft and payPool, spend(), and Force-Empowered Strikes from temporary points", () => {
+  const ch = { classes: [{ name: "Consular", level: 3 }], abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 16, cha: 10 }, force: { max: 4, used: 3, temp: 2 } };
+  const fp = E.resourcesOf(ch, R).find((r) => r.key === "force");
+  assert.deepEqual([fp.used, fp.temp, E.poolLeft(fp)], [3, 2, 3]);
+  let s = E.spend(ch, "force", 3, R);
+  assert.deepEqual([s.ok, s.ch.force.used, s.ch.force.temp], [true, 4, 0], "2 temporary, then 1 of its own");
+  assert.match(E.spend(ch, "force", 4, R).why, /Not enough Force points: 1 of 4 left, and 2 temporary/);
+  assert.deepEqual(E.payPool({ max: 5, used: 5, temp: 1 }, 1), { max: 5, used: 5, temp: 0 });
+  // Force-Empowered Strikes: the riders offered count the temporary points, and the hit pays them first
+  const sword = Object.assign({}, blade, { name: "Lightsaber", abil: "str", weapon: true });
+  const gd = unit({ id: "gd", name: "Gale", side: "pc", x: 0, y: 0, riders: { fes: 3 }, pools: { force: { key: "force", name: "Force points", max: 10, used: 10, temp: 2, refill: "long" } } });
+  const r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 60, maxHp: 60 });
+  const offer = E.preview(world([gd, r1], "gd"), "gd", "r1", sword).riders.find((x) => x.key === "fes");
+  assert.equal(offer.max, 2, "two temporary points: up to 2d8");
+  const r = E.apply(world([gd, r1], "gd"), { type: "attack", unit: "gd", target: "r1", attack: sword, add: { fes: 2 } }, dice({ total: 15, nat: 12 }, { total: 12 }).roll);
+  assert.deepEqual([r.world.units.gd.pools.force.used, r.world.units.gd.pools.force.temp], [10, 0]);
+});
+
+test("class pools in the world (#164): a sheet that hasn't added its class's resources still has them in a fight, so maneuvers and Action Surge show", () => {
+  const ch = { id: "c1", name: "Fenn", classes: [{ name: "Fighter", level: 5 }], abilities: { str: 16, dex: 12, con: 14, int: 8, wis: 10, cha: 8 }, hp: { max: 30, current: 30 }, ac: 15,
+    attacks: [{ name: "Sword", ab: "str", damage: "1d8", props: "" }], features: [{ name: "Trip Attack" }] };
+  const w = E.buildWorld({ characters: { c1: ch }, entries: [{ id: "e1", name: "Fenn", charId: "c1" }, { id: "e2", name: "Raider", hp: 20, ac: 5 }], active: true, turn: 0,
+    tokens: [{ id: "t1", x: 0, y: 0 }, { id: "t2", x: 1, y: 0 }], unitTokens: { e1: "t1", e2: "t2" } }, R);
+  assert.deepEqual(Object.keys(w.units.e1.pools).sort(), ["action-surge", "hitdice", "second-wind", "superiority"]);
+  assert.deepEqual([w.units.e1.pools.superiority.max, w.units.e1.pools.superiority.die, w.units.e1.pools["action-surge"].max], [3, "d6", 1]);
+  assert.ok((E.preview(w, "e1", "e2", E.attacksOf(ch, R)[0]).riders || []).some((x) => x.key === "maneuver"), "Trip Attack is offered");
+  assert.equal(ch.resources, undefined, "the sheet itself is untouched until something is spent");
+  const kept = Object.assign({}, ch, { resources: [{ key: "superiority", name: "Superiority dice", max: 3, die: "d6", used: 2, refill: "short" }] });
+  const w2 = E.buildWorld({ characters: { c1: kept }, entries: [{ id: "e1", name: "Fenn", charId: "c1" }], active: true, turn: 0, tokens: [{ id: "t1", x: 0, y: 0 }], unitTokens: { e1: "t1" } }, R);
+  assert.equal(w2.units.e1.pools.superiority.used, 2, "a stored pool keeps its count");
 });

@@ -18,13 +18,15 @@ const byName = (a, b) => a.n.localeCompare(b.n);
 const unlink = (s) => String(s || "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
 
 const ABIL = { Strength: "str", Dexterity: "dex", Constitution: "con", Intelligence: "int", Wisdom: "wis", Charisma: "cha" };
+// an ability's key from SW5e's full name, only for the six: never something every object inherits ("constructor")
+const abil = (name) => (typeof name === "string" && Object.prototype.hasOwnProperty.call(ABIL, name) ? ABIL[name] : null);
 // A species' ability score increase, when it's one fixed choice (e.g. +2 Int, +1 Dex); null when the
 // player chooses ("Any one", or several options), so the sheet doesn't guess.
 function fixedAsi(opts) {
   if (!Array.isArray(opts) || opts.length !== 1 || !Array.isArray(opts[0])) return null;
   const out = {};
   for (const o of opts[0]) {
-    const ab = o && Array.isArray(o.abilities) && o.abilities.length === 1 ? ABIL[o.abilities[0]] : null;
+    const ab = o && Array.isArray(o.abilities) && o.abilities.length === 1 ? abil(o.abilities[0]) : null;
     if (!ab) return null;
     out[ab] = (out[ab] || 0) + int(o.amount, -5, 5);
   }
@@ -51,6 +53,41 @@ function backgrounds(d) {
     langs: t(e.languages, 200), equip: t(e.equipment, 600), feature: t(e.featureName, 80), featureText: t(unlink(e.featureText), 3000),
     feats: arr(e.featOptions, 12, (x) => t(x && x.name, 60)).filter(Boolean),
   })).sort(byName);
+}
+// A class's 1st-level build data (audit 1.3, 1.7): hit die and 1st-level hit points, the two saving throws, how many
+// skills and from which list ("Any" means every skill), proficiencies, and the starting equipment lines.
+function classes(d) {
+  const none = (v) => !/^none$/i.test(String(v || "").trim());
+  return named(d).map((e) => ({
+    n: t(e.name, 40), src: t(e.contentSource, 10), sum: t(e.summary, 200), primary: t(e.primaryAbility, 60),
+    hd: int(e.hitDiceDieType, 4, 12), hp1: int(e.hitPointsAtFirstLevelNumber, 1, 20),
+    saves: arr(e.savingThrows, 2, (x) => abil(x) || "").filter(Boolean),
+    nSkills: int(e.numSkillChoices, 0, 6), skills: strs(e.skillChoicesList, 20, 40),
+    armor: strs(e.armorProficiencies, 10, 80).filter(none), weapons: strs(e.weaponProficiencies, 10, 80).filter(none),
+    tools: strs(e.toolProficiencies, 10, 120).filter(none), equip: strs(e.equipmentLines, 12, 300), wealth: t(e.startingWealthVariant, 40),
+    lv: levelFeatureNames(e.levelChanges), opts: classOptions(e.classFeatureText),
+  })).sort(byName);
+}
+// The Features column of a class's table, level 1 to 20 ("Expertise, Sneak Attack"): the level-up wizard reads it for
+// the choices a feature brings at a level the feature list files under its first level (Expertise at Operative 6).
+function levelFeatureNames(lc) {
+  if (!lc || typeof lc !== "object") return [];
+  return Array.from({ length: 20 }, (_, i) => t(lc[String(i + 1)] && lc[String(i + 1)].Features, 200)).map((x) => (/[a-z]/i.test(x) ? x : ""));
+}
+// The options a class picks from as it levels (Berserker Instincts, Monastic Vows, Operative Exploits, Fighter
+// Strategies...): the last "### " section of the class's text, one "#### " heading per option, with any
+// "Prerequisite: 7th level" as a number (audit 2.9).
+function classOptions(text) {
+  const s = String(text || "").split(CR).join(""), at = s.lastIndexOf("\n### ");
+  if (at < 0) return null;
+  const [head, ...parts] = s.slice(at + 5).split(/\n#### /);
+  if (!parts.length) return null;
+  const items = parts.slice(0, 40).map((part) => {
+    const nl = part.indexOf("\n"), n = t(part.slice(0, nl < 0 ? undefined : nl).trim(), 80), body = nl < 0 ? "" : part.slice(nl + 1).trim();
+    const pre = /^_\*\*Prerequisite:\*\*\s*(\d+)(?:st|nd|rd|th) level_/i.exec(body);
+    return { n, pre: pre ? int(pre[1], 0, 20) : 0, text: t(unlink(body), 2500) };
+  }).filter((x) => x.n);
+  return items.length ? { title: t(head.split("\n")[0].trim(), 60), items } : null;
 }
 function feats(d) {
   return named(d).map((e) => ({
@@ -139,6 +176,7 @@ const LISTS = {
   species: { path: "species", build: species, maxBytes: 4 * MB, maxItems: 600 },                  // 0.97 MB, 141
   archetypes: { path: "archetype", build: archetypes, maxBytes: 4 * MB, maxItems: 600 },           // 0.81 MB, 137
   backgrounds: { path: "background", build: backgrounds, maxBytes: 3 * MB, maxItems: 400 },        // 0.59 MB, 61
+  classes: { path: "class", build: classes, maxBytes: 2 * MB, maxItems: 40 },                       // 0.24 MB, 10
   feats: { path: "feat", build: feats, maxBytes: 2 * MB, maxItems: 1000 },                         // 0.11 MB, 119
   maneuvers: { path: "maneuvers", build: maneuvers, maxBytes: 2 * MB, maxItems: 1000 },            // 0.07 MB, 119
   styles: { path: "fightingStyle", build: simple("description"), maxBytes: 1 * MB, maxItems: 400 }, // 32

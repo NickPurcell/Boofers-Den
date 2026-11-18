@@ -30,6 +30,7 @@
     <header class="topbar">
       <div class="brand">HOLO<span>TABLE</span></div>
       <div class="camp"><span id="campName"></span></div>
+      <button id="clock" class="clock hidden" title="The time in the story"></button>
       <div id="online" class="online"></div>
       <div class="spacer"></div>
       <div class="rollmode" title="Applies to d20 rolls. Shortcut: Shift-click = advantage, Ctrl-click = disadvantage">
@@ -87,6 +88,7 @@
       </main>
 
       <aside class="chat">
+        <div id="askCard" class="ask-card hidden" aria-live="polite"></div>
         <div id="chatLog" class="chat-log"></div>
         <form id="chatForm" class="chat-form">
           <div id="cmdMenu" class="cmd-menu hidden" role="listbox" aria-label="Chat commands"></div>

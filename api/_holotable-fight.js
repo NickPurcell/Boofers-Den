@@ -53,7 +53,7 @@ function state(camp) {
     spent: Object.fromEntries(Object.entries(plainObj(f.spent)).filter(([k, v]) => ID.test(k) && v && typeof v === "object")
       .map(([k, v]) => [k, { key: str(v.key, 40), move: clamp(int(v.move), 0, 1000), action: clamp(int(v.action), 0, 9), bonus: clamp(int(v.bonus), 0, 9), reaction: clamp(int(v.reaction), 0, 9), diag: v.diag ? 1 : 0,
         dash: clamp(int(v.dash), 0, 9), disengage: v.disengage ? 1 : 0, dodge: v.dodge ? 1 : 0, ds: v.ds ? 1 : 0, sneak: v.sneak ? 1 : 0, double: v.double ? 1 : 0,
-        atk: clamp(int(v.atk), 0, 9), atkMax: clamp(int(v.atkMax), 0, 9), lt: clamp(int(v.lt), 0, 41), dw: clamp(int(v.dw), 0, 41), off: clamp(int(v.off), 0, 9), mv: clamp(int(v.mv), 0, 1023) }])),
+        atk: clamp(int(v.atk), 0, 9), atkMax: clamp(int(v.atkMax), 0, 9), lt: clamp(int(v.lt), 0, 41), dw: clamp(int(v.dw), 0, 41), off: clamp(int(v.off), 0, 9), mv: clamp(int(v.mv), 0, 1023), surge: v.surge ? 1 : 0, ma: v.ma ? 1 : 0, mab: clamp(int(v.mab), 0, 2) }])),
     // reactions waiting for an answer: an opportunity attack someone may take (the turn waits until it's answered)
     pending: (Array.isArray(f.pending) ? f.pending : []).slice(0, 12).map(cleanPending).filter(Boolean),
     // a creature's limited abilities from its stat block (audit 9.5, issue #76): recharge, per day, legendary actions
@@ -98,7 +98,10 @@ function cleanNpcRes(list) {
 function cleanPending(x) {
   if (!x || typeof x !== "object" || !ID.test(String(x.reactor || "")) || !ID.test(String(x.against || ""))) return null;
   const at = plainObj(x.at);
-  return { id: str(x.id, 30), kind: "opportunity", reactor: x.reactor, against: x.against, at: { x: clamp(int(at.x), -500, 1000), y: clamp(int(at.y), -500, 1000) }, turn: str(x.turn, 60) };
+  const kind = ["opportunity", "riposte", "return-fire", "parry"].includes(x.kind) ? x.kind : "opportunity";   // Riposte, Return Fire, Parry: #67
+  const h = plainObj(x.hit);   // Parry: the hit waiting for the answer, made by the server
+  const hit = kind === "parry" ? { amount: clamp(int(h.amount), 0, 9999), crit: !!h.crit, type: str(h.type, 20), mv: typeof h.mv === "string" && /^[a-z-]{3,30}$/.test(h.mv) ? h.mv : null, dc: clamp(int(h.dc), 0, 40) } : undefined;
+  return { id: str(x.id, 30), kind, ...(hit ? { hit } : {}), reactor: x.reactor, against: x.against, at: { x: clamp(int(at.x), -500, 1000), y: clamp(int(at.y), -500, 1000) }, turn: str(x.turn, 60) };
 }
 // damage defences as the engine reads them: [{ type, only }], for resist / immune / vuln, plus condition immunities
 function defences(o) {
@@ -127,8 +130,8 @@ function cleanSnap(x) {
       .map(([id, ec, cc]) => [id, (Array.isArray(ec) ? ec : []).slice(0, 20).map((c) => str(c, 30)), Array.isArray(cc) ? cc.slice(0, 20).map((c) => str(c, 30)) : null]),
     chars: (Array.isArray(x.chars) ? x.chars : []).slice(0, 60).filter((c) => Array.isArray(c) && typeof c[0] === "string" && c[1] && typeof c[1] === "object")
       .map(([id, r]) => [id, { resources: E.cleanResources(r.resources),
-        force: Object.assign({ max: plainObj(r.force).max == null || plainObj(r.force).max === "" ? "" : num(plainObj(r.force).max, 0, 999), used: num(plainObj(r.force).used, 0, 999) }, cleanHigh(plainObj(r.force).high)),
-        tech: Object.assign({ max: plainObj(r.tech).max == null || plainObj(r.tech).max === "" ? "" : num(plainObj(r.tech).max, 0, 999), used: num(plainObj(r.tech).used, 0, 999) }, cleanHigh(plainObj(r.tech).high)),
+        force: Object.assign({ max: plainObj(r.force).max == null || plainObj(r.force).max === "" ? "" : num(plainObj(r.force).max, 0, 999), used: num(plainObj(r.force).used, 0, 999) }, num(plainObj(r.force).temp, 0, 999) ? { temp: num(plainObj(r.force).temp, 0, 999) } : {}, cleanHigh(plainObj(r.force).high)),
+        tech: Object.assign({ max: plainObj(r.tech).max == null || plainObj(r.tech).max === "" ? "" : num(plainObj(r.tech).max, 0, 999), used: num(plainObj(r.tech).used, 0, 999) }, num(plainObj(r.tech).temp, 0, 999) ? { temp: num(plainObj(r.tech).temp, 0, 999) } : {}, cleanHigh(plainObj(r.tech).high)),
         hitDiceUsed: R.cleanHitDiceUsed(r.hitDiceUsed),   // the sheet's own cleaner: per die size or an old number
         deathSaves: { s: num(plainObj(r.deathSaves).s, 0, 3), f: num(plainObj(r.deathSaves).f, 0, 3) } }]),
   };
@@ -276,8 +279,14 @@ function writeBack(camp, cid, before, after, G) {
     // points spent by an ability go back where the sheet keeps them
     if (a.charId && camp.characters[a.charId]) {
       for (const [key, pool] of Object.entries(a.pools || {})) {
-        if (!b.pools[key] || b.pools[key].used === pool.used) continue;
-        const ch = camp.characters[a.charId], next = E.setPoolUsed(ch, key, pool.used, R);
+        if (!b.pools[key] || (b.pools[key].used === pool.used && (b.pools[key].temp || 0) === (pool.temp || 0))) continue;
+        // force and tech take their temporary points too (#190): spent before the pool's own
+        const ch = camp.characters[a.charId];
+        let next = E.setPoolUsed(ch, key, pool.used, R, pool.temp);
+        if (next === ch && R.withClassResources) {   // a class pool the sheet hasn't stored yet (the world fills them in): store it, then spend
+          ch.resources = E.cleanResources(R.withClassResources(ch));
+          next = E.setPoolUsed(ch, key, pool.used, R, pool.temp);
+        }
         Object.assign(ch, { resources: next.resources, force: next.force, tech: next.tech, hitDiceUsed: next.hitDiceUsed });
       }
     }
@@ -319,6 +328,7 @@ function tick(camp, cid, G) {
   if (!key || key.split(":").slice(0, 2).join(":") === (f.lastTurn || "").split(":").slice(0, 2).join(":")) return;
   const [lr, prevId, lt] = (f.lastTurn || "").split(":");
   f.lastTurn = key;
+  for (const pr of f.pending || []) if (pr.kind === "parry") landWaiting(camp, cid, G, pr);   // a hit that waited lands in full
   f.pending = [];   // a reaction nobody answered lapses when the turn moves on
   const going = lt !== undefined && (ini.round < +lr || (ini.round === +lr && ini.turn < +lt));
   if (!going) startOfTurn(camp, cur, G);
@@ -340,6 +350,21 @@ function tick(camp, cid, G) {
 // A reaction waiting for an answer is live only during the turn it was asked in (the round and the combatant, whatever
 // the tracker's index does meanwhile: an entry added or removed above, an initiative edited) and only while both
 // sides are visible to everyone. Anything else has lapsed. One rule for the view, the turn's guard and the answer.
+// a parry nobody answered (the turn moved on, or one side was hidden): the hit that waited lands in full, as a GM's world
+function landWaiting(camp, cid, G, pr) {
+  const world = worldOf(camp, false, G);
+  const r = E.react(world, { kind: "parry", take: false, reactor: pr.reactor, against: pr.against, hit: pr.hit }, (expr) => G.rollDice(expr));
+  if (!r.ok) return;
+  writeBack(camp, cid, world, r.world, G);
+  const who = camp.initiative.entries.find((e) => e.id === pr.reactor);
+  if (who) report(camp, cid, false, G, who, world, r, false);   // whoever's request caught it up: a hidden line never comes from them
+}
+// the prompts still live, after landing any parry that has lapsed
+function keepLive(camp, cid, G) {
+  const f = camp.fight, live = liveReactions(camp);
+  for (const pr of f.pending || []) if (pr.kind === "parry" && !live.includes(pr)) landWaiting(camp, cid, G, pr);
+  return live;
+}
 function liveReactions(camp) {
   const f = camp.fight, ini = camp.initiative, cur = ini.entries[ini.turn];
   if (!f || !Array.isArray(f.pending) || !f.pending.length || !ini.active || !cur) return [];
@@ -923,11 +948,21 @@ function apply(camp, cid, gm, type, p, G) {
     case "fight.react": {   // an answer to a reaction prompt: take the opportunity attack, or let it go (the GM can answer any)
       if (!f.on) throw new G.Invalid("The combat view is off.");
       tick(camp, cid, G);
-      f.pending = liveReactions(camp);
+      f.pending = keepLive(camp, cid, G);
       const pend = f.pending.find((x) => x.id === String(p.id || ""));
       if (!pend) throw new G.Invalid("That reaction has already been answered or has lapsed.");
       const re = entry(pend.reactor), against = entry(pend.against);
       need(re && mayAct(camp, cid, gm, re), "That reaction isn't yours to take.");
+      if (pend.kind === "parry") {   // the waiting hit lands either way: parried (a die off) or not
+        const world = worldOf(camp, !gm, G, cid);
+        const r = E.react(world, { kind: "parry", take: !!p.take, reactor: re.id, against: pend.against, hit: pend.hit }, (expr) => G.rollDice(expr));
+        if (!r.ok) throw new G.Invalid(r.why);
+        snapshot(camp, `${G.shownName(camp, re)}'s ${p.take ? "parry" : "hit taken"}`);
+        f.pending = f.pending.filter((x) => x !== pend);
+        writeBack(camp, cid, world, r.world, G);
+        report(camp, cid, gm, G, re, world, r, false);
+        return {};
+      }
       if (!p.take) {
         f.pending = f.pending.filter((x) => x !== pend);
         say(camp, G, { system: true, fight: true, text: str(`${G.shownName(camp, re)} lets ${against ? G.shownName(camp, against) : "them"} go.`, 200) }, cid, [re.id, against && against.id]);
@@ -940,9 +975,9 @@ function apply(camp, cid, gm, type, p, G) {
         spec = ch && E.attacksOf(ch, R).find((a) => a.key === String(p.attack));
         if (!spec) throw new G.Invalid("That attack isn't on the sheet.");
       } else spec = cleanSpec(p.attack, G);
-      const r = E.react(world, { reactor: re.id, against: pend.against, at: pend.at, attack: spec, adv: !!p.adv, dis: !!p.dis }, (expr) => G.rollDice(expr));
+      const r = E.react(world, { kind: pend.kind, reactor: re.id, against: pend.against, at: pend.at, attack: spec, adv: !!p.adv, dis: !!p.dis }, (expr) => G.rollDice(expr));
       if (!r.ok) throw new G.Invalid(r.why);
-      snapshot(camp, `${G.shownName(camp, re)}'s opportunity attack`);
+      snapshot(camp, `${G.shownName(camp, re)}'s ${pend.kind === "riposte" ? "riposte" : pend.kind === "return-fire" ? "return fire" : "opportunity attack"}`);
       f.pending = f.pending.filter((x) => x !== pend);
       writeBack(camp, cid, world, r.world, G);
       report(camp, cid, gm, G, re, world, r, false);
@@ -955,10 +990,10 @@ function apply(camp, cid, gm, type, p, G) {
       if (!ini.active || !cur) throw new G.Invalid("Combat hasn't started: start initiative first.");
       need(mayAct(camp, cid, gm, cur), "It's not your turn.");
       tick(camp, cid, G);
-      f.pending = liveReactions(camp);   // a lapsed question never blocks a turn
+      f.pending = keepLive(camp, cid, G);   // a lapsed question never blocks a turn
       if (f.pending.length) {
         const who = f.pending.map((x) => entry(x.reactor)).filter(Boolean).map((e) => G.shownName(camp, e));
-        throw new G.Invalid(`Waiting for ${who.join(" and ") || "a reaction"}: an opportunity attack to take or let go.`);   // names players can see
+        throw new G.Invalid(`Waiting for ${who.join(" and ") || "a reaction"}: a reaction to take or let go.`);   // names players can see
       }
       // an area catches whoever is in it, hidden or not; only its rolls about a hidden one stay with the GM
       const areaUse = type === "fight.use" && cur.charId && (() => {
@@ -966,17 +1001,23 @@ function apply(camp, cid, gm, type, p, G) {
         const ab = ch && E.abilitiesOf(ch, R, f.lib).find((a) => a.key === String(p.ability || ""));
         return !!(ab && ab.area);
       })();
-      // Rage counts its uses: a sheet from before #108 gets its class's Rages resource from the class table first
       // a maneuver (#67) spends superiority dice: a sheet from before #108 gets its class's pool from the class table first
-      const mover = type === "fight.attack" && p.add && typeof p.add.maneuver === "string" && p.add.maneuver && cur.charId && charOf(camp, cur.charId);
-      if (mover && R.withClassResources && !(mover.resources || []).some((r) => r && /^superiority/.test(String(r.key)))) {
-        const withSup = E.cleanResources(R.withClassResources(mover));
-        if (withSup.some((r) => /^superiority/.test(r.key))) mover.resources = withSup;
-      }
-      const rager = type === "fight.common" && String(p.key || "") === "rage" && cur.charId && charOf(camp, cur.charId);
-      if (rager && R.withClassResources && !(rager.resources || []).some((r) => r && r.key === "rage")) {
+      // ...and so does the target's Riposte or Return Fire, when this attack misses it
+      const seedSup = (ch) => {
+        if (!ch || !R.withClassResources || (ch.resources || []).some((r) => r && /^superiority/.test(String(r.key)))) return;
+        const withSup = E.cleanResources(R.withClassResources(ch));
+        if (withSup.some((r) => /^superiority/.test(r.key))) ch.resources = withSup;
+      };
+      if (type === "fight.attack" && p.add && typeof p.add.maneuver === "string" && p.add.maneuver && cur.charId) seedSup(charOf(camp, cur.charId));
+      const tgt = type === "fight.attack" && entry(idOr(p.target)), tch = tgt && tgt.charId && charOf(camp, tgt.charId);
+      if (tch && (tch.features || []).some((x) => x && /^(riposte|return fire)$/i.test(String(x.name || "").trim()))) seedSup(tch);
+      // Rage and Action Surge count their uses: a sheet from before #108 gets its class's resource from the class table first
+      const POOL_KEYS = new Map([["rage", "rage"], ["surge", "action-surge"]]);   // a Map, so a key named like Object's own is no pool (#164 review)
+      const poolKey = type === "fight.common" ? POOL_KEYS.get(String(p.key || "")) || null : type === "fight.attack" && p.martial ? "focus" : null;   // ...and Flurry of Blows, focus
+      const rager = poolKey && cur.charId && charOf(camp, cur.charId);
+      if (rager && R.withClassResources && !(rager.resources || []).some((r) => r && r.key === poolKey)) {
         const withRage = E.cleanResources(R.withClassResources(rager));
-        if (withRage.some((r) => r.key === "rage")) rager.resources = withRage;
+        if (withRage.some((r) => r.key === poolKey)) rager.resources = withRage;
       }
       const world = worldOf(camp, !gm && !areaUse, G, cid);
       if (type === "fight.end" && !world.units[cur.id]) {      // a combatant with no token can still pass the turn
@@ -990,7 +1031,7 @@ function apply(camp, cid, gm, type, p, G) {
       else if (type === "fight.end") act = { type: "end", unit: cur.id };
       else if (type === "fight.stand") act = { type: "stand", unit: cur.id };
       else if (type === "fight.douse") act = { type: "douse", unit: cur.id, target: idOr(p.target) };
-      else if (type === "fight.common") act = { type: "common", unit: cur.id, key: String(p.key || ""), target: idOr(p.target) };   // Help names its target (#144)
+      else if (type === "fight.common") act = { type: "common", unit: cur.id, key: String(p.key || ""), target: idOr(p.target), asBonus: !!p.asBonus };   // a monk's bonus Dash or Disengage   // Help names its target (#144)
       else if (type === "fight.grapple" || type === "fight.shove") act = { type: type.slice(6), unit: cur.id, target: idOr(p.target), push: !!p.push, multi: gm && !cur.charId ? clamp(int(p.multi, 1), 1, 6) : 1 };
       else if (type === "fight.escape") act = { type: "escape", unit: cur.id, skill: p.skill === "athletics" ? "athletics" : "acrobatics" };
       else if (type === "fight.release") act = { type: "release", unit: cur.id, target: idOr(p.target) };
@@ -1017,7 +1058,7 @@ function apply(camp, cid, gm, type, p, G) {
           add: { fes: clamp(int(p.add && p.add.fes), 0, 20), double: !!(p.add && p.add.double),
             maneuver: p.add && typeof p.add.maneuver === "string" && /^[a-z-]{3,30}$/.test(p.add.maneuver) ? p.add.maneuver : "" }, twoHands: !!p.twoHands,   // a maneuver by name; the engine checks the sheet knows it   // only how many, never the dice: the engine works those out
           multi: gm && !cur.charId ? clamp(int(p.multi, 1), 1, 6) : 1,
-          offhand: !!cur.charId && !!p.offhand };   // Two- or Double-Weapon Fighting (5.8): the engine checks it may   // a creature's Multiattack (#139): the GM's screen reads it from the stat block
+          offhand: !!cur.charId && !!p.offhand, martial: !!cur.charId && !!p.martial };   // Two- or Double-Weapon Fighting (5.8): the engine checks it may   // a creature's Multiattack (#139): the GM's screen reads it from the stat block
       }
       const limited = act.type === "attack" && !cur.charId && p.attack && p.attack.res && ((f.npcres || {})[cur.id] || []).find((x) => x.key === String(p.attack.res));
       if (limited && limited.used >= limited.max) throw new G.Invalid(`${limited.name} is spent${limited.recharge ? ` until it recharges (${limited.recharge}-6 at the start of ${cur.name}'s turn)` : ""}.`);
@@ -1034,8 +1075,11 @@ function apply(camp, cid, gm, type, p, G) {
       const ut = unitTokens(camp), isHidden = (id) => !!id && hiddenEntry(camp, entry(id) || {}, ut[id]);
       for (const re of r.reactions || []) {
         if (isHidden(re.reactor) || isHidden(re.against)) continue;
-        f.pending.push({ id: String(++f.seq), kind: "opportunity", reactor: re.reactor, against: re.against, at: re.at, turn: f.lastTurn });
-        say(camp, G, { system: true, fight: true, text: str(`${G.shownName(camp, cur)} leaves ${G.shownName(camp, entry(re.reactor))}'s reach: ${G.shownName(camp, entry(re.reactor))} can make an opportunity attack.`, 200) }, cid, [cur.id, re.reactor]);
+        const kind = ["riposte", "return-fire", "parry"].includes(re.kind) ? re.kind : "opportunity";
+        f.pending.push(cleanPending({ id: String(++f.seq), kind, hit: re.hit, reactor: re.reactor, against: re.against, at: re.at || { x: 0, y: 0 }, turn: f.lastTurn }));
+        const rn = G.shownName(camp, entry(re.reactor));
+        if (kind !== "parry") say(camp, G, { system: true, fight: true, text: str(kind === "opportunity" ? `${G.shownName(camp, cur)} leaves ${rn}'s reach: ${rn} can make an opportunity attack.`
+          : `${G.shownName(camp, cur)} misses ${rn}: ${rn} can ${kind === "riposte" ? "riposte" : "return fire"} (a superiority die).`, 200) }, cid, [cur.id, re.reactor]);
       }
       if (r.endTurn) { G.applyAction(camp, cid, true, "init.next", {}); tick(camp, cid, G); }
       return {};
@@ -1098,7 +1142,8 @@ function view(camp, cid, gm, shownName) {
     // reactions waiting: who may react to whom; `mine` when this viewer is the one to answer
     pending: liveReactions(camp).filter((x) => units[x.reactor] && units[x.against]).map((x) => {   // lapsed ones are never shown
       const re = ini.entries.find((e) => e.id === x.reactor);
-      return { id: x.id, kind: x.kind, reactor: x.reactor, against: x.against, mine: !!re && mayAct(camp, cid, gm, re) };
+      return { id: x.id, kind: x.kind, reactor: x.reactor, against: x.against, mine: !!re && mayAct(camp, cid, gm, re),
+        ...(x.kind === "parry" && x.hit ? { hit: { amount: x.hit.amount, type: x.hit.type } } : {}) };   // the waiting hit's size, for the prompt
     }),
   };
 }

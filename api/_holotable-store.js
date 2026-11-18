@@ -46,6 +46,9 @@ const K = {
   bk: (c) => `${NS}:bk:${c}`,
   imgWait: () => `${NS}:imgwait`,                   // set of image URLs the game no longer shows but a kept backup still does
   lock: (c) => `${NS}:lock:${c}`,
+  live: () => `${NS}:live`,                          // the campaign the table is on (12.9); absent means "main"
+  camps: () => `${NS}:camps`,
+  refs: (c) => `${NS}:refs:${c}`,                    // set: the image URLs a campaign and its kept backups use (12.9)                        // hash code -> JSON {name, created}: the GM's other campaigns (12.9)
   img: (id) => `${NS}:img:${id}`,
   packs: () => `${NS}:packs`,
   pack: (id) => `${NS}:pack:${id}`,
@@ -183,9 +186,12 @@ async function saveCampaign(camp) {
   const json = JSON.stringify(camp);
   if (json.length > MAX_GAME_BYTES) throw new Full("The table has grown too large to save. Clear the chat or remove some characters and handouts.");
   await r.set(K.camp(camp.code), json);
+  const refs = [...new Set(refsIn(json))];
+  if (refs.length) await r.sadd(K.refs(camp.code), ...refs);   // the campaign's image set only grows between rebuilds
   if (backup) {
     await r.lpush(K.bk(camp.code), json);
     await r.ltrim(K.bk(camp.code), 0, BACKUP_KEEP - 1);
+    await rebuildRefs(camp.code);   // a backup rolled: the set is made exact again
     await sweepWaitingImages(camp.code, json);   // a backup may have rolled off: images only it still used can go
   }
   return bump(camp.code);
@@ -320,12 +326,39 @@ const imgIdFromUrl = (u) => { const m = /^\/api\/holotable\?img=([a-f0-9]{16,40}
 // and restoring one of those must not show a broken image (#118). So an image is deleted only when neither the game
 // (liveJson) nor any kept backup refers to it; one a backup still uses waits in ht:imgwait until the backup that
 // last refers to it rolls off the list (sweepWaitingImages, run whenever the list changes).
+// More than one campaign (12.9): what the other campaigns hold, live and in their backups, counts too, so a campaign
+// that isn't on the table never loses a photo it uses.
+// Each campaign keeps a small set of the image URLs it and its backups use (K.refs): added to on every save, rebuilt
+// exactly when a backup is taken. Between rebuilds it only grows, so an image may wait a little longer, never go early.
+// The other campaigns' check reads those small sets, not their games and backups (bounded inside the lock; #208 review).
+const IMG_RE_G = /\/api\/holotable\?img=[a-f0-9]{16,40}/g;
+const refsIn = (text) => String(text || "").match(IMG_RE_G) || [];
+async function rebuildRefs(code) {
+  const r = module.exports.getClient();
+  const texts = [await r.get(K.camp(code)), ...(await r.lrange(K.bk(code), 0, BACKUP_KEEP - 1))].filter(Boolean);
+  const refs = [...new Set(texts.flatMap(refsIn))];
+  await r.del(K.refs(code));
+  if (refs.length) await r.sadd(K.refs(code), ...refs);
+  else await r.sadd(K.refs(code), "-");   // an empty campaign still has its set, so it isn't rebuilt on every check
+}
+async function otherCampaignsRefs(code) {
+  const r = module.exports.getClient();
+  const codes = ["main", ...Object.keys((await r.hgetall(K.camps())) || {})].filter((c, i, a) => c !== code && a.indexOf(c) === i);
+  const out = new Set();
+  for (const c of codes) {
+    if (!(await r.get(K.camp(c))) && !(await r.llen(K.bk(c)))) continue;   // no such game (a table with only "main")
+    if (!(await r.exists(K.refs(c)))) await rebuildRefs(c);   // a campaign saved before the sets existed: once
+    for (const u of await r.smembers(K.refs(c))) out.add(u);
+  }
+  return out;
+}
 async function dropUnusedImages(urls, liveJson, code) {
   const r = module.exports.getClient();
   const cand = [...new Set((urls || []).filter((u) => imgIdFromUrl(u) && !String(liveJson || "").includes(u)))];
   if (!cand.length) return;
   const backups = await r.lrange(K.bk(code), 0, BACKUP_KEEP - 1);   // read only when there is something to drop
-  const kept = cand.filter((u) => backups.some((b) => b.includes(u)));
+  const others = await otherCampaignsRefs(code);
+  const kept = cand.filter((u) => backups.some((b) => b.includes(u)) || others.has(u));
   if (kept.length) await r.sadd(K.imgWait(), ...kept);
   const now = cand.filter((u) => !kept.includes(u));
   if (now.length) await dropImages(now);
@@ -337,10 +370,11 @@ async function sweepWaitingImages(code, liveJson) {
   const waiting = await r.smembers(K.imgWait());
   if (!waiting.length) return;
   const backups = await r.lrange(K.bk(code), 0, BACKUP_KEEP - 1);
+  const others = await otherCampaignsRefs(code);   // 12.9: another campaign (or its backups) still using it keeps it
   const live = String(liveJson || ""), done = [], gone = [];
   for (const u of waiting) {
     if (live.includes(u)) done.push(u);
-    else if (!backups.some((b) => b.includes(u))) { done.push(u); gone.push(u); }
+    else if (!backups.some((b) => b.includes(u)) && !others.has(u)) { done.push(u); gone.push(u); }
   }
   if (done.length) await r.srem(K.imgWait(), ...done);
   if (gone.length) await dropImages(gone);

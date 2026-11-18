@@ -206,6 +206,7 @@
           for (const t of x.traits) if (!SKIP_TRAITS.has(lc(t.n))) c.features.push({ name: t.n.slice(0, 80), text: `Species trait (${x.n})\n${t.d}`.slice(0, 4000) });
           const speed = x.traits.find(t => lc(t.n) === 'speed'); const sp = speed && /(\d+)\s*feet/.exec(speed.d); if (sp) c.speed = +sp[1];
           c.senses = R.sensesFromTraits(x.traits);   // the species' own senses (the server applies the same for a player)
+          if (R.SIZES.includes(x.size)) c.size = x.size;   // and its size (audit 5.12)
           const lang = x.traits.find(t => lc(t.n) === 'languages'); if (lang && !c.languages.includes(lang.d.slice(0, 40))) c.languages = (c.languages ? c.languages + '\n' : '') + lang.d.slice(0, 300);
           if (apply) for (const [k, v] of Object.entries(x.asi)) c.abilities[k] = Math.min(30, n0(c.abilities[k]) + v);
         });
@@ -218,7 +219,7 @@
   // --------------------------------------------------------------------------- backgrounds
   function openBackgroundPicker(charId) {
     picker({
-      title: '◈ Choose a background', intro: "Sets the background, adds its feature, and notes its proficiencies, languages and equipment.",
+      title: '◈ Choose a background', intro: "Sets the background and adds its feature; then you choose its skills (ticked on the sheet) and its feat. Its tools, languages and equipment are noted.",
       load: () => list('backgrounds'),
       facets: [{ key: 'src', label: 'books', get: x => x.src }],
       row: x => `<b>${esc(x.n)}</b>${srcTag(x.src)}<div class="pp-meta">${esc([x.skills, x.feature && 'Feature: ' + x.feature].filter(Boolean).join(' · '))}</div>`,
@@ -227,25 +228,242 @@
         ${x.feats.length ? `<p><b>Suggested feats.</b> ${esc(x.feats.join(', '))}</p>` : ''}`,
       action: (x, i) => pickBtn(i, 'Choose'), pickedLabel: '✓ Chosen',
       onPick: x => {
-        mutateChar(charId, c => {
-          c.features = c.features.filter(f => !/^Background feature \(/.test(f.text || ''));
-          c.background = x.n;
-          if (x.feature) c.features.push({ name: x.feature.slice(0, 80), text: `Background feature (${x.n})\n${x.featureText}`.slice(0, 4000) });
-          const line = `Background (${x.n}): ${[x.skills && 'Skills: ' + x.skills, x.tools && 'Tools: ' + x.tools].filter(Boolean).join('. ')}`;
-          c.proficiencies = (c.proficiencies || '').split('\n').filter(l => !/^Background \(/.test(l)).concat(line).join('\n').trim().slice(0, 2000);
-          if (x.langs && !(c.languages || '').includes(x.langs)) c.languages = ((c.languages ? c.languages + '\n' : '') + 'Background: ' + x.langs).slice(0, 500);
-          if (x.equip && !(c.notes || '').includes(x.equip.slice(0, 40))) c.notes = ((c.notes ? c.notes + '\n\n' : '') + `Starting equipment (${x.n}): ${x.equip}`).slice(0, 20000);
+        const held = heldSkills(charOf(charId).skills);
+        backgroundChoices(x, held, `◈ ${esc(x.n)}`, 'Use this background', (skills, feat) => {
+          mutateChar(charId, c => applyBackground(c, x, skills, feat));
+          H.toast(`${x.n} chosen${skills.length ? ': ' + skills.map(k => R.SKILLS.find(sk => sk.key === k).name).join(', ') : ''}${feat ? ', feat ' + feat.n : ''}`);
+          H.closeModal();
         });
-        H.toast(`${x.n} chosen`);
-        H.closeModal();
       },
     });
+  }
+
+  // --------------------------------------------------------------------------- guided level-1 build (audit 1.3, 1.7)
+  // SW5e's Player's Handbook, "Step-By-Step Characters": choose a species, a class, determine ability scores, describe
+  // the character (background), choose equipment. Each step picks into a draft; the character is saved once, at the end.
+  const skillKey = name => (R.SKILLS.find(k => lc(k.name) === lc(String(name).trim())) || {}).key;
+  // "Choose two from Deception, Insight, Lore, and Persuasion" -> { n: 2, from: [keys] }
+  const NUM = { one: 1, two: 2, three: 3, four: 4 };
+  function skillChoice(text) {
+    const m = /choose (\w+) from (.*)$/i.exec(String(text || '').trim());
+    if (!m) return { n: 0, from: [] };
+    const from = m[2].replace(/\.$/, '').split(/,\s*|\s+(?:and|or)\s+/).map(x => skillKey(x.replace(/^(and|or)\s+/i, ''))).filter(Boolean);
+    return { n: NUM[lc(m[1])] || +m[1] || 0, from: [...new Set(from)] };
+  }
+  // a class's skill list as sheet keys ("Any" is every skill)
+  const classSkills = cl => (cl.skills.some(x => lc(x) === 'any') ? R.SKILLS.map(k => k.key) : cl.skills.map(skillKey).filter(Boolean));
+  // Choosing within a background (audit 1.8): the skills from its "Choose two from …" list (minus ones already held) and
+  // one of its feats. done(skills, feat) with skill keys and { n, text } (or null when it lists no feats).
+  // What a background's skill choice offers a character who already has some skills (held: sheet keys at full proficiency).
+  // SW5e, Personality and Backgrounds: "If a character would gain the same proficiency from two different sources, he or
+  // she can choose a different proficiency of the same kind instead." So each listed skill already held is a swap: up to
+  // that many picks may come from any other skill. n is how many to pick in all.
+  // the skills a sheet has the proficiency in: a dot at 1 or 2 (expertise); the half step (0.5, #185) isn't it
+  const heldSkills = skills => Object.keys(skills || {}).filter(k => +skills[k] >= 1);
+  function backgroundSkillOptions(b, held) {
+    held = held || [];
+    const ch = skillChoice(b.skills), from = ch.from.filter(k => !held.includes(k)), swaps = Math.min(ch.n, ch.from.length - from.length);
+    const other = swaps > 0 ? R.SKILLS.map(x => x.key).filter(k => !ch.from.includes(k) && !held.includes(k)) : [];
+    return { n: Math.min(ch.n, from.length + Math.min(swaps, other.length)), from, other, swaps, listed: ch.from.length };
+  }
+  function backgroundChoices(b, held, title, nextLabel, done) {
+    const { n, from, other, swaps, listed } = backgroundSkillOptions(b, held);
+    let skills = [], feat = null;
+    const ready = () => skills.length === n && (!b.feats.length || !!feat);
+    H.modal(`<h3>${title}</h3>
+      <h4>Choose ${n} skill${n === 1 ? '' : 's'} <span class="muted" id="bcCount">(0 of ${n})</span></h4>
+      <div class="row wrap" style="gap:4px 14px">${from.map(k => `<label class="toggle"><input type="checkbox" data-bc="skill" value="${k}"> ${esc(R.SKILLS.find(x => x.key === k).name)}</label>`).join('')}</div>
+      ${other.length ? `<p class="muted" style="font-size:12px;margin:8px 0 4px">You already have ${swaps === 1 ? 'one' : swaps} of this background's skills, so ${swaps === 1 ? 'one pick' : `up to ${swaps} picks`} can be any other skill instead:</p>
+        <div class="row wrap" style="gap:4px 14px">${other.map(k => `<label class="toggle"><input type="checkbox" data-bc="skill" data-other="1" value="${k}"> ${esc(R.SKILLS.find(x => x.key === k).name)}</label>`).join('')}</div>`
+        : listed > from.length ? '<p class="muted" style="font-size:12px">Skills you already have are left out.</p>' : ''}
+      ${b.feats.length ? `<h4 style="margin-top:12px">Choose a feat</h4><select data-bc="feat"><option value="">— choose —</option>${b.feats.map(f => `<option>${esc(f)}</option>`).join('')}</select>
+        <div class="muted" id="bcFeat" style="font-size:12px;margin-top:6px"></div>` : ''}
+      <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn" data-bc="cancel">Cancel</button>
+        <button class="btn primary" data-bc="ok" ${ready() ? '' : 'disabled'}>${esc(nextLabel)}</button></div>`, box => {
+      box.onchange = async e => {
+        if (e.target.dataset.bc === 'skill') {
+          const swapped = box.querySelectorAll('[data-bc=skill][data-other]:checked').length;
+          if (box.querySelectorAll('[data-bc=skill]:checked').length > n || swapped > swaps) e.target.checked = false;   // too many, or more swaps than held skills
+          skills = [...box.querySelectorAll('[data-bc=skill]:checked')].map(i => i.value);
+          box.querySelector('#bcCount').textContent = `(${skills.length} of ${n})`;
+        }
+        if (e.target.dataset.bc === 'feat') {
+          const name = e.target.value, f = name ? await featNamed(name) : null;
+          feat = name ? { n: name, text: f ? f.text : '' } : null;
+          box.querySelector('#bcFeat').innerHTML = f ? mdBlock(f.text).html : '';
+        }
+        box.querySelector('[data-bc=ok]').disabled = !ready();
+      };
+      box.onclick = e => {
+        const t = e.target.closest('[data-bc]'); if (!t) return;
+        if (t.dataset.bc === 'cancel') return H.closeModal();
+        if (t.dataset.bc === 'ok' && ready()) done(skills, feat);
+      };
+    });
+  }
+
+  // A background on a sheet (audit 1.8): its feature; the skills chosen from its list as ticked dots; the feat chosen from
+  // its options; its tools, languages and (unless the caller lists equipment itself) equipment as text. Re-choosing a
+  // background replaces the old background feature and feat (dots already ticked stay: they may come from elsewhere).
+  function applyBackground(c, b, skills, feat, opts = {}) {
+    c.features = (c.features || []).filter(f => !/^Background (feature|feat) \(/.test(f.text || ''));
+    c.background = b.n;
+    if (b.feature) c.features.push({ name: b.feature.slice(0, 80), text: `Background feature (${b.n})\n${b.featureText}`.slice(0, 4000) });
+    if (feat) c.features.push({ name: feat.n.slice(0, 80), text: `Background feat (${b.n})\n${feat.text || ''}`.slice(0, 4000) });
+    c.skills = c.skills || {};
+    const picked = (skills || []).filter(k => R.SKILLS.some(sk => sk.key === k));
+    for (const k of picked) c.skills[k] = Math.max(1, +(c.skills[k] || 0));
+    const line = `Background (${b.n}): ${[picked.length && 'Skills: ' + picked.map(k => R.SKILLS.find(sk => sk.key === k).name).join(', '), b.tools && 'Tools: ' + b.tools].filter(Boolean).join('. ')}`;
+    c.proficiencies = (c.proficiencies || '').split('\n').filter(l => !/^Background \(/.test(l)).concat(line).join('\n').trim().slice(0, 2000);
+    if (b.langs && !(c.languages || '').includes(b.langs)) c.languages = ((c.languages ? c.languages + '\n' : '') + 'Background: ' + b.langs).slice(0, 500);
+    if (opts.equip !== false && b.equip && !(c.notes || '').includes(b.equip.slice(0, 40))) c.notes = ((c.notes ? c.notes + '\n\n' : '') + `Starting equipment (${b.n}): ${b.equip}`).slice(0, 20000);
+    return c;
+  }
+  // The character a finished guide makes, from what was chosen (pure: the tests call it). D: { name, color, species,
+  // asi (bool), cls, classSkills [keys], classFeatures [{n, text}], scores {str..}, bg, bgSkills [keys], feat {n, text} }
+  function buildLevel1(D) {
+    const c = R.blankCharacter();
+    c.name = String(D.name || 'New Character').slice(0, 80); if (D.color) c.color = D.color;
+    c.abilities = Object.assign({}, c.abilities, D.scores || {});
+    const x = D.species;
+    if (x) {
+      c.species = x.n;
+      for (const t of x.traits) if (!SKIP_TRAITS.has(lc(t.n))) c.features.push({ name: t.n.slice(0, 80), text: `Species trait (${x.n})\n${t.d}`.slice(0, 4000) });
+      const speed = x.traits.find(t => lc(t.n) === 'speed'); const sp = speed && /(\d+)\s*feet/.exec(speed.d); if (sp) c.speed = +sp[1];
+      c.senses = R.sensesFromTraits(x.traits);
+      if (R.SIZES.includes(x.size)) c.size = x.size;   // and its size (#185), as the species picker sets it
+      const lang = x.traits.find(t => lc(t.n) === 'languages'); if (lang) c.languages = lang.d.slice(0, 300);
+      if (D.asi && x.asi) for (const [k, v] of Object.entries(x.asi)) c.abilities[k] = Math.min(30, n0(c.abilities[k]) + v);
+    }
+    const cl = D.cls;
+    if (cl) {
+      c.classes = [{ name: cl.n, level: 1, archetype: '' }];
+      c.saves = Object.fromEntries(cl.saves.map(k => [k, true]));
+      const hp = Math.max(1, cl.hp1 + mod(c.abilities.con));   // 1st level: the die's maximum + Con
+      c.hp = { max: hp, current: hp, temp: 0 };
+      for (const f of D.classFeatures || []) c.features.push({ name: f.n.slice(0, 80), text: `${cl.n} 1st-level feature\n${f.text}`.slice(0, 4000) });
+      c.proficiencies = [cl.armor.length && 'Armor: ' + cl.armor.join(', '), cl.weapons.length && 'Weapons: ' + cl.weapons.join(', '),
+        cl.tools.length && 'Tools: ' + cl.tools.join(', ')].filter(Boolean).join('\n');
+    }
+    for (const k of D.classSkills || []) if (R.SKILLS.some(s => s.key === k)) c.skills[k] = 1;
+    c.ac = 10 + mod(c.abilities.dex);   // unarmored; armor goes on with the equipment
+    c.acAuto = true;                    // brand-new: the sheet works its AC out from worn armor (#165), as ＋ New's blank sheet does
+    const b = D.bg;
+    if (b) applyBackground(c, b, D.bgSkills, D.feat, { equip: false });   // the guide lists the equipment itself, below
+    const plain = x => String(x).replace(/\*/g, '').replace(/^\s*-\s*/, '• ');   // SW5e's markdown: *(a)* -> (a), "- " -> a bullet
+    const eq = [cl && cl.equip.length && `${cl.n}:\n${cl.equip.map(plain).join('\n')}`, b && b.equip && `${b.n}: ${plain(b.equip)}`].filter(Boolean);
+    if (eq.length) c.notes = ('Starting equipment (choose where it says (a) or (b)):\n' + eq.join('\n\n')).slice(0, 20000);
+    c.proficiencies = (c.proficiencies || '').slice(0, 2000);
+    return c;
+  }
+
+  function guidedBuild(onDone) {
+    const me = H.S.st && H.S.st.players && H.S.st.players[H.S.st.you];
+    const D = { name: me && me.name ? me.name + "'s character" : 'New Character', classSkills: [], bgSkills: [] };
+    const step = (n, t) => `<span class="muted" style="text-transform:none;letter-spacing:0">Step ${n} of 5 · </span>${t}`;
+    const box0 = $('#modalBox');
+    if (guidedBuild.skip) box0.removeEventListener('click', guidedBuild.skip);   // one guide's handler at a time, even if the last was closed
+    const skip = guidedBuild.skip = e => { if (e.target.closest('[data-gb=blank]')) { box0.removeEventListener('click', skip); H.closeModal(); onDone(null); } };
+    box0.addEventListener('click', skip);   // the "blank character" button in step 1's intro; removed once the guide moves on
+    // 1. species
+    picker({
+      title: 'New character · 1 of 5: species', intro: "SW5e builds a character in five steps: species, class, ability scores, background, equipment. " +
+        "Nothing is saved until the last step. <button class='btn tiny ghost' data-gb='blank'>Skip: a blank character</button>",
+      load: () => list('species'),
+      facets: [{ key: 'src', label: 'books', get: x => x.src }, { key: 'size', label: 'sizes', get: x => x.size }],
+      search: x => x.n + ' ' + x.home + ' ' + x.traits.map(t => t.n).join(' '),
+      row: x => `<b>${esc(x.n)}</b>${srcTag(x.src)}<span class="pp-lvl">${esc(x.size)}</span>
+        <div class="pp-meta">${esc([x.home && 'Homeworld: ' + x.home, x.asi ? asiText(x.asi) : 'ability increase: your choice', x.lang && 'Speaks ' + x.lang].filter(Boolean).join(' · '))}</div>`,
+      detail: x => x.traits.map(t => `<p><b>${esc(t.n)}.</b> ${md(t.d).replace(/^<p>|<\/p>$/g, '')}</p>`).join(''),
+      detailLabel: 'Traits', action: (x, i) => pickBtn(i, 'Choose'), pickedLabel: '✓ Chosen',
+      onPick: x => { box0.removeEventListener('click', skip); D.species = x; D.asi = !!x.asi; stepClass(); },
+    });
+    // 2. class
+    async function stepClass() {
+      let all;
+      try { all = await list('classes'); } catch (err) { H.toast(err.message, true); return; }
+      const draw = () => {
+        const cl = D.cls, opts = cl ? classSkills(cl) : [];
+        return `<h3>${step(2, 'class')}</h3>
+          <div class="grid g2" style="gap:6px">${all.map(k => `<label style="display:block;cursor:pointer;padding:8px 10px;border:1px solid ${cl && cl.n === k.n ? 'var(--holo)' : 'var(--line)'};border-radius:8px;text-transform:none;letter-spacing:0">
+            <input type="radio" name="gbCls" value="${esc(k.n)}" ${cl && cl.n === k.n ? 'checked' : ''}> <b>${esc(k.n)}</b>
+            <span class="muted" style="font-size:12px"> · d${k.hd} · saves ${k.saves.map(a => a.toUpperCase()).join(', ')}</span>
+            <div class="muted" style="font-size:12px">${esc(k.sum)}</div></label>`).join('')}</div>
+          ${cl ? `<h4 style="margin-top:12px">${esc(cl.n)}: choose ${cl.nSkills} skill${cl.nSkills === 1 ? '' : 's'} <span class="muted" id="gbCount">(${D.classSkills.length} of ${cl.nSkills})</span></h4>
+            <div class="row wrap" style="gap:4px 14px">${opts.map(k => `<label class="toggle"><input type="checkbox" data-gb="cskill" value="${k}" ${D.classSkills.includes(k) ? 'checked' : ''}> ${esc(R.SKILLS.find(s => s.key === k).name)}</label>`).join('')}</div>
+            <p class="muted" style="font-size:12px;margin:8px 0 0">1st-level hit points: ${cl.hp1} + your Constitution modifier. Saving throws: ${cl.saves.map(a => a.toUpperCase()).join(', ')}.</p>` : ''}
+          <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn" data-gb="cancel">Cancel</button>
+            <button class="btn primary" data-gb="next" ${cl && D.classSkills.length === cl.nSkills ? '' : 'disabled'}>Next: ability scores</button></div>`;
+      };
+      H.modal(draw(), box => {
+        box.onchange = e => {
+          if (e.target.name === 'gbCls') { D.cls = all.find(k => k.n === e.target.value); D.classSkills = []; box.innerHTML = draw(); return; }
+          if (e.target.dataset.gb === 'cskill') {
+            D.classSkills = [...box.querySelectorAll('[data-gb=cskill]:checked')].map(i => i.value);
+            if (D.classSkills.length > D.cls.nSkills) { e.target.checked = false; D.classSkills = D.classSkills.filter(k => k !== e.target.value); }
+            box.querySelector('#gbCount').textContent = `(${D.classSkills.length} of ${D.cls.nSkills})`;
+            box.querySelector('[data-gb=next]').disabled = D.classSkills.length !== D.cls.nSkills;
+          }
+        };
+        box.onclick = async e => {
+          const b = e.target.closest('[data-gb]'); if (!b) return;
+          if (b.dataset.gb === 'cancel') return H.closeModal();
+          if (b.dataset.gb === 'next') {
+            b.disabled = true; b.textContent = 'Loading the class features…';   // the first load of the features list takes a moment
+            D.classFeatures = (await featuresFor(D.cls.n, 'class', 1, 1).catch(() => [])).map(f => ({ n: f.n, text: f.text }));
+            H.scoresDialog({ name: D.name }, sc => { D.scores = sc; stepBackground(); });
+          }
+        };
+      });
+    }
+    // 4. background: the background, two of its skills and one of its feats
+    function stepBackground() {
+      picker({
+        title: 'New character · 4 of 5: background', intro: 'Your background gives two skills, a feature and a feat.',
+        load: () => list('backgrounds'),
+        facets: [{ key: 'src', label: 'books', get: x => x.src }],
+        row: x => `<b>${esc(x.n)}</b>${srcTag(x.src)}<div class="pp-meta">${esc([x.skills, x.feature && 'Feature: ' + x.feature].filter(Boolean).join(' · '))}</div>`,
+        detail: x => `${x.skills ? `<p><b>Skills.</b> ${esc(x.skills)}</p>` : ''}${x.tools ? `<p><b>Tools.</b> ${esc(x.tools)}</p>` : ''}
+          ${x.feature ? `<p><b>Feature: ${esc(x.feature)}.</b></p>${md(x.featureText)}` : ''}${x.feats.length ? `<p><b>Feats.</b> ${esc(x.feats.join(', '))}</p>` : ''}`,
+        action: (x, i) => pickBtn(i, 'Choose'), pickedLabel: '✓ Chosen',
+        onPick: x => { D.bg = x; D.bgSkills = []; D.feat = null; stepBgChoices(); },
+      });
+    }
+    function stepBgChoices() {
+      backgroundChoices(D.bg, D.classSkills, step(4, esc(D.bg.n)), 'Next: review', (skills, feat) => { D.bgSkills = skills; D.feat = feat; stepReview(); });
+    }
+    // 5. equipment and a last look
+    function stepReview() {
+      const c = buildLevel1(D), sk = Object.keys(c.skills).map(k => R.SKILLS.find(s => s.key === k).name);
+      H.modal(`<h3>${step(5, 'equipment and a last look')}</h3>
+        <label>Name<input id="gbName" value="${esc(c.name)}" maxlength="80"></label>
+        <p style="margin:8px 0 4px"><b>${esc(c.species)}</b> · <b>${esc(D.cls.n)} 1</b> · ${esc(c.background)}${D.feat ? ' · feat: ' + esc(D.feat.n) : ''}</p>
+        <p style="margin:0 0 4px">${R.ABILITIES.map(a => `${a.key.toUpperCase()} <b>${c.abilities[a.key]}</b>`).join(' · ')}
+          ${D.species.asi ? `<span class="muted">(with ${esc(D.species.n)}'s ${esc(asiText(D.species.asi))})</span>` : `<br><span class="muted">${esc(D.species.n)}'s ability increase is your choice: add it on the sheet.</span>`}</p>
+        <p style="margin:0 0 4px">HP <b>${c.hp.max}</b> · AC <b>${c.ac}</b> (unarmored) · saves ${Object.keys(c.saves).map(a => a.toUpperCase()).join(', ')} · skills ${esc(sk.join(', '))}</p>
+        <h4 style="margin-top:10px">Starting equipment</h4><div class="muted" style="font-size:12px;white-space:pre-wrap;max-height:180px;overflow:auto">${esc(c.notes)}</div>
+        <p class="muted" style="font-size:12px">This goes into your sheet's Notes; add the items you choose on the Features &amp; Gear tab.</p>
+        <div class="row"><span class="spacer"></span><button class="btn" data-gb="cancel">Cancel</button><button class="btn primary" data-gb="make">Create ${esc(D.cls.n)}</button></div>`, box => {
+        box.onclick = e => {
+          const b = e.target.closest('[data-gb]'); if (!b) return;
+          if (b.dataset.gb === 'cancel') return H.closeModal();
+          if (b.dataset.gb === 'make') { D.name = box.querySelector('#gbName').value.trim() || D.name; H.closeModal(); onDone(buildLevel1(D)); }
+        };
+      });
+    }
   }
 
   // --------------------------------------------------------------------------- archetypes
   async function featuresFor(of, kind, fromLvl, toLvl) {
     const all = await list('features');
     return all.filter(f => f.k === kind && lc(f.of) === lc(of) && f.lvl >= fromLvl && f.lvl <= toLvl && lc(f.n) !== 'ability score improvement');
+  }
+  // Changing an archetype takes the old one's features off the sheet: the ones this picker and the level-up wizard
+  // added, whose text starts "Archetype feature (Old name, level n)". Anything typed by hand stays. Returns how many went.
+  function dropArchetypeFeatures(c, name) {
+    const mark = `Archetype feature (${name},`, before = (c.features || []).length;
+    c.features = (c.features || []).filter(f => !String((f && f.text) || '').startsWith(mark));
+    return before - c.features.length;
   }
   function openArchetypePicker(charId, classIdx) {
     const k = charOf(charId).classes[classIdx]; if (!k) return;
@@ -257,13 +475,15 @@
       detail: x => md(x.text), detailLabel: 'About',
       action: (x, i) => pickBtn(i, lc(k.archetype) === lc(x.n) ? 'Re-apply' : 'Choose'), pickedLabel: '✓ Chosen',
       onPick: x => {
+        let gone = 0;
         featuresFor(x.n, 'archetype', 0, n0(k.level)).then(feats => {
           mutateChar(charId, c => {
             const kk = c.classes[classIdx]; if (!kk) return;
+            if (kk.archetype && lc(kk.archetype) !== lc(x.n)) gone = dropArchetypeFeatures(c, kk.archetype);
             kk.archetype = x.n.slice(0, 60);
             for (const f of feats) if (!hasFeature(c, f.n)) c.features.push({ name: f.n, text: `Archetype feature (${x.n}, level ${f.lvl})\n${f.text}`.slice(0, 4000) });
           });
-          H.toast(`${x.n}: ${feats.length} feature${feats.length === 1 ? '' : 's'} added`);
+          H.toast(`${x.n}: ${feats.length} feature${feats.length === 1 ? '' : 's'} added${gone ? `, ${gone} from the old archetype removed` : ''}`);
         }).catch(err => H.toast(err.message, true));
         H.closeModal();
       },
@@ -309,6 +529,38 @@
     return all.filter(f => f.lvl === level && lc(f.n) !== 'ability score improvement'
       && ((f.k === 'class' && lc(f.of) === lc(cls)) || (archetype && f.k === 'archetype' && lc(f.of) === lc(archetype))))
       .map(f => ({ name: f.n, text: `${f.k === 'archetype' ? 'Archetype' : 'Class'} feature (${f.of}, level ${f.lvl})\n${f.text}`.slice(0, 4000) }));
+  }
+  // The choices a class makes at its new level, counted against what its table allows (audit 2.9): its own options
+  // (Berserker Instincts, Operative Exploits, Fighter Strategies...), maneuvers, a fighting style, Expertise.
+  // lists = { classes, maneuvers, styles } as SW5e's lists serve them. Each group says how many to pick (min..max: the
+  // new ones this level, and up to the class's total if the sheet is behind) and what can be picked: what the sheet
+  // doesn't have yet, past its prerequisite level. 'powers' rows are the power counts, for the wizard to show.
+  function levelChoices(ch, cls, L, lists) {
+    const cl = (lists.classes || []).find(c => lc(c.n) === lc(cls));
+    const known = new Set((ch.features || []).map(f => lc(f.name)));
+    const fresh = all => all.filter(x => !known.has(lc(x.n)) && !(typeof x.pre === 'number' && x.pre > L));
+    const groups = [];
+    const counted = (key, title, row, all, text) => {
+      const have = all.filter(x => known.has(lc(x.n))).length, items = fresh(all).map(x => ({ n: x.n, pre: typeof x.pre === 'string' ? x.pre : '', text: text(x) }));
+      const max = Math.min(items.length, Math.max(0, row.total - have)), min = Math.min(max, row.total - row.prev);
+      if (max > 0) groups.push({ key, title, kind: key, min, max, have, total: row.total, items });
+    };
+    for (const row of R.choiceCounts(cls, L)) {
+      if (row.kind === 'powers') { if (row.total > row.prev) groups.push({ key: row.col, title: row.col, kind: 'powers', min: 0, max: row.total - row.prev, total: row.total, prev: row.prev, items: [] }); }
+      else if (row.kind === 'maneuvers') counted('maneuvers', 'Maneuvers', row, lists.maneuvers || [], x => `Maneuver (${x.type})\n${x.text}`);
+      else if (cl && cl.opts) counted('opts', cl.opts.title, row, cl.opts.items, x => `${cl.opts.title} (${cl.n})\n${x.text}`);
+    }
+    // the Features column names what a level brings, Expertise at Operative 6 included (the feature list files it under 1st)
+    const feats = String((cl && cl.lv && cl.lv[L - 1]) || '').split(',').map(x => lc(x.trim()));
+    if (feats.includes('fighting style')) {
+      const items = fresh(lists.styles || []).map(x => ({ n: x.n, pre: '', text: `Fighting style\n${x.text}` }));
+      if (items.length) groups.push({ key: 'style', title: 'Fighting Style', kind: 'style', min: 1, max: 1, items });
+    }
+    if (feats.includes('expertise')) {
+      const items = R.SKILLS.filter(k => +(ch.skills || {})[k.key] === 1).map(k => ({ n: k.name, key: k.key, pre: '', text: '' }));
+      groups.push({ key: 'expertise', title: 'Expertise', kind: 'expertise', min: 2, max: 2, items });
+    }
+    return groups;
   }
   const archetypesOf = async cls => (await list('archetypes')).filter(a => lc(a.cls) === lc(cls)).map(a => a.n);
   const featNamed = async name => (await list('feats')).find(f => lc(f.n) === lc(name)) || null;
@@ -407,7 +659,8 @@
       <span><b>${f(d.adj)}</b> XP adjusted <span class="muted">(${f(d.raw)} × ${d.mult} for ${xps.length} creature${xps.length === 1 ? '' : 's'})</span></span>
       <span class="muted" title="${esc(party.map(c => `${c.name} (level ${R.totalLevel(c)})`).join(', '))}">Party of ${party.length}${inIni.length ? '' : ' (everyone; none in initiative yet)'}, level${new Set(lv).size > 1 ? 's' : ''} ${esc([...new Set(lv)].sort((a, b) => a - b).join('/'))}:
         easy ${f(d.th[0])} · medium ${f(d.th[1])} · hard ${f(d.th[2])} · deadly ${f(d.th[3])}</span>
-      ${skipped ? `<span class="muted">${skipped} without an SW5e stat block not counted</span>` : ''}`;
+      ${skipped ? `<span class="muted">${skipped} without an SW5e stat block not counted</span>` : ''}
+      <button class="btn tiny" id="encAwardXp" data-xp="${n0(d.raw)}" title="When the fight is over: give the party the creatures' XP (${f(d.raw)}, before the multiplier), split among them">★ Award XP…</button>`;
   }
   const crNum = cr => (/^\d+\/\d+$/.test(cr) ? eval_frac(cr) : +cr || 0);
   function eval_frac(s) { const [a, b] = s.split('/'); return +a / +b; }
@@ -480,7 +733,7 @@
     { key: 'rules-wh', name: 'Wretched Hives' },
     { key: 'rules-sotg', name: 'Starships of the Galaxy' },
     { key: 'rules-variant', name: 'Variant Rules', variants: true },
-    { key: 'monsters', name: 'Scum and Villainy', monsters: true },
+    { key: 'monsters', name: 'Scum and Villainy', monsters: true, gmOnly: 'statBlocksHidden' },
     { key: 'tables', name: 'Reference tables', entries: true },
     { key: 'weapon-props', name: 'Weapon properties', entries: true },
     { key: 'armor-props', name: 'Armor properties', entries: true },
@@ -488,7 +741,7 @@
   const LIB = { book: null, ch: 0, q: '' };
   function libraryBar() {
     const v = (H.S.st && H.S.st.variants) || [];
-    return `<div class="box lib-bar"><h4>SW5e rulebooks <span class="spacer"></span><span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">from <a href="https://sw5e.com" target="_blank" rel="noopener noreferrer">sw5e.com</a>, a free fan project</span></h4><div class="row wrap">${BOOKS.map(b => `<button class="btn small" data-lib="${esc(b.key)}">${esc(b.name)}</button>`).join('')}</div>
+    return `<div class="box lib-bar"><h4>SW5e rulebooks <span class="spacer"></span><span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">from <a href="https://sw5e.com" target="_blank" rel="noopener noreferrer">sw5e.com</a>, a free fan project</span></h4><div class="row wrap">${BOOKS.filter(b => !(b.gmOnly && !H.isGM() && (H.S.st || {})[b.gmOnly])).map(b => `<button class="btn small" data-lib="${esc(b.key)}">${esc(b.name)}</button>`).join('')}</div>
       ${v.length ? `<div style="margin-top:8px"><span class="muted">Variant rules in use at this table:</span> ${v.map(n => `<button class="chip lib-var" data-lib="rules-variant" data-libch="${esc(n)}">${esc(n)}</button>`).join(' ')}</div>` : ''}</div>`;
   }
   async function openBook(key, chapterName) {
@@ -615,12 +868,13 @@
             <span class="bonus">${fmt(b)}</span><span class="nm rollable" data-shiproll="1d20${fmt(b)}" data-kind="check" data-ab="${ab}" data-label="${esc(s.name)}: ${name}">${name}</span><span class="ab">${ab}</span></div>`; }).join('')}</div></div>
       </div>
       <div class="box" style="margin-top:12px"><h4>Weapons <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-sa="pick-equip" data-weapons="1">＋ weapon from SotG</button><button class="btn tiny ghost" data-sa="add-weapon">custom</button>' : ''}</h4>
-        <table class="t"><thead><tr><th>Weapon</th><th>Attack</th><th>Damage</th><th>Type</th><th>Range</th><th>Properties</th><th></th></tr></thead><tbody>
+        <table class="t"><thead><tr><th>Weapon</th><th>Attack</th><th>Damage</th><th>Type</th><th>Range</th><th>Properties</th><th title="Category, mount (a fixed arc or a turret) and ammunition left (blank: not counted). The space map's Fire uses them.">Mount</th><th></th></tr></thead><tbody>
         ${(s.weapons || []).map((w, i) => { const atk = m('wis') + pb + n0(w.atkMisc), dmg = w.dmg ? w.dmg + (m('str') ? fmt(m('str')) : '') : ''; return `<tr><td>${shipInp(`weapons.${i}.name`, w.name, { ro })}</td>
           <td style="white-space:nowrap"><button class="btn small amber" data-shiproll="1d20${fmt(atk)}" data-kind="attack" data-label="${esc(s.name)}: ${esc(w.name)} (attack)" title="Wis ${fmt(m('wis'))} + crew prof. ${fmt(pb)}">${fmt(atk)}</button> ${shipInp(`weapons.${i}.atkMisc`, n0(w.atkMisc), { ro, w: '50px' })}</td>
           <td style="white-space:nowrap">${shipInp(`weapons.${i}.dmg`, w.dmg, { ro, w: '64px' })}${dmg ? ` <button class="btn small" data-shiproll="${esc(dmg)}" data-label="${esc(s.name)}: ${esc(w.name)} (${esc(w.type)} damage)" title="+ Str ${fmt(m('str'))}">Dmg</button>` : ''}</td>
           <td>${shipInp(`weapons.${i}.type`, w.type, { ro, w: '80px' })}</td><td>${shipInp(`weapons.${i}.range`, w.range, { ro, w: '100px' })}</td><td>${shipInp(`weapons.${i}.props`, w.props, { ro })}</td>
-          <td>${!ro ? `<button class="btn tiny ghost" data-sa="del" data-list="weapons" data-i="${i}">✕</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="7" class="muted">No weapons.</td></tr>'}</tbody></table>
+          <td style="white-space:nowrap">${shipInp(`weapons.${i}.cat`, w.cat || '', { ro, type: 'select', options: ['', 'primary', 'secondary', 'tertiary', 'quaternary'] })}${shipInp(`weapons.${i}.arc`, w.arc || '', { ro, type: 'select', options: ['', 'forward', 'starboard', 'aft', 'port', 'turret'] })}${shipInp(`weapons.${i}.ammo`, w.ammo ?? '', { ro, w: '50px', ph: 'ammo', type: 'text' })}</td>
+          <td>${!ro ? `<button class="btn tiny ghost" data-sa="del" data-list="weapons" data-i="${i}">✕</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="8" class="muted">No weapons.</td></tr>'}</tbody></table>
         <p class="muted" style="font-size:12px;margin:6px 0 0">Attack = ship's Wisdom modifier + the crew member's proficiency bonus (+ the small box). Damage adds the ship's Strength modifier. Weapon save DC = 8 + Wis + proficiency: <b>${8 + m('wis') + pb}</b>.</p></div>
       <div class="grid g2" style="margin-top:12px">
         <div class="box"><h4>Equipment <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-sa="pick-equip">＋ from SotG</button><button class="btn tiny ghost" data-sa="add-eq">custom</button>' : ''}</h4>
@@ -689,7 +943,7 @@
       detail: x => (x.desc ? md(x.desc) : '<p class="muted">No further text.</p>'),
       action: (x, i) => pickBtn(i), onPick: x => {
         mutateShip(s => {
-          if (x.type === 'Weapon') s.weapons.push({ name: x.n, atkMisc: n0(x.atk), dmg: x.dmg, type: x.dt, range: x.rng, props: x.props.slice(0, 300) });
+          if (x.type === 'Weapon') s.weapons.push({ name: x.n, atkMisc: n0(x.atk), dmg: x.dmg, type: x.dt, range: x.rng, props: x.props.slice(0, 300), cat: String(x.wcat || '').toLowerCase(), arc: '', ammo: '' });
           else s.equipment.push({ name: x.n, notes: [x.type, x.acb && `AC +${x.acb}`, x.hyper && 'class ' + x.hyper, x.props].filter(Boolean).join(' · ').slice(0, 300) });
         });
         H.toast(`Added ${x.n}`);
@@ -720,7 +974,8 @@
 
   window.HTB = {
     list, mdBlock, libraryBar, openBook, openSpeciesPicker, openBackgroundPicker, openArchetypePicker, openFeaturePicker,
-    levelFeatures, archetypesOf, featNamed, featNames, openMonsterPicker, openStatBlock, rollCreatureSave, bonuses, saveBonus, difficulty, xpMultiplier, renderEncounter, renderShips, renderShipsSafe,
+    guidedBuild, buildLevel1, skillChoice, applyBackground, backgroundSkillOptions, heldSkills,
+    levelFeatures, levelChoices, dropArchetypeFeatures, archetypesOf, featNamed, featNames, openMonsterPicker, openStatBlock, rollCreatureSave, bonuses, saveBonus, difficulty, xpMultiplier, renderEncounter, renderShips, renderShipsSafe,
   };
   // the rules tab and ships tab were drawn before this file loaded
   if (!LIB.book) H.renderRules();

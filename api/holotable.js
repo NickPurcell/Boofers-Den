@@ -25,7 +25,10 @@ const crypto = require("crypto");
 const G = require("./_holotable-game.js");
 const S = require("./_holotable-store.js");
 
-const GAME = "main";
+// The campaign the table is on (audit 12.9). Every request reads it once and passes it along; "main" is today's
+// campaign and the default, so a table that never makes a second campaign works exactly as before.
+const CAMP_CODE = /^[a-z0-9]{4,20}$/;
+async function liveCode() { const c = await S.getClient().get(S.K.live()); return CAMP_CODE.test(String(c || "")) ? String(c) : "main"; }
 const POLL_MS = 8000;
 const ONLINE_S = 30;
 const MAX_IMAGE = 3 * 1024 * 1024;
@@ -107,19 +110,20 @@ async function hits(bucket) { return +((await S.getClient().get(S.K.rl(bucket)))
 // removed it, e.g. a full Redis evicting keys. Then changes are refused and the GM is offered a
 // restore, instead of a blank table being saved over what's left. A true first visit starts fresh.
 class Missing extends Error {}
-async function gameWasLost() {
+async function gameWasLost(GAME) {
   const r = S.getClient();
   return !!(await r.get(S.K.ver(GAME))) || (await r.llen(S.K.bk(GAME))) > 0;
 }
-async function loadGame() {
+async function loadGame(GAME) {
   const camp = await S.getCampaign(GAME);
   if (camp) {
+    camp.code = GAME;   // a save always lands in the campaign it was read from, whatever a stored code says (#208 review)
     // tables made before 70 px squares: move the old 50 px default to 70 (saved with the next change)
     if (camp.map && !camp.map.gridV2) { if (camp.map.gridSize === 50) camp.map.gridSize = 70; camp.map.gridV2 = true; }
     return camp;
   }
-  if (await gameWasLost()) throw new Missing("The table's save is missing. GM: open the GM tab and restore the latest backup.");
-  return G.blankCampaign("HoloTable");
+  if (await gameWasLost(GAME)) throw new Missing("The table's save is missing. GM: open the GM tab and restore the latest backup.");
+  return Object.assign(G.blankCampaign("HoloTable"), { code: GAME });
 }
 
 // SW5e lists (force/tech powers, standard gear, enhanced items) come from SW5e's own public API
@@ -256,7 +260,7 @@ async function speciesSenses(r, name) {
 // action tries again. camp.sensesFilled marks it done, and an instance that has seen the mark stops reading the list.
 let SPECIES_FILL_SEEN = false;
 const needsSenses = (c) => !!(c && c.species && !(Array.isArray(c.senses) && c.senses.length));
-async function warmSpeciesFill(r) {
+async function warmSpeciesFill(r, GAME) {
   if (SPECIES_FILL_SEEN) return;
   const camp = await S.getCampaign(GAME).catch(() => null);   // a peek, unlocked: is there anything to fill at all?
   if (!camp || camp.sensesFilled) { if (camp) SPECIES_FILL_SEEN = true; return; }
@@ -308,7 +312,7 @@ async function sw5eList(r, name) {
 // every uploaded image the table refers to (live map, saved scenes, sheets, handouts)
 const imageRefs = (camp) => new Set(JSON.stringify(camp).match(/\/api\/holotable\?img=[a-f0-9]{16,40}/g) || []);
 
-async function onlineList(camp) {
+async function onlineList(camp, GAME) {
   const h = await S.getClient().hgetall(S.K.on(GAME));
   const t = nowS();
   const parse = (v) => { try { return JSON.parse(v); } catch { return {}; } };
@@ -317,7 +321,7 @@ async function onlineList(camp) {
 }
 
 // mark this person online; bump the game if someone arrived or left so everyone's list updates
-async function touchPresence(ses) {
+async function touchPresence(ses, GAME) {
   const r = S.getClient(), key = S.K.on(GAME), t = nowS();
   const h = (await r.hgetall(key)) || {};
   const ts = (id) => { try { return +JSON.parse(h[id]).t || 0; } catch { return 0; } };
@@ -331,6 +335,7 @@ async function touchPresence(ses) {
 // ---------------------------------------------------------------- GET
 async function handleGet(req, res, q, ses) {
   const r = S.getClient();
+  const GAME = await liveCode();
   const gm = ses.role === "gm";
 
   if (q.img || q.a) { // images are immutable (a new upload gets a new id); cached in this browser only
@@ -373,25 +378,28 @@ async function handleGet(req, res, q, ses) {
   if (op === "me") return res.status(200).json({ role: ses.role, name: ses.name, you: ses.pid });
 
   if (op === "poll") {
-    if (!(await r.get(S.K.ver(GAME))) && !(await gameWasLost())) { // first visit ever: create the game
-      await S.withLock(GAME, async () => { if (!(await S.getCampaign(GAME)) && !(await gameWasLost())) await S.saveCampaign(G.blankCampaign("HoloTable")); });
+    if (!(await r.get(S.K.ver(GAME))) && !(await gameWasLost(GAME))) { // first visit ever: create the game
+      await S.withLock(GAME, async () => { if (!(await S.getCampaign(GAME)) && !(await gameWasLost(GAME))) await S.saveCampaign(Object.assign(G.blankCampaign("HoloTable"), { code: GAME })); });
     }
-    await touchPresence(ses);
+    await touchPresence(ses, GAME);
     const deadline = Date.now() + Math.min(POLL_MS, +q.wait || POLL_MS);
+    // the version a page holds names its campaign too (12.9), so a switch is always a change; "main" keeps plain numbers
+    const tag = (n) => (GAME === "main" ? String(n || 0) : `${GAME}:${n || 0}`);
     for (;;) {
       const [v, lib] = await r.mget(S.K.ver(GAME), S.K.libver());
-      if (String(v || 0) !== String(q.v || "")) {
+      if (tag(v) !== String(q.v || "")) {
         let camp, missing = false;
-        try { camp = await loadGame(); } catch (e) { if (!(e instanceof Missing)) throw e; camp = G.blankCampaign("HoloTable"); missing = true; }
+        try { camp = await loadGame(GAME); } catch (e) { if (!(e instanceof Missing)) throw e; camp = Object.assign(G.blankCampaign("HoloTable"), { code: GAME }); missing = true; }
         if (!camp.players[ses.pid]) camp.players[ses.pid] = { name: ses.name, role: ses.role }; // shown before their first save
-        const state = G.viewFor(camp, ses.pid, gm, await onlineList(camp));
+        const state = G.viewFor(camp, ses.pid, gm, await onlineList(camp, GAME));
         if (missing) state.missing = true;
         state.sw5eBooks = SW5E_BOOKS.on;
-        return res.status(200).json({ v: String(v || 0), lib: String(lib || 0), state });
+        return res.status(200).json({ v: tag(v), lib: String(lib || 0), state });
       }
       const left = deadline - Date.now();
-      if (left <= 0) return res.status(200).json({ v: String(v || 0), lib: String(lib || 0), same: true });
+      if (left <= 0) return res.status(200).json({ v: tag(v), lib: String(lib || 0), same: true });
       await S.waitForChange(GAME, Math.min(left, 2500));
+      if ((await liveCode()) !== GAME) return res.status(200).json({ v: "switch", lib: String(lib || 0), same: true });   // 12.9: the table moved; ask again
     }
   }
 
@@ -412,6 +420,8 @@ async function handleGet(req, res, q, ses) {
     const name = String(q.list || "");
     if (!Object.prototype.hasOwnProperty.call(SW5E_LISTS, name) || ["powers", "standard", "enhanced"].includes(name)) return fail(res, 404, "No such SW5e list.");
     if (!SW5E_BOOKS.on) return fail(res, 503, "The SW5e books aren't switched on for this table.");
+    // creature stat blocks are the GM's to share (audit 9.17): with the GM's switch on, a player isn't sent them
+    if (name === "monsters" && !gm && (await loadGame(GAME).catch(() => ({}))).statBlocksHidden) return fail(res, 403, "The GM keeps creature stat blocks to themselves at this table.");
     const raw = await sw5eList(r, name);
     if (!raw) return fail(res, 503, "Couldn't reach SW5e for that list right now. Try again in a minute.");
     res.setHeader("Content-Type", "application/json");
@@ -447,9 +457,45 @@ async function handleGet(req, res, q, ses) {
     return res.status(200).json(await storageReport());
   }
 
+  if (op === "campaigns") {   // the GM's campaigns (12.9): which is live, and each one's name and size
+    if (!gm) return fail(res, 403, "GM only");
+    const extra = (await r.hgetall(S.K.camps())) || {};
+    const list = [];
+    for (const code of ["main", ...Object.keys(extra).filter((c) => CAMP_CODE.test(c) && c !== "main")]) {
+      const raw = await r.get(S.K.camp(code));
+      let name = "HoloTable"; try { name = (JSON.parse(raw || "{}").name) || JSON.parse(extra[code] || "{}").name || name; } catch { /* the name stays */ }
+      list.push({ code, name: String(name).slice(0, 80), bytes: raw ? raw.length : 0, live: code === GAME });
+    }
+    return res.status(200).json({ live: GAME, list, max: MAX_CAMPAIGNS });
+  }
+
+  if (op === "history") {   // the record of one sheet's changes (audit 12.5), the GM's, read only when opened
+    if (!gm) return fail(res, 403, "GM only");
+    const camp = await loadGame(GAME), id = String(q.char || "");
+    const log = Object.prototype.hasOwnProperty.call(camp.sheetLog || {}, id) ? camp.sheetLog[id] : [];
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(200).json({ log });
+  }
+
+  if (op === "chatlog") {   // a log of play (audit 12.4): the whole chat the table keeps, as text, for the GM
+    if (!gm) return fail(res, 403, "GM only");
+    const camp = await loadGame(GAME);
+    const t = (ts) => new Date((+ts || 0) * 1000).toISOString().replace("T", " ").slice(0, 16);
+    const line = (m) => {
+      const who = m.system ? "" : `${m.charName ? m.charName + " (" + (m.from || "") + ")" : m.from || ""}${m.to ? " → " + (m.private ? "GM/private" : "whisper") : ""}: `;
+      const body = m.roll ? `${m.roll.label || "roll"} = ${m.roll.total} [${m.roll.expr || ""} → ${m.roll.detail || ""}]` : String(m.text || "");
+      return `[${t(m.ts)}] ${who}${body}`.replace(/\r?\n/g, " / ");
+    };
+    const text = `${camp.name || "HoloTable"} — chat log, ${camp.chat.length} messages, downloaded ${t(Date.now() / 1000)} UTC\n\n` + camp.chat.map(line).join("\n") + "\n";
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="holotable-chat-${new Date().toISOString().slice(0, 10)}.txt"`);
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(200).send(text);
+  }
+
   if (op === "export") {
     if (!gm) return fail(res, 403, "GM only");
-    let camp = await loadGame();
+    let camp = await loadGame(GAME);
     if (q.backup !== undefined) {
       const raw = await r.lindex(S.K.bk(GAME), Math.max(0, +q.backup | 0));
       if (!raw) return fail(res, 404, "no such backup");
@@ -473,6 +519,8 @@ async function handleGet(req, res, q, ses) {
 async function handlePost(req, res, q, b, ses) {
   const op = q.op;
   const r = S.getClient();
+  const GAME = await liveCode();
+  if (op === "campaign") return campaignOp(res, b || {}, ses, GAME);
   const gm = ses.role === "gm";
   if (!gm && (op === "restore" || op === "backups" || op === "filemove" || String(op).startsWith("pack") || String(op).startsWith("audio"))) return fail(res, 403, "GM only");
 
@@ -483,9 +531,9 @@ async function handlePost(req, res, q, b, ses) {
       const ss = await speciesSenses(r, b.payload.char.species);
       if (ss) b.payload = Object.assign({}, b.payload, { [G.SPECIES_SENSES]: ss });
     }
-    await warmSpeciesFill(r);   // before the lock: SW5e's species list, for the one-time fill below
+    await warmSpeciesFill(r, GAME);   // before the lock: SW5e's species list, for the one-time fill below
     const err = await S.withLock(GAME, async () => {
-      const camp = await loadGame();
+      const camp = await loadGame(GAME);
       fillSpeciesSenses(camp);   // once: species' senses for sheets made before #129, from the list already read
       const pl = camp.players[ses.pid] || (camp.players[ses.pid] = { name: ses.name });
       pl.role = ses.role;
@@ -520,7 +568,7 @@ async function handlePost(req, res, q, b, ses) {
       const kind = b.kind === "token" ? "tokenImage" : "image";
       let url, old;
       const err = await S.withLock(GAME, async () => {
-        const camp = await loadGame();
+        const camp = await loadGame(GAME);
         const ch = G.charById(camp, b.charId);   // own characters only: never an inherited name like "__proto__" (#111)
         if (!ch) return [404, "No such character."];
         if (!(gm || ch.owner === ses.pid)) return [403, "You can only change photos for your own characters."];
@@ -539,7 +587,7 @@ async function handlePost(req, res, q, b, ses) {
   }
 
   if (op === "backups") {
-    const camp = await loadGame();
+    const camp = await loadGame(GAME);
     const list = await r.lrange(S.K.bk(GAME), 0, S.BACKUP_KEEP - 1);
     return res.status(200).json({ backups: list.map((raw, i) => { try { return { i, at: JSON.parse(raw).updated }; } catch { return { i, at: null }; } }), updated: camp.updated });
   }
@@ -561,11 +609,14 @@ async function handlePost(req, res, q, b, ses) {
     await S.withLock(GAME, async () => {
       const cur = await S.getCampaign(GAME);
       if (cur) { await r.lpush(S.K.bk(GAME), JSON.stringify(cur)); await r.ltrim(S.K.bk(GAME), 0, S.BACKUP_KEEP - 1); }
-      const g = G.blankCampaign(file.name);
+      const g = Object.assign(G.blankCampaign(file.name), { code: GAME });   // a restore stays in the campaign it's made in (12.9)
       // every part of the game a backup holds (cleanGame checks each one below). sceneFx is left out on purpose:
       // a restored table shouldn't replay the last scene change's wipe and movements.
       for (const k of ["name", "players", "chat", "initiative", "map", "notes", "handouts", "levelUps", "created",
-        "scenes", "activeScene", "ships", "variants", "hpMax", "fight", "sensesFilled"]) if (file[k] !== undefined) g[k] = file[k];
+        "scenes", "activeScene", "ships", "variants", "hpMax", "fight", "sensesFilled",
+        // and what came since (each cleaned by cleanGame like the rest): the space map, the stash, the clock, the GM's
+        // switches and NPCs, the level undo, factions and rivals
+        "space", "stash", "clock", "sheetLock", "statBlocksHidden", "npcs", "levelUndo", "factions", "rivals", "sheetLog"]) if (file[k] !== undefined) g[k] = file[k];
       if (g.sensesFilled !== undefined) g.sensesFilled = g.sensesFilled === true;   // the one-time senses fill (#132): done or not, nothing else
       // everything coming back in goes through the same checks as a live edit
       g.characters = {};
@@ -981,6 +1032,57 @@ async function readAsset(id, n) {
 }
 
 // ---------------------------------------------------------------- entry point
+// ---------------------------------------------------------------- more than one campaign (audit 12.9)
+// The same two passwords; the GM keeps up to five campaigns and puts the table on one of them. Players only ever get
+// the live one (every read goes through liveCode()); the others are read by nobody until the GM switches to them.
+const MAX_CAMPAIGNS = 5;
+async function campaignOp(res, b, ses, GAME) {
+  if (ses.role !== "gm") return fail(res, 403, "GM only");
+  const r = S.getClient(), what = String(b.do || ""), code = String(b.code || "");
+  const extra = (await r.hgetall(S.K.camps())) || {};
+  const exists = (c) => c === "main" || (CAMP_CODE.test(c) && Object.prototype.hasOwnProperty.call(extra, c));
+  const name = String(b.name || "").trim().slice(0, 80);
+  if (what === "create") {
+    if (1 + Object.keys(extra).length >= MAX_CAMPAIGNS) return fail(res, 400, `A table keeps ${MAX_CAMPAIGNS} campaigns at most. Delete one first.`);
+    const c = crypto.randomBytes(5).toString("hex");
+    await r.hset(S.K.camps(), c, JSON.stringify({ name: name || "New campaign", created: nowS() }));
+    await S.withLock(c, async () => { await S.saveCampaign(Object.assign(G.blankCampaign(name || "New campaign"), { code: c })); });
+    return res.status(200).json({ code: c });
+  }
+  if (!exists(code)) return fail(res, 400, "No such campaign.");
+  if (what === "switch") {
+    if (code === GAME) return res.status(200).json({ live: code });
+    const to = await S.getCampaign(code);
+    if (code === "main") await r.del(S.K.live()); else await r.set(S.K.live(), code);
+    for (const c of [GAME, code]) {   // a line in both, then everyone's next update moves to the new one
+      await S.withLock(c, async () => {
+        const camp = await S.getCampaign(c);
+        if (!camp) return;
+        G.addChat(camp, { system: true, text: `📚 The GM put the table on "${(to && to.name) || "a campaign"}".` });
+        await S.saveCampaign(camp);
+      }).catch(() => {});
+    }
+    return res.status(200).json({ live: code });
+  }
+  if (what === "rename") {
+    if (!name) return fail(res, 400, "A campaign needs a name.");
+    await S.withLock(code, async () => { const camp = await S.getCampaign(code); if (camp) { camp.name = name; await S.saveCampaign(camp); } });
+    if (code !== "main") await r.hset(S.K.camps(), code, JSON.stringify(Object.assign(JSON.parse(extra[code] || "{}"), { name })));
+    return res.status(200).json({ ok: true });
+  }
+  if (what === "delete") {
+    if (code === GAME) return fail(res, 400, "That's the campaign the table is on. Switch to another first.");
+    if (code === "main") return fail(res, 400, "The first campaign stays (it's the table's own). Rename it instead.");
+    const texts = [await r.get(S.K.camp(code)), ...(await r.lrange(S.K.bk(code), 0, S.BACKUP_KEEP - 1))].filter(Boolean);
+    const urls = [...new Set(texts.join(" ").match(/\/api\/holotable\?img=[a-f0-9]{16,40}/g) || [])];
+    await r.del(S.K.camp(code), S.K.ver(code), S.K.bk(code), S.K.on(code), S.K.refs(code));
+    await r.hdel(S.K.camps(), code);
+    if (urls.length) await S.dropUnusedImages(urls, "", code);   // only what no other campaign (or its backups) uses
+    return res.status(200).json({ ok: true });
+  }
+  return fail(res, 400, "Unknown campaign request.");
+}
+
 async function login(req, res, b) {
   const ip = ipOf(req);
   // slow guessing down: 10 wrong passwords per address per 15 minutes
@@ -999,9 +1101,10 @@ async function login(req, res, b) {
   const prev = verify(cookieToken(req), true);
   const pid = prev ? prev.pid : crypto.randomBytes(12).toString("hex");
   setCookie(res, sign({ pid, role, name, exp: Math.floor(nowS() + SESSION_S) }), COOKIE_S);
+  const GAME = await liveCode();
   try {
     await S.withLock(GAME, async () => {
-      const camp = await loadGame();
+      const camp = await loadGame(GAME);
       camp.players[pid] = { name, role };
       await S.saveCampaign(camp);
     });
