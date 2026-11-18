@@ -1220,7 +1220,7 @@ function applyAction(camp, cid, gm, type, p) {
       if (old) need(gm || !old.hidden, "That ship is the GM's.");
       else if (camp.ships.length >= MAX_SHIPS) throw new Invalid(`A table can have up to ${MAX_SHIPS} ships.`);
       const sh = cleanShip(Object.assign({}, p.ship, { id: old ? old.id : rid(), owner: old ? old.owner : cid }), chars);
-      Ships.keepStatus(sh, old);   // the fight state (conditions, destruction saves) is the server's; points stay inside the maximums
+      Ships.keepStatus(sh, old, gm);   // the fight state (conditions, destruction saves) is the server's; points stay inside the maximums
       if (!gm) sh.hidden = old ? old.hidden : false;
       if (old) camp.ships[i] = sh; else camp.ships.push(sh);
       return { id: sh.id };

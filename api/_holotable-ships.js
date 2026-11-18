@@ -55,8 +55,16 @@ const handles = (type) => TYPES.has(type);
 // On a sheet save: the fight state and the current hull and shield points stay as stored (they change only through
 // the actions below, so a stale copy of the sheet in someone's browser can't undo a hit), and points stay inside the
 // (possibly halved) maximums. A new ship takes the points it is made with.
-function keepStatus(clean, old) {
+function keepStatus(clean, old, gm) {
   clean.status = SR.cleanStatus(old ? old.status : null);
+  // a player was sent "???" for a crew member whose token's name the GM hides (viewFor): their save keeps the stored name
+  if (old && !gm && Array.isArray(clean.crew) && Array.isArray(old.crew)) {
+    for (const c of clean.crew) {
+      if (c.name !== "???" || !c.charId) continue;
+      const was = old.crew.find((o) => o && o.charId === c.charId);
+      if (was) c.name = was.name;
+    }
+  }
   if (old) {
     clean.hull.current = Math.max(0, int((old.hull || {}).current));
     clean.shield.current = Math.max(0, int((old.shield || {}).current));

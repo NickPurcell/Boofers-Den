@@ -1091,6 +1091,12 @@ test("a crew member whose token's name the GM hides is '???' in ship lines: tech
     assert.ok(!JSON.stringify(await who.state()).includes("Grand Inquisitor"), "no player's state holds the hidden name: chat, ship crew rows, anything");
   }
   assert.equal(shipIn(await gm.state(), party).crew[0].name, "Grand Inquisitor", "the GM's copy keeps it");
+  // a player's ordinary save sends the masked row back: the stored name stays
+  const seen = shipIn(await p1.state(), party);
+  assert.equal(seen.crew[0].name, "???");
+  assert.equal((await p1.act("ship.save", { ship: Object.assign({}, seen, { notes: "fuel low" }) })).code, 200);
+  const back = shipIn(await gm.state(), party);
+  assert.deepEqual([back.notes, back.crew[0].name], ["fuel low", "Grand Inquisitor"], "the save took the notes, not the ???");
   const lines = (await p1.state()).chat.map((m) => m.text || "");
   assert.ok(lines.some((t) => /^\?\?\? \(Gunner\) uses Steady Aim: a central power die/.test(t)), "the technique line says ???");
   assert.ok(lines.some((t) => /initiative \(the lowest of its crew: \?\?\? -?\d+\)/.test(t)), "so does the initiative line");
