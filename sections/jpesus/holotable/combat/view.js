@@ -69,7 +69,10 @@
       const w = world(), me = w && w.units[u.id];
       const offs = me ? weapons.map((a) => ({ a, o: E.offhandOf(w, me, a) })).filter((x) => x.o.spec)
         .map(({ a, o }) => Object.assign({}, o.spec, { key: 'off:' + a.key, base: a.key, offhand: o.kind })) : [];
-      return weapons.concat(offs, powers, MANEUVERS);
+      // a monk's Martial Arts bonus strike, then Flurry of Blows (#67)
+      const mas = me ? weapons.filter((a) => a.unarmed).map((a) => ({ a, o: E.martialOf(w, me, a) })).filter((x) => x.o.spec)
+        .map(({ a, o }) => Object.assign({}, o.spec, { key: 'ma:' + a.key, base: a.key, martialBonus: true, flurry: !!o.flurry })) : [];
+      return weapons.concat(offs, mas, powers, MANEUVERS);
     }
     if (!gm()) return [];
     const known = UI.npc[u.id];
@@ -228,7 +231,7 @@
       return;
     }
     const r = spec.power ? await send('fight.use', Object.assign({ ability: spec.key, upcast: UI.upcast || 0, adv: UI.adv, dis: UI.dis }, spec.power.area ? { point: UI.aim } : { target: targetId }))
-      : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.base || spec.key : specOut(spec), offhand: !!spec.offhand, no: UI.noRiders || [], add: UI.addRiders || {}, twoHands: !!UI.twoHands,
+      : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.base || spec.key : specOut(spec), offhand: !!spec.offhand, martial: !!spec.martialBonus, no: UI.noRiders || [], add: UI.addRiders || {}, twoHands: !!UI.twoHands,
         multi: u.charId ? undefined : (UI.npc[u.id] || {}).multi || 1 });
     if (r) { UI.armed = null; UI.target = null; UI.aim = null; UI.adv = UI.dis = false; UI.upcast = 0; UI.noRiders = []; UI.addRiders = {}; render(); }
   }
@@ -390,9 +393,9 @@
       html += '<div class="ct-row ct-actions" role="group" aria-label="Attacks">';
       for (const a of atks) {
         const n = targets(a).length;
-        const slot = a.power ? a.power.use : a.offhand ? 'bonus' : 'action';
+        const slot = a.power ? a.power.use : a.offhand || a.martialBonus ? 'bonus' : 'action';
         const lim = !u.charId && a.res && ((f.npcRes || {})[u.id] || []).find((r) => r.key === a.res);
-        const slotSpent = (bud && slot !== 'free' && !bud[slot] && !a.offhand && !(slot === 'action' && !a.power && a.maneuver !== 'help' && bud.attacks)) || (lim && lim.used >= lim.max);   // a weapon attack: also the rest of an Attack action (#139)
+        const slotSpent = (bud && slot !== 'free' && !bud[slot] && !a.offhand && !a.martialBonus && !(slot === 'action' && !a.power && a.maneuver !== 'help' && bud.attacks)) || (lim && lim.used >= lim.max);   // a weapon attack: also the rest of an Attack action (#139)
         const pool = a.power && Object.entries(a.power.cost || {})[0];
         const poorly = pool && (!u.pools[pool[0]] || E.poolLeft(u.pools[pool[0]]) < pool[1]);   // temporary points count (#190)
         // a Reload weapon's shots (6.6, #179): a volley needs its burst or rapid number of them
@@ -416,6 +419,8 @@
       for (const c of E.COMMON) {
         const used = bud && !bud[c.use];
         html += `<button class="btn small ghost ct-common" data-ct="common" data-key="${esc(c.key)}" ${used ? 'disabled' : ''} title="${esc(used ? `Your ${c.use === 'bonus' ? 'bonus action' : c.use} is used this turn` : c.hint)}">${esc(c.name)}</button>`;
+        // a monk's Dash or Disengage as a bonus action (Martial Arts, #67)
+        if (u.monk && (c.key === 'dash' || c.key === 'disengage')) html += `<button class="btn small ghost ct-common" data-ct="common" data-key="${esc(c.key)}" data-bonus="1" ${bud && !bud.bonus ? 'disabled' : ''} title="Martial Arts: as a bonus action">${esc(c.name)} (bonus)</button>`;
       }
       const surge = (u.pools || {})['action-surge'];   // a Fighter's Action Surge (#67): free, once a turn, one more action
       if (surge) {
@@ -502,7 +507,7 @@
       if (!have && gm() && !anyway) return;
       return send('fight.common', Object.assign({ key: 'reload', weapon: el.dataset.key }, el.dataset.bonus ? { asBonus: true } : {}, anyway ? { anyway: true } : {}));
     }
-    if (k === 'common') return send('fight.common', { key: el.dataset.key });
+    if (k === 'common') return send('fight.common', Object.assign({ key: el.dataset.key }, el.dataset.bonus ? { asBonus: true } : {}));
     if (k === 'deathsave') return send('fight.deathsave', {});
     if (k === 'legend') return send('fight.npcres', { id: el.dataset.unit, op: 'use', key: 'legendary', n: +el.dataset.n || 1 });
     if (k === 'npcres') {

@@ -358,16 +358,41 @@
     }
     return out;
   }
+  /* ---------------- the Monk's Martial Arts (#67, 3.7's combat half) ---------------- */
+  // SW5e's Monk, in our own words: unarmed strikes and monk weapons (vibroweapons without the dexterity, heavy, special
+  // or two-handed property) get finesse and may roll the Martial Arts die in place of their own damage; after the Attack
+  // action with one, an unarmed strike as a bonus action (Flurry of Blows: one more for a focus point); Dash and
+  // Disengage as a bonus action; Dex for the Athletics of a grapple or shove. Armor and shields aren't known to the
+  // sheet yet, so they aren't checked.
+  function martialDieOf(ch, rules) {
+    if (!rules || !rules.classTableAt) return null;
+    const row = rules.classTableAt(ch).find((x) => x.cls === 'Monk');
+    const v = row && (row.cols.find(([h]) => h === 'Martial Arts') || [])[1];
+    return /^d\d+$/.test(String(v || '')) ? String(v) : null;
+  }
+  const isUnarmed = (a) => /\bunarmed\b/i.test(String((a && a.name) || ''));
+  const monkWeapon = (a) => isUnarmed(a) || (!/\b(dexterity|heavy|special|two-handed|range|ammunition|power cell|reload)\b/i.test(String(a.props || '')));
+  // the Martial Arts die in place of a weapon's own dice, when it's better on average
+  function martialDamage(expr, die) {
+    const m = /^(\d*)d(\d+)/i.exec(String(expr || '')), s = +String(die).slice(1);
+    if (!m) return '1' + die + String(expr || '').replace(/^\d+/, '');
+    const n = +m[1] || 1, avg = n * (+m[2] + 1) / 2;
+    return (s + 1) / 2 > avg ? String(expr).replace(/^(\d*)d(\d+)/i, '1d' + s) : String(expr);
+  }
   // the attacks on a character sheet, with HoloTable's own arithmetic (rules.js)
   function attacksOf(ch, rules) {
-    const st = stylesOf(ch);
-    return (ch.attacks || []).map((a, i) => {
+    const st = stylesOf(ch), md = martialDieOf(ch, rules);
+    // a monk's unarmed strikes and monk weapons as Martial Arts makes them, and an unarmed strike if the sheet has none
+    const rows = (ch.attacks || []).map((a) => (md && monkWeapon(a) && !/\b(range|thrown)\b/i.test(String(a.props || '')) ? Object.assign({}, a, { ab: 'finesse', damage: martialDamage(a.damage || (isUnarmed(a) ? '1' : ''), md), martial: true }) : a));
+    const extra = md && !rows.some((a) => isUnarmed(a)) ? [{ name: 'Unarmed strike', ab: 'finesse', damage: '1' + md, type: 'kinetic', props: '', martial: true, key: 'ua' }] : [];
+    return rows.concat(extra).map((a, i) => {
       const damage = rules.damageExpr(ch, a);
       const ab = a.ab === 'finesse' ? (rules.abilityMod(ch, 'dex') > rules.abilityMod(ch, 'str') ? 'dex' : 'str') : ABILS.includes(a.ab) ? a.ab : 'str';
       const bonus = rules.attackBonus(ch, a), wp = weaponProps(ch, a, ab, rules);
-      return Object.assign({ key: String(i), name: a.name || 'Attack', bonus, abil: ab, damage, crit: rules.critExpr(damage), type: a.type || '', enhanced: +a.magic > 0,
+      return Object.assign({ key: a.key || String(i), name: a.name || 'Attack', bonus, abil: ab, damage, crit: rules.critExpr(damage), type: a.type || '', enhanced: +a.magic > 0,
         finesse: a.ab === 'finesse' || /\bfinesse\b/i.test(String(a.props || '')), weapon: true, proficient: a.proficient !== false,
-        ...(rules.reloadOf && rules.reloadOf(a) ? { reload: rules.reloadOf(a), ammo: rules.ammoOf(a) } : {}),   // shots and reload (6.6, #179); Brutal Critical below
+        ...(a.martial ? { martial: true, unarmed: isUnarmed(a) } : {}),
+        ...(rules.reloadOf && rules.reloadOf(a) ? { reload: rules.reloadOf(a), ammo: rules.ammoOf(a) } : {}),   // shots and reload (6.6, #179); Brutal Critical next
         ...(rules.brutalDice && rules.isMelee && rules.isMelee(a) && rules.brutalDice(ch) ? { brutal: rules.brutalDice(ch) } : {}) }, readRange(a.props), wp, offhandNumbers(ch, a, ab, bonus, wp, st, rules));
     }).filter((a) => a.melee || a.range);
   }
@@ -400,6 +425,16 @@
     const out = { offDamage: a.damageFull ? a.damageFull : (a.damage || '1') + plus((st.twfDamage || mod < 0 ? mod : 0) + magic) };
     if (wp.otherEnd) Object.assign(out, { endDamage: wp.otherEnd + plus(mod + magic), endBonus: bonus - (st.dwfAttack || mod < 0 ? 0 : mod) });
     return out;
+  }
+  // Can this be the Martial Arts bonus strike now? An unarmed strike after the Attack action with one or a monk weapon:
+  // the first takes the bonus action; Flurry of Blows makes a second for a focus point. { spec, flurry } or { why }
+  function martialOf(w, me, a) {
+    if (!me || !me.monk || !a || !a.unarmed) return { why: 'The Martial Arts bonus attack is a monk\'s unarmed strike.' };
+    const sp = spentOf(w, me.id), b = budget(w, me.id), focus = (me.pools || {}).focus;
+    if (!sp.ma) return { why: `${me.name} takes the Attack action first, with an unarmed strike or a monk weapon.` };
+    if (!sp.mab) return b.bonus ? { spec: Object.assign({}, a, { name: `${a.name} (bonus)` }) } : { why: `${me.name} has already used the bonus action this turn.` };
+    if (sp.mab === 1) return focus && focus.used < focus.max ? { spec: Object.assign({}, a, { name: `${a.name} (Flurry of Blows)` }), flurry: true } : { why: `${me.name} has no focus points left for Flurry of Blows.` };
+    return { why: `${me.name} has made both Martial Arts strikes this turn.` };
   }
   // Can this attack be a bonus action attack now, and as what? { spec } or { why }. After the Attack action: the other
   // end of the light and double weapon it attacked with, or a different light weapon from the light one it attacked
@@ -1017,7 +1052,7 @@
   /* ---------------- turns: the turn budget is resources too, refilled at the start of the unit's own turn ---------------- */
   const turnKey = (world) => `${world.round}:${world.turnId}`;
   const TURN = ['move', 'action', 'bonus', 'reaction'];
-  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0, surge: 0 });
+  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0, surge: 0, ma: 0, mab: 0 });
   function spentOf(world, id) {
     const s = (world.spent || {})[id];
     return s && (id !== world.turnId || s.key === turnKey(world)) ? Object.assign(blank(s.key), s) : blank(id === world.turnId ? turnKey(world) : '');
@@ -1138,6 +1173,15 @@
         return { ok: true, world: w, log: [{ text: `${me.name} moves ${cost} ft.` }], events: [{ kind: 'move', unit: me.id, feet: cost }], reactions };
       }
       case 'attack': {
+        if (act.martial) {   // Martial Arts' bonus-action unarmed strike, then Flurry of Blows' second for a focus point (#67)
+          const o = martialOf(w, me, act.attack);
+          if (!o.spec) return no(o.why);
+          const s = strike(w, me, act.target, o.spec, { adv: !!act.adv, dis: !!act.dis, no: act.no || [], add: act.add || {} }, roll, '');
+          if (!s.ok) return s;
+          const sp = w.spent[me.id];
+          if (o.flurry) { me.pools.focus.used += 1; sp.mab = 2; s.log[0].text += ' (Flurry of Blows, 1 focus point)'; } else Object.assign(sp, { bonus: sp.bonus + 1, mab: 1 });
+          return { ok: true, world: w, log: s.log, events: s.events, reactions: s.reactions || [] };
+        }
         if (act.offhand) {   // Two- or Double-Weapon Fighting (audit 5.8): a bonus action attack after the Attack action
           const o = offhandOf(w, me, act.attack);
           if (!o.spec) return no(o.why);
@@ -1160,6 +1204,7 @@
         if (!s.ok) return s;
         spendShots(me, act.attack);
         const sp = slot.take();
+        if (me.monk && act.attack.martial) sp.ma = 1;   // Martial Arts: a bonus-action unarmed strike after this (#67)
         // the light (or light and double) weapon it attacked with, for a bonus attack after (audit 5.8)
         if (me.side === 'pc' && act.attack.light && /^\d{1,2}$/.test(String(act.attack.key))) {
           if (!sp.lt) sp.lt = 1 + +act.attack.key;
@@ -1257,10 +1302,13 @@
         }
         const c = COMMON.find((x) => x.key === act.key);
         if (!c) return no('Unknown action.');
-        if (!b[c.use]) return no(`${me.name} has already used the ${c.use === 'bonus' ? 'bonus action' : c.use} this turn.`);
-        w.spent[me.id][c.use] += 1;
+        // a monk can Dash or Disengage as a bonus action (Martial Arts, #67)
+        const use = act.asBonus && me.monk && (c.key === 'dash' || c.key === 'disengage') ? 'bonus' : c.use;
+        if (act.asBonus && use !== 'bonus') return no(`${me.name} can't take ${c.name} as a bonus action.`);
+        if (!b[use]) return no(`${me.name} has already used the ${use === 'bonus' ? 'bonus action' : use} this turn.`);
+        w.spent[me.id][use] += 1;
         for (const [k, v] of Object.entries(c.gives)) w.spent[me.id][k] = (+w.spent[me.id][k] || 0) + v;
-        return { ok: true, world: w, log: [{ text: `${me.name} takes the ${c.name} action.` }], events: [] };
+        return { ok: true, world: w, log: [{ text: `${me.name} takes the ${c.name} action${use !== c.use ? ' as a bonus action' : ''}.` }], events: [] };
       }
       case 'use': {
         // an ability from the table's data: its turn cost, its point cost, then an attack roll or a save for each target
@@ -1877,7 +1925,9 @@
         saves: ch && rules ? Object.fromEntries(ABILS.map((ab) => [ab, rules.saveBonus(ch, ab)])) : Object.assign({}, ((table.npcStats || {})[e.id] || {}).saves),
         mods: ch && rules ? Object.fromEntries(ABILS.map((ab) => [ab, rules.abilityMod(ch, ab)])) : Object.assign({}, ((table.npcStats || {})[e.id] || {}).mods),
         // for Grapple and Shove (#144): a character's from its sheet, a creature's from its stat block
-        skills: ch && rules ? { athletics: rules.skillBonus(ch, 'athletics'), acrobatics: rules.skillBonus(ch, 'acrobatics') } : Object.assign({}, ((table.npcStats || {})[e.id] || {}).skills),
+        // ...a monk's Athletics may use Dex in place of Str (Martial Arts)
+        skills: ch && rules ? { athletics: rules.skillBonus(ch, 'athletics') + (martialDieOf(ch, rules) ? Math.max(0, rules.abilityMod(ch, 'dex') - rules.abilityMod(ch, 'str')) : 0), acrobatics: rules.skillBonus(ch, 'acrobatics') } : Object.assign({}, ((table.npcStats || {})[e.id] || {}).skills),
+        monk: ch ? martialDieOf(ch, rules) : null,   // the Martial Arts die (#67)
       };
       if (units[e.id].hp != null && units[e.id].hp <= 0) units[e.id].down = true;
     }
@@ -1893,5 +1943,5 @@
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
     SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf, d20, flankOf, fixedTotal, cruel, modeName,
-    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, poolLeft, payPool, ridersOf, ridersFor, attacksPerAction, multiattackOf, offhandOf, stylesOf, withThreshold, thresholdFor, MIN_THRESHOLD, contestBonus, helpOn, maneuverCheck, unitAt, weaponProps, volleysOf, MANEUVERS, maneuversOf, superiorityOf, saveVs, pushAway, landHit, noShots };
+    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, poolLeft, payPool, ridersOf, ridersFor, attacksPerAction, multiattackOf, offhandOf, stylesOf, withThreshold, thresholdFor, MIN_THRESHOLD, contestBonus, helpOn, maneuverCheck, unitAt, weaponProps, volleysOf, MANEUVERS, maneuversOf, superiorityOf, saveVs, pushAway, landHit, martialOf, martialDieOf, noShots };
 });

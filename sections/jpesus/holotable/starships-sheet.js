@@ -40,6 +40,14 @@
     </div>`;
   }
 
+  // between fights: an hour's recharge (then hull dice), or a refit at a spaceport, with its time and cost
+  function betweenBlock(s, st) {
+    const size = SR.SIZE_DATA[s.size] ? s.size : 'Small', hdLeft = SR.diceLeft(s, 'hull'), whole = (+(s.hull || {}).current || 0) >= SR.hullMax(s);
+    return `<div class="row wrap" style="gap:6px;margin-top:8px;font-size:12px"><span class="muted">Between fights</span>
+      <button class="btn tiny" data-sx="recharge" title="An hour, with the crew for its size: shields full and half its shield dice back; then its crew can spend hull dice">Recharge (1 hour)</button>
+      ${st.recharged ? `<button class="btn tiny" data-sx="hulldie" ${hdLeft && !whole ? '' : 'disabled'} title="An Intelligence (mechanic's kit) check: 10 or less, the die twice and the lower; 21 or more, twice and the higher; plus Constitution">Spend a hull die (${hdLeft} left)</button>` : ''}
+      <button class="btn tiny ghost" data-sx="refit" title="Docked at a spaceport or shipyard: hull and shields full, all dice back, system damage one level lower">Refit (${SR.REFIT_TIME[size]}, ${SR.refitCost(s).toLocaleString('en-US')} cr)</button></div>`;
+  }
   const buildOpen = {};   // per ship, whether the panel below is open (the sheet is redrawn on every change)
   document.addEventListener('toggle', (e) => { const d = e.target; if (d && d.classList && d.classList.contains('ship-build')) buildOpen[d.dataset.sid] = d.open; }, true);
   // what the ship's size, tier and role give it (SotG chapters 1, 3 and 5), next to what the sheet says, with Apply
@@ -94,6 +102,7 @@
         <span class="spacer"></span><label class="ship-lv" title="${esc('Speed -150 / -250 / -300 ft; at 4, speed 0')}">Slowed ${lvSel('slowed', 4, i => (i ? (i >= 4 ? 'Speed 0' : `Speed -${SR.SLOWED_FEET[i]} ft`) : 'None'))}</label>
         <label class="ship-lv" title="${esc(SR.SYSTEM_NOTES.slice(1).map((t, i) => `${i + 1}: ${t}`).join('\n'))}">System damage ${lvSel('system', 6, sysTitle)}</label></div>
       ${powerBlock(s, ro, ctx)}
+      ${ro || SR.isLost(st) && st.zero.destroyed ? '' : betweenBlock(s, st)}
       ${buildBlock(s, ro)}
     </div>`;
   }
@@ -162,6 +171,9 @@
       H.toast('Applied from size, tier and role');
       return true;
     }
+    if (a === 'recharge') { await H.act('ship.recharge', { id }); return true; }
+    if (a === 'hulldie') { await H.act('ship.hulldie', { id, crew: (ctxOf[id] || {}).as || 0 }); return true; }
+    if (a === 'refit') { if (confirm(`Refit ${s.name} at a spaceport? ${SR.REFIT_TIME[SR.SIZE_DATA[s.size] ? s.size : 'Small']}, ${SR.refitCost(s).toLocaleString('en-US')} credits.`)) await H.act('ship.refit', { id }); return true; }
     if (a === 'hdset') { await H.act('ship.dice', { id, kind: 'hull', used: +b.dataset.n }); return true; }
     if (a === 'patch') { await H.act('ship.patch', { id, crew: (ctxOf[id] || {}).as || 0, mode: H.rollModeFromEvent(e) }); return true; }
     if (a === 'boost' || a === 'regen') { await H.act(a === 'boost' ? 'ship.boost' : 'ship.regen', { id, what: b.dataset.what, crew: (ctxOf[id] || {}).as || 0, mode: H.rollModeFromEvent(e) }); return true; }

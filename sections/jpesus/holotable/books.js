@@ -331,6 +331,7 @@
       for (const t of x.traits) if (!SKIP_TRAITS.has(lc(t.n))) c.features.push({ name: t.n.slice(0, 80), text: `Species trait (${x.n})\n${t.d}`.slice(0, 4000) });
       const speed = x.traits.find(t => lc(t.n) === 'speed'); const sp = speed && /(\d+)\s*feet/.exec(speed.d); if (sp) c.speed = +sp[1];
       c.senses = R.sensesFromTraits(x.traits);
+      if (R.SIZES.includes(x.size)) c.size = x.size;   // and its size (#185), as the species picker sets it
       const lang = x.traits.find(t => lc(t.n) === 'languages'); if (lang) c.languages = lang.d.slice(0, 300);
       if (D.asi && x.asi) for (const [k, v] of Object.entries(x.asi)) c.abilities[k] = Math.min(30, n0(c.abilities[k]) + v);
     }
@@ -528,6 +529,38 @@
     return all.filter(f => f.lvl === level && lc(f.n) !== 'ability score improvement'
       && ((f.k === 'class' && lc(f.of) === lc(cls)) || (archetype && f.k === 'archetype' && lc(f.of) === lc(archetype))))
       .map(f => ({ name: f.n, text: `${f.k === 'archetype' ? 'Archetype' : 'Class'} feature (${f.of}, level ${f.lvl})\n${f.text}`.slice(0, 4000) }));
+  }
+  // The choices a class makes at its new level, counted against what its table allows (audit 2.9): its own options
+  // (Berserker Instincts, Operative Exploits, Fighter Strategies...), maneuvers, a fighting style, Expertise.
+  // lists = { classes, maneuvers, styles } as SW5e's lists serve them. Each group says how many to pick (min..max: the
+  // new ones this level, and up to the class's total if the sheet is behind) and what can be picked: what the sheet
+  // doesn't have yet, past its prerequisite level. 'powers' rows are the power counts, for the wizard to show.
+  function levelChoices(ch, cls, L, lists) {
+    const cl = (lists.classes || []).find(c => lc(c.n) === lc(cls));
+    const known = new Set((ch.features || []).map(f => lc(f.name)));
+    const fresh = all => all.filter(x => !known.has(lc(x.n)) && !(typeof x.pre === 'number' && x.pre > L));
+    const groups = [];
+    const counted = (key, title, row, all, text) => {
+      const have = all.filter(x => known.has(lc(x.n))).length, items = fresh(all).map(x => ({ n: x.n, pre: typeof x.pre === 'string' ? x.pre : '', text: text(x) }));
+      const max = Math.min(items.length, Math.max(0, row.total - have)), min = Math.min(max, row.total - row.prev);
+      if (max > 0) groups.push({ key, title, kind: key, min, max, have, total: row.total, items });
+    };
+    for (const row of R.choiceCounts(cls, L)) {
+      if (row.kind === 'powers') { if (row.total > row.prev) groups.push({ key: row.col, title: row.col, kind: 'powers', min: 0, max: row.total - row.prev, total: row.total, prev: row.prev, items: [] }); }
+      else if (row.kind === 'maneuvers') counted('maneuvers', 'Maneuvers', row, lists.maneuvers || [], x => `Maneuver (${x.type})\n${x.text}`);
+      else if (cl && cl.opts) counted('opts', cl.opts.title, row, cl.opts.items, x => `${cl.opts.title} (${cl.n})\n${x.text}`);
+    }
+    // the Features column names what a level brings, Expertise at Operative 6 included (the feature list files it under 1st)
+    const feats = String((cl && cl.lv && cl.lv[L - 1]) || '').split(',').map(x => lc(x.trim()));
+    if (feats.includes('fighting style')) {
+      const items = fresh(lists.styles || []).map(x => ({ n: x.n, pre: '', text: `Fighting style\n${x.text}` }));
+      if (items.length) groups.push({ key: 'style', title: 'Fighting Style', kind: 'style', min: 1, max: 1, items });
+    }
+    if (feats.includes('expertise')) {
+      const items = R.SKILLS.filter(k => +(ch.skills || {})[k.key] === 1).map(k => ({ n: k.name, key: k.key, pre: '', text: '' }));
+      groups.push({ key: 'expertise', title: 'Expertise', kind: 'expertise', min: 2, max: 2, items });
+    }
+    return groups;
   }
   const archetypesOf = async cls => (await list('archetypes')).filter(a => lc(a.cls) === lc(cls)).map(a => a.n);
   const featNamed = async name => (await list('feats')).find(f => lc(f.n) === lc(name)) || null;
@@ -942,7 +975,7 @@
   window.HTB = {
     list, mdBlock, libraryBar, openBook, openSpeciesPicker, openBackgroundPicker, openArchetypePicker, openFeaturePicker,
     guidedBuild, buildLevel1, skillChoice, applyBackground, backgroundSkillOptions, heldSkills,
-    levelFeatures, dropArchetypeFeatures, archetypesOf, featNamed, featNames, openMonsterPicker, openStatBlock, rollCreatureSave, bonuses, saveBonus, difficulty, xpMultiplier, renderEncounter, renderShips, renderShipsSafe,
+    levelFeatures, levelChoices, dropArchetypeFeatures, archetypesOf, featNamed, featNames, openMonsterPicker, openStatBlock, rollCreatureSave, bonuses, saveBonus, difficulty, xpMultiplier, renderEncounter, renderShips, renderShipsSafe,
   };
   // the rules tab and ships tab were drawn before this file loaded
   if (!LIB.book) H.renderRules();

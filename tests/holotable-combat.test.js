@@ -258,7 +258,9 @@ test("turn budget: each unit's own turn refills its movement, action, bonus acti
   const hers = Object.assign({}, w, { turnId: "ava", round: 2 });
   assert.deepEqual([E.budget(hers).reaction, E.budget(hers).moveLeft, E.budget(hers).action], [true, 30, true]);
   const r = E.apply(hers, { type: "move", unit: "ava", x: 2, y: 0 }, dice().roll);
-  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0, surge: 0 });
+  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0, surge: 0, ma: 0, mab: 0 });
+
+  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0, surge: 0, ma: 0, mab: 0 });
 });
 
 // a level-3 Consular with two powers; the table has data for one of them (numbers invented for the test)
@@ -3172,6 +3174,82 @@ test("Action Surge through the API: a Fighter 2's pool from the class table, one
   st = await gm.state();
   assert.equal((st.characters[avery].resources || []).find((r) => r.key === "action-surge").used, 1);
 });
+
+/* ---------------------------------------------------------------- the Monk's Martial Arts (#67, 3.7's combat half) */
+test("Martial Arts: unarmed strikes and monk weapons get finesse and the Martial Arts die; an unarmed strike if the sheet has none", () => {
+  const ch = { classes: [{ name: "Monk", level: 5 }], abilities: { str: 10, dex: 16, con: 12, int: 10, wis: 14, cha: 8 },
+    attacks: [{ name: "Vibrostaff", ab: "str", damage: "1d4", type: "kinetic", props: "Versatile (1d6)" },
+      { name: "Blaster pistol", ab: "dex", damage: "1d6", type: "energy", props: "Range (40/160)" },
+      { name: "Vibrohammer", ab: "str", damage: "2d6", type: "kinetic", props: "Heavy, two-handed" },
+      { name: "Vibroknuckler", ab: "str", damage: "1d8", type: "kinetic", props: "" }] };
+  const out = E.attacksOf(ch, R).map((a) => [a.key, a.name, a.bonus, a.damage, !!a.martial, !!a.unarmed]);
+  assert.deepEqual(out, [
+    ["0", "Vibrostaff", 6, "1d6+3", true, false],         // finesse (Dex), and the d6 beats its d4
+    ["1", "Blaster pistol", 6, "1d6+3", false, false],    // not a monk weapon
+    ["2", "Vibrohammer", 3, "2d6", false, false],         // heavy, two-handed
+    ["3", "Vibroknuckler", 6, "1d8+3", true, false],      // its own d8 is better than the d6
+    ["ua", "Unarmed strike", 6, "1d6+3", true, true]]);
+  assert.equal(E.martialDieOf(ch, R), "d6");
+  assert.equal(E.attacksOf({ classes: [{ name: "Fighter", level: 5 }], abilities: ch.abilities, attacks: [] }, R).length, 0, "no unarmed strike added for a non-monk");
+});
+
+test("Martial Arts in a turn: the bonus unarmed strike after the Attack action, Flurry of Blows for a focus point, bonus Dash, Dex for a grapple", () => {
+  const ch = { classes: [{ name: "Monk", level: 5 }], abilities: { str: 10, dex: 16, con: 12, int: 10, wis: 14, cha: 8 }, attacks: [{ name: "Blaster pistol", ab: "dex", damage: "1d6", type: "energy", props: "Range (40/160)" }] };
+  const [gun, ua] = E.attacksOf(ch, R);
+  const focus = (used) => ({ focus: { key: "focus", name: "Focus points", max: 5, used, refill: "short" } });
+  const mk = (o) => unit(Object.assign({ id: "mk", name: "Mira", side: "pc", x: 0, y: 0, attacks: 2, monk: "d6", pools: focus(0) }, o));
+  const r1 = () => unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 200, maxHp: 200 });
+  const hit = () => dice({ total: 15, nat: 12 }, { total: 4 }).roll;
+  const atk = (w, a, extra = {}) => E.apply(w, Object.assign({ type: "attack", unit: "mk", target: "r1", attack: a }, extra), hit());
+  assert.equal(E.martialOf(world([mk(), r1()], "mk"), mk(), ua).why, "Mira takes the Attack action first, with an unarmed strike or a monk weapon.");
+  // the Attack action with the blaster: no bonus strike
+  let r = atk(world([mk(), r1()], "mk"), Object.assign({}, gun, { melee: 0 }));
+  assert.equal(E.martialOf(r.world, r.world.units.mk, ua).why, "Mira takes the Attack action first, with an unarmed strike or a monk weapon.");
+  // with an unarmed strike: the bonus strike, then Flurry of Blows' second for a focus point
+  r = atk(world([mk(), r1()], "mk"), ua);
+  r = atk(r.world, ua, { martial: true });
+  assert.equal(r.ok, true, r.why);
+  assert.deepEqual([E.budget(r.world).bonus, r.world.spent.mk.mab], [false, 1]);
+  r = atk(r.world, ua, { martial: true });
+  assert.equal(r.ok, true, r.why);
+  assert.match(r.log[0].text, /Flurry of Blows, 1 focus point/);
+  assert.deepEqual([r.world.units.mk.pools.focus.used, r.world.spent.mk.mab], [1, 2]);
+  assert.equal(atk(r.world, ua, { martial: true }).why, "Mira has made both Martial Arts strikes this turn.");
+  assert.equal(E.budget(r.world).attacks, 1, "the Attack action's second attack is still there");
+  // no focus left: one bonus strike only
+  r = atk(world([mk({ pools: focus(5) }), r1()], "mk"), ua);
+  r = atk(r.world, ua, { martial: true });
+  assert.equal(atk(r.world, ua, { martial: true }).why, "Mira has no focus points left for Flurry of Blows.");
+  // only a monk, only an unarmed strike
+  assert.equal(atk(world([mk({ monk: null }), r1()], "mk"), ua, { martial: true }).ok, false);
+  r = atk(world([mk(), r1()], "mk"), ua);
+  assert.equal(atk(r.world, Object.assign({}, ua, { unarmed: false }), { martial: true }).why, "The Martial Arts bonus attack is a monk's unarmed strike.");
+  // Dash and Disengage as a bonus action
+  let c = E.apply(world([mk(), r1()], "mk"), { type: "common", unit: "mk", key: "dash", asBonus: true }, dice().roll);
+  assert.deepEqual([c.ok, E.budget(c.world).action, E.budget(c.world).bonus, E.budget(c.world).total], [true, true, false, 60]);
+  assert.match(c.log[0].text, /Dash action as a bonus action/);
+  assert.equal(E.apply(world([mk({ monk: null }), r1()], "mk"), { type: "common", unit: "mk", key: "dash", asBonus: true }, dice().roll).why, "Mira can't take Dash as a bonus action.");
+  assert.equal(E.apply(world([mk(), r1()], "mk"), { type: "common", unit: "mk", key: "dodge", asBonus: true }, dice().roll).ok, false, "not Dodge");
+});
+
+test("Martial Arts through the API: a Monk 5 attacks with its unarmed strike, then a bonus strike and Flurry from the sheet's focus", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { classes: [{ name: "Monk", level: 5 }], abilities: { str: 10, dex: 16, con: 12, int: 10, wis: 14, cha: 8 }, attacks: [] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "ua", martial: true })).code, 400, "not before the Attack action");
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "ua" })).code, 200);
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "ua", martial: true })).code, 200);
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "ua", martial: true })).code, 200, "Flurry of Blows");
+  st = await gm.state();
+  assert.equal((st.characters[avery].resources || []).find((r) => r.key === "focus").used, 1);
+  const dmg = st.chat.filter((m) => m.fight && m.roll && m.roll.kind === "damage").map((m) => m.roll.expr);
+  assert.ok(dmg.every((e) => /^[12]d6\+3$/.test(e)), dmg.join(" "));
+  assert.equal((await sam.act("fight.common", { key: "disengage", asBonus: true })).code, 400, "the bonus action is spent");
+});
+
+
 
 test("Riposte and Return Fire (#67): a miss against one who knows them gives a reaction prompt; taking it spends the die and adds it on a hit", () => {
   const sup = (used) => ({ superiority: { key: "superiority", name: "Superiority dice", max: 3, die: "d6", used, refill: "short" } });

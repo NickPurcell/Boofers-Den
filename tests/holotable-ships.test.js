@@ -106,7 +106,7 @@ test("ship conditions: slowed levels, system damage levels, and what they do to 
   assert.deepEqual(SR.cleanStatus({ cond: ["Hungry", "Ionized", "Ionized"], slowed: 9, system: -2, zero: "x" }),
     { cond: ["Ionized"], slowed: 4, system: 0, zero: { s: 0, f: 0, stable: false, destroyed: false }, power: { central: 0, engines: 0, shields: 0, weapons: 0, sensors: 0, comms: 0 },
       sdUsed: 0, hdUsed: 0, tempShield: 0, boost: { tries: 0, engines: 0, weapons: false, shields: false, regen: false },
-      fx: { evade: 0, fly: 0, hardTurn: false, helm: false, interfered: false, directed: false, interferedBy: "" } }, "anything else is cleaned away");
+      fx: { evade: 0, fly: 0, hardTurn: false, helm: false, interfered: false, directed: false, interferedBy: "" }, recharged: false }, "anything else is cleaned away");
   assert.deepEqual(SR.capPoints({ hull: { current: 30, max: 0 }, shield: { current: 5, max: 4 } }).hull.current, 30, "no maximum typed yet: current stays");
 });
 
@@ -804,4 +804,125 @@ test("a GM ship whose token is off the players' map: its Fire, Ram and Interfere
   await gm.act("space.token", { id: enemy, hidden: false });
   await gm.act("space.fire", { id: enemy, target: party, weapon: 0 });
   assert.ok((await p1.state()).chat.some((m) => /^\?\?\? (hits|misses) Dawn Skiff with Turbolaser/.test(m.text || "")));
+});
+
+// ---------------------------------------------------------------- weapon properties: rapid, burst, overheat, reload, saturate (10.15)
+test("weapon property rules: modes, shots, heat, reload, saturate, the burst cube", () => {
+  const quad = { props: "Power (range 800/3200), overheat 8, rapid 4" }, burstLaser = { props: "Power (range 200/800), auto, burst 1, overheat 2, saturate" };
+  assert.deepEqual([SR.weaponModes(quad), SR.weaponModes(burstLaser), SR.weaponModes({ props: "" })], [["single", "rapid"], ["burst"], ["single"]], "auto weapons fire only in burst or rapid");
+  assert.deepEqual([SR.shotCost(quad, "single"), SR.shotCost(quad, "rapid"), SR.shotCost(burstLaser, "burst")], [1, 4, 1]);
+  assert.deepEqual([SR.heatCap(quad), SR.heatCap({ props: "" }), SR.reloadOf({ props: "Ammunition, reload 8" }), SR.reloadOf(quad)], [8, null, 8, null]);
+  assert.equal(SR.attackBonusOf({ abilities: { str: 18, wis: 10 } }, burstLaser, 2), 6, "saturate: Strength +4 instead of Wisdom +0");
+  assert.equal(SR.attackBonusOf({ abilities: { str: 18, wis: 10 } }, quad, 2), 2);
+  const box = SR.burstBox({ x: 10, y: 10 }, 1);
+  assert.deepEqual([SR.inBox(box, { x: 11, y: 11 }, 1), SR.inBox(box, { x: 12, y: 10 }, 1), SR.inBox(box, { x: 8, y: 8 }, 2)], [true, false, true], "a 3 x 3 square cube on the target");
+});
+
+test("space.fire modes on the server: rapid, a burst over three ships, heat and Cool, ammunition and Reload", async () => {
+  const { gm, p1, party, enemy } = await table();
+  let sh = shipIn(await p1.state(), party);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { weapons: [
+    { name: "Quad laser", dmg: "1d4", type: "energy", range: "800/3200", props: "Power (range 800/3200), overheat 6, rapid 4", cat: "primary", atkMisc: 20 },
+    { name: "Burst laser", dmg: "1d4", type: "energy", range: "200/800", props: "auto, burst 1, overheat 2", cat: "primary", atkMisc: 20 },
+    { name: "Missiles", dmg: "1d4", type: "kinetic", range: "1000/4000", props: "Ammunition, reload 3, rapid 2", cat: "tertiary", atkMisc: 20, ammo: 3 },
+  ] }) });
+  const third = (await gm.act("ship.save", { ship: { name: "Grey Wake", hidden: true, hull: { current: 20, max: 20 } } })).data.id;
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 5, f: 2 });
+  await gm.act("space.place", { id: enemy, x: 8, y: 5, f: 6 });
+  await gm.act("space.place", { id: third, x: 9, y: 6, f: 6 });   // in the cube on the enemy
+  // rapid: one target, a save at DC 8 + 22 = 30, the damage dice twice; 4 shots of heat
+  let r = await p1.act("space.fire", { id: party, target: enemy, weapon: 0, fireMode: "rapid" });
+  assert.equal(r.code, 200); assert.equal(r.data.mode, "rapid"); assert.equal(r.data.ships.length, 1);
+  let st = await p1.state();
+  assert.ok(st.chat.some((m) => /Dawn Skiff fires Quad laser in rapid mode at \?\?\?: a Dexterity save, DC 30/.test(m.text || "")));
+  assert.ok(st.chat.some((m) => m.roll && m.roll.kind === "damage" && m.roll.expr === "2d4"), "the dice twice");
+  assert.equal(shipIn(st, party).weapons[0].heat, 4);
+  assert.equal((await p1.act("space.fire", { id: party, target: enemy, weapon: 0, fireMode: "rapid" })).code, 400, "4 + 4 is past overheat 6");
+  assert.equal((await p1.act("space.fire", { id: party, target: enemy, weapon: 0, fireMode: "single" })).code, 200, "a single shot still fits");
+  assert.equal(shipIn(await p1.state(), party).weapons[0].heat, 5);
+  assert.equal((await p1.act("ship.cool", { id: party, weapon: 0 })).code, 200);
+  assert.equal(shipIn(await p1.state(), party).weapons[0].heat, 0, "cooled");
+  assert.equal((await p1.act("ship.cool", { id: party, weapon: 0 })).code, 400, "nothing to cool");
+  // burst: auto, so burst whatever the request says; every ship in the cube saves
+  r = await p1.act("space.fire", { id: party, target: enemy, weapon: 1, fireMode: "single" });
+  assert.equal(r.code, 200); assert.equal(r.data.mode, "burst"); assert.equal(r.data.ships.length, 2, "the enemy and the ship beside it");
+  assert.ok(!JSON.stringify((await p1.state()).chat).match(/Black Lance|Grey Wake/), "neither enemy is named to the players");
+  // ammunition: rapid 2 takes two rounds; then one left is too few; Reload fills it to 3
+  r = await p1.act("space.fire", { id: party, target: enemy, weapon: 2, fireMode: "rapid" });
+  assert.equal(r.code, 200);
+  assert.equal(shipIn(await p1.state(), party).weapons[2].ammo, 1);
+  assert.equal((await p1.act("space.fire", { id: party, target: enemy, weapon: 2, fireMode: "rapid" })).code, 400, "1 round left, rapid takes 2");
+  assert.equal((await p1.act("ship.reload", { id: party, weapon: 2 })).code, 200);
+  assert.equal(shipIn(await p1.state(), party).weapons[2].ammo, 3);
+  assert.equal((await p1.act("ship.reload", { id: party, weapon: 0 })).code, 400, "a power weapon doesn't reload");
+  for (const w of ["__proto__", -1, 9]) assert.equal((await p1.act("ship.cool", { id: party, weapon: w })).code, 400);
+  assert.equal((await p1.act("ship.cool", { id: enemy, weapon: 0 })).code, 403);
+});
+
+test("burst over a hidden token, and Cool and Reload on the ship's own turn", async () => {
+  const { gm, p1, p2, party, enemy } = await table();
+  const ambush = (await gm.act("ship.save", { ship: { name: "Grey Wake", hidden: true, hull: { current: 20, max: 20 } } })).data.id;
+  const sh = shipIn(await p1.state(), party);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { weapons: [{ name: "Burst laser", dmg: "1d4", type: "energy", range: "200/800", props: "auto, burst 1, overheat 2", cat: "primary", atkMisc: 20 },
+    { name: "Missiles", dmg: "1d4", type: "kinetic", range: "1000/4000", props: "Ammunition, reload 3", cat: "tertiary", ammo: 0 }] }) });
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 5, f: 2 });
+  await gm.act("space.place", { id: enemy, x: 6, y: 5, f: 6 });
+  await gm.act("space.place", { id: ambush, x: 7, y: 6, f: 6, hidden: true });   // in the cube, off the players' map
+  const before = (await p2.state()).chat.length;
+  const r = await p1.act("space.fire", { id: party, target: enemy, weapon: 0 });
+  assert.equal(r.code, 200); assert.equal(r.data.ships.length, 1, "the response to the player lists only the ship they can see");
+  assert.ok(shipIn(await gm.state(), ambush).hull.current < 20 || (await gm.state()).chat.some((m) => /Grey Wake: Dexterity save/.test((m.roll || {}).label || "")), "but the burst caught the unseen ship too");
+  const seen = (await p2.state()).chat.slice(before);
+  assert.equal(seen.filter((m) => /saves|fails/.test(m.text || "")).length, 1, "players read one ship's result: the one they can see");
+  assert.ok(!JSON.stringify(seen).includes("Grey Wake"));
+  // Cool and Reload in ship combat: on the ship's own turn
+  await gm.act("space.init", {});
+  if ((await gm.state()).space.turnId === party) await gm.act("space.next", {});
+  assert.match((await p1.act("ship.cool", { id: party, weapon: 0 })).data.error || "", /Not Dawn Skiff's turn/);
+  assert.match((await p1.act("ship.reload", { id: party, weapon: 1 })).data.error || "", /Not Dawn Skiff's turn/);
+  while ((await gm.state()).space.turnId !== party) await gm.act("space.next", {});
+  assert.equal((await p1.act("ship.cool", { id: party, weapon: 0 })).code, 200);
+});
+
+// ---------------------------------------------------------------- recharging and refitting (10.8)
+test("recharging and refitting: shields and half the shield dice; hull dice by the mechanic's check; a refit's cost, time and system damage", async () => {
+  const s = ship({ size: "Medium", hull: { current: 10, max: 40 }, shield: { current: 0, max: 30 }, abilities: { con: 14 }, status: { sdUsed: 5, hdUsed: 2, system: 2 } });
+  let r = SR.recharge(s);
+  assert.deepEqual([r.ship.shield.current, SR.statusOf(r.ship).sdUsed, SR.statusOf(r.ship).recharged], [30, 3, true], "5 shield dice for a Medium ship: 2 back");
+  assert.equal(SR.rechargeHullDie(s, 15, () => ({ total: 5 })).done, false, "not before a recharge");
+  const seq = (...v) => () => ({ total: v.shift() });
+  assert.equal(SR.rechargeHullDie(r.ship, 8, seq(6, 2)).gain, 4, "10 or less: the lower of two, + Con 2");
+  assert.equal(SR.rechargeHullDie(r.ship, 15, seq(6, 2)).gain, 8, "11 to 20: one roll");
+  assert.equal(SR.rechargeHullDie(r.ship, 25, seq(3, 7)).gain, 9, "21 or more: the higher of two");
+  assert.equal(SR.statusOf(SR.takeDamage(r.ship, 1, "energy").ship).recharged, false, "a hit ends the quiet");
+  assert.equal(SR.refitCost(s), 400, "2 missing hull dice x 100 x Medium's 2");
+  const f = SR.refit(s);
+  assert.deepEqual([f.ship.hull.current, f.ship.shield.current, SR.statusOf(f.ship).system, SR.statusOf(f.ship).hdUsed, SR.statusOf(f.ship).sdUsed], [40, 30, 1, 0, 0]);
+  assert.match(f.log[0], /1 day, a crew of 5, 400 cr/);
+  assert.equal(SR.statusOf(SR.refit(SR.setCondition(s, "system", 6)).ship).system, 5, "a refit repairs failed primary systems");
+  // on the server: the check comes from the crew's sheet
+  const { gm, p1, party, enemy } = await table();
+  await p1.act("ship.damage", { id: party, amount: 20, type: "kinetic" });
+  assert.equal((await p1.act("ship.hulldie", { id: party })).code, 400, "recharge first");
+  assert.equal((await p1.act("ship.recharge", { id: party })).code, 200);
+  let st = await p1.state();
+  assert.equal(shipIn(st, party).shield.current, 20);
+  assert.equal((await p1.act("ship.hulldie", { id: party, bonus: 99 })).code, 200);
+  st = await p1.state();
+  assert.ok(st.chat.some((m) => m.roll && /mechanic's kit/.test(m.roll.label) && m.roll.expr === "1d20+2"), "no crew sheet: +2, not the request's");
+  const r2 = await p1.act("ship.refit", { id: party });
+  assert.equal(r2.code, 200); assert.equal(typeof r2.data.cost, "number");
+  assert.equal(shipIn(await p1.state(), party).hull.current, 40);
+  assert.equal((await p1.act("ship.refit", { id: enemy })).code, 403);
+  // not in the middle of a ship fight (the GM stays free)
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 2, f: 2 });
+  await gm.act("space.init", {});
+  for (const t of ["ship.recharge", "ship.refit", "ship.hulldie"]) assert.match((await p1.act(t, { id: party })).data.error || "", /Not during ship combat/, t);
+  await gm.act("space.end", {});
+  assert.equal((await p1.act("ship.recharge", { id: party })).code, 200, "once it's over");
+  await gm.act("ship.recharge", { id: enemy });
+  assert.ok(!JSON.stringify((await p1.state()).chat).includes("Black Lance"), "an enemy's recharge is the GM's");
 });

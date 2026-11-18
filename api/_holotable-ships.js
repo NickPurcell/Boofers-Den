@@ -37,7 +37,7 @@ function boostBonus(camp, ship, crewIndex) {
 // During ship combat on the space map, a player's ship takes its actions on its own turn (SotG ch. 9: one Helm action
 // a turn; Boost once a turn; Patch, Interfere and Direct on the ship's turn). The GM stays free, to run enemies and fix
 // things. Outside ship combat (the sheet between fights) nothing is turn-bound.
-const TURN_ACTIONS = new Set(["ship.helm", "ship.direct", "ship.patch", "ship.boost", "ship.regen"]);
+const TURN_ACTIONS = new Set(["ship.helm", "ship.direct", "ship.patch", "ship.boost", "ship.regen", "ship.cool", "ship.reload"]);   // Cool is an action too
 function onTurn(camp, gm, ship) {
   const sp = camp.space;
   if (gm || !sp || !sp.active || !Array.isArray(sp.order)) return true;
@@ -46,7 +46,8 @@ function onTurn(camp, gm, ship) {
 }
 
 const TYPES = new Set(["ship.damage", "ship.restore", "ship.points", "ship.dsave", "ship.stabilize", "ship.condition", "ship.reset",
-  "ship.turn", "ship.power", "ship.poweruse", "ship.dice", "ship.boost", "ship.regen", "ship.helm", "ship.patch", "ship.direct"]);
+  "ship.turn", "ship.power", "ship.poweruse", "ship.dice", "ship.boost", "ship.regen", "ship.helm", "ship.patch", "ship.direct", "ship.cool", "ship.reload",
+  "ship.recharge", "ship.hulldie", "ship.refit"]);
 const handles = (type) => TYPES.has(type);
 
 // On a sheet save: the fight state and the current hull and shield points stay as stored (they change only through
@@ -69,6 +70,8 @@ function apply(camp, cid, gm, type, p, h) {
   const ship = camp.ships[i];
   if (!(gm || !ship.hidden)) throw new Forbidden("That ship is the GM's.");
   if (TURN_ACTIONS.has(type) && !onTurn(camp, gm, ship)) throw new Invalid(`Not ${ship.name}'s turn.`);
+  // recharging (an hour) and refitting (docked) happen between fights: a player can't start them during ship combat
+  if (["ship.recharge", "ship.hulldie", "ship.refit"].includes(type) && !gm && camp.space && camp.space.active) throw new Invalid("Not during ship combat.");
   const say = (lines) => {
     for (const text of lines.filter(Boolean)) {
       const msg = { system: true, text: str(text, 400) };
@@ -204,6 +207,39 @@ function apply(camp, cid, gm, type, p, h) {
       put(s); say([`${playerName(camp, cid)} directs ${ship.name}'s gunners: its next attack has advantage.`]);
       return {};
     }
+    case "ship.cool": case "ship.reload": {   // cool an overheated weapon (an action), or reload one (a minute per round of ammunition)
+      const weapons = Array.isArray(ship.weapons) ? ship.weapons : [], wi = int(p.weapon, -1);
+      if (!(wi >= 0 && wi < weapons.length)) throw new Invalid("No such weapon.");
+      const s = JSON.parse(JSON.stringify(ship)), w = s.weapons[wi];
+      if (type === "ship.cool") {
+        if (SR.heatCap(w) === null || !int(w.heat)) throw new Invalid(`${w.name} doesn't need cooling.`);
+        w.heat = 0; put(s); say([`${ship.name} cools its ${w.name}.`]);
+      } else {
+        const n = SR.reloadOf(w);
+        if (n === null) throw new Invalid(`${w.name} doesn't reload.`);
+        w.ammo = n; put(s); say([`${ship.name} reloads its ${w.name}: ${n} rounds.`]);
+      }
+      return {};
+    }
+    case "ship.recharge": case "ship.refit": {   // between fights: an hour's recharge, or a refit at a spaceport
+      const r = type === "ship.recharge" ? SR.recharge(ship) : SR.refit(ship);
+      if (!r.done) throw new Invalid(r.log[0] || "Not now.");
+      put(r.ship); say(r.log);
+      return type === "ship.refit" ? { cost: r.cost } : {};
+    }
+    case "ship.hulldie": {  // after a recharge: a hull die, with an Intelligence (mechanic's kit) check rolled here
+      // the check: the crew member's Intelligence and proficiency bonus (their character's), from the stored sheets
+      const crew = Array.isArray(ship.crew) ? ship.crew : [], c = crew[clamp(int(p.crew), 0, Math.max(0, crew.length - 1))];
+      const chars = camp.characters || {}, ch = c && typeof c.charId === "string" && Object.prototype.hasOwnProperty.call(chars, c.charId) ? chars[c.charId] : null;
+      const bonus = (ch && R ? R.abilityMod(ch, "int") : 0) + crewPb(camp, ship, p.crew);
+      const expr = "1d20" + (bonus >= 0 ? "+" : "") + bonus, roll = rollDice(expr);
+      const r = SR.rechargeHullDie(ship, roll.total, (e) => rollDice(e));
+      if (!r.done) throw new Invalid(r.log[0] || "Not now.");
+      const msg = { from: ship.hidden ? "Ship combat (GM only)" : playerName(camp, cid), roll: Object.assign({}, roll, { expr, label: str(`${ship.name}: Intelligence (mechanic's kit), spending a hull die`, 120), kind: "check" }) };
+      Object.assign(msg, ship.hidden ? { to: ["@gm"], private: true } : { fromId: cid });
+      put(r.ship); addChat(camp, msg); say(r.log);
+      return { gain: r.gain };
+    }
     case "ship.reset": {    // the GM undoes a destruction (a mistake, or a story reason): saves cleared, not destroyed
       if (!gm) throw new Forbidden("GM only");
       const s = JSON.parse(JSON.stringify(ship));
@@ -225,6 +261,7 @@ const cleanFields = (sh) => ({ status: SR.cleanStatus(sh.status), reactor: pick(
 // a weapon row's fields this subsystem owns: its category (primary to quaternary), its mount (a fixed arc, or a turret;
 // "" means not set, and fires in any arc), and its ammunition ("" means not counted)
 const cleanWeapon = (w) => ({ cat: SR.WEAPON_CATS.includes(w.cat) ? w.cat : "", arc: SR.MOUNTS.includes(w.arc) ? w.arc : "",
-  ammo: w.ammo === "" || w.ammo === null || w.ammo === undefined || !Number.isFinite(parseInt(w.ammo, 10)) ? "" : clamp(int(w.ammo), 0, 999) });
+  ammo: w.ammo === "" || w.ammo === null || w.ammo === undefined || !Number.isFinite(parseInt(w.ammo, 10)) ? "" : clamp(int(w.ammo), 0, 999),
+  heat: clamp(int(w.heat), 0, 99) });   // shots since it was last cooled (overheat N)
 
 module.exports = { handles, apply, onTurn, keepStatus, cleanStatus: SR.cleanStatus, cleanFields, cleanWeapon, boostBonus, crewPb };

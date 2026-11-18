@@ -81,6 +81,7 @@
       fx: { evade: clamp(int(f.evade), 0, 2), fly: clamp(int(f.fly), 0, 2), hardTurn: f.hardTurn === true, helm: f.helm === true,
         interfered: f.interfered === true, directed: f.directed === true,
         interferedBy: typeof f.interferedBy === 'string' && /^[a-z0-9]{6,20}$/.test(f.interferedBy) ? f.interferedBy : '' },   // the ship whose next turn ends it
+      recharged: st.recharged === true,   // a recharge just finished: the crew may spend hull dice
     };
     if (out.system >= 5 && !out.cond.includes('Used')) out.cond.push('Used');   // system damage 5 makes it used for good
     return out;
@@ -172,6 +173,7 @@
     s.status = st;
     if (isLost(st)) return { ship: s, shieldLost, hullLost, outcome, log: [`${name} is already lost.`] };
     if (!raw) return { ship: s, shieldLost, hullLost, outcome, log };
+    st.recharged = false;
     const temp = int(st.tempShield);
     if (temp > 0 && mult.shield > 0) {   // temporary shield points (Boost Shields) go first
       const wouldTake = Math.floor(left * mult.shield);
@@ -378,6 +380,7 @@
     st.tempShield = 0; st.boost = { tries: 0, engines: Math.max(0, int(st.boost.engines) - 1), weapons: false, shields: false, regen: false };
     // Direct lasts until the start of the directing ship's next turn (Interfere ends at the interfering ship's: the space map)
     st.fx = Object.assign(st.fx, { evade: Math.max(0, st.fx.evade - 1), fly: Math.max(0, st.fx.fly - 1), hardTurn: false, helm: false, directed: false });
+    st.recharged = false;
     // power
     const rx = own(REACTORS, reactorOf(s));
     if (rx && !isDisabled(st)) {
@@ -516,8 +519,27 @@
   // proficiency, the weapon's own bonus
   const wisMod = (ship) => Math.floor((int((ship && ship.abilities || {}).wis, 10) - 10) / 2);
   const strMod = (ship) => Math.floor((int((ship && ship.abilities || {}).str, 10) - 10) / 2);
-  const attackBonusOf = (ship, w, pb) => wisMod(ship) + crewPbOf(pb) + int(w && w.atkMisc);
-  const saveDcOf = (ship, w, pb) => 8 + crewPbOf(pb) + wisMod(ship) + int(w && w.atkMisc);
+  // saturate: the better of Strength and Wisdom
+  const aimMod = (ship, w) => (weaponProp(w, 'saturate') ? Math.max(wisMod(ship), strMod(ship)) : wisMod(ship));
+  const attackBonusOf = (ship, w, pb) => aimMod(ship, w) + crewPbOf(pb) + int(w && w.atkMisc);
+  const saveDcOf = (ship, w, pb) => 8 + crewPbOf(pb) + aimMod(ship, w) + int(w && w.atkMisc);
+  // Firing modes: a single shot, and rapid or burst for weapons with those properties (auto weapons fire only in those).
+  // Rapid: one target saves (Dexterity, DC 8 + the attack bonus) or takes the damage plus its dice again; nothing on a
+  // success. Burst: every ship in a 150-ft cube on the target saves or takes the damage; nothing on a success. Each
+  // uses as many shots of heat or ammunition as its number.
+  function weaponModes(w) {
+    const out = weaponProp(w, 'auto') ? [] : ['single'];
+    if (weaponProp(w, 'rapid')) out.push('rapid');
+    if (weaponProp(w, 'burst')) out.push('burst');
+    return out.length ? out : ['single'];
+  }
+  const shotCost = (w, mode) => (mode === 'rapid' || mode === 'burst' ? Math.max(1, typeof weaponProp(w, mode) === 'number' ? weaponProp(w, mode) : 1) : 1);
+  // overheat N: shots before the weapon must be cooled (an action); null when it doesn't overheat
+  const heatCap = (w) => (typeof weaponProp(w, 'overheat') === 'number' ? weaponProp(w, 'overheat') : null);
+  const reloadOf = (w) => (typeof weaponProp(w, 'reload') === 'number' ? weaponProp(w, 'reload') : null);
+  // the squares of a 150-ft cube (3 x 3) on a ship token, and whether a ship of n squares at t has a square in it
+  function burstBox(t, n) { const c = { x: t.x + n / 2, y: t.y + n / 2 }; return { x0: c.x - 1.5, y0: c.y - 1.5, x1: c.x + 1.5, y1: c.y + 1.5 }; }
+  const inBox = (box, t, n) => t.x < box.x1 && t.x + n > box.x0 && t.y < box.y1 && t.y + n > box.y0;
   // The damage of a hit: the weapon's dice (twice on a critical) plus the ship's Strength for primary and secondary
   // weapons, plus half of it (rounded up, at least 1) for a heavy weapon.
   function damageExpr(ship, w, crit) {
@@ -648,6 +670,50 @@
   const armorDR = (ship) => (own(ARMORS, armorOf(ship)) || { dr: 0 }).dr;
   const afterDR = (ship, amount) => { const n = int(amount), dr = armorDR(ship); return n <= 0 || !dr ? n : Math.max(1, n - dr); };
 
+
+  // ---- between fights: recharging and refitting (SotG chapter 8)
+  const REFIT_TIME = { Tiny: '4 hours', Small: '8 hours', Medium: '1 day', Large: '3 days', Huge: '1 week', Gargantuan: '1 month' };
+  const UPGRADE_COST = { Tiny: 0.5, Small: 1, Medium: 2, Large: 10, Huge: 100, Gargantuan: 1000 };
+  const EQUIP_WORKFORCE = { Tiny: 1, Small: 1, Medium: 2, Large: 5, Huge: 50, Gargantuan: 500 };     // recharging
+  const UPGRADE_WORKFORCE = { Tiny: 1, Small: 1, Medium: 5, Large: 50, Huge: 500, Gargantuan: 5000 }; // refitting
+  const sizeKey = (ship) => (own(SIZE_DATA, ship && ship.size) ? ship.size : 'Small');
+  // Recharging (an hour, with the crew for the size): shields back to full and half the shield dice back; then the crew
+  // may spend hull dice (rechargeHullDie)
+  function recharge(ship) {
+    const s = capPoints(copy(ship)), st = s.status = statusOf(s), name = s.name || 'The ship';
+    if (isLost(st)) return { ship: s, done: false, log: [`${name} is lost.`] };
+    const back = Math.min(st.sdUsed, Math.floor(diceOf(s, 'shield').n / 2));
+    st.sdUsed -= back; s.shield.current = shieldMax(s); st.recharged = true;
+    return { ship: s, done: true, log: [`${name} recharges (an hour, a crew of ${own(EQUIP_WORKFORCE, sizeKey(s))}): shields full, ${back} shield ${back === 1 ? 'die' : 'dice'} back. Its crew can spend hull dice now.`] };
+  }
+  // after a recharge, a hull die spent with an Intelligence (mechanic's kit) check: 10 or less, the die twice and the
+  // lower; 11 to 20, the die; 21 or more, the die twice and the higher; plus the ship's Constitution
+  function rechargeHullDie(ship, check, roll) {
+    const s = capPoints(copy(ship)), st = s.status = statusOf(s), name = s.name || 'The ship';
+    if (!st.recharged) return { ship: s, done: false, log: [`${name} needs to recharge first.`] };
+    if (diceLeft(s, 'hull') <= 0) return { ship: s, done: false, log: [`${name} has no hull dice left.`] };
+    if (int(s.hull.current) >= hullMax(s)) return { ship: s, done: false, log: [`${name}'s hull is whole.`] };
+    const d = diceOf(s, 'hull').die, c = int(check), a = int(roll('1d' + d).total);
+    const got = c <= 10 ? Math.min(a, int(roll('1d' + d).total)) : c >= 21 ? Math.max(a, int(roll('1d' + d).total)) : a;
+    st.hdUsed += 1;
+    const r = restore(s, 'hull', Math.max(0, got + modOf(s, 'con')));
+    r.ship.status.recharged = true;
+    return { ship: r.ship, done: true, gain: r.gained, log: [`${name} spends a hull die (${c}: ${c <= 10 ? 'the lower of two' : c >= 21 ? 'the higher of two' : 'one roll'}): +${r.gained} hull point${r.gained === 1 ? '' : 's'}.`] };
+  }
+  // Refitting (docked at a spaceport or shipyard): hull and shields full, every hull and shield die back, system damage
+  // one level lower (which also repairs failed primary systems); costs 100 credits per missing hull die times the size's
+  // upgrade cost, and takes the size's time
+  function refitCost(ship) { return Math.round(100 * Math.min(statusOf(ship).hdUsed, diceOf(ship, 'hull').n) * own(UPGRADE_COST, sizeKey(ship))); }
+  function refit(ship) {
+    const s = copy(ship), st = s.status = statusOf(s), name = s.name || 'The ship', cost = refitCost(ship), size = sizeKey(s);
+    if (st.zero.destroyed) return { ship: s, done: false, log: [`${name} was destroyed.`] };
+    const was = st.system;
+    st.system = Math.max(0, st.system - 1); st.hdUsed = 0; st.sdUsed = 0; st.recharged = false;
+    st.zero = { s: 0, f: 0, stable: false, destroyed: false }; st.cond = st.cond.filter((c) => c !== 'Disabled');
+    capPoints(s); s.hull.current = hullMax(s); s.shield.current = shieldMax(s);
+    return { ship: s, done: true, cost, log: [`${name} is refitted (${own(REFIT_TIME, size)}, a crew of ${own(UPGRADE_WORKFORCE, size).toLocaleString('en-US')}, ${cost.toLocaleString('en-US')} cr): hull and shields full, all dice back${was ? `, system damage ${st.system}` : ''}.`] };
+  }
+
   // what the sheet shows of a ship's state, in short phrases
   function summary(ship) {
     const st = statusOf(ship), hullNow = int(ship && ship.hull && ship.hull.current), out = [];
@@ -662,5 +728,5 @@
     setCondition, summary, SIZE_DATA, SHIELD_TYPES, REACTORS, COUPLINGS, SYSTEMS, POOLS, SYSTEM_NAMES, POWER_DIE, sizeOf, roleOf, reactorOf, couplingOf,
     shieldTypeOf, powerDie, powerDieText, powerCaps, diceOf, diceLeft, regenRate, boostDC, regenDC, boostedSpeed, startTurn, usePower, setPower,
     setDiceUsed, boost, regenerateShields, SQUARE_FT, SQUARES, squaresOf, FACING_NAMES, DIRS, gridFeet, turnSteps, turnCost, moveCost, inBounds, shipGap,
-    arcOf, INIT_SIZE_MOD, npcInitBonus, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck };
+    arcOf, INIT_SIZE_MOD, npcInitBonus, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck };
 });

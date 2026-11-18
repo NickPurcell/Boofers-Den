@@ -129,7 +129,12 @@
         if (r.status === 401) return signedOut('Your session ended. Please sign in again.');
         if (!r.ok) throw new Error(j.error || 'poll failed');
         $('#conn').classList.add('ok'); $('#conn').title = 'Connected'; backoff = 1000;
-        if (j.state) { S.v = j.v; onState(j.state); }
+        if (j.state) {
+          // the GM moved the table to another campaign (12.9): this page's selection belonged to the old one
+          const camp = v => (String(v || '').includes(':') ? String(v).split(':')[0] : 'main');
+          if (S.v && camp(S.v) !== camp(j.v)) S.selected = null;
+          S.v = j.v; onState(j.state);
+        }
         if (lib !== null && j.lib !== lib && A.packs) { await loadPacks(); renderDrawer(); }
         lib = j.lib;
         if (S.lib !== j.lib) { S.lib = j.lib; if (window.HTA) HTA.sync(); }   // the GM's track list changed
@@ -863,7 +868,7 @@
           <td>${inp(`powers.${i}.notes`, p.notes || '', { ro, ph: 'range, duration, effect…' })}</td>
           <td style="width:60px">${(over => `<button class="btn small ${over ? 'ghost' : 'amber'}" data-act="cast" data-i="${i}"${over ? ` title="${esc(over.text)}"` : ''}>Cast</button>`)(R.overMaxPowerLevel(ch, p, ci))}</td>
           <td style="white-space:nowrap">${!ro ? `<button class="btn tiny ghost" data-act="power-desc" data-i="${i}" title="Write or edit this power's description">✎</button><button class="btn tiny ghost" data-act="del" data-list="powers" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">No powers.</td></tr>'}</tbody></table>
-        <p class="muted" style="font-size:12px;margin:6px 0 0">Hover a power for its details. Casting costs 1 + power level points (level 0 at-wills are free).</p></div>`;
+        <p class="muted" style="font-size:12px;margin:6px 0 0">Hover (or tap) a power for its details. Casting costs 1 + power level points (level 0 at-wills are free).</p></div>`;
     }
 
     if (sub === 'gear') {
@@ -884,7 +889,7 @@
             <span class="spacer"></span>
             <button class="btn tiny" data-act="share-feature" data-i="${i}" title="Post to chat">💬</button>
             ${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="features" data-i="${i}" title="Remove">✕</button>` : ''}</div>`).join('') || '<p class="muted">None.</p>'}</div>
-          ${(ch.features || []).length ? '<p class="muted" style="font-size:12px;margin:6px 0 0">Hover a feature for its description.</p>' : ''}
+          ${(ch.features || []).length ? '<p class="muted" style="font-size:12px;margin:6px 0 0">Hover (or tap) a feature for its description.</p>' : ''}
         </div>
         <div class="box"><h4>Proficiencies</h4>${inp('proficiencies', ch.proficiencies || '', { ro, type: 'textarea', rows: 3, ph: 'Armor, weapons, tools…' })}
           <h4 style="margin-top:10px">Languages</h4>${inp('languages', ch.languages || '', { ro, type: 'textarea', rows: 2 })}</div>
@@ -1439,7 +1444,7 @@
     if (!pw) return;
     tip.innerHTML = powerCard(ch, pw); tip.classList.remove('hidden'); placeTip(x, y);
   }
-  const hideTip = () => tip.classList.add('hidden');
+  const hideTip = () => { if (!tip.classList.contains('hc-sheet')) tip.classList.add('hidden'); };
   const tipTarget = e => e.target.closest('[data-power-tip], [data-feature-tip]');
   const showTip = (el, x, y) => (el.dataset.featureTip !== undefined ? showFeatureTip(el, x, y) : showPowerTip(el, x, y));
   $('#sheet').addEventListener('mouseover', e => { const el = tipTarget(e); if (el) showTip(el, e.clientX, e.clientY); });
@@ -1447,7 +1452,22 @@
   $('#sheet').addEventListener('mouseout', e => { const el = tipTarget(e); if (el && !el.contains(e.relatedTarget)) hideTip(); });
   $('#sheet').addEventListener('focusin', e => { const el = tipTarget(e); if (el) { const r = el.getBoundingClientRect(); showTip(el, r.left, r.bottom); } });
   $('#sheet').addEventListener('focusout', hideTip);
-  document.addEventListener('scroll', hideTip, true);
+  document.addEventListener('scroll', e => { if (!tip.classList.contains('hc-sheet')) hideTip(e); }, true);
+  // phones and tablets (audit 12.11): there's no hover, so a tap on a power or feature (not on its inputs or buttons)
+  // opens its card as a sheet along the bottom of the screen, with ✕; a tap anywhere else closes it
+  $('#sheet').addEventListener('pointerup', e => {
+    if (e.pointerType !== 'touch') return;
+    const el = tipTarget(e);
+    if (!el || e.target.closest('input, select, textarea, button')) return;
+    showTip(el, 0, 0);
+    tip.classList.add('hc-sheet');
+    tip.insertAdjacentHTML('afterbegin', '<button class="btn tiny ghost hc-close" aria-label="Close">✕</button>');
+    tip.style.left = ''; tip.style.top = '';
+  });
+  document.addEventListener('pointerdown', e => {
+    if (!tip.classList.contains('hc-sheet')) return;
+    if (e.target.closest('.hc-close') || !tip.contains(e.target)) { tip.classList.add('hidden'); tip.classList.remove('hc-sheet'); }
+  }, true);
 
   // --------------------------------------------------------------------------- combat
   function renderCombat(el) {
@@ -2607,6 +2627,33 @@
       };
     });
   }
+  // more than one campaign (audit 12.9): the GM keeps up to five; the table (everyone) is on one of them
+  function openCampaigns() {
+    const draw = async () => {
+      const j = await fetch(`${API}?op=campaigns`, { cache: 'no-store' }).then(r => r.json()).catch(() => null);
+      if (!j || !j.list) { $('#modalBox').innerHTML = '<p class="muted">Couldn\'t load the campaigns.</p>'; return; }
+      $('#modalBox').innerHTML = `<h3>📚 Campaigns</h3><p class="muted" style="margin-top:0">Everyone is always on the live one. The others wait, untouched, until you switch to them. Up to ${n0(j.max)}.</p>
+        <div class="list-rows">${j.list.map(c => `<div class="lr"><span class="nm">${c.live ? '● ' : ''}<b>${esc(c.name)}</b> <span class="muted">${(n0(c.bytes) / 1024).toFixed(0)} KB${c.live ? ' · live' : ''}</span></span>
+          ${c.live ? '' : `<button class="btn tiny" data-camp="switch" data-code="${esc(c.code)}">Switch the table to it</button>`}
+          <button class="btn tiny ghost" data-camp="rename" data-code="${esc(c.code)}" data-name="${esc(c.name)}">Rename</button>
+          ${c.live || c.code === 'main' ? '' : `<button class="btn tiny ghost" data-camp="delete" data-code="${esc(c.code)}" data-name="${esc(c.name)}">Delete</button>`}</div>`).join('')}</div>
+        <div class="row" style="margin-top:10px"><input id="campNew" placeholder="New campaign's name" maxlength="80" style="flex:1"><button class="btn small" id="campCreate" ${j.list.length >= j.max ? 'disabled' : ''}>＋ New campaign</button></div>
+        <p class="muted" style="font-size:12px">Before deleting one, switch to it and use ⇩ Download full backup if you might want it back.</p>
+        <div class="row" style="justify-content:flex-end"><button class="btn ghost" id="campClose">Close</button></div>`;
+    };
+    const go = async (body) => { try { await post('campaign', body); } catch (e) { toast(e.message, true); } draw(); };
+    modal('<p class="muted">Loading…</p>', box => {
+      draw();
+      box.onclick = async e => {
+        const t = e.target, c = t.dataset.camp;
+        if (t.id === 'campClose') return closeModal();
+        if (t.id === 'campCreate') return go({ do: 'create', name: $('#campNew').value });
+        if (c === 'switch' && confirm('Put the whole table on this campaign? Everyone moves with you; the current one waits as it is.')) { await go({ do: 'switch', code: t.dataset.code }); closeModal(); }
+        if (c === 'rename') { const n = prompt('Name', t.dataset.name); if (n && n.trim()) go({ do: 'rename', code: t.dataset.code, name: n.trim() }); }
+        if (c === 'delete' && confirm(`Delete "${t.dataset.name}" for good? Its characters, maps, chat and backups go with it.`)) go({ do: 'delete', code: t.dataset.code });
+      };
+    });
+  }
   function renderGM(el) {
     if (!isGM()) { el.innerHTML = ''; return; }
     const link = location.origin + location.pathname;
@@ -2621,7 +2668,8 @@
         <h4 style="margin-top:12px">Who's here</h4>
         ${Object.entries(S.st.players).map(([id, p]) => `<div>${esc(p.name)} ${p.role === 'gm' && !/^\s*gm\s*$/i.test(p.name || '') ? '<span class="muted">(GM)</span>' : ''} ${S.st.online.some(o => o.clientId === id) ? '<span style="color:var(--green)">● online</span>' : '<span class="muted">offline</span>'}
           <span class="muted">— ${chars().filter(c => c.owner === id).map(c => esc(c.name)).join(', ') || 'no characters'}</span>${id !== clientId && !S.st.online.some(o => o.clientId === id) && !chars().some(c => c.owner === id) ? ` <button class="btn tiny ghost" data-rmplayer="${esc(id)}" title="Remove this old entry from the list (offline, no characters)" aria-label="Remove ${esc(p.name)} from the player list">✕</button>` : ''}</div>`).join('')}
-        <div class="row" style="margin-top:12px"><a class="btn small" href="${API}?op=chatlog" download title="The whole chat the table keeps (the last 400 messages), as a text file">⇩ Download chat log</a><button class="btn small danger" id="clearChat">Clear chat log</button></div>
+        <div class="row" style="margin-top:12px"><button class="btn small" id="gmCampaigns" title="Keep up to five campaigns (a second game, a one-shot, a test table) and choose which one the table is on">📚 Campaigns…</button></div>
+        <div class="row" style="margin-top:8px"><a class="btn small" href="${API}?op=chatlog" download title="The whole chat the table keeps (the last 400 messages), as a text file">⇩ Download chat log</a><button class="btn small danger" id="clearChat">Clear chat log</button></div>
       </div>
       <div class="box"><h4>Level ups</h4>
         <p style="margin-top:0" class="muted">After a big fight or a hard-won conversation, give the party a level. Each player gets a pop-up and picks how to level.
@@ -2708,6 +2756,7 @@
     if (id === 'doRename') act('campaign.rename', { name: $('#campRename').value });
     if (id === 'clearChat' && confirm('Clear the chat log for everyone?\n\nTip: "Download chat log" keeps a copy first.')) act('chat.clear');
     if (id === 'gmGrant') openGrant();
+    if (id === 'gmCampaigns') openCampaigns();
     if (id === 'gmXp') openAwardXp(0);
     if (id === 'gmAsk') openAskRoll();
     if (id === 'gmLoot') openLoot();
@@ -3074,7 +3123,7 @@
     if (!ch0) return;
     if (!pendingFor(charId)) return toast('The GM hasn\'t granted this character a level yet.', true);
     const W = resume || { cls: ch0.classes[0].name, newCls: '', archetype: '', hpMode: 'average', asiMode: 'two', a1: 'str', a2: 'dex', featName: '', featText: '', powers: [],
-      auto: [], autoKey: '', autoState: '', archList: [], archFor: '', archMenu: false, featList: [] };
+      auto: [], autoKey: '', autoState: '', archList: [], archFor: '', archMenu: false, featList: [], picks: {}, expTools: '', lists: null, listsErr: '' };
     modal('<div id="wiz"></div>', box => {
       const wiz = $('#wiz', box);
       // SW5e's class/archetype features for the level being gained (fetched once per class/level/archetype)
@@ -3096,7 +3145,15 @@
         }
       };
       if (window.HTB && S.st.sw5eBooks !== false) HTB.featNames().then(f => { W.featList = f; draw(); }).catch(() => {});
-      const draw = () => { const a = document.activeElement, id = a && a.dataset && a.dataset.w, pos = a && a.selectionStart; wiz.innerHTML = wizardHtml(charId, W);
+      // the lists this level's choices come from (audit 2.9): class options, maneuvers, fighting styles
+      if (window.HTB && HTB.levelChoices && S.st.sw5eBooks !== false && !W.lists) {
+        Promise.all(['classes', 'maneuvers', 'styles'].map(k => HTB.list(k))).then(([classes, maneuvers, styles]) => { W.lists = { classes, maneuvers, styles }; draw(); })
+          .catch(err => { W.listsErr = err.message || 'not available'; draw(); });
+      }
+      const draw = () => { const a = document.activeElement, id = a && a.dataset && a.dataset.w, pos = a && a.selectionStart;
+        const scrolled = $$('[data-scroll]', wiz).map(el => [el.dataset.scroll, el.scrollTop]);   // a long list keeps its place when a box is ticked
+        wiz.innerHTML = wizardHtml(charId, W);
+        for (const [k, top] of scrolled) { const el = wiz.querySelector(`[data-scroll="${k}"]`); if (el) el.scrollTop = top; }
         if (id) { const el = wiz.querySelector(`[data-w="${id}"]`); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch { /* not a text box */ } } } };
       const render = () => { draw(); suggest(); };
       wiz.addEventListener('input', e => {
@@ -3124,11 +3181,17 @@
       });
       wiz.addEventListener('change', e => {
         const t = e.target, f = t.dataset.w;
+        if (f && f.startsWith('pick.')) {   // a choice ticked or unticked
+          const cur = W.picks[f.slice(5)] = W.picks[f.slice(5)] || [], i = cur.indexOf(t.value);
+          if (t.checked && i < 0) cur.push(t.value);
+          if (!t.checked && i >= 0) cur.splice(i, 1);
+          return draw();
+        }
         if (!f || f.startsWith('feature.') || (f.startsWith('power.') && !f.endsWith('.type'))) return;
         if (t.type === 'text' || t.tagName === 'TEXTAREA') return; // already saved on input; re-rendering here would eat a click
         if (f.startsWith('power.')) { const [, i] = f.split('.'); W.powers[+i].type = t.value; return; }
         W[f] = t.type === 'checkbox' ? t.checked : t.value;
-        if (f === 'cls' || f === 'newCls') { W.archetype = ''; W.archMenu = false; }
+        if (f === 'cls' || f === 'newCls') { W.archetype = ''; W.archMenu = false; W.picks = {}; }
         render();
       });
       wiz.addEventListener('click', async e => {
@@ -3189,12 +3252,28 @@
     const avgGain = Math.max(1, hd / 2 + 1 + newCon) + retro;
     const maxGain = Math.max(1, hd + newCon) + retro;
     if (W.hpMode === 'max' && S.st.hpMax === false) W.hpMode = 'average';
+    // the choices this level brings (audit 2.9), each counted against what the class allows
+    const groups = cls && W.lists && window.HTB && HTB.levelChoices ? HTB.levelChoices(ch, cls, newClassLevel, W.lists) : [];
+    const tools = String(W.expTools || '').split(',').map(x => x.trim()).filter(Boolean).slice(0, 2);
+    const picked = g => (W.picks[g.key] || []).filter(n => g.items.some(x => x.n === n));
+    const chosen = g => picked(g).length + (g.kind === 'expertise' ? tools.length : 0);
+    if (cls && window.HTB && HTB.levelChoices && S.st.sw5eBooks !== false && !W.lists && !W.listsErr) error = error || "Still looking up this level's choices…";
+    for (const g of groups) {
+      if (g.kind === 'powers') continue;
+      const n = chosen(g);
+      if (n < g.min || n > g.max) error = error || `${g.title}: choose ${g.min === g.max ? g.min : `${g.min} to ${g.max}`} (${n} chosen).`;
+    }
+    const choiceFeatures = groups.filter(g => g.kind !== 'powers' && g.kind !== 'expertise')
+      .flatMap(g => picked(g).map(n => { const x = g.items.find(y => y.n === n); return { name: x.n, text: x.text }; }));
+    const exp = groups.find(g => g.kind === 'expertise');
+    if (exp && tools.length) choiceFeatures.push({ name: `Expertise: ${tools.join(', ')}`.slice(0, 80), text: `Expertise (${cls} ${newClassLevel}): your proficiency bonus is doubled for ${tools.join(' and ')}.` });
+    const expertise = exp ? picked(exp).map(n => exp.items.find(x => x.n === n).key) : [];
     const unmet = !k && cls ? R.multiclassUnmet(ch, cls) : [];   // multiclassing prerequisites (2.12): the GM may allow it
     if (unmet.length && !isGM()) error = error || `Multiclassing into ${cls}: ${unmet.join('; ')}. Ask your GM.`;
     const payload = { charId, className: cls, hpMode: W.hpMode, archetype: archDue && W.archetype ? W.archetype : undefined, hitDie: hd, override: unmet.length && isGM() ? true : undefined,
-      asi: asi || undefined, feat: feat || undefined,
-      features: (W.auto || []).filter(f => !f.have).map(f => ({ name: f.name, text: f.text })).slice(0, 20), powers: W.powers.filter(p => p.name.trim()).slice(0, 20) };
-    return { ch, after, cls, k, newClassLevel, before, due, asiOn, archDue, archTerm, hd, oldCon, newCon, retro, avgGain, maxGain, payload, error };
+      asi: asi || undefined, feat: feat || undefined, expertise: expertise.length ? expertise : undefined,
+      features: (W.auto || []).filter(f => !f.have).map(f => ({ name: f.name, text: f.text })).concat(choiceFeatures).slice(0, 20), powers: W.powers.filter(p => p.name.trim()).slice(0, 20) };
+    return { ch, after, cls, k, newClassLevel, before, due, asiOn, archDue, archTerm, hd, oldCon, newCon, retro, avgGain, maxGain, payload, error, groups, picked, chosen, tools };
   }
 
   function wizardHtml(charId, W) {
@@ -3239,19 +3318,21 @@
                <textarea data-w="featText" rows="3" placeholder="What it does (filled in from SW5e when you pick one)">${esc(W.featText)}</textarea>`
             : W.asiMode === 'one' ? abilitySelect('a1', W.a1) : abilitySelect('a1', W.a1) + abilitySelect('a2', W.a2)}</div>` : ''}
       </section>
-      <section class="wiz-step"><h4><span class="step">4</span> New features &amp; powers</h4>
+      ${choicesHtml(P, W)}
+      <section class="wiz-step"><h4><span class="step">5</span> New features &amp; powers</h4>
         ${!P.cls ? '' : W.autoState === 'loading' ? '<p class="muted" style="margin:0 0 6px">Looking up the class features for this level…</p>'
           : W.auto && W.auto.length ? `<p class="muted" style="margin:0 0 4px">These ${esc(P.cls)} ${P.newClassLevel} features from the Player's Handbook are added to Features &amp; Traits automatically (hover for details):</p>
             <ul class="wiz-feats">${W.auto.map(f => `<li title="${esc(f.text.slice(0, 500))}"><b>${esc(f.name)}</b>${f.have ? ' <span class="muted">(already on the sheet)</span>' : ''}</li>`).join('')}</ul>`
           : W.autoState === 'ok' ? `<p class="muted" style="margin:0 0 6px">No new ${esc(P.cls)} features at level ${P.newClassLevel}${P.due ? ' besides the ability score improvement' : ''}.</p>`
           : W.autoState ? `<p class="muted" style="margin:0 0 6px">Couldn't look up the class features (${esc(W.autoState)}). You can add them afterwards from Features &amp; Traits.</p>` : ''}
         <h5 class="wiz-sub">Powers learned this level ${ciA.forceMaxLevel > ciB.forceMaxLevel || ciA.techMaxLevel > ciB.techMaxLevel ? '<span class="up">· you can now cast higher-level powers</span>' : ''}</h5>
+        ${P.groups.filter(g => g.kind === 'powers').map(g => `<p class="muted" style="margin:0 0 4px">${esc(P.cls)} ${P.newClassLevel}: ${esc(g.title)} ${g.prev} → ${g.total}, so ${g.max} new.</p>`).join('')}
         ${W.powers.map((p, i) => `<div class="row wiz-power"><b>${esc(p.name)}</b><span class="pp-lvl">${n0(p.level) ? 'Level ' + n0(p.level) : 'At-will'}</span>
           <span class="pp-tag">${p.type === 'tech' ? 'Tech' : esc(({ light: 'Light', dark: 'Dark' })[p.alignment] || 'Universal') + ' force'}</span><span class="spacer"></span>
           <button class="btn tiny ghost" data-wa="rm-power" data-i="${i}" title="Remove">✕</button></div>`).join('') || '<p class="muted" style="margin:0 0 4px">None picked.</p>'}
         <div class="row"><button class="btn tiny" data-wa="pick-power" data-kind="force">＋ force power</button><button class="btn tiny" data-wa="pick-power" data-kind="tech">＋ tech power</button></div>
       </section>
-      <section class="wiz-step"><h4><span class="step">5</span> Summary</h4>
+      <section class="wiz-step"><h4><span class="step">6</span> Summary</h4>
         <table class="t summary">
           ${change('Level', P.before, P.before + 1)}
           ${change('Class', P.k ? `${P.k.name} ${n0(P.k.level)}` : '—', `${P.cls || '?'} ${P.newClassLevel}`)}
@@ -3269,6 +3350,28 @@
         ${P.error ? `<p class="error">${esc(P.error)}</p>` : ''}
       </section>
       <div class="row"><span class="spacer"></span><button class="btn" data-wa="cancel">Not yet</button><button class="btn primary" data-wa="go">⬆ Level up!</button></div>`;
+  }
+
+  // Step 4 of the level-up wizard (audit 2.9): what the class asks you to choose at this level, with the count.
+  function choicesHtml(P, W) {
+    const groups = P.groups.filter(g => g.kind !== 'powers');
+    const body = !P.cls ? '<p class="muted" style="margin:0">Pick a class first.</p>'
+      : W.listsErr ? `<p class="muted" style="margin:0">Couldn't look up this level's choices (${esc(W.listsErr)}). Add them afterwards from Features &amp; Traits.</p>`
+      : !W.lists ? (window.HTB && HTB.levelChoices && S.st.sw5eBooks !== false ? '<p class="muted" style="margin:0">Looking up this level\'s choices…</p>' : '<p class="muted" style="margin:0">Add any choices this level gives from Features &amp; Traits afterwards.</p>')
+      : !groups.length ? `<p class="muted" style="margin:0">${esc(P.cls)} ${P.newClassLevel} has nothing to choose from a list.</p>`
+      : groups.map(g => {
+        const n = P.chosen(g), ok = n >= g.min && n <= g.max, mine = W.picks[g.key] || [];
+        const want = g.min === g.max ? `choose ${g.min}` : `choose ${g.min} to ${g.max}`;
+        const why = g.kind === 'expertise' ? 'Two of your skill proficiencies, or a tool (name it), get double your proficiency bonus.'
+          : g.kind === 'style' ? 'A style of fighting as your specialty.'
+          : `A ${esc(P.cls)} ${P.newClassLevel} knows ${g.total}; the sheet has ${g.have}.`;
+        return `<div class="wiz-choice"><h5 class="wiz-sub">${esc(g.title)}: ${want} <span class="${ok ? 'up' : 'muted'}">· ${n} chosen</span></h5>
+          <p class="muted" style="margin:0 0 4px;font-size:12px">${why}</p>
+          <div class="wiz-opts" data-scroll="${esc(g.key)}">${g.items.map(x => `<label class="wiz-opt" ${x.text ? `title="${esc(x.text.slice(0, 600))}"` : ''}><input type="checkbox" data-w="pick.${esc(g.key)}" value="${esc(x.n)}" ${mine.includes(x.n) ? 'checked' : ''}><span>${esc(x.n)}${x.pre ? ` <span class="muted">(${esc(x.pre)})</span>` : ''}</span></label>`).join('')
+            || (g.kind === 'expertise' ? '<p class="muted" style="margin:0">No skill proficiencies on the sheet yet.</p>' : '')}</div>
+          ${g.kind === 'expertise' ? `<input type="text" data-w="expTools" value="${esc(W.expTools)}" placeholder="or a tool, e.g. Slicer's kit (comma between two)" style="margin-top:4px;width:100%">` : ''}</div>`;
+      }).join('');
+    return `<section class="wiz-step"><h4><span class="step">4</span> Choices at this level</h4>${body}</section>`;
   }
 
   // --------------------------------------------------------------------------- shared with books.js
