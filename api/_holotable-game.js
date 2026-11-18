@@ -566,6 +566,13 @@ function applyAction(camp, cid, gm, type, p) {
       clean.tokenImage = old ? old.tokenImage || "" : "";
       clean.updated = now();
       chars[id] = clean;
+      if (old) {   // the record of changes (12.5)
+        const changes = sheetDiff(old, clean);
+        if (changes.length) {
+          camp.sheetLog = camp.sheetLog || {};
+          camp.sheetLog[id] = [...(camp.sheetLog[id] || []), { id: rid(), ts: now(), by: playerName(camp, cid) + (gm ? " (GM)" : ""), changes }].slice(-30);
+        }
+      }
       if (old) reviveChar(camp, clean, (old.hp || {}).current);   // healed up from 0: awake, death saves reset (#138)
       const ch = clean;
       for (const e of ini.entries) if (e.charId === id) { e.name = ch.name || e.name; const hp = ch.hp || {}; e.hp = hp.current; e.maxHp = hp.max; }
@@ -1016,6 +1023,26 @@ function applyAction(camp, cid, gm, type, p) {
       addChat(camp, { levelup: true, text: `↶ The GM took back ${back.name}'s level ${u.level}. It's ready to take again.` });
       return { level: totalLevel(back) };
     }
+    case "sheet.revert": {   // the GM puts back one recorded change's numbers (12.5); lists of things are shown, not undone
+      need(gm);
+      const id = String(p.charId || ""), ch = charById(camp, id);
+      const e = ch && ((camp.sheetLog || {})[id] || []).find((x) => x.id === String(p.entry || ""));
+      if (!e) throw new Invalid("That change isn't in the record any more.");
+      const before = JSON.parse(JSON.stringify(ch));
+      for (const c of e.changes) {
+        if (c.view) continue;
+        const path = c.k.split("."), last = path.pop();
+        let o = ch; for (const k of path) { if (!o[k] || typeof o[k] !== "object") o[k] = {}; o = o[k]; }
+        o[last] = c.from;
+      }
+      const back = cleanChar(Object.assign({}, ch, { id }));
+      Object.assign(back, { owner: ch.owner, image: ch.image || "", tokenImage: ch.tokenImage || "", updated: now() });
+      chars[id] = back;
+      for (const en of camp.initiative.entries) if (en.charId === id) { en.hp = (back.hp || {}).current; en.maxHp = (back.hp || {}).max; }
+      const changes = sheetDiff(before, back);
+      if (changes.length) camp.sheetLog[id] = [...camp.sheetLog[id], { id: rid(), ts: now(), by: "GM (undo)", changes }].slice(-30);
+      return { undone: changes.length };
+    }
     case "levelup.cancel": {
       need(gm);
       if (camp.levelUps && camp.levelUps[p.charId]) delete camp.levelUps[p.charId];
@@ -1074,6 +1101,7 @@ function applyAction(camp, cid, gm, type, p) {
       if (at < 0) throw new Invalid("That's no longer in the stash.");
       if (!ch) throw new Invalid("No such character.");
       need(gm || ch.owner === cid, "not your character");
+      if ((ch.equipment || []).length >= 200) throw new Invalid(`${ch.name}'s gear is full (200 items). Make room first; it stays in the stash.`);   // #195 review
       const [it] = st.items.splice(at, 1);
       const notes = [it.rar && `${it.rar}${it.att ? ", requires attunement" : ""}`, it.notes].filter(Boolean).join(" · ").slice(0, 200);
       chars[ch.id] = cleanChar(Object.assign({}, ch, { equipment: [...(ch.equipment || []), Object.assign({}, it, { id: undefined, equipped: false, notes })] }));
@@ -1250,6 +1278,25 @@ function cleanClock(c) {
   return { day: clamp(int(c.day, 1), 1, 999999), min: clamp(int(c.min), 0, 1439) };
 }
 const clockText = (c) => `Day ${c.day}, ${String(Math.floor(c.min / 60)).padStart(2, "0")}:${String(c.min % 60).padStart(2, "0")}`;
+// A record of sheet changes (audit 12.5): each save that changes a tracked number notes who changed what, from and
+// to. The GM reads it on the sheet and can put any one change's numbers back. The last 30 changes per character.
+const TRACKED = [["name"], ["xp"], ["credits"], ["ac"], ["speed"], ["hp", "max"], ["hp", "current"], ["hp", "temp"],
+  ["force", "used"], ["tech", "used"], ["exhaustion"], ["inspiration"], ...["str", "dex", "con", "int", "wis", "cha"].map((a) => ["abilities", a])];
+const getIn = (o, p) => p.reduce((a, k) => (a && typeof a === "object" ? a[k] : undefined), o);
+const levelsText = (c) => (c.classes || []).map((k) => `${k.name} ${k.level}`).join(" / ");
+const prim = (v) => (typeof v === "number" || typeof v === "boolean" ? v : v == null ? null : String(v).slice(0, 80));
+function sheetDiff(a, b) {
+  const out = [];
+  for (const p of TRACKED) { const x = prim(getIn(a, p)), y = prim(getIn(b, p)); if (x !== y) out.push({ k: p.join("."), from: x, to: y }); }
+  for (const [k, f] of [["classes", levelsText], ["conditions", (c) => (c.conditions || []).join(", ")], ["equipment", (c) => (c.equipment || []).map((e) => `${e.qty > 1 ? e.qty + "× " : ""}${e.name}`).join(", ")]]) {
+    const x = prim(f(a)), y = prim(f(b)); if (x !== y) out.push({ k, from: x, to: y, view: true });   // shown, not undone
+  }
+  return out;
+}
+const cleanHistory = (log, chars) => Object.fromEntries(Object.entries(log && typeof log === "object" ? log : {}).filter(([id, l]) => Object.prototype.hasOwnProperty.call(chars || {}, id) && Array.isArray(l))
+  .map(([id, l]) => [id, l.slice(-30).filter((e) => e && Array.isArray(e.changes)).map((e) => ({ id: /^[a-z0-9]{4,20}$/.test(String(e.id || "")) ? String(e.id) : rid(), ts: num(e.ts), by: str(e.by, 40),
+    changes: e.changes.slice(0, 30).filter((c) => c && typeof c.k === "string" && (TRACKED.some((p) => p.join(".") === c.k) || ["classes", "conditions", "equipment"].includes(c.k)))
+      .map((c) => ({ k: c.k, from: prim(c.from), to: prim(c.to), ...(c.view ? { view: true } : {}) })) }))]).filter(([, l]) => l.length));
 function cleanMap(g, raw) {
   const m = raw && typeof raw === "object" ? raw : {};
   const n = (v, d) => (Number.isFinite(+v) ? +v : d);
@@ -1309,6 +1356,7 @@ function cleanGame(g) {
   const lu = Object.entries(g.levelUndo && typeof g.levelUndo === "object" ? g.levelUndo : {}).filter(([id, u]) => charById(g, id) && u && u.sheet && typeof u.sheet === "object")
     .map(([id, u]) => [id, { level: clamp(int(u.level, 1), 1, 20), at: num(u.at), sheet: cleanChar(Object.assign({}, u.sheet, { id })) }]);
   if (lu.length) g.levelUndo = Object.fromEntries(lu); else delete g.levelUndo;
+  const sl = cleanHistory(g.sheetLog, g.characters); if (Object.keys(sl).length) g.sheetLog = sl; else delete g.sheetLog;
   g.levelUps = Object.fromEntries(Object.entries(g.levelUps || {}).filter(([id]) => charById(g, id))
     .map(([id, v]) => [id, { count: clamp(int((v || {}).count), 0, 20), grantId: rid(), at: now() }]).filter(([, v]) => v.count > 0));
   return g;

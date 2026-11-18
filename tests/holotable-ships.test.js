@@ -732,3 +732,41 @@ test("ship combat turns: a player's ship acts only on its own turn; the GM is fr
     assert.deepEqual([en.status.fx.interfered, en.status.fx.interferedBy], [false, ""], "ended at the start of the interfering ship's next turn");
   }
 });
+
+// ---------------------------------------------------------------- what size, tier and role give a ship (10.5)
+test("size, tier and role: SotG's own worked example, AC with armor and tier, suites, saves, armor damage reduction", () => {
+  // Starships of the Galaxy, chapter 1: a tier 0 Medium freighter with Str 15, Dex 14, Con 12 and fortress shields has
+  // 33 hull points, 38 base shield points and a capacity of 57; at tier 1 with Str 17, 76
+  const f = { size: "Medium", tier: 0, role: "Freighter", shieldType: "Fortress", abilities: { str: 15, dex: 14, con: 12 } };
+  const d = SR.derive(f);
+  assert.deepEqual([d.hullDice, d.hull, d.shieldDice, d.shieldBase, d.shield, d.armor, d.ac, d.speed, d.turn, d.suites, d.slots],
+    ["5d8", 33, "5d8", 38, 57, "Deflection", 12, 300, 150, 4, 30]);
+  assert.deepEqual(d.roleAdj, { con: 1 }, "a freighter: +1 Constitution");
+  assert.equal(SR.derive(Object.assign({}, f, { tier: 1, abilities: { str: 17, dex: 14, con: 12 } })).shield, 76);
+  assert.equal(SR.derive(Object.assign({}, f, { abilities: { dex: 20 } })).ac, 12, "deflection armor: at most +2 from Dexterity");
+  assert.equal(SR.derive(Object.assign({}, f, { tier: 5, armor: "Lightweight", abilities: { dex: 20 } })).ac, 19, "lightweight: all of it; +4 at tier 5");
+  assert.equal(SR.derive({ size: "Small", role: "Attack Fighter", abilities: { dex: 18 } }).ac, 10, "reinforced: none of it");
+  assert.deepEqual([SR.derive({ size: "Gargantuan", abilities: { con: 20 } }).suites, SR.derive({ size: "Small", abilities: { con: 8 } }).suites], [30, 0], "suites: 10 + 4 x Con; never below 0");
+  assert.deepEqual([SR.derive({ size: "Tiny" }).saves, SR.derive({ size: "Small" }).saves, SR.derive({ size: "Huge" }).saves], [["dex", "int"], ["str", "dex"], ["wis"]]);
+  assert.deepEqual([SR.derive({ size: "Gargantuan" }).hullDice, SR.derive({ size: "Tiny", tier: 5 }).hullDice], ["11d20", "6d4"]);
+  // armor damage reduction, against attack rolls: never below 1
+  const fighter = { size: "Small", role: "Attack Fighter" };
+  assert.deepEqual([SR.armorDR(fighter), SR.afterDR(fighter, 10), SR.afterDR(fighter, 4), SR.afterDR(fighter, 0), SR.afterDR({ armor: "Deflection" }, 10), SR.afterDR({}, 10)], [6, 4, 1, 0, 7, 10]);
+  assert.equal(SR.armorOf({ role: "constructor", armor: "__proto__" }), "", "inherited names never reach a table");
+});
+
+test("space.fire: a hit from an attack roll is reduced by the target's armor; the sheet keeps only SotG's armors", async () => {
+  const { gm, p1, party, enemy } = await table();
+  let sh = shipIn(await p1.state(), party);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { armor: "__proto__", weapons: [{ name: "Laser", dmg: "1d4", type: "energy", range: "800/3200", cat: "primary", atkMisc: 20 }] }) });
+  assert.equal(shipIn(await p1.state(), party).armor, "");
+  const en = shipIn(await gm.state(), enemy);
+  await gm.act("ship.save", { ship: Object.assign({}, en, { armor: "Reinforced" }) });
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 2, f: 2 });
+  await gm.act("space.place", { id: enemy, x: 8, y: 2, f: 6 });
+  for (let i = 0; i < 6; i++) {
+    const r = await p1.act("space.fire", { id: party, target: enemy, weapon: 0 });
+    if (r.data.hit) { assert.equal(r.data.damage, r.data.crit ? r.data.damage : 1, "1d4 against reinforced armor's 6: 1"); assert.ok(r.data.damage >= 1 && r.data.damage <= 2, "even a critical's 2d4"); break; }
+  }
+});
