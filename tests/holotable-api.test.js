@@ -341,7 +341,7 @@ test("signing in again from the same browser keeps your characters", async () =>
 test("level up: GM grants to everyone or one character; players level their own", async () => {
   const { gm, p1, p2 } = await table();
   const kira = (await p1.act("char.save", { char: { name: "Kira", classes: [{ name: "Sentinel", level: 3 }], abilities: { con: 14, cha: 15 }, hp: { max: 24, current: 20 } } })).data.id;
-  const rook = (await p2.act("char.save", { char: { name: "Rook", classes: [{ name: "Fighter", level: 3 }], abilities: { con: 12 }, hp: { max: 28, current: 28 } } })).data.id;
+  const rook = (await p2.act("char.save", { char: { name: "Rook", classes: [{ name: "Fighter", level: 3 }], abilities: { con: 12, str: 13, int: 13 }, hp: { max: 28, current: 28 } } })).data.id;
   assert.equal((await p1.act("levelup.apply", { charId: kira, className: "Sentinel", hpMode: "average" })).code, 400, "no level without a grant");
   assert.equal((await gm.act("levelup.grant", { charIds: [kira, rook], reason: "survived the ambush" })).code, 200);
   let st = (await p1.poll()).data.state;
@@ -759,7 +759,7 @@ test("SW5e lists: a failed fetch isn't retried for a minute, and only one reques
 });
 
 test("SW5e books: every other list comes through op=sw5e, trimmed, from fixed paths only", async () => {
-  const { p1 } = await table();
+  const { gm, p1 } = await table();
   const realFetch = global.fetch;
   const urls = [];
   global.fetch = async (url) => {
@@ -787,6 +787,10 @@ test("SW5e books: every other list comes through op=sw5e, trimmed, from fixed pa
     assert.deepEqual(ft.map((x) => [x.n, x.lvl, x.k, x.of, x.text]), [["Rage", 1, "class", "Berserker", "Rage.\nHard."]], "class/archetype features only");
     const mon = JSON.parse((await p1.call("GET", { op: "sw5e", list: "monsters" })).data)[0];
     assert.deepEqual([mon.n, mon.ac, mon.hp, mon.ab.dex, mon.b[0].atk, mon.b[0].dmg, mon.b[0].d], ["Death Trooper", 16, 97, 19, 7, "2d6 + 4", "Ranged: blaster shot."]);
+    await gm.act("settings.statBlocks", { hidden: true });   // 9.17: the GM keeps them
+    assert.equal((await p1.call("GET", { op: "sw5e", list: "monsters" })).code, 403, "a player isn't sent the stat blocks");
+    assert.equal((await gm.call("GET", { op: "sw5e", list: "monsters" })).code, 200, "the GM is");
+    await gm.act("settings.statBlocks", { hidden: false });
     const vr = JSON.parse((await p1.call("GET", { op: "sw5e", list: "rules-variant" })).data);
     assert.equal(vr[0].n, "Flanking");
     await p1.call("GET", { op: "sw5e", list: "species" });
@@ -2011,4 +2015,299 @@ test("AC from armor, Unarmored Defense and misc (audit 5.3), crit range, misc bo
   const id3 = (await p1.act("char.save", { char: old })).data.id;
   c = (await gm.poll()).data.state.characters[id3];
   assert.equal(c.ac, 17, "an old sheet (or an import) filled from the blank keeps its typed AC");
+});
+
+test("temporary force/tech points are spent first (audit 4.9); size from the sheet sizes the token (audit 5.12)", async () => {
+  require("../sections/jpesus/holotable/rules.js");
+  const R = globalThis.SW5E;
+  assert.deepEqual(R.pointsSpend({ used: 2, temp: 3 }, 4, 10), { temp: 0, used: 3, fromTemp: 3 }, "3 temp, then 1 of their own");
+  assert.deepEqual(R.pointsSpend({ used: 0, temp: 5 }, 2, 10), { temp: 3, used: 0, fromTemp: 2 });
+  assert.equal(R.pointsSpend({ used: 9, temp: 1 }, 3, 10), null, "only 2 left in all");
+  assert.equal(R.pointsSpend({ used: 9 }, 1, 10).used, 10, "no temp: as before");
+  assert.equal(R.tokenSquares("Huge"), 3);
+  assert.equal(R.tokenSquares("Small"), 1);
+
+  const { gm, p1 } = await table();
+  const id = (await p1.act("char.save", { char: { name: "Grok", size: "Large", force: { used: 1, temp: 4 }, tech: { temp: -3 } } })).data.id;
+  let c = (await gm.poll()).data.state.characters[id];
+  assert.equal(c.size, "Large");
+  assert.equal(c.force.temp, 4);
+  assert.equal(c.tech.temp, undefined, "none kept when there are none");
+  const id2 = (await p1.act("char.save", { char: { name: "Odd", size: "Colossal" } })).data.id;
+  assert.equal((await gm.poll()).data.state.characters[id2].size, undefined, "only SW5e's sizes");
+  await p1.act("token.add", { charId: id, x: 1, y: 1 });
+  await gm.act("token.add", { charId: id2, x: 5, y: 1 });
+  const toks = (await gm.poll()).data.state.map.tokens;
+  assert.equal(toks.find((t) => t.charId === id).size, 2, "a Large character's token takes 2 squares");
+  assert.equal(toks.find((t) => t.charId === id2).size, 1);
+  const id3 = (await p1.act("char.save", { char: { name: "Mouse", size: "Tiny" } })).data.id;
+  await p1.act("token.add", { charId: id3, x: 8, y: 1 });
+  const mt = (await gm.poll()).data.state.map.tokens.find((t) => t.charId === id3);
+  assert.deepEqual([mt.size, mt.tiny], [1, true], "a Tiny character's token is Tiny");
+});
+
+test("the GM awards XP after an encounter, split evenly; levelling stays the GM's grant (audit 9.8)", async () => {
+  const { gm, p1, p2 } = await table();
+  const kira = (await p1.act("char.save", { char: { name: "Kira", xp: 250, classes: [{ name: "Operative", level: 1 }] } })).data.id;
+  const rex = (await p2.act("char.save", { char: { name: "Rex", xp: 0, classes: [{ name: "Fighter", level: 1 }] } })).data.id;
+  const npc = (await gm.act("char.save", { char: { name: "Darth Secret" } })).data.id;
+  assert.equal((await p1.act("xp.award", { amount: 100, chars: [kira] })).code, 403, "GM only");
+  assert.equal((await gm.act("xp.award", { amount: 100, chars: ["__proto__", "constructor"] })).code, 400);
+  const r = await gm.act("xp.award", { amount: 101, chars: [kira, rex, npc], reason: "The cantina fight" });
+  assert.equal(r.code, 200);
+  assert.equal(r.data.each, 33);
+  const g = (await gm.poll()).data.state;
+  assert.equal(g.characters[kira].xp, 283);
+  assert.equal(g.characters[rex].xp, 33);
+  assert.equal(g.characters[kira].classes[0].level, 1, "nobody levels by themselves");
+  await gm.act("xp.award", { amount: 40, chars: [kira] });
+  const pchat = (await p1.poll()).data.state.chat.map((m) => m.text || "");
+  assert.ok(pchat.some((t) => /^The cantina fight: 101 XP, 33 each for Kira, Rex, 1 more\.$/.test(t)), pchat.join(" | "));
+  assert.ok(!pchat.join(" ").includes("Darth Secret"), "the GM's NPC isn't named");
+  assert.ok(!pchat.some((t) => /Enough XP/.test(t)), "the level note is the GM's");
+  assert.ok((await gm.poll()).data.state.chat.some((m) => /Enough XP for the next level: Kira \(323 XP, level 2 at 300\)/.test(m.text || "")));
+});
+
+test("the GM's own NPC templates: saved, added to initiative, never sent to players (audit 9.9)", async () => {
+  const { gm, p1 } = await table();
+  assert.equal((await p1.act("npc.save", { npc: { name: "Thug" } })).code, 403);
+  assert.equal((await gm.act("npc.save", { npc: { name: "  " } })).code, 400);
+  const r = await gm.act("npc.save", { npc: { name: "Swoop Ganger", bonus: 3, hp: 22, ac: 13, notes: "Owes Kira money",
+    attacks: [{ n: "Vibroknife", hit: 5, dmg: "1d4+3 kinetic" }, { n: "", hit: 1 }, "junk"] } });
+  assert.equal(r.code, 200);
+  const id = r.data.id;
+  let g = (await gm.poll()).data.state;
+  assert.equal(g.npcs.length, 1);
+  assert.deepEqual(g.npcs[0].attacks, [{ n: "Vibroknife", hit: 5, dmg: "1d4+3 kinetic" }]);
+  await gm.act("npc.save", { npc: Object.assign({}, g.npcs[0], { hp: 30 }) });
+  g = (await gm.poll()).data.state;
+  assert.equal(g.npcs.length, 1, "the same id edits it");
+  assert.equal(g.npcs[0].hp, 30);
+  await gm.act("init.add", { name: "Swoop Ganger 1", bonus: 3, hp: 30, ac: 13, tpl: id });
+  await gm.act("init.add", { name: "Rando", tpl: "__proto__" });
+  g = (await gm.poll()).data.state;
+  assert.equal(g.initiative.entries.find((e) => e.name === "Swoop Ganger 1").tpl, id);
+  assert.equal(g.initiative.entries.find((e) => e.name === "Rando").tpl, undefined, "only a template the table has");
+  const ps = (await p1.poll()).data.state;
+  assert.equal(ps.npcs, undefined, "templates are the GM's");
+  assert.ok(ps.initiative.entries.every((e) => e.tpl === undefined));
+  assert.ok(!JSON.stringify(ps).includes("Owes Kira money"));
+  await gm.act("npc.remove", { id });
+  assert.equal((await gm.poll()).data.state.npcs, undefined);
+});
+
+test("Reliable Talent, Brutal Critical, and shots for Reload weapons (#67, audit 6.6)", async () => {
+  require("../sections/jpesus/holotable/rules.js");
+  const R = globalThis.SW5E;
+  const op = (lvl) => ({ classes: [{ name: "Operative", level: lvl }], abilities: { dex: 16 }, skills: { stealth: 2, acrobatics: 0, insight: 1 } });
+  assert.deepEqual(R.skillRollExpr(op(11), "stealth"), { expr: "1d20min8+11", reliable: true }, "Dex +3, expertise 2 x +4");
+  assert.equal(R.skillRollExpr(op(11), "acrobatics").reliable, false, "no proficiency, no Reliable Talent");
+  assert.equal(R.skillRollExpr(op(10), "stealth").reliable, false, "from 11th level");
+  const bz = (lvl) => ({ classes: [{ name: "Berserker", level: lvl }], abilities: { str: 16 } });
+  const axe = { name: "Vibroaxe", ab: "str", damage: "1d12", props: "Heavy, Two-handed" };
+  assert.deepEqual(R.critDamage(bz(8), axe), { expr: "2d12+3", brutal: 0 });
+  assert.deepEqual(R.critDamage(bz(9), axe), { expr: "2d12+3+1d12", brutal: 1 });
+  assert.deepEqual(R.critDamage(bz(17), axe), { expr: "2d12+3+3d12", brutal: 3 });
+  assert.equal(R.critDamage(bz(17), { name: "Blaster rifle", ab: "dex", damage: "1d8", props: "Ammunition (range 100/400), Reload 12" }).brutal, 0, "melee only");
+  const rifle = { name: "Blaster rifle", props: "Power Cell, Reload 12, Two-handed" };
+  assert.equal(R.reloadOf(rifle), 12);
+  assert.equal(R.ammoOf(rifle), "Power cell");
+  assert.equal(R.ammoOf({ props: "Slug Cartridge, Reload 8" }), "Slug cartridge");
+  assert.equal(R.shotsOf(rifle), 12, "a fresh weapon is loaded");
+  assert.equal(R.shotsOf(Object.assign({}, rifle, { shots: 3 })), 3);
+  assert.equal(R.shotsOf({ props: "Finesse" }), null, "no Reload, no count");
+
+  const { gm, p1 } = await table();
+  const id = (await p1.act("char.save", { char: { name: "Kira", attacks: [Object.assign({}, rifle, { shots: 5 }), Object.assign({}, rifle, { shots: -4 }), { name: "Knife" }] } })).data.id;
+  const c = (await gm.poll()).data.state.characters[id];
+  assert.equal(c.attacks[0].shots, 5);
+  assert.equal(c.attacks[1].shots, 0, "clamped at 0");
+  assert.equal(c.attacks[2].shots, undefined, "not stored when unset");
+});
+
+test("tokens: Tiny creatures and elevation (audit 8.14, 8.15)", async () => {
+  const { gm, p1 } = await table();
+  await gm.act("token.add", { name: "Mynock", x: 2, y: 2 });
+  const tok = () => gm.poll().then((r) => r.data.state.map.tokens.find((t) => t.name === "Mynock"));
+  const id = (await tok()).id;
+  await gm.act("token.update", { id, fields: { tiny: true, elev: 32 } });
+  let t = await tok();
+  assert.equal(t.tiny, true);
+  assert.equal(t.size, 1, "still one square for walls, fog and the combat view");
+  assert.equal(t.elev, 30, "in 5-ft steps");
+  await gm.act("token.update", { id, fields: { size: 2 } });
+  t = await tok();
+  assert.equal(t.tiny, undefined, "a bigger size isn't Tiny");
+  await gm.act("token.update", { id, fields: { size: 1, tiny: true, elev: -999999 } });
+  t = await tok();
+  assert.equal(t.elev, -9995, "clamped");
+  await gm.act("token.update", { id, fields: { elev: 0 } });
+  t = await tok();
+  assert.equal(t.elev, undefined, "the ground isn't kept");
+  assert.equal(t.tiny, true);
+  assert.equal((await p1.act("token.update", { id, fields: { elev: 10 } })).code, 403, "only the GM or the token's owner");
+  assert.equal((await p1.poll()).data.state.map.tokens.find((x) => x.id === id).tiny, true, "players see it Tiny too");
+});
+
+test("map: anyone pings (once a second each); the GM draws and clears (audit 8.13)", async () => {
+  const { gm, p1 } = await table();
+  assert.equal((await p1.act("map.ping", { x: 3.5, y: 2.25 })).code, 200);
+  await p1.act("map.ping", { x: 9, y: 9 });   // too soon: dropped
+  let pings = (await gm.poll()).data.state.pings;
+  assert.equal(pings.length, 1);
+  assert.deepEqual([pings[0].x, pings[0].y, pings[0].name, pings[0].gm], [3.5, 2.25, "Sam", false]);
+  assert.equal((await p1.act("map.ping", { x: "nope" })).code, 400);
+  assert.equal((await p1.act("map.draw", { pts: [0, 0, 1, 1] })).code, 403, "drawing is the GM's");
+  assert.equal((await gm.act("map.draw", { pts: [0, 0, 1, 1.5, 2, 9999], c: "#ef5350" })).code, 200);
+  assert.equal((await gm.act("map.draw", { pts: [1] })).code, 400, "a stroke needs two points");
+  await gm.act("map.draw", { pts: [5, 5, 6, 6], c: "javascript:alert(1)" });
+  let d = (await p1.poll()).data.state.map.drawings;
+  assert.equal(d.length, 2, "players see the drawings");
+  assert.deepEqual(d[0].pts, [0, 0, 1, 1.5, 2, 300], "clamped to the board's reach");
+  assert.equal(d[1].c, "#ffd27a", "only the palette's colours");
+  await gm.act("map.drawClear", { id: d[0].id });
+  assert.equal((await gm.poll()).data.state.map.drawings.length, 1);
+  await gm.act("map.drawClear", {});
+  assert.equal((await gm.poll()).data.state.map.drawings, undefined, "none left");
+});
+
+test("Infuse Item (Engineer): +1/+2/+3 to the infused weapon's attack and damage or the armor's AC (#67, 3.4)", async () => {
+  require("../sections/jpesus/holotable/rules.js");
+  const R = globalThis.SW5E;
+  const eng = (lvl, o) => Object.assign({ classes: [{ name: "Engineer", level: lvl }], abilities: { str: 14, dex: 12 }, equipment: [] }, o);
+  const blade = { name: "Vibrosword", ab: "str", damage: "1d8" };
+  assert.deepEqual([1, 2, 9, 10, 15].map((l) => R.infuseBonus(eng(l))), [0, 1, 1, 2, 3]);
+  const c = eng(10, { infused: "attack:Vibrosword", attacks: [blade] });
+  assert.equal(R.attackBonus(c, blade), 2 + 4 + 2, "Str +2, proficiency +4, infused +2");
+  assert.equal(R.damageExpr(c, blade), "1d8+4");
+  assert.equal(R.attackBonus(eng(10, { attacks: [blade] }), blade), 6, "not infused: as before");
+  const suit = { name: "Combat suit", equipped: true, armor: { kind: "light", ac: 11 } };
+  assert.equal(R.armorClass(eng(15, { equipment: [suit], infused: "equipment:Combat suit" })).total, 15, "11 + Dex 1 + 3");
+  assert.equal(R.armorClass(eng(15, { equipment: [Object.assign({}, suit, { equipped: false })], infused: "equipment:Combat suit" })).total, 11, "only while worn");
+  assert.equal(R.armorClass(eng(2, { equipment: [{ name: "Light shield", equipped: true, armor: { kind: "shield", ac: 1 } }], infused: "equipment:Light shield" })).total, 13, "10 + 1 + shield 1 + infused 1");
+  assert.equal(R.attackBonus({ classes: [{ name: "Fighter", level: 10 }], abilities: { str: 14 }, infused: "attack:Vibrosword" }, blade), 6, "only an Engineer's");
+
+  const { gm, p1 } = await table();
+  const id = (await p1.act("char.save", { char: eng(10, { name: "Tink", acAuto: true, infused: "equipment:Combat suit", equipment: [suit] }) })).data.id;
+  let s = (await gm.poll()).data.state.characters[id];
+  assert.equal(s.infused, "equipment:Combat suit");
+  assert.equal(s.ac, 14, "the server's auto AC includes it");
+  const id2 = (await p1.act("char.save", { char: eng(10, { name: "Odd", infused: "javascript:alert(1)" }) })).data.id;
+  assert.equal((await gm.poll()).data.state.characters[id2].infused, undefined);
+});
+
+test("the party stash (6.9) and loot (9.10): the GM puts things in, players take onto their own, the GM shares credits", async () => {
+  const { gm, p1, p2 } = await table();
+  const kira = (await p1.act("char.save", { char: { name: "Kira", credits: 10 } })).data.id;
+  const rex = (await p2.act("char.save", { char: { name: "Rex" } })).data.id;
+  assert.equal((await p1.act("stash.add", { items: [{ name: "Free stuff" }] })).code, 403);
+  assert.equal((await gm.act("stash.add", {})).code, 400);
+  await gm.act("stash.add", { items: [{ name: "Vibroknife of Echoes", rar: "Premium", att: true, notes: "Weapon", id: "__proto__" }, { name: "Medpac", qty: 3, rar: "Bogus" }, { name: "" }], credits: 301 });
+  let st = (await p1.poll()).data.state;
+  assert.equal(st.stash.items.length, 2, "everyone sees the stash; a nameless item is dropped");
+  assert.equal(st.stash.credits, 301);
+  const [blade, med] = st.stash.items;
+  assert.notEqual(blade.id, "__proto__", "ids are the server's");
+  assert.equal(med.rar, undefined, "only SW5e's rarities");
+  assert.ok(st.chat.some((m) => /Into the party stash: Vibroknife of Echoes \(Premium\), 3× Medpac, 301 credits/.test(m.text || "")));
+  assert.equal((await p2.act("stash.take", { id: blade.id, charId: kira })).code, 403, "a player takes onto their own character only");
+  assert.equal((await p1.act("stash.take", { id: blade.id, charId: kira })).code, 200);
+  assert.equal((await p2.act("stash.take", { id: blade.id, charId: rex })).code, 400, "it's gone");
+  st = (await gm.poll()).data.state;
+  const got = st.characters[kira].equipment.find((e) => e.name === "Vibroknife of Echoes");
+  assert.ok(got && /Premium, requires attunement · Weapon/.test(got.notes), "onto the sheet, rarity noted");
+  assert.equal(st.stash.items.length, 1);
+  assert.equal((await p1.act("stash.split", { chars: [kira, rex] })).code, 403, "sharing out is the GM's");
+  await gm.act("stash.split", { chars: [kira, rex] });
+  st = (await gm.poll()).data.state;
+  assert.deepEqual([st.characters[kira].credits, st.characters[rex].credits, st.stash.credits], [160, 150, 1], "even shares; the odd credit stays");
+  await gm.act("stash.remove", { id: med.id, credits: true });
+  assert.equal((await p1.poll()).data.state.stash, undefined, "empty: gone");
+});
+
+test("multiclassing prerequisites and proficiencies (2.12, 2.13); the GM undoes a last level (2.15)", async () => {
+  require("../sections/jpesus/holotable/rules.js");
+  const R = globalThis.SW5E;
+  const c = { classes: [{ name: "Berserker", level: 3 }], abilities: { str: 15, dex: 10, con: 14, int: 12, wis: 10, cha: 10 } };
+  assert.deepEqual(R.multiclassUnmet(c, "Engineer"), ["Engineer needs Intelligence 13"]);
+  assert.deepEqual(R.multiclassUnmet(c, "Fighter"), []);
+  assert.deepEqual(R.multiclassUnmet(Object.assign({}, c, { abilities: { str: 12, wis: 14 } }), "Consular"), ["Berserker needs Strength 13"], "the old class too");
+  assert.deepEqual(R.multiclassUnmet(c, "Guardian"), ["Guardian needs Wisdom or Charisma 13"]);
+
+  const { gm, p1 } = await table();
+  const id = (await p1.act("char.save", { char: Object.assign({ name: "Brakk", hp: { max: 30, current: 30, temp: 0 }, proficiencies: "Light armor" }, c) })).data.id;
+  await gm.act("levelup.grant", { charIds: [id] });
+  const bad = await p1.act("levelup.apply", { charId: id, className: "Engineer", hpMode: "average", hitDie: 8 });
+  assert.equal(bad.code, 400, "a player is held to the prerequisites");
+  assert.match(bad.data.error, /Engineer needs Intelligence 13.*The GM can allow it/);
+  assert.equal((await p1.act("levelup.apply", { charId: id, className: "Engineer", hpMode: "average", hitDie: 8, override: true })).code, 400, "a player can't override");
+  assert.equal((await gm.act("levelup.apply", { charId: id, className: "Engineer", hpMode: "average", hitDie: 8, override: true })).code, 200, "the GM can allow it");
+  let s = (await gm.poll()).data.state;
+  let ch = s.characters[id];
+  assert.deepEqual(ch.classes.map((k) => [k.name, k.level]), [["Berserker", 3], ["Engineer", 1]]);
+  assert.match(ch.proficiencies, /Multiclass Engineer: Light armor/, "the multiclass set, noted");
+  assert.equal(s.levelUndo[id], 4, "the GM can take level 4 back");
+  assert.equal((await p1.poll()).data.state.levelUndo, undefined, "the GM's");
+  assert.equal((await p1.act("levelup.undo", { charId: id })).code, 403);
+  assert.equal((await gm.act("levelup.undo", { charId: id })).code, 200);
+  s = (await gm.poll()).data.state;
+  ch = s.characters[id];
+  assert.deepEqual(ch.classes.map((k) => [k.name, k.level]), [["Berserker", 3]], "back to before");
+  assert.equal(ch.hp.max, 30);
+  assert.equal(ch.proficiencies, "Light armor");
+  assert.equal(s.levelUps[id].count, 1, "and the level is granted again");
+  assert.equal(s.levelUndo, undefined);
+  assert.equal((await gm.act("levelup.undo", { charId: id })).code, 400, "once");
+  assert.equal((await p1.act("levelup.apply", { charId: id, className: "Berserker", hpMode: "average", hitDie: 12 })).code, 200, "taken again, properly");
+});
+
+test("in-game time (9.18) and a log of play the GM can download (12.4)", async () => {
+  const { gm, p1 } = await table();
+  assert.equal((await p1.act("clock.set", { day: 2, min: 600 })).code, 403);
+  await gm.act("clock.set", { day: 3, min: 22 * 60 + 30 });
+  assert.deepEqual((await p1.poll()).data.state.clock, { day: 3, min: 1350 });
+  await gm.act("clock.advance", { mins: 480, why: "long rest" });
+  assert.deepEqual((await p1.poll()).data.state.clock, { day: 4, min: 390 }, "past midnight: the next day");
+  assert.ok((await p1.poll()).data.state.chat.some((m) => m.text === "🕑 8 hours pass (long rest). It's now Day 4, 06:30."));
+  await gm.act("clock.advance", { mins: 2880, announce: false });
+  assert.deepEqual((await gm.poll()).data.state.clock, { day: 6, min: 390 });
+  assert.equal((await gm.poll()).data.state.chat.filter((m) => /pass/.test(m.text || "")).length, 1, "a quiet advance says nothing");
+  await gm.act("clock.set", { day: -4, min: 99999 });
+  assert.deepEqual((await gm.poll()).data.state.clock, { day: 1, min: 1439 }, "clamped");
+  await gm.act("clock.set", { off: true });
+  assert.equal((await p1.poll()).data.state.clock, undefined);
+
+  await p1.act("chat", { text: "Hello\nthere" });
+  await p1.act("roll", { expr: "1d20+3", label: "Stealth" });
+  assert.equal((await p1.call("GET", { op: "chatlog" })).code, 403, "the GM's");
+  const log = await gm.call("GET", { op: "chatlog" });
+  assert.equal(log.code, 200);
+  assert.match(log.headers["content-disposition"], /attachment; filename="holotable-chat-\d{4}-\d\d-\d\d\.txt"/);
+  assert.match(log.data, /Sam: Hello \/ there/);
+  assert.match(log.data, /Stealth = \d+ \[1d20\+3/);
+});
+
+test("the GM's table rules: only the GM changes levels, XP and max HP (12.6); stat blocks kept from players (9.17)", async () => {
+  const { gm, p1 } = await table();
+  const sheet = { name: "Kira", xp: 300, classes: [{ name: "Operative", level: 3, archetype: "" }], hp: { max: 20, current: 20, temp: 0 } };
+  const id = (await p1.act("char.save", { char: sheet })).data.id;
+  assert.equal((await p1.act("settings.sheetLock", { on: true })).code, 403);
+  await gm.act("settings.sheetLock", { on: true });
+  assert.equal((await p1.poll()).data.state.sheetLock, true);
+  const c0 = (await p1.poll()).data.state.characters[id];
+  await p1.act("char.save", { char: Object.assign({}, c0, { xp: 99999, credits: 50, classes: [{ name: "Operative", level: 20, archetype: "Gunslinger Practice" }], hp: { max: 999, current: 15, temp: 0 } }) });
+  let c = (await gm.poll()).data.state.characters[id];
+  assert.deepEqual([c.xp, c.classes[0].level, c.hp.max], [300, 3, 20], "a player's save keeps them");
+  assert.deepEqual([c.classes[0].archetype, c.credits, c.hp.current], ["Gunslinger Practice", 50, 15], "the rest is still the player's");
+  await gm.act("char.save", { char: Object.assign({}, c, { xp: 900 }) });
+  assert.equal((await gm.poll()).data.state.characters[id].xp, 900, "the GM's own edits go through");
+  await gm.act("settings.sheetLock", { on: false });
+  await p1.act("char.save", { char: Object.assign({}, (await p1.poll()).data.state.characters[id], { xp: 1000 }) });
+  assert.equal((await gm.poll()).data.state.characters[id].xp, 1000, "off: as before");
+
+  await gm.act("settings.statBlocks", { hidden: true });
+  const st = (await p1.poll()).data.state;
+  assert.equal(st.statBlocksHidden, true);
+  await gm.act("settings.statBlocks", { hidden: false });
+  assert.equal((await p1.poll()).data.state.statBlocksHidden, undefined);
 });
