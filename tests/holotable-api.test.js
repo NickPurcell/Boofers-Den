@@ -1949,3 +1949,31 @@ test("the GM awards XP after an encounter, split evenly; levelling stays the GM'
   assert.ok(!pchat.some((t) => /Enough XP/.test(t)), "the level note is the GM's");
   assert.ok((await gm.poll()).data.state.chat.some((m) => /Enough XP for the next level: Kira \(323 XP, level 2 at 300\)/.test(m.text || "")));
 });
+
+test("the GM's own NPC templates: saved, added to initiative, never sent to players (audit 9.9)", async () => {
+  const { gm, p1 } = await table();
+  assert.equal((await p1.act("npc.save", { npc: { name: "Thug" } })).code, 403);
+  assert.equal((await gm.act("npc.save", { npc: { name: "  " } })).code, 400);
+  const r = await gm.act("npc.save", { npc: { name: "Swoop Ganger", bonus: 3, hp: 22, ac: 13, notes: "Owes Kira money",
+    attacks: [{ n: "Vibroknife", hit: 5, dmg: "1d4+3 kinetic" }, { n: "", hit: 1 }, "junk"] } });
+  assert.equal(r.code, 200);
+  const id = r.data.id;
+  let g = (await gm.poll()).data.state;
+  assert.equal(g.npcs.length, 1);
+  assert.deepEqual(g.npcs[0].attacks, [{ n: "Vibroknife", hit: 5, dmg: "1d4+3 kinetic" }]);
+  await gm.act("npc.save", { npc: Object.assign({}, g.npcs[0], { hp: 30 }) });
+  g = (await gm.poll()).data.state;
+  assert.equal(g.npcs.length, 1, "the same id edits it");
+  assert.equal(g.npcs[0].hp, 30);
+  await gm.act("init.add", { name: "Swoop Ganger 1", bonus: 3, hp: 30, ac: 13, tpl: id });
+  await gm.act("init.add", { name: "Rando", tpl: "__proto__" });
+  g = (await gm.poll()).data.state;
+  assert.equal(g.initiative.entries.find((e) => e.name === "Swoop Ganger 1").tpl, id);
+  assert.equal(g.initiative.entries.find((e) => e.name === "Rando").tpl, undefined, "only a template the table has");
+  const ps = (await p1.poll()).data.state;
+  assert.equal(ps.npcs, undefined, "templates are the GM's");
+  assert.ok(ps.initiative.entries.every((e) => e.tpl === undefined));
+  assert.ok(!JSON.stringify(ps).includes("Owes Kira money"));
+  await gm.act("npc.remove", { id });
+  assert.equal((await gm.poll()).data.state.npcs, undefined);
+});

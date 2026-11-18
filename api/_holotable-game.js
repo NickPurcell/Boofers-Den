@@ -239,7 +239,7 @@ function viewFor(camp, cid, gm, online) {
   const ini = Object.assign({}, camp.initiative);
   if (!gm) {
     ini.entries = ini.entries.filter((e) => !e.hidden)
-      .map((e) => Object.assign({}, e, e.npc ? { hp: null, maxHp: null, sb: undefined } : {}));
+      .map((e) => Object.assign({}, e, e.npc ? { hp: null, maxHp: null, sb: undefined, tpl: undefined } : {}));
   }
   const map = Object.assign({}, camp.map);
   let fog = null;
@@ -250,7 +250,7 @@ function viewFor(camp, cid, gm, online) {
     if (unk.size) ini.entries = ini.entries.map((e) => {
       const tok = unknownTokenFor(unk, e);
       if (tok === undefined) return e;
-      return Object.assign({}, e, { name: "???", charId: null, sb: undefined, hp: null, maxHp: null, tok: tok || undefined });
+      return Object.assign({}, e, { name: "???", charId: null, sb: undefined, tpl: undefined, hp: null, maxHp: null, tok: tok || undefined });
     });
     delete map.walls;   // walls are the GM's: a player's browser never learns the shape of a room it hasn't seen (issue #93)
     delete map.fog;     // so is the fog's record; a player gets only their own squares
@@ -286,6 +286,7 @@ function viewFor(camp, cid, gm, online) {
     ships: (camp.ships || []).filter((x) => gm || !x.hidden),
     ...(camp.space ? { space: Space.view(camp, gm) } : {}),   // the space map (#146)
     sceneFx: fxView,
+    ...(gm && (camp.npcs || []).length ? { npcs: camp.npcs } : {}),   // the GM's NPC templates (9.9), the GM's only
     ...(camp.fight && camp.fight.on ? { fight: Fight.view(camp, cid, gm, shownName) } : {}),
     // the sheet's Cast (#73), combat view on or off: which powers the table has data for, and who concentrates on what
     ...((sc) => (sc ? { sheetCast: sc } : {}))(Fight.sheetView(camp, gm ? camp.characters : sheetsFor(camp, cid))),
@@ -652,6 +653,7 @@ function applyAction(camp, cid, gm, type, p) {
         hidden: !!p.hidden && gm, hp: nullNum(charId ? hp.current : p.hp), maxHp: nullNum(charId ? hp.max : p.hp),
         ac: nullNum(charId ? ch.ac : p.ac), dexTie: num(p.bonus) / 100, conditions: entry.conditions || [],
         sb: !charId && gm && p.sb ? str(p.sb, 80) : undefined,
+        tpl: !charId && gm && (camp.npcs || []).some((t) => t.id === String(p.tpl || "")) ? String(p.tpl) : undefined,   // the GM's NPC (9.9)
       });
       sortInit(ini);
       return {};
@@ -901,6 +903,17 @@ function applyAction(camp, cid, gm, type, p) {
       if (ready.length) addChat(camp, { system: true, to: ["@gm"], private: true, text: `Enough XP for the next level: ${ready.join("; ")}. Grant it from the GM tab when it suits the story.` });
       return { each, ready: ready.length };
     }
+    case "npc.save": {   // a new NPC template, or a change to one (same id)
+      need(gm);
+      const t = cleanNpc(p.npc);
+      if (!t) throw new Invalid("An NPC needs a name.");
+      const list = cleanNpcs(camp.npcs), at = list.findIndex((x) => x.id === t.id);
+      if (at < 0 && list.length >= 100) throw new Invalid("That's the most NPCs a table can keep (100). Delete one first.");
+      if (at < 0) list.push(t); else list[at] = t;
+      camp.npcs = list;
+      return { id: t.id };
+    }
+    case "npc.remove": need(gm); camp.npcs = cleanNpcs(camp.npcs).filter((x) => x.id !== String(p.id || "")); return {};
     case "levelup.grant": {
       need(gm);
       const ids = (Array.isArray(p.charIds) ? p.charIds : []).filter((id) => charById(camp, id));
@@ -1028,6 +1041,22 @@ function propSightSegments(map) {
   return out;
 }
 
+// The GM's own NPCs (audit 9.9): saved templates that go into initiative like an SW5e creature. GM-only.
+// attacks: { n: name, hit: attack bonus, dmg: a damage expression and type }, rolled GM-only from the tracker's card.
+function cleanNpc(t) {
+  if (!t || typeof t !== "object") return null;
+  const name = str(t.name, 60).trim();
+  if (!name) return null;
+  return {
+    id: /^[a-z0-9]{4,20}$/.test(String(t.id || "")) ? String(t.id) : rid(),
+    name, bonus: clamp(int(t.bonus), -10, 20), hp: clamp(int(t.hp, 1), 1, 9999), ac: clamp(int(t.ac, 10), 0, 40),
+    attacks: (Array.isArray(t.attacks) ? t.attacks : []).slice(0, 12).filter((a) => a && typeof a === "object" && str(a.n, 60).trim())
+      .map((a) => ({ n: str(a.n, 60).trim(), hit: clamp(int(a.hit), -10, 30), dmg: str(a.dmg, 60).trim() })),
+    notes: str(t.notes, 2000),
+  };
+}
+const cleanNpcs = (list) => (Array.isArray(list) ? list : []).slice(0, 100).map(cleanNpc).filter(Boolean)
+  .filter((t, i, a) => a.findIndex((x) => x.id === t.id) === i);
 function cleanMap(g, raw) {
   const m = raw && typeof raw === "object" ? raw : {};
   const n = (v, d) => (Number.isFinite(+v) ? +v : d);
@@ -1066,6 +1095,7 @@ function cleanGame(g) {
   g.audio = au && /^au[a-f0-9]{12}$/.test(String(au.track || "")) ? { track: au.track, name: str(au.name, 80) || "Track", playing: !!au.playing,
     pos: clamp(num(au.pos), 0, 86400), at: num(au.at, now()), loop: !!au.loop, vol: clamp(num(au.vol, 1), 0, 1) } : null;
   g.hpMax = g.hpMax !== false;
+  if (Array.isArray(g.npcs) && g.npcs.length) g.npcs = cleanNpcs(g.npcs); else delete g.npcs;
   g.ships = (Array.isArray(g.ships) ? g.ships : []).slice(0, MAX_SHIPS).filter((x) => x && typeof x === "object").map((x) => cleanShip(x, g.characters));
   if (g.space) g.space = Space.clean(g.space, g.ships);
   g.scenes = (Array.isArray(g.scenes) ? g.scenes : []).slice(0, 30).filter((x) => x && typeof x === "object")
