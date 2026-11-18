@@ -500,3 +500,104 @@ test("space map: initiative, the order, a ship's turn starting its power and shi
   const g = G.cleanGame(Object.assign(G.blankCampaign("Test"), { ships: st.ships, space: { on: true, n: "abcdef12", tok: [{ id: party, x: -5, y: 3, f: 2 }, { id: "__proto__", x: 1, y: 1 }, { id: party, x: 1, y: 1 }] } }));
   assert.deepEqual(g.space.tok, [{ x: 0, y: 3, f: 2, id: party, hidden: false, named: false }], "cleaned: inside the map, only real ships, once each");
 });
+
+// ---------------------------------------------------------------- firing (SotG chapter 5's weapons, chapter 9's attacks)
+test("fire rules: arcs and turrets, ranges by category, properties, damage, and what changes the roll", () => {
+  const laser = { name: "Quad laser", dmg: "2d4", type: "energy", range: "800/3200", props: "Power (range 800/3200), overheat 8", cat: "primary", arc: "forward" };
+  const me = { size: "Small", abilities: { str: 14, wis: 16, con: 10 } }, them = { size: "Medium" };
+  const a = { x: 0, y: 0, f: 2 };   // facing east
+  let c = SR.fireCheck(me, a, laser, them, { x: 10, y: 0 });
+  assert.deepEqual([c.ok, c.feet, c.arc, c.kind, c.dis], [true, 500, "forward", "attack", []], "10 squares to its square: 500 ft");
+  assert.match(SR.fireCheck(me, a, laser, them, { x: 0, y: 10 }).why, /starboard arc/, "a forward mount can't fire to starboard");
+  assert.ok(SR.fireCheck(me, a, Object.assign({}, laser, { arc: "turret" }), them, { x: 0, y: 10 }).ok, "a turret fires in any arc");
+  assert.ok(SR.fireCheck(me, a, Object.assign({}, laser, { arc: "" }), them, { x: 0, y: 10 }).ok, "no mount set: any arc");
+  assert.deepEqual(SR.fireCheck(me, a, laser, them, { x: 20, y: 0 }).dis, ["long range"], "primary: beyond normal range");
+  assert.match(SR.fireCheck(me, a, laser, them, { x: 70, y: 0 }).why, /beyond its long range/);
+  assert.deepEqual(SR.fireCheck(me, a, laser, them, { x: 1, y: 0 }).dis, ["within 50 ft"]);
+  const rail = Object.assign({}, laser, { cat: "secondary", range: "400/1600" });
+  assert.deepEqual(SR.fireCheck(me, a, rail, them, { x: 5, y: 0 }).dis, ["close range"], "secondary: within close range");
+  assert.ok(SR.fireCheck(me, a, rail, them, { x: 12, y: 0 }).ok);
+  const big = { size: "Huge", abilities: {} };
+  assert.match(SR.fireCheck(big, a, rail, { size: "Small" }, { x: 20, y: 0 }).why, /can't target Small or Tiny/);
+  assert.deepEqual(SR.fireCheck(big, a, rail, { size: "Medium" }, { x: 20, y: 0 }).dis, ["a smaller target"]);
+  c = SR.fireCheck(big, a, laser, them, { x: 30, y: 0 });
+  assert.deepEqual([c.kind, c.adv, c.dis], ["save", ["long range"], []], "a Huge ship's primary weapons call for a save; past normal range the target has advantage");
+  const torp = { name: "Torpedo", dmg: "4d10", type: "kinetic", range: "1000/4000", props: "Ammunition, homing", cat: "tertiary", arc: "forward" };
+  c = SR.fireCheck(me, a, torp, them, { x: 10, y: 0 });
+  assert.deepEqual([c.kind, c.dis], ["save", ["homing"]], "tertiary: a save; homing gives the target disadvantage");
+  assert.deepEqual(SR.fireCheck(me, a, Object.assign({}, torp, { props: "Ammunition" }), { size: "Gargantuan" }, { x: 30, y: 0 }).adv, ["long range"]);
+  assert.deepEqual(SR.fireCheck(me, a, Object.assign({}, torp, { props: "Ammunition" }), { size: "Huge" }, { x: 10, y: 0 }).dis, ["a much larger ship"]);
+  assert.match(SR.fireCheck(me, a, Object.assign({}, torp, { cat: "quaternary" }), them, { x: 10, y: 0 }).why, /dropped or launched/);
+  // conditions and properties
+  assert.deepEqual(SR.fireCheck(SR.setCondition(me, "Ionized", true), a, laser, SR.setCondition(them, "Stunned", true), { x: 10, y: 0 }).dis, ["Ionized"]);
+  assert.deepEqual(SR.fireCheck(me, a, laser, SR.setCondition(them, "Stunned", true), { x: 10, y: 0 }).adv, ["Stunned"], "attacks against a stunned ship have advantage");
+  assert.deepEqual(SR.fireCheck(me, a, Object.assign({}, laser, { props: "constitution 15" }), them, { x: 10, y: 0 }).dis, ["Constitution under 15"]);
+  assert.deepEqual([SR.weaponProp({ props: "Power (range 1000/4000), con. 17, heavy, ionizing, keen 1" }, "constitution"), SR.weaponProp({ props: "heavy, keen 1" }, "keen"),
+    SR.weaponProp({ props: "heavy" }, "heavy"), SR.weaponProp({ props: "overheat 8" }, "heavy")], [17, 1, true, null]);
+  assert.equal(SR.attackBonusOf(me, laser, 3), 6, "Wis +3 and the gunner's +3");
+  assert.equal(SR.saveDcOf(me, torp, 3), 14);
+  assert.deepEqual([SR.damageExpr(me, laser, false), SR.damageExpr(me, laser, true), SR.damageExpr(me, torp, false), SR.damageExpr(me, Object.assign({}, laser, { props: "heavy" }), false)],
+    ["2d4+2", "4d4+2", "4d10", "2d4+3"], "Strength on primary and secondary; dice doubled on a critical; heavy adds half Strength");
+});
+
+test("space.fire: the attack against AC, damage through the ship rules, ammunition, ionizing, a torpedo's save, and who may fire", async () => {
+  const { gm, p1, p2, party, enemy } = await table();
+  let sh = shipIn(await p1.state(), party);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { abilities: Object.assign({}, sh.abilities, { wis: 30 }), weapons: [
+    { name: "Quad laser", dmg: "2d4", type: "energy", range: "800/3200", cat: "primary", arc: "forward", atkMisc: 20 },
+    { name: "Ion cannon", dmg: "1d4", type: "ion", range: "800/3200", props: "ionizing", cat: "primary", arc: "turret", atkMisc: 20, ammo: 1 },
+    { name: "Torpedo", dmg: "1d4", type: "kinetic", range: "1000/4000", cat: "tertiary", arc: "forward", atkMisc: 20 },
+  ] }) });
+  sh = shipIn(await p1.state(), party);
+  assert.deepEqual(sh.weapons.map((w) => [w.cat, w.arc, w.ammo]), [["primary", "forward", ""], ["primary", "turret", 1], ["tertiary", "forward", ""]], "the mount fields are kept");
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 5, f: 2 });     // facing east
+  await gm.act("space.place", { id: enemy, x: 10, y: 5, f: 6 });   // 7 squares east of it
+  let res = await p1.act("space.fire", { id: party, target: enemy, weapon: 0, bonus: 99 });
+  assert.equal(res.code, 200);
+  let st = await p1.state();
+  const atk = st.chat.find((m) => m.roll && m.roll.kind === "attack");
+  assert.equal(res.data.hit, atk.roll.nat !== 1, "+10 Wis, +2, +20 against AC 10: a hit unless a 1");
+  assert.equal(atk.roll.expr, "1d20+32", "the bonus is the sheet's, not the request's");
+  assert.equal(atk.roll.label, "Dawn Skiff fires Quad laser at ???", "the enemy is ??? to the table until the GM names it");
+  assert.ok(!JSON.stringify(st.chat).includes("Black Lance"), "its name and its hull lines stay the GM's");
+  const gst = await gm.state();
+  if (res.data.hit) {
+    assert.ok(gst.chat.some((m) => /^Black Lance takes \d+ damage/.test(m.text || "")), "the GM reads what the hit did");
+    assert.equal(shipIn(gst, enemy).hull.current, 20 - res.data.damage, "through the ship rules: no shields, all to the hull");
+  }
+  // ammunition and ionizing; a turret fires whatever the arc
+  await gm.act("space.place", { id: enemy, x: 2, y: 12, f: 0 });   // now off its starboard side
+  assert.equal((await p1.act("space.fire", { id: party, target: enemy, weapon: 0 })).code, 400, "the forward laser can't reach it");
+  res = await p1.act("space.fire", { id: party, target: enemy, weapon: 1 });
+  assert.equal(res.code, 200);
+  assert.equal(shipIn(await p1.state(), party).weapons[1].ammo, 0, "one shot of ammunition spent");
+  assert.equal((await p1.act("space.fire", { id: party, target: enemy, weapon: 1 })).code, 400, "out of ammunition");
+  if (res.data.hit) assert.ok((await gm.state()).chat.some((m) => m.roll && /Constitution save against ionizing \(DC 13\)/.test(m.roll.label)), "ionizing: a DC 13 Constitution save");
+  // a torpedo: the target's Dexterity save, half on a success
+  await gm.act("space.place", { id: enemy, x: 12, y: 5, f: 6 });
+  res = await p2.act("space.fire", { id: party, target: enemy, weapon: 2 });
+  assert.equal(res.code, 200); assert.equal(typeof res.data.saved, "boolean");
+  assert.ok((await p1.state()).chat.some((m) => /Dawn Skiff fires Torpedo at \?\?\?: a Dexterity save, DC 40/.test(m.text || "")));
+  // who may fire what; ids and indexes from the request
+  assert.equal((await p1.act("space.fire", { id: enemy, target: party, weapon: 0 })).code, 403, "the GM's ship");
+  for (const bad of [{ target: "__proto__" }, { target: "constructor" }, { weapon: "__proto__" }, { weapon: 7 }, { weapon: -1 }, { target: party }]) {
+    assert.equal((await p1.act("space.fire", Object.assign({ id: party, target: enemy, weapon: 0 }, bad))).code, 400, JSON.stringify(bad));
+  }
+  assert.equal(({}).hull, undefined);
+  // after a laser, an ion cannon and a torpedo at it, neither player has read the enemy's name: its saves (Constitution
+  // against ionizing, Dexterity against the torpedo) and its hull lines went to the GM alone, with no sender id
+  for (const who of [p1, p2]) assert.ok(!JSON.stringify((await who.state()).chat).includes("Black Lance"), "no player reads the enemy's name");
+  assert.ok((await gm.state()).chat.some((m) => m.roll && /^Black Lance: Dexterity save \(DC 40\)/.test(m.roll.label) && m.from === "Ship combat (GM only)" && !m.fromId));
+  await gm.act("space.token", { id: enemy, hidden: true });
+  assert.equal((await p1.act("space.fire", { id: party, target: enemy, weapon: 2 })).code, 400, "players can't fire at a token they can't see");
+  // the GM fires back: its roll is the GM's, the result is everyone's
+  await gm.act("space.token", { id: enemy, hidden: false });
+  sh = shipIn(await gm.state(), enemy);
+  await gm.act("ship.save", { ship: Object.assign({}, sh, { weapons: [{ name: "Turbolaser", dmg: "1d6", type: "energy", range: "800/3200", cat: "primary", arc: "turret", atkMisc: 30 }] }) });
+  res = await gm.act("space.fire", { id: enemy, target: party, weapon: 0 });
+  assert.equal(res.code, 200);
+  st = await p1.state();
+  assert.ok(!st.chat.some((m) => m.roll && /Turbolaser/.test(m.roll.label)), "the enemy's attack roll isn't the players'");
+  assert.ok(st.chat.some((m) => /^\?\?\? (hits|misses) Dawn Skiff with Turbolaser/.test(m.text || "")), "but they read what happened to them");
+});
