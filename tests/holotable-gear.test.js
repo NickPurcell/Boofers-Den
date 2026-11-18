@@ -125,3 +125,10 @@ test("item modification (6.4): a chassis and a modification keep their checked s
   assert.deepEqual(eq[1].mod, { kind: "blaster" });
   assert.ok(!("chassis" in eq[2]) && !("mod" in eq[2]));
 });
+
+test("speed (5.11): an item's armor keeps its strength and cumbersome properties", async () => {
+  const { gm, sam, avery } = await table();
+  const av = await sheet(sam, avery);
+  await sam.act("char.save", { char: Object.assign({}, av, { equipment: [{ name: "Assault armor", qty: 1, equipped: true, armor: { kind: "heavy", ac: 17, str: 15, cumbersome: true } }] }) });
+  assert.deepEqual((await sheet(gm, avery)).equipment[0].armor, { kind: "heavy", ac: 17, str: 15, cumbersome: true });
+});

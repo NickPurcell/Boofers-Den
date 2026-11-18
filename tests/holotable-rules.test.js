@@ -269,6 +269,26 @@ test("installing and removing a modification (audit 6.4, #236's review): the lis
   assert.match(R.removeMod(g, 0, 0, true), /gone/);
 });
 
+test("speed (audit 5.11): SW5e's strength and cumbersome armor properties, the encumbrance variant, other movement from traits", () => {
+  assert.deepEqual(R.armorFromItem({ accl: "Heavy", ac: "17", props: ["Bulky", "cumbersome", "strength 15"] }), { kind: "heavy", ac: 17, str: 15, cumbersome: true });
+  assert.deepEqual(R.armorFromItem({ accl: "Light", ac: "11", props: [] }), { kind: "light", ac: 11 });
+  assert.deepEqual(R.cleanArmor({ kind: "heavy", ac: "17", str: 99, cumbersome: "yes" }), { kind: "heavy", ac: 17, cumbersome: true });
+  assert.equal(R.cleanArmor({ kind: "__proto__" }), null);
+  const c = (str, worn, extra = {}) => Object.assign({ speed: 30, abilities: { str }, equipment: [{ name: "Assault armor", equipped: worn, armor: { kind: "heavy", ac: 17, str: 15, cumbersome: true } }] }, extra);
+  assert.deepEqual([R.speedOf(c(12, true)).speed, R.speedOf(c(15, true)).speed, R.speedOf(c(12, false)).speed], [15, 25, 30], "-10 below Str 15, -5 cumbersome; carried, nothing");
+  assert.deepEqual(R.speedOf(c(12, true)).parts, ["Assault armor needs Str 15: -10 ft", "Assault armor is cumbersome: -5 ft"]);
+  assert.equal(R.speedOf(c(12, true), [R.ENCUMBRANCE]).speed, 25, "the encumbrance variant replaces the Strength rule");
+  const heavy = c(10, false); heavy.equipment.push({ name: "Crate", qty: 1, wt: 60 });
+  assert.equal(R.speedOf(heavy, [R.ENCUMBRANCE]).speed, 20, "the load, under the variant");
+  const tr = c(10, false, { features: [{ name: "Swim", text: "You have a swimming speed of 30 feet." }, { name: "Climb", text: "You have a climbing speed of 25 feet." }] });
+  assert.deepEqual(R.speedOf(tr).other, { swim: 30, climb: 25 });
+  // SW5e's flyers: "a flying speed equal to your walking speed", halved in medium or heavy armor
+  const fl = { speed: 30, abilities: { str: 16 }, features: [{ name: "Flight", text: "You have a flying speed equal to your walking speed. While wearing medium or heavy armor, your flying speed is reduced by half." }], equipment: [] };
+  assert.deepEqual(R.speedOf(fl).other, { fly: 30 });
+  fl.equipment.push({ name: "Mesh armor", equipped: true, armor: { kind: "medium", ac: 14 } });
+  assert.deepEqual(R.speedOf(fl).other, { fly: 15 });
+});
+
 test("Engineers and Scouts get tech points back on a short rest; others don't", () => {
   assert.equal(R.techOnShortRest(char([["Engineer", 1]])), true);
   assert.equal(R.techOnShortRest(char([["Scout", 2]])), true);
@@ -445,6 +465,23 @@ test("Wretched Hives' proficiency tiers (5.7), tool checks (6.10) and the tech f
   assert.equal(R.hasTechFocus(c), false);
   c.equipment.push({ name: "Wristpad" });
   assert.equal(R.hasTechFocus(c), true);
+});
+
+test("power prerequisites (audit 2.11): the named power must be known first, and stay known to cast", () => {
+  const ch = { powers: [{ name: "Choke" }, { name: "Slow" }] };
+  assert.equal(R.powerPrereqUnmet(ch, { name: "Crush", pre: "Choke" }), null);
+  assert.equal(R.powerPrereqUnmet(ch, { name: "Crush", pre: "choke" }), null, "any case");
+  assert.deepEqual(R.powerPrereqUnmet(ch, { name: "Destroy Droid", pre: "Disable Droid" }), { pre: "Disable Droid", text: "Destroy Droid needs Disable Droid known first." });
+  assert.equal(R.powerPrereqUnmet(ch, { name: "Destroy Droid", pre: "Disable Droid" }, ["Disable Droid"]), null, "picked in the same level-up");
+  assert.equal(R.powerPrereqUnmet(ch, { name: "Force Push" }), null, "no prerequisite");
+  assert.equal(R.powerPrereqUnmet({}, { name: "Crush", pre: "Choke" }).pre, "Choke");
+});
+
+test("powers known (audit 2.10): the sheet's against the class tables, summed over classes", () => {
+  const pk = R.powersKnown({ classes: [{ name: "Consular", level: 3 }, { name: "Engineer", level: 2 }], powers: [{ type: "force" }, { type: "tech" }, {}] });
+  assert.deepEqual(pk, { force: { known: 2, max: 13 }, tech: { known: 1, max: 7 } }, "Consular 3 knows 13 force powers, Engineer 2 knows 7 tech powers");
+  assert.deepEqual(R.powersKnown({ classes: [{ name: "Fighter", level: 5 }] }), { force: { known: 0, max: 0 }, tech: { known: 0, max: 0 } });
+  assert.deepEqual(R.powersKnown(null).force, { known: 0, max: 0 });
 });
 
 test("feat prerequisites (audit 2.5), read from SW5e's own wording", () => {

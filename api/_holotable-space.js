@@ -137,7 +137,9 @@ function apply(camp, cid, gm, type, p, h) {
       if (!sp.tok.length) throw new Invalid("Put ships on the space map first.");
       const order = [];
       for (const t of sp.tok) {
-        const s = shipOf(t.id); if (!s) continue;
+        let s = shipOf(t.id); if (!s) continue;
+        // a fight runs in rounds: realspace travel pace no longer applies (SotG ch. 8)
+        if (SR.statusOf(s).pace !== "normal") { s = JSON.parse(JSON.stringify(s)); s.status = Object.assign(SR.statusOf(s), { pace: "normal" }); putShip(s); }
         // a party ship goes at the lowest of its crew's initiative rolls; an enemy ship (or one with no crew sheets)
         // rolls a Dexterity check with its size's modifier
         const crew = (s.hidden ? [] : (s.crew || [])).map((c) => (typeof c.charId === "string" && Object.prototype.hasOwnProperty.call(camp.characters || {}, c.charId) ? camp.characters[c.charId] : null)).filter(Boolean);
@@ -146,7 +148,8 @@ function apply(camp, cid, gm, type, p, h) {
           const rolls = crew.map((ch) => ({ ch, r: rollDice("1d20" + (R.initiative(ch) >= 0 ? "+" : "") + R.initiative(ch)) }));
           const low = rolls.reduce((a, b) => (b.r.total < a.r.total ? b : a));
           init = low.r.total;
-          label = `${s.name}: initiative (the lowest of its crew: ${rolls.map((x) => `${x.ch.name} ${x.r.total}`).join(", ")})`;
+          // the crew by the names players may read ("???" while the GM hides a token's name)
+          label = `${s.name}: initiative (the lowest of its crew: ${rolls.map((x) => `${h.shownName ? h.shownName(camp, { charId: x.ch.id, name: x.ch.name }) : x.ch.name} ${x.r.total}`).join(", ")})`;
         } else {
           const b = SR.npcInitBonus(s), r = rollDice("1d20" + (b >= 0 ? "+" : "") + b);
           init = r.total; label = `${s.name}: initiative (Dexterity ${b >= 0 ? "+" : ""}${b} with its size)`;

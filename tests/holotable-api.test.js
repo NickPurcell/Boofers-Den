@@ -464,6 +464,13 @@ test("downtime activities (audit 11.1): the player asks, the GM approves first, 
   await db.del(S.K.sw5e("downtime"));
 });
 
+test("a power keeps its prerequisite on the sheet (audit 2.11)", async () => {
+  const { p1 } = await table();
+  const id = (await p1.act("char.save", { char: { name: "Ves", powers: [{ name: "Crush", level: 4, type: "force", pre: "Choke" }, { name: "Choke", level: 3, type: "force", pre: "  " }] } })).data.id;
+  const pw = (await p1.poll()).data.state.characters[id].powers;
+  assert.deepEqual([pw[0].pre, pw[1].pre], ["Choke", undefined]);
+});
+
 test("level up: a half-feat's own +1 goes to an ability SW5e's feat list allows (audit 2.5)", async () => {
   const { gm, p1 } = await table();
   await db.set(S.K.sw5e("feats"), JSON.stringify([{ n: "Ace Pilot", asi: ["Intelligence"] }, { n: "Athlete", asi: ["Strength", "Dexterity"] }, { n: "Resilient", asi: ["Any"] }, { n: "Lucky", asi: [] }]));
@@ -2379,6 +2386,7 @@ test("multiclassing prerequisites and proficiencies (2.12, 2.13); the GM undoes 
   assert.match(ch.proficiencies, /Multiclass Engineer: Light armor/, "the multiclass set, noted");
   assert.equal(s.levelUndo[id], 4, "the GM can take level 4 back");
   assert.equal((await p1.poll()).data.state.levelUndo, undefined, "the GM's");
+  await gm.act("downtime.grant", { days: 6, chars: [id], reason: "after the level" });
   assert.equal((await p1.act("levelup.undo", { charId: id })).code, 403);
   assert.equal((await gm.act("levelup.undo", { charId: id })).code, 200);
   s = (await gm.poll()).data.state;
@@ -2387,6 +2395,7 @@ test("multiclassing prerequisites and proficiencies (2.12, 2.13); the GM undoes 
   assert.equal(ch.hp.max, 30);
   assert.equal(ch.proficiencies, "Light armor");
   assert.equal(s.levelUps[id].count, 1, "and the level is granted again");
+  assert.deepEqual([ch.downtime.days, ch.downtime.log.at(-1).text], [6, "after the level"], "downtime since the level stays (11.1)");
   assert.equal(s.levelUndo, undefined);
   assert.equal((await gm.act("levelup.undo", { charId: id })).code, 400, "once");
   assert.equal((await p1.act("levelup.apply", { charId: id, className: "Berserker", hpMode: "average", hitDie: 12 })).code, 200, "taken again, properly");
@@ -2656,6 +2665,21 @@ test("variant rules on the sheet (9.16): Simplified Forcecasting's ability count
   assert.equal(ci.lightDC, 8 + 3 + 4);
   await gm.act("variants.set", { variants: ["Hunted"] });
   assert.equal((await p1.poll()).data.state.characters[id].forceAbility, undefined, "dropping the variant drops the choice");
+});
+
+test("char.rest: the sheet's short and long rests reach the fight module's onRest hook", async () => {
+  const { gm, p1, p2 } = await table();
+  const id = (await p1.act("char.save", { char: { name: "Resty" } })).data.id;
+  const Fight = require("../api/_holotable-fight.js"), seen = [], had = Fight.onRest;
+  Fight.onRest = (camp, charId, kind) => seen.push([charId, kind]);
+  try {
+    assert.equal((await p1.act("char.rest", { charId: id, kind: "short" })).data.rested, "short");
+    assert.equal((await gm.act("char.rest", { charId: id, kind: "long" })).data.rested, "long");
+    assert.equal((await p2.act("char.rest", { charId: id, kind: "long" })).code, 403, "only the owner or the GM");
+    assert.equal((await p1.act("char.rest", { charId: id, kind: "nap" })).code, 400);
+    assert.equal((await p1.act("char.rest", { charId: "__proto__", kind: "long" })).code, 400);
+    assert.deepEqual(seen, [[id, "short"], [id, "long"]]);
+  } finally { if (had) Fight.onRest = had; else delete Fight.onRest; }
 });
 
 test("a sheet keeps Wretched Hives' mastery tiers on skills (5.7)", async () => {

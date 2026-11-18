@@ -107,7 +107,7 @@ test("ship conditions: slowed levels, system damage levels, and what they do to 
     { cond: ["Ionized"], slowed: 4, system: 0, zero: { s: 0, f: 0, stable: false, destroyed: false }, power: { central: 0, engines: 0, shields: 0, weapons: 0, sensors: 0, comms: 0 },
       sdUsed: 0, hdUsed: 0, tempShield: 0, boost: { tries: 0, engines: 0, weapons: false, shields: false, regen: false },
       fx: { evade: 0, fly: 0, hardTurn: false, helm: false, interfered: false, directed: false, interferedBy: "" }, recharged: false, astro: 0, startup: 0,
-      course: { rush: 0, careful: false } }, "anything else is cleaned away");
+      course: { rush: 0, careful: false }, pace: "normal" }, "anything else is cleaned away");
   assert.deepEqual(SR.capPoints({ hull: { current: 30, max: 0 }, shield: { current: 5, max: 4 } }).hull.current, 30, "no maximum typed yet: current stays");
 });
 
@@ -1033,6 +1033,54 @@ test("travel: hyperspace times by region and class, rushing and care, fuel by re
   assert.equal((await p1.act("ship.astro", { id: party })).code, 200, "on its own turn");
 });
 
+test("realspace: pace (speed, Probe and Scan), sample times, fuel by the day or the hour; GM-only for a hidden ship; not mid-fight", async () => {
+  const fast = { speed: 300, status: { pace: "fast" } }, slow = { speed: 300, status: { pace: "slow" } };
+  assert.deepEqual([SR.travelSpeed(fast), SR.travelSpeed(slow), SR.travelSpeed({ speed: 300 })], [600, 150, 300], "fast doubles, slow halves");
+  assert.equal(SR.statusOf({ status: { pace: "__proto__" } }).pace, "normal", "only the three paces");
+  assert.deepEqual(SR.rollEffects(fast, "check", "wis", "scan").dis, ["Fast pace"]);
+  assert.deepEqual(SR.rollEffects(fast, "check", "int", "probe").dis, ["Fast pace"]);
+  assert.deepEqual(SR.rollEffects(fast, "check", "int", "data").dis, [], "only Probe and Scan");
+  assert.deepEqual(SR.rollEffects(slow, "check", "wis", "scan").dis, []);
+  assert.deepEqual(SR.REALSPACE_TIMES.map((r) => SR.realspaceTime(r, "normal")), ["1 to 5 minutes", "1 minute", "10 to 30 minutes", "2 to 6 hours", "12 to 24 hours"], "SotG's sample table");
+  assert.equal(SR.realspaceTime(SR.REALSPACE_TIMES[0], "fast"), "30 seconds to 2.5 minutes");
+  assert.equal(SR.realspaceTime(SR.REALSPACE_TIMES[4], "slow"), "24 to 48 hours");
+  assert.deepEqual([SR.flyFuel({ reactor: "Fuel Cell" }, 3), SR.flyFuel({ reactor: "Ionization" }, 3), SR.flyFuel({ reactor: "Power Core" }, 2)], [3, 1.5, 3], "a unit a day, times the reactor's use");
+  // on the server
+  const { gm, p1, party, enemy } = await table();
+  await p1.act("ship.save", { ship: Object.assign({}, shipIn(await p1.state(), party), { fuel: "10", reactor: "Ionization" }) });
+  assert.equal((await p1.act("ship.pace", { id: party, pace: "constructor" })).code, 400);
+  assert.equal((await p1.act("ship.pace", { id: party, pace: "fast" })).code, 200);
+  let st = await p1.state();
+  assert.equal(shipIn(st, party).status.pace, "fast");
+  assert.ok(st.chat.some((m) => /Dawn Skiff travels at a fast pace: speed \d+ ft; disadvantage on Probe and Scan/.test(m.text || "")));
+  await p1.act("ship.save", { ship: Object.assign({}, shipIn(await p1.state(), party), { status: { pace: "slow" } }) });
+  assert.equal(shipIn(await p1.state(), party).status.pace, "fast", "a sheet save keeps the stored pace");
+  let r = await p1.act("ship.fly", { id: party, where: "realspace", n: 4 });
+  assert.deepEqual([r.code, r.data.fuel], [200, 2], "4 days x0.5 for an ionization reactor");
+  st = await p1.state();
+  assert.equal(shipIn(st, party).fuel, "8");
+  assert.ok(st.chat.some((m) => /flies 4 days in realspace: 2 units of fuel, 8 left/.test(m.text || "")));
+  r = await p1.act("ship.fly", { id: party, where: "atmosphere", n: 3 });
+  assert.equal(shipIn(await p1.state(), party).fuel, "6.5", "an hour in atmosphere is a unit");
+  assert.equal((await p1.act("ship.fly", { id: party, n: 20 })).code, 400, "not enough fuel");
+  assert.equal((await p1.act("ship.pace", { id: enemy, pace: "slow" })).code, 403);
+  // a hidden ship's travel lines reach the GM only
+  const n0 = (await gm.state()).chat.length;
+  await gm.act("ship.pace", { id: enemy, pace: "slow" }); await gm.act("ship.fly", { id: enemy, n: 1 });
+  const lines = (await gm.state()).chat.slice(n0);
+  assert.equal(lines.length, 2);
+  assert.ok(lines.every((m) => m.to && m.to.length === 1 && m.to[0] === "@gm" && !m.fromId));
+  assert.ok(!(await p1.state()).chat.some((m) => /slow pace|flies 1 day/.test(m.text || "")), "the player sees neither");
+  // ship combat: travel waits for players; rolling initiative puts every ship on the map back to a normal pace
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 2, f: 2 });
+  await gm.act("space.place", { id: enemy, x: 9, y: 2, f: 6 });
+  await gm.act("space.init", {});
+  st = await gm.state();
+  assert.deepEqual([shipIn(st, party).status.pace, shipIn(st, enemy).status.pace], ["normal", "normal"]);
+  for (const t of ["ship.pace", "ship.fly"]) assert.match((await p1.act(t, { id: party, pace: "fast", n: 1 })).data.error || "", /Not during ship combat/, t);
+});
+
 // ---------------------------------------------------------------- buying, building, upgrading, docking, crew (10.17)
 test("costs: SotG's own figures for buying, building, upgrading, docking and the minimum crew", () => {
   let c = SR.costs({ size: "Small", tier: 0 });
@@ -1043,4 +1091,61 @@ test("costs: SotG's own figures for buying, building, upgrading, docking and the
   assert.deepEqual([SR.costs({ size: "Small" }).docking, SR.costs({ size: "Medium" }).docking, SR.costs({ size: "Huge" }).docking], [20, 40, 1000]);
   assert.deepEqual([SR.minCrew({ size: "Tiny" }), SR.minCrew({ size: "Small" }), SR.minCrew({ size: "Medium", abilities: { int: 10 } }), SR.minCrew({ size: "Large", abilities: { int: 14 } }),
     SR.minCrew({ size: "Gargantuan", abilities: { int: 30 } }), SR.minCrew({ size: "Huge", abilities: { int: 30 } })], [0, 1, 4, 120, 10000, 1000]);
+});
+
+// ---------------------------------------------------------------- deployments: rank features and techniques (10.12)
+test("deployments: rank features and techniques read from SW5e's text; using a technique spends the right die", async () => {
+  // the shape of SW5e's deployment text (made-up names)
+  const md = "##### The Gunner\r\n| Rank | Feature |\r\n|:---:|:---|\r\n| 1st | Venture, Gunner Techniques |\r\n| 2nd | Gunning Style, Improved Critical |\r\n\r\n### Gambits\r\nThe gambits are presented in alphabetical order.\r\n\r\n#### Pinning Shot\r\n_**Power Die Location:** Weapons_\r\nAdd the power die.\r\n\r\n#### Comms Ping\r\n_**Power Die Location:** Comms_\r\nText.\r\n\r\n#### Tune Up\r\nNo die location.";
+  const info = SR.deploymentInfo(md);
+  assert.deepEqual(info.ranks, [[1, ["Venture", "Gunner Techniques"]], [2, ["Gunning Style", "Improved Critical"]]]);
+  assert.deepEqual(info.techniques.map((t) => [t.name, t.loc]), [["Pinning Shot", "weapons"], ["Comms Ping", "comms"], ["Tune Up", null]]);
+  assert.deepEqual([SR.techniquesKnown(0), SR.techniquesKnown(1), SR.techniquesKnown(5), SR.techDie(1), SR.techDie(5)], [0, 2, 6, 4, 12]);
+  // on the server
+  const { gm, p1, party, enemy } = await table();
+  const sh = shipIn(await p1.state(), party);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { coupling: "Hub & Spoke", tier: 2, crew: [
+    { name: "Ione", deployment: "Gunner", rank: 1, known: ["Pinning Shot", "Pinning Shot", "x".repeat(99), "a", "b", "c", "d", "e"] },
+    { name: "Tam", deployment: "Mechanic", rank: 3, known: ["Tune Up"] }] }) });
+  let crew = shipIn(await p1.state(), party).crew;
+  assert.deepEqual([crew[0].known.length, crew[0].known[0], crew[0].known[1].length], [6, "Pinning Shot", 60], "unique, at most six, each cut to 60");
+  assert.equal((await p1.act("ship.technique", { id: party, crew: 0, name: "Pinning Shot", pool: "weapons" })).code, 400, "no weapons power die yet");
+  await p1.act("ship.power", { id: party, pool: "weapons", n: 1 });
+  let r = await p1.act("ship.technique", { id: party, crew: 0, name: "Pinning Shot", pool: "weapons" });
+  assert.equal(r.code, 200); assert.ok(r.data.value >= 1 && r.data.value <= 6, "a tier 2 power die: d6");
+  assert.equal(shipIn(await p1.state(), party).status.power.weapons, 0, "spent");
+  assert.ok((await p1.state()).chat.some((m) => /Ione \(Gunner\) uses Pinning Shot: a weapons power die/.test(m.text || "")));
+  assert.equal((await p1.act("ship.technique", { id: party, crew: 0, name: "Comms Ping", pool: "central" })).code, 400, "not one they know");
+  r = await p1.act("ship.technique", { id: party, crew: 1, name: "Tune Up" });
+  assert.equal(r.code, 200); assert.ok(r.data.value >= 1 && r.data.value <= 8, "a 3rd-rank mechanic's tech die: d8, not spent");
+  for (const bad of [{ crew: "__proto__" }, { crew: 7 }, { pool: "__proto__" }, { name: "constructor" }]) {
+    assert.equal((await p1.act("ship.technique", Object.assign({ id: party, crew: 0, name: "Pinning Shot", pool: "weapons" }, bad))).code, 400, JSON.stringify(bad));
+  }
+  assert.equal((await p1.act("ship.technique", { id: enemy, crew: 0, name: "x" })).code, 403);
+});
+
+test("a crew member whose token's name the GM hides is '???' in ship lines: techniques and initiative (jpesus: keep it hidden)", async () => {
+  const { gm, p1, p2, party } = await table();
+  const inq = (await gm.act("char.save", { char: { name: "Grand Inquisitor", abilities: { dex: 14 } } })).data.id;
+  await gm.act("token.add", { charId: inq, x: 3, y: 3, nameHidden: true });
+  const sh = shipIn(await gm.state(), party);
+  await gm.act("ship.save", { ship: Object.assign({}, sh, { coupling: "Direct", crew: [{ charId: inq, name: "Grand Inquisitor", deployment: "Gunner", rank: 1, known: ["Steady Aim"] }] }) });
+  await gm.act("ship.power", { id: party, pool: "central", n: 2 });
+  assert.equal((await gm.act("ship.technique", { id: party, crew: 0, name: "Steady Aim", pool: "central" })).code, 200);
+  await gm.act("space.on", { on: true });
+  await gm.act("space.place", { id: party, x: 2, y: 2, f: 2 });
+  await gm.act("space.init", {});
+  for (const who of [p1, p2]) {
+    assert.ok(!JSON.stringify(await who.state()).includes("Grand Inquisitor"), "no player's state holds the hidden name: chat, ship crew rows, anything");
+  }
+  assert.equal(shipIn(await gm.state(), party).crew[0].name, "Grand Inquisitor", "the GM's copy keeps it");
+  // a player's ordinary save sends the masked row back: the stored name stays
+  const seen = shipIn(await p1.state(), party);
+  assert.equal(seen.crew[0].name, "???");
+  assert.equal((await p1.act("ship.save", { ship: Object.assign({}, seen, { notes: "fuel low" }) })).code, 200);
+  const back = shipIn(await gm.state(), party);
+  assert.deepEqual([back.notes, back.crew[0].name], ["fuel low", "Grand Inquisitor"], "the save took the notes, not the ???");
+  const lines = (await p1.state()).chat.map((m) => m.text || "");
+  assert.ok(lines.some((t) => /^\?\?\? \(Gunner\) uses Steady Aim: a central power die/.test(t)), "the technique line says ???");
+  assert.ok(lines.some((t) => /initiative \(the lowest of its crew: \?\?\? -?\d+\)/.test(t)), "so does the initiative line");
 });
