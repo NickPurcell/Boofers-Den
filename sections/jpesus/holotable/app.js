@@ -1424,10 +1424,13 @@
     const ro = !canEdit(ch), slots = R.modSlots(item.rar), mods = item.chassis.mods || [];
     const fits = (ch.equipment || []).map((e, j) => ({ e, j })).filter(({ e }) => e.mod && !R.installBlocked(item, e));
     const tool = kind => R.MOD_TOOL[kind] || "Tinker's implements";
-    const bonusOf = kind => (R.toolTierFromText ? R.toolBonus(ch, 'int', R.toolTierFromText(ch, tool(kind))) : R.abilityMod(ch, 'int'));
+    // #218's tool check: Int, the tier the sheet gives that tool, its dice (mastery, Reliable Talent)
+    const tierOf = kind => (R.toolTierFromText ? R.toolTierFromText(ch, tool(kind)) : 0);
+    const exprOf = kind => { const t = tierOf(kind), b = R.toolBonus ? R.toolBonus(ch, 'int', t) : R.abilityMod(ch, 'int');
+      return R.checkRollExpr ? R.checkRollExpr(ch, t, b).expr : `1d20${b >= 0 ? '+' : ''}${b}`; };
     const check = async (what, kind, rar) => {   // the tool check, rolled by the table; true on a success
-      const dc = R.modDC(rar), b = bonusOf(kind);
-      const res = await roll(`1d20${b >= 0 ? '+' : ''}${b}`, `${what}: ${tool(kind)} (Int) against DC ${dc}`, { d20: true, charId: ch.id });
+      const dc = R.modDC(rar);
+      const res = await roll(exprOf(kind), `${what}: ${tool(kind)} (Int) against DC ${dc}`, { d20: true });   // no character named (#187's review)
       return res && res.roll ? res.roll.total >= dc : null;
     };
     const rebonus = c => { const it = c.equipment[i]; const b = R.chassisBonus(it); if (b) it.bonus = b; else delete it.bonus; it.att = (it.chassis.mods || []).length > 0 || !!it.att; };
@@ -1448,14 +1451,14 @@
           closeModal();
           const ok = skip ? true : await check(`Install ${m.name} in ${item.name}`, m.mod.kind, m.rar);
           if (ok === null) return;
-          if (!ok) return act('chat', { text: `*fails to install ${m.name} in ${item.name}: it stays in the pack; try again after 24 hours.*`, as: ch.name });
+          if (!ok) return act('chat', { text: `*fails to install ${m.name} in ${item.name}: it stays in the pack; try again after 24 hours.*` });
           mutate(c => {
             const it = c.equipment[i], mm = c.equipment[j]; if (!it || !mm || it.name !== item.name || mm.name !== m.name) return;
             it.chassis.mods = (it.chassis.mods || []).concat([Object.assign({ name: mm.name }, mm.rar ? { rar: mm.rar } : {}, mm.mod.kind === 'augment' ? { aug: true } : {}, mm.bonus ? { bonus: mm.bonus } : {})]);
             if ((n0(mm.qty) || 1) > 1) mm.qty = (n0(mm.qty) || 1) - 1; else c.equipment.splice(j, 1);
             rebonus(c);
           });
-          act('chat', { text: `*installs ${m.name} in ${item.name}.*`, as: ch.name });
+          act('chat', { text: `*installs ${m.name} in ${item.name}.*` });
         }
         const rm = e.target.closest('[data-mod-rm]');
         if (rm) {
@@ -1470,7 +1473,7 @@
               { mod: { kind: m.aug ? 'augment' : item.chassis.kind } }, m.bonus ? { bonus: m.bonus } : {}));
             rebonus(c);
           });
-          act('chat', { text: ok ? `*removes ${m.name} from ${item.name} and salvages it.*` : `*removes ${m.name} from ${item.name}, but it's destroyed.*`, as: ch.name });
+          act('chat', { text: ok ? `*removes ${m.name} from ${item.name} and salvages it.*` : `*removes ${m.name} from ${item.name}, but it's destroyed.*` });
         }
       };
     });
