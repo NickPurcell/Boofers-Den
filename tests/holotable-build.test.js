@@ -94,6 +94,7 @@ test("SW5e's class list: the Features column by level, and the class's own optio
   assert.equal(o.opts.items[0].text, "You learn three maneuvers.", "links unwrapped");
   assert.ok(!o.opts.items[0].text.includes("\r"));
   assert.equal(D.LISTS.classes.build([{ name: "Engineer", classFeatureText: "### Tech Mastery\nNo options here." }])[0].opts, null);
+  assert.equal(D.LISTS.classes.cacheAs, "classes-2", "lv and opts are a new shape, so a new cache: a list cached before them has neither");
   assert.deepEqual(D.LISTS.classes.build([{ name: "X" }])[0].lv, []);
 });
 
