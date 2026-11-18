@@ -1449,7 +1449,7 @@
             const amount = df.amount;
             const took = takeDamage(t, amount);
             log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${dtype ? ' ' + dtype : ''} damage${half ? ' (half, on a save)' : ''}${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
-            fallen(t, took, crit, log, w);
+            fallen(t, took, crit, log, w, roll);
             events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
             concentrationCheck(w, t, amount, roll, log);
           } else if (ab.heal) {
@@ -1581,7 +1581,7 @@
   }
   // what follows a hit's damage: dropping at 0, the floating number, concentration, and the attacker's maneuver
   function afterHit(w, me, t, landing, took, roll, log, events) {
-    fallen(t, took, landing.crit, log, w);
+    fallen(t, took, landing.crit, log, w, roll);
     events.push({ kind: landing.crit ? 'crit' : 'hit', unit: t.id, amount: landing.amount });
     concentrationCheck(w, t, landing.amount, roll, log);
     const mv = landing.mv && Object.prototype.hasOwnProperty.call(MANEUVERS, landing.mv) ? MANEUVERS[landing.mv] : null;
@@ -1818,7 +1818,7 @@
       const df = defended(burning, Math.max(0, d.total), 'fire', 'other');
       const took = takeDamage(burning, df.amount);
       log.push({ unit: burning.id, kind: 'damage', roll: d, expr: burn, text: `${burning.name} burns for ${df.amount} fire damage${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${burning.hp != null && burning.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
-      fallen(burning, took, false, log, w);
+      fallen(burning, took, false, log, w, roll);
       concentrationCheck(w, burning, df.amount, roll, log);
     }
     // incapacitated casters stop concentrating
@@ -1870,7 +1870,7 @@
   const isDead = (t) => t.side === 'pc' && t.hp === 0 && +((t.deathSaves || {}).f) >= 3;
   const isStable = (t) => t.side === 'pc' && t.hp === 0 && !isDead(t) && +((t.deathSaves || {}).s) >= 3;
   const isDying = (t) => t.side === 'pc' && t.hp === 0 && !isDead(t) && !isStable(t);
-  function fallen(t, took, crit, log, w) {
+  function fallen(t, took, crit, log, w, roll) {
     if (t.side !== 'pc' || t.hp == null || t.hp > 0 || !(took.hurt > 0)) return;
     const ds = saves0(t), max = +t.maxHp || 0;
     if (ds.f >= 3) return;
@@ -1880,6 +1880,17 @@
       t.conditions = Array.from(new Set((t.conditions || []).concat('Unconscious', 'Prone'))).filter((c) => c !== 'Raging');   // a rage ends when knocked unconscious
       if (w && w.effects) w.effects = w.effects.filter((ef) => !(ef.unit === t.id && ef.condition === 'Raging'));
       log.push({ unit: t.id, text: `${t.name} falls unconscious.` });
+      // the Wounds variant (9.16): a Con save at DC 10, 5 more after each success; a failure is a wounded level; either way
+      // one death save failure for each wounded level
+      if (variant(w, 'Wounds') && roll) {
+        const wd = Object.assign({ level: 0, step: 0 }, t.wounds), dc = 10 + 5 * wd.step;
+        if (saveVs(w, t, 'con', dc, roll, log, 'Wounds')) wd.step += 1; else { wd.level += 1; wd.step = 0; }
+        t.wounds = wd;
+        if (wd.level) {
+          ds.f = Math.min(3, wd.level);
+          log.push({ unit: t.id, text: `${t.name} has ${wd.level} wounded level${wd.level === 1 ? '' : 's'}: ${ds.f} death save failure${ds.f === 1 ? '' : 's'}${ds.f >= 3 ? `. ${t.name} dies.` : '.'}` });
+        }
+      }
       return;
     }
     if (max && took.hurt >= max) { ds.f = 3; log.push({ unit: t.id, text: `${t.name} dies: damage at 0 hit points that is at least the hit point maximum.` }); return; }
@@ -1946,6 +1957,8 @@
           .filter((c) => c !== 'Raging' || (table.effects || []).some((ef) => ef.unit === e.id && ef.condition === 'Raging')),
         exhaustion: ch ? +ch.exhaustion || 0 : 0,
         deathSaves: ch ? { s: +((ch.deathSaves || {}).s) || 0, f: +((ch.deathSaves || {}).f) || 0 } : null,
+        // the Wounds variant (9.16): its wounded levels and how far the save's DC has risen; back at its hit point maximum, gone
+        wounds: ch && (table.wounds || {})[e.charId] && !(+hp.current >= +hp.max) ? Object.assign({ level: 0, step: 0 }, table.wounds[e.charId]) : { level: 0, step: 0 },
         ...(() => { const d = ch ? (table.defenses || {})[e.charId] || {} : (table.npcStats || {})[e.id] || {};
           return { resist: d.resist || [], immune: d.immune || [], vuln: d.vuln || [], condImmune: d.condImmune || [],
             senses: cleanSenses(ch ? ch.senses : d.senses) }; })(),   // a character's from its sheet (#92, the GM's), a creature's from its stat block
