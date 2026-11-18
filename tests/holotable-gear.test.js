@@ -101,3 +101,48 @@ test("consumables (6.7): an item keeps its checked `use`; anything else in it is
   const eq = (await sheet(gm, avery)).equipment;
   assert.deepEqual(eq.map((e) => e.use), [{ save: { ab: "dex", dc: 14 }, dmg: [["2d10", "kinetic"]], half: true }, { hd: 1 }, {}, undefined]);
 });
+
+test("enhanced items (6.2): an item keeps its checked +N, and the server's own AC counts a worn one", async () => {
+  const { gm, sam, avery } = await table();
+  const av = await sheet(sam, avery);
+  await sam.act("char.save", { char: Object.assign({}, av, { acAuto: true, abilities: Object.assign({}, av.abilities, { dex: 12 }), equipment: [
+    { name: "Armor (Improved)", qty: 1, equipped: true, bonus: { ac: 2, hit: 99, extra: 1 } }, { name: "Odd", qty: 1, bonus: "lots" },
+  ] }) });
+  const c = await sheet(gm, avery);
+  assert.deepEqual(c.equipment.map((e) => e.bonus), [{ ac: 2 }, undefined]);
+  assert.equal(c.ac, 10 + 1 + 2, "unarmored 10 + Dex, +2 from the worn item");
+});
+
+test("cybernetics and droid customizations (6.4): the sheet keeps the installed list, the motor and the item's kind, checked", async () => {
+  const { gm, sam, avery } = await table();
+  const av = await sheet(sam, avery);
+  await sam.act("char.save", { char: Object.assign({}, av, { motor: 4, implants: [{ name: "Droid Arm", kind: "part", rar: "Premium" }, { name: "X", kind: "__proto__" }],
+    equipment: [{ name: "Optical Implant", qty: 1, implant: { kind: "enhancement" } }, { name: "Odd", qty: 1, implant: { kind: "toaster" } }] }) });
+  const c = await sheet(gm, avery);
+  assert.deepEqual([c.motor, c.implants], [4, [{ name: "Droid Arm", kind: "part", rar: "Premium" }]]);
+  assert.deepEqual(c.equipment[0].implant, { kind: "enhancement" });
+  assert.ok(!("implant" in c.equipment[1]));
+  await sam.act("char.save", { char: Object.assign({}, c, { motor: 1, implants: [] }) });
+  const c2 = await sheet(gm, avery);
+  assert.ok(!("motor" in c2) && !("implants" in c2), "two motor slots and nothing installed: nothing stored");
+});
+
+test("item modification (6.4): a chassis and a modification keep their checked shapes", async () => {
+  const { gm, sam, avery } = await table();
+  const av = await sheet(sam, avery);
+  await sam.act("char.save", { char: Object.assign({}, av, { equipment: [
+    { name: "Blaster Chassis (Premium)", qty: 1, rar: "Premium", att: true, chassis: { kind: "blaster", mods: [{ name: "Accuracy Focus Mk II", rar: "Premium", bonus: { hit: 1 } }], extra: 1 } },
+    { name: "Bayonet", qty: 1, rar: "Premium", mod: { kind: "blaster" } }, { name: "Odd", qty: 1, chassis: { kind: "toaster" }, mod: "x" },
+  ] }) });
+  const eq = (await sheet(gm, avery)).equipment;
+  assert.deepEqual(eq[0].chassis, { kind: "blaster", mods: [{ name: "Accuracy Focus Mk II", rar: "Premium", bonus: { hit: 1 } }] });
+  assert.deepEqual(eq[1].mod, { kind: "blaster" });
+  assert.ok(!("chassis" in eq[2]) && !("mod" in eq[2]));
+});
+
+test("speed (5.11): an item's armor keeps its strength and cumbersome properties", async () => {
+  const { gm, sam, avery } = await table();
+  const av = await sheet(sam, avery);
+  await sam.act("char.save", { char: Object.assign({}, av, { equipment: [{ name: "Assault armor", qty: 1, equipped: true, armor: { kind: "heavy", ac: 17, str: 15, cumbersome: true } }] }) });
+  assert.deepEqual((await sheet(gm, avery)).equipment[0].armor, { kind: "heavy", ac: 17, str: 15, cumbersome: true });
+});

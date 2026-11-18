@@ -12,6 +12,7 @@ const Ships = require("./_holotable-ships.js");   // a ship in a fight (ship.dam
 const Space = require("./_holotable-space.js");   // the space map (space.*): ship fights on their own map, jpesus's call on #146
 const Ask = require("./_holotable-ask.js");   // the GM asking for a roll (audit 9.12)
 const Downtime = require("./_holotable-downtime.js");   // downtime days and their log (audit 11.1, #202)
+const Craft = require("./_holotable-craft.js");         // crafting (audit 11.2, #167): its requests, the GM's to approve
 const Story = require("./_holotable-story.js");   // factions, rivals and lifestyle between fights (audit section 11)
 const R = globalThis.SW5E;   // rules.js, loaded by the fight module (senses)
 
@@ -147,7 +148,7 @@ function cleanShip(sh, chars) {
     saves: Object.fromEntries(ABILS.map((a) => [a, !!(sh.saves || {})[a]])),
     skills: Object.fromEntries(SHIP_SKILLS.map((k) => [k, [0, 1, 2].includes(+(sh.skills || {})[k]) ? +(sh.skills || {})[k] : 0])),
     crew: list(sh.crew, 20, (c) => ({ charId: chars[c.charId] ? c.charId : null, name: s(c.name, 60), deployment: DEPLOYMENTS.includes(c.deployment) ? c.deployment : "",
-      rank: clamp(int(c.rank), 0, 5), pb: clamp(int(c.pb, 2), 0, 10) })),
+      rank: clamp(int(c.rank), 0, 5), pb: clamp(int(c.pb, 2), 0, 10), ...Ships.cleanCrew(c) })),
     weapons: list(sh.weapons, 30, (w) => ({ name: s(w.name, 80), atkMisc: clamp(int(w.atkMisc), -20, 20), dmg: s(w.dmg, 40), type: s(w.type, 30),
       range: s(w.range, 40), props: s(w.props, 300), ...Ships.cleanWeapon(w) })),
     equipment: list(sh.equipment, 60, (e) => ({ name: s(e.name, 80), notes: s(e.notes, 300) })),
@@ -162,6 +163,8 @@ const cleanVariants = (v) => [...new Set((Array.isArray(v) ? v : []).slice(0, 80
 // set by the server (holotable.js) on a player's char.save: the senses of the species they chose, from SW5e's own list.
 // A Symbol, so it can't arrive in a client's JSON.
 const SPECIES_SENSES = Symbol("speciesSenses");
+// set by holotable.js on char.save with a species: that species' resistances (audit 1.5), from SW5e's list, never a client's
+const SPECIES_DEFENSES = Symbol("speciesDefenses");
 // set by holotable.js on levelup.apply: the abilities a feat's own +1 may go to (audit 2.5), from SW5e's feat list,
 // never from a client. Missing when the list couldn't be read.
 const FEAT_ASI = Symbol("featAsi");
@@ -172,7 +175,9 @@ function cleanChar(ch) {
   const out = {
     _format: "holotable-sw5e", id: ch.id, name: s(ch.name, 80) || "Unnamed", species: s(ch.species, 60), background: s(ch.background, 60),
     alignment: s(ch.alignment, 60), xp: numOr(ch.xp, 0), credits: numOr(ch.credits, 0),
+    ...((d) => (d ? { defenses: d } : {}))(R.cleanDefenses(ch.defenses)),   // damage defences (1.5): the GM's, filled by the species
     ...((d) => (d ? { downtime: d } : {}))(Downtime.clean(ch.downtime)),   // downtime days and log (11.1): the server's to write
+    ...((c) => (c ? { craft: c } : {}))(Craft.clean(ch.craft)),             // crafting requests (11.2): the server's to write
     classes: list(ch.classes, 6, (k) => ({ name: s(k.name, 40) || "Fighter", level: clamp(int(k.level, 1), 0, 20), archetype: s(k.archetype, 60) })),
     abilities: nums(ch.abilities, ABILS, 10),
     saves: Object.fromEntries(ABILS.map((a) => [a, !!(ch.saves || {})[a]])),
@@ -199,15 +204,21 @@ function cleanChar(ch) {
       ...(a.shots != null && a.shots !== "" && Number.isFinite(+a.shots) ? { shots: clamp(int(a.shots), 0, 999) } : {}),   // shots left in a Reload weapon (audit 6.6)
       ...(int(a.critRange, 20) < 20 ? { critRange: clamp(int(a.critRange, 20), 15, 20) } : {}) })),   // crits on this d20 or higher (19 = 19-20)
     powers: list(ch.powers, 150, (pw) => ({ name: s(pw.name, 80), level: clamp(int(pw.level), 0, 9), type: pw.type === "tech" ? "tech" : "force",
-      alignment: ["light", "dark"].includes(pw.alignment) ? pw.alignment : "universal", notes: s(pw.notes, 300), description: s(pw.description, 4000) })),
+      alignment: ["light", "dark"].includes(pw.alignment) ? pw.alignment : "universal", notes: s(pw.notes, 300), description: s(pw.description, 4000),
+      ...(s(pw.pre, 80).trim() ? { pre: s(pw.pre, 80).trim() } : {}) })),   // the power that must be known first (audit 2.11)
     features: list(ch.features, 150, (f) => ({ name: s(f.name, 80), text: s(f.text, 4000) })),
     equipment: list(ch.equipment, 200, (e) => ({ name: s(e.name, 80), qty: numOr(e.qty, 1), equipped: !!e.equipped, notes: s(e.notes, 200),
-      ...(e.armor && R.ARMOR_KINDS.includes(e.armor.kind) ? { armor: { kind: e.armor.kind, ac: clamp(int(e.armor.ac), 0, 30) } } : {}),
+      ...(R.cleanArmor(e.armor) ? { armor: R.cleanArmor(e.armor) } : {}),   // with its speed properties (audit 5.11)
       // weight in pounds each (audit 6.5) and cost in credits each (6.8), from SW5e's gear or typed; kept only when set
       ...(+e.wt > 0 ? { wt: Math.min(10000, Math.round(+e.wt * 100) / 100) } : {}), ...(+e.cost > 0 ? { cost: Math.min(1e9, Math.round(+e.cost)) } : {}),
       // an enhanced item's rarity, whether it requires attunement, and whether it's attuned (audit 6.3), kept only when set
       ...(R.RARITIES.includes(e.rar) ? { rar: e.rar } : {}), ...(e.att ? { att: true } : {}), ...(e.att && e.attuned ? { attuned: true } : {}),
-      ...(e.use && R.cleanUse(e.use) ? { use: R.cleanUse(e.use) } : {}) })),   // a consumable: what using it rolls (audit 6.7)
+      ...(e.use && R.cleanUse(e.use) ? { use: R.cleanUse(e.use) } : {}),   // a consumable: what using it rolls (audit 6.7)
+      ...(R.cleanBonus(e.bonus) ? { bonus: R.cleanBonus(e.bonus) } : {}),   // an enhanced item's +N (audit 6.2)
+      ...(R.cleanChassis(e.chassis) ? { chassis: R.cleanChassis(e.chassis) } : {}), ...(R.cleanMod(e.mod) ? { mod: R.cleanMod(e.mod) } : {}),   // modification (6.4)
+      ...(R.cleanImplant(e.implant) ? { implant: R.cleanImplant(e.implant) } : {}) })),   // a cybernetic augmentation or droid customization (6.4)
+    // installed cybernetics and droid customizations, and a droid's motor slots past the two it starts with (6.4)
+    ...(R.cleanImplants(ch.implants).length ? { implants: R.cleanImplants(ch.implants) } : {}), ...(R.motorSlots(ch) > 2 ? { motor: R.motorSlots(ch) } : {}),
     conditions: (Array.isArray(ch.conditions) ? ch.conditions : []).slice(0, 20).map((c) => s(c, 30)),
     exhaustion: clamp(int(ch.exhaustion), 0, 6), inspiration: !!ch.inspiration,
     // variant rules on the sheet (9.16): Simplified Forcecasting's one ability, and Hunted's disturbance points
@@ -307,14 +318,16 @@ function viewFor(camp, cid, gm, online) {
     ...(camp.clock ? { clock: camp.clock } : {}),   // in-game time (9.18)
     ...(camp.sheetLock ? { sheetLock: true } : {}), ...(camp.statBlocksHidden ? { statBlocksHidden: true } : {}),   // the GM's table rules (12.6, 9.17)
     audio: camp.audio ? Object.assign({}, camp.audio, { now: now() }) : null,   // "now" lets each screen line its clock up
-    ships: (camp.ships || []).filter((x) => gm || !x.hidden),
+    // a ship's crew row keeps its character's name: a player reads "???" while the GM hides that token's name
+    ships: (camp.ships || []).filter((x) => gm || !x.hidden).map((x) => (gm || !Array.isArray(x.crew) ? x
+      : Object.assign({}, x, { crew: x.crew.map((c) => (c && c.charId && shownName(camp, { charId: c.charId, name: c.name }) === "???" ? Object.assign({}, c, { name: "???" }) : c)) }))),
     ...(camp.space ? { space: Space.view(camp, gm) } : {}),   // the space map (#146)
     sceneFx: fxView,
     ...(gm && (camp.npcs || []).length ? { npcs: camp.npcs } : {}),   // the GM's NPC templates (9.9), the GM's only
     ...((pg) => (pg.length ? { pings: pg } : {}))((camp.pings || []).filter((q) => q && now() - q.ts < 10).map((q) => ({ id: q.id, x: q.x, y: q.y, gm: q.gm, name: playerName(camp, q.by) }))),
     ...(camp.fight && camp.fight.on ? { fight: Fight.view(camp, cid, gm, shownName) } : {}),
     // the sheet's Cast (#73), combat view on or off: which powers the table has data for, and who concentrates on what
-    ...((sc) => (sc ? { sheetCast: sc } : {}))(Fight.sheetView(camp, gm ? camp.characters : sheetsFor(camp, cid))),
+    ...((sc) => (sc ? { sheetCast: sc } : {}))(Fight.sheetView(camp, gm ? camp.characters : sheetsFor(camp, cid), gm, gm ? null : new Set(ini.entries.map((e) => e.id)))),
     ...((a) => (a ? { ask: a } : {}))(Ask.view(camp, cid, gm)),
     ...Story.view(camp, gm),   // factions and rivals the GM shows (11.3, 11.4)   // an open roll request (9.12), for whom it names
     ...(fogState ? { fog: fogState } : {}),   // the map's fog of war (#93), combat view or not: only while the GM has it on   // the combat view, only while it is on
@@ -337,7 +350,7 @@ function doRoll(camp, cid, expr, label, charId, priv, kind) {
 const HIT_DIE = { berserker: 12, consular: 6, engineer: 8, fighter: 10, guardian: 10, monk: 8, operative: 8, scholar: 8, scout: 10, sentinel: 8 };
 const ABILS = ["str", "dex", "con", "int", "wis", "cha"];
 // SW5e (as 5e): the XP a character needs to reach the next level, by current level (index 1-19)
-const XP_FOR_LEVEL = [0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000, 85000, 100000, 120000, 140000, 165000, 195000, 225000, 265000, 305000, 355000];
+const XP_FOR_LEVEL = R.XP_FOR_LEVEL;   // SW5e's, in rules.js since 2.14, so the sheet and the XP award read the same table
 const totalLevel = (ch) => (ch.classes || []).reduce((a, k) => a + (int(k.level) || 0), 0);
 const abMod = (ch, ab) => Math.floor((num((ch.abilities || {})[ab], 10) - 10) / 2);
 const hitDieFor = (name, fallback) => HIT_DIE[String(name || "").toLowerCase()] || ([6, 8, 10, 12].includes(int(fallback)) ? int(fallback) : 8);
@@ -553,9 +566,10 @@ function applyAction(camp, cid, gm, type, p) {
   if (Story.handles(type)) return Story.apply(camp, cid, gm, type, p, { addChat, shownName, Forbidden, Invalid });
   if (type.startsWith("ask.")) return Ask.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
   if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, fightHelpers());
-  if (Ships.handles(type)) return Ships.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
-  if (Space.handles(type)) return Space.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, applyAction, rid, Forbidden, Invalid });
+  if (Ships.handles(type)) return Ships.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, shownName, Forbidden, Invalid });
+  if (Space.handles(type)) return Space.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, shownName, applyAction, rid, Forbidden, Invalid });
   if (Downtime.handles(type)) return Downtime.apply(camp, cid, gm, type, p, { addChat, shownName, applyAction, rollDice, Forbidden, Invalid });
+  if (Craft.handles(type)) return Craft.apply(camp, cid, gm, type, p, { addChat, shownName, rollDice, Forbidden, Invalid });
 
   switch (type) {
     // ---- characters
@@ -597,12 +611,21 @@ function applyAction(camp, cid, gm, type, p) {
         const s = newSpecies && Array.isArray(p[SPECIES_SENSES]) ? R.cleanSenses(p[SPECIES_SENSES]) : (old && old.senses) || [];
         if (s.length) clean.senses = s; else delete clean.senses;
       }
+      // damage defences (audit 1.5; jpesus on #198: the senses pattern): the GM sets them by hand, a player's save keeps
+      // what the sheet had, and a new species brings its resistances (looked up by holotable.js) without wiping the GM's
+      if (!gm) { if (old && old.defenses) clean.defenses = old.defenses; else delete clean.defenses; }
+      if ((!old || String(old.species || "").trim().toLowerCase() !== String(clean.species || "").trim().toLowerCase()) && p[SPECIES_DEFENSES] && typeof p[SPECIES_DEFENSES] === "object") {
+        const d = R.withSpeciesDefenses(clean.defenses, p[SPECIES_DEFENSES]);
+        if (d) clean.defenses = d; else delete clean.defenses;
+      }
       clean.image = old ? old.image || "" : "";
       clean.tokenImage = old ? old.tokenImage || "" : "";
       if (old && old.downtime) clean.downtime = old.downtime; else delete clean.downtime;   // only downtime actions change it (11.1)
+      if (old && old.craft) clean.craft = old.craft; else delete clean.craft;               // only craft actions change it (11.2)
       clean.updated = now();
       if (!(camp.variants || []).includes("Simplified Forcecasting")) delete clean.forceAbility;   // only while the GM uses it
       chars[id] = clean;
+      Fight.woundsHealed(camp, id, clean);   // back at its hit point maximum: no wounded levels (the Wounds variant, #233)
       if (old) {   // the record of changes (12.5)
         const changes = sheetDiff(old, clean);
         if (changes.length) {
@@ -647,6 +670,15 @@ function applyAction(camp, cid, gm, type, p) {
       mp.tokens = mp.tokens.filter((t) => t.charId !== p.id);
       addChat(camp, { system: true, text: `${said === "???" ? "An unknown character" : said} left the table.` });
       return { dropImages: [ch.image, ch.tokenImage] };
+    }
+    case "char.rest": {   // the sheet says a character finished a short or long rest (it saves the numbers itself, through
+      // char.save); this tells what else resets on a rest, such as the combat view's Wounds DC (#233), through Fight.onRest
+      const id = String(p.charId || ""), ch = charById(camp, id), kind = p.kind === "long" ? "long" : p.kind === "short" ? "short" : "";
+      if (!ch) throw new Invalid("No such character.");
+      if (!kind) throw new Invalid("A short or a long rest.");
+      if (!gm && ch.owner !== cid) throw new Forbidden("Not your character");
+      if (typeof Fight.onRest === "function") Fight.onRest(camp, id, kind);
+      return { rested: kind };
     }
     case "char.assign": {
       need(gm);
@@ -769,9 +801,11 @@ function applyAction(camp, cid, gm, type, p) {
         const i = ini.entries.findIndex((e) => e.id === p.id);
         if (i >= 0) { ini.entries.splice(i, 1); if (i < ini.turn) ini.turn--; ini.turn = clamp(ini.turn, 0, Math.max(0, ini.entries.length - 1)); }
       } else if (type === "init.next" && n) {
+        const prev = ini.active ? ini.entries[ini.turn] : null, round = ini.round;
         ini.active = true; ini.turn++;
         if (ini.turn >= n) { ini.turn = 0; ini.round++; }
         const cur = ini.entries[ini.turn];
+        Fight.sheetTurn(camp, prev, cur, ini.round > round, { shownName, addChat });   // the sheet's Cast's conditions count down (4.10)
         // "???" while the GM hides the name; under fog, only to those who can see whose turn it is (#93, chat follows sight)
         if (!cur.hidden) { const to = Fight.sightTo(camp, null, [cur.id]); addChat(camp, Object.assign({ system: true, text: `Round ${ini.round} - ${shownName(camp, cur)}'s turn.` }, to ? { to } : {})); }
       } else if (type === "init.prev" && n) {
@@ -779,10 +813,13 @@ function applyAction(camp, cid, gm, type, p) {
         if (ini.turn < 0) { ini.turn = n - 1; ini.round = Math.max(1, ini.round - 1); }
       } else if (type === "init.start") {
         Object.assign(ini, { active: true, turn: 0, round: 1 });
+        Fight.sheetFight(camp, true);   // the clock's countdowns from the sheet's Cast count rounds now (4.10)
+        if (camp.fight) camp.fight.strenuousAt = "";   // a new fight: Strenuous Combat's saves can be made again (#233)
         addChat(camp, { system: true, text: "Combat begins! Roll initiative." });
         combatMoves(camp);
       } else if (type === "init.clear") {
         Object.assign(ini, { entries: [], turn: 0, round: 1, active: false });
+        Fight.sheetFight(camp, false);   // the sheet's Cast's conditions go back on the in-game clock (4.10)
         addChat(camp, { system: true, text: "Combat has ended." });
       }
       return {};
@@ -1052,6 +1089,8 @@ function applyAction(camp, cid, gm, type, p) {
       if (!u || !cur) throw new Invalid("There's no level to undo for that character.");
       const back = cleanChar(Object.assign({}, u.sheet, { id }));
       back.owner = cur.owner; back.image = cur.image || ""; back.tokenImage = cur.tokenImage || ""; back.updated = now();
+      if (cur.downtime) back.downtime = cur.downtime; else delete back.downtime;   // days granted and spent since stay (11.1, #226 review)
+      if (cur.craft) back.craft = cur.craft; else delete back.craft;   // and the crafts asked for since, which spent them (11.2)
       chars[id] = back;
       for (const e of camp.initiative.entries) if (e.charId === id) { e.hp = (back.hp || {}).current; e.maxHp = (back.hp || {}).max; }
       camp.levelUps = camp.levelUps || {};
@@ -1187,6 +1226,7 @@ function applyAction(camp, cid, gm, type, p) {
         const why = str(p.why, 60).trim();
         addChat(camp, { system: true, text: `🕑 ${span} pass${why ? ` (${why})` : ""}. It's now ${clockText(camp.clock)}.` });
       }
+      if (!ini.active) Fight.sheetClock(camp, mins, { shownName, addChat });   // what the sheet's Cast gave runs its SW5e duration (4.10)
       return { clock: camp.clock };
     }
 
@@ -1235,7 +1275,7 @@ function applyAction(camp, cid, gm, type, p) {
       if (old) need(gm || !old.hidden, "That ship is the GM's.");
       else if (camp.ships.length >= MAX_SHIPS) throw new Invalid(`A table can have up to ${MAX_SHIPS} ships.`);
       const sh = cleanShip(Object.assign({}, p.ship, { id: old ? old.id : rid(), owner: old ? old.owner : cid }), chars);
-      Ships.keepStatus(sh, old);   // the fight state (conditions, destruction saves) is the server's; points stay inside the maximums
+      Ships.keepStatus(sh, old, gm);   // the fight state (conditions, destruction saves) is the server's; points stay inside the maximums
       if (!gm) sh.hidden = old ? old.hidden : false;
       if (old) camp.ships[i] = sh; else camp.ships.push(sh);
       return { id: sh.id };
@@ -1304,7 +1344,7 @@ function cleanStashItem(e) {
     id: /^[a-z0-9]{4,20}$/.test(String(e.id || "")) ? String(e.id) : rid(),
     name, qty: clamp(int(e.qty, 1), 1, 999), notes: str(e.notes, 200),
     ...(RARITIES.includes(e.rar) ? { rar: e.rar } : {}), ...(e.att ? { att: true } : {}),
-    ...(e.armor && R.ARMOR_KINDS.includes(e.armor.kind) ? { armor: { kind: e.armor.kind, ac: clamp(int(e.armor.ac), 0, 30) } } : {}),
+    ...(R.cleanArmor(e.armor) ? { armor: R.cleanArmor(e.armor) } : {}),
   };
 }
 function cleanStash(st) {
@@ -1407,7 +1447,7 @@ function cleanGame(g) {
 
 module.exports = {
   cleanGame,
-  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, propSightSegments, SPECIES_SENSES, DOWNTIME_ACTS: Downtime.ACT_TABLES, FEAT_ASI, validImg, validColor, cleanChar, cleanShip, rid, charById,
+  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, propSightSegments, SPECIES_SENSES, SPECIES_DEFENSES, DOWNTIME_ACTS: Downtime.ACT_TABLES, FEAT_ASI, validImg, validColor, cleanChar, cleanShip, rid, charById,
   applyAction: (camp, ...a) => { const out = applyAction(camp, ...a); Fight.noteSeen(camp); return out; },   // fog of war: what players see now joins what they've explored
   Forbidden, Invalid, IMG_PREFIX,
 };

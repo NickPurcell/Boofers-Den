@@ -312,3 +312,185 @@ test("high-level casting (#160): a 6th-level power once per long rest, from the 
   await gm.act("fight.undo", {});
   assert.equal("high" in (await sheet(gm, avery)).force, false, "Undo takes it back");
 });
+
+// Ongoing power effects (audit 4.10, jpesus's go on #65): in a fight on the tracker, a condition the sheet's Cast gives
+// counts down on the tracker's turns, as the combat view's do; a save-ends one posts its save for a person to roll.
+const SNARE = (until) => ({ use: "action", range: [60, 60], save: { ability: "wis", dc: 40 }, applies: [{ condition: "Restrained", until }] });
+async function fightTable(until, { on = false } = {}) {
+  const t = await table();
+  await t.gm.act("fight.toggle", { on: true });
+  assert.equal((await t.gm.act("fight.ability", { name: "Hold", data: SNARE(until) })).code, 200);
+  if (!on) await t.gm.act("fight.toggle", { on: false });
+  return t;
+}
+const entryNamed = (st, n) => st.initiative.entries.find((e) => e.name === n);
+
+test("ongoing effects (4.10): a condition from the sheet's Cast counts down on the tracker's Next and ends on the right turn", async () => {
+  const { gm, sam, avery, tok } = await fightTable({ ends: "end", of: "target", rounds: 2 });
+  await sam.act("init.add", { charId: avery, name: "Avery", init: 20 });
+  await gm.act("init.add", { name: "Raider", init: 12, hp: 30, ac: 13 });
+  await gm.act("init.start", {});
+  assert.equal((await gm.act("fight.cast", { charId: avery, power: "Hold", level: 1, targets: [tok.raider] })).code, 200);
+  let gv = await gm.state();
+  const rid = entryNamed(gv, "Raider").id;
+  assert.deepEqual(entryNamed(gv, "Raider").conditions, ["Restrained"]);
+  assert.deepEqual(gv.sheetCast.fx, [{ entry: rid, condition: "Restrained", power: "Hold", left: 2, save: false }]);
+  assert.deepEqual((await sam.state()).sheetCast.fx, gv.sheetCast.fx, "a player sees it on a creature they can see");
+  assert.equal((await sam.act("init.next", {})).code, 403, "only the GM moves the tracker on");
+  const left = async () => ((await gm.state()).sheetCast.fx || []).map((x) => x.left);
+  await gm.act("init.next", {});   // Avery's turn ends: not the Raider's, so nothing counts
+  assert.deepEqual(await left(), [2]);
+  await gm.act("init.next", {});   // the Raider's ends: one round gone
+  assert.deepEqual(await left(), [1]);
+  await gm.act("init.next", {});
+  assert.deepEqual(await left(), [1]);
+  await gm.act("init.next", {});   // the Raider's second turn ends: it's free
+  gv = await gm.state();
+  assert.deepEqual(entryNamed(gv, "Raider").conditions, []);
+  assert.equal(gv.sheetCast.fx, undefined);
+  assert.ok(gv.chat.some((m) => m.system && m.text === "Raider is no longer restrained (Hold)." && !m.to));
+});
+
+test("ongoing effects (4.10): a save-ends condition posts its save and the table doesn't decide it; taken off by hand, its record goes", async () => {
+  const { gm, sam, rae, avery, bolt, tok } = await fightTable({ ends: "end", of: "target", rounds: 10, save: true });
+  await rae.act("init.add", { charId: bolt, name: "Bolt", init: 10 });
+  await gm.act("init.add", { name: "Raider", init: 5, hp: 30, ac: 13 });
+  await gm.act("init.start", {});
+  assert.equal((await gm.act("fight.cast", { charId: avery, power: "Hold", level: 1, targets: [tok.bolt] })).code, 200, "Avery isn't in the fight");
+  assert.deepEqual((await rae.state()).sheetCast.fx, [{ char: bolt, condition: "Restrained", power: "Hold", left: 10, save: true }]);
+  await gm.act("init.next", {});   // Bolt's turn ends
+  let gv = await gm.state();
+  assert.ok(gv.chat.some((m) => m.system && m.text === "Bolt can try to shake off restrained (Hold): a WIS save against DC 40. On a success, take it off."));
+  assert.deepEqual(gv.characters[bolt].conditions, ["Restrained"], "the table doesn't roll it");
+  assert.deepEqual(gv.sheetCast.fx.map((x) => x.left), [9]);
+  // Rae rolled well: Bolt's sheet loses it by hand, and the countdown goes with it
+  const b = gv.characters[bolt];
+  await rae.act("char.save", { char: Object.assign({}, b, { conditions: [] }) });
+  assert.equal((await gm.state()).sheetCast.fx, undefined, "no longer shown");
+  await gm.act("init.next", {}); await gm.act("init.next", {});
+  gv = await gm.state();
+  assert.equal(gv.chat.filter((m) => /shake off/.test(m.text || "")).length, 1, "no save asked for a condition that's gone");
+  assert.ok(!gv.chat.some((m) => /no longer restrained/.test(m.text || "")));
+});
+
+test("ongoing effects (4.10): a hidden creature's lines go to the GM only, and players aren't sent its countdown", async () => {
+  const { gm, sam, avery, tok } = await fightTable({ ends: "start", of: "self", rounds: 1 });
+  await sam.act("init.add", { charId: avery, name: "Avery", init: 20 });
+  await gm.act("init.add", { name: "Lurker", init: 12, hp: 30, ac: 13, hidden: true });
+  await gm.act("init.start", {});
+  assert.equal((await gm.act("fight.cast", { charId: avery, power: "Hold", level: 1, targets: [tok.lurker] })).code, 200);
+  assert.equal(((await gm.state()).sheetCast.fx || []).length, 1);
+  assert.equal(((await sam.state()).sheetCast || {}).fx, undefined);
+  await gm.act("init.next", {});   // the Lurker's turn
+  await gm.act("init.next", {});   // Avery's starts again: the condition ends
+  const gv = await gm.state();
+  const line = gv.chat.find((m) => /no longer restrained/.test(m.text || ""));
+  assert.deepEqual([line && line.to, line && line.private], [["@gm"], true]);
+  assert.ok(!(await sam.state()).chat.some((m) => /restrained/i.test(m.text || "")));
+});
+
+test("ongoing effects (4.10): the combat view's End turn counts it down too, and the GM's Undo puts it back; clearing the fight drops it", async () => {
+  const { gm, rae, avery, bolt, tok } = await fightTable({ ends: "end", of: "target", rounds: 1 }, { on: true });
+  await gm.act("init.add", { name: "Raider", init: 12, hp: 30, ac: 13 });
+  await rae.act("init.add", { charId: bolt, name: "Bolt", init: 10 });
+  await gm.act("init.start", {});
+  assert.equal((await gm.act("fight.cast", { charId: avery, power: "Hold", level: 1, targets: [tok.raider] })).code, 200);
+  assert.equal((await gm.act("fight.end", {})).code, 200);   // the Raider's turn ends
+  let gv = await gm.state();
+  assert.deepEqual([entryNamed(gv, "Raider").conditions, gv.sheetCast.fx], [[], undefined]);
+  assert.equal((await gm.act("fight.undo", {})).code, 200);
+  gv = await gm.state();
+  assert.deepEqual(entryNamed(gv, "Raider").conditions, ["Restrained"]);
+  assert.deepEqual(gv.sheetCast.fx.map((x) => [x.condition, x.left]), [["Restrained", 1]]);
+  await gm.act("init.clear", {});
+  assert.equal((await gm.state()).sheetCast.fx, undefined);
+});
+
+test("ongoing effects (4.10, #256 review): under fog, a player who can't see the creature gets neither its countdown nor its lines", async () => {
+  const { gm, sam, rae, avery, bolt } = await fightTable({ ends: "end", of: "target", rounds: 1 });
+  await gm.act("map.settings", { cols: 20, rows: 12 });
+  const st0 = await gm.state(), tokId = (n) => st0.map.tokens.find((t) => t.name === n).id;
+  // Avery and the Raider on one side of a wall, Bolt (Rae's) on the other
+  await sam.act("token.move", { id: tokId("Avery"), x: 2, y: 5 }); await gm.act("token.move", { id: tokId("Raider"), x: 4, y: 5 });
+  await rae.act("token.move", { id: tokId("Bolt"), x: 15, y: 5 });
+  await gm.act("fight.wall", { op: "add", a: [10, 0], b: [10, 12] });
+  await sam.act("init.add", { charId: avery, name: "Avery", init: 20 }); await rae.act("init.add", { charId: bolt, name: "Bolt", init: 15 });
+  await gm.act("init.add", { name: "Raider", init: 12, hp: 30, ac: 13 });
+  await gm.act("init.start", {});
+  assert.equal((await gm.act("fight.fog", { on: true })).code, 200);
+  assert.equal((await gm.act("fight.cast", { charId: avery, power: "Hold", level: 1, targets: [tokId("Raider")] })).code, 200);
+  const rs = await rae.state(), ss = await sam.state();
+  assert.deepEqual([rs.initiative.entries.map((e) => e.name), (rs.sheetCast || {}).fx], [["Bolt"], undefined], "Rae can't see the Raider");
+  assert.equal(ss.sheetCast.fx.length, 1, "Sam can");
+  for (let i = 0; i < 3; i++) await gm.act("init.next", {});
+  const ended = (st) => st.chat.some((m) => m.text === "Raider is no longer restrained (Hold).");
+  assert.deepEqual([ended(await rae.state()), ended(await sam.state()), ended(await gm.state())], [false, true, true]);
+});
+
+test("ongoing effects (4.10): the stored record keeps only its shape", () => {
+  const F = require("../api/_holotable-fight.js");
+  const list = [
+    { id: "__proto__", char: "abcdef12", condition: "Restrained", power: "Hold", by: "constructor", ends: "middle", of: { entry: "__proto__" }, left: 999, save: { ability: "luck", dc: 5 } },
+    { id: "fx000001", entry: "bad id!", condition: "Prone" }, { char: "abcdef12" }, "x",
+    ...Array.from({ length: 70 }, (_, i) => ({ id: `fx${String(i).padStart(6, "0")}`, entry: "raider0001", condition: "Prone", left: 1 }))];
+  const camp = (l) => ({ characters: {}, initiative: { entries: [] }, fight: { sheetFx: l } });
+  const fx = F.state(camp(list)).sheetFx;
+  assert.equal(fx.length, 60, "the newest 60");
+  assert.equal(F.state(camp(list.slice(0, 4))).sheetFx.length, 1, "no holder, a bad id, no condition, not an object: dropped");
+  const first = F.state(camp(list.slice(0, 1))).sheetFx[0];
+  assert.match(first.id, /^[a-f0-9]{10}$/);
+  assert.deepEqual(Object.assign({}, first, { id: "x" }), { id: "x", char: "abcdef12", condition: "Restrained", power: "Hold", ends: "end", of: null, left: 100, save: null });
+});
+
+// 4.10's second part: out of a fight, the in-game clock (9.18) ends what the sheet's Cast gave, after its SW5e duration
+async function clockTable(duration) {
+  const t = await fightTable({ ends: "end", of: "target", rounds: 3 });
+  const a = await sheet(t.gm, t.avery);
+  a.powers = a.powers.map((pw) => (pw.name === "Hold" ? Object.assign({}, pw, { notes: duration == null ? "" : `1 action · Range 60 feet · ${duration}` }) : pw));
+  assert.equal((await t.sam.act("char.save", { char: a })).code, 200);
+  return t;
+}
+
+test("ongoing effects (4.10, the clock): out of a fight, a condition ends when the clock passes its SW5e duration", async () => {
+  const { gm, sam, rae, avery, bolt, tok } = await clockTable("up to 1 hour");
+  assert.equal((await gm.act("fight.cast", { charId: avery, power: "Hold", level: 1, targets: [tok.bolt] })).code, 200);
+  assert.deepEqual((await rae.state()).sheetCast.fx, [{ char: bolt, condition: "Restrained", power: "Hold", left: 600, save: false, clock: true }]);
+  assert.equal((await sam.act("clock.advance", { mins: 60 })).code, 403, "the clock is the GM's");
+  await gm.act("clock.advance", { mins: 30 });
+  let gv = await gm.state();
+  assert.deepEqual([gv.characters[bolt].conditions, gv.sheetCast.fx[0].left], [["Restrained"], 300]);
+  await gm.act("clock.advance", { mins: 30 });
+  gv = await gm.state();
+  assert.deepEqual(gv.characters[bolt].conditions, []);
+  const i = gv.chat.findIndex((m) => m.text === "Bolt is no longer restrained (Hold).");
+  assert.ok(i > 0 && /^🕑 30 minutes pass/.test(gv.chat[i - 1].text), "after the clock's own line");
+});
+
+test("ongoing effects (4.10, the clock): no duration, nothing counts; a fight turns minutes into rounds and back", async () => {
+  // instantaneous (or a power typed by hand): it stays until taken off, as before
+  let t = await clockTable("Instantaneous");
+  assert.equal((await t.gm.act("fight.cast", { charId: t.avery, power: "Hold", level: 1, targets: [t.tok.bolt] })).code, 200);
+  assert.equal(((await t.gm.state()).sheetCast || {}).fx, undefined);
+  await t.gm.act("clock.advance", { mins: 1440 });
+  assert.deepEqual((await sheet(t.gm, t.bolt)).conditions, ["Restrained"]);
+  // a minute (ten rounds), then a fight: it counts each new round, and ends after ten
+  t = await clockTable("1 minute");
+  assert.equal((await t.gm.act("fight.cast", { charId: t.avery, power: "Hold", level: 1, targets: [t.tok.bolt] })).code, 200);
+  await t.rae.act("init.add", { charId: t.bolt, name: "Bolt", init: 10 });
+  await t.gm.act("init.add", { name: "Raider", init: 5, hp: 30, ac: 13 });
+  await t.gm.act("init.start", {});
+  let gv = await t.gm.state();
+  assert.deepEqual(gv.sheetCast.fx.map((x) => [x.left, !!x.clock]), [[10, false]]);
+  for (let n = 0; n < 2 * 9; n++) await t.gm.act("init.next", {});   // nine new rounds
+  assert.deepEqual((await t.gm.state()).sheetCast.fx.map((x) => x.left), [1]);
+  await t.gm.act("init.next", {}); await t.gm.act("init.next", {});   // the tenth
+  assert.deepEqual((await sheet(t.gm, t.bolt)).conditions, []);
+  // cast in a fight (3 rounds), then the fight is cleared: what's left goes on the clock, and a minute ends it
+  assert.equal((await t.gm.act("fight.cast", { charId: t.avery, power: "Hold", level: 1, targets: [t.tok.bolt] })).code, 200);
+  assert.deepEqual((await t.gm.state()).sheetCast.fx.map((x) => [x.left, !!x.clock]), [[3, false]]);
+  await t.gm.act("init.clear", {});
+  gv = await t.gm.state();
+  assert.deepEqual(gv.sheetCast.fx.map((x) => [x.left, !!x.clock]), [[3, true]]);
+  await t.gm.act("clock.advance", { mins: 1 });
+  assert.deepEqual((await sheet(t.gm, t.bolt)).conditions, []);
+});

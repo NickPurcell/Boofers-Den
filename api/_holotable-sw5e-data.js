@@ -116,6 +116,7 @@ function feats(d) {
     asi: strs(e.attributesIncreased, 6, 20),
   })).sort(byName);
 }
+const improvements = (d) => named(d).map((e) => ({ n: t(e.name, 40), pre: t(e.prerequisite, 120), text: t(unlink(e.description), 3000) })).sort(byName);
 function maneuvers(d) {
   return named(d).map((e) => ({ n: t(e.name, 80), src: t(e.contentSource, 10), type: t(e.type, 20), pre: t(e.prerequisite, 160), text: t(unlink(e.description), 3000) })).sort(byName);
 }
@@ -181,11 +182,11 @@ function downtimeActs(d) {
   const md = String((ch && ch.contentMarkdown) || "").split(CR).join("");
   return md.split(/\n## /).slice(1).map((part) => {
     const n = part.split("\n")[0].trim(), up = part.search(/\n### Uptime/), body = up > 0 ? part.slice(0, up) : part;
-    if (!n || /^rivals$/i.test(n) || /^crafting$/i.test(n)) return null;
+    if (!n || /^rivals$/i.test(n)) return null;   // crafting is read too, for 11.2's own flow (it isn't one of 11.1's requests)
     const titles = [...body.matchAll(/^#####\s+(.+?)\s*$/gm)].map((m) => m[1]);
     const find = (re) => titles.find((x) => re.test(x));
     const modT = mdTable(body, find(/roll modifier$/i) || "\u0000"), resT = mdTable(body, find(/results$|^(buying|selling) an /i) || "\u0000");
-    const compT = mdTable(body, find(/complications$/i) || "\u0000"), rarT = mdTable(body, find(/^(purchasable|salable) /i) || "\u0000");
+    const compT = mdTable(body, find(/complications$/i) || "\u0000"), rarT = mdTable(body, find(/^(purchasable|salable) |item ingredients$/i) || "\u0000");
     // the check's DC met gives the d100 modifier; for buying, the rarity table's "DC to Find Seller" does (with its rarity)
     const dcRarity = rarT && /dc/i.test(String(rarT.head[1] || ""));
     const mods = modT ? modT.rows.map((r) => ({ dc: int(r[0], 0, 99), mod: int(String(r[1]).replace("+", ""), -99, 99) })).filter((r) => r.dc > 0)
@@ -225,7 +226,7 @@ function shipMods(d) {
 }
 function deployments(d) {
   return named(d).map((e) => ({
-    n: t(e.name, 40), desc: t(e.description, 300), md: t(unlink(e.featureText), 8000),
+    n: t(e.name, 40), desc: t(e.description, 300), md: t(unlink(e.featureText), 12000),   // the longest (Operator) is about 8,900: all its techniques
     features: arr(e.features, 30, (x) => ({ n: t(x && x.name, 80), md: t(unlink(x && x.content), 4000) })).filter((x) => x.n),
   })).sort(byName);
 }
@@ -242,6 +243,10 @@ const LISTS = {
   backgrounds: { path: "background", build: backgrounds, maxBytes: 3 * MB, maxItems: 400 },        // 0.59 MB, 61
   classes: { path: "class", build: classes, maxBytes: 2 * MB, maxItems: 40, cacheAs: "classes-2" },   // 0.24 MB, 10; classes-2: lv and opts (2.9, #188)
   feats: { path: "feat", build: feats, maxBytes: 2 * MB, maxItems: 1000 },                         // 0.11 MB, 119
+  // the options the Class, Multiclass and Splashclass Improvement feats open (audit 2.17), one per class
+  "improvements-class": { path: "classImprovement", build: improvements, maxBytes: 1 * MB, maxItems: 40 },
+  "improvements-multi": { path: "multiclassImprovement", build: improvements, maxBytes: 1 * MB, maxItems: 40 },
+  "improvements-splash": { path: "splashclassImprovement", build: improvements, maxBytes: 1 * MB, maxItems: 40 },
   maneuvers: { path: "maneuvers", build: maneuvers, maxBytes: 2 * MB, maxItems: 1000 },            // 0.07 MB, 119
   styles: { path: "fightingStyle", build: simple("description"), maxBytes: 1 * MB, maxItems: 400 }, // 32
   masteries: { path: "fightingMastery", build: simple("text"), maxBytes: 1 * MB, maxItems: 400 },  // 32
@@ -250,7 +255,7 @@ const LISTS = {
   monsters: { path: "monster", build: monsters, maxBytes: 8 * MB, maxItems: 2000, cacheAs: "monsters-2" },   // 2.59 MB, 271; cacheAs: a new shape (r) is a new cache
   "rules-phb": { path: "playerHandbookRule", build: chapters, maxBytes: 3 * MB, maxItems: 60 },    // 0.47 MB
   "rules-wh": { path: "wretchedHivesRule", build: chapters, maxBytes: 3 * MB, maxItems: 60 },      // 0.41 MB
-  downtime: { path: "wretchedHivesRule", build: downtimeActs, maxBytes: 3 * MB, maxItems: 40 },    // 13 activities (11.1)
+  downtime: { path: "wretchedHivesRule", build: downtimeActs, maxBytes: 3 * MB, maxItems: 40, cacheAs: "downtime-2" },    // 13 activities (11.1), and crafting (11.2)
   "rules-sotg": { path: "starshipRule", build: chapters, maxBytes: 3 * MB, maxItems: 60 },         // 0.27 MB
   "rules-ec": { path: "expandedContent", build: chapters, maxBytes: 6 * MB, maxItems: 60 },        // 1.79 MB
   "rules-variant": { path: "variantRule", build: chapters, maxBytes: 2 * MB, maxItems: 300 },      // 0.15 MB, 40
@@ -259,7 +264,7 @@ const LISTS = {
   "armor-props": { path: "armorProperty", build: entries("content"), maxBytes: 1 * MB, maxItems: 300 },
   "ship-equipment": { path: "starshipEquipment", build: shipEquipment, maxBytes: 2 * MB, maxItems: 1500 },
   "ship-mods": { path: "starshipModification", build: shipMods, maxBytes: 2 * MB, maxItems: 1500 },
-  deployments: { path: "starshipDeployment", build: deployments, maxBytes: 1 * MB, maxItems: 100 },
+  deployments: { path: "starshipDeployment", build: deployments, maxBytes: 1 * MB, maxItems: 100, cacheAs: "deployments2" },   // 2: the full text (was cut at 8,000)
   ventures: { path: "starshipVenture", build: ventures, maxBytes: 1 * MB, maxItems: 600 },
 };
 

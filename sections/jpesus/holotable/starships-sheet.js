@@ -52,7 +52,7 @@
   // prerequisites, and its installation check
   function modsHead(s) {
     const m = SR.modsSummary(s);
-    return `<p style="font-size:12px;margin:0 0 6px">${m.used} of ${m.cap} slots${m.over ? ` <b class="warn">(${m.over} over: each one past capacity adds 2 to its installation DC)</b>` : ''} · ${s.size === 'Tiny' ? 'no suites on a Tiny ship' : `${m.suites} of ${m.suiteMax} suites${m.suites > m.suiteMax ? ' <b class="warn">(too many)</b>' : ''}`}</p>`;
+    return `<p style="font-size:12px;margin:0 0 6px">${m.used} of ${m.cap} slots${m.over ? ` <b class="warn">(${m.over} over: each one past capacity adds ${SR.sizeRank(s) <= 2 ? 2 : 1} to its installation DC)</b>` : ''} · ${s.size === 'Tiny' ? 'no suites on a Tiny ship' : `${m.suites} of ${m.suiteMax} suites${m.suites > m.suiteMax ? ' <b class="warn">(too many)</b>' : ''}`}</p>`;
   }
   function modRow(s, x, i, ro, inp) {
     const pre = SR.prereqs(s, x), dc = SR.installDC(s, i);
@@ -76,8 +76,9 @@
     const sel = (k, opts) => `<select data-tv="${k}" ${ro ? 'disabled' : ''}>${opts.map(([v, l]) => `<option value="${esc(String(v))}" ${String(t[k]) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
     const regions = SR.REGIONS.map((r) => [r, r]);
     const when = hours == null ? (cls ? '' : 'No hyperdrive class on the sheet (Hyperdrive, above).') : `${hours < 24 ? `${hours} hours` : `${Math.round(hours / 24 * 10) / 10} days`} with a class ${cls} hyperdrive; ${fuel} units of fuel${have != null ? ` (it has ${have})` : ''}.`;
-    return `<details class="ship-build" data-sid="${esc(s.id)}-tv" style="margin-top:8px" ${buildOpen[s.id + '-tv'] ? 'open' : ''}><summary>Travel <span class="muted" style="font-size:12px">(hyperspace, astrogation, start-up)</span></summary>
-      <div class="row wrap" style="gap:6px;margin:6px 0;font-size:12px"><label class="ship-lv">From ${sel('from', regions)}</label><label class="ship-lv">to ${sel('to', regions)}</label>
+    return `<details class="ship-build" data-sid="${esc(s.id)}-tv" style="margin-top:8px" ${buildOpen[s.id + '-tv'] ? 'open' : ''}><summary>Travel <span class="muted" style="font-size:12px">(realspace, hyperspace, astrogation, start-up)</span></summary>
+      ${realspace(s, st, ro, have)}
+      <div class="row wrap" style="gap:6px;margin:6px 0;font-size:12px"><b>Hyperspace</b><label class="ship-lv">From ${sel('from', regions)}</label><label class="ship-lv">to ${sel('to', regions)}</label>
         <label class="ship-lv" title="Each rush: -5 on the astrogation checks, a day off the trip (or half of what's left under a day)">Rush ${sel('rush', [[0, 'none'], [1, '1 day'], [2, '2 days'], [3, '3 days']])}</label>
         <label class="toggle" title="+5 on the astrogation checks, and the trip takes twice as long"><input type="checkbox" data-tv="careful" ${t.careful ? 'checked' : ''} ${ro ? 'disabled' : ''}> careful</label></div>
       <p style="font-size:12px;margin:0 0 6px">${esc(when)}${st.astro > 0 ? ` <span class="muted">Course worked for: ${crs.rush ? `rushed ${crs.rush}` : 'no rush'}${crs.careful ? ', careful' : ''}; a different choice restarts the equations.</span>` : ''}</p>
@@ -90,6 +91,23 @@
         ${ro ? '' : `<label class="ship-lv">crew ${sel('crew', [['normal', 'the minimum'], ['half', 'half (-5)'], ['extra', '1.5 times (+5)']])}</label>
         <button class="btn tiny" data-sx="startup" title="An action: the crew leader's Intelligence (Piloting); advantage at full hull and shields, disadvantage under full hull">Emergency start-up check</button>`}</div>
     </details>`;
+  }
+  // realspace (SotG ch. 8): the pace, its speed at that pace, sample times, and fuel for days (or hours in atmosphere)
+  const PACE_NOTES = { normal: '', fast: 'Speed doubled; disadvantage on Probe and Scan checks, and -5 to passive Scan to notice threats.',
+    slow: 'Speed halved; it can travel stealthily (hiding, chapter 7).' };
+  function realspace(s, st, ro, have) {
+    ro = ro || inFight();   // travel waits until the fight is over (the server refuses it for players)
+    const t = TV[s.id], n = Math.max(1, parseInt(t.days, 10) || 1), rx = SR.flyFuel(s, 1);
+    const paces = ['normal', 'fast', 'slow'].map((v) => `<option value="${v}" ${st.pace === v ? 'selected' : ''}>${v}</option>`).join('');
+    return `<div class="row wrap" style="gap:6px;margin:6px 0;font-size:12px"><b>Realspace</b>
+        <label class="ship-lv" title="Travel pace: fast doubles the speed, slow halves it">pace <select data-sxc="pace" ${ro ? 'disabled' : ''}>${paces}</select></label>
+        <span>speed ${SR.travelSpeed(s)} ft${PACE_NOTES[st.pace] ? ` · <span class="muted">${esc(PACE_NOTES[st.pace])}</span>` : ''}</span></div>
+      <table class="t" style="font-size:12px;margin:0 0 6px"><tbody>${SR.REALSPACE_TIMES.map((r) => `<tr><td>${esc(r[0])}</td><td>${esc(SR.realspaceTime(r, st.pace))}</td></tr>`).join('')}
+        <tr><td colspan="2" class="muted">An average ship at this pace; difficult terrain (narrow canyons, tight formations) halves the speed.</td></tr></tbody></table>
+      ${ro ? '' : `<div class="row wrap" style="gap:6px;margin:0 0 8px;font-size:12px"><input type="number" min="1" max="365" data-tv="days" value="${n}" style="width:60px" title="How many">
+        <button class="btn tiny" data-sx="fly" data-where="realspace" title="A unit of fuel a day${rx !== 1 ? `, times ${rx} for its reactor` : ''}">days in realspace</button>
+        <button class="btn tiny" data-sx="fly" data-where="atmosphere" title="A unit of fuel an hour${rx !== 1 ? `, times ${rx} for its reactor` : ''}">hours in atmosphere</button>
+        <span class="muted">${SR.flyFuel(s, n)} units of fuel${have != null ? ` (it has ${have})` : ''}</span></div>`}`;
   }
   // what a ship like this costs to buy, build, upgrade, dock and crew (SotG chapters 3, 5 and 8)
   function costsBlock(s) {
@@ -104,6 +122,58 @@
         <tr><td>Minimum crew</td><td><b>${n(c.minCrew)}</b> (by size and Intelligence)${c.minCrew && crew < c.minCrew ? ` · ${crew} on the sheet: a skeleton crew runs as if with more system damage (¾: 1 level, ½: 2, ¼: 3, a tenth: 4)` : ''}</td></tr>
         <tr><td>Hired crew</td><td>salaried: 10 cr a day each and a 300 cr hiring bonus; or a share: 60% of the profits split among them</td></tr>
       </tbody></table></details>`;
+  }
+  // a crew row's deployment: the features of each rank they have, and the techniques they know (rank + 1), each with
+  // "use": a power die from its system (or central storage), or a mechanic's tech die
+  const DEP = { list: null, loading: false };
+  function deployments() {
+    if (DEP.list || DEP.loading || !window.HTB) return DEP.list;
+    DEP.loading = true;
+    window.HTB.list('deployments').then((l) => { DEP.list = {}; for (const d of l || []) DEP.list[d.n] = Object.assign(SR.deploymentInfo(d.md), { features: d.features || [] }); window.HTB.renderShipsSafe(); })
+      .catch(() => { DEP.loading = false; });
+    return null;
+  }
+  function crewRow(s, c, i, ro) {
+    if (!c.deployment || !(+c.rank > 0)) return '';
+    const all = deployments();
+    if (!all) return `<tr class="crew-dep"><td colspan="5" class="muted" style="font-size:12px">Loading ${esc(c.deployment)} features…</td></tr>`;
+    const info = all[c.deployment]; if (!info) return '';
+    const featMd = (n) => ((info.features || []).find((f) => f.n === n) || {}).md || '';
+    const ranks = info.ranks.filter(([r]) => r <= +c.rank).map(([r, fs]) => `<span class="muted">${r}:</span> ${fs.map((f) => `<span class="chip" title="${esc(featMd(f).slice(0, 600))}">${esc(f)}</span>`).join('')}`).join(' ');
+    const known = (c.known || []).filter((k) => info.techniques.some((t) => t.name === k)), cap = SR.techniquesKnown(c.rank), st = SR.statusOf(s);
+    const mech = c.deployment === 'Mechanic';
+    const tech = known.map((k) => { const t = info.techniques.find((x) => x.name === k), loc = t.loc;
+      const pool = loc && st.power[loc] > 0 ? loc : 'central', ok = mech || st.power[pool] > 0;
+      return `<span class="chip" title="${esc(t.md.slice(0, 600))}">${esc(k)}${loc ? ` <span class="muted">(${loc})</span>` : ''}${ro ? '' : ` <button class="btn tiny amber" data-sx="tech" data-ci="${i}" data-name="${esc(k)}" data-pool="${mech ? '' : pool}" ${ok ? '' : 'disabled'} title="${mech ? `Roll the tech die (d${SR.techDie(c.rank)}); it isn't spent` : `Spend a power die from ${pool}`}">use</button><button class="btn tiny ghost" data-sx="forget" data-ci="${i}" data-name="${esc(k)}" title="Forget it">✕</button>`}</span>`; }).join('');
+    const learn = !ro && known.length < cap ? `<select data-learn="${i}" style="width:auto;display:inline-block;font-size:12px;padding:1px 4px"><option value="">＋ ${mech ? 'technique' : 'technique'} (${known.length} of ${cap})</option>${info.techniques.filter((t) => !known.includes(t.name)).map((t) => `<option>${esc(t.name)}</option>`).join('')}</select>` : '';
+    return `<tr class="crew-dep"><td colspan="5" style="font-size:12px;padding-top:0">${ranks}<div style="margin-top:3px">${tech || '<span class="muted">No techniques picked.</span>'} ${learn}${mech ? ` <span class="muted">tech die d${SR.techDie(c.rank)}</span>` : ''}</div>${picksRow(s, c, i, ro)}</td></tr>`;
+  }
+  // a crew row's ventures (one a rank), gunning styles and masteries (SotG ch. 6), and the character's rank when they
+  // serve in more than one deployment (multispecializing: a crew row each)
+  const VEN = { list: null, loading: false };
+  function ventureList() {
+    if (VEN.list || VEN.loading || !window.HTB) return VEN.list;
+    VEN.loading = true;
+    window.HTB.list('ventures').then((l) => { VEN.list = l || []; window.HTB.renderShipsSafe(); }).catch(() => { VEN.loading = false; });
+    return null;
+  }
+  const ORD = ['', '1st', '2nd', '3rd', '4th', '5th'];
+  function picksRow(s, c, i, ro) {
+    const vl = ventureList() || [], find = (n) => vl.find((v) => v.n === n) || {};
+    const chip = (name, title, what, k, off) => `<span class="chip${off ? ' muted' : ''}" title="${esc(String(title || '').slice(0, 600))}">${esc(name)}${ro ? '' : ` <button class="btn tiny ghost" data-sx="forget" data-ci="${i}" data-what="${what}" data-k="${k}" title="Remove">✕</button>`}</span>`;
+    const sel = (what, label, opts) => (ro || !opts.length ? '' : `<select data-learn="${i}" data-what="${what}" style="width:auto;max-width:240px;display:inline-block;font-size:12px;padding:1px 4px"><option value="">＋ ${label}</option>${opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('')}</select>`);
+    const vs = Array.isArray(c.ventures) ? c.ventures : [], vcap = SR.venturesAllowed(c), ga = SR.gunningAllowed(c);
+    const ven = vs.map((v, k) => chip(v, (find(v).pre ? `Requires ${find(v).pre}\n` : '') + (find(v).md || ''), 'ventures', k, k >= vcap)).join('');
+    const vAdd = vs.length < vcap ? sel('ventures', `venture (${vs.length} of ${vcap})`, vl.filter((v) => !vs.includes(v.n) || SR.REPEATABLE_VENTURES.includes(v.n)).map((v) => [v.n, v.n + (v.pre ? ` (requires ${v.pre})` : '')])) : '';
+    const group = (what, table, cap, label) => {
+      const have = Array.isArray(c[what]) ? c[what] : [];
+      if (!cap && !have.length) return '';
+      return ` · <span class="muted">${label}:</span> ${have.map((x, k) => chip(x, table[x], what, k, k >= cap)).join('') || '<span class="muted">none</span>'}${have.length < cap ? ' ' + sel(what, `${label.toLowerCase()} (${have.length} of ${cap})`, Object.keys(table).filter((x) => !have.includes(x)).map((x) => [x, x])) : ''}`;
+    };
+    const ms = SR.multispec(s, c);
+    return `<div style="margin-top:3px"><span class="muted">Ventures:</span> ${ven || (vl.length || !vcap ? '<span class="muted">none</span>' : '<span class="muted">loading…</span>')} ${vAdd}`
+      + group('styles', SR.GUNNING_STYLES, ga.styles, 'Gunning style') + group('masteries', SR.GUNNING_MASTERIES, ga.masteries, 'Gunning mastery')
+      + (ms ? ` · <span class="muted" title="Multispecializing (SotG ch. 6): ranks in every deployment add up">${esc(ms.rows.map((r) => `${r.deployment.toLowerCase()} ${r.rank}`).join(' / '))}: a ${ORD[Math.min(5, ms.rank)] || ms.rank + 'th'}-rank character</span>` : '') + '</div>';
   }
   const buildOpen = {};   // per ship, whether the panel below is open (the sheet is redrawn on every change)
   document.addEventListener('toggle', (e) => { const d = e.target; if (d && d.classList && d.classList.contains('ship-build')) buildOpen[d.dataset.sid] = d.open; }, true);
@@ -172,6 +242,8 @@
     const bs = SR.boostedSpeed(s);
     if (lv) out.push(`Speed ${bs} ft (slowed ${lv})`);
     else if (bs !== sp) out.push(`Speed ${bs} ft (engines boosted)`);
+    if (st.pace === 'fast') out.push('Fast pace: Probe and Scan checks at disadvantage');
+    else if (st.pace === 'slow') out.push('Slow pace: it can travel stealthily');
     if (st.system >= 4) out.push(`Maximums halved: hull ${SR.hullMax(s)}, shields ${SR.shieldMax(s)}; regeneration halved`);
     const fx = (k, ab) => SR.rollEffects(s, k, ab);
     const words = (f) => [f.adv.length && 'advantage', f.dis.length && 'disadvantage'].filter(Boolean).join(' and ');
@@ -186,6 +258,11 @@
     if (st.fx.hardTurn) out.push('Hard turn ready');
     if (st.fx.directed) out.push('Next attack directed (advantage)');
     if (st.fx.interfered) out.push('Interfered with (next roll at disadvantage)');
+    if (st.fx.concealed) out.push('Concealed (unseen until it attacks)');
+    if (st.fx.dogfightVs) out.push('Dogfighting');
+    if (st.fx.runVs) out.push(`Attack run (${st.fx.runFeet} ft)`);
+    if (st.fx.harassedBy) out.push('Harassed (leaving its square costs a critical hit)');
+    for (const z of SR.zonesOf(s)) out.push(`Zone on: ${z.name} (${z.arc ? `${z.arc} arc` : 'all around'}, ${z.range} ft)`);
     if (SR.isDisabled(st)) out.push('No actions or reactions');
     else if (st.cond.includes('Shocked')) out.push('No reactions; action or bonus action');
     return out;
@@ -196,7 +273,7 @@
     const kind = el.dataset.kind, ab = el.dataset.ab;
     let label = el.dataset.label || '';
     if (!kind) return { mode: asked, label };
-    const fx = SR.rollEffects(s, kind, ab), mode = SR.rollMode(fx, asked);
+    const fx = SR.rollEffects(s, kind, ab, el.dataset.skill), mode = SR.rollMode(fx, asked);
     const why = [...fx.adv, ...fx.dis];
     if (fx.fail.length) label += ` (fails automatically: ${fx.fail.join(', ')})`;
     else if (why.length) label += ` [${why.join(', ')}]`;
@@ -233,7 +310,15 @@
     if (a === 'plot') { await H.act('ship.plot', { id }); return true; }
     if (a === 'astro') { const t = TV[id] || {}; await H.act('ship.astro', { id, crew: (ctxOf[id] || {}).as || 0, rush: t.rush, careful: t.careful, age: t.age }); return true; }
     if (a === 'startup') { await H.act('ship.startup', { id, crew: (ctxOf[id] || {}).as || 0, crewSize: (TV[id] || {}).crew }); return true; }
+    if (a === 'fly') { await H.act('ship.fly', { id, where: b.dataset.where, n: Math.max(1, parseInt((TV[id] || {}).days, 10) || 1) }); return true; }
     if (a === 'jump') { const t = TV[id] || {}; if (confirm(`Jump to hyperspace, ${t.from} to ${t.to}?`)) await H.act('ship.jump', { id, from: t.from, to: t.to, rush: t.rush, careful: t.careful }); return true; }
+    if (a === 'tech') { await H.act('ship.technique', { id, crew: +b.dataset.ci, name: b.dataset.name, pool: b.dataset.pool }); return true; }
+    if (a === 'forget') {   // a technique by name; a venture, style or mastery by its place in the list
+      const x = JSON.parse(JSON.stringify(s)), c = x.crew[+b.dataset.ci], what = b.dataset.what;
+      if (c && ['ventures', 'styles', 'masteries'].includes(what)) { c[what] = (c[what] || []).filter((_, k) => k !== +b.dataset.k); await H.act('ship.save', { ship: x }); }
+      else if (c) { c.known = (c.known || []).filter((k) => k !== b.dataset.name); await H.act('ship.save', { ship: x }); }
+      return true;
+    }
     if (a === 'install') { await H.act('ship.install', { id, mod: +b.dataset.i, crew: (ctxOf[id] || {}).as || 0 }); return true; }
     if (a === 'recharge') { await H.act('ship.recharge', { id }); return true; }
     if (a === 'hulldie') { await H.act('ship.hulldie', { id, crew: (ctxOf[id] || {}).as || 0 }); return true; }
@@ -249,12 +334,19 @@
   // the slowed and system damage pickers; returns true when it handled the change
   async function change(e, s) {
     const t = e.target, tv = t.dataset && t.dataset.tv;
+    if (t.dataset && t.dataset.learn !== undefined && s) {   // learn a technique; pick a venture, gunning style or mastery
+      const x = JSON.parse(JSON.stringify(s)), c = x.crew[+t.dataset.learn], what = t.dataset.what;
+      if (c && t.value && ['ventures', 'styles', 'masteries'].includes(what)) { c[what] = [...(c[what] || []), t.value]; await H.act('ship.save', { ship: x }); }
+      else if (c && t.value) { c.known = [...new Set([...(c.known || []), t.value])]; await H.act('ship.save', { ship: x }); }
+      return true;
+    }
     if (tv && s) { const o = TV[s.id] = TV[s.id] || {}; o[tv] = t.type === 'checkbox' ? t.checked : tv === 'rush' ? +t.value || 0 : t.value; t.blur(); window.HTB.renderShipsSafe(); return true; }
     const k = t.dataset && t.dataset.sxc; if (!k || !s) return false;
+    if (k === 'pace') { await H.act('ship.pace', { id: s.id, pace: t.value }); return true; }
     await H.act('ship.condition', { id: s.id, name: k, level: +t.value || 0 });
     return true;
   }
 
-  window.HTShipSheet = { block, effects, rollOpts, click, change, modsHead, modRow };
+  window.HTShipSheet = { block, effects, rollOpts, click, change, modsHead, modRow, crewRow };
   if (window.HTB && H.S.st) window.HTB.renderShipsSafe();   // the ships tab may have been drawn before this file loaded
 })();

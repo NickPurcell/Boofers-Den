@@ -289,8 +289,15 @@
   const ARMOR_KINDS = ['light', 'medium', 'heavy', 'shield'];
   function armorFromItem(it) {   // a SW5e gear entry (the picker's row) -> { kind, ac } or null
     const kind = String((it && it.accl) || '').toLowerCase(), ac = parseInt(String((it && it.ac) || '').replace(/^\+/, ''), 10);
-    return ARMOR_KINDS.includes(kind) && Number.isFinite(ac) ? { kind, ac } : null;
+    if (!(ARMOR_KINDS.includes(kind) && Number.isFinite(ac))) return null;
+    // its speed properties (audit 5.11; SW5e's armor properties): "strength N" slows a weaker wearer, "cumbersome" everyone
+    const props = ((it && it.props) || []).map(p => String(p).toLowerCase()), str = props.map(p => /^strength (\d+)/.exec(p)).find(Boolean);
+    return Object.assign({ kind, ac }, str ? { str: +str[1] } : {}, props.includes('cumbersome') ? { cumbersome: true } : {});
   }
+  // an item's armor, checked (the sheet and the party stash keep only this): kind, AC, and its speed properties
+  const cleanArmor = a => (a && ARMOR_KINDS.includes(a.kind) ? Object.assign({ kind: a.kind, ac: Math.max(0, Math.min(30, parseInt(a.ac, 10) || 0)) },
+    +a.str >= 1 && +a.str <= 30 ? { str: Math.round(+a.str) } : {}, a.cumbersome ? { cumbersome: true } : {}) : null);
+  Object.assign(SW5E, { cleanArmor });
   // Infuse Item (Engineer 2nd, SW5e): one armor, shield or weapon until the next long rest, +1 to AC or to attack
   // and damage, +2 from 10th and +3 from 15th. The sheet keeps which: infused = "attack:<name>" or "equipment:<name>".
   function infuseBonus(c) {
@@ -318,7 +325,10 @@
       best = opts.sort((x, y) => y.v - x.v)[0];
     }
     const infB = inf && (inf === body || inf.armor.kind === 'shield') ? infuseBonus(c) : 0;
-    return { total: best.v + misc + infB, text: [...best.parts, infB ? `infused ${inf.name} +${infB}` : '', misc ? `misc ${fmt(misc)}` : ''].filter(Boolean).join(' · ') };
+    // enhanced items' AC bonuses (audit 6.2): each one worn, and attuned when it needs attunement
+    const plus = (c.equipment || []).filter((e) => e && e.equipped && e.bonus && +e.bonus.ac > 0 && (!e.att || e.attuned));
+    const bonus = plus.reduce((n, e) => n + (+e.bonus.ac || 0), 0);
+    return { total: best.v + misc + infB + bonus, text: [...best.parts, infB ? `infused ${inf.name} +${infB}` : '', ...plus.map((e) => `${e.name} +${+e.bonus.ac}`), misc ? `misc ${fmt(misc)}` : ''].filter(Boolean).join(' · ') };
   }
   // Carrying (audit 6.5). Each item's weight (wt, in pounds each, from SW5e's gear) times its quantity, against the carrying
   // capacity (PHB, "Lifting and Carrying": Strength score x 15). With the table's "Encumbrance" variant (PHB, the same
@@ -396,9 +406,240 @@
   const commonHitDie = c => (hitDice(c).slice().sort((a, b) => b.total - a.total || b.die - a.die)[0] || { die: 8 }).die;
   Object.assign(SW5E, { consumableUse, cleanUse, commonHitDie });
 
+  // Enhanced items' plain bonuses (audit 6.2), read once from their SW5e text when added: a weapon's "+N bonus to attack
+  // and damage rolls" (or attack rolls only), armor's or a shield's "+N bonus to AC". Anything subtler stays text.
+  function enhancedBonus(text) {
+    const t = String(text || ''), out = {};
+    let m = /\+(\d) bonus to attack and damage rolls/.exec(t);
+    if (m) { out.hit = +m[1]; out.dmg = +m[1]; }
+    else if ((m = /\+(\d) bonus to attack rolls/.exec(t))) out.hit = +m[1];
+    if ((m = /\+(\d) bonus to AC\b/.exec(t))) out.ac = +m[1];
+    return cleanBonus(out);
+  }
+  function cleanBonus(b) {
+    if (!b || typeof b !== 'object') return null;
+    const out = {};
+    for (const k of ['hit', 'dmg', 'ac']) if (Number.isInteger(+b[k]) && +b[k] >= 1 && +b[k] <= 5) out[k] = +b[k];
+    return Object.keys(out).length ? out : null;
+  }
+  Object.assign(SW5E, { enhancedBonus, cleanBonus });
+  // Crafting (audit 11.2; Wretched Hives, "Crafting"): the tool an item is made with (its Item Specific Tools table), and
+  // the value the sheet suggests (standard gear: its cost; an enhanced item: the top of its rarity's range in the
+  // Enhanced Item Value by Rarity table, halved for consumables and modifications, as the book says). The GM sets both.
+  function craftTool(it, enh) {
+    const cat = String((it && it.cat) || '').toLowerCase(), sub = String((it && (it.sub || it.wc)) || '').toLowerCase(), n = String((it && it.n) || '').toLowerCase();
+    if (/armor|shield/.test(cat)) return "Armormech's implements";
+    if (/lightweapon|lightsaber/.test(sub + ' ' + n) || /focus generator/.test(sub + ' ' + n)) return "Artificer's implements";
+    if (cat === 'weapon' || /blaster|vibro/.test(sub)) return "Armstech's implements";
+    if (/wristpad/.test(sub + ' ' + n)) return "Cybertech's implements";
+    if (/explosive|grenade|mine|detonator/.test(cat + ' ' + n)) return 'Demolitions kit';
+    if (/ammunition/.test(cat)) return 'Munitions kit';
+    if (/poison/.test(n + ' ' + sub)) return "Poisoner's kit";
+    if (/medical|medpac|stim|adrenal/.test(cat + ' ' + n + ' ' + sub)) return "Biochemist's kit";
+    if (/clothing/.test(cat + ' ' + sub)) return "Synthweaver's implements";
+    if (/cybernetic/.test(cat)) return "Biotech's implements";
+    if (/droid/.test(cat)) return "Astrotech's implements";
+    if (/augment/.test(sub) || /modification/.test(cat)) return "Tinker's implements";
+    return enh ? "Gadgeteer's implements" : "Tinker's implements";
+  }
+  const RARITY_TOP = { Standard: 1000, Premium: 5000, Prototype: 25000, Advanced: 100000, Legendary: 500000, Artifact: 1000000 };
+  function craftValue(it, enh) {
+    if (!enh) return Math.max(0, Math.round(+(it && it.cost) || 0));
+    const top = RARITY_TOP[it && it.rar] || 1000;
+    return /consumable|modification/i.test(String((it && it.cat) || '')) ? Math.round(top / 2) : top;
+  }
+  const craftDays = value => Math.max(1, Math.ceil((+value || 0) / 250));
+  Object.assign(SW5E, { craftTool, craftValue, craftDays });
+
+  // Item modification (audit 6.4; Wretched Hives, "Modifiable Items"). A chassis ("Blaster Chassis (Premium)") has four
+  // base slots for modifications of its own kind, plus one augment slot at prototype and advanced and two at legendary and
+  // artifact. A modification fits a chassis of its kind (an augment fits any) at the chassis's rarity or lower, and no two of
+  // the same augment go in one chassis. Installing or removing one is a check with the item's tool (Wretched Hives' Item
+  // Specific Tools) against the DC its rarity sets. A chassis with anything installed requires attunement, and its
+  // modifications' plain +N add up as the chassis's own bonus.
+  const CHASSIS_KINDS = { armor: 'armor', blaster: 'blaster', cloak: 'clothing', 'focus generator': 'focus generator', handwraps: 'clothing',
+    lightweapon: 'lightweapon', pants: 'clothing', shield: 'shield', tunic: 'clothing', vibroweapon: 'vibroweapon', wristpad: 'wristpad' };
+  const MOD_KINDS = [...new Set(Object.values(CHASSIS_KINDS)), 'augment'];
+  const MOD_DC = { Standard: 10, Premium: 14, Prototype: 18, Advanced: 22, Legendary: 26, Artifact: 30 };
+  const MOD_TOOL = { armor: "Armormech's implements", shield: "Armormech's implements", blaster: "Armstech's implements", vibroweapon: "Armstech's implements",
+    lightweapon: "Artificer's implements", 'focus generator': "Artificer's implements", wristpad: "Cybertech's implements", clothing: "Synthweaver's implements", augment: "Tinker's implements" };
+  const chassisKind = name => { const m = /^(.+?) Chassis\b/i.exec(String(name || '')); return m ? CHASSIS_KINDS[m[1].toLowerCase()] || null : null; };
+  const modSlots = rar => { const i = RARITIES.indexOf(rar); return { base: 4, aug: i >= 4 ? 2 : i >= 2 ? 1 : 0 }; };
+  const modDC = rar => MOD_DC[rar] || 10;
+  // why this modification can't go into this chassis, or null
+  function installBlocked(item, mod) {
+    const ch = item && item.chassis, kind = mod && mod.mod && mod.mod.kind;
+    if (!ch) return 'That item isn\'t a chassis.';
+    if (!kind) return `${(mod && mod.name) || 'That'} isn't a modification.`;
+    if (kind !== 'augment' && kind !== ch.kind) return `${mod.name} is a ${kind} modification; ${item.name} is a ${ch.kind} chassis.`;
+    if (RARITIES.indexOf(mod.rar) > RARITIES.indexOf(item.rar)) return `${item.name} holds modifications up to ${item.rar || 'Standard'}; ${mod.name} is ${mod.rar}.`;
+    const slots = modSlots(item.rar), mods = ch.mods || [], aug = kind === 'augment';
+    if (aug && mods.some(m => m.aug && String(m.name).toLowerCase() === String(mod.name).toLowerCase())) return 'No two of the same augment in one chassis.';
+    if (mods.filter(m => !!m.aug === aug).length >= (aug ? slots.aug : slots.base)) return aug ? (slots.aug ? 'No augment slot is free.' : `A ${item.rar || 'Standard'} chassis has no augment slot.`) : 'No modification slot is free.';
+    return null;
+  }
+  // a chassis's own +N: its installed modifications' added up (each 1-5 still)
+  function chassisBonus(item) {
+    const out = {};
+    for (const m of ((item && item.chassis && item.chassis.mods) || [])) for (const k of ['hit', 'dmg', 'ac']) if (m.bonus && +m.bonus[k]) out[k] = Math.min(5, (out[k] || 0) + +m.bonus[k]);
+    return cleanBonus(out);
+  }
+  function cleanChassis(x) {
+    if (!x || typeof x !== 'object' || !Object.values(CHASSIS_KINDS).includes(x.kind)) return null;
+    const mods = (Array.isArray(x.mods) ? x.mods : []).slice(0, 6).filter(m => m && typeof m === 'object' && String(m.name || '').trim())
+      .map(m => Object.assign({ name: String(m.name).trim().slice(0, 80) }, RARITIES.includes(m.rar) ? { rar: m.rar } : {}, m.aug ? { aug: true } : {}, cleanBonus(m.bonus) ? { bonus: cleanBonus(m.bonus) } : {}));
+    // att0: whether the chassis needed attunement before anything went in, so taking the last one out restores it
+    return Object.assign({ kind: x.kind, mods }, typeof x.att0 === 'boolean' ? { att0: x.att0 } : {});
+  }
+  const cleanMod = x => (x && MOD_KINDS.includes(x.kind) ? { kind: x.kind } : null);
+  // after the chassis's modifications change: its bonus is theirs added up, and it needs attunement while anything is in
+  function rechassis(it) {
+    const b = chassisBonus(it); if (b) it.bonus = b; else delete it.bonus;
+    if ((it.chassis.mods || []).length) { if (!('att0' in it.chassis)) it.chassis.att0 = !!it.att; it.att = true; }
+    else { if (it.chassis.att0) it.att = true; else delete it.att; delete it.chassis.att0; }
+  }
+  // install equipment[j] (a modification) in equipment[i] (a chassis): one comes out of the pack (or the line goes). Both
+  // are looked up by index before anything moves, so the order they're listed in doesn't matter. The reason it can't, or null.
+  function installMod(c, i, j) {
+    const eq = (c && c.equipment) || [], it = eq[i], mm = eq[j];
+    if (!it || !mm || i === j) return 'That item is gone.';
+    const why = installBlocked(it, mm); if (why) return why;
+    it.chassis.mods = (it.chassis.mods || []).concat([Object.assign({ name: mm.name }, mm.rar ? { rar: mm.rar } : {}, mm.mod.kind === 'augment' ? { aug: true } : {}, cleanBonus(mm.bonus) ? { bonus: cleanBonus(mm.bonus) } : {})]);
+    rechassis(it);
+    if ((+mm.qty || 1) > 1) mm.qty = (+mm.qty || 1) - 1; else eq.splice(j, 1);
+    return null;
+  }
+  // take modification k out of equipment[i]: salvaged, it goes back in the pack; otherwise it's destroyed
+  function removeMod(c, i, k, salvaged) {
+    const eq = (c && c.equipment) || [], it = eq[i], m = it && it.chassis && (it.chassis.mods || [])[k];
+    if (!m) return 'That modification is gone.';
+    it.chassis.mods.splice(k, 1);
+    rechassis(it);
+    if (salvaged) eq.push(Object.assign({ name: m.name, qty: 1, equipped: false, notes: `${m.rar || ''} modification`.trim() }, m.rar ? { rar: m.rar } : {},
+      { mod: { kind: m.aug ? 'augment' : it.chassis.kind } }, m.bonus ? { bonus: m.bonus } : {}));
+    return null;
+  }
+  Object.assign(SW5E, { CHASSIS_KINDS, MOD_KINDS, MOD_DC, MOD_TOOL, chassisKind, modSlots, modDC, installBlocked, chassisBonus, cleanChassis, cleanMod, rechassis, installMod, removeMod });
+
+  // Upgrading a chassis (Wretched Hives, "Upgrading Modifiable Item Chassis"): one rarity step at a time, eight hours, a
+  // check with the item's tool at the new rarity's DC, and a rare material. Its name follows its rarity when it carries it
+  // ("Blaster Chassis (Premium)" becomes "... (Prototype)"); what's installed stays. The next rarity, or null at the top.
+  const nextRarity = it => (it && it.chassis ? RARITIES[RARITIES.indexOf(RARITIES.includes(it.rar) ? it.rar : 'Standard') + 1] || null : null);
+  function upgradeChassis(it) {
+    const next = nextRarity(it), was = RARITIES.includes(it && it.rar) ? it.rar : 'Standard';
+    if (!next) return null;
+    it.name = String(it.name || '').replace(`(${was})`, `(${next})`);
+    it.rar = next;
+    return next;
+  }
+  Object.assign(SW5E, { nextRarity, upgradeChassis });
+
+  // A power's SW5e duration in rounds (audit 4.10: ten a minute), from the note the sheet writes when a power is added
+  // from SW5e ("1 action · Range 60 feet · up to 1 minute · Concentration"), or null: instantaneous, until dispelled,
+  // until a rest, or no duration written. A round or a turn is one; a day 14,400; at most 30 days.
+  const DUR_ROUNDS = { round: 1, turn: 1, minute: 10, hour: 600, day: 14400 };
+  function durationRounds(notes) {
+    const parts = String(notes || '').split(' · '), d = parts.find((x, i) => i > 0 && !/^Range\b/i.test(x) && !/^Concentration$/i.test(x) && !/^Requires\b/i.test(x));
+    const m = /^(?:up to )?(\d{1,3}) (round|turn|minute|hour|day)s?$/i.exec(String(d || '').trim());
+    return m ? Math.min(432000, +m[1] * DUR_ROUNDS[m[2].toLowerCase()]) || null : null;
+  }
+  Object.assign(SW5E, { durationRounds });
+
+  // Cybernetic augmentations and droid customizations (audit 6.4's second part; Wretched Hives, chapter 7). In the
+  // inventory such an item carries `implant: { kind }`: enhancement or replacement (cybernetics), part or protocol (droids).
+  // Installed, it moves into the character's own `implants` list, as a modification moves into its chassis.
+  //  - Cybernetics: a creature supports as many as its proficiency bonus; installed with biotech's implements; side
+  //    effects at 2, 4 and 6 augmentations.
+  //  - Droids: the motor's slots, two to start and upgradeable to six for credits; parts up to the best of the Str, Dex
+  //    and Con modifiers, protocols up to the best of Int, Wis and Cha (at least one each); installed with astrotech's.
+  //  - Either takes 8 hours for a Medium creature (times its size's modifier) and a check against the rarity's DC (MOD_DC).
+  const IMPLANT_KINDS = { enhancement: 'cyber', replacement: 'cyber', part: 'droid', protocol: 'droid' };
+  const IMPLANT_TOOL = { cyber: "Biotech's implements", droid: "Astrotech's implements" };
+  const SIZE_TIME = { Tiny: 0.25, Small: 0.5, Medium: 1, Large: 2, Huge: 5, Gargantuan: 10 };
+  const MOTOR_COST = { 3: 2000, 4: 10000, 5: 50000, 6: 200000 };
+  const CYBER_SIDE = [[2, 'Disadvantage on saving throws against effects that deal ion damage.'], [4, 'Vulnerability to ion damage.'],
+    [6, 'Counts as a droid for powers that affect only droids or constructs.']];
+  const groupOf = k => (Object.prototype.hasOwnProperty.call(IMPLANT_KINDS, k) ? IMPLANT_KINDS[k] : null);   // 'cyber', 'droid' or null
+  const isDroid = c => /\bdroid\b/i.test(String((c && c.species) || ''));
+  const motorSlots = c => Math.min(6, Math.max(2, Math.round(+(c && c.motor) || 2)));
+  function implantCounts(c) {
+    const list = (c && c.implants) || [], n = k => list.filter(x => x && x.kind === k).length;
+    const best = abs => Math.max(1, ...abs.map(a => abilityMod(c, a)));
+    return { cyber: n('enhancement') + n('replacement'), cyberMax: profBonus(c), droid: n('part') + n('protocol'), motor: motorSlots(c),
+      parts: n('part'), partsMax: best(['str', 'dex', 'con']), protocols: n('protocol'), protocolsMax: best(['int', 'wis', 'cha']) };
+  }
+  // why this item can't go into this character, or null. A player is stopped; the GM may go past it.
+  function implantBlocked(c, item) {
+    const kind = item && item.implant && item.implant.kind, g = groupOf(kind), who = (c && c.name) || 'This character';
+    if (!g) return `${(item && item.name) || 'That'} isn't a cybernetic augmentation or a droid customization.`;
+    const k = implantCounts(c);
+    if (g === 'droid' && !isDroid(c)) return `Only droids take droid customizations, and ${who}'s species isn't a droid.`;
+    if (g === 'cyber' && isDroid(c)) return `Cybernetic augmentations are for beasts and humanoids, and ${who} is a droid.`;
+    if (g === 'cyber' && k.cyber >= k.cyberMax) return `${who} supports ${k.cyberMax} cybernetic augmentations (the proficiency bonus) and has ${k.cyber}.`;
+    if (g === 'droid' && k.droid >= k.motor) return `${who}'s motor has ${k.motor} slots, all in use: upgrade the motor first.`;
+    if (kind === 'part' && k.parts >= k.partsMax) return `${who} can have ${k.partsMax} part${k.partsMax === 1 ? '' : 's'} (the best of the Str, Dex and Con modifiers).`;
+    if (kind === 'protocol' && k.protocols >= k.protocolsMax) return `${who} can have ${k.protocolsMax} protocol${k.protocolsMax === 1 ? '' : 's'} (the best of the Int, Wis and Cha modifiers).`;
+    return null;
+  }
+  const cyberSideEffects = c => { const n = implantCounts(c).cyber; return CYBER_SIDE.filter(([at]) => n >= at).map(([, t]) => t); };
+  const implantHours = c => 8 * (SIZE_TIME[c && c.size] || 1);
+  // a droid's motor going up to `slots`: what it costs (the table's price times the size's modifier), or null past six
+  const motorCost = (c, slots) => (MOTOR_COST[slots] ? MOTOR_COST[slots] * (SIZE_TIME[c && c.size] || 1) : null);
+  // move equipment[j] into the character's implants (one off the stack); held before anything moves, as installMod is
+  function installImplant(c, j) {
+    const eq = (c && c.equipment) || [], it = eq[j];
+    if (!it || !it.implant || !groupOf(it.implant.kind)) return 'That item is gone.';
+    c.implants = cleanImplants((c.implants || []).concat([Object.assign({ name: it.name, kind: it.implant.kind }, RARITIES.includes(it.rar) ? { rar: it.rar } : {})]));
+    if ((+it.qty || 1) > 1) it.qty = (+it.qty || 1) - 1; else eq.splice(j, 1);
+    return null;
+  }
+  // take implant k out: salvaged, it goes back in the pack; otherwise it's destroyed
+  function removeImplant(c, k, salvaged) {
+    const list = (c && c.implants) || [], m = list[k];
+    if (!m) return 'That one is gone.';
+    list.splice(k, 1);
+    if (salvaged) (c.equipment = c.equipment || []).push(Object.assign({ name: m.name, qty: 1, equipped: false, notes: `${m.rar || ''} ${m.kind}`.trim() },
+      m.rar ? { rar: m.rar } : {}, { implant: { kind: m.kind } }));
+    return null;
+  }
+  const cleanImplant = x => (x && groupOf(x.kind) ? { kind: x.kind } : null);
+  const cleanImplants = list => (Array.isArray(list) ? list : []).filter(x => x && typeof x === 'object' && String(x.name || '').trim() && cleanImplant(x)).slice(0, 12)
+    .map(x => Object.assign({ name: String(x.name).trim().slice(0, 80), kind: x.kind }, RARITIES.includes(x.rar) ? { rar: x.rar } : {}));
+  // an SW5e enhanced item's implant kind, from its category and subtype ("Cybernetic Augmentation" / "enhancement")
+  const implantOf = it => (it && /^(Cybernetic Augmentation|Droid Customization)$/.test(it.cat) && cleanImplant({ kind: String(it.sub || '').toLowerCase() })) || null;
+  Object.assign(SW5E, { IMPLANT_KINDS, IMPLANT_TOOL, groupOf, isDroid, motorSlots, implantCounts, implantBlocked, cyberSideEffects, implantHours, motorCost,
+    installImplant, removeImplant, cleanImplant, cleanImplants, implantOf });
+
   // Selling (audit 6.8): equipment fetches half its cost (PHB, "Selling Treasure"), whole credits, rounded down
   const sellPrice = e => Math.floor(Math.max(0, +(e && e.cost) || 0) / 2);
   Object.assign(SW5E, { sellPrice });
+  // Speed (audit 5.11): the sheet's walking speed, less what slows it. Armor or a shield with SW5e's "strength N" property,
+  // worn by someone with less Strength, -10 ft (not under the encumbrance variant, which the PHB says replaces that rule);
+  // "cumbersome" -5 ft each; and the encumbrance variant's load. Other movement (swim, climb, fly, burrow) is read from the
+  // species traits on the sheet ("You have a swimming speed of 30 feet"), so it needs no field of its own.
+  function speedOf(c, variants) {
+    const base = Math.max(0, +(c && c.speed) || 30), parts = [], str = +((c && c.abilities) || {}).str || 10;
+    const worn = ((c && c.equipment) || []).filter(e => e && e.equipped && e.armor && ARMOR_KINDS.includes(e.armor.kind));
+    const cw = carrying(c, variants);
+    let slow = 0;
+    if (!cw.variant) for (const e of worn) if (+e.armor.str > str) { slow += 10; parts.push(`${e.name} needs Str ${e.armor.str}: -10 ft`); break; }
+    for (const e of worn) if (e.armor.cumbersome) { slow += 5; parts.push(`${e.name} is cumbersome: -5 ft`); }
+    if (cw.slow) { slow += cw.slow; parts.push(`carrying ${cw.weight} lb: -${cw.slow} ft`); }
+    const other = {}, now = Math.max(0, base - slow);
+    const midHeavy = worn.some(e => e.armor.kind === 'medium' || e.armor.kind === 'heavy');
+    for (const f of (c && c.features) || []) {
+      const text = String((f && f.text) || '');
+      for (const m of text.matchAll(/(flying|swimming|climbing|burrowing) speed (?:of (\d+)|equal to your walking speed)/gi)) {
+        const k = { flying: 'fly', swimming: 'swim', climbing: 'climb', burrowing: 'burrow' }[m[1].toLowerCase()];
+        // "equal to your walking speed" follows it now; SW5e's flyers: "while wearing medium or heavy armor, ... reduced by half"
+        let v = m[2] ? +m[2] : now;
+        if (k === 'fly' && midHeavy && /medium or heavy armor, your flying speed is reduced by half/i.test(text)) v = Math.floor(v / 2);
+        other[k] = Math.max(other[k] || 0, v);
+      }
+    }
+    return { base, speed: now, slow, parts, other };
+  }
+  Object.assign(SW5E, { speedOf });
 
   // the d20 a weapon crits on: 20, or lower for an attack's own crit range or a "Keen N" weapon (SW5e: the range grows by N)
   // Reliable Talent (Operative 11, SW5e): ability checks that add the proficiency bonus get the d20's minimum roll
@@ -628,6 +869,15 @@
       .filter(x => x.total > 0);
   }
   Object.assign(SW5E, { CHOICE_COLS, choiceCounts });
+  // powers known (audit 2.10): how many force and tech powers the sheet has, and how many its classes' tables allow
+  // (Force/Tech Powers Known, summed over the classes). Archetype casters keep their own tables, so a max of 0 isn't a limit.
+  function powersKnown(ch) {
+    const out = { force: { known: 0, max: 0 }, tech: { known: 0, max: 0 } };
+    for (const p of (ch && ch.powers) || []) out[p && p.type === 'tech' ? 'tech' : 'force'].known++;
+    for (const k of (ch && ch.classes) || []) for (const r of choiceCounts(k.name, k.level)) if (r.kind === 'powers') out[/tech/i.test(r.col) ? 'tech' : 'force'].max += r.total;
+    return out;
+  }
+  Object.assign(SW5E, { powersKnown });
 
   // ---- downtime activities (audit 11.1): Wretched Hives' chapter 2, keyed as SW5e's 'downtime' list builds them from the
   // headings, and "other" for anything else the GM allows (no tables: the GM writes the result). Crafting is 11.2's.
@@ -635,6 +885,72 @@
     espionage: 'Espionage', gambling: 'Gambling', 'mercenary-contracting': 'Mercenary contracting', 'pit-fighting': 'Pit fighting', racing: 'Racing',
     research: 'Research', 'selling-enhanced-items': 'Selling enhanced items', training: 'Training', work: 'Work', other: 'Something else' };
   Object.assign(SW5E, { DOWNTIME_ACTS });
+
+  // ---- power prerequisites (audit 2.11): 127 of SW5e's force powers name an earlier power that must be known first, and
+  // stay known to cast them. pw.pre is that power's name (kept on the sheet from SW5e's list); null when it's known.
+  const powerPrereqUnmet = (ch, pw, extra) => {
+    const pre = String((pw && pw.pre) || '').trim();
+    if (!pre) return null;
+    const known = new Set([...((ch && ch.powers) || []).map(x => String(x.name || '').toLowerCase()), ...(extra || []).map(x => String(x).toLowerCase())]);
+    return known.has(pre.toLowerCase()) ? null : { pre, text: `${pw.name || 'This power'} needs ${pre} known first.` };
+  };
+  Object.assign(SW5E, { powerPrereqUnmet });
+
+  // ---- XP and the level thresholds (audit 2.14), SW5e's Player's Handbook: the XP a character needs for each level,
+  // and where a sheet stands: the next level's XP and how far off it is (enough: the GM grants it when it suits)
+  const XP_FOR_LEVEL = [0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000, 85000, 100000, 120000, 140000, 165000, 195000, 225000, 265000, 305000, 355000];
+  function xpNext(ch) {
+    const lvl = totalLevel(ch), xp = Math.max(0, +(ch && ch.xp) || 0);
+    if (lvl < 1 || lvl >= 20) return null;
+    const need = XP_FOR_LEVEL[lvl];
+    return { level: lvl + 1, need, left: Math.max(0, need - xp), ready: xp >= need };
+  }
+  Object.assign(SW5E, { XP_FOR_LEVEL, xpNext });
+
+  // ---- a character's damage defences on the sheet (audit 1.5; jpesus on #198: the senses pattern). resist / immune / vuln
+  // are the combat engine's { type, only } entries (only "unenhanced": weapon damage from unenhanced weapons); fromSpecies
+  // keeps what its species gave ("resist:necrotic"), so a later species change swaps those and leaves what the GM set.
+  const defList = v => (Array.isArray(v) ? v : []).filter(d => d && typeof d === 'object' && DAMAGE_TYPES.includes(d.type))
+    .map(d => ({ type: d.type, only: d.only === 'unenhanced' ? 'unenhanced' : null }))
+    .filter((d, i, a) => a.findIndex(x => x.type === d.type && x.only === d.only) === i).slice(0, 13);
+  function cleanDefenses(o) {
+    if (!o || typeof o !== 'object') return null;
+    const out = { resist: defList(o.resist), immune: defList(o.immune), vuln: defList(o.vuln),
+      fromSpecies: [...new Set((Array.isArray(o.fromSpecies) ? o.fromSpecies : []).filter(t => typeof t === 'string' && /^(resist|immune|vuln):/.test(t) && DAMAGE_TYPES.includes(t.split(':')[1])))].slice(0, 39) };
+    return out.resist.length || out.immune.length || out.vuln.length || out.fromSpecies.length ? out : null;
+  }
+  // a species' defences from its traits (SW5e's wording: "You are resistant to necrotic, poison, and psychic damage",
+  // "You are vulnerable to ion damage"); only "… damage" counts, and a choice ("cold or fire") gives none: the GM sets it
+  const DEF_WORDS = { resist: /(?:resistance|resistant) to ([a-z ,]+?) damage/gi, immune: /(?:immune|immunity) to ([a-z ,]+?) damage/gi, vuln: /(?:vulnerable|vulnerability) to ([a-z ,]+?) damage/gi };
+  function defensesFromTraits(traits) {
+    const out = { resist: [], immune: [], vuln: [] };
+    for (const t of Array.isArray(traits) ? traits : []) for (const [k, re] of Object.entries(DEF_WORDS)) {
+      for (const m of String((t && (t.d || t.description)) || '').matchAll(re)) {
+        if (/\bor\b/i.test(m[1])) continue;
+        for (const w of m[1].split(/,\s*(?:and\s+)?|\s+and\s+/)) { const x = w.trim().toLowerCase(); if (DAMAGE_TYPES.includes(x) && !out[k].includes(x)) out[k].push(x); }
+      }
+    }
+    return out;
+  }
+  // a new species: the bare entries the old one gave go, the new one's come in; everything else (the GM's) stays.
+  // fromSpecies keeps "list:type" ("resist:necrotic", "vuln:ion") for the next change.
+  function withSpeciesDefenses(d, spec) {
+    const cur = cleanDefenses(d) || { resist: [], immune: [], vuln: [], fromSpecies: [] }, next = Object.assign({}, cur), from = [];
+    for (const k of ['resist', 'immune', 'vuln']) {
+      const now = ((spec && spec[k]) || []).filter(t => DAMAGE_TYPES.includes(t));
+      next[k] = cur[k].filter(x => x.only || !cur.fromSpecies.includes(`${k}:${x.type}`));
+      for (const t of now) { if (!next[k].some(x => x.type === t && !x.only)) next[k].push({ type: t, only: null }); from.push(`${k}:${t}`); }
+    }
+    return cleanDefenses(Object.assign(next, { fromSpecies: from }));
+  }
+  // words for one list and back: "necrotic, poison, kinetic (unenhanced)"
+  const defListText = list => (list || []).map(d => d.type + (d.only ? ' (unenhanced)' : '')).join(', ');
+  const parseDefList = text => defList(String(text || '').split(/[,;]+/).map(part => {
+    const t = part.trim().toLowerCase(), type = DAMAGE_TYPES.find(d => new RegExp(`\\b${d}\\b`).test(t));
+    return type ? { type, only: /unenhanced|non-?enhanced/.test(t) ? 'unenhanced' : null } : null;
+  }));
+  const defensesText = d => { const c = cleanDefenses(d); return c ? [['resist', 'resists'], ['immune', 'immune to'], ['vuln', 'vulnerable to']].filter(([k]) => c[k].length).map(([k, w]) => `${w} ${defListText(c[k])}`).join(' · ') : ''; };
+  Object.assign(SW5E, { cleanDefenses, defensesFromTraits, withSpeciesDefenses, defListText, parseDefList, defensesText });
 
   // ---- senses (audit 5.12): [{ kind, range }] on the sheet. The four kinds SW5e's creatures and species use; feet 1-9999.
   const SENSES = ['darkvision', 'blindsight', 'tremorsense', 'truesight'];
@@ -696,6 +1012,12 @@
     if (size) { if (!ch.size) unknown.push(`size ${size[1]}`); else if (String(ch.size).toLowerCase() !== size[1].toLowerCase()) unmet.push(`size ${size[1]}`); }
     const type = /\bType ([a-z]+(?: or [a-z]+)*)/i.exec(text);
     if (type) unknown.push(`type ${type[1]}`);
+    // class levels (the improvement feats' options, 2.17): "At least 3 levels in berserker", "No levels in consular"
+    const clsLv = name => ((ch && ch.classes) || []).filter(k => String(k.name || '').toLowerCase() === name.toLowerCase()).reduce((a, k) => a + (+k.level || 0), 0);
+    const least = /at least (\d+) levels? in ([a-z][a-z ]*?)(?=,|;|$)/i.exec(text);
+    if (least && clsLv(least[2].trim()) < +least[1]) unmet.push(`${least[1]} levels in ${least[2].trim()}`);
+    const none = /no levels in ([a-z][a-z ]*?)(?=,|;|$)/i.exec(text);
+    if (none && clsLv(none[1].trim()) > 0) unmet.push(`no levels in ${none[1].trim()}`);
     return { ok: unmet.length ? false : unknown.length ? null : true, unmet, unknown };
   }
   Object.assign(SW5E, { featPrereq });

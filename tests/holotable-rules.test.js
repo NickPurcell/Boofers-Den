@@ -190,6 +190,167 @@ test("consumables (audit 6.7): what using one rolls, read from its text; checked
   assert.equal(R.commonHitDie({ classes: [{ name: "Fighter", level: 2 }, { name: "Scholar", level: 2 }] }), 10, "a tie: the larger");
 });
 
+test("enhanced items (audit 6.2): a +N to attack and damage, or to AC, read from the text; the AC counts it when worn", () => {
+  assert.deepEqual(R.enhancedBonus("You have a +2 bonus to attack and damage rolls with this enhanced weapon."), { hit: 2, dmg: 2 });
+  assert.deepEqual(R.enhancedBonus("You have a +1 bonus to attack rolls made with it."), { hit: 1 });
+  assert.deepEqual(R.enhancedBonus("You have a +3 bonus to AC while wearing this armor."), { ac: 3 });
+  assert.equal(R.enhancedBonus("Resistance to one type of damage."), null);
+  assert.equal(R.cleanBonus({ hit: 9, ac: "x", dmg: 0 }), null);
+  const c = { abilities: { dex: 14 }, classes: [{ name: "Fighter", level: 1 }], equipment: [
+    { name: "Combat suit", equipped: true, armor: { kind: "light", ac: 11 } },
+    { name: "Armor (Fine)", equipped: true, bonus: { ac: 1 } },
+    { name: "Shield (Fine)", equipped: true, att: true, bonus: { ac: 2 } },      // needs attunement, not attuned: no bonus
+    { name: "Armor (Superior)", equipped: false, bonus: { ac: 3 } } ] };        // not worn
+  assert.deepEqual(R.armorClass(c), { total: 14, text: "Combat suit (light) 13 · Armor (Fine) +1" });
+  c.equipment[2].attuned = true;
+  assert.equal(R.armorClass(c).total, 16);
+});
+
+test("item modification (audit 6.4): chassis kinds, slots by rarity, what fits, the DC, and the chassis's own +N", () => {
+  assert.deepEqual(["Blaster Chassis (Premium)", "Tunic Chassis (Standard)", "Focus Generator Chassis (Advanced)", "Reinforced Chassis (Premium)", "Blaster"].map(R.chassisKind),
+    ["blaster", "clothing", "focus generator", null, null]);
+  assert.deepEqual(["Standard", "Premium", "Prototype", "Advanced", "Legendary", "Artifact"].map((r) => R.modSlots(r).aug), [0, 0, 1, 1, 2, 2]);
+  assert.deepEqual(["Standard", "Artifact", undefined].map(R.modDC), [10, 30, 10]);
+  const chassis = (rar, mods = []) => ({ name: `Blaster Chassis (${rar})`, rar, chassis: { kind: "blaster", mods } });
+  const mod = (name, kind, rar, extra) => Object.assign({ name, rar, mod: { kind } }, extra);
+  assert.equal(R.installBlocked(chassis("Premium"), mod("Accuracy Focus Mk II", "blaster", "Premium")), null);
+  assert.match(R.installBlocked(chassis("Premium"), mod("Edge", "vibroweapon", "Standard")), /a vibroweapon modification; Blaster Chassis \(Premium\) is a blaster chassis/);
+  assert.match(R.installBlocked(chassis("Standard"), mod("Accuracy Focus Mk II", "blaster", "Premium")), /holds modifications up to Standard/);
+  assert.match(R.installBlocked(chassis("Premium"), mod("Charisma Augment (Basic)", "augment", "Standard")), /has no augment slot/);
+  assert.equal(R.installBlocked(chassis("Prototype"), mod("Charisma Augment (Basic)", "augment", "Standard")), null);
+  assert.match(R.installBlocked(chassis("Legendary", [{ name: "Charisma Augment (Basic)", aug: true }]), mod("Charisma Augment (Basic)", "augment", "Standard")), /No two of the same augment/);
+  const full = chassis("Premium", [1, 2, 3, 4].map((n) => ({ name: `M${n}` })));
+  assert.match(R.installBlocked(full, mod("Accuracy Focus Mk II", "blaster", "Premium")), /No modification slot is free/);
+  assert.match(R.installBlocked({ name: "Rock" }, mod("X", "blaster", "Standard")), /isn't a chassis/);
+  // the chassis's own +N: its modifications' added up
+  assert.deepEqual(R.chassisBonus(chassis("Premium", [{ name: "A", bonus: { hit: 1 } }, { name: "B", bonus: { hit: 1, dmg: 2 } }])), { hit: 2, dmg: 2 });
+  assert.equal(R.chassisBonus(chassis("Premium", [{ name: "A" }])), null);
+  // only this shape is kept
+  assert.deepEqual(R.cleanChassis({ kind: "blaster", mods: [{ name: " A ", rar: "Premium", aug: 1, bonus: { hit: 9 } }, { name: "" }, "x"] }), { kind: "blaster", mods: [{ name: "A", rar: "Premium", aug: true }] });
+  assert.equal(R.cleanChassis({ kind: "__proto__", mods: [] }), null);
+  assert.deepEqual([R.cleanMod({ kind: "augment" }), R.cleanMod({ kind: "toaster" })], [{ kind: "augment" }, null]);
+  assert.deepEqual(R.cleanChassis({ kind: "blaster", mods: [], att0: false }), { kind: "blaster", mods: [], att0: false });
+  assert.deepEqual(R.cleanChassis({ kind: "blaster", mods: [], att0: "yes" }), { kind: "blaster", mods: [] });
+});
+
+test("installing and removing a modification (audit 6.4, #236's review): the list's order doesn't matter, and attunement goes back", () => {
+  const barrel = () => ({ name: "Barrel Mod", qty: 1, rar: "Standard", mod: { kind: "blaster" }, bonus: { hit: 1 } });
+  const chassis = () => ({ name: "Blaster Chassis (Premium)", qty: 1, rar: "Premium", chassis: { kind: "blaster", mods: [] } });
+  const blade = () => ({ name: "Vibroblade +2", qty: 1, bonus: { hit: 2, dmg: 2 }, att: false, chassis: { kind: "vibroweapon", mods: [] } });
+  // the modification listed above the chassis, and another chassis after it: the right one gets it, and the other is untouched
+  const c = { equipment: [barrel(), chassis(), blade()] };
+  assert.equal(R.installMod(c, 1, 0), null);
+  assert.deepEqual(c.equipment.map((e) => e.name), ["Blaster Chassis (Premium)", "Vibroblade +2"]);
+  assert.deepEqual(c.equipment[0].chassis.mods, [{ name: "Barrel Mod", rar: "Standard", bonus: { hit: 1 } }]);
+  assert.deepEqual([c.equipment[0].bonus, c.equipment[0].att], [{ hit: 1 }, true]);
+  assert.deepEqual(c.equipment[1], blade());
+  // listed below it: the same
+  const d = { equipment: [chassis(), barrel()] };
+  assert.equal(R.installMod(d, 0, 1), null);
+  assert.deepEqual([d.equipment.length, d.equipment[0].bonus], [1, { hit: 1 }]);
+  // two in the pack: one goes in, one stays
+  const e = { equipment: [Object.assign(barrel(), { qty: 2 }), chassis()] };
+  assert.equal(R.installMod(e, 1, 0), null);
+  assert.deepEqual([e.equipment[0].qty, e.equipment[1].chassis.mods.length], [1, 1]);
+  // what doesn't fit is refused, and nothing moves
+  const f = { equipment: [barrel(), blade()] };
+  assert.match(R.installMod(f, 1, 0), /a blaster modification/);
+  assert.equal(f.equipment.length, 2);
+  // salvaged: back in the pack, and the chassis needs no attunement again; destroyed: gone
+  assert.equal(R.removeMod(c, 0, 0, true), null);
+  assert.deepEqual([c.equipment[0].chassis.mods, c.equipment[0].bonus, c.equipment[0].att, "att0" in c.equipment[0].chassis], [[], undefined, undefined, false]);
+  assert.deepEqual(c.equipment[2], { name: "Barrel Mod", qty: 1, equipped: false, notes: "Standard modification", rar: "Standard", mod: { kind: "blaster" }, bonus: { hit: 1 } });
+  assert.equal(R.removeMod(d, 0, 0, false), null);
+  assert.deepEqual(d.equipment.map((x) => x.name), ["Blaster Chassis (Premium)"]);
+  // a chassis that needed attunement anyway still does with everything out
+  const g = { equipment: [Object.assign(chassis(), { att: true }), barrel()] };
+  R.installMod(g, 0, 1); R.removeMod(g, 0, 0, false);
+  assert.equal(g.equipment[0].att, true);
+  assert.match(R.removeMod(g, 0, 0, true), /gone/);
+});
+
+test("upgrading a chassis one rarity step (audit 6.4): the name follows, what's installed stays, none past artifact", () => {
+  const it = { name: "Blaster Chassis (Premium)", rar: "Premium", chassis: { kind: "blaster", mods: [{ name: "Barrel Mod", rar: "Standard" }] } };
+  assert.equal(R.nextRarity(it), "Prototype");
+  assert.equal(R.upgradeChassis(it), "Prototype");
+  assert.deepEqual([it.name, it.rar, it.chassis.mods.length, R.modSlots(it.rar).aug], ["Blaster Chassis (Prototype)", "Prototype", 1, 1]);
+  const plain = { name: "Old blaster frame", chassis: { kind: "blaster", mods: [] } };   // no rarity: Standard, and a name without one stays
+  assert.deepEqual([R.upgradeChassis(plain), plain.name, plain.rar], ["Premium", "Old blaster frame", "Premium"]);
+  assert.equal(R.nextRarity({ name: "X", rar: "Artifact", chassis: { kind: "armor", mods: [] } }), null);
+  assert.equal(R.upgradeChassis({ name: "Rock", rar: "Premium" }), null, "not a chassis");
+});
+
+test("cybernetic augmentations and droid customizations (audit 6.4): limits, side effects, install and remove", () => {
+  const aug = (name, kind, rar = "Standard") => ({ name, qty: 1, rar, implant: { kind } });
+  // a level-5 human: proficiency +3, so three augmentations
+  const h = { name: "Kel", species: "Human", classes: [{ name: "Fighter", level: 5 }], abilities: { str: 14, int: 10 }, equipment: [aug("Skeletal Reinforcement", "enhancement"), aug("Droid Arm", "part")] };
+  assert.equal(R.implantBlocked(h, h.equipment[0]), null);
+  assert.match(R.implantBlocked(h, h.equipment[1]), /Only droids take droid customizations/);
+  assert.match(R.implantBlocked(h, { name: "Rock" }), /isn't a cybernetic augmentation/);
+  h.implants = [{ name: "A", kind: "enhancement" }, { name: "B", kind: "replacement" }];
+  assert.deepEqual(R.cyberSideEffects(h), ["Disadvantage on saving throws against effects that deal ion damage."]);
+  h.implants.push({ name: "C", kind: "enhancement" });
+  assert.match(R.implantBlocked(h, h.equipment[0]), /supports 3 cybernetic augmentations \(the proficiency bonus\) and has 3/);
+  // installing: out of the pack (the right one, whatever is listed before it), into the list; removing: salvaged or destroyed
+  h.implants = [];
+  assert.equal(R.installImplant(h, 0), null);
+  assert.deepEqual([h.implants, h.equipment.map((e) => e.name)], [[{ name: "Skeletal Reinforcement", kind: "enhancement", rar: "Standard" }], ["Droid Arm"]]);
+  assert.equal(R.removeImplant(h, 0, true), null);
+  assert.deepEqual(h.equipment.at(-1), { name: "Skeletal Reinforcement", qty: 1, equipped: false, notes: "Standard enhancement", rar: "Standard", implant: { kind: "enhancement" } });
+  R.installImplant(h, 1); R.removeImplant(h, 0, false);
+  assert.deepEqual([h.implants, h.equipment.map((e) => e.name)], [[], ["Droid Arm"]]);
+  assert.match(R.removeImplant(h, 0, true), /gone/);
+  // a droid: two motor slots; parts up to the best of Str/Dex/Con mod, protocols up to the best of Int/Wis/Cha (at least 1)
+  const d = { name: "K-4", species: "Droid, Class II", size: "Large", classes: [{ name: "Fighter", level: 1 }], abilities: { str: 16, int: 8 }, implants: [] };
+  assert.deepEqual([R.isDroid(d), R.isDroid(h)], [true, false]);
+  assert.match(R.implantBlocked(d, aug("Skeletal Reinforcement", "enhancement")), /for beasts and humanoids/);
+  d.implants = [{ name: "P", kind: "protocol" }];
+  assert.match(R.implantBlocked(d, aug("Q", "protocol")), /can have 1 protocol \(the best of the Int, Wis and Cha modifiers\)/);
+  assert.equal(R.implantBlocked(d, aug("Arm", "part")), null);
+  d.implants.push({ name: "Arm", kind: "part" });
+  assert.match(R.implantBlocked(d, aug("Leg", "part")), /motor has 2 slots, all in use/);
+  d.motor = 3;
+  assert.equal(R.implantBlocked(d, aug("Leg", "part")), null);
+  // time and cost scale with size (Large: x2)
+  assert.deepEqual([R.implantHours(d), R.implantHours(h), R.motorCost(d, 4), R.motorCost(h, 3), R.motorCost(d, 7)], [16, 8, 20000, 2000, null]);
+  assert.equal(R.motorSlots({ motor: 99 }), 6);
+  // what SW5e's lists give, and only this shape is kept
+  assert.deepEqual([R.implantOf({ cat: "Cybernetic Augmentation", sub: "replacement" }), R.implantOf({ cat: "Droid Customization", sub: "protocol" }), R.implantOf({ cat: "Droid Customization", sub: "constructor" }), R.implantOf({ cat: "Weapon", sub: "part" })],
+    [{ kind: "replacement" }, { kind: "protocol" }, null, null]);
+  assert.deepEqual(R.cleanImplants([{ name: " A ", kind: "part", rar: "Shiny" }, { name: "B", kind: "toString" }, { name: "", kind: "part" }, "x"]), [{ name: "A", kind: "part" }]);
+  assert.equal(R.cleanImplants(Array.from({ length: 20 }, (_, i) => ({ name: `M${i}`, kind: "part" }))).length, 12);
+});
+
+test("a power's SW5e duration in rounds (audit 4.10), from the note the sheet writes when it's added", () => {
+  const n = (d) => R.durationRounds(`1 action · Range 60 feet · ${d} · Concentration`);
+  assert.deepEqual(["up to 1 minute", "1 round", "10 minutes", "up to 1 hour", "8 hours", "24 hours", "1 turn", "10 days", "30 days", "Up to 1 hour"].map(n),
+    [10, 1, 100, 600, 4800, 14400, 1, 144000, 432000, 600]);
+  assert.deepEqual(["Instantaneous", "Until dispelled", "or until the end of your next short or long rest; whichever happens first", "until triggered"].map(n), [null, null, null, null]);
+  assert.equal(R.durationRounds("1 minute · Range Self · Instantaneous"), null, "a casting time of a minute is not a duration");
+  assert.deepEqual([R.durationRounds(""), R.durationRounds(undefined), R.durationRounds("up to 1 minute")], [null, null, null], "nothing after the casting time");
+  assert.equal(R.durationRounds("1 action · Range Self · 999 days"), 432000, "at most 30 days");
+});
+
+test("speed (audit 5.11): SW5e's strength and cumbersome armor properties, the encumbrance variant, other movement from traits", () => {
+  assert.deepEqual(R.armorFromItem({ accl: "Heavy", ac: "17", props: ["Bulky", "cumbersome", "strength 15"] }), { kind: "heavy", ac: 17, str: 15, cumbersome: true });
+  assert.deepEqual(R.armorFromItem({ accl: "Light", ac: "11", props: [] }), { kind: "light", ac: 11 });
+  assert.deepEqual(R.cleanArmor({ kind: "heavy", ac: "17", str: 99, cumbersome: "yes" }), { kind: "heavy", ac: 17, cumbersome: true });
+  assert.equal(R.cleanArmor({ kind: "__proto__" }), null);
+  const c = (str, worn, extra = {}) => Object.assign({ speed: 30, abilities: { str }, equipment: [{ name: "Assault armor", equipped: worn, armor: { kind: "heavy", ac: 17, str: 15, cumbersome: true } }] }, extra);
+  assert.deepEqual([R.speedOf(c(12, true)).speed, R.speedOf(c(15, true)).speed, R.speedOf(c(12, false)).speed], [15, 25, 30], "-10 below Str 15, -5 cumbersome; carried, nothing");
+  assert.deepEqual(R.speedOf(c(12, true)).parts, ["Assault armor needs Str 15: -10 ft", "Assault armor is cumbersome: -5 ft"]);
+  assert.equal(R.speedOf(c(12, true), [R.ENCUMBRANCE]).speed, 25, "the encumbrance variant replaces the Strength rule");
+  const heavy = c(10, false); heavy.equipment.push({ name: "Crate", qty: 1, wt: 60 });
+  assert.equal(R.speedOf(heavy, [R.ENCUMBRANCE]).speed, 20, "the load, under the variant");
+  const tr = c(10, false, { features: [{ name: "Swim", text: "You have a swimming speed of 30 feet." }, { name: "Climb", text: "You have a climbing speed of 25 feet." }] });
+  assert.deepEqual(R.speedOf(tr).other, { swim: 30, climb: 25 });
+  // SW5e's flyers: "a flying speed equal to your walking speed", halved in medium or heavy armor
+  const fl = { speed: 30, abilities: { str: 16 }, features: [{ name: "Flight", text: "You have a flying speed equal to your walking speed. While wearing medium or heavy armor, your flying speed is reduced by half." }], equipment: [] };
+  assert.deepEqual(R.speedOf(fl).other, { fly: 30 });
+  fl.equipment.push({ name: "Mesh armor", equipped: true, armor: { kind: "medium", ac: 14 } });
+  assert.deepEqual(R.speedOf(fl).other, { fly: 15 });
+});
+
 test("Engineers and Scouts get tech points back on a short rest; others don't", () => {
   assert.equal(R.techOnShortRest(char([["Engineer", 1]])), true);
   assert.equal(R.techOnShortRest(char([["Scout", 2]])), true);
@@ -368,6 +529,23 @@ test("Wretched Hives' proficiency tiers (5.7), tool checks (6.10) and the tech f
   assert.equal(R.hasTechFocus(c), true);
 });
 
+test("power prerequisites (audit 2.11): the named power must be known first, and stay known to cast", () => {
+  const ch = { powers: [{ name: "Choke" }, { name: "Slow" }] };
+  assert.equal(R.powerPrereqUnmet(ch, { name: "Crush", pre: "Choke" }), null);
+  assert.equal(R.powerPrereqUnmet(ch, { name: "Crush", pre: "choke" }), null, "any case");
+  assert.deepEqual(R.powerPrereqUnmet(ch, { name: "Destroy Droid", pre: "Disable Droid" }), { pre: "Disable Droid", text: "Destroy Droid needs Disable Droid known first." });
+  assert.equal(R.powerPrereqUnmet(ch, { name: "Destroy Droid", pre: "Disable Droid" }, ["Disable Droid"]), null, "picked in the same level-up");
+  assert.equal(R.powerPrereqUnmet(ch, { name: "Force Push" }), null, "no prerequisite");
+  assert.equal(R.powerPrereqUnmet({}, { name: "Crush", pre: "Choke" }).pre, "Choke");
+});
+
+test("powers known (audit 2.10): the sheet's against the class tables, summed over classes", () => {
+  const pk = R.powersKnown({ classes: [{ name: "Consular", level: 3 }, { name: "Engineer", level: 2 }], powers: [{ type: "force" }, { type: "tech" }, {}] });
+  assert.deepEqual(pk, { force: { known: 2, max: 13 }, tech: { known: 1, max: 7 } }, "Consular 3 knows 13 force powers, Engineer 2 knows 7 tech powers");
+  assert.deepEqual(R.powersKnown({ classes: [{ name: "Fighter", level: 5 }] }), { force: { known: 0, max: 0 }, tech: { known: 0, max: 0 } });
+  assert.deepEqual(R.powersKnown(null).force, { known: 0, max: 0 });
+});
+
 test("feat prerequisites (audit 2.5), read from SW5e's own wording", () => {
   const ch = { classes: [{ name: "Fighter", level: 3 }], abilities: { str: 14, dex: 13, con: 12, int: 10, wis: 10, cha: 8 }, features: [{ name: "Lucky" }], size: "Medium" };
   const pr = (c, p) => R.featPrereq(c, p);
@@ -387,4 +565,21 @@ test("feat prerequisites (audit 2.5), read from SW5e's own wording", () => {
   assert.equal(pr(con, "The ability to cast tech powers").ok, false);
   assert.equal(pr(ch, "4th level, the ability to cast force or tech powers").unmet.length, 2);
   assert.deepEqual(pr(ch, "12th level, Dexterity 20").unmet, ["12th level", "Dexterity 20"]);
+});
+
+test("XP and the level thresholds (audit 2.14): the next level's XP from SW5e's table, and how far off", () => {
+  assert.equal(R.XP_FOR_LEVEL.length, 20);
+  assert.deepEqual([R.XP_FOR_LEVEL[1], R.XP_FOR_LEVEL[4], R.XP_FOR_LEVEL[19]], [300, 6500, 355000], "PHB: level 2 at 300, 5 at 6,500, 20 at 355,000");
+  assert.deepEqual(R.xpNext({ classes: [{ name: "Fighter", level: 4 }], xp: 2700 }), { level: 5, need: 6500, left: 3800, ready: false });
+  assert.deepEqual(R.xpNext({ classes: [{ name: "Fighter", level: 4 }], xp: 7000 }).ready, true);
+  assert.equal(R.xpNext({ classes: [{ name: "Fighter", level: 20 }], xp: 999999 }), null, "nothing past 20");
+});
+
+test("class levels in a prerequisite (audit 2.17): the improvement feats' options", () => {
+  const ch = { classes: [{ name: "Berserker", level: 3 }, { name: "Consular", level: 2 }], abilities: { wis: 14 } };
+  assert.equal(R.featPrereq(ch, "At least 3 levels in berserker").ok, true);
+  assert.deepEqual(R.featPrereq(ch, "At least 3 levels in consular").unmet, ["3 levels in consular"]);
+  assert.deepEqual(R.featPrereq(ch, "No levels in consular, the ability to cast force powers").unmet, ["no levels in consular"]);
+  assert.equal(R.featPrereq(ch, "No levels in sentinel, the ability to cast force powers").ok, true, "a Consular 2 casts force powers");
+  assert.equal(R.featPrereq({ classes: [{ name: "Fighter", level: 4 }] }, "No levels in sentinel, the ability to cast force powers").ok, false);
 });

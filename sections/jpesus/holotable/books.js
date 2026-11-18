@@ -375,6 +375,8 @@
   }
   // The character a finished guide makes, from what was chosen (pure: the tests call it). D: { name, color, species,
   // asi (bool), cls, classSkills [keys], classFeatures [{n, text}], scores {str..}, bg, bgSkills [keys], feat {n, text} }
+  // a class's starting wealth ("5d4 x 100 cr") as dice and a multiplier, or null
+  const wealthDice = text => { const m = /^\s*(\d{1,2})d(\d{1,3})\s*(?:[x×*]\s*(\d{1,5}))?\s*cr\s*$/i.exec(String(text || '')); return m ? { n: +m[1], d: +m[2], mult: +(m[3] || 1) } : null; };
   function buildLevel1(D) {
     const c = R.blankCharacter();
     c.name = String(D.name || 'New Character').slice(0, 80); if (D.color) c.color = D.color;
@@ -409,7 +411,10 @@
     if (b) applyBackground(c, b, D.bgSkills, D.feat, { equip: false });   // the guide lists the equipment itself, below
     const plain = x => String(x).replace(/\*/g, '').replace(/^\s*-\s*/, '• ');   // SW5e's markdown: *(a)* -> (a), "- " -> a bullet
     const eq = [cl && cl.equip.length && `${cl.n}:\n${cl.equip.map(plain).join('\n')}`, b && b.equip && `${b.n}: ${plain(b.equip)}`].filter(Boolean);
-    if (eq.length) c.notes = ('Starting equipment (choose where it says (a) or (b)):\n' + eq.join('\n\n')).slice(0, 20000);
+    if (Number.isFinite(D.wealth) && D.wealth >= 0) {   // 1.9: the class's starting wealth instead of the class's and background's equipment
+      c.credits = Math.min(1000000, Math.floor(D.wealth));
+      c.notes = `Starting wealth: ${c.credits.toLocaleString('en-US')} cr${cl && cl.wealth ? ` (${cl.wealth})` : ''}, instead of the class's and background's equipment. Buy gear on the Features & Gear tab.`;
+    } else if (eq.length) c.notes = ('Starting equipment (choose where it says (a) or (b)):\n' + eq.join('\n\n')).slice(0, 20000);
     c.proficiencies = (c.proficiencies || '').slice(0, 2000);
     return c;
   }
@@ -495,19 +500,36 @@
     }
     // 5. equipment and a last look
     function stepReview() {
-      const c = buildLevel1(D), sk = Object.keys(c.skills).map(k => R.SKILLS.find(s => s.key === k).name);
+      const c = buildLevel1(D), sk = Object.keys(c.skills).map(k => R.SKILLS.find(s => s.key === k).name), wd = wealthDice(D.cls.wealth);
       H.modal(`<h3>${step(5, 'equipment and a last look')}</h3>
         <label>Name<input id="gbName" value="${esc(c.name)}" maxlength="80"></label>
         <p style="margin:8px 0 4px"><b>${esc(c.species)}</b> · <b>${esc(D.cls.n)} 1</b> · ${esc(c.background)}${D.feat ? ' · feat: ' + esc(D.feat.n) : ''}</p>
         <p style="margin:0 0 4px">${R.ABILITIES.map(a => `${a.key.toUpperCase()} <b>${c.abilities[a.key]}</b>`).join(' · ')}
           ${D.species.asi ? `<span class="muted">(with ${esc(D.species.n)}'s ${esc(asiText(D.species.asi))})</span>` : D.asiPick ? `<span class="muted">(with ${esc(D.species.n)}'s ${esc(asiText(D.asiPick))}, your choice)</span>` : `<br><span class="muted">${esc(D.species.n)}'s ability increase is your choice: add it on the sheet.</span>`}</p>
         <p style="margin:0 0 4px">HP <b>${c.hp.max}</b> · AC <b>${c.ac}</b> (unarmored) · saves ${Object.keys(c.saves).map(a => a.toUpperCase()).join(', ')} · skills ${esc(sk.join(', '))}</p>
-        <h4 style="margin-top:10px">Starting equipment</h4><div class="muted" style="font-size:12px;white-space:pre-wrap;max-height:180px;overflow:auto">${esc(c.notes)}</div>
-        <p class="muted" style="font-size:12px">This goes into your sheet's Notes; add the items you choose on the Features &amp; Gear tab.</p>
-        <div class="row"><span class="spacer"></span><button class="btn" data-gb="cancel">Cancel</button><button class="btn primary" data-gb="make">Create ${esc(D.cls.n)}</button></div>`, box => {
-        box.onclick = e => {
+        <h4 style="margin-top:10px">Starting equipment</h4>
+        ${wd ? `<div class="choices" style="margin-bottom:6px">
+          <label class="choice ${D.wealthMode ? '' : 'on'}"><input type="radio" name="gbWealth" value="" ${D.wealthMode ? '' : 'checked'}> <b>The equipment</b><br><span class="muted">from the class and the background</span></label>
+          <label class="choice ${D.wealthMode ? 'on' : ''}"><input type="radio" name="gbWealth" value="1" ${D.wealthMode ? 'checked' : ''}> <b>Starting wealth instead</b><br><span class="muted">${esc(D.cls.wealth)}, rolled where everyone sees it</span></label></div>` : ''}
+        ${D.wealthMode && !Number.isFinite(D.wealth) ? `<div class="row"><button class="btn amber" data-gb="wealth">🎲 Roll ${esc(D.cls.wealth)}</button></div>`
+          : `<div class="muted" style="font-size:12px;white-space:pre-wrap;max-height:180px;overflow:auto">${esc(c.notes)}</div>
+        <p class="muted" style="font-size:12px">${D.wealthMode ? `${esc(c.name)} starts with <b>${n0(c.credits).toLocaleString()} cr</b>.` : "This goes into your sheet's Notes; add the items you choose on the Features &amp; Gear tab."}</p>`}
+        <div class="row"><span class="spacer"></span><button class="btn" data-gb="cancel">Cancel</button><button class="btn primary" data-gb="make" ${D.wealthMode && !Number.isFinite(D.wealth) ? 'disabled' : ''}>Create ${esc(D.cls.n)}</button></div>`, box => {
+        box.onchange = e => {   // 1.9: equipment, or the class's starting wealth
+          if (e.target.name !== 'gbWealth') return;
+          D.name = box.querySelector('#gbName').value.trim() || D.name;
+          D.wealthMode = !!e.target.value; if (!D.wealthMode) D.wealth = undefined;
+          stepReview();
+        };
+        box.onclick = async e => {
           const b = e.target.closest('[data-gb]'); if (!b) return;
           if (b.dataset.gb === 'cancel') return H.closeModal();
+          if (b.dataset.gb === 'wealth' && wd) {   // rolled on the server, in chat, like the scores
+            b.disabled = true; D.name = box.querySelector('#gbName').value.trim() || D.name;
+            const r = await H.roll(`${wd.n}d${wd.d}`, `${D.name || 'A new character'}: starting wealth (${D.cls.wealth})`);
+            if (!r || !r.roll) { b.disabled = false; return; }
+            D.wealth = r.roll.total * wd.mult; return stepReview();
+          }
           if (b.dataset.gb === 'make') { D.name = box.querySelector('#gbName').value.trim() || D.name; H.closeModal(); onDone(buildLevel1(D)); }
         };
       });
@@ -919,7 +941,7 @@
             <td>${shipInp(`crew.${i}.deployment`, c.deployment, { ro, type: 'select', options: ['', ...DEPLOY] })} ${c.deployment ? `<button class="btn tiny ghost" data-sa="deploy-info" data-dep="${esc(c.deployment)}" title="Deployment features">ⓘ</button>` : ''}</td>
             <td>${shipInp(`crew.${i}.rank`, n0(c.rank), { ro, type: 'select', options: [0, 1, 2, 3, 4, 5] })}</td>
             <td>${c.charId ? R.fmt(crewPb(s, c)) : shipInp(`crew.${i}.pb`, n0(c.pb) || 2, { ro, w: '50px' })}</td>
-            <td>${!ro ? `<button class="btn tiny ghost" data-sa="del" data-list="crew" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">No crew yet.</td></tr>'}</tbody></table>
+            <td>${!ro ? `<button class="btn tiny ghost" data-sa="del" data-list="crew" data-i="${i}">✕</button>` : ''}</td></tr>${window.HTShipSheet ? HTShipSheet.crewRow(s, c, i, ro) : ''}`).join('') || '<tr><td colspan="5" class="muted">No crew yet.</td></tr>'}</tbody></table>
           ${!ro ? '<button class="btn tiny" data-sa="add-crew">＋ crew member</button>' : ''}
           <p class="muted" style="font-size:12px;margin:6px 0 0">Ship rolls add the acting crew member's proficiency bonus when the ship is proficiently equipped.</p></div>
         <div class="box"><h4>Ship abilities <span class="spacer"></span><span class="muted" style="text-transform:none;letter-spacing:0">Rolling as</span>
@@ -929,7 +951,7 @@
             <label class="toggle" title="Proficiently equipped for this saving throw">${shipInp('saves.' + a.key, s.saves[a.key], { ro, type: 'checkbox' })}<span class="sb-roll" data-shiproll="1d20${fmt(m(a.key) + (s.saves[a.key] ? pb : 0))}" data-kind="save" data-ab="${a.key}" data-label="${esc(s.name)}: ${a.name} save">save ${fmt(m(a.key) + (s.saves[a.key] ? pb : 0))}</span></label></div>`).join('')}</div>
           <h4 style="margin-top:10px">Ship skills <span class="muted" style="text-transform:none;letter-spacing:0">dot: none → proficiently → expertly equipped</span></h4>
           <div class="list-rows ship-skills">${SKILLS.map(([k, name, ab]) => { const lv = n0(s.skills[k]), b = m(ab) + lv * pb; return `<div class="lr"><button class="prof ${lv === 2 ? 'p2' : lv === 1 ? 'p1' : ''}" data-sa="skill" data-k="${k}" ${ro ? 'disabled' : ''}></button>
-            <span class="bonus">${fmt(b)}</span><span class="nm rollable" data-shiproll="1d20${fmt(b)}" data-kind="check" data-ab="${ab}" data-label="${esc(s.name)}: ${name}">${name}</span><span class="ab">${ab}</span></div>`; }).join('')}</div></div>
+            <span class="bonus">${fmt(b)}</span><span class="nm rollable" data-shiproll="1d20${fmt(b)}" data-kind="check" data-ab="${ab}" data-skill="${k}" data-label="${esc(s.name)}: ${name}">${name}</span><span class="ab">${ab}</span></div>`; }).join('')}</div></div>
       </div>
       <div class="box" style="margin-top:12px"><h4>Weapons <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-sa="pick-equip" data-weapons="1">＋ weapon from SotG</button><button class="btn tiny ghost" data-sa="add-weapon">custom</button>' : ''}</h4>
         <table class="t"><thead><tr><th>Weapon</th><th>Attack</th><th>Damage</th><th>Type</th><th>Range</th><th>Properties</th><th title="Category, mount (a fixed arc or a turret) and ammunition left (blank: not counted). The space map's Fire uses them.">Mount</th><th></th></tr></thead><tbody>
@@ -960,7 +982,7 @@
     shipsEl().addEventListener('change', e => {
       const t = e.target;
       if (t.dataset.saChange === 'as') { SH.as = +t.value || 0; return renderShips(shipsEl()); }
-      if ((t.dataset.sxc || t.dataset.tv) && window.HTShipSheet) return HTShipSheet.change(e, ships().find(x => x.id === SH.sel));
+      if ((t.dataset.sxc || t.dataset.tv || t.dataset.learn) && window.HTShipSheet) return HTShipSheet.change(e, ships().find(x => x.id === SH.sel));
       const path = t.dataset.sp; if (!path) return;
       const s = ships().find(x => x.id === SH.sel); if (!canEditShip(s)) return;
       if (path === 'hull.current' || path === 'shield.current') return H.act('ship.points', { id: s.id, what: path.split('.')[0], current: +t.value || 0 });   // the server's, like damage
@@ -1039,7 +1061,7 @@
 
   window.HTB = {
     list, mdBlock, libraryBar, openBook, openSpeciesPicker, openBackgroundPicker, openArchetypePicker, openFeaturePicker,
-    guidedBuild, buildLevel1, skillChoice, applyBackground, backgroundSkillOptions, heldSkills, asiFromPicks, asiChoiceText,
+    guidedBuild, buildLevel1, skillChoice, applyBackground, backgroundSkillOptions, heldSkills, asiFromPicks, asiChoiceText, wealthDice,
     levelFeatures, levelChoices, dropArchetypeFeatures, archetypesOf, featNamed, featNames, openMonsterPicker, openStatBlock, rollCreatureSave, bonuses, saveBonus, difficulty, xpMultiplier, renderEncounter, renderShips, renderShipsSafe,
   };
   // the rules tab and ships tab were drawn before this file loaded
