@@ -32,7 +32,7 @@ export function landmarks(o = {}) {
   const Y = (y) => y * L;
   return {
     L, fw, jw, cw, masc: m,
-    eye: [0.0322 * fw, 0, 0.0672], eyeR: 0.0137 - 0.0012 * m,
+    eye: [0.0322 * fw, 0, 0.0672], eyeR: 0.0132 - 0.001 * m,
     browIn: [0.008, 0.019, 0.089], browMid: [0.03 * fw, 0.0235, 0.087], browOut: [0.052 * fw, 0.019, 0.072], temple: [0.066 * fw, 0.03, 0.045],
     cheekbone: [0.052 * fw, Y(-0.022), 0.066], jawHinge: [0.056 * jw, Y(-0.06), 0.0], jawMid: [0.04 * jw, Y(-0.092), 0.04],
     chin: [0, Y(-0.104), 0.086 + 0.003 * m], chinSide: [0.017 * cw, Y(-0.106), 0.074],
@@ -86,23 +86,25 @@ export function headField(o = {}) {
   h = smin(0.015, h, muzzle);
   h = smin(0.01, h, brow, glabella);
   h = smin(0.0065, h, bridge, noseSide);
-  h = smin(0.0042, h, tip, alae, colum);
-  h = smin(0.003, h, upperLip, lowerLip);
+  h = smin(0.0055, h, tip, alae, colum);   // soft where the wings of the nose meet the cheek
+  h = smin(0.0055, h, upperLip, lowerLip);   // and where the lips meet the skin: an edge, not a step
 
   /* ---- carved in ---- */
   // the hollow the eye sits in, under the brow and beside the nose; then the opening itself, an almond tipped up a
   // little at the outer corner
   const orbit = mirrorX(ellipsoid(eye.x + 0.001, 0.003, eye.z + 0.012, 0.0205, 0.012, 0.0052));
   h = ssub(0.012, h, orbit);
-  const almond = rotate(ellipsoid(0, 0, 0, 0.0166 * es, 0.0079 * es, 0.0098 * es), rotZ(0.09));
+  const almond = rotate(ellipsoid(0, 0, 0, 0.0156 * es, 0.0069 * es, 0.0098 * es), rotZ(0.09));
   h = ssub(0.0025, h, mirrorX((x, y, z) => almond(x - eye.x, y + 0.0006, z - eye.z - 0.0058)));
-  h = ssub(0.0025, h, mirrorX(ellipsoid(0.0062 * ns, Y(-0.0486), 0.0872, 0.003, 0.0026, 0.0046)));                // nostrils, opening downward
-  h = ssub(0.004, h, sunk(capsule([0, Y(-0.0505), 0.092], [0, Y(-0.0575), 0.0945], 0.0032), 0.0016));           // the dip under the nose
+  h = ssub(0.0035, h, mirrorX(ellipsoid(0.0062 * ns, Y(-0.0486), 0.0872, 0.003, 0.0026, 0.0046)));                // nostrils, opening downward
+  h = ssub(0.006, h, sunk(capsule([0, Y(-0.0505), 0.092], [0, Y(-0.0575), 0.0945], 0.0032), 0.0016));           // the dip under the nose
   h = ssub(0.012, h, sunk(ellipsoid(0, Y(-0.0868), 0.0905, 0.021, 0.0058, 0.0065), 0.003));                     // the crease above the chin
   // the mouth line, laid on the face as built so it is never in the air
   const onFace = (x, y) => { const hit = cast(h, [x, y, 0.3], [0, 0, -1], 0.5); return hit ? hit.p : [x, y, 0.09]; };
   const my = Y(-0.0679), line = [[-0.0255, my - 0.0006], [-0.0135, my - 0.0003], [0, my + 0.0003], [0.0135, my - 0.0003], [0.0255, my - 0.0006]].map(([x, y]) => { const p = onFace(x, y); return [p[0], p[1], p[2] - 0.0006]; });
-  h = ssub(0.0014, h, chain(line, 0.0009));
+  h = ssub(0.002, h, rope(line, (i) => [0.0006, 0.0009, 0.0009, 0.0006][i]));   // shallower toward the corners
+  // the corners: a small soft hollow each, where the line ends
+  { const c = onFace(0.0272, my - 0.0006); h = ssub(0.007, h, sunk(mirrorX(sphere(c[0], c[1], c[2] + 0.0026, 0.0046)), 0.0006)); }
   if (age > 0.35) {   // lines from the nose to the mouth's corners, deeper with the years
     const fold = mirrorX(rope([[0.0185 * ns, Y(-0.04), 0.086], [0.0265, Y(-0.055), 0.082], [0.031, Y(-0.07), 0.0755]], 0.0034));
     h = ssub(0.012, h, sunk(fold, 0.0031 - 0.0016 * (age - 0.35)));
@@ -144,7 +146,8 @@ export function headField(o = {}) {
   return {
     field: h, eye, P,
     // the lids: how far each comes over the eye, in radians from the top and from the bottom; older lids hang lower
-    lid: { upper: 1.17 + 0.1 * old, lower: 1.2, tilt: 0.09 },
+    // the upper lid comes down over the top of the iris and the lower touches its bottom: white shows only at the sides
+    lid: { upper: 1.43 + 0.07 * old - 0.05 * (1 - m), lower: 1.27, tilt: 0.09 },
     bounds: [[-0.105, -0.23, -0.115], [0.105, 0.13, 0.125]],
   };
 }

@@ -37,7 +37,7 @@ export function skinMaterial(map) {
 // the white (a species may tint it). Angles are from the front, in degrees.
 export function eyeTexture(irisHex, o = {}) {
   const W = 512, H = 256, c = document.createElement('canvas'); c.width = W; c.height = H;
-  const g = c.getContext('2d'), img = g.createImageData(W, H), iris = new THREE.Color(irisHex), white = new THREE.Color(o.white || '#e9e4de'), col = new THREE.Color();
+  const g = c.getContext('2d'), img = g.createImageData(W, H), iris = new THREE.Color(irisHex), white = new THREE.Color(o.white || '#e9e4de').multiplyScalar(0.8), col = new THREE.Color();   // an eye sits in the brow's shadow: its white is a grey
   const dark = iris.clone().multiplyScalar(0.28), light = iris.clone().lerp(new THREE.Color(1, 0.95, 0.8), 0.28), IR = o.iris ?? 28.5, PU = o.pupil ?? 10;
   const hash = (i) => { const s = Math.sin(i * 127.1) * 43758.5453; return s - Math.floor(s); };
   for (let y = 0; y < H; y++) {
@@ -70,14 +70,16 @@ export function eyeTexture(irisHex, o = {}) {
 export function eyeGeometries(eye, lid) {
   const balls = [], lids = [], lashes = [], rl = eye.r + 0.0012;
   for (const sx of [-1, 1]) {
-    const place = new THREE.Matrix4().makeTranslation(sx * eye.x, eye.y, eye.z).multiply(new THREE.Matrix4().makeRotationY(sx * 0.07)).multiply(new THREE.Matrix4().makeRotationZ(sx * (lid.tilt || 0)));
+    const at = new THREE.Matrix4().makeTranslation(sx * eye.x, eye.y, eye.z), place = at.clone().multiply(new THREE.Matrix4().makeRotationY(sx * 0.07)).multiply(new THREE.Matrix4().makeRotationZ(sx * (lid.tilt || 0)));
     const put = (g, rx) => { if (rx) g.rotateX(rx); g.applyMatrix4(place); return g; };
-    const ball = new THREE.SphereGeometry(eye.r, 36, 24); ball.rotateX(Math.PI / 2);   // the texture's pole to the front
-    balls.push(put(ball));
-    lids.push(put(new THREE.SphereGeometry(rl, 36, 12, 0, Math.PI * 2, 0, lid.upper), -0.15));
+    // both eyes look the same way, a little to one side and down: a dead-ahead stare is what makes a face stiff
+    const ball = new THREE.SphereGeometry(eye.r, 36, 24); ball.rotateX(Math.PI / 2 + 0.05); ball.rotateY(0.1); ball.applyMatrix4(at);
+    balls.push(ball);
+    const up0 = lid.upper + (sx > 0 ? 0.035 : 0);   // one lid a hair lower than the other
+    lids.push(put(new THREE.SphereGeometry(rl, 36, 12, 0, Math.PI * 2, 0, up0), -0.15));
     lids.push(put(new THREE.SphereGeometry(rl, 36, 10, 0, Math.PI * 2, Math.PI - lid.lower, lid.lower), 0.1));
     const lo = new THREE.TorusGeometry(rl * Math.sin(lid.lower), 0.0007, 5, 36); lo.rotateX(Math.PI / 2); lo.translate(0, -rl * Math.cos(lid.lower), 0); lids.push(put(lo, 0.1));
-    const up = new THREE.TorusGeometry(rl * Math.sin(lid.upper), 0.00095, 5, 36); up.rotateX(Math.PI / 2); up.translate(0, rl * Math.cos(lid.upper), 0); lashes.push(put(up, -0.15));
+    const up = new THREE.TorusGeometry(rl * Math.sin(up0), 0.0011, 5, 36); up.rotateX(Math.PI / 2); up.translate(0, rl * Math.cos(up0), 0); lashes.push(put(up, -0.15));
   }
   return { balls: merge(balls), lids: merge(lids), lashes: merge(lashes) };
 }

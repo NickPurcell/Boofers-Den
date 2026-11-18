@@ -67,7 +67,7 @@ const face = facePainter(stage.phone ? 1024 : 2048);
 const skin = skinMaterial(face.texture), bodySkin = skinMaterial(null), hairMat = hairMaterial();
 const lidMat = new THREE.MeshPhysicalMaterial({ roughness: 0.5, sheen: 0.3, sheenRoughness: 0.5 });
 const eyeMat = new THREE.MeshPhysicalMaterial({ roughness: 0.16, clearcoat: 1, clearcoatRoughness: 0.04 }), lashMat = new THREE.MeshStandardMaterial({ color: 0x120d0a, roughness: 0.8 });
-const ringMat = metalMaterial('#c9a24a');
+const ringMat = new THREE.MeshStandardMaterial({ color: 0xc9a24a, metalness: 1, roughness: 0.28, emissive: 0xc9a24a, emissiveIntensity: 0.22 });   // a little glow of its own, or polished metal goes black in a dark room
 const CLOTHS = { cloth: clothMaterial, leather: leatherMaterial, metal: metalMaterial, plastic: (hex) => { const m = plasticMaterial(hex); m.roughness = 0.46; m.clearcoat = 0.25; return m; } };
 const KEEP = new Set([skin, bodySkin, hairMat, lidMat, eyeMat, lashMat, ringMat, gearMaterial()]);
 let built = null, cloth = [], info = {}, ticket = 0, current = Promise.resolve(), eyeKey = '';
@@ -106,8 +106,8 @@ async function rebuild() {
   if (hair.mesh && state.hood !== 'up') add(skinGeometry(copy(hair.mesh), { hair: true }), hairMat, hg);   // a raised hood covers the hair
   if (state.jewel && state.jewel !== 'none' && head.tendrils.length) {   // a ring on each tendril
     const rings = head.tendrils.map((t) => {
-      const a = new THREE.Vector3(...t.a), b = new THREE.Vector3(...t.b), f = 0.42, at = a.clone().lerp(b, f), rad = t.r0 + (t.r1 - t.r0) * f + 0.0009;
-      const g = new THREE.TorusGeometry(rad, 0.0011, 6, 18); g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), b.clone().sub(a).normalize())); g.translate(at.x, at.y, at.z); return g;
+      const a = new THREE.Vector3(...t.a), b = new THREE.Vector3(...t.b), f = 0.42, at = a.clone().lerp(b, f), rad = t.r0 + (t.r1 - t.r0) * f + 0.0012;
+      const g = new THREE.TorusGeometry(rad, 0.0017, 8, 20); g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), b.clone().sub(a).normalize())); g.translate(at.x, at.y, at.z); return g;
     });
     add(merge(rings), ringMat, hg);
   }
@@ -124,7 +124,7 @@ function recolour() {
   if (!built) return;
   const S = sp(), skinHex = pick('skin').c, hairHex = pick('hair').c, c = new THREE.Color(skinHex), liner = Math.min(1, val(LINERS, state.liner) + (S.look.shade || 0));
   bodySkin.color.copy(c); for (const m of [skin, bodySkin]) m.sheenColor.copy(c).lerp(new THREE.Color(0xffffff), 0.5);
-  lidMat.color.copy(c).multiplyScalar(0.84 - 0.36 * liner);
+  lidMat.color.copy(c).lerp(new THREE.Color(S.look.flush), 0.14).multiplyScalar(0.8 - 0.34 * liner);   // lids are a little darker and warmer than the face
   hairMat.color.set(hairHex); hairMat.sheenColor.set(hairHex).lerp(new THREE.Color(0xffffff), 0.35);
   const ek = pick('eyes').c + S.look.white;
   if (ek !== eyeKey) { eyeKey = ek; if (eyeMat.map) eyeMat.map.dispose(); eyeMat.map = eyeTexture(pick('eyes').c, { white: S.look.white }); eyeMat.needsUpdate = true; }
@@ -136,7 +136,7 @@ function recolour() {
   built.fresh = false;
   const cols = { main: pick('main').c, second: pick('second').c, dark: '#25272d', leather: '#46321f', metal: '#a4a9b0', trim: '#c9a24a' };
   for (const p of cloth) p.mesh.material.color.set(cols[p.role] || '#777777');
-  ringMat.color.set(state.jewel === 'silver' ? '#c3c7cd' : '#c9a24a');
+  ringMat.color.set(state.jewel === 'silver' ? '#c3c7cd' : '#c9a24a'); ringMat.emissive.copy(ringMat.color);
   gearMaterial().userData.u.uPrimary.value.set('#3a2c20'); gearMaterial().userData.u.uSecondary.value.set(cols.second);   // a staff's wood, and its grip in the wearer's second colour
   stage.redraw();
 }

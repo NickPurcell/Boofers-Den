@@ -9,8 +9,9 @@ import { sphere, ellipsoid, capsule, roundCone, smin, ssub } from '../duros-crea
 // roots to the same line.
 export function hairline(a) {
   const b = Math.abs(a);
-  if (b < 0.75) return 0.071 - 0.012 * (b / 0.75) ** 2;
-  if (b < 1.2) return 0.059 - 0.05 * ((b - 0.75) / 0.45);
+  const w = b < 1.3 ? 0.0026 * Math.sin(a * 19 + 0.7) + 0.0019 * Math.sin(a * 37 + 1.3) : 0;   // no hairline is a clean line
+  if (b < 0.75) return 0.071 - 0.012 * (b / 0.75) ** 2 + w;
+  if (b < 1.2) return 0.059 - 0.05 * ((b - 0.75) / 0.45) + w;
   if (b < 1.42) return 0.009 - 0.04 * ((b - 1.2) / 0.22);
   if (b < 1.9) return -0.031 + 0.045 * Math.sqrt((b - 1.42) / 0.48);
   return 0.014 - 0.075 * ((b - 1.9) / 1.24);
@@ -19,11 +20,13 @@ const hash = (i) => { const s = Math.sin(i * 127.1 + 31.7) * 43758.5453; return 
 const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 // locks: 0 on a lock's crest, 1 in the groove between two, for a coordinate u that runs across the way the hair lies;
 // n locks per unit of u, each a little different in width
-function locks(u, n) {
+function strands(u, n) {
   const t = u * n, i = Math.floor(t), w = 0.5 + 0.35 * (hash(i) - 0.5), f = t - i;
   const d = f < w ? f / w : (1 - f) / (1 - w);   // 0 at both edges of the lock, 1 at its crest
   return 1 - Math.pow(d, 0.55);
 }
+// hair lies in clumps of different widths, each made of finer strands: deep grooves between clumps, shallow within
+const locks = (u, n) => 0.42 * strands(u, n) * (0.5 + hash(Math.floor(u * n) + 71)) + 0.85 * strands(u + 0.137, n * 0.29);
 
 export const STYLES = {
   bald: { name: 'Bald', roots: 0 },
@@ -50,7 +53,7 @@ export function hairField(style, head) {
   const cap = (t, groove, depth, edge = line) => (x, y, z) => {
     const d = head(x, y, z);
     if (d > 0.07) return d - 0.05;
-    const e = edge(x, y, z), th = t(x, y, z) * (0.3 + 0.7 * sstep(0, 0.02, -e));   // hair rises from the hairline rather than standing at it like a wall
+    const e = edge(x, y, z), th = t(x, y, z) * (0.07 + 0.93 * sstep(0, 0.03, -e));   // hair rises out of the scalp at the hairline; it does not stand there like the rim of a helmet
     return Math.max(d - th + depth * groove(x, y, z) * Math.min(1, th / 0.008), e * 0.7);
   };
   let f, bounds = [[-0.12, -0.1, -0.14], [0.12, 0.16, 0.12]];
