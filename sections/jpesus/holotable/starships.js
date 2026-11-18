@@ -573,20 +573,82 @@
   // proficiency bonus off the attack roll (or off the save DC, for a weapon the target saves against) and onto the
   // damage. Dire and piercing are for attack rolls only. kind: 'attack' (a single shot's attack roll) or 'save'.
   // Returns { atk, dc, dmg, notes } from what was asked, capped by the weapon.
-  function weaponTrade(w, ask, pb, kind) {
-    const out = { atk: 0, dc: 0, dmg: 0, notes: [] }, q = ask || {};
+  // crew: the firing crew row, whose gunning styles always apply and whose mastery applies when asked (ask.mastery):
+  // Cannoneer (primary: +2 damage and save DC), Heavy Gunner (secondary: +2 attack and save DC); Cannon Mastery (primary:
+  // no proficiency bonus on the attack), Heavy Gun Mastery (secondary: the bonus twice on the attack, that much off the
+  // damage), Payload Mastery (tertiary and quaternary: the DC lowered by it, twice it more damage on a failed save: onFail).
+  // A proficiency bonus is forgone only once (SotG ch. 6), so melt with Cannon Mastery takes it off once.
+  function weaponTrade(w, ask, pb, kind, crew) {
+    const out = { atk: 0, dc: 0, dmg: 0, onFail: 0, notes: [] }, q = ask || {}, b = crewPbOf(pb), cat = catOf(w);
     const num = (k) => { const v = weaponProp(w, k); return typeof v === 'number' ? v : 0; };
     if (kind === 'attack') {
       const d = clamp(int(q.dire), 0, num('dire')), pc = clamp(int(q.piercing), 0, num('piercing'));
       if (d) { out.atk -= d; out.dmg += d; out.notes.push(`dire ${d}`); }
       if (pc) { out.atk += pc; out.dmg -= pc; out.notes.push(`piercing ${pc}`); }
     }
+    let forgone = false;
     if (q.melt === true && weaponProp(w, 'melt')) {
-      const b = crewPbOf(pb);
-      if (kind === 'attack') out.atk -= b; else out.dc -= b;
+      if (kind === 'attack') { out.atk -= b; forgone = true; } else out.dc -= b;
       out.dmg += b; out.notes.push(`melt ${b}`);
     }
+    const styles = crew ? activeStyles(crew) : [], mast = crew ? activeMasteries(crew) : [];
+    if (cat === 'primary' && styles.includes('Cannoneer')) { out.dmg += 2; if (kind === 'save') out.dc += 2; out.notes.push('cannoneer'); }
+    if (cat === 'secondary' && styles.includes('Heavy Gunner')) { if (kind === 'attack') out.atk += 2; else out.dc += 2; out.notes.push('heavy gunner'); }
+    if (q.mastery === true) {
+      if (cat === 'primary' && kind === 'attack' && mast.includes('Cannon Mastery')) { if (!forgone) out.atk -= b; out.notes.push('cannon mastery'); }
+      if (cat === 'secondary' && kind === 'attack' && mast.includes('Heavy Gun Mastery')) { out.atk += b; out.dmg -= b; out.notes.push('heavy gun mastery'); }
+      if ((cat === 'tertiary' || cat === 'quaternary') && kind === 'save' && mast.includes('Payload Mastery')) { out.dc -= b; out.onFail += 2 * b; out.notes.push('payload mastery'); }
+    }
     return out;
+  }
+  // which mastery (if any) the crew row can use with this weapon fired this way: for the Fire box's checkbox
+  function masteryFor(crew, w, kind) {
+    const cat = catOf(w), mast = crew ? activeMasteries(crew) : [];
+    if (cat === 'primary' && kind === 'attack' && mast.includes('Cannon Mastery')) return 'Cannon Mastery';
+    if (cat === 'secondary' && kind === 'attack' && mast.includes('Heavy Gun Mastery')) return 'Heavy Gun Mastery';
+    if ((cat === 'tertiary' || cat === 'quaternary') && kind === 'save' && mast.includes('Payload Mastery')) return 'Payload Mastery';
+    return '';
+  }
+  // Payload Delivery: the damage dice that showed 1 or 2 (kept, not struck), to roll again once: [{ sides, v }]
+  function lowDice(detail) {
+    const out = [], re = /\d+d(\d+)[a-z0-9]*\[([^\]]*)\]/g;
+    for (let m; (m = re.exec(String(detail || ''))); ) for (const v of m[2].split(',')) if (!/~/.test(v)) { const n = int(v.split('→').pop()); if (n >= 1 && n <= 2) out.push({ sides: int(m[1]), v: n }); }
+    return out;
+  }
+
+  // ---- gunning styles and masteries, and ventures (SotG ch. 6): a crew member's own, on their crew row
+  const GUNNING_STYLES = { Cannoneer: 'Firing a primary weapon: +2 to damage rolls and save DCs.', 'Heavy Gunner': 'Firing a secondary weapon: +2 to attack rolls and save DCs.',
+    'Payload Delivery': 'Tertiary and quaternary weapons: damage dice showing 1 or 2 are rolled again, once.' };
+  const GUNNING_MASTERIES = { 'Cannon Mastery': 'Primary weapons: fire rapidly, attacking without the proficiency bonus, with a second attack (also without it) as a bonus action.',
+    'Heavy Gun Mastery': 'Secondary weapons: the proficiency bonus twice on the attack roll; on a hit, that much less damage.',
+    'Payload Mastery': 'Tertiary and quaternary weapons: the DC lowered by the proficiency bonus; on a failed save, twice the bonus in extra damage.' };
+  const REPEATABLE_VENTURES = ['Gunning Mastery', 'Gunning Stylist'];   // the two ventures SotG lets you take more than once
+  // a venture at each rank of the deployment (1st to 5th); a gunner's style at 2nd rank and a second at 4th (Protean
+  // Gunner), a mastery at 4th; each Gunning Stylist or Gunning Mastery venture one more
+  const venturesAllowed = (c) => clamp(int(c && c.rank), 0, 5);
+  function gunningAllowed(c) {
+    const gr = c && c.deployment === 'Gunner' ? clamp(int(c.rank), 0, 5) : 0, v = Array.isArray(c && c.ventures) ? c.ventures : [];
+    const count = (n) => v.slice(0, venturesAllowed(c)).filter((x) => x === n).length;
+    return { styles: (gr >= 2 ? 1 : 0) + (gr >= 4 ? 1 : 0) + count('Gunning Stylist'), masteries: (gr >= 4 ? 1 : 0) + count('Gunning Mastery') };
+  }
+  // the styles and masteries that count: as many as the rank and ventures allow, first picked first
+  const activeStyles = (c) => (Array.isArray(c && c.styles) ? c.styles : []).filter((x) => own(GUNNING_STYLES, x)).slice(0, gunningAllowed(c).styles);
+  const activeMasteries = (c) => (Array.isArray(c && c.masteries) ? c.masteries : []).filter((x) => own(GUNNING_MASTERIES, x)).slice(0, gunningAllowed(c).masteries);
+  // a crew row's picks as stored: ventures (names, the repeatable two may repeat), styles and masteries from SotG's lists
+  function cleanGunning(c) {
+    const seen = new Set(), ventures = [];
+    for (const x of (Array.isArray(c && c.ventures) ? c.ventures : []).map((v) => String(v == null ? '' : v).slice(0, 80).trim()).filter(Boolean)) {
+      if (seen.has(x) && !REPEATABLE_VENTURES.includes(x)) continue;
+      seen.add(x); ventures.push(x);
+    }
+    const pick = (arr, table) => [...new Set((Array.isArray(arr) ? arr : []).filter((x) => typeof x === 'string' && own(table, x)))].slice(0, 3);
+    return { ventures: ventures.slice(0, 12), styles: pick(c && c.styles, GUNNING_STYLES), masteries: pick(c && c.masteries, GUNNING_MASTERIES) };
+  }
+  // multispecializing (SotG ch. 6): one character on several crew rows, each a deployment; its rank is their sum
+  function multispec(ship, c) {
+    if (!c || typeof c.charId !== 'string' || !c.charId) return null;
+    const rows = (Array.isArray(ship && ship.crew) ? ship.crew : []).filter((x) => x && x.charId === c.charId && x.deployment && int(x.rank) > 0);
+    return rows.length > 1 ? { rows: rows.map((x) => ({ deployment: x.deployment, rank: clamp(int(x.rank), 0, 5) })), rank: rows.reduce((a, x) => a + clamp(int(x.rank), 0, 5), 0) } : null;
   }
   // ---- tertiary ammunition (SotG ch. 5, "Tertiary Ammunition"): what a launcher fires. Damage for Tiny to Large ships,
   // then for Huge and Gargantuan; '' for the special rounds, whose effects are in their own text.
@@ -1008,5 +1070,5 @@
     setCondition, summary, SIZE_DATA, SHIELD_TYPES, REACTORS, COUPLINGS, SYSTEMS, POOLS, SYSTEM_NAMES, POWER_DIE, sizeOf, roleOf, reactorOf, couplingOf,
     shieldTypeOf, powerDie, powerDieText, powerCaps, diceOf, diceLeft, regenRate, boostDC, regenDC, boostedSpeed, startTurn, usePower, setPower,
     setDiceUsed, boost, regenerateShields, SQUARE_FT, SQUARES, squaresOf, FACING_NAMES, DIRS, gridFeet, turnSteps, turnCost, moveCost, inBounds, shipGap,
-    arcOf, INIT_SIZE_MOD, npcInitBonus, deploymentInfo, techniquesKnown, techDie, STOCK_COST, TIER_COST, minCrew, costs, REGIONS, HYPER_HOURS, START_UP, hyperClass, stepsFor, jumpHours, jumpFuel, fuelOf, mishapFor, MOD_TYPES, modsSummary, modCost, installDC, pastCapacity, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck, PACES, flyFuel, travelSpeed, REALSPACE_TIMES, realspaceTime, weaponTrade, viciousBonus, zonesOf, inZone, zoneExtra, AMMO, launcherOf, ammoFor, loadedWeapon, reloadFor, maxOf };
+    arcOf, INIT_SIZE_MOD, npcInitBonus, deploymentInfo, techniquesKnown, techDie, STOCK_COST, TIER_COST, minCrew, costs, REGIONS, HYPER_HOURS, START_UP, hyperClass, stepsFor, jumpHours, jumpFuel, fuelOf, mishapFor, MOD_TYPES, modsSummary, modCost, installDC, pastCapacity, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck, PACES, flyFuel, travelSpeed, REALSPACE_TIMES, realspaceTime, weaponTrade, viciousBonus, zonesOf, inZone, zoneExtra, AMMO, launcherOf, ammoFor, loadedWeapon, reloadFor, maxOf, masteryFor, lowDice, GUNNING_STYLES, GUNNING_MASTERIES, REPEATABLE_VENTURES, venturesAllowed, gunningAllowed, activeStyles, activeMasteries, cleanGunning, multispec };
 });

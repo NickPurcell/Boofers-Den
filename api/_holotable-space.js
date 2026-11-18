@@ -225,9 +225,13 @@ function apply(camp, cid, gm, type, p, h) {
       const s = JSON.parse(JSON.stringify(s0)), sw = s.weapons[wi];
       if (typeof sw.ammo === "number") sw.ammo -= cost;
       if (cap !== null) sw.heat = int(sw.heat) + cost;
-      const pb = Ships.crewPb(camp, s0, p.crew), A = shownOf(s0, a), T = shownOf(t0, ta);
+      // a shot with either token hidden is the GM's alone (only the GM can fire from or at a hidden token): its lines name
+      // both ships for the GM; otherwise, by the names players may read
+      const pb = Ships.crewPb(camp, s0, p.crew), unseenShot = !!a.hidden || !!ta.hidden;
+      const A = unseenShot ? s0.name : shownOf(s0, a), T = unseenShot ? t0.name : shownOf(t0, ta);
       // dire, piercing and melt: accuracy traded for damage, chosen with the shot; capped by the weapon (SotG ch. 5)
-      const tr = SR.weaponTrade(w, { dire: p.dire, piercing: p.piercing, melt: p.melt === true }, pb, chk.kind === "attack" && fm === "single" ? "attack" : "save");
+      // and the firing crew member's gunning styles, and their mastery when asked (SotG ch. 6)
+      const tr = SR.weaponTrade(w, { dire: p.dire, piercing: p.piercing, melt: p.melt === true, mastery: p.mastery === true }, pb, chk.kind === "attack" && fm === "single" ? "attack" : "save", gunRow);
       const trWhy = tr.notes.length ? ` [${tr.notes.join(", ")}]` : "";
       // jpesus (#65, 17 Nov): while a GM ship's token is off the players' map, its lines go to the GM only; a hit
       // still shows its damage on the party's own ship sheet. Here: every line and roll of this shot, including the
@@ -249,10 +253,16 @@ function apply(camp, cid, gm, type, p, h) {
         if (!expr) return { total: 0, expr: "" };
         let r = rollDice(expr);
         if (s.status && s.status.boost && s.status.boost.weapons) { const r2 = rollDice(expr); if (r2.total > r.total) r = r2; s.status.boost.weapons = false; }
+        // Payload Delivery: a tertiary or quaternary weapon's dice showing 1 or 2 are rolled again, once
+        let detail = r.detail, total = r.total, again = 0;
+        if (gunRow && SR.activeStyles(gunRow).includes("Payload Delivery") && ["tertiary", "quaternary"].includes(SR.catOf(w))) {
+          for (const d of SR.lowDice(r.detail)) { const r2 = rollDice("1d" + d.sides); total += r2.total - d.v; detail += " " + r2.detail; again++; }
+        }
         // vicious: a die at its maximum adds the weapon's number; dire, piercing and melt move damage as chosen
-        const vic = SR.viciousBonus(w, r.detail), more = [vic ? `vicious +${vic}` : "", tr.dmg ? `${tr.notes.join(", ")}: ${tr.dmg > 0 ? "+" : ""}${tr.dmg}` : ""].filter(Boolean);
+        const vic = SR.viciousBonus(w, detail), more = [again ? `payload delivery: ${again} rolled again, ${total} now` : "", vic ? `vicious +${vic}` : "",
+          tr.dmg ? `${tr.notes.join(", ")}: ${tr.dmg > 0 ? "+" : ""}${tr.dmg}` : ""].filter(Boolean);
         rollMsg(r, expr, `${s0.hidden ? s0.name : A}: ${w.name} damage${tag ? ` (${tag})` : crit ? " (critical)" : ""}${more.length ? ` [${more.join("; ")}]` : ""}`, "damage");
-        return { total: Math.max(0, r.total + vic + tr.dmg), expr };
+        return { total: Math.max(0, total + vic + tr.dmg), expr };
       };
       const hurtShip = (ship, amount, crit, tok) => {
         const r = SR.takeDamage(shipOf(ship.id), amount, w.type, { crit });
@@ -293,9 +303,10 @@ function apply(camp, cid, gm, type, p, h) {
         for (const [ship, tok] of hit) {
           const saved = dexSave(ship, tok, dc, atk === "dis" ? ["a shot at disadvantage"] : [], []);
           // a ship in the cube whose token is off the players' map: its save and its lines are the GM's (jpesus, #65)
-          line(`${shownOf(ship, tok)} ${saved ? "saves: no damage" : `fails: ${dmg.total} ${SR.damageType(w.type)} damage`}.`, !!tok.hidden);
-          if (!saved && dmg.total) hurtShip(ship, dmg.total, false, tok);
-          if (gm || !tok.hidden) result.ships.push({ saved, damage: saved ? 0 : dmg.total });   // a player isn't told of a ship they can't see
+          const lost = dmg.total + tr.onFail;   // Payload Mastery: more on a failed save
+          line(`${shownOf(ship, tok)} ${saved ? "saves: no damage" : `fails: ${lost} ${SR.damageType(w.type)} damage`}.`, !!tok.hidden);
+          if (!saved && lost) hurtShip(ship, lost, false, tok);
+          if (gm || !tok.hidden) result.ships.push({ saved, damage: saved ? 0 : lost });   // a player isn't told of a ship they can't see
         }
       } else if (chk.kind === "attack") {
         const mode = SR.rollMode({ adv: chk.adv, dis: chk.dis }, ["adv", "dis"].includes(p.mode) ? p.mode : "normal");
@@ -333,7 +344,7 @@ function apply(camp, cid, gm, type, p, h) {
         if (nat1 && dmg.expr) { const top = SR.maxOf(SR.damageExpr(s0, w, false)) + (typeof SR.weaponProp(w, "vicious") === "number" ? SR.weaponProp(w, "vicious") : 0) + tr.dmg; if (top > dmg.total) { line(`A natural 1 on the save: the damage counts as its maximum, ${top}.`); dmg.total = top; } }
         // an Attack Run with a tertiary weapon: + its feet / 50, up to the ship's Strength (at least 1)
         if (st00.fx.runVs === t0.id && st00.fx.runFeet >= 150) dmg.total += clamp(Math.floor(st00.fx.runFeet / 50), 1, Math.max(1, Math.floor((int((s0.abilities || {}).str, 10) - 10) / 2)));
-        const amount = saved ? Math.floor(dmg.total / 2) : dmg.total;
+        const amount = saved ? Math.floor(dmg.total / 2) : dmg.total + tr.onFail;   // Payload Mastery: more on a failed save
         line(`${T} ${saved ? "saves: half damage" : "fails"}: ${amount} ${SR.damageType(w.type)} damage.`);
         if (amount) hurt(amount, false);
         result = { saved, damage: amount };
