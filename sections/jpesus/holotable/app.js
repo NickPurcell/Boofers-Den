@@ -279,8 +279,35 @@
          <button class="btn small amber-fill" id="restoreLatest">Restore latest backup</button> <span class="muted">or pick one in the GM tab</span>`
       : `⚠ The table's save is missing. The GM needs to restore a backup before play can continue.`;
     $('#campName').textContent = S.st.name;
+    const ck = S.st.clock, clk = $('#clock');   // in-game time (9.18): everyone sees it, the GM sets it
+    clk.classList.toggle('hidden', !ck && !isGM());
+    clk.textContent = ck ? `🕑 Day ${n0(ck.day)} · ${String(Math.floor(n0(ck.min) / 60)).padStart(2, '0')}:${String(n0(ck.min) % 60).padStart(2, '0')}` : '🕑 Set the time';
+    clk.disabled = !isGM(); clk.classList.toggle('ghost', !ck);
     const gmTag = n => (/^\s*gm\s*$/i.test(n || '') ? '' : ' (GM)');
     $('#online').innerHTML = S.st.online.map(o => `<span class="pill ${o.gm ? 'gm' : ''}">${esc(o.name)}${o.gm ? gmTag(o.name) : ''}</span>`).join('');
+  }
+  $('#clock').addEventListener('click', () => { if (isGM()) openClock(); });
+  function openClock() {
+    const ck = S.st.clock || { day: 1, min: 8 * 60 };
+    const hhmm = `${String(Math.floor(ck.min / 60)).padStart(2, '0')}:${String(ck.min % 60).padStart(2, '0')}`;
+    modal(`<h3>🕑 The time in the story</h3>
+      <div class="row wrap"><label>Day<input id="ckDay" type="number" min="1" value="${n0(ck.day)}" style="width:90px"></label><label>Time<input id="ckTime" type="time" value="${hhmm}"></label>
+        <button class="btn small" id="ckSet">Set</button>${S.st.clock ? '<button class="btn small ghost" id="ckOff" title="Hide the clock">Hide clock</button>' : ''}</div>
+      <h4 style="margin-top:12px">Move time on</h4>
+      <div class="row wrap">${[['+10 min', 10, ''], ['+1 hour', 60, ''], ['Short rest', 60, 'short rest'], ['Long rest', 480, 'long rest'], ['+1 day', 1440, '']].map(([t, m, w]) => `<button class="btn small" data-ck="${m}" data-why="${w}">${t}</button>`).join('')}</div>
+      <div class="row wrap" style="margin-top:8px"><label>Or<input id="ckMins" type="number" min="1" placeholder="minutes" style="width:90px"></label><input id="ckWhy" maxlength="60" placeholder="why, e.g. the trip to Mos Shuuta" style="flex:1">
+        <button class="btn small" id="ckGo">Advance</button></div>
+      <label class="toggle" style="margin-top:8px"><input type="checkbox" id="ckSay" checked> say it in chat</label>
+      <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn ghost" id="ckClose">Close</button></div>`, box => {
+      box.onclick = async e => {
+        const t = e.target, say = $('#ckSay').checked;
+        if (t.id === 'ckClose') closeModal();
+        if (t.id === 'ckOff') { await act('clock.set', { off: true }); closeModal(); }
+        if (t.id === 'ckSet') { const [h, m] = ($('#ckTime').value || '08:00').split(':').map(Number); if (await act('clock.set', { day: +$('#ckDay').value || 1, min: (h || 0) * 60 + (m || 0) })) closeModal(); }
+        if (t.dataset.ck) { if (await act('clock.advance', { mins: +t.dataset.ck, why: t.dataset.why, announce: say })) closeModal(); }
+        if (t.id === 'ckGo' && +$('#ckMins').value > 0) { if (await act('clock.advance', { mins: +$('#ckMins').value, why: $('#ckWhy').value, announce: say })) closeModal(); }
+      };
+    });
   }
   $('#missingBar').addEventListener('click', async e => {
     if (e.target.id !== 'restoreLatest') return;
@@ -579,6 +606,60 @@
     if (ro && !+val) return '';
     return `<span class="misc-box" title="Misc bonus (feats, items, features)">${inp(path, +val || '', { ro, type: 'number', w: '40px', ph: '±' })}</span>`;
   }
+  // the party stash (6.9): what the party found and hasn't split yet. Anyone takes an item onto their own character;
+  // the GM puts things in (🎁 Loot in the GM tab), shares out the credits and removes things.
+  function stashBox(ch, ro) {
+    const st = S.st.stash;
+    if (!st && !isGM()) return '';
+    return `<div class="box stash"><h4>🎒 Party stash <span class="spacer"></span>${isGM() ? '<button class="btn tiny" data-act="stash-loot">🎁 Loot…</button>' : ''}</h4>
+      ${st && st.credits ? `<div class="row"><span><b>${n0(st.credits).toLocaleString()}</b> credits</span><span class="spacer"></span>${isGM() ? '<button class="btn tiny" data-act="stash-split">Share out…</button>' : ''}</div>` : ''}
+      ${st && st.items.length ? `<div class="list-rows">${st.items.map(it => `<div class="lr"><span class="nm">${it.qty > 1 ? n0(it.qty) + '× ' : ''}${esc(it.name)}${it.rar ? ` <span class="muted">${esc(it.rar)}${it.att ? ' · attunement' : ''}</span>` : ''}</span>
+        ${!ro ? `<button class="btn tiny" data-act="stash-take" data-sid="${esc(it.id)}" title="Put it in ${esc(ch.name)}'s gear">Take</button>` : ''}${isGM() ? `<button class="btn tiny ghost" data-act="stash-rm" data-sid="${esc(it.id)}" title="Remove from the stash">✕</button>` : ''}</div>`).join('')}</div>`
+        : '<p class="muted" style="margin:4px 0">Empty.</p>'}</div>`;
+  }
+  function openLoot() {   // the GM rolls loot (9.10): enhanced items by rarity from SW5e's list, plus credits, into the stash
+    const L = { rar: 'Premium', cat: '', n: 3, picks: [] };
+    const draw = async () => {
+      let list = [];
+      try { list = await equipList('enhanced'); } catch (e) { return toast(e.message, true); }
+      const cats = [...new Set(list.map(x => x.cat))].sort();
+      const pool = list.filter(x => (!L.rar || x.rar === L.rar) && (!L.cat || x.cat === L.cat));
+      const pick = () => pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+      if (!L.picks.length) L.picks = Array.from({ length: L.n }, pick).filter(Boolean);
+      $('#modalBox').innerHTML = `<h3>🎁 Loot</h3>
+        <div class="row wrap"><label>Rarity<select id="ltRar">${['', 'Standard', 'Premium', 'Prototype', 'Advanced', 'Legendary', 'Artifact'].map(r => `<option value="${r}" ${r === L.rar ? 'selected' : ''}>${r || 'Any'}</option>`).join('')}</select></label>
+          <label>Kind<select id="ltCat"><option value="">Any</option>${cats.map(c => `<option ${c === L.cat ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>
+          <label>How many<input id="ltN" type="number" min="1" max="10" value="${L.n}" style="width:70px"></label><button class="btn small" id="ltRoll">🎲 Roll</button></div>
+        <p class="muted" style="font-size:12px">${pool.length} SW5e enhanced items match. Untick any you don't want; 🎲 on a row rerolls it.</p>
+        <div class="list-rows">${L.picks.map((x, i) => `<div class="lr"><label class="toggle" style="flex:1"><input type="checkbox" class="ltOn" data-i="${i}" checked> ${esc(x.n)} <span class="muted">${esc(x.cat)} · ${esc(x.rar)}${x.att ? ' · attunement' : ''}</span></label><button class="btn tiny ghost" data-ltre="${i}" title="Roll another">🎲</button></div>`).join('') || '<p class="muted">Nothing matches; try another rarity or kind.</p>'}</div>
+        <div class="row wrap" style="margin-top:8px"><label>Credits<input id="ltCr" type="number" min="0" value="0" style="width:110px"></label></div>
+        <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn ghost" id="ltClose">Cancel</button><button class="btn primary" id="ltGo">Into the party stash</button></div>`;
+      $('#modalBox').onclick = async e => {
+        const t = e.target;
+        if (t.id === 'ltClose') return closeModal();
+        if (t.id === 'ltRoll') { L.rar = $('#ltRar').value; L.cat = $('#ltCat').value; L.n = Math.max(1, Math.min(10, +$('#ltN').value || 1)); L.picks = []; return draw(); }
+        if (t.dataset.ltre) { const x = pick(); if (x) L.picks[+t.dataset.ltre] = x; return draw(); }
+        if (t.id === 'ltGo') {
+          const items = [...document.querySelectorAll('.ltOn:checked')].map(c => L.picks[+c.dataset.i]).filter(Boolean).map(x => ({ name: x.n, qty: 1, rar: x.rar, att: x.att, notes: x.cat }));
+          if (await act('stash.add', { items, credits: +$('#ltCr').value || 0 })) { closeModal(); toast('Into the party stash'); }
+        }
+      };
+    };
+    modal('<p class="muted">Loading SW5e\'s enhanced items…</p>'); draw();
+  }
+  function openStashSplit() {
+    const st = S.st.stash || { credits: 0 };
+    const gmIds = new Set(Object.entries(S.st.players).filter(([, p]) => p.role === 'gm').map(([id]) => id));
+    modal(`<h3>Share out ${n0(st.credits).toLocaleString()} credits</h3>
+      <div class="ask-who">${chars().map(c => `<label class="toggle"><input type="checkbox" class="spChar" value="${esc(c.id)}" ${gmIds.has(c.owner) ? '' : 'checked'}> ${esc(c.name)}</label>`).join('')}</div>
+      <p class="muted" style="font-size:12px">Evenly; what doesn't divide stays in the stash.</p>
+      <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn ghost" id="spClose">Cancel</button><button class="btn primary" id="spGo">Share</button></div>`, box => {
+      box.onclick = async e => {
+        if (e.target.id === 'spClose') closeModal();
+        if (e.target.id === 'spGo') { const ids = [...box.querySelectorAll('.spChar:checked')].map(x => x.value); if (await act('stash.split', { chars: ids })) closeModal(); }
+      };
+    });
+  }
   function renderSheet(el) {
     const ch = selChar();
     if (!ch) {
@@ -626,6 +707,7 @@
         <button class="btn small amber" data-act="init">⚔ Initiative</button>
         ${pendingFor(ch.id) && !ro ? `<button class="btn small lvl-go" data-act="levelup">⬆ Level up${n0(pendingFor(ch.id).count) > 1 ? ' ×' + n0(pendingFor(ch.id).count) : ''}</button>` : ''}
         ${isGM() && !pendingFor(ch.id) ? '<button class="btn small ghost" data-act="grant" title="Give this character a new level">⬆ Grant level</button>' : ''}
+        ${isGM() && (S.st.levelUndo || {})[ch.id] ? `<button class="btn small ghost" data-act="undo-level" title="Put the sheet back to just before its last level, and grant the level again">↶ Undo level ${n0(S.st.levelUndo[ch.id])}</button>` : ''}
         <button class="btn small" data-act="token">◉ Token</button>
         <button class="btn small" data-act="export">⇩ Export</button>
         ${!ro ? '<button class="btn small danger" data-act="delete">Delete</button>' : ''}
@@ -658,7 +740,7 @@
       html += `<div class="stats-row">${R.ABILITIES.map(a => {
         const m = R.abilityMod(ch, a.key);
         return `<div class="stat ability"><div class="lbl">${a.name}</div>
-          <div class="val" data-roll="${d20(m)}" data-label="${a.name} check" data-d20="1">${R.fmt(m)}</div>
+          <div class="val" data-roll="${d20(m)}" data-label="${a.name} check" data-d20="1" data-check="${m}" title="Alt-click: a careful check (take 10)">${R.fmt(m)}</div>
           ${inp('abilities.' + a.key, +ch.abilities[a.key] || 10, { ro, type: 'number' })}</div>`;
       }).join('')}</div>
       <div class="grid g2">
@@ -686,10 +768,10 @@
             <span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${d20(b)}" data-label="${a.name} save" data-d20="1">${a.name}</span>
             ${miscBox('saveMisc.' + a.key, (ch.saveMisc || {})[a.key], ro)}</div>`;
         }).join('')}</div></div>
-        <div class="box" style="grid-row: span 2"><h4>Skills <span class="muted" style="text-transform:none;letter-spacing:0">click dot: none → proficient → expertise → half</span></h4><div class="list-rows">${R.SKILLS.map(s => {
+        <div class="box" style="grid-row: span 2"><h4>Skills <span class="muted" style="text-transform:none;letter-spacing:0">click dot: none → proficient → expertise → half · Alt-click a skill: careful check</span></h4><div class="list-rows">${R.SKILLS.map(s => {
           const b = R.skillBonus(ch, s.key), lv = +(ch.skills[s.key] || 0);
           return `<div class="lr"><button class="prof ${lv === 2 ? 'p2' : lv === 1 ? 'p1' : lv === 0.5 ? 'p05' : ''}" data-act="skill-prof" data-sk="${s.key}" ${ro ? 'disabled' : ''}></button>
-            ${(sr => `<span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${esc(sr.expr)}" data-label="${s.name}${sr.reliable ? ' (Reliable Talent)' : ''}" data-d20="1"${sr.reliable ? ' title="Reliable Talent: the d20 counts as at least 8"' : ''}>${s.name}</span>`)(R.skillRollExpr(ch, s.key))}<span class="ab">${s.ab}</span>
+            ${(sr => `<span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${esc(sr.expr)}" data-label="${s.name}${sr.reliable ? ' (Reliable Talent)' : ''}" data-d20="1" data-check="${b}" title="${sr.reliable ? 'Reliable Talent: the d20 counts as at least 8. ' : ''}Alt-click: a careful check (take 10)">${s.name}</span>`)(R.skillRollExpr(ch, s.key))}<span class="ab">${s.ab}</span>
             ${miscBox('skillMisc.' + s.key, (ch.skillMisc || {})[s.key], ro)}</div>`;
         }).join('')}</div></div>
       </div>`;
@@ -773,6 +855,7 @@
             <td>${inp(`equipment.${i}.equipped`, e.equipped, { ro, type: 'checkbox' })}</td>
             <td>${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Empty.</td></tr>'}
           </tbody></table></div>
+        ${stashBox(ch, ro)}
         <div class="box"><h4>Features & Traits <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-feature" title="Feats, class features, maneuvers, fighting styles, lightsaber forms, ventures">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-feature" title="Write a feature by hand">custom</button>' : ''}</h4>
           <div class="feature-list">${(ch.features || []).map((f, i) => `<div class="feature-row">
             <span class="feature-name" data-feature-tip="${i}" tabindex="0">${esc(f.name || 'Feature')}</span>
@@ -832,6 +915,14 @@
   $('#sheet').addEventListener('click', async e => {
     const ch = selChar();
     const r = e.target.closest('[data-roll]');
+    // a careful check (Wretched Hives, audit 11.6): Alt-click a check when there's time and no disadvantage. It counts
+    // as a 10 on the d20 (15 with advantage) plus the check's bonus, posted like any roll.
+    if (r && ch && e.altKey && r.dataset.check !== undefined) {
+      const mode = rollModeFromEvent(e);
+      if (mode === 'dis') return toast("A careful check can't be made with disadvantage.", true);
+      const t = mode === 'adv' ? 15 : 10, b = +r.dataset.check || 0;
+      return roll(`${t}${b >= 0 ? '+' : ''}${b}`, `${r.dataset.label} (careful check: took ${t})`, { charId: ch.id, kind: 'check' });
+    }
     if (r && ch) return roll(r.dataset.roll, `${r.dataset.label}`, { d20: !!r.dataset.d20, mode: rollModeFromEvent(e), charId: ch.id });
     const b = e.target.closest('[data-act]'); if (!b || !ch) return;
     const a = b.dataset.act, i = +b.dataset.i, ro = !canEdit(ch);
@@ -926,6 +1017,13 @@
       case 'dmg': { const at = ch.attacks[i]; roll(R.damageExpr(ch, at), `${at.name} — ${at.type || ''} damage`, { charId: ch.id, kind: 'damage' }); break; }
       case 'crit': { const at = ch.attacks[i], cd = R.critDamage(ch, at); roll(cd.expr, `${at.name} — CRITICAL ${at.type || ''} damage${cd.brutal ? ` (Brutal Critical +${cd.brutal})` : ''}`, { charId: ch.id, kind: 'damage' }); break; }
       case 'add-class-res': mutate(c => { c.resources = R.withClassResources(c); }); break;
+      case 'stash-take': act('stash.take', { id: b.dataset.sid, charId: ch.id }); break;
+      case 'stash-rm': if (isGM()) act('stash.remove', { id: b.dataset.sid }); break;
+      case 'stash-loot': if (isGM()) openLoot(); break;
+      case 'stash-split': if (isGM()) openStashSplit(); break;
+      case 'undo-level':   // the GM's undo of the last level (2.15)
+        if (confirm(`Take back ${ch.name}'s level ${n0((S.st.levelUndo || {})[ch.id])}?\n\nThe sheet goes back to just before it (anything changed since is lost), and the level is granted again to take properly.`)) act('levelup.undo', { charId: ch.id });
+        break;
       case 'res-use': case 'res-back': {
         const res0 = (ch.resources || [])[i];
         if (a === 'res-use' && res0 && res0.key === 'second-wind') {   // Second Wind heals: 1d10 + fighter level (#65)
@@ -2500,13 +2598,14 @@
         <h4 style="margin-top:12px">Who's here</h4>
         ${Object.entries(S.st.players).map(([id, p]) => `<div>${esc(p.name)} ${p.role === 'gm' && !/^\s*gm\s*$/i.test(p.name || '') ? '<span class="muted">(GM)</span>' : ''} ${S.st.online.some(o => o.clientId === id) ? '<span style="color:var(--green)">● online</span>' : '<span class="muted">offline</span>'}
           <span class="muted">— ${chars().filter(c => c.owner === id).map(c => esc(c.name)).join(', ') || 'no characters'}</span>${id !== clientId && !S.st.online.some(o => o.clientId === id) && !chars().some(c => c.owner === id) ? ` <button class="btn tiny ghost" data-rmplayer="${esc(id)}" title="Remove this old entry from the list (offline, no characters)" aria-label="Remove ${esc(p.name)} from the player list">✕</button>` : ''}</div>`).join('')}
-        <div class="row" style="margin-top:12px"><button class="btn small danger" id="clearChat">Clear chat log</button></div>
+        <div class="row" style="margin-top:12px"><a class="btn small" href="${API}?op=chatlog" download title="The whole chat the table keeps (the last 400 messages), as a text file">⇩ Download chat log</a><button class="btn small danger" id="clearChat">Clear chat log</button></div>
       </div>
       <div class="box"><h4>Level ups</h4>
         <p style="margin-top:0" class="muted">After a big fight or a hard-won conversation, give the party a level. Each player gets a pop-up and picks how to level.
           Someone missed the session? Grant just their character, and you can level it for them.</p>
         <button class="btn small amber" id="gmGrant">⬆ Grant a level…</button>
         <button class="btn small" id="gmXp" title="Give the party XP and split it; you're told who has enough to level">★ Award XP…</button>
+        <button class="btn small" id="gmLoot" title="Roll SW5e enhanced items by rarity, plus credits, into the party stash">🎁 Loot…</button>
         <button class="btn small" id="gmAsk" title="Everyone roll Perception, a group check, a secret Insight roll for a player…">🎲 Ask for a roll…</button>
         <label class="toggle" style="margin-top:8px" title="A table rule: whether players may take the hit die's maximum instead of the average or a roll">
           <input type="checkbox" id="gmHpMax" ${S.st.hpMax !== false ? 'checked' : ''}> Players may take maximum hit points when levelling</label>
@@ -2584,10 +2683,11 @@
     const id = e.target.id;
     if (id === 'copyLink') navigator.clipboard?.writeText(location.origin + location.pathname).then(() => toast('Link copied'));
     if (id === 'doRename') act('campaign.rename', { name: $('#campRename').value });
-    if (id === 'clearChat' && confirm('Clear the chat log for everyone?')) act('chat.clear');
+    if (id === 'clearChat' && confirm('Clear the chat log for everyone?\n\nTip: "Download chat log" keeps a copy first.')) act('chat.clear');
     if (id === 'gmGrant') openGrant();
     if (id === 'gmXp') openAwardXp(0);
     if (id === 'gmAsk') openAskRoll();
+    if (id === 'gmLoot') openLoot();
     if (id === 'restoreBtn') $('#restoreFile').click();
     if (id === 'showBackups') {
       post('backups', {}).then(r => {
@@ -3066,7 +3166,9 @@
     const avgGain = Math.max(1, hd / 2 + 1 + newCon) + retro;
     const maxGain = Math.max(1, hd + newCon) + retro;
     if (W.hpMode === 'max' && S.st.hpMax === false) W.hpMode = 'average';
-    const payload = { charId, className: cls, hpMode: W.hpMode, archetype: archDue && W.archetype ? W.archetype : undefined, hitDie: hd,
+    const unmet = !k && cls ? R.multiclassUnmet(ch, cls) : [];   // multiclassing prerequisites (2.12): the GM may allow it
+    if (unmet.length && !isGM()) error = error || `Multiclassing into ${cls}: ${unmet.join('; ')}. Ask your GM.`;
+    const payload = { charId, className: cls, hpMode: W.hpMode, archetype: archDue && W.archetype ? W.archetype : undefined, hitDie: hd, override: unmet.length && isGM() ? true : undefined,
       asi: asi || undefined, feat: feat || undefined,
       features: (W.auto || []).filter(f => !f.have).map(f => ({ name: f.name, text: f.text })).slice(0, 20), powers: W.powers.filter(p => p.name.trim()).slice(0, 20) };
     return { ch, after, cls, k, newClassLevel, before, due, asiOn, archDue, archTerm, hd, oldCon, newCon, retro, avgGain, maxGain, payload, error };
@@ -3086,7 +3188,8 @@
           <b>${esc(k.name)}</b> ${n0(k.level)} → ${n0(k.level) + 1}${k.archetype ? `<br><span class="muted">${esc(k.archetype)}</span>` : ''}</label>`).join('')}
           <label class="choice ${W.cls === '__new' ? 'on' : ''}"><input type="radio" name="cls" data-w="cls" value="__new" ${W.cls === '__new' ? 'checked' : ''}><b>Multiclass</b><br><span class="muted">start a new class at 1</span></label></div>
         ${W.cls === '__new' ? `<div class="row" style="margin-top:6px"><select data-w="newCls"><option value="">Pick a class…</option>${others.map(c => `<option ${c === W.newCls ? 'selected' : ''}>${c}</option>`).join('')}</select>
-          <span class="muted" style="font-size:12px">Multiclassing usually needs 13+ in the new class's key ability; check with your GM.</span></div>` : ''}
+          ${(un => un.length ? `<span class="wiz-warn" style="font-size:12px">⚠ ${esc(un.join('; '))}. ${isGM() ? 'As GM you can allow it anyway.' : 'Ask your GM: only they can allow it.'}</span>`
+            : W.newCls ? `<span class="muted" style="font-size:12px">Prerequisites met. A new class gives its multiclass proficiencies: ${esc(R.MC_PROFS[W.newCls] || 'none')}.</span>` : '')(W.newCls ? R.multiclassUnmet(ch, W.newCls) : [])}</div>` : ''}
         ${P.archDue ? `<div class="arch-pick">
           <p class="muted" style="margin:6px 0 4px">At ${esc(P.cls)} level 3 you choose your ${esc(P.archTerm)}. You choose it once, and it gives you features as you level.</p>
           <div class="row wrap"><button class="btn small ${W.archetype ? '' : 'amber'}" data-wa="arch-menu" aria-expanded="${W.archMenu ? 'true' : 'false'}">${W.archetype ? 'Change' : 'Pick'} ${esc(P.archTerm)} ▾</button>
