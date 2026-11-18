@@ -531,6 +531,17 @@ function applyAction(camp, cid, gm, type, p) {
         clean.xp = old.xp;
         clean.hp = Object.assign({}, clean.hp, { max: (old.hp || {}).max });
       }
+      // a player's brand-new sheet under the lock starts at 1st level with no XP and its class's 1st-level hit points
+      // (the die's maximum + Con); the GM grants what comes after (follow-up to #191's review)
+      if (!gm && !old && camp.sheetLock) {
+        const k = (clean.classes || [])[0] || { name: "Fighter" };
+        clean.classes = [{ name: k.name, level: 1, archetype: "" }];
+        clean.xp = 0;
+        const hp1 = Math.max(1, hitDieFor(k.name, k.hitDie) + abMod(clean, "con"));
+        clean.hp = Object.assign({}, clean.hp, { max: Math.min(num((clean.hp || {}).max, hp1) || hp1, hp1) });
+      }
+      // and current hit points never above the maximum the GM holds
+      if (!gm && camp.sheetLock && clean.hp) clean.hp.current = Math.min(num(clean.hp.current, 0), num(clean.hp.max, 0));
       if (!gm) {
         const lc = (v) => String(v || "").trim().toLowerCase();
         const newSpecies = !old || lc(old.species) !== lc(clean.species);

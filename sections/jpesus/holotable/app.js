@@ -205,7 +205,7 @@
     if (window.HTA) HTA.sync();   // table audio: keep this screen in step, refresh the GM's audio box
     if (window.HTB) {
       HTB.renderShipsSafe();
-      const v = JSON.stringify(S.st.variants || []);
+      const v = JSON.stringify([S.st.variants || [], !!S.st.statBlocksHidden]);   // the variants, and the GM's stat-block switch (9.17)
       if (v !== S.variantsSeen) { S.variantsSeen = v; if (!$('#rules .lib') && !($('#rulesSearch') || {}).value) renderRules(); }
     }
     renderMapTools(); loadMapBg(); drawMap();
