@@ -1951,3 +1951,25 @@ test("tokens: Tiny creatures and elevation (audit 8.14, 8.15)", async () => {
   assert.equal((await p1.act("token.update", { id, fields: { elev: 10 } })).code, 403, "only the GM or the token's owner");
   assert.equal((await p1.poll()).data.state.map.tokens.find((x) => x.id === id).tiny, true, "players see it Tiny too");
 });
+
+test("map: anyone pings (once a second each); the GM draws and clears (audit 8.13)", async () => {
+  const { gm, p1 } = await table();
+  assert.equal((await p1.act("map.ping", { x: 3.5, y: 2.25 })).code, 200);
+  await p1.act("map.ping", { x: 9, y: 9 });   // too soon: dropped
+  let pings = (await gm.poll()).data.state.pings;
+  assert.equal(pings.length, 1);
+  assert.deepEqual([pings[0].x, pings[0].y, pings[0].name, pings[0].gm], [3.5, 2.25, "Sam", false]);
+  assert.equal((await p1.act("map.ping", { x: "nope" })).code, 400);
+  assert.equal((await p1.act("map.draw", { pts: [0, 0, 1, 1] })).code, 403, "drawing is the GM's");
+  assert.equal((await gm.act("map.draw", { pts: [0, 0, 1, 1.5, 2, 9999], c: "#ef5350" })).code, 200);
+  assert.equal((await gm.act("map.draw", { pts: [1] })).code, 400, "a stroke needs two points");
+  await gm.act("map.draw", { pts: [5, 5, 6, 6], c: "javascript:alert(1)" });
+  let d = (await p1.poll()).data.state.map.drawings;
+  assert.equal(d.length, 2, "players see the drawings");
+  assert.deepEqual(d[0].pts, [0, 0, 1, 1.5, 2, 300], "clamped to the board's reach");
+  assert.equal(d[1].c, "#ffd27a", "only the palette's colours");
+  await gm.act("map.drawClear", { id: d[0].id });
+  assert.equal((await gm.poll()).data.state.map.drawings.length, 1);
+  await gm.act("map.drawClear", {});
+  assert.equal((await gm.poll()).data.state.map.drawings, undefined, "none left");
+});

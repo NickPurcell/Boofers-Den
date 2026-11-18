@@ -1311,9 +1311,10 @@
         <label class="mini">cols <input type="number" value="${n0(mp.cols)}" data-mset="cols"></label>
         <label class="mini">rows <input type="number" value="${n0(mp.rows)}" data-mset="rows"></label>
         <label class="toggle"><input type="checkbox" data-mset="showGrid" ${mp.showGrid ? 'checked' : ''}> grid</label>
+        <button class="btn small ${M.drawMode ? 'primary' : ''}" data-mact="draw" title="Draw on the map for everyone to see (drag). Double-click anywhere to ping.">✎ Draw</button>${M.drawMode ? `<span class="draw-colors">${['#ffd27a', '#4fc3f7', '#ef5350', '#66bb6a', '#ffffff'].map(c => `<button class="draw-col ${M.drawColor === c ? 'on' : ''}" data-mact="dcol" data-c="${c}" style="background:${c}" aria-label="Colour ${c}"></button>`).join('')}</span>` : ''}${(mp.drawings || []).length ? `<button class="btn small ghost" data-mact="draw-clear">clear drawings</button>` : ''}
         <button class="btn small" data-mact="npc">＋ Token</button>${window.HTC && HTC.wallsButton ? HTC.wallsButton() : ''}
         ${mp.tokens.some(t => t.moves) || (mp.props || []).some(x => x.moves) ? '<button class="btn small amber" data-mact="play-moves" title="Play the scene movements on this board now, for everyone">▶ Play movements</button>' : ''}
-        <input type="file" id="bgFile" accept="image/*" hidden>` : '<span class="muted">Drag your token to move it · drag empty space to pan · scroll to zoom</span>'}`;
+        <input type="file" id="bgFile" accept="image/*" hidden>` : '<span class="muted">Drag your token to move it · drag empty space to pan · scroll to zoom · double-click to ping</span>'}`;
   }
   $('#mapTools').addEventListener('click', async e => {
     const b = e.target.closest('[data-mact]'); if (!b) return;
@@ -1322,6 +1323,9 @@
     if (a === 'zout') zoomAt(w / 2, h / 2, 0.8);
     if (a === 'z100') zoomAt(w / 2, h / 2, 1 / CAM.z);
     if (a === 'zfit') fitBoard();
+    if (a === 'draw') { M.drawMode = !M.drawMode; M.drawColor = M.drawColor || '#ffd27a'; canvas.classList.toggle('drawing', M.drawMode); renderMapTools(); }
+    if (a === 'dcol') { M.drawColor = b.dataset.c; renderMapTools(); }
+    if (a === 'draw-clear' && confirm('Clear every drawing on this map?')) act('map.drawClear', {});
     if (a === 'place') {   // drop the token in the middle of what you're looking at
       const g = S.st.map.gridSize;
       await act('token.add', { charId: S.selected, x: Math.floor((w / 2 - CAM.x) / CAM.z / g), y: Math.floor((h / 2 - CAM.y) / CAM.z / g) });
@@ -1669,6 +1673,7 @@
       const st = A.stamp, im = img(st.src);
       if (im) { ctx.globalAlpha = 0.6; const w = st.w * g, h = st.h * g; ctx.drawImage(im, A.hover.x - w / 2, A.hover.y - h / 2, w, h); ctx.globalAlpha = 1; }
     }
+    drawDrawings(g, z);   // the GM's drawings (8.13)
     if (isGM()) drawScripts(g, z);
     if (window.HTC) HTC.under(ctx, g, z);   // combat view (reachable squares)
     // tokens
@@ -1716,7 +1721,42 @@
       ctx.globalAlpha = 1;
     }
     if (window.HTC) HTC.over(ctx, g, z);    // combat view (targets, results)
+    drawPings(g, z);
   }
+  // ---- "look here" and the GM's quick drawings (audit 8.13)
+  const PINGS = {};   // ping id -> when this screen first saw it, so each pulses once, for 2.5 s
+  function drawPings(g, z) {
+    const t = performance.now(); let live = false;
+    for (const p of S.st.pings || []) {
+      if (!PINGS[p.id]) PINGS[p.id] = t;
+      const k = (t - PINGS[p.id]) / 2500; if (k >= 1) continue; live = true;
+      const cx = p.x * g, cy = p.y * g, col = p.gm ? themeHex('amber', '#ffb74d') : themeHex('holo', '#4fc3f7');
+      for (const off of [0, 0.33]) {
+        const kk = (k + off) % 1;
+        ctx.beginPath(); ctx.arc(cx, cy, g * (0.3 + 1.4 * kk), 0, Math.PI * 2);
+        ctx.strokeStyle = rgba(col, 1 - kk); ctx.lineWidth = 4 / z; ctx.stroke();
+      }
+      ctx.font = `700 ${Math.max(11 / z, g * 0.2)}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.lineWidth = 3 / z; ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.strokeText(p.name || '', cx, cy - g * 0.35); ctx.fillStyle = col; ctx.fillText(p.name || '', cx, cy - g * 0.35);
+    }
+    if (live && !drawPings.raf) drawPings.raf = requestAnimationFrame(() => { drawPings.raf = 0; drawMap(); });
+  }
+  function drawDrawings(g, z) {
+    const strokes = [...(S.st.map.drawings || []), ...(M.drag && M.drag.draw ? [{ c: M.drawColor, pts: M.drag.pts }] : [])];
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const d of strokes) {
+      if (!d.pts || d.pts.length < 4) continue;
+      ctx.beginPath(); ctx.moveTo(d.pts[0] * g, d.pts[1] * g);
+      for (let i = 2; i < d.pts.length; i += 2) ctx.lineTo(d.pts[i] * g, d.pts[i + 1] * g);
+      ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 6 / z; ctx.stroke();
+      ctx.strokeStyle = d.c || '#ffd27a'; ctx.lineWidth = 3 / z; ctx.stroke();
+    }
+  }
+  canvas.addEventListener('dblclick', e => {   // a double-click (or double-tap) on the map pings it for everyone
+    if (M.drawMode || A.stamp || M.script) return;
+    const { x, y } = mapXY(e), g = S.st.map.gridSize;
+    act('map.ping', { x: Math.round(x / g * 100) / 100, y: Math.round(y / g * 100) / 100 });
+  });
   // the longest of: full name, first word, first word cut short, initials — that fits the token's width
   function shortLabel(name, w) {
     name = String(name || '').trim(); if (!name) return '';
@@ -1767,6 +1807,7 @@
     if (e.button === 1) { e.preventDefault(); M.drag = { pan: true, sx: e.clientX, sy: e.clientY, cx: CAM.x, cy: CAM.y, moved: false }; capture(e); return; }
     if (e.button !== 0) return;
     const { x, y } = mapXY(e), g = S.st.map.gridSize;
+    if (M.drawMode && isGM()) { M.drag = { draw: true, pts: [x / g, y / g] }; capture(e); return; }   // the GM draws (8.13)
     if (!M.script && !A.stamp && window.HTC && HTC.down(x / g, y / g, e)) { drawMap(); return; }   // combat view
     if (M.script) {          // recording a scene movement: each click is the next waypoint
       if (M.script.path.length >= 12) return toast('That\'s the most waypoints for one piece (12).', true);
@@ -1816,6 +1857,11 @@
       return;
     }
     mapTip(null);
+    if (M.drag.draw) {
+      const { x, y } = mapXY(e), g = S.st.map.gridSize, pts = M.drag.pts;
+      if (pts.length < 600 && Math.hypot(x / g - pts[pts.length - 2], y / g - pts[pts.length - 1]) > 0.08) { pts.push(x / g, y / g); drawMap(); }
+      return;
+    }
     if (M.drag.pan) {
       const dx = e.clientX - M.drag.sx, dy = e.clientY - M.drag.sy;
       if (Math.abs(dx) + Math.abs(dy) > 3) M.drag.moved = true;
@@ -1832,6 +1878,10 @@
     if (!M.drag) return;
     const d = M.drag, g = S.st.map.gridSize;
     M.drag = null;
+    if (d.draw) {
+      if (d.pts.length >= 4) { const pts = d.pts.map(v => Math.round(v * 100) / 100); S.st.map.drawings = [...(S.st.map.drawings || []), { id: 'tmp', c: M.drawColor, pts }]; act('map.draw', { pts, c: M.drawColor }); }
+      drawMap(); return;
+    }
     if (d.pan) {
       if (d.moved) saveCam();
       else { const { x, y } = mapXY(e); if (!(window.HTC && HTC.tap(x / g, y / g, e))) { M.sel = null; M.selProp = null; } drawMap(); }   // combat view
