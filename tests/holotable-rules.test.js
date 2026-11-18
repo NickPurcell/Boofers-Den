@@ -21,6 +21,85 @@ test("max power level matches each SW5e class table at all twenty levels", () =>
   assert.deepEqual(maxLevels("Scout", "techMaxLevel"), [0, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5]);
 });
 
+test("archetypes that cast (audit 3.13): points and max power level from each one's SW5e table", () => {
+  const arch = (cls, archetype, L, abilities = {}) => R.casterInfo({ classes: [{ name: cls, level: L, archetype }], abilities });
+  const series = (cls, archetype, key) => Array.from({ length: 20 }, (_, i) => arch(cls, archetype, i + 1)[key]);
+  // force archetypes: 1 force point per class level from 3rd (plus Wis or Cha); 1st at 3, 2nd at 7, 3rd at 13, 4th at 17
+  const forceAt = [0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4];
+  for (const [cls, a] of [["Operative", "Beguiler Practice"], ["Berserker", "Marauder Approach"], ["Fighter", "Adept Specialist"],
+    ["Monk", "Aing-Tii Order"], ["Scholar", "Archaeologist Pursuit"]]) {
+    assert.deepEqual(series(cls, a, "forceMaxLevel"), forceAt, a);
+    assert.deepEqual(series(cls, a, "forceMax"), [0, 0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20], a);
+    assert.equal(arch(cls, a, 10).techMax, 0, a);
+  }
+  // tech archetypes: half the class level rounded up, from 3rd (plus Int); the same max power levels
+  for (const [cls, a] of [["Fighter", "Shield Specialist"], ["Berserker", "Industrial Approach"], ["Operative", "Saboteur Practice"], ["Scholar", "Slicer Pursuit"]]) {
+    assert.deepEqual(series(cls, a, "techMaxLevel"), forceAt, a);
+    assert.deepEqual(series(cls, a, "techMax"), [0, 0, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10], a);
+    assert.equal(R.techOnShortRest({ classes: [{ name: cls, level: 3, archetype: a }] }), true, `${a}: tech points back on a short rest`);
+  }
+  // the modifier is added once: Marauder 5 with Cha 16 has 5 + 3 force points
+  assert.equal(arch("Berserker", "Marauder Approach", 5, { cha: 16, wis: 10 }).forceMax, 8);
+  assert.equal(arch("Fighter", "Shield Specialist", 5, { int: 14 }).techMax, 5);
+  // an archetype that doesn't cast, the wrong class for the archetype, or no archetype: nothing
+  assert.equal(arch("Berserker", "Juyo Approach", 10).forceMax, 0);
+  assert.equal(arch("Fighter", "Marauder Approach", 10).forceMax, 0, "Marauder is a Berserker archetype");
+  assert.equal(arch("Fighter", "", 10).forceMaxLevel, 0);
+  // the three that give a caster powers of the other kind bring no pool of their own
+  assert.equal(arch("Engineer", "Artificer Engineering", 10).forceMax, 0);
+  assert.equal(arch("Sentinel", "Path of Synthesis", 10).techMax, 0);
+  // names typed or imported without their last word, and in any case
+  assert.equal(arch("berserker", "marauder", 7).forceMaxLevel, 2);
+  assert.equal(arch("Monk", "Aing-Tii", 3).forceMaxLevel, 1);
+  // an Archaeologist may cast with Intelligence: light side the better of Int and Wis, dark side of Int and Cha
+  const ar = arch("Scholar", "Archaeologist Pursuit", 5, { int: 18, wis: 12, cha: 8 });
+  assert.equal(ar.lightDC, 8 + 3 + 4);
+  assert.equal(ar.darkDC, 8 + 3 + 4);
+  assert.equal(ar.forceMax, 5 + 4);
+  const bg = arch("Operative", "Beguiler Practice", 5, { int: 18, wis: 12, cha: 8 });
+  assert.equal(bg.lightDC, 8 + 3 + 1, "other force archetypes use Wisdom for light side");
+});
+
+test("multiclass max power level (audit 3.14): the PHB's weighted caster level and its table", () => {
+  const mc = (...classes) => R.casterInfo({ classes: classes.map(([name, level, archetype]) => ({ name, level, archetype: archetype || "" })), abilities: {} });
+  // the PHB's own example: Marauder Approach berserker 4 (4/9 x 4 = 1.77) + guardian 3 (5/9 x 3 = 1.67) = 3rd: 2nd-level powers
+  assert.equal(mc(["Berserker", 4, "Marauder Approach"], ["Guardian", 3]).forceMaxLevel, 2);
+  assert.equal(mc(["Berserker", 4, "Marauder Approach"], ["Guardian", 3]).forceMax, 4 + 6, "points add up as before");
+  // consular 3 + sentinel 3 = 3 + 2.33, counts as 5th: 3rd-level powers (the highest single class alone is 2nd)
+  assert.equal(mc(["Consular", 3], ["Sentinel", 3]).forceMaxLevel, 3);
+  // guardian 4 (2.22) + sentinel 1 (0.78) counts as 3rd: 2nd (each alone is 1st)
+  assert.equal(mc(["Guardian", 4], ["Sentinel", 1]).forceMaxLevel, 2);
+  // engineer 5 + scout 6 = 5 + 3.33, counts as 8th: 4th (engineer 5 alone is 3rd)
+  assert.equal(mc(["Engineer", 5], ["Scout", 6]).techMaxLevel, 4);
+  // a scout's first level has no tech casting, so it adds nothing
+  assert.equal(mc(["Engineer", 5], ["Scout", 1]).techMaxLevel, 3);
+  // force and tech are counted separately; one source of each kind keeps its own table
+  const both = mc(["Consular", 5], ["Scout", 4]);
+  assert.equal(both.forceMaxLevel, 3);
+  assert.equal(both.techMaxLevel, 1);
+  // a non-casting class adds nothing
+  assert.equal(mc(["Guardian", 5], ["Fighter", 10]).forceMaxLevel, 2);
+  // never lower than one class's own table: sentinel 3 + guardian 1 is 2.9, 1st, but sentinel 3 alone casts at 2nd
+  assert.equal(mc(["Sentinel", 3], ["Guardian", 1]).forceMaxLevel, 2);
+  // capped at 9th
+  assert.equal(mc(["Consular", 18], ["Sentinel", 2]).forceMaxLevel, 9);
+  // where it comes from, for the sheet
+  assert.deepEqual(mc(["Berserker", 4, "Marauder Approach"], ["Guardian", 3]).sources.map((s) => [s.of, s.caster, s.maxLevel]),
+    [["Marauder Approach", "force", 1], ["Guardian", "force", 1]]);
+});
+
+test("max power level check (audit 4.5): above it is reported, at or below it isn't", () => {
+  const kira = { name: "Kira", classes: [{ name: "Consular", level: 5 }], abilities: {} };   // force up to 3rd, no tech
+  assert.equal(R.overMaxPowerLevel(kira, { level: 3, type: "force" }), null);
+  assert.equal(R.overMaxPowerLevel(kira, { level: 0, type: "tech" }), null, "at-will powers are always fine");
+  assert.deepEqual(R.overMaxPowerLevel(kira, { level: 4, type: "force" }),
+    { level: 4, max: 3, text: "Level 4 is above Kira's max force power level (3)." });
+  assert.equal(R.overMaxPowerLevel(kira, { level: 1, type: "tech" }).text, "Kira can't cast leveled tech powers yet (no max tech power level).");
+  // checked against a given casterInfo instead (the level-up wizard passes the level being gained)
+  const after = R.casterInfo({ classes: [{ name: "Consular", level: 7 }], abilities: {} });
+  assert.equal(R.overMaxPowerLevel(kira, { level: 4, type: "force" }, after), null);
+});
+
 test("Engineers and Scouts get tech points back on a short rest; others don't", () => {
   assert.equal(R.techOnShortRest(char([["Engineer", 1]])), true);
   assert.equal(R.techOnShortRest(char([["Scout", 2]])), true);

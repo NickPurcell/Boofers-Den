@@ -627,6 +627,12 @@ table.t td:first-child input { min-width: 140px; }
 .ship-abil { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .ship-abil .stat input[type=number] { width: 64px; }
 .ship-dmg { margin-top: 8px; gap: 6px; }
+.ship-state { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0 6px; padding: 6px 10px; border: 1px solid var(--amber); color: var(--amber); }
+.ship-state.lost { border-color: var(--red); color: var(--red); font-weight: 600; }
+.ship-state .dpip { display: inline-block; width: 10px; height: 10px; border: 1px solid currentColor; border-radius: 50%; margin: 0 1px; }
+.ship-state .dpip.on { background: currentColor; }
+.ship-lv { font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+.ship-lv select { width: auto; min-width: 0; }
 .ship-skills .lr .ab { text-transform: uppercase; }
 @media (max-width: 720px) { .ship-abil { grid-template-columns: repeat(2, 1fr); } .sb-abil { grid-template-columns: repeat(3, 1fr); } }
 #ships .t select { min-width: 120px; }

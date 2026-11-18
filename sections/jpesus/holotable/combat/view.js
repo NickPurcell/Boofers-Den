@@ -24,7 +24,7 @@
       unitTokens: Object.fromEntries(Object.entries(f.units || {}).map(([id, u]) => [id, u.token])), npcSpeed: f.npcSpeed,
       spent: f.spent, defenses: f.defenses || {}, effects: f.effects || [], conc: f.conc || {}, walls: ((s.map && s.map.walls) || []).concat(f.propWalls || []), variants: s.variants || [],
       npcStats: Object.fromEntries(Array.from(new Set(Object.keys(f.npcDefenses || {}).concat(Object.keys(f.npcBody || {})))).map((k) => [k,
-        Object.assign({ saves: (f.npcSaves || {})[k] || {}, mods: (f.npcMods || {})[k] || {} }, (f.npcDefenses || {})[k] || {}, (f.npcBody || {})[k] || {})])),
+        Object.assign({ saves: (f.npcSaves || {})[k] || {}, mods: (f.npcMods || {})[k] || {}, skills: (f.npcSkills || {})[k] || {} }, (f.npcDefenses || {})[k] || {}, (f.npcBody || {})[k] || {})])),
     }, R);
     for (const [id, u] of Object.entries(f.units || {})) { if (w.units[id] && u.down) w.units[id].down = true; if (w.units[id] && u.hidden) w.units[id].hidden = true; }
     // the GM's previews see the dark as the server does (step 5): the fog view says where the light falls
@@ -69,13 +69,21 @@
       const w = world(), me = w && w.units[u.id];
       const offs = me ? weapons.map((a) => ({ a, o: E.offhandOf(w, me, a) })).filter((x) => x.o.spec)
         .map(({ a, o }) => Object.assign({}, o.spec, { key: 'off:' + a.key, base: a.key, offhand: o.kind })) : [];
-      return weapons.concat(offs, powers);
+      return weapons.concat(offs, powers, MANEUVERS);
     }
     if (!gm()) return [];
     const known = UI.npc[u.id];
     if (!known) loadCreature(u.id);
-    return ((known && known.attacks) || []).concat(UI.custom && UI.custom.unit === u.id ? [UI.custom.spec] : []);
+    return ((known && known.attacks) || []).concat(UI.custom && UI.custom.unit === u.id ? [UI.custom.spec] : [], MANEUVERS);
   }
+  // Grapple, Shove and Help (#144): picked like an attack, then a target; Grapple and Shove use one attack of the Attack action
+  const MANEUVERS = [
+    { key: 'grapple', name: 'Grapple', maneuver: 'grapple', damage: 'Athletics contest', type: '', melee: 5 },
+    { key: 'shove-prone', name: 'Shove: knock prone', maneuver: 'shove', push: false, damage: 'Athletics contest', type: '', melee: 5 },
+    { key: 'shove-push', name: 'Shove: push 5 ft', maneuver: 'shove', push: true, damage: 'Athletics contest', type: '', melee: 5 },
+    { key: 'help', name: 'Help', maneuver: 'help', damage: 'an ally attacks it with advantage', type: '', melee: 5 },
+  ];
+  const helpWhy = (u, t) => (E.feetBetween(u, t) > E.FT ? `${t.name} is ${E.feetBetween(u, t)} ft away: Help needs it within 5 ft.` : '');
   // a stat block's limited abilities (audit 9.5): "Recharge X-6", "N/Day", "Recharges after a Short or Long Rest", and
   // legendary actions (3 a round, back at the start of its turn)
   const slug = (n) => String(n).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40);
@@ -126,7 +134,7 @@
         for (const x of m.saves || []) { const mm = /^(str|dex|con|int|wis|cha)\w*\s*([+-]\d+)/i.exec(x); if (mm) saves[mm[1].toLowerCase()] = +mm[2]; }
         const mods = Object.fromEntries(['str', 'dex', 'con', 'int', 'wis', 'cha'].filter((ab) => Number.isFinite(+(m.ab || {})[ab])).map((ab) => [ab, Math.floor(((m.ab || {})[ab] - 10) / 2)]));
         const reach = Math.max(5, ...atks.map((a) => a.melee || 0));
-        UI.npcAsked[id] = true; act('fight.npc', { id, speed: sp ? +sp[1] : 30, saves, mods, size: m.size || '', reach, resist: m.res || [], immune: m.imm || [], vuln: m.vul || [], condImmune: m.cimm || [], senses: m.senses || [] });
+        UI.npcAsked[id] = true; act('fight.npc', { id, speed: sp ? +sp[1] : 30, saves, mods, size: m.size || '', reach, resist: m.res || [], immune: m.imm || [], vuln: m.vul || [], condImmune: m.cimm || [], senses: m.senses || [], skills: m.skills || [] });
       }
       render(); H.drawMap();
     }).catch(() => { UI.npc[id] = { attacks: [] }; render(); });
@@ -156,6 +164,7 @@
   const targets = (spec) => {
     const w = world(), u = cur();
     if (!u || !spec) return [];
+    if (spec.maneuver) return Object.values(w.units).filter((t) => t.id !== u.id && t.side !== u.side && !E.isDead(t) && !(spec.maneuver === 'help' ? helpWhy(u, t) : E.maneuverCheck(w, u, t, spec.maneuver)));
     if (spec.power) {
       const ab = spec.power;
       if (ab.area) return [u];   // aimed at a point: always usable when the slot and the points are there
@@ -205,6 +214,12 @@
   async function attack(targetId) {
     const spec = armedSpec(), u = cur();
     if (!spec || !u) return;
+    if (spec.maneuver) {   // #144
+      const r = spec.maneuver === 'help' ? await send('fight.common', { key: 'help', target: targetId })
+        : await send('fight.' + spec.maneuver, { target: targetId, push: !!spec.push, multi: u.charId ? undefined : (UI.npc[u.id] || {}).multi || 1 });
+      if (r) { UI.armed = null; UI.target = null; render(); }
+      return;
+    }
     const r = spec.power ? await send('fight.use', Object.assign({ ability: spec.key, upcast: UI.upcast || 0, adv: UI.adv, dis: UI.dis }, spec.power.area ? { point: UI.aim } : { target: targetId }))
       : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.base || spec.key : specOut(spec), offhand: !!spec.offhand, no: UI.noRiders || [], add: UI.addRiders || {}, twoHands: !!UI.twoHands,
         multi: u.charId ? undefined : (UI.npc[u.id] || {}).multi || 1 });
@@ -262,6 +277,11 @@
     if (mine && u && f.active && bud && bud.action) for (const o of Object.values(w.units)) {
       if (!(o.conditions || []).includes('Ignited') || (o.id !== u.id && E.feetBetween(u, o) > E.FT)) continue;
       html += `<button class="btn small" data-ct="douse" data-id="${esc(o.id)}" title="Takes your action">🔥 Put out the flames${o.id === u.id ? '' : ` on ${esc(o.name)}`}</button>`;
+    }
+    if (mine && u && f.active) {   // a grapple (#144): escape one, or let go of one
+      const held = (w.effects || []).find((ef) => ef.unit === u.id && ef.condition === 'Grappled' && ef.source && w.units[ef.source]);
+      if (held && bud && bud.action) html += `<button class="btn small" data-ct="escape" title="Takes your action: your Athletics or Acrobatics against the grappler's Athletics">🤼 Escape ${esc(w.units[held.source].name)}'s grapple</button>`;
+      for (const ef of (w.effects || []).filter((x) => x.condition === 'Grappled' && x.source === u.id && w.units[x.unit])) html += `<button class="btn small ghost" data-ct="release" data-id="${esc(ef.unit)}" title="No action needed">Let go of ${esc(w.units[ef.unit].name)}</button>`;
     }
     if (mine && u && f.active && E.isDying(u) && !E.spentOf(w, u.id).ds) html += '<button class="btn small primary" data-ct="deathsave" title="At 0 hit points: 10 or more succeeds, a 1 counts twice, a 20 brings you back with 1 hit point">🎲 Death save</button>';
     if (mine && u && f.active) html += '<button class="btn small amber" data-ct="end">End turn ⏭</button>';
@@ -356,12 +376,12 @@
         const n = targets(a).length;
         const slot = a.power ? a.power.use : a.offhand ? 'bonus' : 'action';
         const lim = !u.charId && a.res && ((f.npcRes || {})[u.id] || []).find((r) => r.key === a.res);
-        const slotSpent = (bud && slot !== 'free' && !bud[slot] && !a.offhand && !(slot === 'action' && !a.power && bud.attacks)) || (lim && lim.used >= lim.max);   // a weapon attack: also the rest of an Attack action (#139)
+        const slotSpent = (bud && slot !== 'free' && !bud[slot] && !a.offhand && !(slot === 'action' && !a.power && a.maneuver !== 'help' && bud.attacks)) || (lim && lim.used >= lim.max);   // a weapon attack: also the rest of an Attack action (#139)
         const pool = a.power && Object.entries(a.power.cost || {})[0];
         const poorly = pool && (!u.pools[pool[0]] || u.pools[pool[0]].max - u.pools[pool[0]].used < pool[1]);
         const off = slotSpent || !n || poorly;
         const why = slotSpent ? `Your ${slot === 'bonus' ? 'bonus action' : slot} is used this turn` : poorly ? `Not enough ${pool[0] === 'force' ? 'force' : pool[0] === 'tech' ? 'tech' : pool[0]} points` : !n ? 'Nothing in reach or range' : a.power && a.power.targets === 'self' ? 'Use it on yourself' : 'Pick a target on the map';
-        const tag = a.power ? (a.power.attack ? sgn(a.power.attack.bonus) : a.power.save ? `DC ${a.power.save.dc}` : '') : sgn(a.bonus);
+        const tag = a.maneuver ? (a.maneuver === 'help' ? '' : sgn(E.contestBonus(u, 'athletics'))) : a.power ? (a.power.attack ? sgn(a.power.attack.bonus) : a.power.save ? `DC ${a.power.save.dc}` : '') : sgn(a.bonus);
         html += `<button class="btn small ct-atk ${a.power ? 'ct-power' : ''} ${UI.armed === a.key ? 'primary' : ''}" data-ct="arm" data-key="${esc(a.key)}" ${off ? 'disabled' : ''} aria-pressed="${UI.armed === a.key}"
           title="${esc(why)}">${esc(a.name)} <b>${esc(tag)}</b> <span class="muted">${esc(a.damage)}${a.type ? ' ' + esc(a.type) : ''} · ${a.power && a.power.targets === 'self' ? 'self' : a.range ? `${a.range[0]}${a.range[1] !== a.range[0] ? '/' + a.range[1] : ''} ft` : `${a.melee} ft`}${pool ? ` · ${pool[1]} ${pool[0] === 'force' ? 'FP' : pool[0] === 'tech' ? 'TP' : pool[0]}` : ''}${slot !== 'action' ? ` · ${slot === 'bonus' ? 'bonus' : slot}` : ''}</span></button>`;
       }
@@ -394,6 +414,16 @@
         html += `<div class="ct-row ct-preview" aria-live="polite">${!t ? `<span>${esc(ab.name)}: pick a target on the map (lit).</span>${up}<button class="btn tiny ghost" data-ct="disarm">Cancel</button>`
           : !pv.legal ? `<span>${esc(pv.why)}</span>` : `<span>${pv.html}</span>${up}<button class="btn small primary" data-ct="go">Use</button>`}</div>`;
         if (self && !UI.target) UI.target = u.id;
+      } else if (spec && spec.maneuver) {   // Grapple, Shove, Help (#144)
+        const t = UI.target && w.units[UI.target];
+        const why = t && (spec.maneuver === 'help' ? helpWhy(u, t) : E.maneuverCheck(w, u, t, spec.maneuver));
+        const knows = t && (t.charId || gm());
+        const theirs = t && (knows ? `the better of its Athletics ${sgn(E.contestBonus(t, 'athletics'))} and Acrobatics ${sgn(E.contestBonus(t, 'acrobatics'))}` : 'its Athletics or Acrobatics, whichever is better');
+        const wins = spec.maneuver === 'grapple' ? 'it is grappled' : spec.push ? 'it is pushed 5 ft away' : 'it is knocked prone';
+        html += `<div class="ct-row ct-preview" aria-live="polite">${!t ? `<span>${esc(spec.name)}: pick a creature on the map (lit in red).</span><button class="btn tiny ghost" data-ct="disarm">Cancel</button>`
+          : why ? `<span>${esc(why)}</span>`
+          : spec.maneuver === 'help' ? `<span><b>${esc(t.name)}</b>: the first attack an ally makes on it before your next turn has advantage. Takes your action.</span><button class="btn small primary" data-ct="go">Help</button>`
+          : `<span><b>${esc(t.name)}</b>, ${E.feetBetween(u, t)} ft: your Athletics ${sgn(E.contestBonus(u, 'athletics'))} against ${esc(theirs)}. If you win, ${wins}; a tie changes nothing.</span><button class="btn small primary" data-ct="go">${esc(spec.maneuver === 'grapple' ? 'Grapple' : 'Shove')}</button>`}</div>`;
       } else if (spec) {
         const t = UI.target && w.units[UI.target];
         const pv = t && E.preview(w, u.id, t.id, spec, { adv: UI.adv, dis: UI.dis });
@@ -426,6 +456,8 @@
     if (k === 'end') { UI.armed = UI.target = null; return send('fight.end', {}); }
     if (k === 'stand') return send('fight.stand', {});
     if (k === 'douse') return send('fight.douse', { target: el.dataset.id });
+    if (k === 'escape') { const u = cur(); return send('fight.escape', { skill: u && E.contestBonus(u, 'athletics') > E.contestBonus(u, 'acrobatics') ? 'athletics' : 'acrobatics' }); }
+    if (k === 'release') return send('fight.release', { target: el.dataset.id });
     if (k === 'common') return send('fight.common', { key: el.dataset.key });
     if (k === 'deathsave') return send('fight.deathsave', {});
     if (k === 'legend') return send('fight.npcres', { id: el.dataset.unit, op: 'use', key: 'legendary', n: +el.dataset.n || 1 });
