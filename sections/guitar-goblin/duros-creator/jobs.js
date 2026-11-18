@@ -5,7 +5,7 @@ import { bodyField, handField, HEAD_AT } from './anatomy.js';
 import { headBField } from './head-b-field.js';   // head B (head-sculpt.js), on the same toolkit
 import { outfitPieces } from './outfits.js';
 
-export const RES = { headB: 0.0041, body: 0.008, hand: 0.003, cloth: 0.005, gear: 0.0028 };
+export const RES = { headB: 0.0034, body: 0.008, hand: 0.003, cloth: 0.005, gear: 0.0028 };
 
 export function run(job, a) {
   if (job === 'headB') {   // head B: the same meshing and mouth line as A's, from its own field
