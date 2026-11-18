@@ -112,3 +112,10 @@ test("enhanced items (6.2): an item keeps its checked +N, and the server's own A
   assert.deepEqual(c.equipment.map((e) => e.bonus), [{ ac: 2 }, undefined]);
   assert.equal(c.ac, 10 + 1 + 2, "unarmored 10 + Dex, +2 from the worn item");
 });
+
+test("speed (5.11): an item's armor keeps its strength and cumbersome properties", async () => {
+  const { gm, sam, avery } = await table();
+  const av = await sheet(sam, avery);
+  await sam.act("char.save", { char: Object.assign({}, av, { equipment: [{ name: "Assault armor", qty: 1, equipped: true, armor: { kind: "heavy", ac: 17, str: 15, cumbersome: true } }] }) });
+  assert.deepEqual((await sheet(gm, avery)).equipment[0].armor, { kind: "heavy", ac: 17, str: 15, cumbersome: true });
+});

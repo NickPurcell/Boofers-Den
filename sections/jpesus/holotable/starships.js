@@ -64,6 +64,9 @@
   const SYSTEM_NOTES = ['', 'Disadvantage on ability checks', '1 slowed level', 'Disadvantage on attack rolls and saving throws',
     'Hull and shield maximums and shield regeneration halved', 'Permanently used', 'Catastrophic power failure: all primary systems fail'];
 
+  // realspace travel pace (SotG ch. 8): fast doubles the flying speed, with disadvantage on Probe and Scan checks and
+  // -5 to passive Scan; slow halves it, and the ship can travel stealthily
+  const PACES = { normal: { speed: 1 }, fast: { speed: 2 }, slow: { speed: 0.5 } };
   function cleanStatus(st) {
     st = st && typeof st === 'object' && !Array.isArray(st) ? st : {};
     const z = st.zero && typeof st.zero === 'object' && !Array.isArray(st.zero) ? st.zero : {};
@@ -91,6 +94,7 @@
       astro: clamp(int(st.astro), 0, 10), startup: clamp(int(st.startup), 0, 10),   // astrogation equations, start-up procedures done
       // the course choice the equations were worked for (rushes, careful): changing it restarts them (SotG ch. 8)
       course: { rush: clamp(int((st.course || {}).rush), 0, 10), careful: (st.course || {}).careful === true },
+      pace: own(PACES, st.pace) ? st.pace : 'normal',   // realspace travel pace (SotG ch. 8)
     };
     if (out.system >= 5 && !out.cond.includes('Used')) out.cond.push('Used');   // system damage 5 makes it used for good
     return out;
@@ -128,7 +132,7 @@
   // What the ship's conditions do to one of its rolls. kind: 'check' | 'save' | 'attack' | 'against' (an attack made
   // against the ship). ability: the ship ability ('str', 'dex', ...) for checks and saves.
   // Returns { adv: [reasons], dis: [reasons], fail: [reasons] }.
-  function rollEffects(ship, kind, ability) {
+  function rollEffects(ship, kind, ability, skill) {
     const st = statusOf(ship), out = { adv: [], dis: [], fail: [] };
     const add = (k, why) => out[k].push(why);
     const fx = st.fx;
@@ -144,6 +148,7 @@
     if (kind === 'against' && evade >= 2) add('dis', 'Evading');
     if (kind === 'check') {
       if (st.system >= 1) add('dis', 'System damage ' + st.system);
+      if (st.pace === 'fast' && (skill === 'probe' || skill === 'scan')) add('dis', 'Fast pace');
       if (has(st, 'Ionized')) add('dis', 'Ionized');
     }
     if (kind === 'save') {
@@ -817,6 +822,22 @@
   // fuel for a jump: one unit for the jump and one for each day (or part) in hyperspace, times the reactor's fuel use
   const jumpFuel = (ship, hours) => { const rx = own(REACTORS, reactorOf(ship)); return Math.ceil((1 + Math.ceil(int(Math.ceil(hours)) / 24)) * (rx ? rx.fuel : 1)); };
   const fuelOf = (ship) => { const m = /(\d+(?:\.\d+)?)/.exec(String((ship && ship.fuel) || '')); return m ? parseFloat(m[1]) : null; };
+  // realspace (SotG ch. 8): a day of flight (or an hour in atmosphere) burns a unit of fuel, times the reactor's use
+  const flyFuel = (ship, n) => { const rx = own(REACTORS, reactorOf(ship)); return Math.round(clamp(int(n), 0, 365) * (rx ? rx.fuel : 1) * 10) / 10; };
+  // its speed at its pace: fast doubles it, slow halves it
+  const travelSpeed = (ship) => Math.floor(speedOf(ship) * PACES[statusOf(ship).pace].speed);
+  // sample realspace travel times for an average ship at a normal pace, in minutes (low, high); a fast pace halves
+  // them (its speed doubles) and a slow one doubles them
+  const REALSPACE_TIMES = [['Surface of a planet to orbit', 1, 5], ['Orbit to a safe hyperspace jump distance', 1, 1], ["Orbit to the planet's moon", 10, 30],
+    ['Orbit to another planet in the same system', 120, 360], ['Orbit to the outer edge of the system', 720, 1440]];
+  function realspaceTime(row, pace) {
+    const f = 1 / ((own(PACES, pace) || PACES.normal).speed);
+    // a number of minutes as [amount, unit]: seconds under a minute, hours from an hour
+    const part = (m) => (m < 1 ? [Math.round(m * 60), 'second'] : m < 60 ? [Math.round(m * 10) / 10, 'minute'] : [Math.round(m / 6) / 10, 'hour']);
+    const [a, ua] = part(row[1] * f), [b, ub] = part(row[2] * f), unit = (n, u) => `${u}${n === 1 ? '' : 's'}`;
+    if (a === b && ua === ub) return `${a} ${unit(a, ua)}`;
+    return ua === ub ? `${a} to ${b} ${unit(b, ub)}` : `${a} ${unit(a, ua)} to ${b} ${unit(b, ub)}`;
+  }
   // a rushed jump's mishap: a d20 plus the equations completed (SotG's table)
   const MISHAPS = [
     [20, 'no adverse consequences'],
@@ -888,5 +909,5 @@
     setCondition, summary, SIZE_DATA, SHIELD_TYPES, REACTORS, COUPLINGS, SYSTEMS, POOLS, SYSTEM_NAMES, POWER_DIE, sizeOf, roleOf, reactorOf, couplingOf,
     shieldTypeOf, powerDie, powerDieText, powerCaps, diceOf, diceLeft, regenRate, boostDC, regenDC, boostedSpeed, startTurn, usePower, setPower,
     setDiceUsed, boost, regenerateShields, SQUARE_FT, SQUARES, squaresOf, FACING_NAMES, DIRS, gridFeet, turnSteps, turnCost, moveCost, inBounds, shipGap,
-    arcOf, INIT_SIZE_MOD, npcInitBonus, deploymentInfo, techniquesKnown, techDie, STOCK_COST, TIER_COST, minCrew, costs, REGIONS, HYPER_HOURS, START_UP, hyperClass, stepsFor, jumpHours, jumpFuel, fuelOf, mishapFor, MOD_TYPES, modsSummary, modCost, installDC, pastCapacity, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck };
+    arcOf, INIT_SIZE_MOD, npcInitBonus, deploymentInfo, techniquesKnown, techDie, STOCK_COST, TIER_COST, minCrew, costs, REGIONS, HYPER_HOURS, START_UP, hyperClass, stepsFor, jumpHours, jumpFuel, fuelOf, mishapFor, MOD_TYPES, modsSummary, modCost, installDC, pastCapacity, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck, PACES, flyFuel, travelSpeed, REALSPACE_TIMES, realspaceTime };
 });

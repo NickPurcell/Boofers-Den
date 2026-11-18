@@ -159,7 +159,9 @@ function apply(camp, cid, gm, type, p, h) {
       if (!sp.tok.length) throw new Invalid("Put ships on the space map first.");
       const order = [];
       for (const t of sp.tok) {
-        const s = shipOf(t.id); if (!s) continue;
+        let s = shipOf(t.id); if (!s) continue;
+        // a fight runs in rounds: realspace travel pace no longer applies (SotG ch. 8)
+        if (SR.statusOf(s).pace !== "normal") { s = JSON.parse(JSON.stringify(s)); s.status = Object.assign(SR.statusOf(s), { pace: "normal" }); putShip(s); }
         // a party ship goes at the lowest of its crew's initiative rolls; an enemy ship (or one with no crew sheets)
         // rolls a Dexterity check with its size's modifier
         const crew = (s.hidden ? [] : (s.crew || [])).map((c) => (typeof c.charId === "string" && Object.prototype.hasOwnProperty.call(camp.characters || {}, c.charId) ? camp.characters[c.charId] : null)).filter(Boolean);

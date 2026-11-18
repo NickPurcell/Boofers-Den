@@ -199,10 +199,11 @@ function cleanChar(ch) {
       ...(a.shots != null && a.shots !== "" && Number.isFinite(+a.shots) ? { shots: clamp(int(a.shots), 0, 999) } : {}),   // shots left in a Reload weapon (audit 6.6)
       ...(int(a.critRange, 20) < 20 ? { critRange: clamp(int(a.critRange, 20), 15, 20) } : {}) })),   // crits on this d20 or higher (19 = 19-20)
     powers: list(ch.powers, 150, (pw) => ({ name: s(pw.name, 80), level: clamp(int(pw.level), 0, 9), type: pw.type === "tech" ? "tech" : "force",
-      alignment: ["light", "dark"].includes(pw.alignment) ? pw.alignment : "universal", notes: s(pw.notes, 300), description: s(pw.description, 4000) })),
+      alignment: ["light", "dark"].includes(pw.alignment) ? pw.alignment : "universal", notes: s(pw.notes, 300), description: s(pw.description, 4000),
+      ...(s(pw.pre, 80).trim() ? { pre: s(pw.pre, 80).trim() } : {}) })),   // the power that must be known first (audit 2.11)
     features: list(ch.features, 150, (f) => ({ name: s(f.name, 80), text: s(f.text, 4000) })),
     equipment: list(ch.equipment, 200, (e) => ({ name: s(e.name, 80), qty: numOr(e.qty, 1), equipped: !!e.equipped, notes: s(e.notes, 200),
-      ...(e.armor && R.ARMOR_KINDS.includes(e.armor.kind) ? { armor: { kind: e.armor.kind, ac: clamp(int(e.armor.ac), 0, 30) } } : {}),
+      ...(R.cleanArmor(e.armor) ? { armor: R.cleanArmor(e.armor) } : {}),   // with its speed properties (audit 5.11)
       // weight in pounds each (audit 6.5) and cost in credits each (6.8), from SW5e's gear or typed; kept only when set
       ...(+e.wt > 0 ? { wt: Math.min(10000, Math.round(+e.wt * 100) / 100) } : {}), ...(+e.cost > 0 ? { cost: Math.min(1e9, Math.round(+e.cost)) } : {}),
       // an enhanced item's rarity, whether it requires attunement, and whether it's attuned (audit 6.3), kept only when set
@@ -606,6 +607,7 @@ function applyAction(camp, cid, gm, type, p) {
       clean.updated = now();
       if (!(camp.variants || []).includes("Simplified Forcecasting")) delete clean.forceAbility;   // only while the GM uses it
       chars[id] = clean;
+      Fight.woundsHealed(camp, id, clean);   // back at its hit point maximum: no wounded levels (the Wounds variant, #233)
       if (old) {   // the record of changes (12.5)
         const changes = sheetDiff(old, clean);
         if (changes.length) {
@@ -791,6 +793,7 @@ function applyAction(camp, cid, gm, type, p) {
         if (ini.turn < 0) { ini.turn = n - 1; ini.round = Math.max(1, ini.round - 1); }
       } else if (type === "init.start") {
         Object.assign(ini, { active: true, turn: 0, round: 1 });
+        if (camp.fight) camp.fight.strenuousAt = "";   // a new fight: Strenuous Combat's saves can be made again (#233)
         addChat(camp, { system: true, text: "Combat begins! Roll initiative." });
         combatMoves(camp);
       } else if (type === "init.clear") {
@@ -1316,7 +1319,7 @@ function cleanStashItem(e) {
     id: /^[a-z0-9]{4,20}$/.test(String(e.id || "")) ? String(e.id) : rid(),
     name, qty: clamp(int(e.qty, 1), 1, 999), notes: str(e.notes, 200),
     ...(RARITIES.includes(e.rar) ? { rar: e.rar } : {}), ...(e.att ? { att: true } : {}),
-    ...(e.armor && R.ARMOR_KINDS.includes(e.armor.kind) ? { armor: { kind: e.armor.kind, ac: clamp(int(e.armor.ac), 0, 30) } } : {}),
+    ...(R.cleanArmor(e.armor) ? { armor: R.cleanArmor(e.armor) } : {}),
   };
 }
 function cleanStash(st) {

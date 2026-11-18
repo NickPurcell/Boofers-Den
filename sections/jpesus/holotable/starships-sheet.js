@@ -52,7 +52,7 @@
   // prerequisites, and its installation check
   function modsHead(s) {
     const m = SR.modsSummary(s);
-    return `<p style="font-size:12px;margin:0 0 6px">${m.used} of ${m.cap} slots${m.over ? ` <b class="warn">(${m.over} over: each one past capacity adds 2 to its installation DC)</b>` : ''} · ${s.size === 'Tiny' ? 'no suites on a Tiny ship' : `${m.suites} of ${m.suiteMax} suites${m.suites > m.suiteMax ? ' <b class="warn">(too many)</b>' : ''}`}</p>`;
+    return `<p style="font-size:12px;margin:0 0 6px">${m.used} of ${m.cap} slots${m.over ? ` <b class="warn">(${m.over} over: each one past capacity adds ${SR.sizeRank(s) <= 2 ? 2 : 1} to its installation DC)</b>` : ''} · ${s.size === 'Tiny' ? 'no suites on a Tiny ship' : `${m.suites} of ${m.suiteMax} suites${m.suites > m.suiteMax ? ' <b class="warn">(too many)</b>' : ''}`}</p>`;
   }
   function modRow(s, x, i, ro, inp) {
     const pre = SR.prereqs(s, x), dc = SR.installDC(s, i);
@@ -76,8 +76,9 @@
     const sel = (k, opts) => `<select data-tv="${k}" ${ro ? 'disabled' : ''}>${opts.map(([v, l]) => `<option value="${esc(String(v))}" ${String(t[k]) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
     const regions = SR.REGIONS.map((r) => [r, r]);
     const when = hours == null ? (cls ? '' : 'No hyperdrive class on the sheet (Hyperdrive, above).') : `${hours < 24 ? `${hours} hours` : `${Math.round(hours / 24 * 10) / 10} days`} with a class ${cls} hyperdrive; ${fuel} units of fuel${have != null ? ` (it has ${have})` : ''}.`;
-    return `<details class="ship-build" data-sid="${esc(s.id)}-tv" style="margin-top:8px" ${buildOpen[s.id + '-tv'] ? 'open' : ''}><summary>Travel <span class="muted" style="font-size:12px">(hyperspace, astrogation, start-up)</span></summary>
-      <div class="row wrap" style="gap:6px;margin:6px 0;font-size:12px"><label class="ship-lv">From ${sel('from', regions)}</label><label class="ship-lv">to ${sel('to', regions)}</label>
+    return `<details class="ship-build" data-sid="${esc(s.id)}-tv" style="margin-top:8px" ${buildOpen[s.id + '-tv'] ? 'open' : ''}><summary>Travel <span class="muted" style="font-size:12px">(realspace, hyperspace, astrogation, start-up)</span></summary>
+      ${realspace(s, st, ro, have)}
+      <div class="row wrap" style="gap:6px;margin:6px 0;font-size:12px"><b>Hyperspace</b><label class="ship-lv">From ${sel('from', regions)}</label><label class="ship-lv">to ${sel('to', regions)}</label>
         <label class="ship-lv" title="Each rush: -5 on the astrogation checks, a day off the trip (or half of what's left under a day)">Rush ${sel('rush', [[0, 'none'], [1, '1 day'], [2, '2 days'], [3, '3 days']])}</label>
         <label class="toggle" title="+5 on the astrogation checks, and the trip takes twice as long"><input type="checkbox" data-tv="careful" ${t.careful ? 'checked' : ''} ${ro ? 'disabled' : ''}> careful</label></div>
       <p style="font-size:12px;margin:0 0 6px">${esc(when)}${st.astro > 0 ? ` <span class="muted">Course worked for: ${crs.rush ? `rushed ${crs.rush}` : 'no rush'}${crs.careful ? ', careful' : ''}; a different choice restarts the equations.</span>` : ''}</p>
@@ -90,6 +91,23 @@
         ${ro ? '' : `<label class="ship-lv">crew ${sel('crew', [['normal', 'the minimum'], ['half', 'half (-5)'], ['extra', '1.5 times (+5)']])}</label>
         <button class="btn tiny" data-sx="startup" title="An action: the crew leader's Intelligence (Piloting); advantage at full hull and shields, disadvantage under full hull">Emergency start-up check</button>`}</div>
     </details>`;
+  }
+  // realspace (SotG ch. 8): the pace, its speed at that pace, sample times, and fuel for days (or hours in atmosphere)
+  const PACE_NOTES = { normal: '', fast: 'Speed doubled; disadvantage on Probe and Scan checks, and -5 to passive Scan to notice threats.',
+    slow: 'Speed halved; it can travel stealthily (hiding, chapter 7).' };
+  function realspace(s, st, ro, have) {
+    ro = ro || inFight();   // travel waits until the fight is over (the server refuses it for players)
+    const t = TV[s.id], n = Math.max(1, parseInt(t.days, 10) || 1), rx = SR.flyFuel(s, 1);
+    const paces = ['normal', 'fast', 'slow'].map((v) => `<option value="${v}" ${st.pace === v ? 'selected' : ''}>${v}</option>`).join('');
+    return `<div class="row wrap" style="gap:6px;margin:6px 0;font-size:12px"><b>Realspace</b>
+        <label class="ship-lv" title="Travel pace: fast doubles the speed, slow halves it">pace <select data-sxc="pace" ${ro ? 'disabled' : ''}>${paces}</select></label>
+        <span>speed ${SR.travelSpeed(s)} ft${PACE_NOTES[st.pace] ? ` · <span class="muted">${esc(PACE_NOTES[st.pace])}</span>` : ''}</span></div>
+      <table class="t" style="font-size:12px;margin:0 0 6px"><tbody>${SR.REALSPACE_TIMES.map((r) => `<tr><td>${esc(r[0])}</td><td>${esc(SR.realspaceTime(r, st.pace))}</td></tr>`).join('')}
+        <tr><td colspan="2" class="muted">An average ship at this pace; difficult terrain (narrow canyons, tight formations) halves the speed.</td></tr></tbody></table>
+      ${ro ? '' : `<div class="row wrap" style="gap:6px;margin:0 0 8px;font-size:12px"><input type="number" min="1" max="365" data-tv="days" value="${n}" style="width:60px" title="How many">
+        <button class="btn tiny" data-sx="fly" data-where="realspace" title="A unit of fuel a day${rx !== 1 ? `, times ${rx} for its reactor` : ''}">days in realspace</button>
+        <button class="btn tiny" data-sx="fly" data-where="atmosphere" title="A unit of fuel an hour${rx !== 1 ? `, times ${rx} for its reactor` : ''}">hours in atmosphere</button>
+        <span class="muted">${SR.flyFuel(s, n)} units of fuel${have != null ? ` (it has ${have})` : ''}</span></div>`}`;
   }
   // what a ship like this costs to buy, build, upgrade, dock and crew (SotG chapters 3, 5 and 8)
   function costsBlock(s) {
@@ -197,6 +215,8 @@
     const bs = SR.boostedSpeed(s);
     if (lv) out.push(`Speed ${bs} ft (slowed ${lv})`);
     else if (bs !== sp) out.push(`Speed ${bs} ft (engines boosted)`);
+    if (st.pace === 'fast') out.push('Fast pace: Probe and Scan checks at disadvantage');
+    else if (st.pace === 'slow') out.push('Slow pace: it can travel stealthily');
     if (st.system >= 4) out.push(`Maximums halved: hull ${SR.hullMax(s)}, shields ${SR.shieldMax(s)}; regeneration halved`);
     const fx = (k, ab) => SR.rollEffects(s, k, ab);
     const words = (f) => [f.adv.length && 'advantage', f.dis.length && 'disadvantage'].filter(Boolean).join(' and ');
@@ -225,7 +245,7 @@
     const kind = el.dataset.kind, ab = el.dataset.ab;
     let label = el.dataset.label || '';
     if (!kind) return { mode: asked, label };
-    const fx = SR.rollEffects(s, kind, ab), mode = SR.rollMode(fx, asked);
+    const fx = SR.rollEffects(s, kind, ab, el.dataset.skill), mode = SR.rollMode(fx, asked);
     const why = [...fx.adv, ...fx.dis];
     if (fx.fail.length) label += ` (fails automatically: ${fx.fail.join(', ')})`;
     else if (why.length) label += ` [${why.join(', ')}]`;
@@ -262,6 +282,7 @@
     if (a === 'plot') { await H.act('ship.plot', { id }); return true; }
     if (a === 'astro') { const t = TV[id] || {}; await H.act('ship.astro', { id, crew: (ctxOf[id] || {}).as || 0, rush: t.rush, careful: t.careful, age: t.age }); return true; }
     if (a === 'startup') { await H.act('ship.startup', { id, crew: (ctxOf[id] || {}).as || 0, crewSize: (TV[id] || {}).crew }); return true; }
+    if (a === 'fly') { await H.act('ship.fly', { id, where: b.dataset.where, n: Math.max(1, parseInt((TV[id] || {}).days, 10) || 1) }); return true; }
     if (a === 'jump') { const t = TV[id] || {}; if (confirm(`Jump to hyperspace, ${t.from} to ${t.to}?`)) await H.act('ship.jump', { id, from: t.from, to: t.to, rush: t.rush, careful: t.careful }); return true; }
     if (a === 'tech') { await H.act('ship.technique', { id, crew: +b.dataset.ci, name: b.dataset.name, pool: b.dataset.pool }); return true; }
     if (a === 'forget') { const x = JSON.parse(JSON.stringify(s)), c = x.crew[+b.dataset.ci]; if (c) { c.known = (c.known || []).filter((k) => k !== b.dataset.name); await H.act('ship.save', { ship: x }); } return true; }
@@ -287,6 +308,7 @@
     }
     if (tv && s) { const o = TV[s.id] = TV[s.id] || {}; o[tv] = t.type === 'checkbox' ? t.checked : tv === 'rush' ? +t.value || 0 : t.value; t.blur(); window.HTB.renderShipsSafe(); return true; }
     const k = t.dataset && t.dataset.sxc; if (!k || !s) return false;
+    if (k === 'pace') { await H.act('ship.pace', { id: s.id, pace: t.value }); return true; }
     await H.act('ship.condition', { id: s.id, name: k, level: +t.value || 0 });
     return true;
   }
