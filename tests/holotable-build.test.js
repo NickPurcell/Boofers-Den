@@ -229,3 +229,20 @@ test("choosing a species' increase: different abilities, from the allowed ones, 
   const c = B.buildLevel1({ species: zab, cls: fighter, scores: { str: 15, dex: 13, con: 14, int: 8, wis: 12, cha: 10 }, asiPick: { con: 2, dex: 1, constructor: 5 } });
   assert.deepEqual(plain(c.abilities), { str: 15, dex: 14, con: 16, int: 8, wis: 12, cha: 10 });
 });
+
+test("starting wealth (audit 1.9): the class's dice, and the guided build taking it instead of the equipment", () => {
+  const B = loadBooks(), plain = (x) => JSON.parse(JSON.stringify(x));
+  assert.deepEqual(plain(B.wealthDice("5d4 x 100 cr")), { n: 5, d: 4, mult: 100 }, "SW5e's own wording");
+  assert.deepEqual(plain(B.wealthDice("8d4 × 100 cr")), { n: 8, d: 4, mult: 100 });
+  assert.equal(B.wealthDice("Varies"), null);
+  assert.equal(B.wealthDice(""), null);
+  const fighter = D.LISTS.classes.build(CLASS_DATA).find((c) => c.n === "Fighter");
+  const bg = { n: "Agent", skills: "Choose two from Deception, Insight, Persuasion, and Stealth", tools: "", langs: "", equip: "A disguise kit", feature: "", featureText: "", feats: [] };
+  const base = { species: { n: "Human", traits: [] }, cls: fighter, scores: {}, bg, bgSkills: [] };
+  let c = B.buildLevel1(base);
+  assert.match(c.notes, /mesh armor/); assert.equal(c.credits || 0, 0, "equipment by default");
+  c = B.buildLevel1(Object.assign({}, base, { wealth: 1700 }));
+  assert.equal(c.credits, 1700);
+  assert.match(c.notes, /^Starting wealth: 1,700 cr \(8d4 x 100 cr\), instead of the class's and background's equipment/);
+  assert.ok(!/mesh armor|disguise kit/.test(c.notes), "neither the class's nor the background's equipment");
+});
