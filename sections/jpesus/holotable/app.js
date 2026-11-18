@@ -474,6 +474,7 @@
           <span class="pick-wrap">${inp('background', ch.background, { ro, list: 'dlBg', ph: 'Background', w: '150px' })}${!ro ? '<button class="btn tiny ghost" data-act="pick-background" title="Choose a background from SW5e (adds its feature)">◈</button>' : ''}</span>
           ${inp('alignment', ch.alignment, { ro, ph: 'Alignment', w: '130px' })}
           <span class="muted">Level ${lvl} · Player: ${esc(owner)}</span>
+          ${((S.st.sheetCast || {}).conc || {})[ch.id] ? `<span class="chip conc-chip" title="Concentrating (audit 4.6): a new concentration power ends it">Concentrating: ${esc(S.st.sheetCast.conc[ch.id])}${!ro ? '<button data-act="unconc" title="Stop concentrating">✕</button>' : ''}</span>` : ''}
         </div>
         <div class="row wrap">${(ch.classes || []).map((k, i) => `
           <span class="row">${inp(`classes.${i}.name`, k.name, { ro, list: 'dlClasses', w: '110px' })}
@@ -795,20 +796,8 @@
         });
         break;
       }
-      case 'cast': {
-        const p = ch.powers[i], lvl = +p.level || 0, cost = lvl ? lvl + 1 : 0, k = p.type === 'tech' ? 'tech' : 'force';
-        const ci = R.casterInfo(ch);
-        // audit 4.5: above the character's max power level a player is refused; the GM is warned and may cast anyway
-        const over = R.overMaxPowerLevel(ch, p);
-        if (over && !isGM()) return toast(over.text, true);
-        if (over && !confirm(`${over.text}\n\nCast anyway?`)) return;
-        const max = ch[k].max !== '' && ch[k].max != null ? +ch[k].max : (k === 'force' ? ci.forceMax : ci.techMax);
-        if (cost && (+ch[k].used || 0) + cost > max) return toast(`Not enough ${k} points (${cost} needed).`, true);
-        if (cost) mutate(c => { c[k].used = (+c[k].used || 0) + cost; });
-        const dc = k === 'tech' ? `DC ${ci.techDC}, atk ${R.fmt(ci.techAtk)}` : p.alignment === 'dark' ? `DC ${ci.darkDC}, atk ${R.fmt(ci.darkAtk)}` : p.alignment === 'light' ? `DC ${ci.lightDC}, atk ${R.fmt(ci.lightAtk)}` : `DC ${Math.max(ci.lightDC, ci.darkDC)}, atk ${R.fmt(Math.max(ci.lightAtk, ci.darkAtk))}`;
-        act('chat', { text: `casts **${p.name}** (${lvl ? 'level ' + lvl : 'at-will'} ${k} power${cost ? `, −${cost} ${k === 'force' ? 'FP' : 'TP'}` : ''}) · ${dc}${p.notes ? '\n' + p.notes : ''}${p.description ? '\n' + p.description.slice(0, 900) + (p.description.length > 900 ? '…' : '') : ''}`, as: ch.name });
-        break;
-      }
+      case 'cast': castPower(ch, i); break;
+      case 'unconc': act('fight.unconc', { charId: ch.id }); break;
       case 'share-feature': { const f = ch.features[i]; act('chat', { text: `**${f.name}**\n${f.text || ''}`, as: ch.name }); break; }
       case 'init': {
         const mode = rollModeFromEvent(e), bonus = R.initiative(ch);
@@ -974,6 +963,68 @@
   const ALIGN = { light: 'Light', dark: 'Dark', universal: 'Universal' };
   // opts.onAdd(power): hand the picked power to someone else (the level-up wizard) instead of the sheet;
   // opts.onDone(): called by Done; opts.taken(): names already picked there
+  // --------------------------------------------------------------------------- the sheet's Cast (#73, audit 4.4-4.7)
+  // Choose the level (upcasting pays a point more per level, up to the max power level; the GM may go past it), and,
+  // for a power the table has data for, its targets on the map: the server rolls it as the combat view does (attack or
+  // saves, damage or healing, conditions, concentration). In a fight this character is in, it is the combat view's own
+  // action. A power without data casts as before, at the level chosen.
+  const powerData = p => { const lib = (S.st.sheetCast || {}).lib || (S.st.fight || {}).lib || {}, k = String((p && p.name) || '').trim().toLowerCase(); return Object.prototype.hasOwnProperty.call(lib, k) ? lib[k] : null; };
+  function castPower(ch, i) {
+    const p = ch.powers[i]; if (!p) return;
+    const base = +p.level || 0, k = p.type === 'tech' ? 'tech' : 'force', ci = R.casterInfo(ch);
+    const maxL = k === 'tech' ? ci.techMaxLevel : ci.forceMaxLevel;
+    const over = R.overMaxPowerLevel(ch, p, ci);   // audit 4.5: a player is refused; the GM is asked when casting
+    if (over && !isGM()) return toast(over.text, true);
+    const data = powerData(p), F = S.st.fight;
+    const entry = F && F.on && F.active ? (S.st.initiative.entries || []).find(e => e.charId === ch.id) : null;
+    const top = base ? Math.min(9, isGM() ? 9 : Math.max(base, maxL)) : 0;
+    const levels = base ? Array.from({ length: top - base + 1 }, (_, n) => base + n) : [0];
+    if (!data && levels.length < 2) return castAt(ch, p, base, null);
+    const pts = n => (n ? `${n + 1} ${k === 'force' ? 'FP' : 'TP'}` : 'free');
+    const self = data && data.targets === 'self', area = data && data.area;
+    const toks = data && !self ? (S.st.map.tokens || []) : [];
+    const up = data && data.upcast && data.upcast.damage ? ` · +${esc(data.upcast.damage)} per level above ${base}` : '';
+    modal(`<h3>Cast ${esc(p.name)}</h3>
+      ${levels.length > 1 ? `<label class="mini">Level <select id="castLvl">${levels.map(n => `<option value="${n}">${n} · ${pts(n)}${n > maxL ? ' (above max)' : ''}</option>`).join('')}</select></label>
+        <p class="muted" style="font-size:12px;margin:4px 0">Casting higher costs a point more per level${up}.</p>` : ''}
+      ${data ? (self ? `<p class="muted">Affects ${esc(ch.name)}.</p>`
+        : `<p class="muted" style="margin:8px 0 4px">${area ? 'Tick who is in the area' : `Targets${data.targets > 1 ? ` (up to ${n0(data.targets)})` : ''}`}, or none to roll it once for the table${isGM() ? '' : ". At anyone but your own characters it rolls and posts, for its owner or the GM to apply"}:</p>
+        <div class="cast-targets" style="max-height:220px;overflow:auto">${toks.map(t => `<label class="check" style="display:block"><input type="checkbox" data-tok="${esc(t.id)}"> ${esc(t.name)}${t.hidden ? ' <span class="muted">(hidden)</span>' : ''}</label>`).join('') || '<p class="muted">No tokens on the map.</p>'}</div>`)
+        : '<p class="muted">The table has no data for this power, so it posts as before, at the level chosen.</p>'}
+      <div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn" id="castNo">Cancel</button><button class="btn primary" id="castGo">Cast</button></div>`, box => {
+      box.onclick = async e => {
+        if (e.target.id === 'castNo') return closeModal();
+        if (e.target.id !== 'castGo') return;
+        const L = levels.length > 1 ? +$('#castLvl', box).value : base;
+        const ov = R.overMaxPowerLevel(ch, { level: L, type: k }, ci);
+        if (ov && !isGM()) return toast(ov.text, true);
+        if (ov && !confirm(`${ov.text}\n\nCast anyway?`)) return;
+        const targets = [...box.querySelectorAll('[data-tok]:checked')].map(x => x.dataset.tok);
+        if (!data) { closeModal(); return castAt(ch, p, L, ov); }
+        if (entry) {   // in the fight: the combat view's own action, which checks the turn
+          if (area) return toast('Place an area power from the combat view.', true);
+          const ids = targets.map(t => Object.keys(F.units || {}).find(id => F.units[id].token === t));
+          if (ids.some(x => !x)) return toast('Pick targets that are in the fight.', true);
+          if (await act('fight.use', { ability: 'pw:' + String(p.name).trim().toLowerCase(), targets: ids, upcast: L - base })) closeModal();
+          return;
+        }
+        if (await act('fight.cast', { charId: ch.id, power: p.name, level: L, targets })) closeModal();
+      };
+    });
+  }
+  // a power without the table's data: pay and post, as the sheet always has, at the level chosen
+  function castAt(ch, p, L, ovAsked) {
+    const base = +p.level || 0, cost = L ? L + 1 : 0, k = p.type === 'tech' ? 'tech' : 'force', ci = R.casterInfo(ch);
+    const ov = R.overMaxPowerLevel(ch, { level: L, type: k }, ci);
+    if (ov && !isGM()) return toast(ov.text, true);
+    if (ov && !ovAsked && !confirm(`${ov.text}\n\nCast anyway?`)) return;
+    const max = ch[k].max !== '' && ch[k].max != null ? +ch[k].max : (k === 'force' ? ci.forceMax : ci.techMax);
+    if (cost && (+ch[k].used || 0) + cost > max) return toast(`Not enough ${k} points (${cost} needed).`, true);
+    if (cost) mutate(c => { c[k].used = (+c[k].used || 0) + cost; });
+    const dc = k === 'tech' ? `DC ${ci.techDC}, atk ${R.fmt(ci.techAtk)}` : p.alignment === 'dark' ? `DC ${ci.darkDC}, atk ${R.fmt(ci.darkAtk)}` : p.alignment === 'light' ? `DC ${ci.lightDC}, atk ${R.fmt(ci.lightAtk)}` : `DC ${Math.max(ci.lightDC, ci.darkDC)}, atk ${R.fmt(Math.max(ci.lightAtk, ci.darkAtk))}`;
+    act('chat', { text: `casts **${p.name}** (${L ? 'level ' + L : 'at-will'} ${k} power${L > base ? `, cast up from level ${base}` : ''}${cost ? `, −${cost} ${k === 'force' ? 'FP' : 'TP'}` : ''}) · ${dc}${p.notes ? '\n' + p.notes : ''}${p.description ? '\n' + p.description.slice(0, 900) + (p.description.length > 900 ? '…' : '') : ''}`, as: ch.name });
+  }
+
   function openPowerPicker(charId, kind, opts = {}) {
     const force = kind !== 'tech';
     const F = { level: 'all', align: new Set(['light', 'dark', 'universal']), q: '', limit: 120 };
