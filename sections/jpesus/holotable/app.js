@@ -653,6 +653,7 @@
         <button class="btn small amber" data-act="init">⚔ Initiative</button>
         ${pendingFor(ch.id) && !ro ? `<button class="btn small lvl-go" data-act="levelup">⬆ Level up${n0(pendingFor(ch.id).count) > 1 ? ' ×' + n0(pendingFor(ch.id).count) : ''}</button>` : ''}
         ${isGM() && !pendingFor(ch.id) ? '<button class="btn small ghost" data-act="grant" title="Give this character a new level">⬆ Grant level</button>' : ''}
+        ${isGM() && (S.st.levelUndo || {})[ch.id] ? `<button class="btn small ghost" data-act="undo-level" title="Put the sheet back to just before its last level, and grant the level again">↶ Undo level ${n0(S.st.levelUndo[ch.id])}</button>` : ''}
         <button class="btn small" data-act="token">◉ Token</button>
         <button class="btn small" data-act="export">⇩ Export</button>
         ${!ro ? '<button class="btn small danger" data-act="delete">Delete</button>' : ''}
@@ -952,6 +953,9 @@
       case 'dmg': { const at = ch.attacks[i]; roll(R.damageExpr(ch, at), `${at.name} — ${at.type || ''} damage`, { charId: ch.id, kind: 'damage' }); break; }
       case 'crit': { const at = ch.attacks[i], cd = R.critDamage(ch, at); roll(cd.expr, `${at.name} — CRITICAL ${at.type || ''} damage${cd.brutal ? ` (Brutal Critical +${cd.brutal})` : ''}`, { charId: ch.id, kind: 'damage' }); break; }
       case 'add-class-res': mutate(c => { c.resources = R.withClassResources(c); }); break;
+      case 'undo-level':   // the GM's undo of the last level (2.15)
+        if (confirm(`Take back ${ch.name}'s level ${n0((S.st.levelUndo || {})[ch.id])}?\n\nThe sheet goes back to just before it (anything changed since is lost), and the level is granted again to take properly.`)) act('levelup.undo', { charId: ch.id });
+        break;
       case 'res-use': case 'res-back': {
         const res0 = (ch.resources || [])[i];
         if (a === 'res-use' && res0 && res0.key === 'second-wind') {   // Second Wind heals: 1d10 + fighter level (#65)
@@ -3034,7 +3038,9 @@
     const avgGain = Math.max(1, hd / 2 + 1 + newCon) + retro;
     const maxGain = Math.max(1, hd + newCon) + retro;
     if (W.hpMode === 'max' && S.st.hpMax === false) W.hpMode = 'average';
-    const payload = { charId, className: cls, hpMode: W.hpMode, archetype: archDue && W.archetype ? W.archetype : undefined, hitDie: hd,
+    const unmet = !k && cls ? R.multiclassUnmet(ch, cls) : [];   // multiclassing prerequisites (2.12): the GM may allow it
+    if (unmet.length && !isGM()) error = error || `Multiclassing into ${cls}: ${unmet.join('; ')}. Ask your GM.`;
+    const payload = { charId, className: cls, hpMode: W.hpMode, archetype: archDue && W.archetype ? W.archetype : undefined, hitDie: hd, override: unmet.length && isGM() ? true : undefined,
       asi: asi || undefined, feat: feat || undefined,
       features: (W.auto || []).filter(f => !f.have).map(f => ({ name: f.name, text: f.text })).slice(0, 20), powers: W.powers.filter(p => p.name.trim()).slice(0, 20) };
     return { ch, after, cls, k, newClassLevel, before, due, asiOn, archDue, archTerm, hd, oldCon, newCon, retro, avgGain, maxGain, payload, error };
@@ -3054,7 +3060,8 @@
           <b>${esc(k.name)}</b> ${n0(k.level)} → ${n0(k.level) + 1}${k.archetype ? `<br><span class="muted">${esc(k.archetype)}</span>` : ''}</label>`).join('')}
           <label class="choice ${W.cls === '__new' ? 'on' : ''}"><input type="radio" name="cls" data-w="cls" value="__new" ${W.cls === '__new' ? 'checked' : ''}><b>Multiclass</b><br><span class="muted">start a new class at 1</span></label></div>
         ${W.cls === '__new' ? `<div class="row" style="margin-top:6px"><select data-w="newCls"><option value="">Pick a class…</option>${others.map(c => `<option ${c === W.newCls ? 'selected' : ''}>${c}</option>`).join('')}</select>
-          <span class="muted" style="font-size:12px">Multiclassing usually needs 13+ in the new class's key ability; check with your GM.</span></div>` : ''}
+          ${(un => un.length ? `<span class="wiz-warn" style="font-size:12px">⚠ ${esc(un.join('; '))}. ${isGM() ? 'As GM you can allow it anyway.' : 'Ask your GM: only they can allow it.'}</span>`
+            : W.newCls ? `<span class="muted" style="font-size:12px">Prerequisites met. A new class gives its multiclass proficiencies: ${esc(R.MC_PROFS[W.newCls] || 'none')}.</span>` : '')(W.newCls ? R.multiclassUnmet(ch, W.newCls) : [])}</div>` : ''}
         ${P.archDue ? `<div class="arch-pick">
           <p class="muted" style="margin:6px 0 4px">At ${esc(P.cls)} level 3 you choose your ${esc(P.archTerm)}. You choose it once, and it gives you features as you level.</p>
           <div class="row wrap"><button class="btn small ${W.archetype ? '' : 'amber'}" data-wa="arch-menu" aria-expanded="${W.archMenu ? 'true' : 'false'}">${W.archetype ? 'Change' : 'Pick'} ${esc(P.archTerm)} ▾</button>

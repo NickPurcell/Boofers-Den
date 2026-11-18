@@ -341,7 +341,7 @@ test("signing in again from the same browser keeps your characters", async () =>
 test("level up: GM grants to everyone or one character; players level their own", async () => {
   const { gm, p1, p2 } = await table();
   const kira = (await p1.act("char.save", { char: { name: "Kira", classes: [{ name: "Sentinel", level: 3 }], abilities: { con: 14, cha: 15 }, hp: { max: 24, current: 20 } } })).data.id;
-  const rook = (await p2.act("char.save", { char: { name: "Rook", classes: [{ name: "Fighter", level: 3 }], abilities: { con: 12 }, hp: { max: 28, current: 28 } } })).data.id;
+  const rook = (await p2.act("char.save", { char: { name: "Rook", classes: [{ name: "Fighter", level: 3 }], abilities: { con: 12, str: 13, int: 13 }, hp: { max: 28, current: 28 } } })).data.id;
   assert.equal((await p1.act("levelup.apply", { charId: kira, className: "Sentinel", hpMode: "average" })).code, 400, "no level without a grant");
   assert.equal((await gm.act("levelup.grant", { charIds: [kira, rook], reason: "survived the ambush" })).code, 200);
   let st = (await p1.poll()).data.state;
@@ -2194,6 +2194,42 @@ test("Infuse Item (Engineer): +1/+2/+3 to the infused weapon's attack and damage
   assert.equal(s.ac, 14, "the server's auto AC includes it");
   const id2 = (await p1.act("char.save", { char: eng(10, { name: "Odd", infused: "javascript:alert(1)" }) })).data.id;
   assert.equal((await gm.poll()).data.state.characters[id2].infused, undefined);
+});
+
+test("multiclassing prerequisites and proficiencies (2.12, 2.13); the GM undoes a last level (2.15)", async () => {
+  require("../sections/jpesus/holotable/rules.js");
+  const R = globalThis.SW5E;
+  const c = { classes: [{ name: "Berserker", level: 3 }], abilities: { str: 15, dex: 10, con: 14, int: 12, wis: 10, cha: 10 } };
+  assert.deepEqual(R.multiclassUnmet(c, "Engineer"), ["Engineer needs Intelligence 13"]);
+  assert.deepEqual(R.multiclassUnmet(c, "Fighter"), []);
+  assert.deepEqual(R.multiclassUnmet(Object.assign({}, c, { abilities: { str: 12, wis: 14 } }), "Consular"), ["Berserker needs Strength 13"], "the old class too");
+  assert.deepEqual(R.multiclassUnmet(c, "Guardian"), ["Guardian needs Wisdom or Charisma 13"]);
+
+  const { gm, p1 } = await table();
+  const id = (await p1.act("char.save", { char: Object.assign({ name: "Brakk", hp: { max: 30, current: 30, temp: 0 }, proficiencies: "Light armor" }, c) })).data.id;
+  await gm.act("levelup.grant", { charIds: [id] });
+  const bad = await p1.act("levelup.apply", { charId: id, className: "Engineer", hpMode: "average", hitDie: 8 });
+  assert.equal(bad.code, 400, "a player is held to the prerequisites");
+  assert.match(bad.data.error, /Engineer needs Intelligence 13.*The GM can allow it/);
+  assert.equal((await p1.act("levelup.apply", { charId: id, className: "Engineer", hpMode: "average", hitDie: 8, override: true })).code, 400, "a player can't override");
+  assert.equal((await gm.act("levelup.apply", { charId: id, className: "Engineer", hpMode: "average", hitDie: 8, override: true })).code, 200, "the GM can allow it");
+  let s = (await gm.poll()).data.state;
+  let ch = s.characters[id];
+  assert.deepEqual(ch.classes.map((k) => [k.name, k.level]), [["Berserker", 3], ["Engineer", 1]]);
+  assert.match(ch.proficiencies, /Multiclass Engineer: Light armor/, "the multiclass set, noted");
+  assert.equal(s.levelUndo[id], 4, "the GM can take level 4 back");
+  assert.equal((await p1.poll()).data.state.levelUndo, undefined, "the GM's");
+  assert.equal((await p1.act("levelup.undo", { charId: id })).code, 403);
+  assert.equal((await gm.act("levelup.undo", { charId: id })).code, 200);
+  s = (await gm.poll()).data.state;
+  ch = s.characters[id];
+  assert.deepEqual(ch.classes.map((k) => [k.name, k.level]), [["Berserker", 3]], "back to before");
+  assert.equal(ch.hp.max, 30);
+  assert.equal(ch.proficiencies, "Light armor");
+  assert.equal(s.levelUps[id].count, 1, "and the level is granted again");
+  assert.equal(s.levelUndo, undefined);
+  assert.equal((await gm.act("levelup.undo", { charId: id })).code, 400, "once");
+  assert.equal((await p1.act("levelup.apply", { charId: id, className: "Berserker", hpMode: "average", hitDie: 12 })).code, 200, "taken again, properly");
 });
 
 test("in-game time (9.18) and a log of play the GM can download (12.4)", async () => {
