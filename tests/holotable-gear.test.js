@@ -62,3 +62,11 @@ test("carrying (6.5): an item keeps its weight and cost; bad values are dropped;
   assert.equal((await gm.act("variants.set", { variants: ["Encumbrance"] })).code, 200);
   assert.deepEqual((await sam.state()).variants, ["Encumbrance"]);
 });
+
+test("buying and selling (6.8): the automatic lines don't speak as the character, so a hidden name never reaches the table", () => {
+  // the sheet's Buy and Sell post their lines with no `as` (#187's review): they show their sender, whoever's token is name-hidden
+  const src = require("fs").readFileSync(require("path").join(__dirname, "../sections/jpesus/holotable/app.js"), "utf8");
+  const lines = src.split("\n").filter((l) => /\*(buys|sells) \$\{/.test(l));
+  assert.equal(lines.length, 2, "the buy and the sell line");
+  for (const l of lines) assert.doesNotMatch(l, /\bas:/, l.trim());
+});

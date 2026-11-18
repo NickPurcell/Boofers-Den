@@ -1042,7 +1042,7 @@
           if ((n0(e.qty) || 1) > 1) e.qty = (n0(e.qty) || 1) - 1; else c.equipment.splice(i, 1);
           c.credits = n0(c.credits) + price;
         });
-        act('chat', { text: `*sells ${it.name} for ${price.toLocaleString()} cr.*`, as: ch.name });
+        act('chat', { text: `*sells ${it.name} for ${price.toLocaleString()} cr.*` });   // no `as`, as for buying
         break;
       }
       case 'atk': {
@@ -1251,7 +1251,8 @@
           const enh = F.set === 'enhanced', buy = a === 'buy' && !enh && it.cost > 0;
           // buying (audit 6.8): the item's SW5e cost comes off the character's credits; refused when they're short
           if (buy && (n0(ch().credits) < it.cost)) return toast(`${ch().name} has ${n0(ch().credits).toLocaleString()} cr; ${it.n} costs ${it.cost.toLocaleString()} cr.`, true);
-          if (buy) act('chat', { text: `*buys ${it.n} for ${it.cost.toLocaleString()} cr.*`, as: ch().name });
+          // no `as`: the line shows its sender, so it never names a character whose token the GM is hiding (#187's review)
+          if (buy) act('chat', { text: `*buys ${it.n} for ${it.cost.toLocaleString()} cr.*` });
           mutate(c => {
             if (buy) c.credits = n0(c.credits) - it.cost;
             const ex = c.equipment.find(x => String(x.name).toLowerCase() === it.n.toLowerCase());
