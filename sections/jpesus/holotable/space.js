@@ -85,7 +85,7 @@
     return `<div class="box" style="margin-top:8px"><h4>Actions</h4>
       <label class="ship-lv">Crew member <select id="spCrew">${crew.length ? crew.map((c, i) => `<option value="${i}" ${i === V.crew ? 'selected' : ''}>${esc(crewName(c))}</option>`).join('') : '<option value="0">no crew (+2)</option>'}</select></label>
       <label class="ship-lv">Weapon <select id="spWeapon">${weapons.map((w, i) => `<option value="${i}" ${i === V.weapon ? 'selected' : ''}>${esc(w.name)}${w.arc ? ' · ' + esc(w.arc) : ''}${w.load ? ' · ' + esc(w.load) : ''}${typeof w.ammo === 'number' ? ` · ${w.ammo} left` : ''}${SR.heatCap(w) !== null ? ` · heat ${+w.heat || 0}/${SR.heatCap(w)}` : ''}</option>`).join('')}</select></label>
-      ${loadSel(weapons[V.weapon])}${modeSel(SR.loadedWeapon(ship, weapons[V.weapon]))}${tradeSel(SR.loadedWeapon(ship, weapons[V.weapon]))}
+      ${loadSel(weapons[V.weapon])}${modeSel(SR.loadedWeapon(ship, weapons[V.weapon]))}${tradeSel(SR.loadedWeapon(ship, weapons[V.weapon]))}${masteryBox(ship, SR.loadedWeapon(ship, weapons[V.weapon]))}
       <label class="ship-lv">Target <select id="spTarget">${targets.map((x) => `<option value="${esc(x.id)}" ${x.id === V.target ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
       <p class="muted" id="spPreview" style="font-size:12px;margin:6px 0"></p>
       <button class="btn small amber" data-spx="fire">Fire</button>${coolReload(ship, weapons[V.weapon])}${zoneBtn(ship, weapons[V.weapon])}${helmRow}</div>`;
@@ -106,7 +106,13 @@
     if (SR.weaponProp(w, 'melt')) out.push(`<label class="toggle" title="The gunner's proficiency bonus off the attack roll (or off the save DC), and onto the damage"><input type="checkbox" data-sptr="melt" ${V.melt ? 'checked' : ''}> melt</label>`);
     return out.join('');
   }
-  const tradeAsk = () => ({ dire: +V.dire || 0, piercing: +V.piercing || 0, melt: !!V.melt });
+  const tradeAsk = () => ({ dire: +V.dire || 0, piercing: +V.piercing || 0, melt: !!V.melt, mastery: !!V.mastery });
+  // the firing crew member's gunning mastery for this weapon, used or not with the shot (SotG ch. 6)
+  const kindGuess = (ship, w) => (V.mode === 'rapid' || V.mode === 'burst' || ['tertiary', 'quaternary'].includes(SR.catOf(w)) || (SR.catOf(w) === 'primary' && SR.sizeRank(ship) >= 4) ? 'save' : 'attack');
+  function masteryBox(ship, w) {
+    const m = w && SR.masteryFor((ship.crew || [])[V.crew], w, kindGuess(ship, w));
+    return m ? `<label class="toggle" title="${esc(SR.GUNNING_MASTERIES[m])}"><input type="checkbox" data-sptr="mastery" ${V.mastery ? 'checked' : ''}> ${esc(m.toLowerCase())}</label>` : '';
+  }
   // a zone weapon: switch its zone on (an action) or off (free)
   function zoneBtn(ship, w) {
     if (!w || !SR.weaponProp(w, 'zone')) return '';
@@ -133,9 +139,9 @@
     const crew = (ship.crew || [])[V.crew], pb = crew && crew.charId && H.S.st.characters[crew.charId] ? H.R.profBonus(H.S.st.characters[crew.charId]) : (crew && +crew.pb) || 2;
     const sign = (n) => (n >= 0 ? '+' : '') + n;
     if (!c.ok) { el.textContent = `Can't fire: ${c.why}.`; return; }
-    const tr = SR.weaponTrade(w, tradeAsk(), pb, c.kind === 'attack' && V.mode !== 'rapid' && V.mode !== 'burst' ? 'attack' : 'save');
+    const tr = SR.weaponTrade(w, tradeAsk(), pb, c.kind === 'attack' && V.mode !== 'rapid' && V.mode !== 'burst' ? 'attack' : 'save', crew);
     const dmgX = (crit) => { const x = SR.damageExpr(ship, w, crit); return x ? x + (tr.dmg ? ` ${tr.dmg > 0 ? '+' : '−'} ${Math.abs(tr.dmg)}` : '') : '—'; };
-    const extra = [tr.notes.join(', '), SR.weaponProp(w, 'vicious') ? `vicious ${SR.weaponProp(w, 'vicious')} on a top die` : '', SR.weaponProp(w, 'explosive') ? 'explosive' : ''].filter(Boolean).join(' · ');
+    const extra = [tr.notes.join(', '), tr.onFail ? `+${tr.onFail} on a failed save` : '', SR.weaponProp(w, 'vicious') ? `vicious ${SR.weaponProp(w, 'vicious')} on a top die` : '', SR.weaponProp(w, 'explosive') ? 'explosive' : ''].filter(Boolean).join(' · ');
     if (V.mode === 'rapid' || V.mode === 'burst') {
       const atkDis = SR.rollMode({ adv: c.adv, dis: c.dis }, 'normal') === 'dis';
       el.textContent = `${c.feet} ft, in its ${c.arc} arc · ${V.mode} (${SR.shotCost(w, V.mode)} shots): ${V.mode === 'burst' ? 'every ship in a 150-ft cube makes' : 'a'} Dexterity save DC ${8 + SR.attackBonusOf(ship, w, pb) + tr.dc}, damage ${dmgX(V.mode === 'rapid')}, none on a success${atkDis ? ' · they save with advantage' : ''}${extra ? ' · ' + extra : ''}`;
@@ -232,9 +238,9 @@
   });
   document.addEventListener('change', (e) => {
     const el = $('#space'); if (!el || !el.contains(e.target)) return;
-    if (e.target.id === 'spWeapon') { V.weapon = +e.target.value || 0; Object.assign(V, { dire: 0, piercing: 0, melt: false }); e.target.blur(); return render(); }
+    if (e.target.id === 'spWeapon') { V.weapon = +e.target.value || 0; Object.assign(V, { dire: 0, piercing: 0, melt: false, mastery: false }); e.target.blur(); return render(); }
     const tk = e.target.dataset && e.target.dataset.sptr;
-    if (tk) { V[tk] = tk === 'melt' ? e.target.checked : +e.target.value || 0; return preview(); }
+    if (tk) { V[tk] = tk === 'melt' || tk === 'mastery' ? e.target.checked : +e.target.value || 0; return preview(); }
     if (e.target.id === 'spMode') { V.mode = e.target.value; return preview(); }
     if (e.target.id === 'spLoad') {   // the round loaded: saved on the ship's sheet
       const t = tokById(V.sel), ship = t && shipById(t.id); if (!ship) return;
@@ -243,7 +249,7 @@
       return H.act('ship.save', { ship: x });
     }
     if (e.target.id === 'spTarget') { V.target = e.target.value; return preview(); }
-    if (e.target.id === 'spCrew') { V.crew = +e.target.value || 0; return preview(); }
+    if (e.target.id === 'spCrew') { V.crew = +e.target.value || 0; V.mastery = false; return render(); }   // the mastery box is the crew member's
     const t = tokById(V.sel), k = e.target.dataset.spt;
     if (k && t) return H.act('space.token', { id: t.id, [k]: e.target.checked });
     if (e.target.id === 'spCols' || e.target.id === 'spRows') return H.act('space.size', { cols: +($('#spCols') || {}).value, rows: +($('#spRows') || {}).value });

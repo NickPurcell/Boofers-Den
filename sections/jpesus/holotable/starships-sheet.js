@@ -146,7 +146,34 @@
       const pool = loc && st.power[loc] > 0 ? loc : 'central', ok = mech || st.power[pool] > 0;
       return `<span class="chip" title="${esc(t.md.slice(0, 600))}">${esc(k)}${loc ? ` <span class="muted">(${loc})</span>` : ''}${ro ? '' : ` <button class="btn tiny amber" data-sx="tech" data-ci="${i}" data-name="${esc(k)}" data-pool="${mech ? '' : pool}" ${ok ? '' : 'disabled'} title="${mech ? `Roll the tech die (d${SR.techDie(c.rank)}); it isn't spent` : `Spend a power die from ${pool}`}">use</button><button class="btn tiny ghost" data-sx="forget" data-ci="${i}" data-name="${esc(k)}" title="Forget it">✕</button>`}</span>`; }).join('');
     const learn = !ro && known.length < cap ? `<select data-learn="${i}" style="width:auto;display:inline-block;font-size:12px;padding:1px 4px"><option value="">＋ ${mech ? 'technique' : 'technique'} (${known.length} of ${cap})</option>${info.techniques.filter((t) => !known.includes(t.name)).map((t) => `<option>${esc(t.name)}</option>`).join('')}</select>` : '';
-    return `<tr class="crew-dep"><td colspan="5" style="font-size:12px;padding-top:0">${ranks}<div style="margin-top:3px">${tech || '<span class="muted">No techniques picked.</span>'} ${learn}${mech ? ` <span class="muted">tech die d${SR.techDie(c.rank)}</span>` : ''}</div></td></tr>`;
+    return `<tr class="crew-dep"><td colspan="5" style="font-size:12px;padding-top:0">${ranks}<div style="margin-top:3px">${tech || '<span class="muted">No techniques picked.</span>'} ${learn}${mech ? ` <span class="muted">tech die d${SR.techDie(c.rank)}</span>` : ''}</div>${picksRow(s, c, i, ro)}</td></tr>`;
+  }
+  // a crew row's ventures (one a rank), gunning styles and masteries (SotG ch. 6), and the character's rank when they
+  // serve in more than one deployment (multispecializing: a crew row each)
+  const VEN = { list: null, loading: false };
+  function ventureList() {
+    if (VEN.list || VEN.loading || !window.HTB) return VEN.list;
+    VEN.loading = true;
+    window.HTB.list('ventures').then((l) => { VEN.list = l || []; window.HTB.renderShipsSafe(); }).catch(() => { VEN.loading = false; });
+    return null;
+  }
+  const ORD = ['', '1st', '2nd', '3rd', '4th', '5th'];
+  function picksRow(s, c, i, ro) {
+    const vl = ventureList() || [], find = (n) => vl.find((v) => v.n === n) || {};
+    const chip = (name, title, what, k, off) => `<span class="chip${off ? ' muted' : ''}" title="${esc(String(title || '').slice(0, 600))}">${esc(name)}${ro ? '' : ` <button class="btn tiny ghost" data-sx="forget" data-ci="${i}" data-what="${what}" data-k="${k}" title="Remove">✕</button>`}</span>`;
+    const sel = (what, label, opts) => (ro || !opts.length ? '' : `<select data-learn="${i}" data-what="${what}" style="width:auto;max-width:240px;display:inline-block;font-size:12px;padding:1px 4px"><option value="">＋ ${label}</option>${opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join('')}</select>`);
+    const vs = Array.isArray(c.ventures) ? c.ventures : [], vcap = SR.venturesAllowed(c), ga = SR.gunningAllowed(c);
+    const ven = vs.map((v, k) => chip(v, (find(v).pre ? `Requires ${find(v).pre}\n` : '') + (find(v).md || ''), 'ventures', k, k >= vcap)).join('');
+    const vAdd = vs.length < vcap ? sel('ventures', `venture (${vs.length} of ${vcap})`, vl.filter((v) => !vs.includes(v.n) || SR.REPEATABLE_VENTURES.includes(v.n)).map((v) => [v.n, v.n + (v.pre ? ` (requires ${v.pre})` : '')])) : '';
+    const group = (what, table, cap, label) => {
+      const have = Array.isArray(c[what]) ? c[what] : [];
+      if (!cap && !have.length) return '';
+      return ` · <span class="muted">${label}:</span> ${have.map((x, k) => chip(x, table[x], what, k, k >= cap)).join('') || '<span class="muted">none</span>'}${have.length < cap ? ' ' + sel(what, `${label.toLowerCase()} (${have.length} of ${cap})`, Object.keys(table).filter((x) => !have.includes(x)).map((x) => [x, x])) : ''}`;
+    };
+    const ms = SR.multispec(s, c);
+    return `<div style="margin-top:3px"><span class="muted">Ventures:</span> ${ven || (vl.length || !vcap ? '<span class="muted">none</span>' : '<span class="muted">loading…</span>')} ${vAdd}`
+      + group('styles', SR.GUNNING_STYLES, ga.styles, 'Gunning style') + group('masteries', SR.GUNNING_MASTERIES, ga.masteries, 'Gunning mastery')
+      + (ms ? ` · <span class="muted" title="Multispecializing (SotG ch. 6): ranks in every deployment add up">${esc(ms.rows.map((r) => `${r.deployment.toLowerCase()} ${r.rank}`).join(' / '))}: a ${ORD[Math.min(5, ms.rank)] || ms.rank + 'th'}-rank character</span>` : '') + '</div>';
   }
   const buildOpen = {};   // per ship, whether the panel below is open (the sheet is redrawn on every change)
   document.addEventListener('toggle', (e) => { const d = e.target; if (d && d.classList && d.classList.contains('ship-build')) buildOpen[d.dataset.sid] = d.open; }, true);
@@ -286,7 +313,12 @@
     if (a === 'fly') { await H.act('ship.fly', { id, where: b.dataset.where, n: Math.max(1, parseInt((TV[id] || {}).days, 10) || 1) }); return true; }
     if (a === 'jump') { const t = TV[id] || {}; if (confirm(`Jump to hyperspace, ${t.from} to ${t.to}?`)) await H.act('ship.jump', { id, from: t.from, to: t.to, rush: t.rush, careful: t.careful }); return true; }
     if (a === 'tech') { await H.act('ship.technique', { id, crew: +b.dataset.ci, name: b.dataset.name, pool: b.dataset.pool }); return true; }
-    if (a === 'forget') { const x = JSON.parse(JSON.stringify(s)), c = x.crew[+b.dataset.ci]; if (c) { c.known = (c.known || []).filter((k) => k !== b.dataset.name); await H.act('ship.save', { ship: x }); } return true; }
+    if (a === 'forget') {   // a technique by name; a venture, style or mastery by its place in the list
+      const x = JSON.parse(JSON.stringify(s)), c = x.crew[+b.dataset.ci], what = b.dataset.what;
+      if (c && ['ventures', 'styles', 'masteries'].includes(what)) { c[what] = (c[what] || []).filter((_, k) => k !== +b.dataset.k); await H.act('ship.save', { ship: x }); }
+      else if (c) { c.known = (c.known || []).filter((k) => k !== b.dataset.name); await H.act('ship.save', { ship: x }); }
+      return true;
+    }
     if (a === 'install') { await H.act('ship.install', { id, mod: +b.dataset.i, crew: (ctxOf[id] || {}).as || 0 }); return true; }
     if (a === 'recharge') { await H.act('ship.recharge', { id }); return true; }
     if (a === 'hulldie') { await H.act('ship.hulldie', { id, crew: (ctxOf[id] || {}).as || 0 }); return true; }
@@ -302,9 +334,10 @@
   // the slowed and system damage pickers; returns true when it handled the change
   async function change(e, s) {
     const t = e.target, tv = t.dataset && t.dataset.tv;
-    if (t.dataset && t.dataset.learn !== undefined && s) {   // learn a technique
-      const x = JSON.parse(JSON.stringify(s)), c = x.crew[+t.dataset.learn];
-      if (c && t.value) { c.known = [...new Set([...(c.known || []), t.value])]; await H.act('ship.save', { ship: x }); }
+    if (t.dataset && t.dataset.learn !== undefined && s) {   // learn a technique; pick a venture, gunning style or mastery
+      const x = JSON.parse(JSON.stringify(s)), c = x.crew[+t.dataset.learn], what = t.dataset.what;
+      if (c && t.value && ['ventures', 'styles', 'masteries'].includes(what)) { c[what] = [...(c[what] || []), t.value]; await H.act('ship.save', { ship: x }); }
+      else if (c && t.value) { c.known = [...new Set([...(c.known || []), t.value])]; await H.act('ship.save', { ship: x }); }
       return true;
     }
     if (tv && s) { const o = TV[s.id] = TV[s.id] || {}; o[tv] = t.type === 'checkbox' ? t.checked : tv === 'rush' ? +t.value || 0 : t.value; t.blur(); window.HTB.renderShipsSafe(); return true; }

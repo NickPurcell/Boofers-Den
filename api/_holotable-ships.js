@@ -412,7 +412,8 @@ const cleanFields = (sh) => ({ status: SR.cleanStatus(sh.status), reactor: pick(
 // and whether a tier feature gave it (no slot, no suite count, no check)
 const cleanMod = (m) => ({ type: SR.MOD_TYPES.includes(m.type) ? m.type : "", grade: clamp(int(m.grade), 0, 5), pre: str(m.pre, 200), free: m.free === true });
 // a crew row's fields this subsystem owns: the techniques they know (names from the deployment's list, at most six)
-const cleanCrew = (c) => ({ known: [...new Set((Array.isArray(c.known) ? c.known : []).map((x) => str(x, 60).trim()).filter(Boolean))].slice(0, 6) });
+const cleanCrew = (c) => Object.assign({ known: [...new Set((Array.isArray(c.known) ? c.known : []).map((x) => str(x, 60).trim()).filter(Boolean))].slice(0, 6) },
+  SR.cleanGunning(c));   // ventures, gunning styles and masteries (SotG ch. 6)
 // a weapon row's fields this subsystem owns: its category (primary to quaternary), its mount (a fixed arc, or a turret;
 // "" means not set, and fires in any arc), and its ammunition ("" means not counted)
 const cleanWeapon = (w) => ({ cat: SR.WEAPON_CATS.includes(w.cat) ? w.cat : "", arc: SR.MOUNTS.includes(w.arc) ? w.arc : "",

@@ -822,9 +822,9 @@ test("weapon property rules: modes, shots, heat, reload, saturate, the burst cub
 
 test("weapon properties: dire, piercing and melt trade accuracy for damage; vicious; explosive asks for concentration saves", async () => {
   const w = { props: "Power (range 600/2400), dire 2, piercing 1, vicious 1, melt" };
-  assert.deepEqual(SR.weaponTrade(w, { dire: 9 }, 3, "attack"), { atk: -2, dc: 0, dmg: 2, notes: ["dire 2"] }, "capped at the weapon's number");
-  assert.deepEqual(SR.weaponTrade(w, { piercing: 1, melt: true }, 3, "attack"), { atk: -2, dc: 0, dmg: 2, notes: ["piercing 1", "melt 3"] });
-  assert.deepEqual(SR.weaponTrade(w, { dire: 2, piercing: 1, melt: true }, 3, "save"), { atk: 0, dc: -3, dmg: 3, notes: ["melt 3"] }, "dire and piercing are for attack rolls; melt lowers a save DC");
+  assert.deepEqual(SR.weaponTrade(w, { dire: 9 }, 3, "attack"), { atk: -2, dc: 0, dmg: 2, onFail: 0, notes: ["dire 2"] }, "capped at the weapon's number");
+  assert.deepEqual(SR.weaponTrade(w, { piercing: 1, melt: true }, 3, "attack"), { atk: -2, dc: 0, dmg: 2, onFail: 0, notes: ["piercing 1", "melt 3"] });
+  assert.deepEqual(SR.weaponTrade(w, { dire: 2, piercing: 1, melt: true }, 3, "save"), { atk: 0, dc: -3, dmg: 3, onFail: 0, notes: ["melt 3"] }, "dire and piercing are for attack rolls; melt lowers a save DC");
   assert.deepEqual(SR.weaponTrade({ props: "rapid 2" }, { dire: 2, melt: true }, 3, "attack").notes, [], "only what the weapon has");
   assert.deepEqual(SR.weaponTrade(w, { melt: "true" }, 3, "attack").notes, [], "melt is a real true");
   assert.deepEqual(["1d8[8]+2", "2d8[3,7]", "2d8kh1[~8~,3]", "2d6min3[2→3,6]"].map((d) => SR.viciousBonus(w, d)), [1, 0, 0, 1], "a top die, once a roll; struck dice don't count");
@@ -951,6 +951,45 @@ test("tertiary ammunition: a launcher fires its round (damage by size), reload b
   // reload: 4 for a Small ship's launcher, twice that on a Medium one
   assert.equal((await p1.act("ship.reload", { id: party, weapon: 0 })).code, 200);
   assert.equal(shipIn(await p1.state(), party).weapons[0].ammo, 8);
+});
+
+test("ventures, gunning styles and masteries (SotG ch. 6): picks by rank, their effects on Fire, multispecializing", async () => {
+  const g = { deployment: "Gunner", rank: 4, styles: ["Cannoneer", "Heavy Gunner", "Payload Delivery"], masteries: ["Payload Mastery", "Cannon Mastery"], ventures: ["Gunning Stylist", "Keen Eye"] };
+  assert.deepEqual(SR.gunningAllowed(g), { styles: 3, masteries: 1 }, "2nd and 4th rank, and a Gunning Stylist venture");
+  assert.deepEqual([SR.activeStyles(g).length, SR.activeMasteries(g)], [3, ["Payload Mastery"]], "first picked first");
+  assert.deepEqual(SR.gunningAllowed({ deployment: "Pilot", rank: 5, ventures: ["Gunning Mastery"] }), { styles: 0, masteries: 1 }, "a venture gives a pilot a mastery");
+  assert.equal(SR.venturesAllowed({ rank: 3 }), 3);
+  assert.deepEqual(SR.cleanGunning({ ventures: ["A", "A", "Gunning Mastery", "Gunning Mastery"], styles: ["Cannoneer", "__proto__", "Cannoneer"], masteries: "x" }),
+    { ventures: ["A", "Gunning Mastery", "Gunning Mastery"], styles: ["Cannoneer"], masteries: [] }, "only SotG's styles; only the two repeatable ventures repeat");
+  const can = { deployment: "Gunner", rank: 4, styles: ["Cannoneer"], masteries: ["Cannon Mastery"] };
+  assert.deepEqual(SR.weaponTrade({ cat: "primary" }, {}, 3, "attack", can), { atk: 0, dc: 0, dmg: 2, onFail: 0, notes: ["cannoneer"] }, "Cannoneer: +2 damage");
+  assert.deepEqual(SR.weaponTrade({ cat: "primary", props: "melt" }, { mastery: true, melt: true }, 3, "attack", can).atk, -3, "the proficiency bonus is forgone only once");
+  assert.deepEqual(SR.weaponTrade({ cat: "secondary" }, { mastery: true }, 3, "attack", { deployment: "Gunner", rank: 4, styles: ["Heavy Gunner"], masteries: ["Heavy Gun Mastery"] }),
+    { atk: 5, dc: 0, dmg: -3, onFail: 0, notes: ["heavy gunner", "heavy gun mastery"] });
+  assert.deepEqual(SR.weaponTrade({ cat: "tertiary" }, { mastery: true }, 3, "save", g), { atk: 0, dc: -3, dmg: 0, onFail: 6, notes: ["payload mastery"] });
+  assert.deepEqual(SR.weaponTrade({ cat: "tertiary" }, { mastery: true }, 3, "save", { deployment: "Gunner", rank: 2, masteries: ["Payload Mastery"] }).notes, [], "a mastery takes 4th rank");
+  assert.deepEqual(SR.lowDice("3d4[1,4,~2~]+2"), [{ sides: 4, v: 1 }], "struck dice don't count");
+  assert.deepEqual(SR.multispec({ crew: [{ charId: "abc123", deployment: "Pilot", rank: 2 }, { charId: "abc123", deployment: "Gunner", rank: 1 }] }, { charId: "abc123" }).rank, 3, "pilot 2 / gunner 1: 3rd rank");
+  // on the server: the picks are stored, cleaned; the gunner's Payload Mastery and Payload Delivery reach the shot
+  const { gm, p1, party, enemy } = await table();
+  let sh = shipIn(await p1.state(), party);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { crew: [{ name: "Ione", deployment: "Gunner", rank: 4, pb: 3, ventures: ["Keen Eye", "Keen Eye", "Gunning Stylist"], styles: ["Payload Delivery", "nope"], masteries: ["Payload Mastery"] }],
+    weapons: [{ name: "Missiles", dmg: "20d4", type: "kinetic", range: "1000/4000", props: "Ammunition", cat: "tertiary", ammo: 99 }] }) });
+  sh = shipIn(await p1.state(), party);
+  assert.deepEqual([sh.crew[0].ventures, sh.crew[0].styles, sh.crew[0].masteries], [["Keen Eye", "Gunning Stylist"], ["Payload Delivery"], ["Payload Mastery"]]);
+  await gm.act("ship.save", { ship: Object.assign({}, shipIn(await gm.state(), enemy), { hull: { current: 20, max: 100000 } }) });
+  await gm.act("ship.points", { id: enemy, what: "hull", current: 100000 });
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 5, f: 2 });
+  await gm.act("space.place", { id: enemy, x: 8, y: 5, f: 6 });
+  const r = await p1.act("space.fire", { id: party, target: enemy, weapon: 0, crew: 0, mastery: true });
+  assert.equal(r.code, 200);
+  const st = await p1.state();
+  const dc = 8 + 3 + 0 - 3;   // 8 + the gunner's 3 + Wisdom 0, less 3 for Payload Mastery
+  assert.ok(st.chat.some((m) => new RegExp(`a Dexterity save, DC ${dc} \\[payload mastery\\]`).test(m.text || "")), "the DC is lowered");
+  const dmg = st.chat.filter((m) => m.roll && m.roll.kind === "damage").pop();
+  assert.match(dmg.roll.label, /payload delivery: \d+ rolled again/, "twenty d4s: some showed 1 or 2 and were rolled again");
+  if (!r.data.saved) assert.ok(st.chat.some((m) => /fails: \d+ kinetic damage/.test(m.text || "")));
 });
 
 test("space.fire modes on the server: rapid, a burst over three ships, heat and Cool, ammunition and Reload", async () => {
