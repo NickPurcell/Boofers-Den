@@ -127,8 +127,8 @@ function cleanSnap(x) {
       .map(([id, ec, cc]) => [id, (Array.isArray(ec) ? ec : []).slice(0, 20).map((c) => str(c, 30)), Array.isArray(cc) ? cc.slice(0, 20).map((c) => str(c, 30)) : null]),
     chars: (Array.isArray(x.chars) ? x.chars : []).slice(0, 60).filter((c) => Array.isArray(c) && typeof c[0] === "string" && c[1] && typeof c[1] === "object")
       .map(([id, r]) => [id, { resources: E.cleanResources(r.resources),
-        force: { max: plainObj(r.force).max == null || plainObj(r.force).max === "" ? "" : num(plainObj(r.force).max, 0, 999), used: num(plainObj(r.force).used, 0, 999) },
-        tech: { max: plainObj(r.tech).max == null || plainObj(r.tech).max === "" ? "" : num(plainObj(r.tech).max, 0, 999), used: num(plainObj(r.tech).used, 0, 999) },
+        force: Object.assign({ max: plainObj(r.force).max == null || plainObj(r.force).max === "" ? "" : num(plainObj(r.force).max, 0, 999), used: num(plainObj(r.force).used, 0, 999) }, cleanHigh(plainObj(r.force).high)),
+        tech: Object.assign({ max: plainObj(r.tech).max == null || plainObj(r.tech).max === "" ? "" : num(plainObj(r.tech).max, 0, 999), used: num(plainObj(r.tech).used, 0, 999) }, cleanHigh(plainObj(r.tech).high)),
         hitDiceUsed: R.cleanHitDiceUsed(r.hitDiceUsed),   // the sheet's own cleaner: per die size or an old number
         deathSaves: { s: num(plainObj(r.deathSaves).s, 0, 3), f: num(plainObj(r.deathSaves).f, 0, 3) } }]),
   };
@@ -480,6 +480,20 @@ function secondWind(camp, cid, ch, G, units) {
   say(camp, G, Object.assign({ from: shown, fromId: cid, roll: Object.assign({}, res, { expr: `1d10+${lvl}`, label: "Second Wind (healing)", kind: "heal" }) },
     shown === ch.name ? { charName: ch.name } : {}), cid, units || []);
 }
+// High-level casting (#160): the power levels a character has cast since the last long rest that only go once each.
+// On the sheet as force.high / tech.high, only when there are some ({ high: [6, 7] } or {}).
+function cleanHigh(v) {
+  const out = [...new Set((Array.isArray(v) ? v : []).slice(0, 9).map((n) => int(n)).filter((n) => n >= 1 && n <= 9))].sort((a, b) => a - b);
+  return out.length ? { high: out } : {};
+}
+// a power cast at a level the rule limits is noted on the caster's sheet, until the next long rest clears it
+function noteHighCast(ch, ab, level) {
+  const kind = ab && ab.pool === "tech" ? "tech" : "force", from = R.highCastFrom(ch, kind);
+  if (!ch || !from || !(level >= from)) return;
+  const used = R.highCastUsed(ch, kind);
+  if (!used.includes(level)) ch[kind] = Object.assign({}, ch[kind], cleanHigh(used.concat(level)));
+}
+
 /* ---------------- the sheet's Cast through the engine (#73, audit 4.4-4.7 outside the combat view) ----------------
    A power the table has data for (f.lib) rolls from the sheet as it does in the combat view: its attack or each target's
    save, then its damage or healing, its conditions and its concentration, with the combat view on or off. In a fight the
@@ -526,6 +540,9 @@ function sheetCast(camp, cid, gm, p, G) {
     if (!gm) throw new G.Invalid(ability.maxLevel ? `${ch.name} can cast powers up to level ${ability.maxLevel}.` : `${ch.name} can't cast leveled powers yet.`);
     ability.maxLevel = level;
   }
+  // high-level casting (#160): a level that goes once per long rest, already cast: a player is refused, the GM may go ahead
+  const once = R.highCastBlocked(ch, { type: ability.pool === "tech" ? "tech" : "force" }, level);
+  if (once && !gm) throw new G.Invalid(once.text);
   const tokens = camp.map.tokens || [], fog = gm ? null : fogFor(camp, cid), picked = [];
   for (const id of new Set((Array.isArray(p.targets) ? p.targets : []).slice(0, 40).map(String))) {
     const t = ID.test(id) ? tokens.find((x) => x.id === id) : null;
@@ -538,8 +555,11 @@ function sheetCast(camp, cid, gm, p, G) {
   // fight is on the tracker, a player casts at others only from the combat view, on their turn. The GM's applies everywhere.
   const others = gm ? [] : picked.filter((t) => { const c = t.charId && charOf(camp, t.charId); return !(c && c.owner === cid); });
   if (others.length && ini.active) throw new G.Invalid("A fight is on: cast it at others from the combat view, on your turn.");
-  if (others.length) return castUnaimed(camp, cid, ch, ability, up, G, picked);
-  if (!picked.length && ability.targets !== "self") return castUnaimed(camp, cid, ch, ability, up, G);
+  if (others.length || (!picked.length && ability.targets !== "self")) {
+    castUnaimed(camp, cid, ch, ability, up, G, others.length ? picked : null);
+    noteHighCast(ch, ability, level);
+    return {};
+  }
   // the caster's pretend turn, with the picked tokens as the units
   const ut = unitTokens(camp), entryOf = Object.fromEntries(Object.entries(ut).map(([e, t]) => [t, e]));
   const myTok = tokens.find((t) => t.charId === ch.id);
@@ -625,6 +645,7 @@ function sheetCast(camp, cid, gm, p, G) {
     }
     sayTokens(camp, G, msg, cid, toks);
   }
+  noteHighCast(ch, ability, level);
   return {};
 }
 // No target picked (no map, or a power rolled for the table to read), or a player's Cast at someone not theirs (at):
@@ -979,6 +1000,9 @@ function apply(camp, cid, gm, type, p, G) {
         if (!ch) throw new G.Invalid("Creatures use their attacks for now.");
         const ability = E.abilitiesOf(ch, R, f.lib).find((a) => a.key === String(p.ability || ""));
         if (!ability) throw new G.Invalid("The table has no data for that ability on this sheet.");
+        // high-level casting (#160): a level that goes once per long rest and was already cast
+        const once = ability.kind === "power" && R.highCastBlocked(ch, { type: ability.pool === "tech" ? "tech" : "force" }, ability.level + clamp(int(p.upcast), 0, 9));
+        if (once) throw new G.Invalid(once.text);
         const point = p.point && Number.isFinite(+p.point.x) && Number.isFinite(+p.point.y) ? { x: clamp(+p.point.x, -500, 1000), y: clamp(+p.point.y, -500, 1000) } : null;
         act = { type: "use", unit: cur.id, ability, point, targets: Array.isArray(p.targets) ? p.targets.slice(0, 40).map(idOr).filter(Boolean) : [idOr(p.target)].filter(Boolean), upcast: clamp(int(p.upcast), 0, 9), adv: !!p.adv, dis: !!p.dis };
       }
@@ -1003,6 +1027,7 @@ function apply(camp, cid, gm, type, p, G) {
       snapshot(camp, label);
       if (limited) limited.used += 1;   // after the snapshot, so Undo gives it back
       writeBack(camp, cid, world, r.world, G);
+      if (act.type === "use" && act.ability.kind === "power" && cur.charId) noteHighCast(charOf(camp, cur.charId), act.ability, act.ability.level + act.upcast);   // after the snapshot too
       report(camp, cid, gm, G, cur, world, r, type === "fight.move" || type === "fight.end");
       // a move out of someone's reach: they may take an opportunity attack, and the turn waits for their answer.
       // Only between combatants everyone can see: a hidden creature never gives itself away by reacting.
@@ -1312,5 +1337,5 @@ function cleanWalls(list) {
   });
 }
 
-module.exports = { apply, view, sheetView, afterDamage, canWalk, fogFor, fogView, cleanFog, cleanLight, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
+module.exports = { apply, view, sheetView, afterDamage, cleanHigh, canWalk, fogFor, fogView, cleanFog, cleanLight, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
   cleanHitDiceUsed: R.cleanHitDiceUsed };   // for cleanChar: the sheet and the undo record clean hit dice the same way

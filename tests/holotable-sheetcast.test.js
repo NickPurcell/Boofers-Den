@@ -280,3 +280,35 @@ test("concentration after damage (audit 4.6): the sheet's Damage and the tracker
     gv.chat.filter((m) => m.roll && /concentration save/.test(m.roll.label)).length);
   assert.ok((await gm.state()).chat.length >= before);
 });
+
+test("high-level casting (#160): a 6th-level power once per long rest, from the sheet and in the combat view", async () => {
+  const { gm, sam, rae, avery, bolt, tok } = await table();
+  const BLAST = { use: "action", range: [60, 60], save: { ability: "dex", dc: "power", onSave: "half" }, damage: [{ dice: "6d6", type: "force" }] };
+  let av = await sheet(gm, avery);
+  await gm.act("char.save", { char: Object.assign({}, av, { classes: [{ name: "Consular", level: 11 }], hp: { max: 80, current: 80, temp: 0 },
+    powers: av.powers.concat([{ name: "Big Blast", level: 6, type: "force", alignment: "universal" }]) }) });
+  await gm.act("fight.toggle", { on: true }); await gm.act("fight.ability", { name: "Big Blast", data: BLAST }); await gm.act("fight.toggle", { on: false });
+  assert.equal((await sam.act("fight.cast", { charId: avery, power: "Big Blast", level: 6, targets: [tok.bolt] })).code, 200);
+  assert.deepEqual((await sheet(gm, avery)).force.high, [6], "noted on the sheet");
+  const again = await sam.act("fight.cast", { charId: avery, power: "Big Blast", level: 6, targets: [] });
+  assert.deepEqual([again.code, again.data.error], [400, "Avery has already cast a 6th-level force power since the last long rest (6th level and up: once each per long rest)."]);
+  assert.equal((await gm.act("fight.cast", { charId: avery, power: "Big Blast", level: 6, targets: [] })).code, 200, "the GM may go ahead");
+  assert.equal((await sam.act("fight.cast", { charId: avery, power: "Mind Shove", level: 5, targets: [] })).code, 200, "5th isn't limited");
+  // a long rest (the sheet's: a save without the record) clears it
+  av = await sheet(gm, avery);
+  assert.equal((await sam.act("char.save", { char: Object.assign({}, av, { force: { used: 0, max: av.force.max } }) })).code, 200);
+  assert.equal("high" in (await sheet(gm, avery)).force, false);
+  // in the combat view: the same rule, and Undo takes the note back
+  await sam.act("init.add", { charId: avery, name: "Avery", init: 20 });
+  await rae.act("init.add", { charId: bolt, name: "Bolt", init: 10 });
+  await gm.act("init.start", {}); await gm.act("fight.toggle", { on: true });
+  const bid = (await gm.state()).initiative.entries.find((e) => e.name === "Bolt").id;
+  let r = await sam.act("fight.use", { ability: "pw:big blast", targets: [bid] });
+  assert.equal(r.code, 200, JSON.stringify(r.data));
+  assert.deepEqual((await sheet(gm, avery)).force.high, [6]);
+  r = await sam.act("fight.use", { ability: "pw:big blast", targets: [bid] });
+  assert.equal(r.code, 400);
+  assert.match(r.data.error, /already cast a 6th-level force power/);
+  await gm.act("fight.undo", {});
+  assert.equal("high" in (await sheet(gm, avery)).force, false, "Undo takes it back");
+});
