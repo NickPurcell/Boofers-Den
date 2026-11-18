@@ -768,3 +768,12 @@ canvas.drawing { cursor: crosshair; }
 .topbar .clock { margin-left: 10px; padding: 2px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font-size: 12px; white-space: nowrap; cursor: pointer; }
 .topbar .clock:disabled { cursor: default; opacity: 1; }
 .topbar .clock.ghost { color: var(--muted); border-style: dashed; }
+/* carrying (audit 6.5): the weight against the capacity, and the encumbrance it causes */
+.eq-table .eq-wt { width: 1%; }
+.eq-table .eq-wt input { width: 48px; }
+.eq-wrap { overflow-x: auto; }
+.carry-var { display: inline-flex; flex-direction: row; align-items: center; gap: 4px; font-size: 12px; margin-left: auto; text-transform: none; letter-spacing: 0; }
+.carry-var input { width: auto; margin: 0; }
+.carry { align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.carry .carry-state { color: var(--amber); font-size: 12px; }
+.carry.carry-heavy .carry-state, .carry.carry-over .carry-state { color: var(--red); }
