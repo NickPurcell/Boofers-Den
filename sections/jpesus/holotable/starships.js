@@ -588,6 +588,50 @@
     }
     return out;
   }
+  // ---- tertiary ammunition (SotG ch. 5, "Tertiary Ammunition"): what a launcher fires. Damage for Tiny to Large ships,
+  // then for Huge and Gargantuan; '' for the special rounds, whose effects are in their own text.
+  const AMMO = {
+    'Adv. cluster missile': { fam: 'cluster', dmg: ['3d6', '6d6'], type: 'kinetic', range: '600/2400', props: 'auto, burst 6, explosive, rapid 6' },
+    'Adv. homing cluster missile': { fam: 'cluster', dmg: ['3d6', '6d6'], type: 'kinetic', range: '600/2400', props: 'auto, burst 6, explosive, homing, rapid 6' },
+    'Cluster missile': { fam: 'cluster', dmg: ['3d4', '6d4'], type: 'kinetic', range: '600/2400', props: 'auto, burst 6, explosive, rapid 6' },
+    'Homing cluster missile': { fam: 'cluster', dmg: ['3d4', '6d4'], type: 'kinetic', range: '600/2400', props: 'auto, burst 6, explosive, homing, rapid 6' },
+    'Nano cluster rocket': { fam: 'cluster', dmg: ['1d4', '2d4'], type: 'kinetic', range: '800/3200', props: 'explosive, homing' },
+    'Adv. concussion missile': { fam: 'missile', dmg: ['2d10', '4d10'], type: 'energy', range: '800/3200', props: 'auto, burst 1, explosive, rapid 1' },
+    'Concussion missile': { fam: 'missile', dmg: ['2d8', '4d8'], type: 'energy', range: '600/2400', props: 'auto, burst 1, explosive, rapid 1' },
+    'Conner net (missile)': { fam: 'missile', dmg: ['', ''], type: '', range: '600/2400', props: 'special' },
+    'Discord missile': { fam: 'missile', dmg: ['', ''], type: '', range: '600/2400', props: 'special' },
+    'Proton rocket': { fam: 'missile', dmg: ['10d4', '20d4'], type: 'kinetic', range: '200/800', props: 'explosive, vicious 1' },
+    'Ion pulse missile': { fam: 'missile', dmg: ['2d10', '4d10'], type: 'ion', range: '1000/4000', props: 'ionizing' },
+    'Silent thunder missile': { fam: 'missile', dmg: ['4d10', '8d10'], type: 'energy', range: '1200/4800', props: 'explosive' },
+    'S-thread tracer': { fam: 'missile', dmg: ['', ''], type: '', range: '1200/4800', props: 'special' },
+    'Advanced proton torpedo': { fam: 'torpedo', dmg: ['2d12', '4d12'], type: 'energy', range: '800/3200', props: 'explosive, keen 1' },
+    'Flechette torpedo': { fam: 'torpedo', dmg: ['', ''], type: '', range: '600/2400', props: 'special' },
+    'Homing torpedo': { fam: 'torpedo', dmg: ['1d12', '2d12'], type: 'energy', range: '1200/4800', props: 'explosive, homing' },
+    'Plasma torpedo': { fam: 'torpedo', dmg: ['2d12', '4d12'], type: 'ion', range: '1200/4800', props: 'vicious 1' },
+    'Proton torpedo': { fam: 'torpedo', dmg: ['2d10', '4d10'], type: 'energy', range: '1200/4800', props: 'explosive, keen 1' },
+    'Thermite torpedo': { fam: 'torpedo', dmg: ['2d10', '4d10'], type: 'fire', range: '1200/4800', props: 'melt, keen 1' },
+  };
+  // which rounds a launcher takes, from its name (a cluster pod, missile or torpedo launcher; "assault" ones too)
+  const launcherOf = (w) => { const n = String((w && w.name) || '').toLowerCase(); return /cluster/.test(n) ? 'cluster' : /missile/.test(n) ? 'missile' : /torpedo/.test(n) ? 'torpedo' : ''; };
+  const ammoFor = (w) => Object.keys(AMMO).filter((k) => !launcherOf(w) || AMMO[k].fam === launcherOf(w));
+  // the weapon as it fires: a tertiary launcher with a round loaded takes the round's damage (by the ship's size), type,
+  // range and properties, keeping its own (ammunition, reload); anything else is itself
+  function loadedWeapon(ship, w) {
+    const a = w && catOf(w) === 'tertiary' && typeof w.load === 'string' ? own(AMMO, w.load) : null;
+    if (!a || !ammoFor(w).includes(w.load)) return w;
+    const own0 = String(w.props || '').split(',').map((x) => x.trim()).filter((x) => /^(ammunition|reload)/i.test(x));
+    return Object.assign({}, w, { dmg: a.dmg[sizeRank(ship) >= 4 ? 1 : 0], type: a.type || w.type, range: a.range, props: [...own0, a.props].filter(Boolean).join(', ') });
+  }
+  // a tertiary or quaternary weapon's reload by the ship's size: the table's number is a Small ship's (a Huge one's for the
+  // assault launchers); half for Tiny, twice for Medium, four times for Large, twice for Gargantuan
+  const RELOAD_SCALE = { Tiny: 0.5, Small: 1, Medium: 2, Large: 4, Huge: 1, Gargantuan: 2 };
+  function reloadFor(ship, w) {
+    const n = reloadOf(w); if (n === null) return null;
+    const cat = catOf(w);
+    return cat === 'tertiary' || cat === 'quaternary' ? Math.max(1, Math.round(n * (own(RELOAD_SCALE, sizeKey(ship)) || 1))) : n;
+  }
+  // the most an expression like "2d10+3" can roll (SotG: a tertiary save's natural 1 takes the damage as if it rolled that)
+  const maxOf = (expr) => { const m = /^(\d+)d(\d+)([+-]\d+)?$/.exec(String(expr || '').replace(/\s/g, '')); return m ? int(m[1]) * int(m[2]) + int(m[3] || 0) : 0; };
   // Zone (SotG ch. 5): a weapon with the property, switched on with an action, makes difficult terrain within its firing
   // arc and normal range until switched off; and its ship has advantage on Dexterity saves against tertiary weapons
   // launched from outside that range. zonesOf: the ship's zones that are on, as { wi, name, arc ('' for any), range }.
@@ -964,5 +1008,5 @@
     setCondition, summary, SIZE_DATA, SHIELD_TYPES, REACTORS, COUPLINGS, SYSTEMS, POOLS, SYSTEM_NAMES, POWER_DIE, sizeOf, roleOf, reactorOf, couplingOf,
     shieldTypeOf, powerDie, powerDieText, powerCaps, diceOf, diceLeft, regenRate, boostDC, regenDC, boostedSpeed, startTurn, usePower, setPower,
     setDiceUsed, boost, regenerateShields, SQUARE_FT, SQUARES, squaresOf, FACING_NAMES, DIRS, gridFeet, turnSteps, turnCost, moveCost, inBounds, shipGap,
-    arcOf, INIT_SIZE_MOD, npcInitBonus, deploymentInfo, techniquesKnown, techDie, STOCK_COST, TIER_COST, minCrew, costs, REGIONS, HYPER_HOURS, START_UP, hyperClass, stepsFor, jumpHours, jumpFuel, fuelOf, mishapFor, MOD_TYPES, modsSummary, modCost, installDC, pastCapacity, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck, PACES, flyFuel, travelSpeed, REALSPACE_TIMES, realspaceTime, weaponTrade, viciousBonus, zonesOf, inZone, zoneExtra };
+    arcOf, INIT_SIZE_MOD, npcInitBonus, deploymentInfo, techniquesKnown, techDie, STOCK_COST, TIER_COST, minCrew, costs, REGIONS, HYPER_HOURS, START_UP, hyperClass, stepsFor, jumpHours, jumpFuel, fuelOf, mishapFor, MOD_TYPES, modsSummary, modCost, installDC, pastCapacity, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck, PACES, flyFuel, travelSpeed, REALSPACE_TIMES, realspaceTime, weaponTrade, viciousBonus, zonesOf, inZone, zoneExtra, AMMO, launcherOf, ammoFor, loadedWeapon, reloadFor, maxOf };
 });

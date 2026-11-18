@@ -916,6 +916,43 @@ test("zone: on with an action, off for free; difficult terrain in its arc and no
   assert.ok((await gm.state()).chat.some((m) => /Black Lance switches off Laser point-defense's zone/.test(m.text || "") && m.to[0] === "@gm"));
 });
 
+test("tertiary ammunition: a launcher fires its round (damage by size), reload by size, a natural 1 on the save takes the maximum", async () => {
+  const L = { name: "Torpedo launcher", cat: "tertiary", props: "Ammunition reload 4", dmg: "", load: "Proton torpedo" };
+  const small = SR.loadedWeapon({ size: "Small" }, L), huge = SR.loadedWeapon({ size: "Huge" }, L);
+  assert.deepEqual([small.dmg, small.type, small.range, huge.dmg], ["2d10", "energy", "1200/4800", "4d10"], "SotG's table, the bracketed number for Huge");
+  assert.deepEqual([SR.weaponProp(small, "keen"), SR.weaponProp(small, "explosive"), SR.weaponProp(small, "reload")], [1, true, 4], "the round's properties and the launcher's own");
+  assert.equal(SR.loadedWeapon({ size: "Small" }, Object.assign({}, L, { load: "Cluster missile" })).dmg, "", "a torpedo launcher doesn't take cluster missiles");
+  assert.deepEqual(SR.ammoFor({ name: "Assault cluster pod launcher" }), ["Adv. cluster missile", "Adv. homing cluster missile", "Cluster missile", "Homing cluster missile", "Nano cluster rocket"]);
+  assert.deepEqual(["Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"].map((size) => SR.reloadFor({ size }, { cat: "tertiary", props: "Ammunition, reload 12" })), [6, 12, 24, 48, 12, 24], "SotG's scaling");
+  assert.equal(SR.reloadFor({ size: "Large" }, { cat: "primary", props: "reload 4" }), 4, "only tertiary and quaternary weapons scale");
+  assert.deepEqual([SR.maxOf("2d10"), SR.maxOf("4d12+3"), SR.maxOf("")], [20, 51, 0]);
+  // on the server
+  const { gm, p1, party, enemy } = await table();
+  let sh = shipIn(await p1.state(), party);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { size: "Medium", weapons: [{ name: "Torpedo launcher", dmg: "", type: "", range: "", props: "Ammunition reload 4", cat: "tertiary", ammo: 999, load: "__proto__" }] }) });
+  sh = shipIn(await p1.state(), party);
+  assert.equal(sh.weapons[0].load, "", "only a round from the table");
+  await gm.act("ship.save", { ship: Object.assign({}, shipIn(await gm.state(), enemy), { size: "Medium", hull: { current: 20, max: 100000 } }) });
+  await gm.act("ship.points", { id: enemy, what: "hull", current: 100000 });
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 5, f: 2 });
+  await gm.act("space.place", { id: enemy, x: 8, y: 5, f: 6 });
+  assert.match((await p1.act("space.fire", { id: party, target: enemy, weapon: 0 })).data.error || "", /no round loaded/);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { weapons: [Object.assign({}, sh.weapons[0], { load: "Proton torpedo" })] }) });
+  let found = false;
+  for (let i = 0; i < 200 && !found; i++) {
+    const r = await p1.act("space.fire", { id: party, target: enemy, weapon: 0 });
+    assert.equal(r.code, 200);
+    found = (await gm.state()).chat.some((m) => /A natural 1 on the save: the damage counts as its maximum, 20\./.test(m.text || ""));
+  }
+  const st = await gm.state();
+  assert.ok(st.chat.some((m) => m.roll && m.roll.kind === "damage" && m.roll.expr === "2d10"), "a proton torpedo from a Medium ship: 2d10");
+  assert.ok(found, "a natural 1 on the save: 20, the most 2d10 can roll");
+  // reload: 4 for a Small ship's launcher, twice that on a Medium one
+  assert.equal((await p1.act("ship.reload", { id: party, weapon: 0 })).code, 200);
+  assert.equal(shipIn(await p1.state(), party).weapons[0].ammo, 8);
+});
+
 test("space.fire modes on the server: rapid, a burst over three ships, heat and Cool, ammunition and Reload", async () => {
   const { gm, p1, party, enemy } = await table();
   let sh = shipIn(await p1.state(), party);
