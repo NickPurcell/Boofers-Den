@@ -258,7 +258,7 @@ test("turn budget: each unit's own turn refills its movement, action, bonus acti
   const hers = Object.assign({}, w, { turnId: "ava", round: 2 });
   assert.deepEqual([E.budget(hers).reaction, E.budget(hers).moveLeft, E.budget(hers).action], [true, 30, true]);
   const r = E.apply(hers, { type: "move", unit: "ava", x: 2, y: 0 }, dice().roll);
-  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0 });
+  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0, surge: 0 });
 });
 
 // a level-3 Consular with two powers; the table has data for one of them (numbers invented for the test)
@@ -3100,4 +3100,50 @@ test("maneuvers through the API: the sheet's maneuver and pool, the die from the
   // the second attack of the action (Extra Attack), naming an inherited key: no maneuver, not an error
   assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0", add: { maneuver: "__proto__" } })).code, 200);
   assert.ok(!("mv" in {}) && !("conditions" in {}));
+});
+
+/* ---------------------------------------------------------------- Action Surge (#67) */
+test("Action Surge: one more action this turn, once a turn, a use of the pool; with Extra Attack, a second Attack action", () => {
+  const pool = (used, max = 1) => ({ "action-surge": { key: "action-surge", name: "Action Surge", max, used, refill: "short" } });
+  const ft = (o) => unit(Object.assign({ id: "ft", name: "Fenn", side: "pc", x: 0, y: 0, attacks: 2, pools: pool(0) }, o));
+  const r1 = () => unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 200, maxHp: 200 });
+  const hit = () => dice({ total: 15, nat: 12 }, { total: 5 }).roll;
+  const atk = (w) => E.apply(w, { type: "attack", unit: "ft", target: "r1", attack: blade }, hit());
+  let r = atk(world([ft(), r1()], "ft")); r = atk(r.world);
+  assert.equal(atk(r.world).ok, false, "two attacks, then the action is spent");
+  r = E.apply(r.world, { type: "common", unit: "ft", key: "surge" }, dice().roll);
+  assert.equal(r.ok, true, r.why);
+  assert.match(r.log[0].text, /Fenn surges: one more action this turn \(0 of 1 Action Surge left\)/);
+  assert.deepEqual([E.budget(r.world).action, r.world.units.ft.pools["action-surge"].used], [true, 1]);
+  r = atk(r.world);
+  assert.deepEqual([r.ok, E.budget(r.world).attacks], [true, 1], "a new Attack action: its own two attacks");
+  r = atk(r.world);
+  assert.equal(atk(r.world).ok, false, "and then it's spent");
+  // once a turn, even with two uses (17th level); none left; none at all
+  let two = E.apply(world([ft({ pools: pool(0, 2) }), r1()], "ft"), { type: "common", unit: "ft", key: "surge" }, dice().roll);
+  assert.equal(E.apply(two.world, { type: "common", unit: "ft", key: "surge" }, dice().roll).why, "Fenn has already surged this turn.");
+  assert.equal(E.apply(world([ft({ pools: pool(1) }), r1()], "ft"), { type: "common", unit: "ft", key: "surge" }, dice().roll).why, "Fenn has no Action Surge left until a short or long rest.");
+  assert.equal(E.apply(world([ft({ pools: {} }), r1()], "ft"), { type: "common", unit: "ft", key: "surge" }, dice().roll).why, "Fenn has no Action Surge.");
+  // the extra action can be something else: Dash after attacking
+  r = atk(world([ft({ attacks: 1 }), r1()], "ft"));
+  r = E.apply(r.world, { type: "common", unit: "ft", key: "surge" }, dice().roll);
+  assert.equal(E.apply(r.world, { type: "common", unit: "ft", key: "dash" }, dice().roll).ok, true);
+  // the next turn: a fresh budget, surge again allowed (a new turn key)
+  const next = Object.assign({}, two.world, { round: 2 });
+  assert.equal(+E.spentOf(next, "ft").surge, 0);
+});
+
+test("Action Surge through the API: a Fighter 2's pool from the class table, one more attack", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { classes: [{ name: "Fighter", level: 2 }] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0" })).code, 200);
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0" })).code, 400, "one attack at level 2");
+  assert.equal((await sam.act("fight.common", { key: "surge" })).code, 200);
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0" })).code, 200, "the surged action");
+  assert.equal((await sam.act("fight.common", { key: "surge" })).code, 400, "once a turn");
+  st = await gm.state();
+  assert.equal((st.characters[avery].resources || []).find((r) => r.key === "action-surge").used, 1);
 });
