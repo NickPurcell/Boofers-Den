@@ -928,7 +928,7 @@
             <td class="n eq-wt">${inp(`equipment.${i}.wt`, +e.wt || '', { ro, type: 'number', ph: '0' })}</td>
             <td class="armor-cell">${inp(`equipment.${i}.armor.kind`, (e.armor || {}).kind || '', { ro, type: 'select', options: [{ v: '', t: '—' }, ...R.ARMOR_KINDS] })}${e.armor && e.armor.kind ? inp(`equipment.${i}.armor.ac`, +e.armor.ac || 0, { ro, type: 'number' }) : ''}</td>
             <td class="eq-cell">${inp(`equipment.${i}.equipped`, e.equipped, { ro, type: 'checkbox' })}${e.att ? `<span class="attune" title="Attuned (Wretched Hives: it takes a short rest with the item)${e.rar ? ` · ${esc(e.rar)}` : ''}">⟡${inp(`equipment.${i}.attuned`, !!e.attuned, { ro, type: 'checkbox' })}</span>` : ''}</td>
-            <td style="white-space:nowrap">${!ro ? `<button class="btn tiny ghost" data-act="sell" data-i="${i}" title="Sell one${+e.cost > 0 ? ` (half its cost: ${R.sellPrice(e).toLocaleString()} cr)` : ''}">Sell</button><button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Empty.</td></tr>'}
+            <td style="white-space:nowrap">${!ro ? `${e.use ? `<button class="btn tiny" data-act="use-item" data-i="${i}" title="Use one: ${esc(useText(e.use) || 'lowers the count')}">Use</button>` : ''}<button class="btn tiny ghost" data-act="sell" data-i="${i}" title="Sell one${+e.cost > 0 ? ` (half its cost: ${R.sellPrice(e).toLocaleString()} cr)` : ''}">Sell</button><button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Empty.</td></tr>'}
           </tbody></table></div></div>
         ${stashBox(ch, ro)}
         <div class="box"><h4>Features & Traits <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-feature" title="Feats, class features, maneuvers, fighting styles, lightsaber forms, ventures">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-feature" title="Write a feature by hand">custom</button>' : ''}</h4>
@@ -1128,6 +1128,7 @@
       case 'pick-archetype': if (window.HTB) HTB.openArchetypePicker(ch.id, i); break;
       case 'pick-feature': HTB.openFeaturePicker(ch.id); break;
       case 'del': mutate(c => c[b.dataset.list].splice(i, 1)); break;
+      case 'use-item': useItem(ch, i); break;
       case 'sell': {   // selling (audit 6.8): one of the item, for half its cost by default (PHB, Selling Treasure); the table can agree another price
         const it = ch.equipment[i]; if (!it) break;
         const ans = prompt(`Sell one ${it.name} for how many credits?${+it.cost > 0 ? ` (Half its cost is ${R.sellPrice(it).toLocaleString()} cr.)` : ''}`, String(R.sellPrice(it)));
@@ -1354,7 +1355,8 @@
             if (ex) ex.qty = (n0(ex.qty) || 1) + 1;
             else { const armor = !enh && R.armorFromItem(it); c.equipment.push({ name: it.n, qty: 1, equipped: false, notes: itemNotes(it, enh).slice(0, 200), ...(armor ? { armor } : {}),
               ...(!enh && parseFloat(it.wt) > 0 ? { wt: parseFloat(it.wt) } : {}), ...(!enh && it.cost > 0 ? { cost: it.cost } : {}),   // weight (6.5) and cost (6.8)
-              ...(enh && R.RARITIES.includes(it.rar) ? { rar: it.rar } : {}), ...(enh && it.att ? { att: true } : {}) }); }   // rarity and attunement (6.3)
+              ...(enh && R.RARITIES.includes(it.rar) ? { rar: it.rar } : {}), ...(enh && it.att ? { att: true } : {}),   // rarity and attunement (6.3)
+              ...((enh ? it.cat === 'Consumable' : ['Medical', 'Explosive'].includes(it.cat)) ? { use: R.consumableUse(it.desc) || {} } : {}) }); }   // a consumable (6.7)
             if (!enh && it.cat === 'Weapon' && !c.attacks.some(x => String(x.name).toLowerCase() === it.n.toLowerCase())) c.attacks.push(weaponAttack(it));
           });
           toast(`${buy ? 'Bought' : 'Added'} ${it.n}${!enh && it.cat === 'Weapon' ? ' (and its attack)' : ''}${buy ? ` for ${it.cost.toLocaleString()} cr` : ''}`);
@@ -1380,6 +1382,41 @@
   const ALIGN = { light: 'Light', dark: 'Dark', universal: 'Universal' };
   // opts.onAdd(power): hand the picked power to someone else (the level-up wizard) instead of the sheet;
   // opts.onDone(): called by Done; opts.taken(): names already picked there
+  // --------------------------------------------------------------------------- consumables (audit 6.7)
+  // Use: one comes off the count, and what the item does is rolled (from its SW5e text, read when it was added): a medpac's
+  // Hit Dice + Con or a stim's healing, on this character or for someone else to read; a grenade's save DC and damage.
+  const useText = u => [u.hd && `${u.hd} Hit Die${u.hd > 1 ? 'Dice' : ''} + Con of healing`, u.heal && `${u.heal} healing`,
+    u.save && `DC ${u.save.dc} ${u.save.ab.toUpperCase()} save`, u.dmg && u.dmg.map(([d, t]) => `${d} ${t}`).join(' + '), u.half && 'half on a save'].filter(Boolean).join(', ');
+  function useItem(ch, i) {
+    const e = ch.equipment[i]; if (!e || !e.use) return;
+    if ((n0(e.qty) || 0) < 1) return toast(`No ${e.name} left.`, true);
+    const u = e.use, con = R.abilityMod(ch, 'con'), die = R.commonHitDie(ch);
+    const healExpr = u.hd ? `${u.hd}d${die}${con ? (con > 0 ? '+' : '') + con : ''}` : u.heal || '';
+    const dmgExpr = (u.dmg || []).map(d => d[0]).join('+');
+    const spend = () => mutate(c => { const x = c.equipment[i]; if (!x || x.name !== e.name) return; if ((n0(x.qty) || 1) > 1) x.qty = (n0(x.qty) || 1) - 1; else c.equipment.splice(i, 1); });
+    const go = async (self) => {
+      closeModal(); spend();
+      const what = useText(u);
+      // no `as` and no character on the rolls: the lines show their sender, never a name the GM may be hiding (#187's review)
+      act('chat', { text: `*uses ${e.name}${what ? `: ${what}` : ''}.*` });
+      if (healExpr) {
+        const res = await roll(healExpr, `${e.name}: healing${u.hd ? ` (the user's Hit Die${u.hd > 1 ? 's' : ''} and Con; another creature rolls its own)` : ''}`, { kind: 'heal' });
+        const n = res && res.roll ? Math.max(u.hd ? 1 : 0, res.roll.total) : 0;   // a medpac heals at least one
+        if (self && n) mutate(c => { const was = +c.hp.current || 0; c.hp.current = Math.min(+c.hp.max || 0, was + n); if (c.hp.current > 0) { c.deathSaves = { s: 0, f: 0 }; if (was <= 0) c.conditions = (c.conditions || []).filter(x => x !== 'Unconscious'); } });
+      }
+      if (dmgExpr) await roll(dmgExpr, `${e.name}: ${(u.dmg || []).map(d => d[1]).join(' and ')} damage${u.half ? ', half on a save' : ''}`, { kind: 'damage' });
+    };
+    modal(`<h3>Use ${esc(e.name)}</h3><p class="muted">${n0(e.qty)} left. ${esc(useText(u) || 'Nothing to roll: one comes off the count.')}</p>
+      <div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn" id="useNo">Cancel</button>
+      ${healExpr ? `<button class="btn" id="useOther" title="Roll it and post it; whoever it's used on applies it">For someone else</button><button class="btn primary" id="useSelf">On ${esc(ch.name)}</button>` : '<button class="btn primary" id="useGo">Use one</button>'}</div>`, box => {
+      box.onclick = e2 => {
+        if (e2.target.id === 'useNo') closeModal();
+        if (e2.target.id === 'useSelf') go(true);
+        if (e2.target.id === 'useOther' || e2.target.id === 'useGo') go(false);
+      };
+    });
+  }
+
   // --------------------------------------------------------------------------- the sheet's Cast (#73, audit 4.4-4.7)
   // Choose the level (upcasting pays a point more per level, up to the max power level; the GM may go past it), and,
   // for a power the table has data for, its targets on the map: the server rolls it as the combat view does (attack or

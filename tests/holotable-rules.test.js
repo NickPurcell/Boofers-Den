@@ -174,6 +174,22 @@ test("attunement (audit 6.3): slots as the proficiency bonus; advanced and up ta
   assert.equal(R.attunement(vee, [R.SIMPLE_ATTUNEMENT]).max, 3);
 });
 
+test("consumables (audit 6.7): what using one rolls, read from its text; checked; a medpac's Hit Die", () => {
+  // the shapes of SW5e's own consumable text, in our words
+  assert.deepEqual(R.consumableUse("Each creature nearby must make a DC 14 Dexterity saving throw. A creature takes 2d6 fire and 2d10 kinetic damage on a failed save, or half as much on a success."),
+    { save: { ab: "dex", dc: 14 }, dmg: [["2d6", "fire"], ["2d10", "kinetic"]], half: true });
+  assert.deepEqual(R.consumableUse("must make a DC 13 Constitution saving throw, taking 2d4 poison damage on a failed save"), { save: { ab: "con", dc: 13 }, dmg: [["2d4", "poison"]] });
+  assert.deepEqual(R.consumableUse("The creature rolls two dice equal to the size of their Hit Die and regains hit points"), { hd: 2 });
+  assert.deepEqual(R.consumableUse("You regain 2d4 + 2 hit points."), { heal: "2d4+2" });
+  assert.deepEqual(R.consumableUse("A kit has five charges."), {});
+  // only this shape survives
+  assert.deepEqual(R.cleanUse({ hd: "x", heal: "2d4; drop", save: { ab: "__proto__", dc: 9 }, dmg: [["1d6", "fire"], ["lots", "fire"], ["1d4", "<b>"]], half: true }), { dmg: [["1d6", "fire"]] });
+  assert.equal(R.cleanUse("nope"), null);
+  // the Hit Die a creature has most of
+  assert.equal(R.commonHitDie({ classes: [{ name: "Fighter", level: 3 }, { name: "Consular", level: 5 }] }), 6);
+  assert.equal(R.commonHitDie({ classes: [{ name: "Fighter", level: 2 }, { name: "Scholar", level: 2 }] }), 10, "a tie: the larger");
+});
+
 test("Engineers and Scouts get tech points back on a short rest; others don't", () => {
   assert.equal(R.techOnShortRest(char([["Engineer", 1]])), true);
   assert.equal(R.techOnShortRest(char([["Scout", 2]])), true);
