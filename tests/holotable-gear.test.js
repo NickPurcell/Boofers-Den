@@ -62,3 +62,19 @@ test("carrying (6.5): an item keeps its weight and cost; bad values are dropped;
   assert.equal((await gm.act("variants.set", { variants: ["Encumbrance"] })).code, 200);
   assert.deepEqual((await sam.state()).variants, ["Encumbrance"]);
 });
+
+test("buying and selling (6.8): a line spoken as a character whose token name the GM hides doesn't name it", async () => {
+  const { gm, sam } = await table();
+  const npc = (await gm.act("char.save", { char: { name: "Grand Inquisitor", credits: 500, equipment: [{ name: "Backpack", qty: 1, cost: 50 }] } })).data.id;
+  await gm.act("token.add", { charId: npc, x: 2, y: 2 });
+  const tok = (await gm.state()).map.tokens.find((t) => t.charId === npc).id;
+  await gm.act("token.update", { id: tok, fields: { nameHidden: true } });
+  assert.equal((await gm.act("chat", { text: "*sells Backpack for 25 cr.*", as: "Grand Inquisitor" })).code, 200);
+  const line = (await sam.state()).chat.filter((m) => /sells Backpack/.test(m.text || "")).at(-1);
+  assert.ok(line, "the line is posted");
+  assert.ok(!JSON.stringify((await sam.state()).chat).includes("Grand Inquisitor"), "Sam never reads the hidden name");
+  // revealed, the line speaks as the character again
+  await gm.act("token.update", { id: tok, fields: { nameHidden: false } });
+  await gm.act("chat", { text: "*buys Backpack for 50 cr.*", as: "Grand Inquisitor" });
+  assert.equal((await sam.state()).chat.filter((m) => /buys Backpack/.test(m.text || "")).at(-1).as, "Grand Inquisitor");
+});
