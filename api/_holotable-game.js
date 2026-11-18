@@ -301,7 +301,9 @@ function viewFor(camp, cid, gm, online) {
     ...(camp.clock ? { clock: camp.clock } : {}),   // in-game time (9.18)
     ...(camp.sheetLock ? { sheetLock: true } : {}), ...(camp.statBlocksHidden ? { statBlocksHidden: true } : {}),   // the GM's table rules (12.6, 9.17)
     audio: camp.audio ? Object.assign({}, camp.audio, { now: now() }) : null,   // "now" lets each screen line its clock up
-    ships: (camp.ships || []).filter((x) => gm || !x.hidden),
+    // a ship's crew row keeps its character's name: a player reads "???" while the GM hides that token's name
+    ships: (camp.ships || []).filter((x) => gm || !x.hidden).map((x) => (gm || !Array.isArray(x.crew) ? x
+      : Object.assign({}, x, { crew: x.crew.map((c) => (c && c.charId && shownName(camp, { charId: c.charId, name: c.name }) === "???" ? Object.assign({}, c, { name: "???" }) : c)) }))),
     ...(camp.space ? { space: Space.view(camp, gm) } : {}),   // the space map (#146)
     sceneFx: fxView,
     ...(gm && (camp.npcs || []).length ? { npcs: camp.npcs } : {}),   // the GM's NPC templates (9.9), the GM's only
@@ -536,8 +538,8 @@ function applyAction(camp, cid, gm, type, p) {
   if (Story.handles(type)) return Story.apply(camp, cid, gm, type, p, { addChat, shownName, Forbidden, Invalid });
   if (type.startsWith("ask.")) return Ask.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
   if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, fightHelpers());
-  if (Ships.handles(type)) return Ships.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
-  if (Space.handles(type)) return Space.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, applyAction, rid, Forbidden, Invalid });
+  if (Ships.handles(type)) return Ships.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, shownName, Forbidden, Invalid });
+  if (Space.handles(type)) return Space.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, shownName, applyAction, rid, Forbidden, Invalid });
   if (Downtime.handles(type)) return Downtime.apply(camp, cid, gm, type, p, { addChat, shownName, applyAction, rollDice, Forbidden, Invalid });
 
   switch (type) {

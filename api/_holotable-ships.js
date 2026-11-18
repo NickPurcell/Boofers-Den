@@ -342,7 +342,8 @@ function apply(camp, cid, gm, type, p, h) {
       if (!known.includes(name)) throw new Invalid("They don't know that technique.");
       if (SR.isDisabled(SR.statusOf(ship)) || SR.isLost(SR.statusOf(ship))) throw new Invalid(`${ship.name} can't take actions.`);
       const chars = camp.characters || {}, ch = typeof c.charId === "string" && Object.prototype.hasOwnProperty.call(chars, c.charId) ? chars[c.charId] : null;
-      const who = str((ch && ch.name) || c.name || "A crew member", 60);
+      // a crew member's character by the name players may read: "???" while the GM hides its token's name (#90, #142)
+      const who = str((ch && h.shownName ? h.shownName(camp, { charId: ch.id, name: ch.name }) : "") || c.name || "A crew member", 60);
       if (c.deployment === "Mechanic") {
         const d = SR.techDie(c.rank); if (!d) throw new Invalid("A technique needs 1st rank.");
         const r = rollDice("1d" + d);

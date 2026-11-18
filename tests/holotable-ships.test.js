@@ -1075,3 +1075,23 @@ test("deployments: rank features and techniques read from SW5e's text; using a t
   }
   assert.equal((await p1.act("ship.technique", { id: enemy, crew: 0, name: "x" })).code, 403);
 });
+
+test("a crew member whose token's name the GM hides is '???' in ship lines: techniques and initiative (jpesus: keep it hidden)", async () => {
+  const { gm, p1, p2, party } = await table();
+  const inq = (await gm.act("char.save", { char: { name: "Grand Inquisitor", abilities: { dex: 14 } } })).data.id;
+  await gm.act("token.add", { charId: inq, x: 3, y: 3, nameHidden: true });
+  const sh = shipIn(await gm.state(), party);
+  await gm.act("ship.save", { ship: Object.assign({}, sh, { coupling: "Direct", crew: [{ charId: inq, name: "Grand Inquisitor", deployment: "Gunner", rank: 1, known: ["Steady Aim"] }] }) });
+  await gm.act("ship.power", { id: party, pool: "central", n: 2 });
+  assert.equal((await gm.act("ship.technique", { id: party, crew: 0, name: "Steady Aim", pool: "central" })).code, 200);
+  await gm.act("space.on", { on: true });
+  await gm.act("space.place", { id: party, x: 2, y: 2, f: 2 });
+  await gm.act("space.init", {});
+  for (const who of [p1, p2]) {
+    assert.ok(!JSON.stringify(await who.state()).includes("Grand Inquisitor"), "no player's state holds the hidden name: chat, ship crew rows, anything");
+  }
+  assert.equal(shipIn(await gm.state(), party).crew[0].name, "Grand Inquisitor", "the GM's copy keeps it");
+  const lines = (await p1.state()).chat.map((m) => m.text || "");
+  assert.ok(lines.some((t) => /^\?\?\? \(Gunner\) uses Steady Aim: a central power die/.test(t)), "the technique line says ???");
+  assert.ok(lines.some((t) => /initiative \(the lowest of its crew: \?\?\? -?\d+\)/.test(t)), "so does the initiative line");
+});
