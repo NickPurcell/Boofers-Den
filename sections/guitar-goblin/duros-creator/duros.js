@@ -1,354 +1,284 @@
-// Duros character creator: a low-poly bust built from simple shapes, with a few lore-friendly options.
+// Duros character creator: the page. The figure is sculpted from signed distance shapes and meshed in workers
+// (sdf.js, anatomy.js, kit.js, outfits.js, jobs.js, pool.js); the head is its own module (head.js) behind a small
+// contract. This file builds the scene and the lights, puts the figure together, runs the panel and saves pictures.
 // three.js is the copy vendored in ../vendor/three (r185), loaded through the page's import map.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { makeTextures, skinMaterial, clothMaterial, leatherMaterial, metalMaterial, plasticMaterial } from './materials.js';
+import { OUTFITS } from './outfits.js';
+import { HEAD_AT } from './anatomy.js';
+import { cached, mesh, poolSize, cache_ } from './pool.js';
+import { makeHead, paintSkin, geometryFrom, smoothNoise } from './head.js';
 
 /* ---------------- the options ---------------- */
-const OPTIONS = {
-  skin: [
-    { key: 'blue', name: 'Duro blue', c: '#4c86b8' },
-    { key: 'deep', name: 'Deep blue', c: '#2d5a92' },
-    { key: 'teal', name: 'Blue-green', c: '#3b8a86' },
-    { key: 'green', name: 'Green', c: '#56885a' },
-    { key: 'grey', name: 'Grey-blue', c: '#6c8095' },
-  ],
-  eyes: [
-    { key: 'red', name: 'Red', c: '#d0222c' },
-    { key: 'dark', name: 'Dark red', c: '#7a0f19' },
-    { key: 'ember', name: 'Orange-red', c: '#e24a26' },
-    { key: 'amber', name: 'Orange', c: '#f08a22' },
-  ],
-  head: [
-    { key: 'round', name: 'Rounded' },
-    { key: 'tall', name: 'High dome' },
-    { key: 'narrow', name: 'Narrow' },
-  ],
-  build: [
-    { key: 'slim', name: 'Slim', s: 0.88 },
-    { key: 'average', name: 'Average', s: 1 },
-    { key: 'broad', name: 'Broad', s: 1.14 },
-  ],
-  outfit: [
-    { key: 'scout', name: "Scout's jacket & scarf" },
-    { key: 'pilot', name: 'Flight suit' },
-    { key: 'trader', name: "Trader's coat" },
-  ],
+export const OPTIONS = {
+  skin: { label: 'Skin', type: 'swatch', items: [
+    { key: 'duro', name: 'Duro blue', c: '#4f86b6' }, { key: 'sky', name: 'Pale blue', c: '#6d9cc4' },
+    { key: 'deep', name: 'Deep blue', c: '#2f5c92' }, { key: 'slate', name: 'Slate blue', c: '#4d6a8e' },
+    { key: 'teal', name: 'Blue-green', c: '#3b8584' }, { key: 'sea', name: 'Sea green', c: '#4b8a72' },
+    { key: 'green', name: 'Green', c: '#5a8558' }, { key: 'grey', name: 'Grey-blue', c: '#6e8092' },
+  ] },
+  eyes: { label: 'Eyes', type: 'swatch', items: [
+    { key: 'red', name: 'Red', c: '#cf1f2a' }, { key: 'crimson', name: 'Crimson', c: '#a8162a' },
+    { key: 'dark', name: 'Dark red', c: '#701019' }, { key: 'ember', name: 'Orange-red', c: '#df4424' },
+    { key: 'orange', name: 'Orange', c: '#ec7a1f' }, { key: 'amber', name: 'Amber', c: '#e9a13a' },
+  ] },
+  head: { label: 'Head', type: 'seg', items: [{ key: 'round', name: 'Rounded' }, { key: 'tall', name: 'High dome' }, { key: 'narrow', name: 'Narrow' }] },
+  build: { label: 'Build', type: 'seg', items: [{ key: 'slim', name: 'Slim', s: 0.9 }, { key: 'average', name: 'Average', s: 1 }, { key: 'broad', name: 'Broad', s: 1.12 }] },
+  age: { label: 'Age', type: 'seg', items: [{ key: 'young', name: 'Young', a: 0 }, { key: 'adult', name: 'Adult', a: 0.3 }, { key: 'elder', name: 'Elder', a: 0.8 }] },
+  expr: { label: 'Expression', type: 'seg', items: [{ key: 'neutral', name: 'Calm' }, { key: 'smile', name: 'Smile' }, { key: 'stern', name: 'Stern' }, { key: 'wary', name: 'Wary' }] },
+  marks: { label: 'Markings', type: 'seg', items: [{ key: 'none', name: 'None' }, { key: 'freckles', name: 'Freckles' }, { key: 'cheeks', name: 'Cheek bars' }, { key: 'scar', name: 'Scar' }] },
+  outfit: { label: 'Outfit', type: 'seg', items: OUTFITS.map((o) => ({ key: o.key, name: o.name })) },
 };
-const DEFAULT = { skin: 'blue', eyes: 'red', head: 'round', build: 'average', outfit: 'scout' };
-const pick = (opt, key) => OPTIONS[opt].find((o) => o.key === key) || OPTIONS[opt][0];
-
-// the look lives in the page's address (#skin=teal&eyes=red&…), so a link keeps it
+const DEFAULT = { skin: 'duro', eyes: 'red', head: 'round', build: 'average', age: 'adult', expr: 'neutral', marks: 'none', outfit: 'scout' };
+const pick = (opt, key) => OPTIONS[opt].items.find((o) => o.key === key) || OPTIONS[opt].items[0];
 function readHash() {
   const st = Object.assign({}, DEFAULT), q = new URLSearchParams(location.hash.slice(1));
-  for (const k of Object.keys(OPTIONS)) if (OPTIONS[k].some((o) => o.key === q.get(k))) st[k] = q.get(k);
+  for (const k of Object.keys(OPTIONS)) if (OPTIONS[k].items.some((o) => o.key === q.get(k))) st[k] = q.get(k);
   return st;
 }
 const state = readHash();
 const writeHash = () => history.replaceState(null, '', '#' + new URLSearchParams(state).toString());
 
-/* ---------------- the scene ---------------- */
+/* ---------------- the renderer and the scene ---------------- */
 const canvas = document.getElementById('scene');
+const phone = Math.min(screen.width, screen.height) < 600 || /Mobi|Android/i.test(navigator.userAgent);
 let renderer;
-try {
-  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
-} catch (e) {
-  document.getElementById('nogl').hidden = false;
-  throw e;
-}
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' }); }
+catch (e) { document.getElementById('nogl').hidden = false; throw e; }
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, phone ? 1.75 : 2));
 renderer.setClearColor(0x000000, 0);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.05;
+renderer.toneMappingExposure = 1.0;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.shadowMap.autoUpdate = false;   // the figure stands still: shadows are drawn again only after a change
+makeTextures();
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(32, 1, 0.1, 100);
-camera.position.set(1.6, 0.4, 8.6);
-const controls = new OrbitControls(camera, canvas);
-controls.target.set(0, -0.55, 0);
-controls.enablePan = false;
-controls.enableDamping = true;
-controls.minDistance = 4.2;
-controls.maxDistance = 13;
-controls.minPolarAngle = 0.35;
-controls.maxPolarAngle = 2.2;
-controls.update();
-
-scene.add(new THREE.HemisphereLight(0xcfe3ff, 0x1a1f2b, 1.0));
-const key = new THREE.DirectionalLight(0xfff0de, 2.6); key.position.set(3, 4, 5); scene.add(key);
-const rim = new THREE.DirectionalLight(0x86ccff, 1.8); rim.position.set(-4, 2.5, -5); scene.add(rim);
-const fill = new THREE.DirectionalLight(0xffffff, 0.45); fill.position.set(-3, -1, 4); scene.add(fill);
-
-const skinMat = new THREE.MeshStandardMaterial({ color: 0x4c86b8, roughness: 0.5, metalness: 0, flatShading: true });
-const eyeMat = new THREE.MeshPhysicalMaterial({ color: 0xd0222c, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.05, emissive: 0x000000 });
-const mouthMat = new THREE.MeshStandardMaterial({ color: 0x1a2430, roughness: 0.8 });
-const cloth = (c, rough = 0.85) => new THREE.MeshStandardMaterial({ color: c, roughness: rough, metalness: 0, flatShading: true });
-
-const figure = new THREE.Group();
-scene.add(figure);
-const headPivot = new THREE.Group();   // the head and its face, on top of the neck
-headPivot.position.set(0, 0.25, 0.05);
-figure.add(headPivot);
-let headParts = null, bodyParts = null;
-
-const smooth = (a, b, t) => { const x = Math.min(1, Math.max(0, (t - a) / (b - a))); return x * x * (3 - 2 * x); };
-const lerp = (a, b, t) => a + (b - a) * t;
-const ray = new THREE.Raycaster();
-// where a line straight back from the front (z) first meets a mesh: the point and its outward normal
-function front(mesh, x, y) {
-  mesh.updateWorldMatrix(true, false);
-  ray.set(new THREE.Vector3(x, y, 20).applyMatrix4(mesh.parent.matrixWorld), new THREE.Vector3(0, 0, -1).transformDirection(mesh.parent.matrixWorld));
-  const hit = ray.intersectObject(mesh, false)[0];
-  if (!hit) return null;
-  const inv = new THREE.Matrix4().copy(mesh.parent.matrixWorld).invert();
-  const p = hit.point.clone().applyMatrix4(inv);
-  const n = hit.face.normal.clone().transformDirection(mesh.matrixWorld).transformDirection(inv).normalize();
-  return { p, n };
+// a soft studio for reflections: a dark room with four light panels
+{
+  const env = new THREE.Scene();
+  env.add(new THREE.Mesh(new THREE.SphereGeometry(10, 24, 12), new THREE.MeshBasicMaterial({ color: 0x1b2230, side: THREE.BackSide })));
+  const panel = (w, h, col, pos) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide })); m.position.set(...pos); m.lookAt(0, 0, 0); env.add(m); };
+  panel(4, 4, 0xfff1dc, [5, 5, 6]);      // key softbox
+  panel(6, 3, 0x9fd0ff, [-6, 3, -5]);    // rim
+  panel(8, 8, 0x55606e, [0, 8, 0]);      // ceiling bounce
+  panel(3, 5, 0xcfe0ff, [-6, 1, 4]);     // fill
+  const pm = new THREE.PMREMGenerator(renderer);
+  scene.environment = pm.fromScene(env, 0.035).texture;
+  pm.dispose();
 }
+scene.environmentIntensity = 0.55;
 
-/* ---------------- the head ---------------- */
-// A sphere pushed into a Duros head: tall and smooth, wide across the eyes and the crown, narrowing to a small chin,
-// the face fairly flat and the cranium swept back. No nose, no ears, a thin lipless mouth.
-const HEADS = {
-  round: { H: 1.32, jaw: 0.52, crown: 1.0, back: 1.06, wide: 1.0, eye: 0.32 },
-  tall: { H: 1.55, jaw: 0.5, crown: 1.03, back: 1.24, wide: 1.0, eye: 0.32 },
-  narrow: { H: 1.42, jaw: 0.42, crown: 0.9, back: 1.1, wide: 0.88, eye: 0.3 },
-};
-function buildHead() {
-  if (headParts) { headPivot.remove(headParts); headParts.traverse((o) => o.geometry && o.geometry.dispose()); }
-  const h = HEADS[state.head] || HEADS.round, g = new THREE.Group();
-  const geo = new THREE.SphereGeometry(1, 28, 22), pos = geo.attributes.position, v = new THREE.Vector3();
+// three-point light: a warm key that casts soft shadows, a cool fill, and cool and warm rims from behind
+const key = new THREE.DirectionalLight(0xffecd6, 2.6);
+key.position.set(1.4, 2.9, 2.0); key.target.position.set(0, 1.4, 0);
+key.castShadow = true;
+key.shadow.mapSize.set(phone ? 1024 : 2048, phone ? 1024 : 2048);
+Object.assign(key.shadow.camera, { left: -0.75, right: 0.75, top: 0.75, bottom: -0.75, near: 1.5, far: 5.5 });
+key.shadow.bias = -0.0003; key.shadow.normalBias = 0.012; key.shadow.radius = 4; key.shadow.intensity = 0.7;
+scene.add(key, key.target);
+const fill = new THREE.DirectionalLight(0xb9d4ff, 0.55); fill.position.set(-2.2, 1.6, 1.6); scene.add(fill);
+const rim = new THREE.DirectionalLight(0x9fd6ff, 2.4); rim.position.set(-1.2, 2.6, -2.4); rim.target.position.set(0, 1.5, 0); scene.add(rim, rim.target);
+const rim2 = new THREE.DirectionalLight(0xffd2b0, 0.9); rim2.position.set(1.8, 2.0, -1.8); rim2.target.position.set(0, 1.5, 0); scene.add(rim2, rim2.target);
+scene.add(new THREE.HemisphereLight(0x8ea7c7, 0x141820, 0.35));
+
+// the backdrop: a curved studio sweep behind the figure, lit in the middle and dark at the edges
+const backdrop = (() => {
+  const g = new THREE.CylinderGeometry(2.4, 2.4, 4, 64, 8, true, Math.PI * 0.62, Math.PI * 0.76);
+  const pos = g.attributes.position, col = new Float32Array(pos.count * 3), c = new THREE.Color();
   for (let i = 0; i < pos.count; i++) {
-    v.fromBufferAttribute(pos, i);
-    const t = (v.y + 1) / 2;
-    let w = lerp(h.jaw, 1, smooth(0.04, 0.6, t)) * lerp(1, h.crown, smooth(0.55, 0.95, t)) * h.wide;
-    let x = v.x * w, y = v.y * h.H, z = v.z;
-    if (z > 0) z *= lerp(0.74, 0.9, smooth(0, 0.7, t)) * lerp(1, 0.92, smooth(0.6, 1, t));
-    else z *= lerp(0.88, h.back, smooth(0.3, 0.9, t));
-    z -= smooth(0.55, 1, t) * (h.back - 1) * 1.1;   // the cranium swept back
-    if (t < 0.22 && v.z > 0) z += (0.22 - t) * 0.5;  // a small, forward chin
-    pos.setXYZ(i, x, y, z);
+    const x = pos.getX(i), y = pos.getY(i), t = Math.exp(-((x / 1.6) ** 2) - ((y - 0.15) / 1.4) ** 2);
+    c.setRGB(0.012, 0.016, 0.026).lerp(new THREE.Color(0.075, 0.1, 0.14), t); col.set([c.r, c.g, c.b], i * 3);
   }
-  geo.computeVertexNormals();
-  const head = new THREE.Mesh(geo, skinMat);
-  g.add(head);
-  headPivot.add(g);
-  // eyes: large, round and wide-set, half sunk into the head
-  const ex = 0.43 * h.wide, ey = h.H * 0.06;
-  for (const sx of [-1, 1]) {
-    const f = front(head, sx * ex, ey);
-    if (!f) continue;
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(h.eye, 24, 18), eyeMat);
-    eye.position.copy(f.p).addScaledVector(f.n, -h.eye * 0.5);
-    eye.scale.set(1, 1.04, 0.92);
-    g.add(eye);
-  }
-  // a thin, lipless mouth that follows the face
-  const my = -h.H * 0.56, pts = [];
-  for (const mx of [-0.22, -0.11, 0, 0.11, 0.22]) {
-    const f = front(head, mx * h.wide, my + Math.abs(mx) * 0.18);
-    if (f) pts.push(f.p.clone().addScaledVector(f.n, 0.004));
-  }
-  if (pts.length >= 3) g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 20, 0.02, 6, false), mouthMat));
-  headParts = g;
-  headPivot.position.y = 0.25 + (h.H - 1.32) * 0.55;
-}
-
-/* ---------------- the body and the outfits ---------------- */
-// A torso turned on a lathe (wide at the shoulders, flatter front to back), a neck, shoulders and upper arms; each
-// outfit dresses it in its own colours and adds a few plain pieces: collar, straps, scarf, lapels.
-const TW = 1.08, TD = 0.64;   // the torso's width and depth against its lathe profile
-function torsoGeo(s, extra = 0) {
-  const prof = [[0, -5.0], [1.12, -4.95], [1.18, -4.3], [1.22, -3.6], [1.34, -2.9], [1.32, -2.4], [1.14, -2.08], [0.78, -1.9], [0.5, -1.82], [0.42, -1.8]]
-    .map(([r, y]) => new THREE.Vector2(r + (r ? extra : 0), y));
-  const geo = new THREE.LatheGeometry(prof, 28);
-  geo.scale(TW * s, 1, TD + (s - 1) * 0.3);
-  return geo;
-}
-function strap(g, mat, a, b, w = 0.16, out = 0.05) {
-  const dir = new THREE.Vector3().subVectors(b.p, a.p), len = dir.length();
-  const m = new THREE.Mesh(new THREE.BoxGeometry(w, len, 0.05), mat);
-  const n = a.n.clone().add(b.n).normalize();
-  m.position.copy(a.p).add(b.p).multiplyScalar(0.5).addScaledVector(n, out);
-  m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.normalize());
-  g.add(m);
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  const m = new THREE.Mesh(g, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1, side: THREE.BackSide }));
+  m.position.set(0, 1.45, 1.55); m.receiveShadow = true;
   return m;
-}
-function buildBody() {
-  if (bodyParts) { figure.remove(bodyParts); bodyParts.traverse((o) => o.geometry && o.geometry.dispose()); }
-  const s = pick('build', state.build).s, g = new THREE.Group();
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.46, 1.7, 16), skinMat);
-  neck.position.set(0, -1.35, -0.08);
-  g.add(neck);
-  const look = {
-    scout: { body: '#6b4a30', arm: '#6b4a30', under: '#2a2f37', trim: '#3a2a1d' },
-    pilot: { body: '#58664e', arm: '#58664e', under: '#3a4335', trim: '#262a24' },
-    trader: { body: '#4a2a46', arm: '#4a2a46', under: '#d8cdb4', trim: '#c4a04a' },
-  }[state.outfit] || {};
-  const bodyMat = cloth(look.body), armMat = cloth(look.arm), underMat = cloth(look.under), trimMat = cloth(look.trim, 0.6);
-  const torso = new THREE.Mesh(torsoGeo(s), bodyMat);
-  g.add(torso);
-  // shoulders and upper arms, hanging a little out from the body
-  const sx = 1.22 * s;
-  for (const k of [-1, 1]) {
-    const sh = new THREE.Mesh(new THREE.SphereGeometry(0.42 * Math.sqrt(s), 14, 10), armMat);
-    sh.position.set(k * sx, -2.36, -0.02);
-    g.add(sh);
-    const arm = new THREE.Mesh(new THREE.CapsuleGeometry(0.32 * Math.sqrt(s), 1.8, 6, 12), armMat);
-    arm.position.set(k * (sx + 0.08), -3.5, -0.02);
-    arm.rotation.z = k * 0.1;
-    g.add(arm);
-  }
-  figure.add(g);
-  g.updateMatrixWorld(true);
-  const at = (x, y) => front(torso, x, y);
-  if (state.outfit === 'scout') {
-    // an open-necked field jacket over a dark shirt, a long scarf, and a strap across the chest with two pouches
-    const v1 = at(-0.42, -2.0), v2 = at(0.42, -2.0), v3 = at(0, -3.25);
-    if (v1 && v2 && v3) {
-      const shirt = new THREE.Mesh(new THREE.BufferGeometry().setFromPoints([v1.p.clone().addScaledVector(v1.n, 0.02), v2.p.clone().addScaledVector(v2.n, 0.02), v3.p.clone().addScaledVector(v3.n, 0.02)]), underMat);
-      shirt.geometry.computeVertexNormals(); shirt.material.side = THREE.DoubleSide; g.add(shirt);
-    }
-    const scarfMat = cloth('#9a4b33');
-    const wrap = new THREE.Mesh(new THREE.TorusGeometry(0.56, 0.2, 8, 20), scarfMat);
-    wrap.position.set(0, -1.86, -0.04); wrap.rotation.x = Math.PI / 2 - 0.12; wrap.scale.set(1.08, 1, 0.9); g.add(wrap);
-    const t1 = at(-0.18, -2.0), t2 = at(-0.3, -3.2), t3 = at(0.02, -2.0), t4 = at(0.0, -2.8);
-    if (t1 && t2) strap(g, scarfMat, t1, t2, 0.3, 0.07);
-    if (t3 && t4) strap(g, scarfMat, t3, t4, 0.26, 0.1);
-    const a = at(0.62 * s, -2.05), m = at(0.05, -3.2), b = at(-0.62 * s, -4.35);
-    if (a && m) strap(g, trimMat, a, m, 0.15, 0.1);
-    if (m && b) strap(g, trimMat, m, b, 0.15, 0.1);
-    const belt = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.08, 6, 28), trimMat);
-    belt.position.set(0, -4.4, 0); belt.rotation.x = Math.PI / 2; belt.scale.set(1.16 * TW * s * 1.03, 1.16 * (TD + (s - 1) * 0.3) * 1.07, 1); g.add(belt);
-    const bk = at(0.25, -4.4);
-    if (bk) { const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.2, 0.06), cloth('#b08a4a', 0.5)); buckle.position.copy(bk.p).addScaledVector(bk.n, 0.1); buckle.lookAt(buckle.position.clone().add(bk.n)); g.add(buckle); }
-  } else if (state.outfit === 'pilot') {
-    // a one-piece flight suit: a padded collar ring, a harness in a V to a chest unit, a patch on the shoulder
-    const ring = new THREE.Mesh(new THREE.TorusGeometry(0.6, 0.16, 8, 22), cloth('#3a4335'));
-    ring.position.set(0, -1.86, -0.05); ring.rotation.x = Math.PI / 2 - 0.1; g.add(ring);
-    const c = at(0, -2.85);
-    for (const k of [-1, 1]) {
-      const top = at(k * 0.78 * s, -2.05);
-      if (top && c) strap(g, trimMat, top, c, 0.16, 0.13);
-    }
-    const belt = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.07, 6, 28), trimMat);
-    belt.position.set(0, -4.3, 0); belt.rotation.x = Math.PI / 2; belt.scale.set(1.18 * TW * s * 1.02, 1.18 * (TD + (s - 1) * 0.3) * 1.05, 1); g.add(belt);
-    if (c) {
-      const box = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.42, 0.18), cloth('#2c2f33', 0.5));
-      box.position.copy(c.p).addScaledVector(c.n, 0.1); box.lookAt(box.position.clone().add(c.n)); g.add(box);
-      ['#d24a3a', '#e7c24a', '#4cb07a'].forEach((col, i) => {
-        const led = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.09, 0.05), new THREE.MeshStandardMaterial({ color: col, emissive: col, emissiveIntensity: 0.6 }));
-        led.position.set(-0.16 + i * 0.16, 0.06, 0.1); box.add(led);
-      });
-    }
-    const patch = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.04, 12), cloth('#c8613a'));
-    patch.position.set(-(sx + 0.06), -2.62, 0.28); patch.rotation.set(Math.PI / 2, 0, 0.3); g.add(patch);
-  } else {
-    // a long merchant's coat: wide lapels with a gilt edge over a pale shirt, a stiff collar behind the neck, a sash
-    const v1 = at(-0.36, -2.0), v2 = at(0.36, -2.0), v3 = at(0, -3.4);
-    if (v1 && v2 && v3) {
-      const shirt = new THREE.Mesh(new THREE.BufferGeometry().setFromPoints([v1.p.clone().addScaledVector(v1.n, 0.02), v2.p.clone().addScaledVector(v2.n, 0.02), v3.p.clone().addScaledVector(v3.n, 0.02)]), underMat);
-      shirt.geometry.computeVertexNormals(); shirt.material.side = THREE.DoubleSide; g.add(shirt);
-    }
-    const lapelMat = cloth('#6a3b62');
-    for (const k of [-1, 1]) {
-      const top = at(k * 0.42, -2.0), low = at(k * 0.06, -3.45), out = at(k * 0.9 * s, -2.5);
-      if (top && low) { strap(g, lapelMat, top, low, 0.42, 0.06); strap(g, trimMat, top, low, 0.06, 0.1).translateX(k * 0.2); }
-      if (top && out) strap(g, lapelMat, top, out, 0.3, 0.05);
-    }
-    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.66, 0.72, 0.75, 20, 1, true, Math.PI * 0.55, Math.PI * 0.9), new THREE.MeshStandardMaterial({ color: look.body, roughness: 0.8, flatShading: true, side: THREE.DoubleSide }));
-    collar.position.set(0, -1.55, -0.12); g.add(collar);
-    const sash = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.1, 6, 28), trimMat);
-    sash.position.set(0, -4.25, 0); sash.rotation.x = Math.PI / 2; sash.scale.set(1.18 * TW * s * 1.03, 1.18 * (TD + (s - 1) * 0.3) * 1.07, 1); g.add(sash);
-    const clasp = at(0, -4.25);
-    if (clasp) { const cl = new THREE.Mesh(new THREE.OctahedronGeometry(0.14), trimMat); cl.position.copy(clasp.p).addScaledVector(clasp.n, 0.12); g.add(cl); }
-  }
-  bodyParts = g;
-}
+})();
+scene.add(backdrop);
 
-function recolour() {
-  skinMat.color.set(pick('skin', state.skin).c);
-  const e = pick('eyes', state.eyes).c;
-  eyeMat.color.set(e);
-  eyeMat.emissive.set(e).multiplyScalar(0.12);
-  mouthMat.color.set(pick('skin', state.skin).c).multiplyScalar(0.28);
+let dirty = true;
+const redraw = () => { dirty = true; };
+const camera = new THREE.PerspectiveCamera(30, 1, 0.05, 30);
+const controls = new OrbitControls(camera, canvas);
+const VIEWS = {
+  portrait: { target: [0, 1.62, 0.02], pos: [0.36, 1.69, 1.02] },
+  body: { target: [0, 1.32, 0.02], pos: [0.7, 1.45, 2.3] },
+};
+function frameView(which = 'portrait') {
+  const v = VIEWS[which] || VIEWS.portrait;
+  controls.target.set(...v.target); camera.position.set(...v.pos); controls.update(); redraw();
+}
+controls.enablePan = false; controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.minDistance = 0.42; controls.maxDistance = 2.7; controls.minPolarAngle = 0.5; controls.maxPolarAngle = 2.15;
+frameView('portrait');
+
+/* ---------------- the figure ---------------- */
+const figure = new THREE.Group(); scene.add(figure);
+const handSkin = skinMaterial();
+const parts = { head: null, hands: null, outfit: null };
+let head = null;   // the head module's handle: { object, setSkin, setEyes, dispose }
+
+function swap(slot, obj) {
+  if (parts[slot]) { figure.remove(parts[slot]); if (slot !== 'head') parts[slot].traverse((o) => { if (o.geometry) o.geometry.dispose(); }); }
+  parts[slot] = obj;
+  if (obj) figure.add(obj);
+}
+function paintCloth(geo) {
+  const ao = geo.userData.ao, col = geo.attributes.color, pos = geo.attributes.position;
+  for (let i = 0; i < ao.length; i++) { const o = 0.3 + 0.7 * Math.pow(ao[i], 1.4), m = 0.96 + 0.08 * smoothNoise(pos.getX(i) * 30, pos.getY(i) * 30, pos.getZ(i) * 30); col.setXYZ(i, o * m, o * m, o * m); }
+  col.needsUpdate = true;
+}
+const lightMaterial = (hex) => new THREE.MeshStandardMaterial({ color: hex, emissive: hex, emissiveIntensity: 1.4, roughness: 0.3 });
+const MATERIALS = { cloth: clothMaterial, leather: leatherMaterial, metal: metalMaterial, plastic: plasticMaterial, light: lightMaterial };
+
+function skinColours() {
+  const c = new THREE.Color(pick('skin', state.skin).c);
+  handSkin.color.copy(c); handSkin.sheenColor.copy(c).lerp(new THREE.Color(0xffffff), 0.45);
+  if (head) head.setSkin(pick('skin', state.skin).c);
+  redraw();
+}
+const changed = () => { renderer.shadowMap.needsUpdate = true; redraw(); };
+
+let building = 0;
+const status = document.getElementById('status');
+async function rebuild(what) {
+  const ticket = ++building;
+  status.hidden = false;
+  const s = pick('build', state.build).s, age = pick('age', state.age).a;
+  const jobs = [];
+  if (what.head) jobs.push(makeHead(THREE, { shape: state.head, expr: state.expr, age, marks: state.marks, skin: pick('skin', state.skin).c, eyes: pick('eyes', state.eyes).c }).then((h) => ['head', h]));
+  if (what.body) jobs.push(Promise.all([cached(`hand:1:${s}`, 'hand', { side: 1, build: s }), cached(`hand:-1:${s}`, 'hand', { side: -1, build: s })]).then((r) => ['hands', r]));
+  if (what.outfit) {
+    // the outfit's pieces shared out between the workers, then put back in order
+    const n = poolSize(), k = `outfit:${state.outfit}:${s}`;
+    if (!cache_.has(k)) cache_.set(k, Promise.all(Array.from({ length: n }, (_, part) => mesh('outfit', { key: state.outfit, build: s, part, of: n })))
+      .then((rs) => ({ pieces: rs.flatMap((r) => r.pieces).sort((x, y) => x.index - y.index) })));
+    jobs.push(cache_.get(k).then((r) => ['outfit', r]));
+  }
+  const done = await Promise.all(jobs);
+  if (ticket !== building) { for (const [slot, r] of done) if (slot === 'head') r.dispose(); return; }   // a newer choice is on its way
+  for (const [slot, r] of done) {
+    if (slot === 'head') {
+      if (head) head.dispose();
+      head = r; r.object.position.set(...HEAD_AT); swap('head', r.object);
+    } else if (slot === 'hands') {
+      const g = new THREE.Group();
+      for (const h of r) { const geo = geometryFrom(THREE, h.mesh); paintSkin(geo); const m = new THREE.Mesh(geo, handSkin); m.castShadow = m.receiveShadow = true; g.add(m); }
+      swap('hands', g);
+    } else if (slot === 'outfit') {
+      const g = new THREE.Group(), def = OUTFITS.find((o) => o.key === state.outfit);
+      for (const p of r.pieces) {
+        const mk = MATERIALS[p.material] || clothMaterial, colour = p.colour || (def && def.colours && def.colours[p.name]) || '#777777';
+        // a copy of the cached arrays, so the same outfit can be shown again later
+        const geo = geometryFrom(THREE, { position: p.mesh.position, normal: p.mesh.normal, uv: p.mesh.uv, index: p.mesh.index, ao: p.mesh.ao }); paintCloth(geo);
+        const m = new THREE.Mesh(geo, mk(colour)); m.castShadow = m.receiveShadow = true; m.name = p.name; g.add(m);
+      }
+      swap('outfit', g);
+    }
+  }
+  skinColours(); changed();
+  status.hidden = true;
 }
 
 /* ---------------- the panel ---------------- */
 function summary() {
   const s = (k) => pick(k, state[k]).name.toLowerCase();
-  document.getElementById('summary').textContent = `${pick('build', state.build).name} build, ${s('skin')} skin, ${s('eyes')} eyes, ${s('head')} head, ${s('outfit')}.`;
+  document.getElementById('summary').textContent = `${pick('age', state.age).name} Duros, ${s('build')} build, ${s('skin')} skin, ${s('eyes')} eyes, ${s('head')} head, ${s('expr')}${state.marks !== 'none' ? ', ' + s('marks') : ''}, in a ${s('outfit')}.`;
 }
 function paint() {
-  for (const el of document.querySelectorAll('[data-opt]')) {
-    const opt = el.dataset.opt;
-    for (const b of el.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.key === state[opt]));
-  }
+  for (const el of document.querySelectorAll('[data-opt]')) for (const b of el.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.key === state[el.dataset.opt]));
   summary();
 }
-function set(opt, keyName) {
-  if (state[opt] === keyName) return;
-  state[opt] = keyName;
-  if (opt === 'head') buildHead();
-  if (opt === 'build' || opt === 'outfit') buildBody();
-  recolour(); paint(); writeHash();
+function set(opt, k) {
+  if (state[opt] === k) return;
+  state[opt] = k;
+  if (opt === 'head' || opt === 'expr' || opt === 'age' || opt === 'marks') rebuild({ head: true });
+  else if (opt === 'build') rebuild({ body: true, outfit: true });
+  else if (opt === 'outfit') rebuild({ outfit: true });
+  else if (opt === 'eyes') { if (head) head.setEyes(pick('eyes', state.eyes).c); redraw(); }
+  else if (opt === 'skin') skinColours();
+  paint(); writeHash();
 }
-for (const el of document.querySelectorAll('[data-opt]')) {
-  const opt = el.dataset.opt, swatch = el.classList.contains('swatches');
-  for (const o of OPTIONS[opt]) {
-    const b = document.createElement('button');
-    b.type = 'button'; b.dataset.key = o.key;
-    if (swatch) { b.className = 'sw'; b.style.setProperty('--c', o.c); b.setAttribute('aria-label', o.name); b.innerHTML = `<span class="tip">${o.name}</span>`; }
+const panelEl = document.getElementById('options');
+for (const [opt, def] of Object.entries(OPTIONS)) {
+  const fs = document.createElement('fieldset'); fs.className = 'opt';
+  fs.innerHTML = `<legend>${def.label}</legend>`;
+  const box = document.createElement('div'); box.className = def.type === 'swatch' ? 'swatches' : 'seg'; box.dataset.opt = opt;
+  for (const o of def.items) {
+    const b = document.createElement('button'); b.type = 'button'; b.dataset.key = o.key;
+    if (def.type === 'swatch') { b.className = 'sw'; b.style.setProperty('--c', o.c); b.setAttribute('aria-label', o.name); b.title = o.name; }
     else b.textContent = o.name;
     b.addEventListener('click', () => set(opt, o.key));
-    el.appendChild(b);
+    box.appendChild(b);
   }
+  fs.appendChild(box); panelEl.appendChild(fs);
 }
 document.getElementById('random').addEventListener('click', () => {
-  for (const k of Object.keys(OPTIONS)) state[k] = OPTIONS[k][Math.floor(Math.random() * OPTIONS[k].length)].key;
-  buildHead(); buildBody(); recolour(); paint(); writeHash();
+  const before = Object.assign({}, state);
+  for (const k of Object.keys(OPTIONS)) { const it = OPTIONS[k].items; state[k] = it[Math.floor(Math.random() * it.length)].key; }
+  if (Math.random() < 0.6) state.marks = 'none';
+  const headChanged = ['head', 'expr', 'age', 'marks'].some((k) => before[k] !== state[k]);
+  rebuild({ head: headChanged, body: before.build !== state.build, outfit: before.outfit !== state.outfit || before.build !== state.build });
+  if (!headChanged && head) head.setEyes(pick('eyes', state.eyes).c);
+  skinColours(); paint(); writeHash();
 });
+for (const b of document.querySelectorAll('[data-view]')) b.addEventListener('click', () => frameView(b.dataset.view));
 
-// the portrait: the current view, square, 1024 px, on a transparent or a plain background
-document.getElementById('save').addEventListener('click', () => {
-  const plain = document.getElementById('plainbg').checked, size = 1024;
-  const keep = { w: canvas.clientWidth, h: canvas.clientHeight, pr: renderer.getPixelRatio(), aspect: camera.aspect };
+/* ---------------- pictures ---------------- */
+// Render the scene square at `size` from a camera (the current view, or a fixed head-and-shoulders one), on the studio
+// backdrop, a plain colour or nothing, and return a PNG data URL.
+function snapshot(size, bg, cam) {
+  const keep = { w: canvas.clientWidth, h: canvas.clientHeight, pr: renderer.getPixelRatio() };
   renderer.setPixelRatio(1); renderer.setSize(size, size, false);
-  camera.aspect = 1; camera.fov = fovFor(1); camera.updateProjectionMatrix();
-  renderer.setClearColor(0x16202f, plain ? 1 : 0);
-  renderer.render(scene, camera);
+  backdrop.visible = bg === 'studio';
+  renderer.setClearColor(0x161d29, bg === 'plain' ? 1 : 0);
+  renderer.render(scene, cam);
   const url = canvas.toDataURL('image/png');
-  renderer.setClearColor(0x000000, 0);
+  backdrop.visible = true; renderer.setClearColor(0x000000, 0);
   renderer.setPixelRatio(keep.pr); renderer.setSize(keep.w, keep.h, false);
-  camera.aspect = keep.aspect; camera.fov = fovFor(keep.aspect); camera.updateProjectionMatrix();
-  const a = document.createElement('a');
-  a.href = url; a.download = `duros-${state.skin}-${state.outfit}.png`;
-  document.body.appendChild(a); a.click(); a.remove();
+  redraw();
+  return url;
+}
+function download(url, name) { const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+const bgChoice = () => (document.querySelector('input[name=bg]:checked') || { value: 'studio' }).value;
+// the portrait: the current view, 1024 px square
+document.getElementById('save').addEventListener('click', () => {
+  const cam = camera.clone(); cam.aspect = 1; cam.fov = fovFor(1); cam.updateProjectionMatrix();
+  download(snapshot(1024, bgChoice(), cam), `duros-${state.skin}-${state.outfit}.png`);
+});
+// the token: 512 px, head and shoulders from the front and a little to the side, the eyes on the upper third, so it
+// still reads at 20 px on a map (jpesus's agent's test on #65); plain by default
+const tokenCam = new THREE.PerspectiveCamera(30, 1, 0.05, 30);
+document.getElementById('token').addEventListener('click', () => {
+  const eyeY = HEAD_AT[1];
+  tokenCam.position.set(0.14, eyeY + 0.005, 0.98); tokenCam.lookAt(0, eyeY - 0.05, 0); tokenCam.updateProjectionMatrix();
+  const bg = bgChoice() === 'studio' ? 'plain' : bgChoice();
+  download(snapshot(512, bg, tokenCam), `duros-token-${state.skin}.png`);
 });
 
 /* ---------------- run ---------------- */
-// wide enough for the shoulders on a narrow screen, tall enough for the whole head (a high dome too) on a wide one
-const fovFor = (aspect) => THREE.MathUtils.radToDeg(2 * Math.atan(Math.max(2.95, 2.4 / aspect) / 8.7));
+const fovFor = (aspect) => (aspect < 0.75 ? 30 + (0.75 - aspect) * 22 : 30);
 function resize() {
   const w = canvas.clientWidth, h = canvas.clientHeight;
   if (!w || !h) return;
   const pr = renderer.getPixelRatio();
-  if (canvas.width !== Math.floor(w * pr) || canvas.height !== Math.floor(h * pr)) renderer.setSize(w, h, false);
-  camera.aspect = w / h;
-  camera.fov = fovFor(w / h);
-  camera.updateProjectionMatrix();
+  if (canvas.width !== Math.floor(w * pr) || canvas.height !== Math.floor(h * pr)) { renderer.setSize(w, h, false); redraw(); }
+  if (camera.aspect !== w / h) { camera.aspect = w / h; camera.fov = fovFor(w / h); camera.updateProjectionMatrix(); redraw(); }
 }
 const hint = document.getElementById('hint');
 controls.addEventListener('start', () => hint.classList.add('gone'));
-const t0 = performance.now();
+controls.addEventListener('change', redraw);
 function frame() {
-  const t = (performance.now() - t0) / 1000;
   resize();
-  if (bodyParts) bodyParts.scale.y = 1 + Math.sin(t * 1.5) * 0.004;   // breathing, barely
-  headPivot.rotation.x = Math.sin(t * 0.6) * 0.025;
-  headPivot.rotation.y = Math.sin(t * 0.37) * 0.04;
-  controls.update();
+  controls.update();   // damping keeps moving the camera for a moment after a drag; 'change' marks those frames
+  if (!dirty) return;
+  dirty = false;
   renderer.render(scene, camera);
 }
-buildHead(); buildBody(); recolour(); paint();
+paint();
+const ready = rebuild({ head: true, body: true, outfit: true });
 renderer.setAnimationLoop(frame);
-window.__duros = { state, set };   // for a quick look from the console
+window.__duros = { state, set, ready, frameView, camera, controls, redraw, stats: () => ({ tris: renderer.info.render.triangles, calls: renderer.info.render.calls, geometries: renderer.info.memory.geometries }) };
