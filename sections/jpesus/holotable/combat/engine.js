@@ -374,7 +374,7 @@
   function stylesOf(ch) {
     const names = ((ch && ch.features) || []).map((f) => String((f && f.name) || '').toLowerCase().replace(/fighting style|style|[:()\[\]\-–—]/g, ' ').replace(/\s+/g, ' ').trim());
     const has = (n) => names.includes(n);
-    return { twfDamage: has('dual wield') || has('split'), dwfAttack: has('twin blade') || has('split'), greatWeapon: has('great weapon'), snapshot: has('snapshot') };
+    return { twfDamage: has('dual wield') || has('split'), dwfAttack: has('twin blade') || has('split'), greatWeapon: has('great weapon'), snapshot: has('snapshot'), sharpshooter: has('sharpshooter') };
   }
   // SW5e's minimum roll threshold (PHB chapter 7, #150): no die counts under 2 (d4, d6), 3 (d8), 4 (d10), 5 (d12) or
   // 8 (d20). Written into an expression as the roller's `min` suffix: "1d12+3" becomes "1d12min5+3".
@@ -650,6 +650,10 @@
     'weak-point-strike': { name: 'Weak Point Strike', type: 'physical', save: 'con', then: 'stunned' },
     'exploit-weakness': { name: 'Exploit Weakness', type: 'physical', trueDmg: true },
     'precision-attack': { name: 'Precision Attack', type: 'general', onRoll: true },
+    // reactions: offered as a prompt when a creature misses the one who knows it (#67, second batch)
+    'riposte': { name: 'Riposte', type: 'physical', reaction: 'melee' },
+    'return-fire': { name: 'Return Fire', type: 'physical', reaction: 'ranged' },
+    'parry': { name: 'Parry', type: 'physical', reaction: 'damage' },   // waits before a melee hit's damage lands
   };
   const MANEUVER_KEYS = Object.keys(MANEUVERS);
   const MANEUVER_ABILS = { physical: ['str', 'dex', 'con'], mental: ['int', 'wis', 'cha'], general: ABILS_ALL };
@@ -696,7 +700,7 @@
     // a maneuver (#67): the ones it knows and hasn't used this turn, while a superiority die is left
     const sup = superiorityOf(a), mk = a.maneuvers;
     if (sup && mk && attack.weapon) {
-      const options = mk.known.filter((k) => !maneuverUsed(world, a.id, k)).map((k) => { const m = MANEUVERS[k]; return { key: k, name: m.name, save: m.save || null, dc: m.save ? mk.dc[m.type] : null }; });
+      const options = mk.known.filter((k) => !MANEUVERS[k].reaction && !maneuverUsed(world, a.id, k)).map((k) => { const m = MANEUVERS[k]; return { key: k, name: m.name, save: m.save || null, dc: m.save ? mk.dc[m.type] : null }; });
       if (options.length) out.push({ key: 'maneuver', name: 'Maneuver', optIn: true, die: sup.die, options });
     }
     return out;
@@ -718,10 +722,14 @@
     if (opts.dis) tilts.push({ dis: true, text: 'chosen' });
     const m = d20(world, tilts.filter((x) => x.adv).length, tilts.filter((x) => x.dis).length), mode = m.mode;
     const weak = weakPenalty(a, attack.abil), bonus = attack.bonus - weak;
-    const cover = coverOf(world, a, t);
+    // Snapshot Style (within 30 ft) and Sharpshooter Style (beyond it) step partial cover down one for ranged weapon attacks (#157)
+    const cover0 = coverOf(world, a, t), st = a.styles || {};
+    const stepBy = cover0 && cover0.bonus != null && attack.weapon && ranged ? (st.snapshot && feet <= 30 ? 'Snapshot Style' : st.sharpshooter && feet > 30 ? 'Sharpshooter Style' : '') : '';
+    const cover = stepBy ? COVER[COVER.indexOf(cover0) - 1] : cover0;
     if (cover && cover.bonus == null) return { legal: false, why: `${t.name} has total cover.`, feet };
+    if (stepBy) notes.push(`${cover ? `${cover.name} cover` : 'no cover'}, down from ${cover0.name} (${stepBy})`);
     const flank = flankOf(world, t, a);
-    if (cover) notes.push(`${cover.name} cover, +${cover.bonus} AC`);
+    if (cover) notes.push(`${cover.name} cover, +${cover.bonus} AC`);   // (after a step-down, the line above says from what)
     if (flank) notes.push(`${t.name} is flanked, -${flank} AC`);
     const ac = +t.ac + (cover ? cover.bonus : 0) - flank;
     const need = Math.min(20, Math.max(2, ac - bonus));   // the d20 needed; a 20 always hits, a 1 always misses
@@ -993,7 +1001,7 @@
   /* ---------------- turns: the turn budget is resources too, refilled at the start of the unit's own turn ---------------- */
   const turnKey = (world) => `${world.round}:${world.turnId}`;
   const TURN = ['move', 'action', 'bonus', 'reaction'];
-  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0 });
+  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0, surge: 0 });
   function spentOf(world, id) {
     const s = (world.spent || {})[id];
     return s && (id !== world.turnId || s.key === turnKey(world)) ? Object.assign(blank(s.key), s) : blank(id === world.turnId ? turnKey(world) : '');
@@ -1009,7 +1017,7 @@
     const out = has(u || {}, 'noActions'), noReact = out || has(u || {}, 'noReactions');
     const one = has(u || {}, 'oneAction') && (s.action >= 1 || s.bonus >= 1);   // shocked: an action or a bonus action, not both
     const total = speed * (1 + (+s.dash || 0));   // each Dash adds the speed again
-    return { key: s.key, moved: s.move, speed, total, moveLeft: Math.max(0, total - s.move), action: !out && !one && s.action < 1, bonus: !out && !one && s.bonus < 1, reaction: !noReact && s.reaction < 1,
+    return { key: s.key, moved: s.move, speed, total, moveLeft: Math.max(0, total - s.move), action: !out && !one && s.action < 1 + (+s.surge || 0), bonus: !out && !one && s.bonus < 1, reaction: !noReact && s.reaction < 1,
       dash: +s.dash || 0, disengage: !!s.disengage, dodge: !!s.dodge,
       attacks: !out && s.atk > 0 ? Math.max(0, (+s.atkMax || 1) - s.atk) : 0 };   // attacks left in an Attack action already begun (#139)
   }
@@ -1112,7 +1120,7 @@
           if (!s.ok) return s;
           const sp = w.spent[me.id];
           if (sp.off) sp.off += 1; else Object.assign(sp, { bonus: sp.bonus + 1, off: 1 });
-          return { ok: true, world: w, log: s.log, events: s.events };
+          return { ok: true, world: w, log: s.log, events: s.events, reactions: s.reactions || [] };
         }
         // Extra Attack and Multiattack (#139): the first attack takes the action; the rest of that Attack action don't,
         // and the unit can move between them. A creature's count comes with the attack (its stat block, the GM's).
@@ -1126,7 +1134,7 @@
           if (!sp.lt) sp.lt = 1 + +act.attack.key;
           if (act.attack.otherEnd && !sp.dw) sp.dw = 1 + +act.attack.key;
         }
-        return { ok: true, world: w, log: s.log, events: s.events };
+        return { ok: true, world: w, log: s.log, events: s.events, reactions: s.reactions || [] };
       }
       case 'grapple': case 'shove': {   // #144: one attack of the Attack action, a contest instead of an attack roll
         const t = unitAt(w, act.target), what = act.type === 'grapple' ? 'grapple' : 'shove';
@@ -1176,6 +1184,15 @@
         return { ok: true, world: w, log, events: [] };
       }
       case 'common': {   // Dash, Disengage, Dodge; and a Berserker's Rage
+        if (act.key === 'surge') {   // a Fighter's Action Surge (#67): one more action this turn, once a turn, a use of its pool
+          const pool = (me.pools || {})['action-surge'];
+          if (!pool) return no(`${me.name} has no Action Surge.`);
+          if (+spentOf(w, me.id).surge) return no(`${me.name} has already surged this turn.`);
+          if (pool.used >= pool.max) return no(`${me.name} has no Action Surge left until a short or long rest.`);
+          pool.used += 1;
+          w.spent[me.id] = Object.assign(spentOf(w, me.id), { surge: 1 });
+          return { ok: true, world: w, log: [{ unit: me.id, text: `${me.name} surges: one more action this turn (${pool.max - pool.used} of ${pool.max} Action Surge left).` }], events: [] };
+        }
         if (act.key === 'help') {   // #144: the first attack an ally makes on a creature within 5 ft of me, before my next turn, has advantage
           const t = unitAt(w, act.target);
           if (!t || t.id === me.id) return no('Pick a creature within 5 ft to help against.');
@@ -1394,7 +1411,14 @@
     const tilt = pv.mode === 'normal' ? '' : ` with ${modeName(pv)} (${pv.tilts.map((x) => x.text).join(', ')})`;
     const log = [{ unit: me.id, kind: 'attack', roll: r, expr: rexpr, text: `${me.name} ${how ? `makes ${how} against` : 'attacks'} ${t.name} with ${attack.name}${tilt}${mv && mv.onRoll ? ` (${mv.name}, +1${sup.die})` : ''}${pv.notes.length ? ` (${pv.notes.join('; ')})` : ''}${pv.weak ? ` (weakened, −${pv.weak})` : ''}: ${r.total} against AC ${pv.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}` }];
     const events = [];
-    if (!hit) { events.push({ kind: 'miss', unit: t.id }); return { ok: true, log, events }; }
+    if (!hit) {
+      events.push({ kind: 'miss', unit: t.id });
+      // a miss against one who knows Riposte (melee) or Return Fire (ranged) and can use it: a prompt, like an opportunity attack
+      const rk = pv.ranged ? 'return-fire' : 'riposte';
+      const can = !how && t.maneuvers && t.maneuvers.known.includes(rk) && superiorityOf(t) && !INCAPACITATING(t) && budget(w, t.id).reaction && !maneuverUsed(w, t.id, rk)
+        && (rk !== 'riposte' || feetBetween(t, me) <= Math.max(FT, +t.reach || FT));   // a riposte needs the attacker in its reach (#163 review)
+      return { ok: true, log, events, reactions: can ? [{ reactor: t.id, against: me.id, kind: rk }] : [] };
+    }
     // versatile in two hands (5.8): its larger die for a melee attack, in place of the weapon's own
     const twoHands = !!(opts.twoHands && attack.versatile && !pv.ranged), dmg0 = twoHands ? String(attack.damage).replace(/\d*d\d+/i, attack.versatile) : attack.damage;
     const thr = thresholdFor(me, attack, pv.ranged, pv.feet, twoHands);   // a fighting style's minimum roll threshold (#150)
@@ -1414,6 +1438,7 @@
       return null;
     }).filter(Boolean);
     if (mv && !mv.onRoll) spendMv();   // a superiority die goes on the hit
+    if (opts.extra) riders.push(opts.extra);   // a reaction maneuver's die (Riposte, Return Fire), on its hit
     const paid = riders.reduce((n, x) => n + (x.points || 0), 0);
     if (paid && fp) fp.used = Math.min(fp.max, fp.used + paid);   // the force points go on the hit
     if (riders.some((x) => x.key === 'double')) w.spent[me.id] = Object.assign(spentOf(w, me.id), { double: 1 });   // once a turn
@@ -1424,13 +1449,32 @@
     const df = defended(t, Math.max(0, d.total) + corr, String(attack.type || '').toLowerCase(), attack.enhanced ? 'enhanced' : 'weapon');
     const tr = mv && mv.trueDmg ? roll('1' + sup.die) : null;   // Exploit Weakness: true damage, past any resistance
     const amount = df.amount + (tr ? Math.max(0, tr.total) : 0);
+    const what = `${amount}${attack.type ? ' ' + attack.type : ''} damage${twoHands ? ' (two-handed)' : ''}${attack.heavy ? ` (heavy +${attack.heavy})` : ''}${thr ? ` (${thr}: no die under its threshold)` : ''}${riders.length ? ` (with ${riders.map((x) => `${x.name} ${x.dice ? (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat}${x.points ? `, ${x.points} force point${x.points === 1 ? '' : 's'}` : ''}`).join('; ')})` : ''}${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${tr ? ` (${mv.name}: ${tr.total} true damage)` : ''}`;
+    const landing = { amount, crit, type: attack.type || '', mv: mv && mv.then ? mvKey : null, dc: mv && mv.then ? me.maneuvers.dc[mv.type] : 0 };
+    // Parry (#67): a melee hit on one who knows it, with its reaction and a die, waits for its answer before it lands
+    if (!how && !pv.ranged && amount > 0 && t.maneuvers && t.maneuvers.known.includes('parry') && superiorityOf(t) && !INCAPACITATING(t)
+      && budget(w, t.id).reaction && !maneuverUsed(w, t.id, 'parry') && !me.hidden && !t.hidden) {
+      log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} is hit for ${what}: ${t.name} can parry.` });
+      return { ok: true, log, events, reactions: [{ reactor: t.id, against: me.id, kind: 'parry', hit: landing }] };
+    }
     const took = takeDamage(t, amount);
-    log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${twoHands ? ' (two-handed)' : ''}${attack.heavy ? ` (heavy +${attack.heavy})` : ''}${thr ? ` (${thr}: no die under its threshold)` : ''}${riders.length ? ` (with ${riders.map((x) => `${x.name} ${x.dice ? (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat}${x.points ? `, ${x.points} force point${x.points === 1 ? '' : 's'}` : ''}`).join('; ')})` : ''}${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${tr ? ` (${mv.name}: ${tr.total} true damage)` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
-    fallen(t, took, crit, log, w);
-    events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
-    concentrationCheck(w, t, amount, roll, log);
-    if (mv && mv.then) maneuverThen(w, me, t, mv, me.maneuvers.dc[mv.type], roll, log, events);
+    log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${what}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
+    afterHit(w, me, t, landing, took, roll, log, events);
     return { ok: true, log, events };
+  }
+  // what follows a hit's damage: dropping at 0, the floating number, concentration, and the attacker's maneuver
+  function afterHit(w, me, t, landing, took, roll, log, events) {
+    fallen(t, took, landing.crit, log, w);
+    events.push({ kind: landing.crit ? 'crit' : 'hit', unit: t.id, amount: landing.amount });
+    concentrationCheck(w, t, landing.amount, roll, log);
+    const mv = landing.mv && Object.prototype.hasOwnProperty.call(MANEUVERS, landing.mv) ? MANEUVERS[landing.mv] : null;
+    if (mv && mv.then && me) maneuverThen(w, me, t, mv, landing.dc, roll, log, events);
+  }
+  // a hit that waited (Parry): it lands now, less what a parry took off
+  function landHit(w, me, t, landing, roll, log, events) {
+    const took = takeDamage(t, landing.amount);
+    log.push({ unit: t.id, kind: 'landed', text: `${t.name} takes ${landing.amount}${landing.type ? ' ' + landing.type : ''} damage${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
+    afterHit(w, me, t, landing, took, roll, log, events);
   }
   // a save against something the engine itself asks for (a maneuver): the target's bonus, automatic failures, and
   // advantage or disadvantage from its conditions and from dodging (Dex)
@@ -1500,11 +1544,43 @@
   function react(world, re, roll) {
     const w = clone(world);
     w.spent = w.spent || {}; w.effects = w.effects || []; w.conc = w.conc || {};
-    const me = w.units[re.reactor], t = w.units[re.against];
+    const me = unitAt(w, re.reactor), t = unitAt(w, re.against);
     if (!me || !t) return no('That combatant is not on the map.');
+    if (re.kind === 'parry') {   // #67: the hit that waited lands, less a superiority die + the maneuver ability, if parried
+      const h = re.hit || {}, landing = { amount: clampN(Math.round(+h.amount || 0), 0, 9999), crit: !!h.crit, type: String(h.type || '').slice(0, 20), mv: typeof h.mv === 'string' ? h.mv : null, dc: clampN(Math.round(+h.dc || 0), 0, 40) };
+      const log = [], events = [];
+      if (re.take) {
+        const sup = superiorityOf(me);
+        if (!me.maneuvers || !me.maneuvers.known.includes('parry')) return no(`${me.name} doesn't know Parry.`);
+        if (!sup) return no(`${me.name} has no superiority dice left.`);
+        if (INCAPACITATING(me) || !budget(w, me.id).reaction) return no(`${me.name} has no reaction left.`);
+        const mod = Math.max(...['str', 'dex', 'con'].map((ab) => +((me.mods || {})[ab]) || 0)), expr = '1' + sup.die + sgn(mod), pr = roll(expr);
+        const less = Math.min(landing.amount, Math.max(0, pr.total));
+        sup.used += 1;
+        w.spent[me.id] = Object.assign(spentOf(w, me.id), { reaction: spentOf(w, me.id).reaction + 1, mv: (+spentOf(w, me.id).mv || 0) | (1 << MANEUVER_KEYS.indexOf('parry')) });
+        log.push({ unit: me.id, kind: 'parry', roll: pr, expr, text: `${me.name} parries: ${less} less damage.` });
+        landing.amount -= less;
+      }
+      landHit(w, t, me, landing, roll, log, events);
+      settle(w, log);
+      return { ok: true, world: w, log, events };
+    }
     if (t.down) return no(`${t.name} is already down.`);
     if (INCAPACITATING(me)) return no(`${me.name} can't react right now.`);
     if (!budget(w, me.id).reaction) return no(`${me.name} has no reaction left.`);
+    if (re.kind === 'riposte' || re.kind === 'return-fire') {   // a reaction maneuver (#67): a superiority die, spent as it's used
+      const mv = MANEUVERS[re.kind], sup = superiorityOf(me);
+      if (!me.maneuvers || !me.maneuvers.known.includes(re.kind)) return no(`${me.name} doesn't know ${mv.name}.`);
+      if (!sup) return no(`${me.name} has no superiority dice left.`);
+      if (maneuverUsed(w, me.id, re.kind)) return no(`${me.name} has used ${mv.name} this turn.`);
+      if (!re.attack || !re.attack.weapon || (re.kind === 'riposte' ? !(+re.attack.melee > 0) : !re.attack.range)) return no(re.kind === 'riposte' ? 'A riposte is a melee weapon attack.' : 'Return fire is a ranged weapon attack.');
+      const s = strike(w, me, t.id, re.attack, { adv: !!re.adv, dis: !!re.dis, extra: { key: 'maneuver', name: mv.name, dice: '1' + sup.die } }, roll, re.kind === 'riposte' ? 'a riposte' : 'return fire');
+      if (!s.ok) return s;
+      sup.used += 1;
+      w.spent[me.id] = Object.assign(spentOf(w, me.id), { reaction: spentOf(w, me.id).reaction + 1, mv: (+spentOf(w, me.id).mv || 0) | (1 << MANEUVER_KEYS.indexOf(re.kind)) });
+      settle(w, s.log);
+      return { ok: true, world: w, log: s.log, events: s.events };
+    }
     if (!re.attack || !(+re.attack.melee > 0)) return no('An opportunity attack is a melee attack.');
     const there = { x: t.x, y: t.y };
     if (re.at) { t.x = re.at.x; t.y = re.at.y; }
@@ -1759,5 +1835,5 @@
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
     SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf, d20, flankOf, fixedTotal, cruel, modeName,
-    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, ridersOf, ridersFor, attacksPerAction, multiattackOf, offhandOf, stylesOf, withThreshold, thresholdFor, MIN_THRESHOLD, contestBonus, helpOn, maneuverCheck, unitAt, weaponProps, volleysOf, MANEUVERS, maneuversOf, superiorityOf, saveVs, pushAway };
+    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, ridersOf, ridersFor, attacksPerAction, multiattackOf, offhandOf, stylesOf, withThreshold, thresholdFor, MIN_THRESHOLD, contestBonus, helpOn, maneuverCheck, unitAt, weaponProps, volleysOf, MANEUVERS, maneuversOf, superiorityOf, saveVs, pushAway, landHit };
 });

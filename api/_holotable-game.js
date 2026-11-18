@@ -9,6 +9,8 @@
 const crypto = require("crypto");
 const Fight = require("./_holotable-fight.js");   // the combat view (fight.*), off until the GM switches it on
 const Ships = require("./_holotable-ships.js");   // a ship in a fight (ship.damage, destruction saves, ship conditions): Starships of the Galaxy
+const Space = require("./_holotable-space.js");   // the space map (space.*): ship fights on their own map, jpesus's call on #146
+const Ask = require("./_holotable-ask.js");   // the GM asking for a roll (audit 9.12)
 const R = globalThis.SW5E;   // rules.js, loaded by the fight module (senses)
 
 const CHAT_LIMIT = 400;
@@ -145,7 +147,7 @@ function cleanShip(sh, chars) {
     crew: list(sh.crew, 20, (c) => ({ charId: chars[c.charId] ? c.charId : null, name: s(c.name, 60), deployment: DEPLOYMENTS.includes(c.deployment) ? c.deployment : "",
       rank: clamp(int(c.rank), 0, 5), pb: clamp(int(c.pb, 2), 0, 10) })),
     weapons: list(sh.weapons, 30, (w) => ({ name: s(w.name, 80), atkMisc: clamp(int(w.atkMisc), -20, 20), dmg: s(w.dmg, 40), type: s(w.type, 30),
-      range: s(w.range, 40), props: s(w.props, 300) })),
+      range: s(w.range, 40), props: s(w.props, 300), ...Ships.cleanWeapon(w) })),
     equipment: list(sh.equipment, 60, (e) => ({ name: s(e.name, 80), notes: s(e.notes, 300) })),
     mods: list(sh.mods, 80, (e) => ({ name: s(e.name, 80), notes: s(e.notes, 300) })),
     notes: s(sh.notes, 10000), ...Ships.cleanFields(sh), updated: now(),
@@ -172,27 +174,33 @@ function cleanChar(ch) {
     skillMisc: Object.fromEntries(Object.entries(ch.skillMisc || {}).slice(0, 40).filter(([k]) => /^[a-zA-Z]{1,30}$/.test(k)).map(([k, v]) => [k, numOr(v, 0)])),
     saveMisc: nums(ch.saveMisc, ABILS, 0),
     ac: numOr(ch.ac, 10), speed: numOr(ch.speed, 30),
+    // AC worked out from armor (audit 5.3): kept only when switched on, so other sheets are as before
+    ...(ch.acAuto ? { acAuto: true } : {}), ...(numOr(ch.acMisc, 0) ? { acMisc: clamp(numOr(ch.acMisc, 0), -20, 20) } : {}),
     hp: nums(ch.hp, ["max", "current", "temp"], 0), hitDiceUsed: Fight.cleanHitDiceUsed(ch.hitDiceUsed),   // per die size (audit 7.2), or an old single number
     deathSaves: { s: clamp(int((ch.deathSaves || {}).s), 0, 3), f: clamp(int((ch.deathSaves || {}).f), 0, 3) },
     initMisc: numOr(ch.initMisc, 0), profOverride: optNum(ch.profOverride),
-    force: { max: optNum((ch.force || {}).max), used: numOr((ch.force || {}).used, 0) },
-    tech: { max: optNum((ch.tech || {}).max), used: numOr((ch.tech || {}).used, 0) },
+    force: Object.assign({ max: optNum((ch.force || {}).max), used: numOr((ch.force || {}).used, 0) }, Fight.cleanHigh((ch.force || {}).high)),   // high: levels cast once per long rest (#160)
+    tech: Object.assign({ max: optNum((ch.tech || {}).max), used: numOr((ch.tech || {}).used, 0) }, Fight.cleanHigh((ch.tech || {}).high)),
     // the combat view's resource tracker (audit 3.1): kept only on a sheet that has some, so other sheets are as before
     ...(Array.isArray(ch.resources) && ch.resources.length ? { resources: Fight.cleanResources(ch.resources) } : {}),
     ...(Array.isArray(ch.senses) && R.cleanSenses(ch.senses).length ? { senses: R.cleanSenses(ch.senses) } : {}),
     attacks: list(ch.attacks, 40, (a) => ({ name: s(a.name, 80), ab: ["str", "dex", "con", "int", "wis", "cha", "finesse"].includes(a.ab) ? a.ab : "str",
       damage: s(a.damage, 40), damageFull: a.damageFull ? s(a.damageFull, 60) : undefined, type: s(a.type, 30), props: s(a.props, 200),
-      proficient: a.proficient !== false, magic: optNum(a.magic), bonus: optNum(a.bonus), noModDamage: !!a.noModDamage })),
+      proficient: a.proficient !== false, magic: optNum(a.magic), bonus: optNum(a.bonus), noModDamage: !!a.noModDamage,
+      ...(a.shots != null && a.shots !== "" && Number.isFinite(+a.shots) ? { shots: clamp(int(a.shots), 0, 999) } : {}),   // shots left in a Reload weapon (audit 6.6)
+      ...(int(a.critRange, 20) < 20 ? { critRange: clamp(int(a.critRange, 20), 15, 20) } : {}) })),   // crits on this d20 or higher (19 = 19-20)
     powers: list(ch.powers, 150, (pw) => ({ name: s(pw.name, 80), level: clamp(int(pw.level), 0, 9), type: pw.type === "tech" ? "tech" : "force",
       alignment: ["light", "dark"].includes(pw.alignment) ? pw.alignment : "universal", notes: s(pw.notes, 300), description: s(pw.description, 4000) })),
     features: list(ch.features, 150, (f) => ({ name: s(f.name, 80), text: s(f.text, 4000) })),
-    equipment: list(ch.equipment, 200, (e) => ({ name: s(e.name, 80), qty: numOr(e.qty, 1), equipped: !!e.equipped, notes: s(e.notes, 200) })),
+    equipment: list(ch.equipment, 200, (e) => ({ name: s(e.name, 80), qty: numOr(e.qty, 1), equipped: !!e.equipped, notes: s(e.notes, 200),
+      ...(e.armor && R.ARMOR_KINDS.includes(e.armor.kind) ? { armor: { kind: e.armor.kind, ac: clamp(int(e.armor.ac), 0, 30) } } : {}) })),
     conditions: (Array.isArray(ch.conditions) ? ch.conditions : []).slice(0, 20).map((c) => s(c, 30)),
     exhaustion: clamp(int(ch.exhaustion), 0, 6), inspiration: !!ch.inspiration,
     proficiencies: s(ch.proficiencies, 2000), languages: s(ch.languages, 500), notes: s(ch.notes, 20000),
     image: validImg(ch.image) || "", tokenImage: validImg(ch.tokenImage) || "", color: validColor(ch.color),
   };
   if (!out.classes.length) out.classes = [{ name: "Fighter", level: 1, archetype: "" }];
+  if (out.acAuto) out.ac = R.armorClass(out).total;   // worked out here too, so the tracker and the combat view read the same AC
   return out;
 }
 
@@ -278,10 +286,13 @@ function viewFor(camp, cid, gm, online) {
     hpMax: camp.hpMax !== false,
     audio: camp.audio ? Object.assign({}, camp.audio, { now: now() }) : null,   // "now" lets each screen line its clock up
     ships: (camp.ships || []).filter((x) => gm || !x.hidden),
+    ...(camp.space ? { space: Space.view(camp, gm) } : {}),   // the space map (#146)
     sceneFx: fxView,
+    ...((pg) => (pg.length ? { pings: pg } : {}))((camp.pings || []).filter((q) => q && now() - q.ts < 10).map((q) => ({ id: q.id, x: q.x, y: q.y, gm: q.gm, name: playerName(camp, q.by) }))),
     ...(camp.fight && camp.fight.on ? { fight: Fight.view(camp, cid, gm, shownName) } : {}),
     // the sheet's Cast (#73), combat view on or off: which powers the table has data for, and who concentrates on what
     ...((sc) => (sc ? { sheetCast: sc } : {}))(Fight.sheetView(camp, gm ? camp.characters : sheetsFor(camp, cid))),
+    ...((a) => (a ? { ask: a } : {}))(Ask.view(camp, cid, gm)),   // an open roll request (9.12), for whom it names
     ...(fogState ? { fog: fogState } : {}),   // the map's fog of war (#93), combat view or not: only while the GM has it on   // the combat view, only while it is on
     scene: (camp.scenes || []).filter((x) => x.id === camp.activeScene).map((x) => ({ id: x.id, name: x.name }))[0] || null,
     scenes: gm ? (camp.scenes || []).map((x) => ({ id: x.id, name: x.name, savedAt: x.savedAt })) : null,
@@ -477,13 +488,18 @@ function damageChar(camp, ch, amount) {
   for (const e of camp.initiative.entries) if (e.charId === ch.id) e.hp = hp.current;
 }
 
+// what the combat module is given to work with
+const fightHelpers = () => ({ rollDice, addChat, playerName, applyAction, shownName, combatMoves, reviveChar, Forbidden, Invalid });
+
 function applyAction(camp, cid, gm, type, p) {
   p = p || {};
   const chars = camp.characters, ini = camp.initiative, mp = camp.map;
   mp.props = mp.props || [];
   const need = (ok, why = "GM only") => { if (!ok) throw new Forbidden(why); };
-  if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, applyAction, shownName, combatMoves, reviveChar, Forbidden, Invalid });
+  if (type.startsWith("ask.")) return Ask.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
+  if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, fightHelpers());
   if (Ships.handles(type)) return Ships.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
+  if (Space.handles(type)) return Space.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, applyAction, rid, Forbidden, Invalid });
 
   switch (type) {
     // ---- characters
@@ -535,6 +551,7 @@ function applyAction(camp, cid, gm, type, p) {
       if (!ch) return {};
       need(gm || ch.owner === cid, "not your character");
       damageChar(camp, ch, p.amount);
+      Fight.afterDamage(camp, cid, ch, clamp(int(p.amount), 0, 100000), fightHelpers());   // concentration (audit 4.6)
       return {};
     }
     case "char.delete": {
@@ -654,7 +671,7 @@ function applyAction(camp, cid, gm, type, p) {
       if ("hidden" in f && gm) e.hidden = !!f.hidden;
       if ("hp" in f && e.charId && chars[e.charId]) (chars[e.charId].hp = chars[e.charId].hp || {}).current = numOr(f.hp, 0);
       if ("damage" in f) {   // the tracker's -n: a character's temporary hit points first, on the server (#107); a creature just loses it
-        if (e.charId && chars[e.charId]) damageChar(camp, chars[e.charId], f.damage);
+        if (e.charId && chars[e.charId]) { damageChar(camp, chars[e.charId], f.damage); Fight.afterDamage(camp, cid, chars[e.charId], clamp(int(f.damage), 0, 100000), fightHelpers()); }
         else if (e.hp != null) e.hp = Math.max(0, e.hp - clamp(int(f.damage), 0, 100000));
       }
       if ("init" in f) sortInit(ini);
@@ -743,6 +760,11 @@ function applyAction(camp, cid, gm, type, p) {
       if ("name" in f) t.name = str(f.name, 40);
       if ("color" in f) t.color = validColor(f.color);
       if ("size" in f) t.size = clamp(int(f.size, 1), 1, 4);
+      // a Tiny creature (audit 8.15) still takes its square for walls, fog and the combat view; it's drawn smaller
+      if ("tiny" in f) { if (f.tiny && (t.size || 1) === 1) t.tiny = true; else delete t.tiny; }
+      if ((t.size || 1) > 1) delete t.tiny;
+      // elevation or flying height in feet (audit 8.14), in 5-ft steps; 0 is the ground and isn't kept
+      if ("elev" in f) { const e = Math.round(clamp(int(f.elev), -9995, 99995) / 5) * 5; if (e) t.elev = e; else delete t.elev; }
       if ("hidden" in f && gm) t.hidden = !!f.hidden;
       if ("nameHidden" in f && gm) t.nameHidden = !!f.nameHidden;
       if ("img" in f) t.img = validImg(f.img);
@@ -806,6 +828,24 @@ function applyAction(camp, cid, gm, type, p) {
       // the deleted scene's own images go too, unless something else still shows them (checked by the caller)
       return { dropImages: [sc.map.bgUrl, sc.map.floor] };
     }
+    // "Look here" (audit 8.13): anyone's ping pulses on every map for a few seconds; one a second each
+    case "map.ping": {
+      const t = now(), x = Number(p.x), y = Number(p.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Invalid("Where?");
+      camp.pings = (Array.isArray(camp.pings) ? camp.pings : []).filter((q) => q && t - q.ts < 15);
+      if (camp.pings.some((q) => q.by === cid && t - q.ts < 1)) return {};
+      camp.pings.push({ id: rid(), x: clamp(x, -50, 300), y: clamp(y, -50, 300), by: cid, gm: !!gm, ts: t });
+      camp.pings = camp.pings.slice(-8);
+      return {};
+    }
+    case "map.draw": {   // the GM's freehand stroke
+      need(gm);
+      const [d] = cleanDrawings([{ pts: p.pts, c: p.c }]);
+      if (!d) throw new Invalid("Nothing to draw.");
+      mp.drawings = cleanDrawings([...(mp.drawings || []), d]);   // (a clear leaves none; cleanMap drops the empty list)
+      return { id: d.id };
+    }
+    case "map.drawClear": { need(gm); const left = p.id ? (mp.drawings || []).filter((d) => d.id !== String(p.id)) : []; if (left.length) mp.drawings = left; else delete mp.drawings; return {}; }
     case "map.settings":
       need(gm);
       for (const k of ["gridSize", "cols", "rows"]) if (k in p) mp[k] = clamp(int(p[k], mp[k]), 5, 200);
@@ -993,15 +1033,26 @@ function propSightSegments(map) {
   return out;
 }
 
+// The GM's quick drawings on the map (audit 8.13): freehand strokes in grid units, everyone sees them
+const DRAW_COLORS = ["#ffd27a", "#4fc3f7", "#ef5350", "#66bb6a", "#ffffff"];
+function cleanDrawings(list) {
+  return (Array.isArray(list) ? list : []).slice(-60).filter((d) => d && typeof d === "object" && Array.isArray(d.pts)).map((d) => ({
+    id: /^[a-z0-9]{4,20}$/.test(String(d.id || "")) ? String(d.id) : rid(),
+    c: DRAW_COLORS.includes(d.c) ? d.c : DRAW_COLORS[0],
+    pts: d.pts.slice(0, 600).map((v) => Math.round(clamp(Number.isFinite(+v) ? +v : 0, -50, 300) * 100) / 100).slice(0, d.pts.length - (d.pts.length % 2)),
+  })).filter((d) => d.pts.length >= 4);
+}
 function cleanMap(g, raw) {
   const m = raw && typeof raw === "object" ? raw : {};
   const n = (v, d) => (Number.isFinite(+v) ? +v : d);
   return {
     bgVersion: int(m.bgVersion) + 1, bgUrl: validImg(m.bgUrl), floor: validImg(m.floor), floorScale: clamp(n(m.floorScale, 1), 0.1, 8),
+    ...((dr) => (dr.length ? { drawings: dr } : {}))(cleanDrawings(m.drawings)),   // kept only when there are some
     gridSize: clamp(int(m.gridSize, 70), 5, 200), gridV2: true, cols: clamp(int(m.cols, 24), 5, 200), rows: clamp(int(m.rows, 16), 5, 200), showGrid: m.showGrid !== false,
     tokens: (Array.isArray(m.tokens) ? m.tokens : []).slice(0, 300).filter((t) => t && typeof t === "object").map((t) => ({
       id: /^[a-z0-9]{6,20}$/.test(t.id || "") ? t.id : rid(), name: str(t.name, 40), color: validColor(t.color), x: clamp(int(t.x), -500, 1000), y: clamp(int(t.y), -500, 1000),
-      size: clamp(int(t.size, 1), 1, 4), charId: charById(g, t.charId) ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, nameHidden: !!t.nameHidden, img: validImg(t.img), moves: cleanMoves(t.moves) })),
+      size: clamp(int(t.size, 1), 1, 4), ...(t.tiny && clamp(int(t.size, 1), 1, 4) === 1 ? { tiny: true } : {}),
+      ...((e) => (e ? { elev: e } : {}))(Math.round(clamp(int(t.elev), -9995, 99995) / 5) * 5), charId: charById(g, t.charId) ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, nameHidden: !!t.nameHidden, img: validImg(t.img), moves: cleanMoves(t.moves) })),
     ...(Array.isArray(m.walls) && m.walls.length ? { walls: Fight.cleanWalls(m.walls) } : {}),   // the combat view's walls (issue #93), only on a map that has some
     ...(m.fog && typeof m.fog === "object" ? { fog: Fight.cleanFog(m.fog) } : {}),   // fog of war (issue #93), only on a map the GM switched it on for
     ...(m.light && typeof m.light === "object" ? { light: Fight.cleanLight(m.light) } : {}),   // its light (#93 step 5), only on a map the GM dimmed or lit
@@ -1031,7 +1082,9 @@ function cleanGame(g) {
   g.audio = au && /^au[a-f0-9]{12}$/.test(String(au.track || "")) ? { track: au.track, name: str(au.name, 80) || "Track", playing: !!au.playing,
     pos: clamp(num(au.pos), 0, 86400), at: num(au.at, now()), loop: !!au.loop, vol: clamp(num(au.vol, 1), 0, 1) } : null;
   g.hpMax = g.hpMax !== false;
+  g.ask = Ask.clean(g.ask, g.characters);
   g.ships = (Array.isArray(g.ships) ? g.ships : []).slice(0, MAX_SHIPS).filter((x) => x && typeof x === "object").map((x) => cleanShip(x, g.characters));
+  if (g.space) g.space = Space.clean(g.space, g.ships);
   g.scenes = (Array.isArray(g.scenes) ? g.scenes : []).slice(0, 30).filter((x) => x && typeof x === "object")
     .map((x) => ({ id: /^[a-z0-9]{6,20}$/.test(x.id || "") ? x.id : rid(), name: str(x.name, 60) || "Scene", savedAt: num(x.savedAt, now()), map: cleanMap(g, x.map) }));
   if (!g.scenes.some((x) => x.id === g.activeScene)) g.activeScene = null;

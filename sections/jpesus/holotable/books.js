@@ -330,6 +330,7 @@
     }
     for (const k of D.classSkills || []) if (R.SKILLS.some(s => s.key === k)) c.skills[k] = 1;
     c.ac = 10 + mod(c.abilities.dex);   // unarmored; armor goes on with the equipment
+    c.acAuto = true;                    // brand-new: the sheet works its AC out from worn armor (#165), as ＋ New's blank sheet does
     const b = D.bg;
     if (b) applyBackground(c, b, D.bgSkills, D.feat, { equip: false });   // the guide lists the equipment itself, below
     const plain = x => String(x).replace(/\*/g, '').replace(/^\s*-\s*/, '• ');   // SW5e's markdown: *(a)* -> (a), "- " -> a bullet
@@ -807,12 +808,13 @@
             <span class="bonus">${fmt(b)}</span><span class="nm rollable" data-shiproll="1d20${fmt(b)}" data-kind="check" data-ab="${ab}" data-label="${esc(s.name)}: ${name}">${name}</span><span class="ab">${ab}</span></div>`; }).join('')}</div></div>
       </div>
       <div class="box" style="margin-top:12px"><h4>Weapons <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-sa="pick-equip" data-weapons="1">＋ weapon from SotG</button><button class="btn tiny ghost" data-sa="add-weapon">custom</button>' : ''}</h4>
-        <table class="t"><thead><tr><th>Weapon</th><th>Attack</th><th>Damage</th><th>Type</th><th>Range</th><th>Properties</th><th></th></tr></thead><tbody>
+        <table class="t"><thead><tr><th>Weapon</th><th>Attack</th><th>Damage</th><th>Type</th><th>Range</th><th>Properties</th><th title="Category, mount (a fixed arc or a turret) and ammunition left (blank: not counted). The space map's Fire uses them.">Mount</th><th></th></tr></thead><tbody>
         ${(s.weapons || []).map((w, i) => { const atk = m('wis') + pb + n0(w.atkMisc), dmg = w.dmg ? w.dmg + (m('str') ? fmt(m('str')) : '') : ''; return `<tr><td>${shipInp(`weapons.${i}.name`, w.name, { ro })}</td>
           <td style="white-space:nowrap"><button class="btn small amber" data-shiproll="1d20${fmt(atk)}" data-kind="attack" data-label="${esc(s.name)}: ${esc(w.name)} (attack)" title="Wis ${fmt(m('wis'))} + crew prof. ${fmt(pb)}">${fmt(atk)}</button> ${shipInp(`weapons.${i}.atkMisc`, n0(w.atkMisc), { ro, w: '50px' })}</td>
           <td style="white-space:nowrap">${shipInp(`weapons.${i}.dmg`, w.dmg, { ro, w: '64px' })}${dmg ? ` <button class="btn small" data-shiproll="${esc(dmg)}" data-label="${esc(s.name)}: ${esc(w.name)} (${esc(w.type)} damage)" title="+ Str ${fmt(m('str'))}">Dmg</button>` : ''}</td>
           <td>${shipInp(`weapons.${i}.type`, w.type, { ro, w: '80px' })}</td><td>${shipInp(`weapons.${i}.range`, w.range, { ro, w: '100px' })}</td><td>${shipInp(`weapons.${i}.props`, w.props, { ro })}</td>
-          <td>${!ro ? `<button class="btn tiny ghost" data-sa="del" data-list="weapons" data-i="${i}">✕</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="7" class="muted">No weapons.</td></tr>'}</tbody></table>
+          <td style="white-space:nowrap">${shipInp(`weapons.${i}.cat`, w.cat || '', { ro, type: 'select', options: ['', 'primary', 'secondary', 'tertiary', 'quaternary'] })}${shipInp(`weapons.${i}.arc`, w.arc || '', { ro, type: 'select', options: ['', 'forward', 'starboard', 'aft', 'port', 'turret'] })}${shipInp(`weapons.${i}.ammo`, w.ammo ?? '', { ro, w: '50px', ph: 'ammo', type: 'text' })}</td>
+          <td>${!ro ? `<button class="btn tiny ghost" data-sa="del" data-list="weapons" data-i="${i}">✕</button>` : ''}</td></tr>`; }).join('') || '<tr><td colspan="8" class="muted">No weapons.</td></tr>'}</tbody></table>
         <p class="muted" style="font-size:12px;margin:6px 0 0">Attack = ship's Wisdom modifier + the crew member's proficiency bonus (+ the small box). Damage adds the ship's Strength modifier. Weapon save DC = 8 + Wis + proficiency: <b>${8 + m('wis') + pb}</b>.</p></div>
       <div class="grid g2" style="margin-top:12px">
         <div class="box"><h4>Equipment <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-sa="pick-equip">＋ from SotG</button><button class="btn tiny ghost" data-sa="add-eq">custom</button>' : ''}</h4>
@@ -826,7 +828,8 @@
       </div></div>`;
     el.innerHTML = html;
   }
-  function renderShipsSafe() { const el = $('#ships'); if (!el) return; const a = document.activeElement; if (a && el.contains(a) && a.matches('input:not([type=checkbox]), textarea, select')) return; renderShips(el); }
+  // the space map (space.js) redraws with the ships
+  function renderShipsSafe() { if (window.HTSpace) HTSpace.render(); const el = $('#ships'); if (!el) return; const a = document.activeElement; if (a && el.contains(a) && a.matches('input:not([type=checkbox]), textarea, select')) return; renderShips(el); }
   const shipsEl = () => $('#ships');
   if (shipsEl()) {
     shipsEl().addEventListener('change', e => {
@@ -880,7 +883,7 @@
       detail: x => (x.desc ? md(x.desc) : '<p class="muted">No further text.</p>'),
       action: (x, i) => pickBtn(i), onPick: x => {
         mutateShip(s => {
-          if (x.type === 'Weapon') s.weapons.push({ name: x.n, atkMisc: n0(x.atk), dmg: x.dmg, type: x.dt, range: x.rng, props: x.props.slice(0, 300) });
+          if (x.type === 'Weapon') s.weapons.push({ name: x.n, atkMisc: n0(x.atk), dmg: x.dmg, type: x.dt, range: x.rng, props: x.props.slice(0, 300), cat: String(x.wcat || '').toLowerCase(), arc: '', ammo: '' });
           else s.equipment.push({ name: x.n, notes: [x.type, x.acb && `AC +${x.acb}`, x.hyper && 'class ' + x.hyper, x.props].filter(Boolean).join(' · ').slice(0, 300) });
         });
         H.toast(`Added ${x.n}`);

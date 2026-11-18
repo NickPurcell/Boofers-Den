@@ -210,8 +210,65 @@
     }
     renderMapTools(); loadMapBg(); drawMap();
     if (window.HTC) HTC.render();   // combat view
+    renderAsk();
     renderChat();
   }
+
+  // --------------------------------------------------------------------------- the GM asks for a roll (audit 9.12)
+  // The GM picks a skill, save or ability check, who rolls, a DC (shown to players or not) and whether it's secret,
+  // then rolls for them at once or asks the players, who each get a Roll button here. The server rolls from the sheet.
+  function askCheckOptions() {
+    return `<optgroup label="Skills">${R.SKILLS.map(s => `<option value="skill:${s.key}" ${s.key === 'perception' ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</optgroup>
+      <optgroup label="Saving throws">${R.ABILITIES.map(a => `<option value="save:${a.key}">${esc(a.name)} save</option>`).join('')}</optgroup>
+      <optgroup label="Ability checks">${R.ABILITIES.map(a => `<option value="ability:${a.key}">${esc(a.name)} check</option>`).join('')}</optgroup>`;
+  }
+  function openAskRoll() {
+    const gmIds = new Set(Object.entries(S.st.players).filter(([, p]) => p.role === 'gm').map(([id]) => id));
+    const list = chars().map(c => ({ c, pc: !gmIds.has(c.owner) }));
+    modal(`<h3>🎲 Ask for a roll</h3>
+      <label>Roll<select id="askWhat">${askCheckOptions()}</select></label>
+      <h4 style="margin-top:10px">Who</h4>
+      <div class="ask-who">${list.map(({ c, pc }) => `<label class="toggle"><input type="checkbox" class="askChar" value="${esc(c.id)}" ${pc ? 'checked' : ''}> ${esc(c.name)}${pc ? '' : ' <span class="muted">(yours)</span>'}</label>`).join('') || '<p class="muted">No characters yet.</p>'}</div>
+      <div class="row wrap" style="margin-top:10px"><label>DC <input id="askDc" type="number" min="1" max="40" placeholder="none" style="width:80px"></label>
+        <label class="toggle"><input type="checkbox" id="askShowDc"> players see the DC</label>
+        <label class="toggle" title="A group check succeeds if at least half the group succeeds"><input type="checkbox" id="askGroup"> group check</label>
+        <label class="toggle" title="Only you see the numbers; players see only that they rolled"><input type="checkbox" id="askSecret"> secret</label></div>
+      <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" id="askNow" title="Roll for each of them now, from their sheets">Roll for them now</button>
+        <button class="btn primary" id="askOpen" title="Each player gets a Roll button for their character">Ask the players</button></div>`, box => {
+      const send = type => {
+        const [what, key] = $('#askWhat').value.split(':');
+        const ids = [...box.querySelectorAll('.askChar:checked')].map(x => x.value);
+        if (!ids.length) return toast('Pick at least one character');
+        act(type, { what, key, chars: ids, dc: $('#askDc').value, showDc: $('#askShowDc').checked, group: $('#askGroup').checked, secret: $('#askSecret').checked })
+          .then(r => { if (r) closeModal(); });
+      };
+      box.onclick = e => { if (e.target.id === 'askNow') send('ask.roll'); if (e.target.id === 'askOpen') send('ask.open'); };
+    });
+  }
+  function renderAsk() {
+    const card = $('#askCard'), a = S.st.ask;
+    if (!a) { card.classList.add('hidden'); card.innerHTML = ''; return; }
+    const ch = id => S.st.characters[id], name = id => (ch(id) || {}).name || '?';
+    const dc = a.dc != null && (isGM() || a.showDc) ? ` · DC ${n0(a.dc)}${isGM() && !a.showDc ? ' (hidden)' : ''}` : '';
+    const ids = isGM() ? a.chars : (a.mine || []);
+    const row = id => {
+      const r = (a.results || {})[id];
+      const res = r ? (r.done ? '✓' : `${n0(r.total)}${r.ok === true ? ' ✓' : r.ok === false ? ' ✗' : ''}`) : '';
+      const canRoll = !r && (isGM() || (ch(id) && ch(id).owner === clientId));
+      return `<div class="ask-row"><span>${esc(name(id))}</span><span class="spacer"></span>${res ? `<b>${esc(res)}</b>` : canRoll ? `<button class="btn tiny amber" data-ask-roll="${esc(id)}" title="Shift: advantage · Ctrl: disadvantage">Roll</button>` : '<span class="muted">waiting</span>'}</div>`;
+    };
+    const left = a.chars.filter(id => !(a.results || {})[id]).length;
+    card.classList.remove('hidden');
+    card.innerHTML = `<div class="ask-head">🎲 <b>${esc(a.check.name)}</b>${a.group ? ' <span class="muted">group</span>' : ''}${a.secret ? ' <span class="muted">secret</span>' : ''}<span class="muted">${esc(dc)}</span>
+      <span class="spacer"></span>${isGM() ? `<button class="btn tiny ghost" data-ask-close title="End this request">${left ? 'Cancel' : 'Done'}</button>` : ''}</div>
+      ${ids.map(row).join('')}${isGM() ? '' : `<div class="muted" style="font-size:11px">The GM asked for this roll.</div>`}`;
+  }
+  $('#askCard').addEventListener('click', e => {
+    const a = S.st.ask; if (!a) return;
+    const b = e.target.closest('[data-ask-roll]');
+    if (b) { b.disabled = true; act('ask.answer', { id: a.id, charId: b.dataset.askRoll, mode: rollModeFromEvent(e) }); }
+    if (e.target.closest('[data-ask-close]')) act('ask.close');
+  });
 
   // --------------------------------------------------------------------------- top bar
   function renderTop() {
@@ -268,6 +325,7 @@
   $('#newCharBtn').addEventListener('click', () => {
     const make = async built => {
       const c = built || R.blankCharacter();
+      c.acAuto = true;   // a brand-new sheet works its AC out from armor (audit 5.3); old sheets and imports keep their typed AC
       if (!built) c.name = (me() && me().name ? me().name + "'s character" : 'New Character');
       c.color = ['#4fc3f7', '#ffb74d', '#66bb6a', '#ef5350', '#b388ff', '#f06292', '#4db6ac'][Math.floor(Math.random() * 7)];
       const r = await act('char.save', { char: c });
@@ -508,6 +566,11 @@
     return `<input type="${type}" data-path="${path}" value="${esc(val ?? '')}" ${ro} ${style} ${opts.list ? `list="${opts.list}"` : ''} placeholder="${esc(opts.ph || '')}" class="${opts.cls || ''}">`;
   }
 
+  // a small misc bonus box beside a save or skill (audit 5.5): feats, items, features; shown to read-only viewers only when set
+  function miscBox(path, val, ro) {
+    if (ro && !+val) return '';
+    return `<span class="misc-box" title="Misc bonus (feats, items, features)">${inp(path, +val || '', { ro, type: 'number', w: '40px', ph: '±' })}</span>`;
+  }
   function renderSheet(el) {
     const ch = selChar();
     if (!ch) {
@@ -560,7 +623,9 @@
       </div>
     </div>
     <div class="stats-row">
-      <div class="stat"><div class="lbl">Armor Class</div>${inp('ac', +ch.ac || 10, { ro, type: 'number' })}</div>
+      ${(acx => `<div class="stat ac-stat" title="${esc(ch.acAuto ? 'Worked out from equipped armor and shield: ' + acx.text + '. Mark armor in Features & Gear.' : 'Typed by hand. Tick auto to work it out from equipped armor (and Unarmored Defense).')}"><div class="lbl">Armor Class</div>
+        ${ch.acAuto ? `<div class="val">${acx.total}</div>` : inp('ac', +ch.ac || 10, { ro, type: 'number' })}
+        <div class="ac-opts"><label class="muted">${inp('acAuto', !!ch.acAuto, { ro, type: 'checkbox' })} auto</label>${ch.acAuto ? `<span class="muted">misc</span>${inp('acMisc', +ch.acMisc || 0, { ro, type: 'number', w: '44px' })}` : ''}</div></div>`)(R.armorClass(ch))}
       <div class="stat rollable" data-roll="${d20(R.initiative(ch))}" data-label="Initiative" data-d20="1"><div class="lbl">Initiative</div><div class="val">${R.fmt(R.initiative(ch))}</div></div>
       <div class="stat"><div class="lbl">Speed</div>${inp('speed', +ch.speed || 30, { ro, type: 'number' })}</div>
       <div class="stat"><div class="lbl">Proficiency</div><div class="val">${R.fmt(pb)}</div></div>
@@ -606,12 +671,14 @@
         <div class="box"><h4>Saving Throws</h4><div class="list-rows">${R.ABILITIES.map(a => {
           const b = R.saveBonus(ch, a.key);
           return `<div class="lr"><button class="prof ${ch.saves[a.key] ? 'p1' : ''}" data-act="save-prof" data-ab="${a.key}" ${ro ? 'disabled' : ''}></button>
-            <span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${d20(b)}" data-label="${a.name} save" data-d20="1">${a.name}</span></div>`;
+            <span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${d20(b)}" data-label="${a.name} save" data-d20="1">${a.name}</span>
+            ${miscBox('saveMisc.' + a.key, (ch.saveMisc || {})[a.key], ro)}</div>`;
         }).join('')}</div></div>
         <div class="box" style="grid-row: span 2"><h4>Skills <span class="muted" style="text-transform:none;letter-spacing:0">click dot: none → proficient → expertise</span></h4><div class="list-rows">${R.SKILLS.map(s => {
           const b = R.skillBonus(ch, s.key), lv = +(ch.skills[s.key] || 0);
           return `<div class="lr"><button class="prof ${lv === 2 ? 'p2' : lv === 1 ? 'p1' : lv === 0.5 ? 'p05' : ''}" data-act="skill-prof" data-sk="${s.key}" ${ro ? 'disabled' : ''}></button>
-            <span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${d20(b)}" data-label="${s.name}" data-d20="1">${s.name}</span><span class="ab">${s.ab}</span></div>`;
+            ${(sr => `<span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${esc(sr.expr)}" data-label="${s.name}${sr.reliable ? ' (Reliable Talent)' : ''}" data-d20="1"${sr.reliable ? ' title="Reliable Talent: the d20 counts as at least 8"' : ''}>${s.name}</span>`)(R.skillRollExpr(ch, s.key))}<span class="ab">${s.ab}</span>
+            ${miscBox('skillMisc.' + s.key, (ch.skillMisc || {})[s.key], ro)}</div>`;
         }).join('')}</div></div>
       </div>`;
     }
@@ -643,21 +710,24 @@
           <span class="muted">max override</span>${inp(k + '.max', ch[k].max ?? '', { ro, type: 'number', ph: String(k === 'force' ? ci.forceMax : ci.techMax) })}</div>
         <div class="muted" style="margin-top:6px;font-size:12px">${extra}</div></div>`;
       html += `<div class="box"><h4>Attacks <span class="spacer"></span>${!ro ? `<button class="btn tiny" data-act="pick-weapon">＋ weapon from SW5e</button><button class="btn tiny ghost" data-act="add-attack">custom</button>` : ''}</h4>
-        <table class="t"><thead><tr><th>Name</th><th>Ability</th><th>Hit</th><th>Damage die</th><th>Type</th><th>Properties</th><th></th></tr></thead><tbody>
+        <table class="t"><thead><tr><th>Name</th><th>Ability</th><th title="Tick if proficient with this weapon">Prof.</th><th>Hit</th><th title="The d20 this attack crits on (19 = 19-20)">Crit</th><th>Damage die</th><th>Type</th><th>Properties</th><th></th></tr></thead><tbody>
         ${(ch.attacks || []).map((a, i) => {
           const hit = R.attackBonus(ch, a), dmg = R.damageExpr(ch, a);
           return `<tr><td>${inp(`attacks.${i}.name`, a.name, { ro })}</td>
             <td style="width:96px">${inp(`attacks.${i}.ab`, a.ab || 'str', { ro, type: 'select', options: [{ v: 'str', t: 'Str' }, { v: 'dex', t: 'Dex' }, { v: 'finesse', t: 'Finesse' }, { v: 'con', t: 'Con' }, { v: 'int', t: 'Int' }, { v: 'wis', t: 'Wis' }, { v: 'cha', t: 'Cha' }] })}</td>
-            <td style="width:120px"><button class="btn small amber" data-act="atk" data-i="${i}">${R.fmt(hit)}</button> ${inp(`attacks.${i}.magic`, a.magic || '', { ro, type: 'number', w: '58px', ph: '+0' })}</td>
+            <td style="width:40px;text-align:center">${inp(`attacks.${i}.proficient`, a.proficient !== false, { ro, type: 'checkbox' })}</td>
+            <td style="width:120px"><button class="btn small amber" data-act="atk" data-i="${i}">${R.fmt(hit)}</button> ${inp(`attacks.${i}.magic`, a.magic || '', { ro, type: 'number', w: '58px', ph: '+0' })}
+              ${R.reloadOf(a) ? `<div class="shots" title="Shots left before a reload (Reload ${R.reloadOf(a)}). Reloading uses one ${esc(R.ammoOf(a).toLowerCase())}.">${R.shotsOf(a)}/${R.reloadOf(a)} ${!ro ? `<button class="btn tiny ghost" data-act="reload" data-i="${i}">⟳ Reload</button>` : ''}</div>` : ''}</td>
+            <td style="width:56px">${inp(`attacks.${i}.critRange`, +a.critRange || 20, { ro, type: 'number', w: '48px' })}</td>
             <td style="width:160px"><div class="row">${inp(`attacks.${i}.damage`, a.damage || '', { ro, w: '64px' })}<button class="btn small" data-act="dmg" data-i="${i}" title="${esc(dmg)}">Dmg</button><button class="btn tiny" data-act="crit" data-i="${i}" title="Critical: dice doubled">Crit</button></div></td>
             <td style="width:100px">${inp(`attacks.${i}.type`, a.type || '', { ro, list: 'dlTypes' })}</td>
             <td>${inp(`attacks.${i}.props`, a.props || '', { ro })}</td>
             <td>${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="attacks" data-i="${i}">✕</button>` : ''}</td></tr>`;
-        }).join('') || '<tr><td colspan="7" class="muted">No attacks yet.</td></tr>'}</tbody></table>
-        <p class="muted" style="font-size:12px;margin:6px 0 0">Hit = ability mod + proficiency (+ the small box for enhancements). Damage adds the ability mod automatically.</p></div>
+        }).join('') || '<tr><td colspan="9" class="muted">No attacks yet.</td></tr>'}</tbody></table>
+        <p class="muted" style="font-size:12px;margin:6px 0 0">Hit = ability mod + proficiency if ticked (+ the small box for enhancements). Damage adds the ability mod automatically. Crit is the lowest d20 that crits (20 by default; a Keen weapon from SW5e starts lower). A Reload weapon counts its shots; ⟳ Reload uses a power cell or slug cartridge from your gear.</p></div>
       <div class="grid g2" style="margin-top:12px">
-        ${pts('force', fMax, +ch.force.used || 0, '', 'Force Points', `Light DC ${ci.lightDC} / atk ${R.fmt(ci.lightAtk)} · Dark DC ${ci.darkDC} / atk ${R.fmt(ci.darkAtk)}${ci.forceMaxLevel ? ' · max power level ' + ci.forceMaxLevel : ''}`)}
-        ${pts('tech', tMax, +ch.tech.used || 0, 'tech', 'Tech Points', `Tech DC ${ci.techDC} / atk ${R.fmt(ci.techAtk)}${ci.techMaxLevel ? ' · max power level ' + ci.techMaxLevel : ''}`)}
+        ${pts('force', fMax, +ch.force.used || 0, '', 'Force Points', `Light DC ${ci.lightDC} / atk ${R.fmt(ci.lightAtk)} · Dark DC ${ci.darkDC} / atk ${R.fmt(ci.darkAtk)}${ci.forceMaxLevel ? ' · max power level ' + ci.forceMaxLevel : ''}${highNote(ch, 'force', ci.forceMaxLevel)}`)}
+        ${pts('tech', tMax, +ch.tech.used || 0, 'tech', 'Tech Points', `Tech DC ${ci.techDC} / atk ${R.fmt(ci.techAtk)}${ci.techMaxLevel ? ' · max power level ' + ci.techMaxLevel : ''}${highNote(ch, 'tech', ci.techMaxLevel)}`)}
       </div>
       ${classResourcesBox(ch, ro)}
       <div class="box" style="margin-top:12px"><h4>Powers <span class="spacer"></span>${!ro ? `<button class="btn tiny" data-act="pick-power" data-kind="force">＋ force power</button>
@@ -679,11 +749,12 @@
       html += `<div class="grid g2">
         <div class="box"><h4>Equipment <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-equip">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-item" title="Add an item by hand">custom</button>' : ''}</h4>
           <div class="row" style="margin-bottom:8px"><span class="muted">Credits</span>${inp('credits', +ch.credits || 0, { ro, type: 'number', w: '120px' })}</div>
-          <table class="t"><thead><tr><th>Qty</th><th>Item</th><th>Notes</th><th>Eq.</th><th></th></tr></thead><tbody>
+          <table class="t eq-table"><thead><tr><th>Qty</th><th>Item</th><th>Notes</th><th title="Armor or shield, for the auto AC: its kind and AC (a shield's bonus)">Armor</th><th>Eq.</th><th></th></tr></thead><tbody>
           ${(ch.equipment || []).map((e, i) => `<tr><td class="n">${inp(`equipment.${i}.qty`, +e.qty || 1, { ro, type: 'number' })}</td>
             <td>${inp(`equipment.${i}.name`, e.name, { ro })}</td><td>${inp(`equipment.${i}.notes`, e.notes || '', { ro })}</td>
+            <td class="armor-cell">${inp(`equipment.${i}.armor.kind`, (e.armor || {}).kind || '', { ro, type: 'select', options: [{ v: '', t: '—' }, ...R.ARMOR_KINDS] })}${e.armor && e.armor.kind ? inp(`equipment.${i}.armor.ac`, +e.armor.ac || 0, { ro, type: 'number' }) : ''}</td>
             <td>${inp(`equipment.${i}.equipped`, e.equipped, { ro, type: 'checkbox' })}</td>
-            <td>${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">Empty.</td></tr>'}
+            <td>${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Empty.</td></tr>'}
           </tbody></table></div>
         <div class="box"><h4>Features & Traits <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-feature" title="Feats, class features, maneuvers, fighting styles, lightsaber forms, ventures">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-feature" title="Write a feature by hand">custom</button>' : ''}</h4>
           <div class="feature-list">${(ch.features || []).map((f, i) => `<div class="feature-row">
@@ -764,6 +835,7 @@
       case 'long-rest':
         mutate(c => {
           c.hp.current = +c.hp.max; c.hp.temp = 0; c.force.used = 0; c.tech.used = 0; c.deathSaves = { s: 0, f: 0 };
+          delete c.force.high; delete c.tech.high;   // high-level powers can be cast again (#160)
           // half the total hit dice back (at least one), the largest first (audit 7.5)
           const dice = R.hitDice(c); let back = Math.max(1, Math.floor(dice.reduce((n, d) => n + d.total, 0) / 2));
           for (const d of dice) { const k = Math.min(d.used, back); d.used -= k; back -= k; }
@@ -812,9 +884,25 @@
       case 'pick-background': HTB.openBackgroundPicker(ch.id); break;
       case 'pick-feature': HTB.openFeaturePicker(ch.id); break;
       case 'del': mutate(c => c[b.dataset.list].splice(i, 1)); break;
-      case 'atk': { const at = ch.attacks[i]; roll(d20(R.attackBonus(ch, at)), `${at.name} — attack`, { d20: true, mode: rollModeFromEvent(e), charId: ch.id, kind: 'attack' }); break; }
+      case 'atk': {
+        const at = ch.attacks[i], crit = +at.critRange || 20, shots = R.shotsOf(at);
+        if (shots === 0) { toast(`${at.name} is out of shots. Reload it first (an action or bonus action).`); break; }
+        const r = await roll(d20(R.attackBonus(ch, at)), `${at.name} — attack${crit < 20 ? ` (crits on ${crit}–20)` : ''}`, { d20: true, mode: rollModeFromEvent(e), charId: ch.id, kind: 'attack' });
+        const nat = r && r.roll && r.roll.nat;
+        if (crit < 20 && nat >= crit && nat < 20) toast(`${nat}: a critical hit for ${at.name} (crits on ${crit}–20). Roll Crit for damage.`);
+        if (r && shots != null && canEdit(ch)) mutate(c => { c.attacks[i].shots = Math.max(0, shots - 1); });   // one shot used (audit 6.6)
+        break;
+      }
+      case 'reload': {   // a fresh power cell or slug cartridge from the gear; with none, the GM may reload anyway
+        const at = ch.attacks[i], full = R.reloadOf(at), kind = R.ammoOf(at); if (!full) break;
+        const k = (ch.equipment || []).findIndex(x => String(x.name).toLowerCase().startsWith(kind.toLowerCase()) && n0(x.qty) > 0);
+        if (k < 0 && !(isGM() && confirm(`No ${kind.toLowerCase()}s in ${ch.name}'s gear. Reload anyway?`))) { if (!isGM()) toast(`No ${kind.toLowerCase()}s in your gear. Add some in Features & Gear (or ask the GM).`); break; }
+        mutate(c => { c.attacks[i].shots = full; if (k >= 0) c.equipment[k].qty = n0(c.equipment[k].qty) - 1; });
+        toast(`${at.name} reloaded: ${full} shots${k >= 0 ? `, ${n0(ch.equipment[k].qty) - 1} ${kind.toLowerCase()}${n0(ch.equipment[k].qty) - 1 === 1 ? '' : 's'} left` : ''}.`);
+        break;
+      }
       case 'dmg': { const at = ch.attacks[i]; roll(R.damageExpr(ch, at), `${at.name} — ${at.type || ''} damage`, { charId: ch.id, kind: 'damage' }); break; }
-      case 'crit': { const at = ch.attacks[i]; roll(R.critExpr(R.damageExpr(ch, at)), `${at.name} — CRITICAL ${at.type || ''} damage`, { charId: ch.id, kind: 'damage' }); break; }
+      case 'crit': { const at = ch.attacks[i], cd = R.critDamage(ch, at); roll(cd.expr, `${at.name} — CRITICAL ${at.type || ''} damage${cd.brutal ? ` (Brutal Critical +${cd.brutal})` : ''}`, { charId: ch.id, kind: 'damage' }); break; }
       case 'add-class-res': mutate(c => { c.resources = R.withClassResources(c); }); break;
       case 'res-use': case 'res-back': {
         const res0 = (ch.resources || [])[i];
@@ -904,7 +992,8 @@
   function weaponAttack(it) {
     const props = (it.props || []).join(', ');
     const ab = /blaster/i.test(it.wc) ? 'dex' : /finesse/i.test(props) ? 'finesse' : 'str';
-    return { name: it.n, ab, damage: it.dmg || '1', type: it.dt || 'kinetic', props: props.slice(0, 200), proficient: true };
+    const crit = R.critFrom(props);   // Keen N: the crit range grows by N
+    return { name: it.n, ab, damage: it.dmg || '1', type: it.dt || 'kinetic', props: props.slice(0, 200), proficient: true, ...(crit < 20 ? { critRange: crit } : {}) };
   }
   function itemNotes(it, enhanced) {
     if (enhanced) return [it.rar && `${it.rar} ${it.cat.toLowerCase()}`, it.sub, it.att && 'requires attunement'].filter(Boolean).join(' · ');
@@ -993,7 +1082,7 @@
           mutate(c => {
             const ex = c.equipment.find(x => String(x.name).toLowerCase() === it.n.toLowerCase());
             if (ex) ex.qty = (n0(ex.qty) || 1) + 1;
-            else c.equipment.push({ name: it.n, qty: 1, equipped: false, notes: itemNotes(it, enh).slice(0, 200) });
+            else { const armor = !enh && R.armorFromItem(it); c.equipment.push({ name: it.n, qty: 1, equipped: false, notes: itemNotes(it, enh).slice(0, 200), ...(armor ? { armor } : {}) }); }
             if (!enh && it.cat === 'Weapon' && !c.attacks.some(x => String(x.name).toLowerCase() === it.n.toLowerCase())) c.attacks.push(weaponAttack(it));
           });
           toast(!enh && it.cat === 'Weapon' ? `Added ${it.n} (and its attack)` : `Added ${it.n}`);
@@ -1024,6 +1113,12 @@
   // for a power the table has data for, its targets on the map: the server rolls it as the combat view does (attack or
   // saves, damage or healing, conditions, concentration). In a fight this character is in, it is the combat view's own
   // action. A power without data casts as before, at the level chosen.
+  // the force or tech box's note on high-level casting (#160): from which level, and what's been cast since the long rest
+  const highNote = (ch, k, maxL) => {
+    const from = R.highCastFrom(ch, k), used = R.highCastUsed(ch, k);
+    if (!from || maxL < from) return '';
+    return ` · level ${from}${maxL > from ? '+' : ''}: once each per long rest${used.length ? ` (cast: ${used.join(', ')})` : ''}`;
+  };
   const powerData = p => { const lib = (S.st.sheetCast || {}).lib || (S.st.fight || {}).lib || {}, k = String((p && p.name) || '').trim().toLowerCase(); return Object.prototype.hasOwnProperty.call(lib, k) ? lib[k] : null; };
   function castPower(ch, i) {
     const p = ch.powers[i]; if (!p) return;
@@ -1040,8 +1135,9 @@
     const self = data && data.targets === 'self', area = data && data.area;
     const toks = data && !self ? (S.st.map.tokens || []) : [];
     const up = data && data.upcast && data.upcast.damage ? ` · +${esc(data.upcast.damage)} per level above ${base}` : '';
+    const usedHigh = R.highCastUsed(ch, k), from = R.highCastFrom(ch, k);
     modal(`<h3>Cast ${esc(p.name)}</h3>
-      ${levels.length > 1 ? `<label class="mini">Level <select id="castLvl">${levels.map(n => `<option value="${n}">${n} · ${pts(n)}${n > maxL ? ' (above max)' : ''}</option>`).join('')}</select></label>
+      ${levels.length > 1 ? `<label class="mini">Level <select id="castLvl">${levels.map(n => `<option value="${n}">${n} · ${pts(n)}${n > maxL ? ' (above max)' : from && n >= from ? (usedHigh.includes(n) ? ' (used until a long rest)' : ' (once per long rest)') : ''}</option>`).join('')}</select></label>
         <p class="muted" style="font-size:12px;margin:4px 0">Casting higher costs a point more per level${up}.</p>` : ''}
       ${data ? (self ? `<p class="muted">Affects ${esc(ch.name)}.</p>`
         : `<p class="muted" style="margin:8px 0 4px">${area ? 'Tick who is in the area' : `Targets${data.targets > 1 ? ` (up to ${n0(data.targets)})` : ''}`}, or none to roll it once for the table${isGM() ? '' : ". At anyone but your own characters it rolls and posts, for its owner or the GM to apply"}:</p>
@@ -1052,7 +1148,7 @@
         if (e.target.id === 'castNo') return closeModal();
         if (e.target.id !== 'castGo') return;
         const L = levels.length > 1 ? +$('#castLvl', box).value : base;
-        const ov = R.overMaxPowerLevel(ch, { level: L, type: k }, ci);
+        const ov = R.overMaxPowerLevel(ch, { level: L, type: k }, ci) || R.highCastBlocked(ch, { type: k }, L);
         if (ov && !isGM()) return toast(ov.text, true);
         if (ov && !confirm(`${ov.text}\n\nCast anyway?`)) return;
         const targets = [...box.querySelectorAll('[data-tok]:checked')].map(x => x.dataset.tok);
@@ -1071,12 +1167,16 @@
   // a power without the table's data: pay and post, as the sheet always has, at the level chosen
   function castAt(ch, p, L, ovAsked) {
     const base = +p.level || 0, cost = L ? L + 1 : 0, k = p.type === 'tech' ? 'tech' : 'force', ci = R.casterInfo(ch);
-    const ov = R.overMaxPowerLevel(ch, { level: L, type: k }, ci);
+    const ov = R.overMaxPowerLevel(ch, { level: L, type: k }, ci) || R.highCastBlocked(ch, { type: k }, L);
     if (ov && !isGM()) return toast(ov.text, true);
     if (ov && !ovAsked && !confirm(`${ov.text}\n\nCast anyway?`)) return;
     const max = ch[k].max !== '' && ch[k].max != null ? +ch[k].max : (k === 'force' ? ci.forceMax : ci.techMax);
     if (cost && (+ch[k].used || 0) + cost > max) return toast(`Not enough ${k} points (${cost} needed).`, true);
-    if (cost) mutate(c => { c[k].used = (+c[k].used || 0) + cost; });
+    const from = R.highCastFrom(ch, k);   // a level that goes once per long rest is noted (#160)
+    if (cost || (from && L >= from)) mutate(c => {
+      c[k].used = (+c[k].used || 0) + cost;
+      if (from && L >= from) c[k].high = [...new Set(R.highCastUsed(c, k).concat(L))].sort((a, b) => a - b);
+    });
     const dc = k === 'tech' ? `DC ${ci.techDC}, atk ${R.fmt(ci.techAtk)}` : p.alignment === 'dark' ? `DC ${ci.darkDC}, atk ${R.fmt(ci.darkAtk)}` : p.alignment === 'light' ? `DC ${ci.lightDC}, atk ${R.fmt(ci.lightAtk)}` : `DC ${Math.max(ci.lightDC, ci.darkDC)}, atk ${R.fmt(Math.max(ci.lightAtk, ci.darkAtk))}`;
     act('chat', { text: `casts **${p.name}** (${L ? 'level ' + L : 'at-will'} ${k} power${L > base ? `, cast up from level ${base}` : ''}${cost ? `, −${cost} ${k === 'force' ? 'FP' : 'TP'}` : ''}) · ${dc}${p.notes ? '\n' + p.notes : ''}${p.description ? '\n' + p.description.slice(0, 900) + (p.description.length > 900 ? '…' : '') : ''}`, as: ch.name });
   }
@@ -1354,9 +1454,10 @@
         <label class="mini">cols <input type="number" value="${n0(mp.cols)}" data-mset="cols"></label>
         <label class="mini">rows <input type="number" value="${n0(mp.rows)}" data-mset="rows"></label>
         <label class="toggle"><input type="checkbox" data-mset="showGrid" ${mp.showGrid ? 'checked' : ''}> grid</label>
+        <button class="btn small ${M.drawMode ? 'primary' : ''}" data-mact="draw" title="Draw on the map for everyone to see (drag). Double-click anywhere to ping.">✎ Draw</button>${M.drawMode ? `<span class="draw-colors">${['#ffd27a', '#4fc3f7', '#ef5350', '#66bb6a', '#ffffff'].map(c => `<button class="draw-col ${M.drawColor === c ? 'on' : ''}" data-mact="dcol" data-c="${c}" style="background:${c}" aria-label="Colour ${c}"></button>`).join('')}</span>` : ''}${(mp.drawings || []).length ? `<button class="btn small ghost" data-mact="draw-clear">clear drawings</button>` : ''}
         <button class="btn small" data-mact="npc">＋ Token</button>${window.HTC && HTC.wallsButton ? HTC.wallsButton() : ''}
         ${mp.tokens.some(t => t.moves) || (mp.props || []).some(x => x.moves) ? '<button class="btn small amber" data-mact="play-moves" title="Play the scene movements on this board now, for everyone">▶ Play movements</button>' : ''}
-        <input type="file" id="bgFile" accept="image/*" hidden>` : '<span class="muted">Drag your token to move it · drag empty space to pan · scroll to zoom</span>'}`;
+        <input type="file" id="bgFile" accept="image/*" hidden>` : '<span class="muted">Drag your token to move it · drag empty space to pan · scroll to zoom · double-click to ping</span>'}`;
   }
   $('#mapTools').addEventListener('click', async e => {
     const b = e.target.closest('[data-mact]'); if (!b) return;
@@ -1365,6 +1466,9 @@
     if (a === 'zout') zoomAt(w / 2, h / 2, 0.8);
     if (a === 'z100') zoomAt(w / 2, h / 2, 1 / CAM.z);
     if (a === 'zfit') fitBoard();
+    if (a === 'draw') { M.drawMode = !M.drawMode; M.drawColor = M.drawColor || '#ffd27a'; canvas.classList.toggle('drawing', M.drawMode); renderMapTools(); }
+    if (a === 'dcol') { M.drawColor = b.dataset.c; renderMapTools(); }
+    if (a === 'draw-clear' && confirm('Clear every drawing on this map?')) act('map.drawClear', {});
     if (a === 'place') {   // drop the token in the middle of what you're looking at
       const g = S.st.map.gridSize;
       await act('token.add', { charId: S.selected, x: Math.floor((w / 2 - CAM.x) / CAM.z / g), y: Math.floor((h / 2 - CAM.y) / CAM.z / g) });
@@ -1712,6 +1816,7 @@
       const st = A.stamp, im = img(st.src);
       if (im) { ctx.globalAlpha = 0.6; const w = st.w * g, h = st.h * g; ctx.drawImage(im, A.hover.x - w / 2, A.hover.y - h / 2, w, h); ctx.globalAlpha = 1; }
     }
+    drawDrawings(g, z);   // the GM's drawings (8.13)
     if (isGM()) drawScripts(g, z);
     if (window.HTC) HTC.under(ctx, g, z);   // combat view (reachable squares)
     // tokens
@@ -1719,7 +1824,7 @@
     for (const t of mp.tokens) {
       const drag = M.drag && M.drag.id === t.id;
       const ap = ANIM.pos[t.id];   // mid scene-movement
-      const px = drag ? M.drag.px : (ap ? ap.x : t.x) * g, py = drag ? M.drag.py : (ap ? ap.y : t.y) * g, sz = (t.size || 1) * g, r = sz / 2 - 3;
+      const px = drag ? M.drag.px : (ap ? ap.x : t.x) * g, py = drag ? M.drag.py : (ap ? ap.y : t.y) * g, sz = (t.size || 1) * g, r = t.tiny ? sz / 4 - 1 : sz / 2 - 3;   // Tiny: half size, in its square (8.15)
       const cx = px + sz / 2, cy = py + sz / 2;
       ctx.globalAlpha = t.hidden ? 0.45 : 1;
       const isCur = cur && (cur.tok ? cur.tok === t.id : (cur.charId && cur.charId === t.charId) || (!cur.charId && cur.name !== '???' && cur.name === t.name));
@@ -1744,6 +1849,13 @@
         ctx.fillStyle = '#300'; ctx.fillRect(px + 4, py + sz - 6, sz - 8, 4);
         ctx.fillStyle = pct < .3 ? themeHex('red', '#ef5350') : pct < .6 ? themeHex('amber', '#ffb74d') : themeHex('green', '#66bb6a'); ctx.fillRect(px + 4, py + sz - 6, (sz - 8) * pct, 4);
       }
+      if (t.elev) {   // elevation or flying height (audit 8.14): a badge at the token's top right, ↑ up, ↓ down
+        const txt = `${t.elev > 0 ? '↑' : '↓'}${Math.abs(t.elev)}`;
+        ctx.font = `700 ${Math.max(10 / z, g * 0.18)}px ${UI_FONT}`; ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+        const w = ctx.measureText(txt).width + 6 / z, h = Math.max(13 / z, g * 0.24), bx = px + sz, by = py;
+        ctx.fillStyle = 'rgba(4,18,27,.85)'; ctx.fillRect(bx - w, by, w, h);
+        ctx.fillStyle = themeHex('holo', '#4fc3f7'); ctx.fillText(txt, bx - 3 / z, by + 1 / z);
+      }
       // a short label that fits under the token (so neighbours don't overlap); hover shows the full name
       ctx.font = `600 ${Math.max(11 / z, g * 0.2)}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
       const lab = shortLabel(t.name, sz - 4);
@@ -1752,7 +1864,42 @@
       ctx.globalAlpha = 1;
     }
     if (window.HTC) HTC.over(ctx, g, z);    // combat view (targets, results)
+    drawPings(g, z);
   }
+  // ---- "look here" and the GM's quick drawings (audit 8.13)
+  const PINGS = {};   // ping id -> when this screen first saw it, so each pulses once, for 2.5 s
+  function drawPings(g, z) {
+    const t = performance.now(); let live = false;
+    for (const p of S.st.pings || []) {
+      if (!PINGS[p.id]) PINGS[p.id] = t;
+      const k = (t - PINGS[p.id]) / 2500; if (k >= 1) continue; live = true;
+      const cx = p.x * g, cy = p.y * g, col = p.gm ? themeHex('amber', '#ffb74d') : themeHex('holo', '#4fc3f7');
+      for (const off of [0, 0.33]) {
+        const kk = (k + off) % 1;
+        ctx.beginPath(); ctx.arc(cx, cy, g * (0.3 + 1.4 * kk), 0, Math.PI * 2);
+        ctx.strokeStyle = rgba(col, 1 - kk); ctx.lineWidth = 4 / z; ctx.stroke();
+      }
+      ctx.font = `700 ${Math.max(11 / z, g * 0.2)}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.lineWidth = 3 / z; ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.strokeText(p.name || '', cx, cy - g * 0.35); ctx.fillStyle = col; ctx.fillText(p.name || '', cx, cy - g * 0.35);
+    }
+    if (live && !drawPings.raf) drawPings.raf = requestAnimationFrame(() => { drawPings.raf = 0; drawMap(); });
+  }
+  function drawDrawings(g, z) {
+    const strokes = [...(S.st.map.drawings || []), ...(M.drag && M.drag.draw ? [{ c: M.drawColor, pts: M.drag.pts }] : [])];
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const d of strokes) {
+      if (!d.pts || d.pts.length < 4) continue;
+      ctx.beginPath(); ctx.moveTo(d.pts[0] * g, d.pts[1] * g);
+      for (let i = 2; i < d.pts.length; i += 2) ctx.lineTo(d.pts[i] * g, d.pts[i + 1] * g);
+      ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 6 / z; ctx.stroke();
+      ctx.strokeStyle = d.c || '#ffd27a'; ctx.lineWidth = 3 / z; ctx.stroke();
+    }
+  }
+  canvas.addEventListener('dblclick', e => {   // a double-click (or double-tap) on the map pings it for everyone
+    if (M.drawMode || A.stamp || M.script) return;
+    const { x, y } = mapXY(e), g = S.st.map.gridSize;
+    act('map.ping', { x: Math.round(x / g * 100) / 100, y: Math.round(y / g * 100) / 100 });
+  });
   // the longest of: full name, first word, first word cut short, initials — that fits the token's width
   function shortLabel(name, w) {
     name = String(name || '').trim(); if (!name) return '';
@@ -1803,6 +1950,7 @@
     if (e.button === 1) { e.preventDefault(); M.drag = { pan: true, sx: e.clientX, sy: e.clientY, cx: CAM.x, cy: CAM.y, moved: false }; capture(e); return; }
     if (e.button !== 0) return;
     const { x, y } = mapXY(e), g = S.st.map.gridSize;
+    if (M.drawMode && isGM()) { M.drag = { draw: true, pts: [x / g, y / g] }; capture(e); return; }   // the GM draws (8.13)
     if (!M.script && !A.stamp && window.HTC && HTC.down(x / g, y / g, e)) { drawMap(); return; }   // combat view
     if (M.script) {          // recording a scene movement: each click is the next waypoint
       if (M.script.path.length >= 12) return toast('That\'s the most waypoints for one piece (12).', true);
@@ -1852,6 +2000,11 @@
       return;
     }
     mapTip(null);
+    if (M.drag.draw) {
+      const { x, y } = mapXY(e), g = S.st.map.gridSize, pts = M.drag.pts;
+      if (pts.length < 600 && Math.hypot(x / g - pts[pts.length - 2], y / g - pts[pts.length - 1]) > 0.08) { pts.push(x / g, y / g); drawMap(); }
+      return;
+    }
     if (M.drag.pan) {
       const dx = e.clientX - M.drag.sx, dy = e.clientY - M.drag.sy;
       if (Math.abs(dx) + Math.abs(dy) > 3) M.drag.moved = true;
@@ -1868,6 +2021,10 @@
     if (!M.drag) return;
     const d = M.drag, g = S.st.map.gridSize;
     M.drag = null;
+    if (d.draw) {
+      if (d.pts.length >= 4) { const pts = d.pts.map(v => Math.round(v * 100) / 100); S.st.map.drawings = [...(S.st.map.drawings || []), { id: 'tmp', c: M.drawColor, pts }]; act('map.draw', { pts, c: M.drawColor }); }
+      drawMap(); return;
+    }
     if (d.pan) {
       if (d.moved) saveCam();
       else { const { x, y } = mapXY(e); if (!(window.HTC && HTC.tap(x / g, y / g, e))) { M.sel = null; M.selProp = null; } drawMap(); }   // combat view
@@ -1933,7 +2090,8 @@
     const ch = t.charId && S.st.characters[t.charId];
     pop.innerHTML = `<b>${esc(t.name)}</b>${ch ? `<span class="muted">HP ${n0(ch.hp.current)}/${n0(ch.hp.max)} · AC ${n0(ch.ac)}</span><button class="btn small" data-tp="sheet">Open sheet</button>` : ''}
       ${canEditTok ? `<label>Colour<input type="color" value="${color(t.color)}" data-tp="color"></label>
-      <label>Size<select data-tp="size">${[1, 2, 3, 4].map(n => `<option ${n === (t.size || 1) ? 'selected' : ''} value="${n}">${['Medium/Small', 'Large', 'Huge', 'Gargantuan'][n - 1]}</option>`).join('')}</select></label>
+      <label>Size<select data-tp="size"><option value="tiny" ${t.tiny ? 'selected' : ''}>Tiny</option>${[1, 2, 3, 4].map(n => `<option ${!t.tiny && n === (t.size || 1) ? 'selected' : ''} value="${n}">${['Medium/Small', 'Large', 'Huge', 'Gargantuan'][n - 1]}</option>`).join('')}</select></label>
+      <label title="Height above the ground in feet: flying, a balcony, a ledge (negative: below, e.g. a pit)">Elevation (ft)<input type="number" step="5" value="${n0(t.elev)}" data-tp="elev" style="width:80px"></label>
       ${isGM() && A.sel ? `<button class="btn small" data-tp="img">Use selected asset as image</button>` : ''}
       ${t.img ? '<button class="btn small ghost" data-tp="noimg">Remove image</button>' : ''}
       ${isGM() ? `<button class="btn small" data-tp="hide">${t.hidden ? 'Reveal to players' : 'Hide from players'}</button>
@@ -1954,7 +2112,9 @@
     });
     pop.addEventListener('change', ev => {
       const a = ev.target.dataset.tp;
-      if (a === 'color' || a === 'size') act('token.update', { id: t.id, fields: { [a]: a === 'size' ? +ev.target.value : ev.target.value } });
+      if (a === 'color') act('token.update', { id: t.id, fields: { color: ev.target.value } });
+      if (a === 'size') act('token.update', { id: t.id, fields: ev.target.value === 'tiny' ? { size: 1, tiny: true } : { size: +ev.target.value, tiny: false } });
+      if (a === 'elev') act('token.update', { id: t.id, fields: { elev: +ev.target.value || 0 } });
     });
   }
 
@@ -2190,6 +2350,7 @@
         <p style="margin-top:0" class="muted">After a big fight or a hard-won conversation, give the party a level. Each player gets a pop-up and picks how to level.
           Someone missed the session? Grant just their character, and you can level it for them.</p>
         <button class="btn small amber" id="gmGrant">⬆ Grant a level…</button>
+        <button class="btn small" id="gmAsk" title="Everyone roll Perception, a group check, a secret Insight roll for a player…">🎲 Ask for a roll…</button>
         <label class="toggle" style="margin-top:8px" title="A table rule: whether players may take the hit die's maximum instead of the average or a roll">
           <input type="checkbox" id="gmHpMax" ${S.st.hpMax !== false ? 'checked' : ''}> Players may take maximum hit points when levelling</label>
         ${pendingNames.length ? `<p class="muted" style="font-size:12px">Waiting to level: ${pendingNames.join(', ')}</p>` : ''}
@@ -2264,6 +2425,7 @@
     if (id === 'doRename') act('campaign.rename', { name: $('#campRename').value });
     if (id === 'clearChat' && confirm('Clear the chat log for everyone?')) act('chat.clear');
     if (id === 'gmGrant') openGrant();
+    if (id === 'gmAsk') openAskRoll();
     if (id === 'restoreBtn') $('#restoreFile').click();
     if (id === 'showBackups') {
       post('backups', {}).then(r => {

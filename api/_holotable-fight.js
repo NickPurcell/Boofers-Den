@@ -53,7 +53,7 @@ function state(camp) {
     spent: Object.fromEntries(Object.entries(plainObj(f.spent)).filter(([k, v]) => ID.test(k) && v && typeof v === "object")
       .map(([k, v]) => [k, { key: str(v.key, 40), move: clamp(int(v.move), 0, 1000), action: clamp(int(v.action), 0, 9), bonus: clamp(int(v.bonus), 0, 9), reaction: clamp(int(v.reaction), 0, 9), diag: v.diag ? 1 : 0,
         dash: clamp(int(v.dash), 0, 9), disengage: v.disengage ? 1 : 0, dodge: v.dodge ? 1 : 0, ds: v.ds ? 1 : 0, sneak: v.sneak ? 1 : 0, double: v.double ? 1 : 0,
-        atk: clamp(int(v.atk), 0, 9), atkMax: clamp(int(v.atkMax), 0, 9), lt: clamp(int(v.lt), 0, 41), dw: clamp(int(v.dw), 0, 41), off: clamp(int(v.off), 0, 9), mv: clamp(int(v.mv), 0, 1023) }])),
+        atk: clamp(int(v.atk), 0, 9), atkMax: clamp(int(v.atkMax), 0, 9), lt: clamp(int(v.lt), 0, 41), dw: clamp(int(v.dw), 0, 41), off: clamp(int(v.off), 0, 9), mv: clamp(int(v.mv), 0, 1023), surge: v.surge ? 1 : 0 }])),
     // reactions waiting for an answer: an opportunity attack someone may take (the turn waits until it's answered)
     pending: (Array.isArray(f.pending) ? f.pending : []).slice(0, 12).map(cleanPending).filter(Boolean),
     // a creature's limited abilities from its stat block (audit 9.5, issue #76): recharge, per day, legendary actions
@@ -98,7 +98,10 @@ function cleanNpcRes(list) {
 function cleanPending(x) {
   if (!x || typeof x !== "object" || !ID.test(String(x.reactor || "")) || !ID.test(String(x.against || ""))) return null;
   const at = plainObj(x.at);
-  return { id: str(x.id, 30), kind: "opportunity", reactor: x.reactor, against: x.against, at: { x: clamp(int(at.x), -500, 1000), y: clamp(int(at.y), -500, 1000) }, turn: str(x.turn, 60) };
+  const kind = ["opportunity", "riposte", "return-fire", "parry"].includes(x.kind) ? x.kind : "opportunity";   // Riposte, Return Fire, Parry: #67
+  const h = plainObj(x.hit);   // Parry: the hit waiting for the answer, made by the server
+  const hit = kind === "parry" ? { amount: clamp(int(h.amount), 0, 9999), crit: !!h.crit, type: str(h.type, 20), mv: typeof h.mv === "string" && /^[a-z-]{3,30}$/.test(h.mv) ? h.mv : null, dc: clamp(int(h.dc), 0, 40) } : undefined;
+  return { id: str(x.id, 30), kind, ...(hit ? { hit } : {}), reactor: x.reactor, against: x.against, at: { x: clamp(int(at.x), -500, 1000), y: clamp(int(at.y), -500, 1000) }, turn: str(x.turn, 60) };
 }
 // damage defences as the engine reads them: [{ type, only }], for resist / immune / vuln, plus condition immunities
 function defences(o) {
@@ -127,8 +130,8 @@ function cleanSnap(x) {
       .map(([id, ec, cc]) => [id, (Array.isArray(ec) ? ec : []).slice(0, 20).map((c) => str(c, 30)), Array.isArray(cc) ? cc.slice(0, 20).map((c) => str(c, 30)) : null]),
     chars: (Array.isArray(x.chars) ? x.chars : []).slice(0, 60).filter((c) => Array.isArray(c) && typeof c[0] === "string" && c[1] && typeof c[1] === "object")
       .map(([id, r]) => [id, { resources: E.cleanResources(r.resources),
-        force: { max: plainObj(r.force).max == null || plainObj(r.force).max === "" ? "" : num(plainObj(r.force).max, 0, 999), used: num(plainObj(r.force).used, 0, 999) },
-        tech: { max: plainObj(r.tech).max == null || plainObj(r.tech).max === "" ? "" : num(plainObj(r.tech).max, 0, 999), used: num(plainObj(r.tech).used, 0, 999) },
+        force: Object.assign({ max: plainObj(r.force).max == null || plainObj(r.force).max === "" ? "" : num(plainObj(r.force).max, 0, 999), used: num(plainObj(r.force).used, 0, 999) }, cleanHigh(plainObj(r.force).high)),
+        tech: Object.assign({ max: plainObj(r.tech).max == null || plainObj(r.tech).max === "" ? "" : num(plainObj(r.tech).max, 0, 999), used: num(plainObj(r.tech).used, 0, 999) }, cleanHigh(plainObj(r.tech).high)),
         hitDiceUsed: R.cleanHitDiceUsed(r.hitDiceUsed),   // the sheet's own cleaner: per die size or an old number
         deathSaves: { s: num(plainObj(r.deathSaves).s, 0, 3), f: num(plainObj(r.deathSaves).f, 0, 3) } }]),
   };
@@ -319,6 +322,7 @@ function tick(camp, cid, G) {
   if (!key || key.split(":").slice(0, 2).join(":") === (f.lastTurn || "").split(":").slice(0, 2).join(":")) return;
   const [lr, prevId, lt] = (f.lastTurn || "").split(":");
   f.lastTurn = key;
+  for (const pr of f.pending || []) if (pr.kind === "parry") landWaiting(camp, cid, G, pr);   // a hit that waited lands in full
   f.pending = [];   // a reaction nobody answered lapses when the turn moves on
   const going = lt !== undefined && (ini.round < +lr || (ini.round === +lr && ini.turn < +lt));
   if (!going) startOfTurn(camp, cur, G);
@@ -340,6 +344,21 @@ function tick(camp, cid, G) {
 // A reaction waiting for an answer is live only during the turn it was asked in (the round and the combatant, whatever
 // the tracker's index does meanwhile: an entry added or removed above, an initiative edited) and only while both
 // sides are visible to everyone. Anything else has lapsed. One rule for the view, the turn's guard and the answer.
+// a parry nobody answered (the turn moved on, or one side was hidden): the hit that waited lands in full, as a GM's world
+function landWaiting(camp, cid, G, pr) {
+  const world = worldOf(camp, false, G);
+  const r = E.react(world, { kind: "parry", take: false, reactor: pr.reactor, against: pr.against, hit: pr.hit }, (expr) => G.rollDice(expr));
+  if (!r.ok) return;
+  writeBack(camp, cid, world, r.world, G);
+  const who = camp.initiative.entries.find((e) => e.id === pr.reactor);
+  if (who) report(camp, cid, false, G, who, world, r, false);   // whoever's request caught it up: a hidden line never comes from them
+}
+// the prompts still live, after landing any parry that has lapsed
+function keepLive(camp, cid, G) {
+  const f = camp.fight, live = liveReactions(camp);
+  for (const pr of f.pending || []) if (pr.kind === "parry" && !live.includes(pr)) landWaiting(camp, cid, G, pr);
+  return live;
+}
 function liveReactions(camp) {
   const f = camp.fight, ini = camp.initiative, cur = ini.entries[ini.turn];
   if (!f || !Array.isArray(f.pending) || !f.pending.length || !ini.active || !cur) return [];
@@ -480,6 +499,20 @@ function secondWind(camp, cid, ch, G, units) {
   say(camp, G, Object.assign({ from: shown, fromId: cid, roll: Object.assign({}, res, { expr: `1d10+${lvl}`, label: "Second Wind (healing)", kind: "heal" }) },
     shown === ch.name ? { charName: ch.name } : {}), cid, units || []);
 }
+// High-level casting (#160): the power levels a character has cast since the last long rest that only go once each.
+// On the sheet as force.high / tech.high, only when there are some ({ high: [6, 7] } or {}).
+function cleanHigh(v) {
+  const out = [...new Set((Array.isArray(v) ? v : []).slice(0, 9).map((n) => int(n)).filter((n) => n >= 1 && n <= 9))].sort((a, b) => a - b);
+  return out.length ? { high: out } : {};
+}
+// a power cast at a level the rule limits is noted on the caster's sheet, until the next long rest clears it
+function noteHighCast(ch, ab, level) {
+  const kind = ab && ab.pool === "tech" ? "tech" : "force", from = R.highCastFrom(ch, kind);
+  if (!ch || !from || !(level >= from)) return;
+  const used = R.highCastUsed(ch, kind);
+  if (!used.includes(level)) ch[kind] = Object.assign({}, ch[kind], cleanHigh(used.concat(level)));
+}
+
 /* ---------------- the sheet's Cast through the engine (#73, audit 4.4-4.7 outside the combat view) ----------------
    A power the table has data for (f.lib) rolls from the sheet as it does in the combat view: its attack or each target's
    save, then its damage or healing, its conditions and its concentration, with the combat view on or off. In a fight the
@@ -526,6 +559,9 @@ function sheetCast(camp, cid, gm, p, G) {
     if (!gm) throw new G.Invalid(ability.maxLevel ? `${ch.name} can cast powers up to level ${ability.maxLevel}.` : `${ch.name} can't cast leveled powers yet.`);
     ability.maxLevel = level;
   }
+  // high-level casting (#160): a level that goes once per long rest, already cast: a player is refused, the GM may go ahead
+  const once = R.highCastBlocked(ch, { type: ability.pool === "tech" ? "tech" : "force" }, level);
+  if (once && !gm) throw new G.Invalid(once.text);
   const tokens = camp.map.tokens || [], fog = gm ? null : fogFor(camp, cid), picked = [];
   for (const id of new Set((Array.isArray(p.targets) ? p.targets : []).slice(0, 40).map(String))) {
     const t = ID.test(id) ? tokens.find((x) => x.id === id) : null;
@@ -538,8 +574,11 @@ function sheetCast(camp, cid, gm, p, G) {
   // fight is on the tracker, a player casts at others only from the combat view, on their turn. The GM's applies everywhere.
   const others = gm ? [] : picked.filter((t) => { const c = t.charId && charOf(camp, t.charId); return !(c && c.owner === cid); });
   if (others.length && ini.active) throw new G.Invalid("A fight is on: cast it at others from the combat view, on your turn.");
-  if (others.length) return castUnaimed(camp, cid, ch, ability, up, G, picked);
-  if (!picked.length && ability.targets !== "self") return castUnaimed(camp, cid, ch, ability, up, G);
+  if (others.length || (!picked.length && ability.targets !== "self")) {
+    castUnaimed(camp, cid, ch, ability, up, G, others.length ? picked : null);
+    noteHighCast(ch, ability, level);
+    return {};
+  }
   // the caster's pretend turn, with the picked tokens as the units
   const ut = unitTokens(camp), entryOf = Object.fromEntries(Object.entries(ut).map(([e, t]) => [t, e]));
   const myTok = tokens.find((t) => t.charId === ch.id);
@@ -625,6 +664,7 @@ function sheetCast(camp, cid, gm, p, G) {
     }
     sayTokens(camp, G, msg, cid, toks);
   }
+  noteHighCast(ch, ability, level);
   return {};
 }
 // No target picked (no map, or a power rolled for the table to read), or a player's Cast at someone not theirs (at):
@@ -674,31 +714,58 @@ function castUnaimed(camp, cid, ch, ab, up, G, at) {
   if (ab.heal && ab.heal.dice) roll(expr([dice(ab.heal)]), `${ab.name}: healing`, "heal");
   return {};
 }
-// the sheet's "Concentrating: X ✕" (its owner or the GM): the concentration ends, and what it held with it
-function endSheetConc(camp, cid, gm, p, G) {
-  if (!camp.fight) return {};
-  if (!ID.test(String(p.charId || ""))) throw new G.Invalid("No such character.");
-  const f = state(camp), ch = charOf(camp, p.charId);
-  if (!ch) throw new G.Invalid("No such character.");
-  if (!gm && ch.owner !== cid) throw new G.Forbidden("not your character");
-  const mine = camp.initiative.entries.find((e) => e.charId === ch.id);
+// a character stops concentrating, from wherever it was begun: the conditions it held come off (the engine's effects
+// in the tracker, sheetHeld outside it), and the table reads why
+function stopConcentrating(camp, cid, ch, G, why) {
+  const f = camp.fight, mine = camp.initiative.entries.find((e) => e.charId === ch.id);
   const name = (mine && own(f.conc, mine.id) && f.conc[mine.id]) || (own(f.sheetConc, ch.id) && f.sheetConc[ch.id]);
-  if (!name) return {};
+  if (!name) return null;
   delete f.sheetConc[ch.id];
   dropHeld(camp, ch.id);
   if (mine && own(f.conc, mine.id)) {   // in the tracker: the engine ends it, with the conditions it held there
     const before = worldOf(camp, false, G);
     if (before.units[mine.id]) {
       const after = JSON.parse(JSON.stringify(before));
-      E.endConcentration(after, mine.id, `${G.shownName(camp, mine)} stops concentrating`, null);
+      E.endConcentration(after, mine.id, why, null);
       writeBack(camp, cid, before, after, G);
     }
     delete f.conc[mine.id];
   }
   const tok = (camp.map.tokens || []).find((t) => t.charId === ch.id);
-  sayTokens(camp, G, Object.assign({ system: true, fight: true, text: str(`${G.shownName(camp, { charId: ch.id, name: ch.name })} stops concentrating on ${name}.`, 200) },
+  sayTokens(camp, G, Object.assign({ system: true, fight: true, text: str(`${why}: ${name} ends.`, 200) },
     tok && tok.hidden ? { to: ["@gm"], private: true } : {}), cid, tok ? [tok.id] : []);
+  return name;
+}
+// the sheet's "Concentrating: X ✕" (its owner or the GM): the concentration ends, and what it held with it
+function endSheetConc(camp, cid, gm, p, G) {
+  if (!camp.fight) return {};
+  if (!ID.test(String(p.charId || ""))) throw new G.Invalid("No such character.");
+  state(camp);
+  const ch = charOf(camp, p.charId);
+  if (!ch) throw new G.Invalid("No such character.");
+  if (!gm && ch.owner !== cid) throw new G.Forbidden("not your character");
+  stopConcentrating(camp, cid, ch, G, `${G.shownName(camp, { charId: ch.id, name: ch.name })} stops concentrating`);
   return {};
+}
+// Damage that doesn't go through the engine (the sheet's Damage button, the tracker's −n), audit 4.6: a concentrating
+// character makes a Con save, DC 10 or half the damage, whichever is higher, rolled on the server as the combat view
+// does; a failure, or 0 hit points, ends the concentration
+function afterDamage(camp, cid, ch, amount, G) {
+  if (!camp.fight || !ch || !(amount > 0)) return;
+  state(camp);
+  const f = camp.fight, mine = camp.initiative.entries.find((e) => e.charId === ch.id);
+  if (!((mine && own(f.conc, mine.id)) || own(f.sheetConc, ch.id))) return;
+  const who = G.shownName(camp, { charId: ch.id, name: ch.name });
+  if ((+(ch.hp || {}).current || 0) <= 0) { stopConcentrating(camp, cid, ch, G, `${who} drops to 0 hit points`); return; }
+  const dc = Math.max(10, Math.floor(amount / 2)), bonus = R.saveBonus(ch, "con"), expr = `1d20${bonus >= 0 ? "+" : ""}${bonus}`;
+  const res = G.rollDice(expr), kept = res.total >= dc;
+  const tok = (camp.map.tokens || []).find((t) => t.charId === ch.id), secret = !!(tok && tok.hidden);
+  const msg = { from: who === ch.name ? G.playerName(camp, ch.owner) : "Combat", fromId: secret ? "@gm" : ch.owner, fight: true,
+    roll: { total: res.total, detail: res.detail, nat: res.nat == null ? null : res.nat, expr, label: str(`${who} makes a concentration save (CON, DC ${dc}): ${res.total}, ${kept ? "a success" : "a failure"}.`, 200), kind: "save" } };
+  if (who === ch.name && !secret) msg.charName = ch.name;
+  if (secret) Object.assign(msg, { to: ["@gm"], private: true, from: "Combat (GM only)" });
+  sayTokens(camp, G, msg, cid, tok ? [tok.id] : []);
+  if (!kept) stopConcentrating(camp, cid, ch, G, `${who} loses concentration`);
 }
 // What the sheet needs of the combat view's records, on or off: the table's power data (which powers roll), and who
 // is concentrating on what, by character, for the characters this viewer is sent. Null when there's nothing to show.
@@ -875,11 +942,21 @@ function apply(camp, cid, gm, type, p, G) {
     case "fight.react": {   // an answer to a reaction prompt: take the opportunity attack, or let it go (the GM can answer any)
       if (!f.on) throw new G.Invalid("The combat view is off.");
       tick(camp, cid, G);
-      f.pending = liveReactions(camp);
+      f.pending = keepLive(camp, cid, G);
       const pend = f.pending.find((x) => x.id === String(p.id || ""));
       if (!pend) throw new G.Invalid("That reaction has already been answered or has lapsed.");
       const re = entry(pend.reactor), against = entry(pend.against);
       need(re && mayAct(camp, cid, gm, re), "That reaction isn't yours to take.");
+      if (pend.kind === "parry") {   // the waiting hit lands either way: parried (a die off) or not
+        const world = worldOf(camp, !gm, G, cid);
+        const r = E.react(world, { kind: "parry", take: !!p.take, reactor: re.id, against: pend.against, hit: pend.hit }, (expr) => G.rollDice(expr));
+        if (!r.ok) throw new G.Invalid(r.why);
+        snapshot(camp, `${G.shownName(camp, re)}'s ${p.take ? "parry" : "hit taken"}`);
+        f.pending = f.pending.filter((x) => x !== pend);
+        writeBack(camp, cid, world, r.world, G);
+        report(camp, cid, gm, G, re, world, r, false);
+        return {};
+      }
       if (!p.take) {
         f.pending = f.pending.filter((x) => x !== pend);
         say(camp, G, { system: true, fight: true, text: str(`${G.shownName(camp, re)} lets ${against ? G.shownName(camp, against) : "them"} go.`, 200) }, cid, [re.id, against && against.id]);
@@ -892,9 +969,9 @@ function apply(camp, cid, gm, type, p, G) {
         spec = ch && E.attacksOf(ch, R).find((a) => a.key === String(p.attack));
         if (!spec) throw new G.Invalid("That attack isn't on the sheet.");
       } else spec = cleanSpec(p.attack, G);
-      const r = E.react(world, { reactor: re.id, against: pend.against, at: pend.at, attack: spec, adv: !!p.adv, dis: !!p.dis }, (expr) => G.rollDice(expr));
+      const r = E.react(world, { kind: pend.kind, reactor: re.id, against: pend.against, at: pend.at, attack: spec, adv: !!p.adv, dis: !!p.dis }, (expr) => G.rollDice(expr));
       if (!r.ok) throw new G.Invalid(r.why);
-      snapshot(camp, `${G.shownName(camp, re)}'s opportunity attack`);
+      snapshot(camp, `${G.shownName(camp, re)}'s ${pend.kind === "riposte" ? "riposte" : pend.kind === "return-fire" ? "return fire" : "opportunity attack"}`);
       f.pending = f.pending.filter((x) => x !== pend);
       writeBack(camp, cid, world, r.world, G);
       report(camp, cid, gm, G, re, world, r, false);
@@ -907,10 +984,10 @@ function apply(camp, cid, gm, type, p, G) {
       if (!ini.active || !cur) throw new G.Invalid("Combat hasn't started: start initiative first.");
       need(mayAct(camp, cid, gm, cur), "It's not your turn.");
       tick(camp, cid, G);
-      f.pending = liveReactions(camp);   // a lapsed question never blocks a turn
+      f.pending = keepLive(camp, cid, G);   // a lapsed question never blocks a turn
       if (f.pending.length) {
         const who = f.pending.map((x) => entry(x.reactor)).filter(Boolean).map((e) => G.shownName(camp, e));
-        throw new G.Invalid(`Waiting for ${who.join(" and ") || "a reaction"}: an opportunity attack to take or let go.`);   // names players can see
+        throw new G.Invalid(`Waiting for ${who.join(" and ") || "a reaction"}: a reaction to take or let go.`);   // names players can see
       }
       // an area catches whoever is in it, hidden or not; only its rolls about a hidden one stay with the GM
       const areaUse = type === "fight.use" && cur.charId && (() => {
@@ -918,17 +995,22 @@ function apply(camp, cid, gm, type, p, G) {
         const ab = ch && E.abilitiesOf(ch, R, f.lib).find((a) => a.key === String(p.ability || ""));
         return !!(ab && ab.area);
       })();
-      // Rage counts its uses: a sheet from before #108 gets its class's Rages resource from the class table first
       // a maneuver (#67) spends superiority dice: a sheet from before #108 gets its class's pool from the class table first
-      const mover = type === "fight.attack" && p.add && typeof p.add.maneuver === "string" && p.add.maneuver && cur.charId && charOf(camp, cur.charId);
-      if (mover && R.withClassResources && !(mover.resources || []).some((r) => r && /^superiority/.test(String(r.key)))) {
-        const withSup = E.cleanResources(R.withClassResources(mover));
-        if (withSup.some((r) => /^superiority/.test(r.key))) mover.resources = withSup;
-      }
-      const rager = type === "fight.common" && String(p.key || "") === "rage" && cur.charId && charOf(camp, cur.charId);
-      if (rager && R.withClassResources && !(rager.resources || []).some((r) => r && r.key === "rage")) {
+      // ...and so does the target's Riposte or Return Fire, when this attack misses it
+      const seedSup = (ch) => {
+        if (!ch || !R.withClassResources || (ch.resources || []).some((r) => r && /^superiority/.test(String(r.key)))) return;
+        const withSup = E.cleanResources(R.withClassResources(ch));
+        if (withSup.some((r) => /^superiority/.test(r.key))) ch.resources = withSup;
+      };
+      if (type === "fight.attack" && p.add && typeof p.add.maneuver === "string" && p.add.maneuver && cur.charId) seedSup(charOf(camp, cur.charId));
+      const tgt = type === "fight.attack" && entry(idOr(p.target)), tch = tgt && tgt.charId && charOf(camp, tgt.charId);
+      if (tch && (tch.features || []).some((x) => x && /^(riposte|return fire)$/i.test(String(x.name || "").trim()))) seedSup(tch);
+      // Rage and Action Surge count their uses: a sheet from before #108 gets its class's resource from the class table first
+      const poolKey = type === "fight.common" ? { rage: "rage", surge: "action-surge" }[String(p.key || "")] : null;
+      const rager = poolKey && cur.charId && charOf(camp, cur.charId);
+      if (rager && R.withClassResources && !(rager.resources || []).some((r) => r && r.key === poolKey)) {
         const withRage = E.cleanResources(R.withClassResources(rager));
-        if (withRage.some((r) => r.key === "rage")) rager.resources = withRage;
+        if (withRage.some((r) => r.key === poolKey)) rager.resources = withRage;
       }
       const world = worldOf(camp, !gm && !areaUse, G, cid);
       if (type === "fight.end" && !world.units[cur.id]) {      // a combatant with no token can still pass the turn
@@ -952,6 +1034,9 @@ function apply(camp, cid, gm, type, p, G) {
         if (!ch) throw new G.Invalid("Creatures use their attacks for now.");
         const ability = E.abilitiesOf(ch, R, f.lib).find((a) => a.key === String(p.ability || ""));
         if (!ability) throw new G.Invalid("The table has no data for that ability on this sheet.");
+        // high-level casting (#160): a level that goes once per long rest and was already cast
+        const once = ability.kind === "power" && R.highCastBlocked(ch, { type: ability.pool === "tech" ? "tech" : "force" }, ability.level + clamp(int(p.upcast), 0, 9));
+        if (once) throw new G.Invalid(once.text);
         const point = p.point && Number.isFinite(+p.point.x) && Number.isFinite(+p.point.y) ? { x: clamp(+p.point.x, -500, 1000), y: clamp(+p.point.y, -500, 1000) } : null;
         act = { type: "use", unit: cur.id, ability, point, targets: Array.isArray(p.targets) ? p.targets.slice(0, 40).map(idOr).filter(Boolean) : [idOr(p.target)].filter(Boolean), upcast: clamp(int(p.upcast), 0, 9), adv: !!p.adv, dis: !!p.dis };
       }
@@ -976,14 +1061,18 @@ function apply(camp, cid, gm, type, p, G) {
       snapshot(camp, label);
       if (limited) limited.used += 1;   // after the snapshot, so Undo gives it back
       writeBack(camp, cid, world, r.world, G);
+      if (act.type === "use" && act.ability.kind === "power" && cur.charId) noteHighCast(charOf(camp, cur.charId), act.ability, act.ability.level + act.upcast);   // after the snapshot too
       report(camp, cid, gm, G, cur, world, r, type === "fight.move" || type === "fight.end");
       // a move out of someone's reach: they may take an opportunity attack, and the turn waits for their answer.
       // Only between combatants everyone can see: a hidden creature never gives itself away by reacting.
       const ut = unitTokens(camp), isHidden = (id) => !!id && hiddenEntry(camp, entry(id) || {}, ut[id]);
       for (const re of r.reactions || []) {
         if (isHidden(re.reactor) || isHidden(re.against)) continue;
-        f.pending.push({ id: String(++f.seq), kind: "opportunity", reactor: re.reactor, against: re.against, at: re.at, turn: f.lastTurn });
-        say(camp, G, { system: true, fight: true, text: str(`${G.shownName(camp, cur)} leaves ${G.shownName(camp, entry(re.reactor))}'s reach: ${G.shownName(camp, entry(re.reactor))} can make an opportunity attack.`, 200) }, cid, [cur.id, re.reactor]);
+        const kind = ["riposte", "return-fire", "parry"].includes(re.kind) ? re.kind : "opportunity";
+        f.pending.push(cleanPending({ id: String(++f.seq), kind, hit: re.hit, reactor: re.reactor, against: re.against, at: re.at || { x: 0, y: 0 }, turn: f.lastTurn }));
+        const rn = G.shownName(camp, entry(re.reactor));
+        if (kind !== "parry") say(camp, G, { system: true, fight: true, text: str(kind === "opportunity" ? `${G.shownName(camp, cur)} leaves ${rn}'s reach: ${rn} can make an opportunity attack.`
+          : `${G.shownName(camp, cur)} misses ${rn}: ${rn} can ${kind === "riposte" ? "riposte" : "return fire"} (a superiority die).`, 200) }, cid, [cur.id, re.reactor]);
       }
       if (r.endTurn) { G.applyAction(camp, cid, true, "init.next", {}); tick(camp, cid, G); }
       return {};
@@ -1046,7 +1135,8 @@ function view(camp, cid, gm, shownName) {
     // reactions waiting: who may react to whom; `mine` when this viewer is the one to answer
     pending: liveReactions(camp).filter((x) => units[x.reactor] && units[x.against]).map((x) => {   // lapsed ones are never shown
       const re = ini.entries.find((e) => e.id === x.reactor);
-      return { id: x.id, kind: x.kind, reactor: x.reactor, against: x.against, mine: !!re && mayAct(camp, cid, gm, re) };
+      return { id: x.id, kind: x.kind, reactor: x.reactor, against: x.against, mine: !!re && mayAct(camp, cid, gm, re),
+        ...(x.kind === "parry" && x.hit ? { hit: { amount: x.hit.amount, type: x.hit.type } } : {}) };   // the waiting hit's size, for the prompt
     }),
   };
 }
@@ -1285,5 +1375,5 @@ function cleanWalls(list) {
   });
 }
 
-module.exports = { apply, view, sheetView, canWalk, fogFor, fogView, cleanFog, cleanLight, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
+module.exports = { apply, view, sheetView, afterDamage, cleanHigh, canWalk, fogFor, fogView, cleanFog, cleanLight, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
   cleanHitDiceUsed: R.cleanHitDiceUsed };   // for cleanChar: the sheet and the undo record clean hit dice the same way

@@ -60,6 +60,24 @@ test("archetypes that cast (audit 3.13): points and max power level from each on
   assert.equal(bg.lightDC, 8 + 3 + 1, "other force archetypes use Wisdom for light side");
 });
 
+test("Mechanist Technique and Rakatan Order (#160's review): their Techcasting tables in SW5e's feature data", () => {
+  const ci = (cls, L, archetype, abilities = {}) => R.casterInfo({ classes: [{ name: cls, level: L, archetype }], abilities });
+  const series = (cls, a, key) => Array.from({ length: 20 }, (_, i) => ci(cls, i + 1, a)[key]);
+  // Mechanist Technique improves the Scout's own casting from 3rd: 1.5 points per level (rounded up), 2nd at 3 ... 7th at 17
+  assert.deepEqual(series("Scout", "Mechanist Technique", "techMax"), [0, 2, 5, 6, 8, 9, 11, 12, 14, 15, 17, 18, 20, 21, 23, 24, 26, 27, 29, 30]);
+  assert.deepEqual(series("Scout", "Mechanist Technique", "techMaxLevel"), [0, 1, 2, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 7]);
+  assert.equal(R.highCastFrom({ classes: [{ name: "Scout", level: 17, archetype: "Mechanist Technique" }] }, "tech"), 5, "5th to 7th once per long rest");
+  assert.equal(R.highCastFrom({ classes: [{ name: "Scout", level: 17, archetype: "" }] }, "tech"), 4);
+  assert.equal(ci("Scout", 9, "Mechanist").techMaxLevel, 4, "without its last word");
+  // Rakatan Order (Monk): a tech archetype like the others, casting with Int, Wis or Cha
+  assert.deepEqual(series("Monk", "Rakatan Order", "techMax"), [0, 0, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10]);
+  assert.deepEqual(series("Monk", "Rakatan Order", "techMaxLevel"), [0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4]);
+  const rk = ci("Monk", 5, "Rakatan Order", { int: 10, wis: 16, cha: 8 });
+  assert.deepEqual([rk.techDC, rk.techAtk, rk.techMax], [8 + 3 + 3, 3 + 3, 3 + 3]);
+  assert.equal(R.techOnShortRest({ classes: [{ name: "Monk", level: 3, archetype: "Rakatan Order" }] }), true);
+  assert.equal(R.highCastFrom({ classes: [{ name: "Monk", level: 17, archetype: "Rakatan Order" }] }, "tech"), 4);
+});
+
 test("multiclass max power level (audit 3.14): the PHB's weighted caster level and its table", () => {
   const mc = (...classes) => R.casterInfo({ classes: classes.map(([name, level, archetype]) => ({ name, level, archetype: archetype || "" })), abilities: {} });
   // the PHB's own example: Marauder Approach berserker 4 (4/9 x 4 = 1.77) + guardian 3 (5/9 x 3 = 1.67) = 3rd: 2nd-level powers
@@ -98,6 +116,26 @@ test("max power level check (audit 4.5): above it is reported, at or below it is
   // checked against a given casterInfo instead (the level-up wizard passes the level being gained)
   const after = R.casterInfo({ classes: [{ name: "Consular", level: 7 }], abilities: {} });
   assert.equal(R.overMaxPowerLevel(kira, { level: 4, type: "force" }, after), null);
+});
+
+test("high-level casting (#160): from which level each level goes once per long rest; a used one is blocked", () => {
+  const from = (classes, kind = "force") => R.highCastFrom({ classes: classes.map(([name, level, archetype]) => ({ name, level, archetype })) }, kind);
+  assert.equal(from([["Consular", 11]]), 6);
+  assert.equal(from([["Engineer", 17]], "tech"), 6);
+  assert.equal(from([["Sentinel", 11]]), 5);
+  assert.equal(from([["Guardian", 13]]), 4);
+  assert.equal(from([["Scout", 13]], "tech"), 4);
+  assert.equal(from([["Berserker", 17, "Marauder Approach"]]), 4);
+  assert.equal(from([["Fighter", 10]]), 0, "no casting, no rule");
+  assert.equal(from([["Consular", 11]], "tech"), 0);
+  // multiclassed: the class with the most levels; on a tie, the later threshold
+  assert.equal(from([["Guardian", 10], ["Consular", 5]]), 4);
+  assert.equal(from([["Consular", 10], ["Guardian", 10]]), 6);
+  const kira = { name: "Kira", classes: [{ name: "Consular", level: 11 }], force: { used: 0, high: [6] } };
+  assert.equal(R.highCastBlocked(kira, { type: "force" }, 5), null, "below the threshold");
+  assert.equal(R.highCastBlocked(kira, { type: "force" }, 7), null, "7th not cast yet");
+  assert.equal(R.highCastBlocked(kira, { type: "force" }, 6).text, "Kira has already cast a 6th-level force power since the last long rest (6th level and up: once each per long rest).");
+  assert.deepEqual(R.highCastUsed({ force: { high: [9, "6", 12, 0] } }, "force"), [9, 6]);
 });
 
 test("Engineers and Scouts get tech points back on a short rest; others don't", () => {
