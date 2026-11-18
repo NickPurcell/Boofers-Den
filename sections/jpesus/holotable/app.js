@@ -897,7 +897,7 @@
       ${variantBits(ch, ci, fMax, tMax, ro)}
       ${tMax > 0 && !R.hasTechFocus(ch) ? '<p class="muted" style="font-size:12px;margin:6px 0 0" title="SW5e: tech powers are cast through a tech focus. The GM decides how strictly the table holds to it.">⚠ No wristpad or chassis in the gear. SW5e casts tech powers through a tech focus (add one under Equipment).</p>' : ''}
       ${classResourcesBox(ch, ro)}
-      <div class="box" style="margin-top:12px"><h4>Powers <span class="spacer"></span>${!ro ? `<button class="btn tiny" data-act="pick-power" data-kind="force">＋ force power</button>
+      <div class="box" style="margin-top:12px"><h4>Powers ${(pk => ['force', 'tech'].filter(t => pk[t].max).map(t => `<span class="${pk[t].known > pk[t].max ? 'error' : 'muted'}" style="text-transform:none;letter-spacing:0;font-weight:400;margin-left:8px" title="Powers known: the sheet's against the class table's (audit 2.10)">${t === 'force' ? 'Force' : 'Tech'} ${pk[t].known} / ${pk[t].max}</span>`).join(''))(R.powersKnown(ch))}<span class="spacer"></span>${!ro ? `<button class="btn tiny" data-act="pick-power" data-kind="force">＋ force power</button>
           <button class="btn tiny" data-act="pick-power" data-kind="tech">＋ tech power</button>
           <button class="btn tiny ghost" data-act="add-power" title="Add a homebrew power by hand">custom</button>` : ''}</h4>
         <table class="t"><thead><tr><th>Name</th><th>Lvl</th><th>Type</th><th>Alignment</th><th>Notes</th><th></th><th></th></tr></thead><tbody>
@@ -3483,6 +3483,14 @@
     const picked = g => (W.picks[g.key] || []).filter(n => g.items.some(x => x.n === n));
     const chosen = g => picked(g).length + (g.kind === 'expertise' ? tools.length : 0);
     if (cls && window.HTB && HTB.levelChoices && S.st.sw5eBooks !== false && !W.lists && !W.listsErr) error = error || "Still looking up this level's choices…";
+    // powers known (audit 2.10): the new level's table against the sheet; at least the level's own new powers
+    const pkAfter = R.powersKnown(after), pkNow = R.powersKnown(ch), powerRoom = {};
+    for (const t of ['force', 'tech']) {
+      const gain = Math.max(0, pkAfter[t].max - pkNow[t].max), room = Math.max(gain, pkAfter[t].max - pkNow[t].known);
+      const n = W.powers.filter(p => (p.type === 'tech' ? 'tech' : 'force') === t && p.name.trim()).length;
+      powerRoom[t] = { gain, room, known: pkNow[t].known, max: pkAfter[t].max, n };
+      if (pkAfter[t].max && n > room) error = error || `${t === 'force' ? 'Force' : 'Tech'} powers: up to ${room} new at this level (${n} picked).`;
+    }
     for (const g of groups) {
       if (g.kind === 'powers') continue;
       const n = chosen(g);
@@ -3498,7 +3506,7 @@
     const payload = { charId, className: cls, hpMode: W.hpMode, archetype: archDue && W.archetype ? W.archetype : undefined, hitDie: hd, override: unmet.length && isGM() ? true : undefined,
       asi: asi || undefined, feat: feat || undefined, expertise: expertise.length ? expertise : undefined,
       features: choiceFeatures.concat((W.auto || []).filter(f => !f.have).map(f => ({ name: f.name, text: f.text }))).slice(0, 20), powers: W.powers.filter(p => p.name.trim()).slice(0, 20) };
-    return { ch, after, cls, k, newClassLevel, before, due, asiOn, archDue, archTerm, hd, oldCon, newCon, retro, avgGain, maxGain, payload, error, groups, picked, chosen, tools };
+    return { ch, after, cls, k, newClassLevel, before, due, asiOn, archDue, archTerm, hd, oldCon, newCon, retro, avgGain, maxGain, payload, error, groups, picked, chosen, tools, powerRoom };
   }
 
   function wizardHtml(charId, W) {
@@ -3551,7 +3559,8 @@
           : W.autoState === 'ok' ? `<p class="muted" style="margin:0 0 6px">No new ${esc(P.cls)} features at level ${P.newClassLevel}${P.due ? ' besides the ability score improvement' : ''}.</p>`
           : W.autoState ? `<p class="muted" style="margin:0 0 6px">Couldn't look up the class features (${esc(W.autoState)}). You can add them afterwards from Features &amp; Traits.</p>` : ''}
         <h5 class="wiz-sub">Powers learned this level ${ciA.forceMaxLevel > ciB.forceMaxLevel || ciA.techMaxLevel > ciB.techMaxLevel ? '<span class="up">· you can now cast higher-level powers</span>' : ''}</h5>
-        ${P.groups.filter(g => g.kind === 'powers').map(g => `<p class="muted" style="margin:0 0 4px">${esc(P.cls)} ${P.newClassLevel}: ${esc(g.title)} ${g.prev} → ${g.total}, so ${g.max} new.</p>`).join('')}
+        ${['force', 'tech'].filter(t => P.powerRoom[t].max).map(t => { const q = P.powerRoom[t];
+          return `<p class="${q.n > q.room ? 'error' : 'muted'}" style="margin:0 0 4px">${t === 'force' ? 'Force' : 'Tech'} powers known: the table allows ${q.max} after this level; the sheet has ${q.known}. Learn up to ${q.room} (${q.n} picked).</p>`; }).join('')}
         ${W.powers.map((p, i) => `<div class="row wiz-power"><b>${esc(p.name)}</b><span class="pp-lvl">${n0(p.level) ? 'Level ' + n0(p.level) : 'At-will'}</span>
           <span class="pp-tag">${p.type === 'tech' ? 'Tech' : esc(({ light: 'Light', dark: 'Dark' })[p.alignment] || 'Universal') + ' force'}</span><span class="spacer"></span>
           <button class="btn tiny ghost" data-wa="rm-power" data-i="${i}" title="Remove">✕</button></div>`).join('') || '<p class="muted" style="margin:0 0 4px">None picked.</p>'}

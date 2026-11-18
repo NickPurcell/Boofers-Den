@@ -571,6 +571,15 @@
       .filter(x => x.total > 0);
   }
   Object.assign(SW5E, { CHOICE_COLS, choiceCounts });
+  // powers known (audit 2.10): how many force and tech powers the sheet has, and how many its classes' tables allow
+  // (Force/Tech Powers Known, summed over the classes). Archetype casters keep their own tables, so a max of 0 isn't a limit.
+  function powersKnown(ch) {
+    const out = { force: { known: 0, max: 0 }, tech: { known: 0, max: 0 } };
+    for (const p of (ch && ch.powers) || []) out[p && p.type === 'tech' ? 'tech' : 'force'].known++;
+    for (const k of (ch && ch.classes) || []) for (const r of choiceCounts(k.name, k.level)) if (r.kind === 'powers') out[/tech/i.test(r.col) ? 'tech' : 'force'].max += r.total;
+    return out;
+  }
+  Object.assign(SW5E, { powersKnown });
 
   // ---- downtime activities (audit 11.1): Wretched Hives' chapter 2, keyed as SW5e's 'downtime' list builds them from the
   // headings, and "other" for anything else the GM allows (no tables: the GM writes the result). Crafting is 11.2's.

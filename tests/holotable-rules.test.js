@@ -348,3 +348,10 @@ test("power prerequisites (audit 2.11): the named power must be known first, and
   assert.equal(R.powerPrereqUnmet(ch, { name: "Force Push" }), null, "no prerequisite");
   assert.equal(R.powerPrereqUnmet({}, { name: "Crush", pre: "Choke" }).pre, "Choke");
 });
+
+test("powers known (audit 2.10): the sheet's against the class tables, summed over classes", () => {
+  const pk = R.powersKnown({ classes: [{ name: "Consular", level: 3 }, { name: "Engineer", level: 2 }], powers: [{ type: "force" }, { type: "tech" }, {}] });
+  assert.deepEqual(pk, { force: { known: 2, max: 13 }, tech: { known: 1, max: 7 } }, "Consular 3 knows 13 force powers, Engineer 2 knows 7 tech powers");
+  assert.deepEqual(R.powersKnown({ classes: [{ name: "Fighter", level: 5 }] }), { force: { known: 0, max: 0 }, tech: { known: 0, max: 0 } });
+  assert.deepEqual(R.powersKnown(null).force, { known: 0, max: 0 });
+});
