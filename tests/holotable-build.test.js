@@ -74,3 +74,24 @@ test("buildLevel1: species, class, scores and background make one level-1 charac
   const noAsi = B.buildLevel1({ species, asi: false, cls: fighter, scores: { str: 15, dex: 13, con: 14, int: 8, wis: 12, cha: 10 } });
   assert.equal(noAsi.abilities.con, 14, "an increase the player chooses isn't applied"); assert.equal(noAsi.hp.max, 12);
 });
+
+test("the ◈ background on a sheet (audit 1.8): chosen skills become ticked dots, the chosen feat is added, re-choosing replaces both", () => {
+  const B = loadBooks();
+  const agent = { n: "Agent", skills: "Choose two from Deception, Insight, Persuasion, and Stealth", tools: "Gaming set", langs: "One of your choice", equip: "A disguise kit",
+    feature: "Second Identity", featureText: "You have a second identity.", feats: ["Silver-Tongued"] };
+  const c = R.blankCharacter(); c.skills = { athletics: 1, stealth: 2 };
+  let x = JSON.parse(JSON.stringify(B.applyBackground(c, agent, ["deception", "stealth", "__proto__"], { n: "Silver-Tongued", text: "Deception and Persuasion." })));
+  assert.deepEqual(x.skills, { athletics: 1, stealth: 2, deception: 1 }, "ticked; expertise kept; an unknown key dropped");
+  assert.equal(x.background, "Agent");
+  assert.deepEqual(x.features.map((f) => f.name), ["Second Identity", "Silver-Tongued"]);
+  assert.match(x.proficiencies, /^Background \(Agent\): Skills: Deception, Stealth\. Tools: Gaming set$/m);
+  assert.match(x.notes, /disguise kit/);
+  // choose another background: its feature and feat replace the old ones; the equipment isn't added twice
+  const soldier = { n: "Soldier", skills: "Choose two from Athletics, Intimidation, Piloting, and Survival", tools: "", langs: "", equip: "",
+    feature: "Military Rank", featureText: "Rank.", feats: ["Brawny"] };
+  x = JSON.parse(JSON.stringify(B.applyBackground(x, soldier, ["piloting", "survival"], { n: "Brawny", text: "" })));
+  assert.deepEqual(x.features.map((f) => f.name), ["Military Rank", "Brawny"]);
+  assert.equal((x.proficiencies.match(/^Background \(/gm) || []).length, 1, "one background line");
+  assert.equal(x.skills.piloting, 1); assert.equal(x.skills.deception, 1, "dots already ticked stay");
+  assert.equal(JSON.parse(JSON.stringify(B.applyBackground(x, agent, [], null))).notes.match(/disguise kit/g).length, 1, "the same equipment isn't noted twice");
+});
