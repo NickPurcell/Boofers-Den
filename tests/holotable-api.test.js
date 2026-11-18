@@ -464,6 +464,27 @@ test("downtime activities (audit 11.1): the player asks, the GM approves first, 
   await db.del(S.K.sw5e("downtime-2"));
 });
 
+test("granting more downtime keeps waiting and approved requests (#267)", async () => {
+  const { gm, p1 } = await table();
+  await db.set(S.K.sw5e("downtime-2"), JSON.stringify([{ key: "work", n: "Work", mods: [{ dc: 10, mod: 5 }],
+    results: [{ lo: -999, hi: 999, text: "Modest." }], complPct: 0, dieN: 0, compls: [], rarity: [] }]));
+  const kira = (await p1.act("char.save", { char: { name: "Kira", credits: 200, skills: { athletics: 1 } } })).data.id;
+  await gm.act("downtime.grant", { days: 10, chars: [kira] });
+  const a = (await p1.act("downtime.request", { charId: kira, act: "work", days: 5 })).data.id;
+  const b = (await p1.act("downtime.request", { charId: kira, act: "work", days: 2 })).data.id;
+  assert.equal((await gm.act("downtime.decide", { charId: kira, id: a, ok: true, cr: 50, check: { what: "skill", key: "athletics" } })).code, 200);
+  // the GM grants more days before Kira rolls: the approved request (5 days, 50 cr already spent) and the waiting one stay
+  assert.equal((await gm.act("downtime.grant", { days: 3, chars: [kira] })).code, 200);
+  let st = (await p1.poll()).data.state, d = st.characters[kira].downtime;
+  assert.deepEqual([d.days, st.characters[kira].credits, d.pending.map((x) => [x.id, x.ok]).sort((x, y) => Number(y[1]) - Number(x[1]))], [8, 150, [[a, true], [b, false]]]);
+  assert.equal((await p1.act("downtime.roll", { charId: kira, id: a })).code, 200, "the approved one can still be rolled");
+  assert.equal((await gm.act("downtime.decide", { charId: kira, id: b, ok: false })).code, 200, "the waiting one can still be decided");
+  st = (await p1.poll()).data.state; d = st.characters[kira].downtime;
+  assert.deepEqual([d.days, d.pending, d.log.filter((e) => e.act === "grant").length], [8, undefined, 2]);
+  assert.match(d.log.find((e) => e.act === "work").text, /^Athletics \d+/);
+  await db.del(S.K.sw5e("downtime-2"));
+});
+
 test("a power keeps its prerequisite on the sheet (audit 2.11)", async () => {
   const { p1 } = await table();
   const id = (await p1.act("char.save", { char: { name: "Ves", powers: [{ name: "Crush", level: 4, type: "force", pre: "Choke" }, { name: "Choke", level: 3, type: "force", pre: "  " }] } })).data.id;

@@ -159,7 +159,9 @@ function grant(camp, cid, gm, p, h) {
   const why = str(p.reason, 80).trim(), at = Math.floor(Date.now() / 1000);
   for (const id of ids) {
     const ch = camp.characters[id], d = clean(ch.downtime) || { days: 0, log: [] };
-    ch.downtime = { days: clamp(d.days + days, 0, MAX_DAYS), log: [...d.log, { id: crypto.randomBytes(6).toString("hex"), act: "grant", days, cr: 0, text: why, at }].slice(-LOG) };
+    // the rest of the record stays: a waiting or approved request (whose days and credits an approval already spent) is
+    // still there to be decided or rolled (#267)
+    ch.downtime = Object.assign({}, d, { days: clamp(d.days + days, 0, MAX_DAYS), log: [...d.log, { id: crypto.randomBytes(6).toString("hex"), act: "grant", days, cr: 0, text: why, at }].slice(-LOG) });
   }
   const names = ids.map((id) => h.shownName(camp, { charId: id, name: camp.characters[id].name }));
   h.addChat(camp, { system: true, text: `🕰 ${days} day${days === 1 ? "" : "s"} of downtime${why ? ` (${why})` : ""} for ${names.join(", ")}.` });
