@@ -415,6 +415,18 @@
   }
   Object.assign(SW5E, { enhancedBonus, cleanBonus });
 
+  // Tools (audit 6.10): tool proficiencies the sheet can roll. Each is { name, prof: 1 proficient | 2 expertise, ab }: a
+  // tool check is d20 + the ability the use calls for (the table's choice; the row keeps the last one) + the proficiency
+  // bonus (twice with expertise).
+  const toolBonus = (c, t) => abilityMod(c, ABILITIES.some(a => a.key === (t && t.ab)) ? t.ab : 'int') + profBonus(c) * (+(t && t.prof) === 2 ? 2 : +(t && t.prof) === 1 ? 1 : 0);
+  function cleanTools(list) {
+    const seen = new Set();
+    return (Array.isArray(list) ? list : []).slice(0, 30).filter(t => t && typeof t === 'object' && String(t.name || '').trim())
+      .map(t => ({ name: String(t.name).trim().slice(0, 60), prof: +t.prof === 2 ? 2 : 1, ab: ABILITIES.some(a => a.key === t.ab) ? t.ab : 'int' }))
+      .filter(t => { const k = t.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  }
+  Object.assign(SW5E, { toolBonus, cleanTools });
+
   // Selling (audit 6.8): equipment fetches half its cost (PHB, "Selling Treasure"), whole credits, rounded down
   const sellPrice = e => Math.floor(Math.max(0, +(e && e.cost) || 0) / 2);
   Object.assign(SW5E, { sellPrice });

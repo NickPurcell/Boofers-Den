@@ -788,3 +788,8 @@ canvas.drawing { cursor: crosshair; }
 .eq-table .attune { display: inline-flex; align-items: center; gap: 2px; }
 .eq-table .eq-name { white-space: nowrap; }
 .eq-table .eq-name .eq-info { margin-left: 3px; padding: 0 4px; }
+/* tools (audit 6.10): name, proficiency, ability, the check */
+.tool-table td { padding: 3px 4px; }
+.tool-table select { width: auto; min-width: 0; font-size: 12px; padding: 2px 4px; }
+.tool-table td:nth-child(2) select { width: 96px; }
+.tool-table td:nth-child(3) select { width: 60px; }

@@ -206,6 +206,15 @@ test("enhanced items (audit 6.2): a +N to attack and damage, or to AC, read from
   assert.equal(R.armorClass(c).total, 16);
 });
 
+test("tools (audit 6.10): a check is d20 + the row's ability + proficiency, twice with expertise; the list is checked", () => {
+  const c = { classes: [{ name: "Scholar", level: 5 }], abilities: { int: 16, dex: 14 } };   // proficiency +3
+  assert.equal(R.toolBonus(c, { name: "Slicer's kit", prof: 1, ab: "int" }), 3 + 3);
+  assert.equal(R.toolBonus(c, { name: "Slicer's kit", prof: 2, ab: "int" }), 3 + 6);
+  assert.equal(R.toolBonus(c, { name: "Pazaak deck", prof: 1, ab: "dex" }), 2 + 3);
+  assert.deepEqual(R.cleanTools([{ name: " Slicer's kit ", prof: "2", ab: "int" }, { name: "slicer's KIT", prof: 1 }, { name: "", prof: 1 }, { name: "Odd", prof: 9, ab: "__proto__" }, "x"]),
+    [{ name: "Slicer's kit", prof: 2, ab: "int" }, { name: "Odd", prof: 1, ab: "int" }]);
+});
+
 test("Engineers and Scouts get tech points back on a short rest; others don't", () => {
   assert.equal(R.techOnShortRest(char([["Engineer", 1]])), true);
   assert.equal(R.techOnShortRest(char([["Scout", 2]])), true);

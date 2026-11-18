@@ -871,6 +871,14 @@
             ${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="features" data-i="${i}" title="Remove">✕</button>` : ''}</div>`).join('') || '<p class="muted">None.</p>'}</div>
           ${(ch.features || []).length ? '<p class="muted" style="font-size:12px;margin:6px 0 0">Hover a feature for its description.</p>' : ''}
         </div>
+        <div class="box"><h4>Tools <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-tool" title="Add a tool, kit, instrument or gaming set you are proficient with">＋ tool</button>' : ''}</h4>
+          ${(ch.tools || []).length ? `<table class="t tool-table"><tbody>${ch.tools.map((t, i) => `<tr>
+            <td>${esc(t.name)}</td>
+            <td style="width:1%">${inp(`tools.${i}.prof`, +t.prof === 2 ? 2 : 1, { ro, type: 'select', options: [{ v: 1, t: 'Proficient' }, { v: 2, t: 'Expertise' }] })}</td>
+            <td style="width:1%">${inp(`tools.${i}.ab`, t.ab || 'int', { ro, type: 'select', options: R.ABILITIES.map(a => ({ v: a.key, t: a.key.toUpperCase() })) })}</td>
+            <td style="width:56px"><button class="btn small amber" data-act="tool-check" data-i="${i}" title="A tool check: d20 + ${esc((t.ab || 'int').toUpperCase())} + proficiency${+t.prof === 2 ? ' x2' : ''}">${R.fmt(R.toolBonus(ch, t))}</button></td>
+            <td style="width:28px">${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="tools" data-i="${i}">✕</button>` : ''}</td></tr>`).join('')}</tbody></table>`
+            : '<p class="muted">No tools yet. A check rolls d20 + the ability the use calls for + your proficiency bonus.</p>'}</div>
         <div class="box"><h4>Proficiencies</h4>${inp('proficiencies', ch.proficiencies || '', { ro, type: 'textarea', rows: 3, ph: 'Armor, weapons, tools…' })}
           <h4 style="margin-top:10px">Languages</h4>${inp('languages', ch.languages || '', { ro, type: 'textarea', rows: 2 })}</div>
       </div>`;
@@ -1018,6 +1026,12 @@
       case 'pick-feature': HTB.openFeaturePicker(ch.id); break;
       case 'del': mutate(c => c[b.dataset.list].splice(i, 1)); break;
       case 'use-item': useItem(ch, i); break;
+      case 'tool-check': {   // audit 6.10: d20 + the row's ability + proficiency (twice with expertise), rolled by the table
+        const t = (ch.tools || [])[i]; if (!t) break;
+        roll(d20(R.toolBonus(ch, t)), `${t.name} (${(t.ab || 'int').toUpperCase()})`, { d20: true, mode: rollModeFromEvent(e), charId: ch.id });
+        break;
+      }
+      case 'pick-tool': openToolPicker(ch); break;
       case 'item-info': {   // the item's SW5e text (audit 6.2), looked up by name, never stored on the sheet
         const e0 = ch.equipment[i]; if (!e0) break;
         const found = await itemInfo(e0.name);
@@ -1298,6 +1312,29 @@
   const ALIGN = { light: 'Light', dark: 'Dark', universal: 'Universal' };
   // opts.onAdd(power): hand the picked power to someone else (the level-up wizard) instead of the sheet;
   // opts.onDone(): called by Done; opts.taken(): names already picked there
+  // --------------------------------------------------------------------------- tools (audit 6.10)
+  // Pick from SW5e's tools, kits, instruments and gaming sets (the gear list), or type one; it's added as proficient,
+  // rolled with Intelligence until the row says otherwise.
+  async function openToolPicker(ch) {
+    let list = [];
+    try { list = (await equipList('standard')).filter(it => ['Tool', 'Kit', 'Musical Instrument', 'Gaming Set'].includes(it.cat)); } catch { /* typed names still work */ }
+    const have = new Set((ch.tools || []).map(t => t.name.toLowerCase()));
+    modal(`<h3>＋ Tool proficiency</h3>
+      <input id="toolName" list="dlTools" placeholder="A tool, kit, instrument or gaming set" style="width:100%">
+      <datalist id="dlTools">${list.filter(it => !have.has(it.n.toLowerCase())).map(it => `<option value="${esc(it.n)}">${esc(it.cat)}</option>`).join('')}</datalist>
+      <div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn" id="toolNo">Cancel</button><button class="btn primary" id="toolAdd">Add</button></div>`, box => {
+      $('#toolName', box).focus();
+      box.onclick = e => {
+        if (e.target.id === 'toolNo') return closeModal();
+        if (e.target.id !== 'toolAdd') return;
+        const name = $('#toolName', box).value.trim().slice(0, 60); if (!name) return;
+        if (have.has(name.toLowerCase())) return toast(`${ch.name} already has ${name}.`, true);
+        closeModal();
+        mutate(c => { c.tools = (c.tools || []).concat([{ name, prof: 1, ab: 'int' }]); });
+      };
+    });
+  }
+
   // --------------------------------------------------------------------------- consumables (audit 6.7)
   // Use: one comes off the count, and what the item does is rolled (from its SW5e text, read when it was added): a medpac's
   // Hit Dice + Con or a stim's healing, on this character or for someone else to read; a grenade's save DC and damage.

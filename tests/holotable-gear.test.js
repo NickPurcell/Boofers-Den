@@ -96,3 +96,12 @@ test("enhanced items (6.2): an item keeps its checked +N, and the server's own A
   assert.deepEqual(c.equipment.map((e) => e.bonus), [{ ac: 2 }, undefined]);
   assert.equal(c.ac, 10 + 1 + 2, "unarmored 10 + Dex, +2 from the worn item");
 });
+
+test("tools (6.10): the sheet keeps its checked tool proficiencies; none, no field", async () => {
+  const { gm, sam, avery } = await table();
+  let av = await sheet(sam, avery);
+  assert.equal("tools" in av, false);
+  await sam.act("char.save", { char: Object.assign({}, av, { tools: [{ name: "Slicer's kit", prof: 2, ab: "int" }, { name: "<b>x</b>".repeat(20), prof: 1, ab: "nope" }] }) });
+  av = await sheet(gm, avery);
+  assert.deepEqual(av.tools, [{ name: "Slicer's kit", prof: 2, ab: "int" }, { name: "<b>x</b>".repeat(20).slice(0, 60), prof: 1, ab: "int" }]);
+});

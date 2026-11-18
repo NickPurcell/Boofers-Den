@@ -208,6 +208,7 @@ function cleanChar(ch) {
     exhaustion: clamp(int(ch.exhaustion), 0, 6), inspiration: !!ch.inspiration,
     proficiencies: s(ch.proficiencies, 2000), languages: s(ch.languages, 500), notes: s(ch.notes, 20000),
     ...(Object.prototype.hasOwnProperty.call(Story.LIFESTYLES, ch.lifestyle) ? { lifestyle: ch.lifestyle } : {}),   // 11.5
+    ...(R.cleanTools(ch.tools).length ? { tools: R.cleanTools(ch.tools) } : {}),   // tool proficiencies the sheet rolls (audit 6.10)
     image: validImg(ch.image) || "", tokenImage: validImg(ch.tokenImage) || "", color: validColor(ch.color),
   };
   if (!out.classes.length) out.classes = [{ name: "Fighter", level: 1, archetype: "" }];
