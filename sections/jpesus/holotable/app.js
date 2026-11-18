@@ -893,7 +893,10 @@
       <span class="lbl">Senses</span> <span>${esc(R.sensesText(ch.senses)) || '<span class="muted">none (normal sight)</span>'}</span>
       ${isGM() ? '<button class="btn tiny ghost" data-act="senses" title="Set the senses of this character (GM)">✎</button>' : ''}
       <span class="lbl" style="margin-left:14px" title="Choosing a species sets it; the GM can change it. A token placed for this character takes its size.">Size</span>
-      ${isGM() ? inp('size', ch.size || 'Medium', { type: 'select', w: '120px', options: R.SIZES }) : `<span>${esc(ch.size || 'Medium')}</span>`}</div>
+      ${isGM() ? inp('size', ch.size || 'Medium', { type: 'select', w: '120px', options: R.SIZES }) : `<span>${esc(ch.size || 'Medium')}</span>`}
+      <span class="lbl" style="margin-left:14px" title="Damage resistances, immunities and vulnerabilities (audit 1.5). Choosing a species fills in its resistances; only the GM changes them by hand. The combat view applies them.">Defences</span>
+      <span>${esc(R.defensesText(ch.defenses)) || '<span class="muted">none</span>'}</span>
+      ${isGM() ? '<button class="btn tiny ghost" data-act="defenses" title="Set this character\'s resistances, immunities and vulnerabilities (GM)">✎</button>' : ''}</div>
     <div class="subtabs">${[['main', 'Abilities & Skills'], ['actions', 'Attacks & Powers'], ['gear', 'Features & Gear'], ['bio', 'Bio & Notes']]
       .map(([k, t]) => `<button data-act="sub" data-sub="${k}" class="${sub === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
 
@@ -1319,6 +1322,7 @@
         const row = R.resourceRows(c).find(x => x.i === i), max = row ? row.max : 0;
         r.used = Math.max(0, Math.min(max, (+r.used || 0) + (a === 'res-use' ? 1 : -1)));
       }); break;
+      case 'defenses': if (isGM()) defensesDialog(ch); break;
       case 'senses': {   // the GM sets senses by hand (players' sheets get them from their species)
         if (!isGM()) return;
         const t = prompt('Senses, e.g. "darkvision 60, blindsight 30" (empty for none):', R.cleanSenses(ch.senses).map(x => `${x.kind} ${x.range}`).join(', '));
@@ -4014,6 +4018,25 @@
           ${g.kind === 'expertise' ? `<input type="text" data-w="expTools" value="${esc(W.expTools)}" placeholder="or a tool, e.g. Slicer's kit (comma between two)" style="margin-top:4px;width:100%">` : ''}</div>`;
       }).join('');
     return `<section class="wiz-step"><h4><span class="step">4</span> Choices at this level</h4>${body}</section>`;
+  }
+
+  // The GM sets a character's damage defences on the sheet (audit 1.5): one line each, "necrotic, poison, kinetic
+  // (unenhanced)". What the species gave stays marked, so a later species change swaps only those.
+  function defensesDialog(ch) {
+    const d = R.cleanDefenses(ch.defenses) || { resist: [], immune: [], vuln: [], fromSpecies: [] };
+    const row = (k, label) => `<label style="margin-top:6px">${label}<input id="def_${k}" value="${esc(R.defListText(d[k]))}" placeholder="e.g. necrotic, poison, kinetic (unenhanced)"></label>`;
+    modal(`<h3>${esc(ch.name)}: damage defences</h3>
+      <p class="muted" style="margin-top:0;font-size:12px">Damage types: ${esc(R.DAMAGE_TYPES.join(', '))}. Add "(unenhanced)" for weapon damage from unenhanced weapons only.
+        ${d.fromSpecies.length ? `From the species (${esc(ch.species || '')}): ${esc(d.fromSpecies.map(x => { const [k, t] = x.split(':'); return `${t} (${({ resist: 'resistant', immune: 'immune', vuln: 'vulnerable' })[k]})`; }).join(', '))}.` : ''}</p>
+      ${row('resist', 'Resistant to')}${row('immune', 'Immune to')}${row('vuln', 'Vulnerable to')}
+      <div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn" id="defNo">Cancel</button><button class="btn primary" id="defOk">Save</button></div>`, box => {
+      $('#defNo', box).onclick = closeModal;
+      $('#defOk', box).onclick = () => {
+        const next = { resist: R.parseDefList($('#def_resist', box).value), immune: R.parseDefList($('#def_immune', box).value), vuln: R.parseDefList($('#def_vuln', box).value), fromSpecies: d.fromSpecies };
+        closeModal();
+        mutate(c => { const n = R.cleanDefenses(next); if (n) c.defenses = n; else delete c.defenses; });
+      };
+    });
   }
 
   // --------------------------------------------------------------------------- shared with books.js

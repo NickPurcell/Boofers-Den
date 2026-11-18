@@ -3821,3 +3821,18 @@ test("#212 review: an undo gives back a shot, and a reload's power cell, as they
   st = await gm.state();
   assert.deepEqual([st.characters[avery].attacks[0].shots, st.characters[avery].equipment[0].qty], [1, 2], "one shot left and both cells, as before the reload");
 });
+
+test("a character's sheet defences reach the engine with the combat view's additions, each once (audit 1.5)", () => {
+  const ch = { id: "c1", name: "Kix", species: "Droid, Class I", hp: { max: 20, current: 20 }, abilities: {}, classes: [{ name: "Scout", level: 2 }],
+    defenses: { resist: [{ type: "necrotic", only: null }, { type: "poison", only: null }], immune: [], vuln: [], fromSpecies: ["resist:necrotic", "resist:poison"] } };
+  const table = { characters: { c1: ch }, entries: [{ id: "e1", name: "Kix", charId: "c1" }, { id: "e2", name: "Raider", hp: 20, ac: 5 }], active: true, turn: 0,
+    tokens: [{ id: "t1", x: 0, y: 0 }, { id: "t2", x: 1, y: 0 }], unitTokens: { e1: "t1", e2: "t2" },
+    defenses: { c1: { resist: [{ type: "poison", only: null }, { type: "kinetic", only: "unenhanced" }], immune: [{ type: "__proto__", only: null }], vuln: [] } } };
+  const w = E.buildWorld(table, R);
+  assert.deepEqual(w.units.e1.resist, [{ type: "necrotic", only: null }, { type: "poison", only: null }, { type: "kinetic", only: "unenhanced" }], "the union, poison once");
+  assert.deepEqual(w.units.e1.immune, [], "a type that isn't SW5e's is dropped");
+  assert.deepEqual(E.defended(w.units.e1, 10, "necrotic", "power"), { amount: 5, note: "resisted" }, "the species' resistance halves a hit");
+  assert.equal(E.defended(w.units.e1, 10, "kinetic", "power").amount, 10, "the unenhanced one is weapons only");
+  // a creature keeps its stat block's, untouched by any sheet
+  assert.deepEqual(w.units.e2.resist, []);
+});

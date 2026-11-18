@@ -1960,7 +1960,10 @@
         // the Wounds variant (9.16): its wounded levels and how far the save's DC has risen; back at its hit point maximum, gone
         wounds: ch && (table.wounds || {})[e.charId] && !(+hp.current >= +hp.max) ? Object.assign({ level: 0, step: 0 }, table.wounds[e.charId]) : { level: 0, step: 0 },
         ...(() => { const d = ch ? (table.defenses || {})[e.charId] || {} : (table.npcStats || {})[e.id] || {};
-          return { resist: d.resist || [], immune: d.immune || [], vuln: d.vuln || [], condImmune: d.condImmune || [],
+          // a character's: the sheet's own (audit 1.5: species-filled, the GM's) and the combat view's additions, each once
+          const sh = (ch && ch.defenses) || {}, both = (k) => (ch ? [...(sh[k] || []), ...(d[k] || [])] : d[k] || [])
+            .filter((x, i, a) => x && DAMAGE.includes(x.type) && a.findIndex((y) => y && y.type === x.type && (y.only || null) === (x.only || null)) === i);
+          return { resist: both('resist'), immune: both('immune'), vuln: both('vuln'), condImmune: d.condImmune || [],
             senses: cleanSenses(ch ? ch.senses : d.senses) }; })(),   // a character's from its sheet (#92, the GM's), a creature's from its stat block
         saves: ch && rules ? Object.fromEntries(ABILS.map((ab) => [ab, rules.saveBonus(ch, ab)])) : Object.assign({}, ((table.npcStats || {})[e.id] || {}).saves),
         mods: ch && rules ? Object.fromEntries(ABILS.map((ab) => [ab, rules.abilityMod(ch, ab)])) : Object.assign({}, ((table.npcStats || {})[e.id] || {}).mods),
