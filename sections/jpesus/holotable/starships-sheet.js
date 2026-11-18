@@ -66,6 +66,29 @@
   // ship combat is running on the space map: between-fights work (recharge, refit, installing) waits, for players (the
   // server refuses it; the GM stays free)
   const inFight = () => !H.isGM() && !!(H.S.st && H.S.st.space && H.S.st.space.active);
+  // travel (SotG chapter 8): a hyperspace jump's time and fuel, astrogation, the start-up procedure
+  const TV = {};   // per ship: the regions, rush, careful, data age and crew size picked here
+  function travelBlock(s, ro) {
+    const st = SR.statusOf(s), t = TV[s.id] = Object.assign({ from: 'Core', to: 'Core', rush: 0, careful: false, age: 'normal', crew: 'normal' }, TV[s.id]);
+    const cls = SR.hyperClass(s), hours = SR.jumpHours(s, t.from, t.to, t.rush, t.careful), fuel = hours != null ? SR.jumpFuel(s, hours) : null, have = SR.fuelOf(s);
+    const sel = (k, opts) => `<select data-tv="${k}" ${ro ? 'disabled' : ''}>${opts.map(([v, l]) => `<option value="${esc(String(v))}" ${String(t[k]) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
+    const regions = SR.REGIONS.map((r) => [r, r]);
+    const when = hours == null ? (cls ? '' : 'No hyperdrive class on the sheet (Hyperdrive, above).') : `${hours < 24 ? `${hours} hours` : `${Math.round(hours / 24 * 10) / 10} days`} with a class ${cls} hyperdrive; ${fuel} units of fuel${have != null ? ` (it has ${have})` : ''}.`;
+    return `<details class="ship-build" data-sid="${esc(s.id)}-tv" style="margin-top:8px" ${buildOpen[s.id + '-tv'] ? 'open' : ''}><summary>Travel <span class="muted" style="font-size:12px">(hyperspace, astrogation, start-up)</span></summary>
+      <div class="row wrap" style="gap:6px;margin:6px 0;font-size:12px"><label class="ship-lv">From ${sel('from', regions)}</label><label class="ship-lv">to ${sel('to', regions)}</label>
+        <label class="ship-lv" title="Each rush: -5 on the astrogation checks, a day off the trip (or half of what's left under a day)">Rush ${sel('rush', [[0, 'none'], [1, '1 day'], [2, '2 days'], [3, '3 days']])}</label>
+        <label class="toggle" title="+5 on the astrogation checks, and the trip takes twice as long"><input type="checkbox" data-tv="careful" ${t.careful ? 'checked' : ''} ${ro ? 'disabled' : ''}> careful</label></div>
+      <p style="font-size:12px;margin:0 0 6px">${esc(when)}</p>
+      <div class="row wrap" style="gap:6px;font-size:12px"><span>Astrogation: <b>${st.astro}</b> of 10 equations</span>
+        ${ro ? '' : `<button class="btn tiny" data-sx="plot" title="Not under duress: 10 minutes of careful work, all ten equations">Plot with care</button>
+        <label class="ship-lv">data ${sel('age', [['fresh', 'under a day old'], ['normal', 'this week'], ['old', 'over a week old']])}</label>
+        <button class="btn tiny" data-sx="astro" title="Under duress, an action: Intelligence (Astrogation); 10-15 one equation, 16-20 two, 21-25 three, 26-29 four, 30+ five">Astrogation check</button>
+        <button class="btn tiny amber" data-sx="jump" ${hours == null ? 'disabled' : ''} title="${st.astro < 10 ? 'Rushed: a mishap roll (d20 + the equations done)' : 'The course is plotted'}">Jump${st.astro < 10 ? ' (rushed)' : ''}</button>`}</div>
+      <div class="row wrap" style="gap:6px;margin-top:6px;font-size:12px"><span>Start-up: ${esc(SR.START_UP[s.size] || '')} with care · emergency: <b>${st.startup}</b> of 10 procedures</span>
+        ${ro ? '' : `<label class="ship-lv">crew ${sel('crew', [['normal', 'the minimum'], ['half', 'half (-5)'], ['extra', '1.5 times (+5)']])}</label>
+        <button class="btn tiny" data-sx="startup" title="An action: the crew leader's Intelligence (Piloting); advantage at full hull and shields, disadvantage under full hull">Emergency start-up check</button>`}</div>
+    </details>`;
+  }
   const buildOpen = {};   // per ship, whether the panel below is open (the sheet is redrawn on every change)
   document.addEventListener('toggle', (e) => { const d = e.target; if (d && d.classList && d.classList.contains('ship-build')) buildOpen[d.dataset.sid] = d.open; }, true);
   // what the ship's size, tier and role give it (SotG chapters 1, 3 and 5), next to what the sheet says, with Apply
@@ -122,6 +145,7 @@
       ${powerBlock(s, ro, ctx)}
       ${ro || SR.isLost(st) && st.zero.destroyed || inFight() ? '' : betweenBlock(s, st)}
       ${buildBlock(s, ro)}
+      ${travelBlock(s, ro)}
     </div>`;
   }
 
@@ -189,6 +213,10 @@
       H.toast('Applied from size, tier and role');
       return true;
     }
+    if (a === 'plot') { await H.act('ship.plot', { id }); return true; }
+    if (a === 'astro') { const t = TV[id] || {}; await H.act('ship.astro', { id, crew: (ctxOf[id] || {}).as || 0, rush: t.rush, careful: t.careful, age: t.age }); return true; }
+    if (a === 'startup') { await H.act('ship.startup', { id, crew: (ctxOf[id] || {}).as || 0, crewSize: (TV[id] || {}).crew }); return true; }
+    if (a === 'jump') { const t = TV[id] || {}; if (confirm(`Jump to hyperspace, ${t.from} to ${t.to}?`)) await H.act('ship.jump', { id, from: t.from, to: t.to, rush: t.rush, careful: t.careful }); return true; }
     if (a === 'install') { await H.act('ship.install', { id, mod: +b.dataset.i, crew: (ctxOf[id] || {}).as || 0 }); return true; }
     if (a === 'recharge') { await H.act('ship.recharge', { id }); return true; }
     if (a === 'hulldie') { await H.act('ship.hulldie', { id, crew: (ctxOf[id] || {}).as || 0 }); return true; }
@@ -203,7 +231,9 @@
   }
   // the slowed and system damage pickers; returns true when it handled the change
   async function change(e, s) {
-    const t = e.target, k = t.dataset && t.dataset.sxc; if (!k || !s) return false;
+    const t = e.target, tv = t.dataset && t.dataset.tv;
+    if (tv && s) { const o = TV[s.id] = TV[s.id] || {}; o[tv] = t.type === 'checkbox' ? t.checked : tv === 'rush' ? +t.value || 0 : t.value; t.blur(); window.HTB.renderShipsSafe(); return true; }
+    const k = t.dataset && t.dataset.sxc; if (!k || !s) return false;
     await H.act('ship.condition', { id: s.id, name: k, level: +t.value || 0 });
     return true;
   }

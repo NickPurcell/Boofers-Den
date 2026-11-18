@@ -82,6 +82,7 @@
         interfered: f.interfered === true, directed: f.directed === true,
         interferedBy: typeof f.interferedBy === 'string' && /^[a-z0-9]{6,20}$/.test(f.interferedBy) ? f.interferedBy : '' },   // the ship whose next turn ends it
       recharged: st.recharged === true,   // a recharge just finished: the crew may spend hull dice
+      astro: clamp(int(st.astro), 0, 10), startup: clamp(int(st.startup), 0, 10),   // astrogation equations, start-up procedures done
     };
     if (out.system >= 5 && !out.cond.includes('Used')) out.cond.push('Used');   // system damage 5 makes it used for good
     return out;
@@ -764,6 +765,53 @@
     });
   }
 
+
+  // ---- travel (SotG chapter 8): hyperspace times by region and hyperdrive class, fuel, astrogation, start-up
+  const REGIONS = ['Deep Core', 'Core', 'Colonies', 'Inner Rim', 'Expansion Region', 'Mid Rim', 'Outer Rim', 'Wild Space', 'Unknown Regions'];
+  // base hours with a class 1 hyperdrive, from (rows) to (columns)
+  const HYPER_HOURS = [
+    [12, 18, 24, 48, 72, 96, 120, 144, 168], [24, 6, 24, 36, 60, 84, 96, 120, 144], [48, 24, 12, 24, 48, 72, 96, 120, 96],
+    [72, 36, 24, 18, 24, 48, 72, 96, 72], [96, 60, 48, 24, 24, 24, 48, 72, 96], [120, 84, 72, 48, 24, 36, 24, 48, 72],
+    [144, 96, 96, 72, 48, 24, 48, 24, 60], [168, 120, 120, 96, 72, 48, 24, 12, 120], [192, 144, 96, 72, 60, 72, 96, 120, 48]];
+  const START_UP = { Tiny: '1 minute', Small: '2 minutes', Medium: '5 minutes', Large: '10 minutes', Huge: '30 minutes', Gargantuan: '60 minutes' };
+  // the hyperdrive's class from the sheet ("1", "2", ".5", "Class 0.5"); null with none
+  // the hyperdrive's class from the sheet's Hyperdrive box, else from a hyperdrive in its equipment ("... class 2")
+  function hyperClass(ship) {
+    const read = (t) => { const m = /(\d*\.?\d+)/.exec(String(t || '')); const v = m ? parseFloat(m[1]) : NaN; return v > 0 && v <= 20 ? v : null; };
+    const typed = read(ship && ship.hyper);
+    if (typed) return typed;
+    const eq = ((ship && ship.equipment) || []).find((e) => e && /hyperdrive/i.test(String(e.name || '') + ' ' + String(e.notes || '')) && /class\s*\d*\.?\d+/i.test(String(e.notes || '')));
+    return eq ? read(/class\s*(\d*\.?\d+)/i.exec(String(eq.notes))[1]) : null;
+  }
+  // equations (or start-up procedures) completed by one check: 9 or lower none; 10-15 one; 16-20 two; 21-25 three;
+  // 26-29 four; 30 or more five
+  const stepsFor = (total) => { const t = int(total); return t >= 30 ? 5 : t >= 26 ? 4 : t >= 21 ? 3 : t >= 16 ? 2 : t >= 10 ? 1 : 0; };
+  // a jump's travel time: the table's hours times the hyperdrive class; each "rush" (-5 on the checks) takes a day off,
+  // or halves what's left under a day (at least an hour); "careful" (+5) doubles it
+  function jumpHours(ship, from, to, rush, careful) {
+    const a = REGIONS.indexOf(from), b = REGIONS.indexOf(to), c = hyperClass(ship);
+    if (a < 0 || b < 0 || !c) return null;
+    let h = HYPER_HOURS[a][b] * c;
+    if (careful) h *= 2;
+    for (let i = 0; i < clamp(int(rush), 0, 10); i++) h = h - 24 >= 24 ? h - 24 : Math.max(1, h / 2);
+    return Math.round(h * 10) / 10;
+  }
+  // fuel for a jump: one unit for the jump and one for each day (or part) in hyperspace, times the reactor's fuel use
+  const jumpFuel = (ship, hours) => { const rx = own(REACTORS, reactorOf(ship)); return Math.ceil((1 + Math.ceil(int(Math.ceil(hours)) / 24)) * (rx ? rx.fuel : 1)); };
+  const fuelOf = (ship) => { const m = /(\d+(?:\.\d+)?)/.exec(String((ship && ship.fuel) || '')); return m ? parseFloat(m[1]) : null; };
+  // a rushed jump's mishap: a d20 plus the equations completed (SotG's table)
+  const MISHAPS = [
+    [20, 'no adverse consequences'],
+    [18, 'dumped cargo sets off the collision alarm: a DC 15 Constitution save or 3 hull dice of damage (half on a success); 10d10 tons of cargo to salvage'],
+    [15, 'an uncharted dust cloud: Scan and Probe checks at disadvantage until it is refitted'],
+    [12, 'too close to a supernova: Intelligence checks at disadvantage until it is refitted'],
+    [9, 'an unexpected gravity field: maneuvering checks at disadvantage until it is refitted'],
+    [6, 'intense gravity warps the hull: AC -2 until it is refitted'],
+    [3, 'significant debris: kinetic damage of a tenth of its hull maximum, and shields regenerate at half rate until it is refitted'],
+    [-99, 'catastrophic hyperdrive failure: no hyperdrive until it is refitted'],
+  ];
+  const mishapFor = (total) => MISHAPS.find(([lo]) => int(total) >= lo)[1];
+
   // what the sheet shows of a ship's state, in short phrases
   function summary(ship) {
     const st = statusOf(ship), hullNow = int(ship && ship.hull && ship.hull.current), out = [];
@@ -778,5 +826,5 @@
     setCondition, summary, SIZE_DATA, SHIELD_TYPES, REACTORS, COUPLINGS, SYSTEMS, POOLS, SYSTEM_NAMES, POWER_DIE, sizeOf, roleOf, reactorOf, couplingOf,
     shieldTypeOf, powerDie, powerDieText, powerCaps, diceOf, diceLeft, regenRate, boostDC, regenDC, boostedSpeed, startTurn, usePower, setPower,
     setDiceUsed, boost, regenerateShields, SQUARE_FT, SQUARES, squaresOf, FACING_NAMES, DIRS, gridFeet, turnSteps, turnCost, moveCost, inBounds, shipGap,
-    arcOf, INIT_SIZE_MOD, npcInitBonus, MOD_TYPES, modsSummary, modCost, installDC, pastCapacity, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck };
+    arcOf, INIT_SIZE_MOD, npcInitBonus, REGIONS, HYPER_HOURS, START_UP, hyperClass, stepsFor, jumpHours, jumpFuel, fuelOf, mishapFor, MOD_TYPES, modsSummary, modCost, installDC, pastCapacity, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck };
 });
