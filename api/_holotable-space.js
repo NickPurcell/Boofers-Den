@@ -25,7 +25,7 @@ const int = (v, d = 0) => { const n = parseInt(v, 10); return Number.isFinite(n)
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const plain = (o) => (o && typeof o === "object" && !Array.isArray(o) ? o : {});
 
-const TYPES = new Set(["space.on", "space.size", "space.place", "space.remove", "space.token", "space.init", "space.next", "space.prev", "space.end"]);
+const TYPES = new Set(["space.on", "space.size", "space.place", "space.remove", "space.token", "space.init", "space.next", "space.prev", "space.end", "space.fire"]);
 const handles = (type) => TYPES.has(type);
 
 // the space map's state, with its shape checked every time (a backup restore can bring anything back)
@@ -69,6 +69,9 @@ function apply(camp, cid, gm, type, p, h) {
   const mayMove = (s) => gm || (s && !s.hidden);
   const say = (s, text) => addChat(camp, Object.assign({ system: true, text: str(text, 400) }, s && s.hidden ? { to: ["@gm"], private: true } : {}));
   const curId = () => (sp.active && sp.order[sp.turn] ? sp.order[sp.turn].id : null);
+  // the name players may read: a party ship's own; an enemy ship's once the GM names its token, "???" until then
+  const shownOf = (s, t) => (!s.hidden || (t && t.named) ? s.name : "???");
+  const putShip = (x) => { const i = camp.ships.findIndex((y) => y && y.id === x.id); if (i >= 0) { x.updated = Date.now() / 1000; camp.ships[i] = x; } };
 
   switch (type) {
     case "space.on": {     // the GM switches the table to the space map, or back
@@ -154,6 +157,92 @@ function apply(camp, cid, gm, type, p, h) {
       if (type === "space.next") { sp.turn += 1; if (sp.turn >= sp.order.length) { sp.turn = 0; sp.round += 1; addChat(camp, { system: true, text: `Ship combat: round ${sp.round}.` }); } }
       else { sp.turn -= 1; if (sp.turn < 0) { sp.turn = sp.order.length - 1; sp.round = Math.max(1, sp.round - 1); } return {}; }
       return startTurn(camp, cid, gm, h);
+    }
+    case "space.fire": {   // the Fire action: a ship weapon at a ship on the map, its arc and range checked, rolled here
+      const s0 = shipOf(p.id), t0 = shipOf(p.target);
+      if (!s0 || !t0) throw new Invalid("No such ship.");
+      need(mayMove(s0), "That ship is the GM's.");
+      if (s0.id === t0.id) throw new Invalid("A ship can't fire at itself.");
+      const a = sp.tok.find((x) => x.id === s0.id), ta = sp.tok.find((x) => x.id === t0.id);
+      if (!a || !ta || (!gm && ta.hidden)) throw new Invalid("Both ships need to be on the space map.");
+      if (SR.isDisabled(SR.statusOf(s0)) || SR.isLost(SR.statusOf(s0))) throw new Invalid(`${shownOf(s0, a)} can't take actions.`);
+      const weapons = Array.isArray(s0.weapons) ? s0.weapons : [], wi = int(p.weapon, -1);
+      if (!(wi >= 0 && wi < weapons.length)) throw new Invalid("No such weapon.");
+      const w = weapons[wi], chk = SR.fireCheck(s0, a, w, t0, ta);
+      if (!chk.ok) throw new Invalid(`${w.name} can't fire: ${chk.why}.`);
+      if (typeof w.ammo === "number" && w.ammo <= 0) throw new Invalid(`${w.name} is out of ammunition.`);
+      const s = JSON.parse(JSON.stringify(s0)), sw = s.weapons[wi];
+      if (typeof sw.ammo === "number") sw.ammo -= 1;
+      const pb = Ships.crewPb(camp, s0, p.crew), A = shownOf(s0, a), T = shownOf(t0, ta);
+      // A roll in the chat. One about an enemy ship (the GM's) goes to the GM only, and carries no sender id: a message's
+      // sender always receives it, and the player who fired must not read the enemy's name. The result lines below are
+      // everyone's, with the names players may read.
+      const roll2 = (roll, expr, label, kind, gmOnly) => addChat(camp, Object.assign({ from: gmOnly ? "Ship combat (GM only)" : playerName(camp, cid),
+        roll: Object.assign({}, roll, { expr, label: str(label, 120), kind }) }, gmOnly ? { to: ["@gm"], private: true } : { fromId: cid }));
+      const rollMsg = (roll, expr, label, kind) => roll2(roll, expr, label, kind, !!s0.hidden);
+      const line = (text, gmOnly) => addChat(camp, Object.assign({ system: true, text: str(text, 400) }, gmOnly ? { to: ["@gm"], private: true } : {}));
+      const d20 = (mode, bonus) => (mode === "adv" ? "2d20kh1" : mode === "dis" ? "2d20kl1" : "1d20") + (bonus >= 0 ? "+" : "") + bonus;
+      const why = (x) => (x.length ? ` [${x.join(", ")}]` : "");
+      // the damage roll: advantage after Boost Weapons (two rolls, the higher kept), which it then uses up
+      const rollDamage = (crit) => {
+        const expr = SR.damageExpr(s0, w, crit);
+        if (!expr) return { total: 0, expr: "" };
+        let r = rollDice(expr);
+        if (s.status && s.status.boost && s.status.boost.weapons) { const r2 = rollDice(expr); if (r2.total > r.total) r = r2; s.status.boost.weapons = false; }
+        rollMsg(r, expr, `${s0.hidden ? s0.name : A}: ${w.name} damage${crit ? " (critical)" : ""}`, "damage");
+        return { total: Math.max(0, r.total), expr };
+      };
+      const hurt = (amount, crit) => {
+        const r = SR.takeDamage(t0, amount, w.type, { crit });
+        putShip(r.ship);
+        for (const l of r.log) line(l, !!t0.hidden);   // the target's hull and shields: the GM's for an enemy ship
+        return r;
+      };
+      s.status = SR.statusOf(s);
+      let result;
+      if (chk.kind === "attack") {
+        const mode = SR.rollMode({ adv: chk.adv, dis: chk.dis }, ["adv", "dis"].includes(p.mode) ? p.mode : "normal");
+        const bonus = SR.attackBonusOf(s0, w, pb), expr = d20(mode, bonus), roll = rollDice(expr);
+        const keen = typeof SR.weaponProp(w, "keen") === "number" ? SR.weaponProp(w, "keen") : 0;
+        const crit = roll.nat !== null && roll.nat >= 20 - keen, hit = roll.nat !== 1 && (crit || roll.total >= int(t0.ac, 10));
+        rollMsg(roll, expr, `${s0.hidden ? s0.name : A} fires ${w.name} at ${s0.hidden ? t0.name : T}${why([...chk.adv, ...chk.dis])}`, "attack");
+        if (!hit) { line(`${A} misses ${T} with ${w.name}.`); result = { hit: false }; }
+        else {
+          const dmg = rollDamage(crit);
+          line(`${A} hits ${T} with ${w.name}${crit ? ", a critical" : ""}: ${dmg.total} ${SR.damageType(w.type)} damage.`);
+          hurt(dmg.total, crit);
+          result = { hit: true, crit, damage: dmg.total };
+          // ionizing: a DC 13 Constitution save or ionized; a larger target has advantage
+          if (SR.weaponProp(w, "ionizing") && !SR.isLost(SR.statusOf(shipOf(t0.id)))) {
+            const t1 = shipOf(t0.id), cb = Math.floor((int((t1.abilities || {}).con, 10) - 10) / 2) + ((t1.saves || {}).con ? Ships.crewPb(camp, t1, 0) : 0);
+            const sm = SR.rollMode({ adv: SR.sizeRank(t1) > SR.sizeRank(s0) ? ["larger"] : [], dis: SR.rollEffects(t1, "save", "con").dis }, "normal");
+            const se = d20(sm, cb), sr = rollDice(se);
+            roll2(sr, se, `${t1.hidden ? t1.name : T}: Constitution save against ionizing (DC 13)`, "save", !!t1.hidden);
+            if (sr.total < 13) { putShip(SR.setCondition(t1, "Ionized", true)); line(`${T} is ionized.`); result.ionized = true; }
+            else line(`${T} shrugs off the ionizing hit.`);
+          }
+        }
+      } else {
+        // tertiary weapons, and a Huge or larger ship's primary weapons: the target's Dexterity save against the
+        // weapon's DC; half damage on a success
+        const dc = SR.saveDcOf(s0, w, pb), fx = SR.rollEffects(t0, "save", "dex");
+        const mode = SR.rollMode({ adv: chk.adv, dis: [...chk.dis, ...fx.dis] }, "normal");
+        const bonus = Math.floor((int((t0.abilities || {}).dex, 10) - 10) / 2) + ((t0.saves || {}).dex ? Ships.crewPb(camp, t0, 0) : 0);
+        line(`${A} fires ${w.name} at ${T}: a Dexterity save, DC ${dc}${why([...chk.adv, ...chk.dis])}.`);
+        let saved = false;
+        if (fx.fail.length) line(`${T} fails it automatically (${fx.fail.join(", ")}).`);
+        else {
+          const se = d20(mode, bonus), sr = rollDice(se);
+          roll2(sr, se, `${t0.hidden ? t0.name : T}: Dexterity save (DC ${dc})`, "save", !!t0.hidden);
+          saved = sr.total >= dc;
+        }
+        const dmg = rollDamage(false), amount = saved ? Math.floor(dmg.total / 2) : dmg.total;
+        line(`${T} ${saved ? "saves: half damage" : "fails"}: ${amount} ${SR.damageType(w.type)} damage.`);
+        if (amount) hurt(amount, false);
+        result = { saved, damage: amount };
+      }
+      putShip(Object.assign(shipOf(s0.id), { weapons: s.weapons, status: Object.assign(SR.statusOf(shipOf(s0.id)), { boost: s.status.boost }) }));
+      return result;
     }
     case "space.end": {
       need(gm);

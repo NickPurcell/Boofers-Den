@@ -295,6 +295,26 @@
     return { total: best.v + misc, text: [...best.parts, misc ? `misc ${fmt(misc)}` : ''].filter(Boolean).join(' · ') };
   }
   // the d20 a weapon crits on: 20, or lower for an attack's own crit range or a "Keen N" weapon (SW5e: the range grows by N)
+  // Reliable Talent (Operative 11, SW5e): ability checks that add the proficiency bonus get the d20's minimum roll
+  // threshold, 8 (PHB chapter 7). Skill rolls with proficiency or expertise use 1d20min8.
+  const classLevelOf = (c, name) => (c.classes || []).filter((k) => String(k.name).toLowerCase() === name).reduce((a, k) => a + (+k.level || 0), 0);
+  const reliableTalent = (c) => classLevelOf(c, 'operative') >= 11;
+  function skillRollExpr(c, sk) {
+    const b = skillBonus(c, sk), rt = reliableTalent(c) && +((c.skills || {})[sk] || 0) >= 1;
+    return { expr: `1d20${rt ? 'min8' : ''}${b >= 0 ? '+' : ''}${b}`, reliable: rt };
+  }
+  // Brutal Critical (Berserker 9 / 13 / 17): one, two or three more weapon damage dice on a melee critical hit
+  const brutalDice = (c) => { const l = classLevelOf(c, 'berserker'); return l >= 17 ? 3 : l >= 13 ? 2 : l >= 9 ? 1 : 0; };
+  const isMelee = (a) => !/\b(range|reload|power cell|slug|ammunition)\b/i.test(String(a.props || ''));
+  function critDamage(c, a) {
+    const base = critExpr(damageExpr(c, a)), n = isMelee(a) ? brutalDice(c) : 0, die = /d(\d+)/i.exec(String(a.damage || ''));
+    return n && die ? { expr: `${base}+${n}d${die[1]}`, brutal: n } : { expr: base, brutal: 0 };
+  }
+  // Reload N (SW5e): N shots, then a reload (an action or bonus action) that uses one power cell or slug cartridge
+  const reloadOf = (a) => { const m = /\breload\s*(\d+)/i.exec(String(a.props || '')); return m ? Math.min(999, +m[1]) : 0; };
+  const ammoOf = (a) => /slug/i.test(String(a.props || '')) ? 'Slug cartridge' : /power\s*cell/i.test(String(a.props || '')) || reloadOf(a) ? 'Power cell' : null;
+  const shotsOf = (a) => { const n = reloadOf(a); return n ? Math.max(0, Math.min(n, a.shots == null || a.shots === '' ? n : +a.shots || 0)) : null; };
+
   function critFrom(props) { const k = /\bkeen\s*(\d)/i.exec(String(props || '')); return k ? Math.max(15, 20 - +k[1]) : 20; }
 
   // Size (audit 5.12): SW5e's sizes, and the squares a token takes (Tiny shares a square, drawn small)
@@ -462,6 +482,7 @@
     mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo, techOnShortRest, overMaxPowerLevel, highCastFrom, highCastUsed, highCastBlocked,
     ARCHETYPE_CASTERS, casterArchetype, castingSources,
     SIZES, tokenSquares, pointsSpend, attackBonus, damageExpr, critExpr, armorClass, armorFromItem, critFrom, ARMOR_KINDS, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
+    attackBonus, damageExpr, critExpr, armorClass, armorFromItem, critFrom, ARMOR_KINDS, reliableTalent, skillRollExpr, brutalDice, critDamage, isMelee, reloadOf, ammoOf, shotsOf, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
     STANDARD_ARRAY, POINT_COST, POINT_BUDGET, pointBuyCost, usesEachOnce,
     CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt,
     SENSES, cleanSenses, sensesFromTraits, sensesText, parseSenses };
