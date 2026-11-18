@@ -35,7 +35,7 @@ function boostBonus(camp, ship, crewIndex) {
 }
 
 const TYPES = new Set(["ship.damage", "ship.restore", "ship.points", "ship.dsave", "ship.stabilize", "ship.condition", "ship.reset",
-  "ship.turn", "ship.power", "ship.poweruse", "ship.dice", "ship.boost", "ship.regen"]);
+  "ship.turn", "ship.power", "ship.poweruse", "ship.dice", "ship.boost", "ship.regen", "ship.helm", "ship.patch", "ship.direct"]);
 const handles = (type) => TYPES.has(type);
 
 // On a sheet save: the fight state and the current hull and shield points stay as stored (they change only through
@@ -157,10 +157,40 @@ function apply(camp, cid, gm, type, p, h) {
       const label = what === "regen" ? `${ship.name}: Regenerate Shields (DC ${SR.regenDC(ship)})` : `${ship.name}: Boost ${what} (DC ${SR.boostDC(ship)})`;
       const r = what === "regen" ? SR.regenerateShields(ship, roll.total, (e) => rollDice(e)) : SR.boost(ship, what, roll.total, (e) => rollDice(e));
       if (r.already || r.done === false) throw new Invalid(r.log[0] || "Not now.");
+      r.ship.status.fx.interfered = false;   // Interfere lasts one roll
       const msg = { from: ship.hidden ? "Ship combat (GM only)" : playerName(camp, cid), roll: Object.assign({}, roll, { expr, label: str(label + ([...fx.adv, ...fx.dis].length ? ` [${[...fx.adv, ...fx.dis].join(", ")}]` : ""), 120), kind: "boost" }) };
       Object.assign(msg, ship.hidden ? { to: ["@gm"], private: true } : { fromId: cid });
       put(r.ship); addChat(camp, msg); say(r.log);
       return { ok: !!r.ok, total: roll.total };
+    }
+    case "ship.helm": {     // Evade, Fly or Hard Turn: one Helm action a turn
+      const what = str(p.what, 10);
+      if (!["evade", "fly", "hardturn"].includes(what)) throw new Invalid("Evade, Fly or Hard Turn.");
+      if (SR.isDisabled(SR.statusOf(ship)) || SR.isLost(SR.statusOf(ship))) throw new Invalid(`${ship.name} can't take actions.`);
+      const r = SR.helm(ship, what);
+      if (!r.ok) throw new Invalid(r.log[0] || "Not now.");
+      put(r.ship); say(r.log);
+      return {};
+    }
+    case "ship.patch": {    // Patch: a Constitution (Patch) check rolled here, with the bonus from the sheet, spending a hull die
+      if (SR.isDisabled(SR.statusOf(ship)) || SR.isLost(SR.statusOf(ship))) throw new Invalid(`${ship.name} can't take actions.`);
+      if (SR.diceLeft(ship, "hull") <= 0) throw new Invalid(`${ship.name} has no hull dice left.`);
+      if (int((ship.hull || {}).current) >= SR.hullMax(ship)) throw new Invalid(`${ship.name}'s hull needs no patching.`);
+      const bonus = SR.skillBonus(ship, "patch", crewPb(camp, ship, p.crew)), fx = SR.rollEffects(ship, "check", "con");
+      const mode = SR.rollMode(fx, ["adv", "dis"].includes(p.mode) ? p.mode : "normal");
+      const expr = (mode === "adv" ? "2d20kh1" : mode === "dis" ? "2d20kl1" : "1d20") + (bonus >= 0 ? "+" : "") + bonus, roll = rollDice(expr);
+      const r = SR.patch(ship, roll.total, (e) => rollDice(e));
+      const msg = { from: ship.hidden ? "Ship combat (GM only)" : playerName(camp, cid), roll: Object.assign({}, roll, { expr, label: str(`${ship.name}: Patch (DC ${r.dc})${[...fx.adv, ...fx.dis].length ? ` [${[...fx.adv, ...fx.dis].join(", ")}]` : ""}`, 120), kind: "patch" }) };
+      Object.assign(msg, ship.hidden ? { to: ["@gm"], private: true } : { fromId: cid });
+      r.ship.status.fx.interfered = false;   // Interfere lasts one roll
+      put(r.ship); addChat(camp, msg); say(r.log);
+      return { ok: !!r.ok, gain: r.gain };
+    }
+    case "ship.direct": {   // Direct: the next attack roll from this ship has advantage
+      if (SR.isDisabled(SR.statusOf(ship)) || SR.isLost(SR.statusOf(ship))) throw new Invalid(`${ship.name} can't take actions.`);
+      const s = JSON.parse(JSON.stringify(ship)); s.status = SR.statusOf(s); s.status.fx.directed = true;
+      put(s); say([`${playerName(camp, cid)} directs ${ship.name}'s gunners: its next attack has advantage.`]);
+      return {};
     }
     case "ship.reset": {    // the GM undoes a destruction (a mistake, or a story reason): saves cleared, not destroyed
       if (!gm) throw new Forbidden("GM only");

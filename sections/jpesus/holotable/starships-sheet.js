@@ -30,10 +30,12 @@
         <span class="spacer"></span><label class="ship-lv">Reactor ${auto('reactor', SR.reactorOf, SR.REACTORS)}</label><label class="ship-lv">Coupling ${auto('coupling', SR.couplingOf, SR.COUPLINGS)}</label><label class="ship-lv">Shields ${auto('shieldType', SR.shieldTypeOf, SR.SHIELD_TYPES)}</label></div>
       <div class="row wrap" style="gap:10px;margin-top:6px"><span class="muted" style="font-size:12px">Power dice (${SR.powerDieText(s)})</span>${pools || '<span class="muted" style="font-size:12px">Pick a power coupling to store power dice.</span>'}</div>
       <div class="row wrap" style="gap:8px;margin-top:6px;font-size:12px"><span>Shield dice <b>${sdLeft}</b> of ${sd.n} left (d${sd.die})${ro ? '' : ` <button class="btn tiny ghost" data-sx="sdset" data-n="${used + 1}" ${sdLeft ? '' : 'disabled'} title="Spend one">−</button><button class="btn tiny ghost" data-sx="sdset" data-n="${used - 1}" ${used ? '' : 'disabled'} title="Get one back">+</button>`}</span>
-        <span>Regeneration <b>${rate}</b> a round</span>${st.tempShield ? `<span>Temporary shields <b>${st.tempShield}</b></span>` : ''}</div>
+        <span>Regeneration <b>${rate}</b> a round</span>${st.tempShield ? `<span>Temporary shields <b>${st.tempShield}</b></span>` : ''}
+        <span>Hull dice <b>${SR.diceLeft(s, 'hull')}</b> of ${SR.diceOf(s, 'hull').n} left (d${SR.diceOf(s, 'hull').die})${ro ? '' : ` <button class="btn tiny ghost" data-sx="hdset" data-n="${st.hdUsed + 1}" ${SR.diceLeft(s, 'hull') ? '' : 'disabled'} title="Spend one">−</button><button class="btn tiny ghost" data-sx="hdset" data-n="${st.hdUsed - 1}" ${st.hdUsed ? '' : 'disabled'} title="Get one back">+</button>`}</span></div>
       ${dis ? '' : `<div class="row wrap" style="gap:6px;margin-top:6px"><span class="muted" style="font-size:12px" title="Strength (Boost): the ship's Strength plus the crew member's proficiency if the ship is proficiently equipped in Boost">Boost ${sign(boostBonus)} vs DC ${SR.boostDC(s)}</span>
         ${['engines', 'shields', 'weapons'].map(w => `<button class="btn tiny" data-sx="boost" data-what="${w}" ${(w === 'engines' ? b.engines >= 2 : b[w]) ? 'disabled' : ''}>Boost ${w}</button>`).join('')}
         <button class="btn tiny" data-sx="regen" ${b.regen || !sdLeft ? 'disabled' : ''} title="The action: spend a shield die and roll it (twice, keeping the lower, on a failed check). Works when the shields are down.">Regenerate shields (DC ${SR.regenDC(s)})</button>
+        <button class="btn tiny" data-sx="patch" ${SR.diceLeft(s, 'hull') ? '' : 'disabled'} title="The action: a Constitution (Patch) check; spend a hull die and roll it (twice, keeping the lower, on a failure). Any number a turn.">Patch (DC ${SR.patchDC(s)})</button>
         ${done.length ? `<span class="muted" style="font-size:12px">This turn: ${esc(done.join(', '))}</span>` : ''}</div>`}
     </div>`;
   }
@@ -86,6 +88,11 @@
     if (words(sav)) out.push(`Saves: ${words(sav)}`);
     if (fx('save', 'dex').fail.length) out.push('Fails Str and Dex saves');
     if (words(vs)) out.push(`Attacks against it: ${words(vs)}`);
+    if (st.fx.evade >= 2) out.push('Evading');
+    if (st.fx.fly >= 2) out.push(`Flying flat out: ${SR.moveBudget(s)} ft this turn`);
+    if (st.fx.hardTurn) out.push('Hard turn ready');
+    if (st.fx.directed) out.push('Next attack directed (advantage)');
+    if (st.fx.interfered) out.push('Interfered with (next roll at disadvantage)');
     if (SR.isDisabled(st)) out.push('No actions or reactions');
     else if (st.cond.includes('Shocked')) out.push('No reactions; action or bonus action');
     return out;
@@ -118,6 +125,8 @@
     if (a === 'puse') { await H.act('ship.poweruse', { id, pool: b.dataset.pool }); return true; }
     if (a === 'pset') { await H.act('ship.power', { id, pool: b.dataset.pool, n: +b.dataset.n }); return true; }
     if (a === 'sdset') { await H.act('ship.dice', { id, kind: 'shield', used: +b.dataset.n }); return true; }
+    if (a === 'hdset') { await H.act('ship.dice', { id, kind: 'hull', used: +b.dataset.n }); return true; }
+    if (a === 'patch') { await H.act('ship.patch', { id, crew: (ctxOf[id] || {}).as || 0, mode: H.rollModeFromEvent(e) }); return true; }
     if (a === 'boost' || a === 'regen') { await H.act(a === 'boost' ? 'ship.boost' : 'ship.regen', { id, what: b.dataset.what, crew: (ctxOf[id] || {}).as || 0, mode: H.rollModeFromEvent(e) }); return true; }
     if (a === 'stabilize') { await H.act('ship.stabilize', { id }); return true; }
     if (a === 'cond') { const c = b.dataset.c; await H.act('ship.condition', { id, name: c, on: !SR.statusOf(s).cond.includes(c) }); return true; }
