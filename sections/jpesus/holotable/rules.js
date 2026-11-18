@@ -245,6 +245,17 @@
     const who = (c && c.name) || 'This character', th = n => n + (n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th');
     return { level: L, from, text: `${who} has already cast a ${th(L)}-level ${kind} power since the last long rest (${th(from)} level and up: once each per long rest).` };
   }
+  // Tech focus (audit 4.8; PHB, "Casting Focuses"): techcasting needs a tech focus; forcecasting doesn't. A wristpad
+  // (any kind, as SW5e's gear and enhanced items name them) worn counts, and so does an Artificer Engineer's modified
+  // lightsaber. The reason a tech power can't be cast, or null.
+  function techFocusMissing(c, pw) {
+    if (!pw || pw.type !== 'tech') return null;
+    const worn = ((c && c.equipment) || []).filter(e => e && e.equipped);
+    if (worn.some(e => /wristpad/i.test(e.name || ''))) return null;
+    if ((c.classes || []).some(k => /^artificer\b/i.test(String(k.archetype || ''))) && worn.some(e => /saber/i.test(e.name || ''))) return null;
+    return { text: `${(c && c.name) || 'This character'} needs a tech focus to cast tech powers: a wristpad, ticked as equipped.` };
+  }
+  Object.assign(SW5E, { techFocusMissing });
   // a short rest gives back all tech points if any of the character's tech casting comes from an Engineer, a Scout or a
   // tech archetype
   const techOnShortRest = c => castingSources(c).some(s => s.caster === 'tech' && s.shortRest);

@@ -138,6 +138,16 @@ test("high-level casting (#160): from which level each level goes once per long 
   assert.deepEqual(R.highCastUsed({ force: { high: [9, "6", 12, 0] } }, "force"), [9, 6]);
 });
 
+test("tech focus (audit 4.8): a tech power needs a wristpad worn (or an Artificer's lightsaber); a force power doesn't", () => {
+  const c = (equipment, archetype = "") => ({ name: "Ixa", classes: [{ name: "Engineer", level: 3, archetype }], equipment });
+  assert.equal(R.techFocusMissing(c([]), { type: "tech" }).text, "Ixa needs a tech focus to cast tech powers: a wristpad, ticked as equipped.");
+  assert.equal(R.techFocusMissing(c([]), { type: "force" }), null);
+  assert.ok(R.techFocusMissing(c([{ name: "Wristpad", equipped: false }]), { type: "tech" }), "carried isn't worn");
+  assert.equal(R.techFocusMissing(c([{ name: "Wristpad Chassis (Premium)", equipped: true }]), { type: "tech" }), null);
+  assert.ok(R.techFocusMissing(c([{ name: "Lightsaber", equipped: true }]), { type: "tech" }));
+  assert.equal(R.techFocusMissing(c([{ name: "Modified lightsaber", equipped: true }], "Artificer Engineering"), { type: "tech" }), null);
+});
+
 test("Engineers and Scouts get tech points back on a short rest; others don't", () => {
   assert.equal(R.techOnShortRest(char([["Engineer", 1]])), true);
   assert.equal(R.techOnShortRest(char([["Scout", 2]])), true);

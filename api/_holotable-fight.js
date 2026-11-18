@@ -568,6 +568,9 @@ function sheetCast(camp, cid, gm, p, G) {
   // high-level casting (#160): a level that goes once per long rest, already cast: a player is refused, the GM may go ahead
   const once = R.highCastBlocked(ch, { type: ability.pool === "tech" ? "tech" : "force" }, level);
   if (once && !gm) throw new G.Invalid(once.text);
+  // a tech focus (audit 4.8): a player is refused without one; the GM may go ahead
+  const focus = R.techFocusMissing(ch, { type: ability.pool === "tech" ? "tech" : "force" });
+  if (focus && !gm) throw new G.Invalid(focus.text);
   const tokens = camp.map.tokens || [], fog = gm ? null : fogFor(camp, cid), picked = [];
   for (const id of new Set((Array.isArray(p.targets) ? p.targets : []).slice(0, 40).map(String))) {
     const t = ID.test(id) ? tokens.find((x) => x.id === id) : null;
@@ -1044,6 +1047,8 @@ function apply(camp, cid, gm, type, p, G) {
         // high-level casting (#160): a level that goes once per long rest and was already cast
         const once = ability.kind === "power" && R.highCastBlocked(ch, { type: ability.pool === "tech" ? "tech" : "force" }, ability.level + clamp(int(p.upcast), 0, 9));
         if (once) throw new G.Invalid(once.text);
+        const focus = ability.kind === "power" && R.techFocusMissing(ch, { type: ability.pool === "tech" ? "tech" : "force" });   // a tech focus (audit 4.8)
+        if (focus) throw new G.Invalid(focus.text);
         const point = p.point && Number.isFinite(+p.point.x) && Number.isFinite(+p.point.y) ? { x: clamp(+p.point.x, -500, 1000), y: clamp(+p.point.y, -500, 1000) } : null;
         act = { type: "use", unit: cur.id, ability, point, targets: Array.isArray(p.targets) ? p.targets.slice(0, 40).map(idOr).filter(Boolean) : [idOr(p.target)].filter(Boolean), upcast: clamp(int(p.upcast), 0, 9), adv: !!p.adv, dis: !!p.dis };
       }

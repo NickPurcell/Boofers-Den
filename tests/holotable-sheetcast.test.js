@@ -312,3 +312,27 @@ test("high-level casting (#160): a 6th-level power once per long rest, from the 
   await gm.act("fight.undo", {});
   assert.equal("high" in (await sheet(gm, avery)).force, false, "Undo takes it back");
 });
+
+test("tech focus (audit 4.8): a tech power from the sheet or the combat view needs a wristpad worn; the GM may go ahead", async () => {
+  const { gm, sam, rae, avery, bolt, tok } = await table();
+  const JOLT = { use: "action", range: [60, 60], save: { ability: "dex", dc: "tech", onSave: "none" }, damage: [{ dice: "1d6", type: "lightning" }] };
+  let av = await sheet(gm, avery);
+  await sam.act("char.save", { char: Object.assign({}, av, { classes: [{ name: "Engineer", level: 3 }], abilities: Object.assign({}, av.abilities, { int: 16 }),
+    powers: av.powers.concat([{ name: "Jolt", level: 1, type: "tech" }]), equipment: [{ name: "Wristpad", qty: 1, equipped: false }] }) });
+  await gm.act("fight.toggle", { on: true }); await gm.act("fight.ability", { name: "Jolt", data: JOLT }); await gm.act("fight.toggle", { on: false });
+  const r = await sam.act("fight.cast", { charId: avery, power: "Jolt", level: 1, targets: [] });
+  assert.deepEqual([r.code, r.data.error], [400, "Avery needs a tech focus to cast tech powers: a wristpad, ticked as equipped."]);
+  assert.equal((await gm.act("fight.cast", { charId: avery, power: "Jolt", level: 1, targets: [] })).code, 200, "the GM may go ahead");
+  av = await sheet(gm, avery);
+  av.equipment[0].equipped = true;
+  await sam.act("char.save", { char: av });
+  assert.equal((await sam.act("fight.cast", { charId: avery, power: "Jolt", level: 1, targets: [] })).code, 200, "with the wristpad worn");
+  // the combat view's own action: the same rule
+  av = await sheet(gm, avery); av.equipment[0].equipped = false; await sam.act("char.save", { char: av });
+  await sam.act("init.add", { charId: avery, name: "Avery", init: 20 }); await rae.act("init.add", { charId: bolt, name: "Bolt", init: 10 });
+  await gm.act("init.start", {}); await gm.act("fight.toggle", { on: true });
+  const bid = (await gm.state()).initiative.entries.find((e) => e.name === "Bolt").id;
+  const u = await sam.act("fight.use", { ability: "pw:jolt", targets: [bid] });
+  assert.equal(u.code, 400);
+  assert.match(u.data.error, /needs a tech focus/);
+});

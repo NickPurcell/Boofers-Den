@@ -1246,6 +1246,9 @@
     const maxL = k === 'tech' ? ci.techMaxLevel : ci.forceMaxLevel;
     const over = R.overMaxPowerLevel(ch, p, ci);   // audit 4.5: a player is refused; the GM is asked when casting
     if (over && !isGM()) return toast(over.text, true);
+    const focus = R.techFocusMissing(ch, p);       // audit 4.8: the same for a tech power without a tech focus
+    if (focus && !isGM()) return toast(focus.text, true);
+    if (focus && !confirm(`${focus.text}\n\nCast anyway?`)) return;
     const data = powerData(p), F = S.st.fight;
     const entry = F && F.on && F.active ? (S.st.initiative.entries || []).find(e => e.charId === ch.id) : null;
     const top = base ? Math.min(9, isGM() ? 9 : Math.max(base, maxL)) : 0;
