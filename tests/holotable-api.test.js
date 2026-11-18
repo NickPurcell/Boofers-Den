@@ -2196,6 +2196,35 @@ test("Infuse Item (Engineer): +1/+2/+3 to the infused weapon's attack and damage
   assert.equal((await gm.poll()).data.state.characters[id2].infused, undefined);
 });
 
+test("the party stash (6.9) and loot (9.10): the GM puts things in, players take onto their own, the GM shares credits", async () => {
+  const { gm, p1, p2 } = await table();
+  const kira = (await p1.act("char.save", { char: { name: "Kira", credits: 10 } })).data.id;
+  const rex = (await p2.act("char.save", { char: { name: "Rex" } })).data.id;
+  assert.equal((await p1.act("stash.add", { items: [{ name: "Free stuff" }] })).code, 403);
+  assert.equal((await gm.act("stash.add", {})).code, 400);
+  await gm.act("stash.add", { items: [{ name: "Vibroknife of Echoes", rar: "Premium", att: true, notes: "Weapon", id: "__proto__" }, { name: "Medpac", qty: 3, rar: "Bogus" }, { name: "" }], credits: 301 });
+  let st = (await p1.poll()).data.state;
+  assert.equal(st.stash.items.length, 2, "everyone sees the stash; a nameless item is dropped");
+  assert.equal(st.stash.credits, 301);
+  const [blade, med] = st.stash.items;
+  assert.notEqual(blade.id, "__proto__", "ids are the server's");
+  assert.equal(med.rar, undefined, "only SW5e's rarities");
+  assert.ok(st.chat.some((m) => /Into the party stash: Vibroknife of Echoes \(Premium\), 3× Medpac, 301 credits/.test(m.text || "")));
+  assert.equal((await p2.act("stash.take", { id: blade.id, charId: kira })).code, 403, "a player takes onto their own character only");
+  assert.equal((await p1.act("stash.take", { id: blade.id, charId: kira })).code, 200);
+  assert.equal((await p2.act("stash.take", { id: blade.id, charId: rex })).code, 400, "it's gone");
+  st = (await gm.poll()).data.state;
+  const got = st.characters[kira].equipment.find((e) => e.name === "Vibroknife of Echoes");
+  assert.ok(got && /Premium, requires attunement · Weapon/.test(got.notes), "onto the sheet, rarity noted");
+  assert.equal(st.stash.items.length, 1);
+  assert.equal((await p1.act("stash.split", { chars: [kira, rex] })).code, 403, "sharing out is the GM's");
+  await gm.act("stash.split", { chars: [kira, rex] });
+  st = (await gm.poll()).data.state;
+  assert.deepEqual([st.characters[kira].credits, st.characters[rex].credits, st.stash.credits], [160, 150, 1], "even shares; the odd credit stays");
+  await gm.act("stash.remove", { id: med.id, credits: true });
+  assert.equal((await p1.poll()).data.state.stash, undefined, "empty: gone");
+});
+
 test("multiclassing prerequisites and proficiencies (2.12, 2.13); the GM undoes a last level (2.15)", async () => {
   require("../sections/jpesus/holotable/rules.js");
   const R = globalThis.SW5E;
@@ -2307,4 +2336,15 @@ test("a record of sheet changes (12.5): who changed what, read by the GM, and th
   assert.equal(log2.at(-1).by, "GM (undo)");
   assert.equal((await gm.act("sheet.revert", { charId: id, entry: "nope" })).code, 400);
   assert.deepEqual((await gm.call("GET", { op: "history", char: "__proto__" })).data.log, []);
+});
+
+test("the stash keeps an item a full pack can't take (#195 review)", async () => {
+  const { gm, p1 } = await table();
+  const id = (await p1.act("char.save", { char: { name: "Packrat", equipment: Array.from({ length: 200 }, (_, i) => ({ name: "Junk " + i })) } })).data.id;
+  await gm.act("stash.add", { items: [{ name: "Vibro blade" }] });
+  const it = (await p1.poll()).data.state.stash.items[0];
+  const r = await p1.act("stash.take", { id: it.id, charId: id });
+  assert.equal(r.code, 400);
+  assert.match(r.data.error, /gear is full/);
+  assert.equal((await p1.poll()).data.state.stash.items.length, 1, "still in the stash");
 });
