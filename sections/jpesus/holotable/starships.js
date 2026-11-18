@@ -516,8 +516,27 @@
   // proficiency, the weapon's own bonus
   const wisMod = (ship) => Math.floor((int((ship && ship.abilities || {}).wis, 10) - 10) / 2);
   const strMod = (ship) => Math.floor((int((ship && ship.abilities || {}).str, 10) - 10) / 2);
-  const attackBonusOf = (ship, w, pb) => wisMod(ship) + crewPbOf(pb) + int(w && w.atkMisc);
-  const saveDcOf = (ship, w, pb) => 8 + crewPbOf(pb) + wisMod(ship) + int(w && w.atkMisc);
+  // saturate: the better of Strength and Wisdom
+  const aimMod = (ship, w) => (weaponProp(w, 'saturate') ? Math.max(wisMod(ship), strMod(ship)) : wisMod(ship));
+  const attackBonusOf = (ship, w, pb) => aimMod(ship, w) + crewPbOf(pb) + int(w && w.atkMisc);
+  const saveDcOf = (ship, w, pb) => 8 + crewPbOf(pb) + aimMod(ship, w) + int(w && w.atkMisc);
+  // Firing modes: a single shot, and rapid or burst for weapons with those properties (auto weapons fire only in those).
+  // Rapid: one target saves (Dexterity, DC 8 + the attack bonus) or takes the damage plus its dice again; nothing on a
+  // success. Burst: every ship in a 150-ft cube on the target saves or takes the damage; nothing on a success. Each
+  // uses as many shots of heat or ammunition as its number.
+  function weaponModes(w) {
+    const out = weaponProp(w, 'auto') ? [] : ['single'];
+    if (weaponProp(w, 'rapid')) out.push('rapid');
+    if (weaponProp(w, 'burst')) out.push('burst');
+    return out.length ? out : ['single'];
+  }
+  const shotCost = (w, mode) => (mode === 'rapid' || mode === 'burst' ? Math.max(1, typeof weaponProp(w, mode) === 'number' ? weaponProp(w, mode) : 1) : 1);
+  // overheat N: shots before the weapon must be cooled (an action); null when it doesn't overheat
+  const heatCap = (w) => (typeof weaponProp(w, 'overheat') === 'number' ? weaponProp(w, 'overheat') : null);
+  const reloadOf = (w) => (typeof weaponProp(w, 'reload') === 'number' ? weaponProp(w, 'reload') : null);
+  // the squares of a 150-ft cube (3 x 3) on a ship token, and whether a ship of n squares at t has a square in it
+  function burstBox(t, n) { const c = { x: t.x + n / 2, y: t.y + n / 2 }; return { x0: c.x - 1.5, y0: c.y - 1.5, x1: c.x + 1.5, y1: c.y + 1.5 }; }
+  const inBox = (box, t, n) => t.x < box.x1 && t.x + n > box.x0 && t.y < box.y1 && t.y + n > box.y0;
   // The damage of a hit: the weapon's dice (twice on a critical) plus the ship's Strength for primary and secondary
   // weapons, plus half of it (rounded up, at least 1) for a heavy weapon.
   function damageExpr(ship, w, crit) {
@@ -662,5 +681,5 @@
     setCondition, summary, SIZE_DATA, SHIELD_TYPES, REACTORS, COUPLINGS, SYSTEMS, POOLS, SYSTEM_NAMES, POWER_DIE, sizeOf, roleOf, reactorOf, couplingOf,
     shieldTypeOf, powerDie, powerDieText, powerCaps, diceOf, diceLeft, regenRate, boostDC, regenDC, boostedSpeed, startTurn, usePower, setPower,
     setDiceUsed, boost, regenerateShields, SQUARE_FT, SQUARES, squaresOf, FACING_NAMES, DIRS, gridFeet, turnSteps, turnCost, moveCost, inBounds, shipGap,
-    arcOf, INIT_SIZE_MOD, npcInitBonus, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck };
+    arcOf, INIT_SIZE_MOD, npcInitBonus, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck };
 });
