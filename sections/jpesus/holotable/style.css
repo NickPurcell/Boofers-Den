@@ -639,6 +639,7 @@ table.t td:first-child input { min-width: 140px; }
 .ship-lv select { width: auto; min-width: 0; font-size: 13px; padding: 2px 4px; }
 .ship-fight .btn:disabled { opacity: .45; cursor: default; }
 .ship-build summary { cursor: pointer; font-size: 13px; }
+.ship-sheet .warn { color: var(--red); }
 .ship-build .t td:first-child { color: var(--muted); }
 .ship-power { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
 .ship-pool { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; }

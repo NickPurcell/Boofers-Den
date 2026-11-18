@@ -883,7 +883,8 @@
           <div class="row wrap"><label class="mini">Fuel ${shipInp('fuel', s.fuel, { ro, w: '90px' })}</label><label class="mini">Mod slots ${shipInp('slots', s.slots, { ro, w: '90px', ph: 'used / max' })}</label><label class="mini">Suites ${shipInp('suites', s.suites, { ro, w: '140px' })}</label></div>
           ${shipInp('cargo', s.cargo, { ro, type: 'textarea', rows: 2, ph: 'Cargo' })}</div>
         <div class="box"><h4>Modifications <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-sa="pick-mod">＋ from SotG</button><button class="btn tiny ghost" data-sa="add-mod">custom</button>' : ''}</h4>
-          ${(s.mods || []).map((x, i) => `<div class="row" style="margin-bottom:4px">${shipInp(`mods.${i}.name`, x.name, { ro, w: '40%' })}${shipInp(`mods.${i}.notes`, x.notes, { ro })}${!ro ? `<button class="btn tiny ghost" data-sa="del" data-list="mods" data-i="${i}">✕</button>` : ''}</div>`).join('') || '<p class="muted">None.</p>'}
+          ${window.HTShipSheet ? HTShipSheet.modsHead(s) : ''}
+          ${(s.mods || []).map((x, i) => `<div class="row" style="margin-bottom:4px">${shipInp(`mods.${i}.name`, x.name, { ro, w: '40%' })}${shipInp(`mods.${i}.notes`, x.notes, { ro })}${!ro ? `<button class="btn tiny ghost" data-sa="del" data-list="mods" data-i="${i}">✕</button>` : ''}</div>${window.HTShipSheet ? HTShipSheet.modRow(s, x, i, ro, shipInp) : ''}`).join('') || '<p class="muted">None.</p>'}
           <h4 style="margin-top:10px">Notes</h4>${shipInp('notes', s.notes, { ro, type: 'textarea', rows: 4 })}</div>
       </div></div>`;
     el.innerHTML = html;
@@ -956,7 +957,7 @@
       facets: [{ key: 'type', label: 'types', get: x => x.type }, { key: 'grade', label: 'grades', get: x => x.grade }],
       row: x => `<b>${esc(x.n)}</b><span class="pp-lvl">${esc(x.type)}</span><span class="pp-tag">Grade ${n0(x.grade)}</span><div class="pp-meta">${x.pre ? 'Requires ' + esc(x.pre) : ''}</div>`,
       detail: x => md(x.md), action: (x, i) => pickBtn(i),
-      onPick: x => { mutateShip(s => s.mods.push({ name: x.n, notes: `${x.type}, grade ${x.grade}`.slice(0, 300) })); H.toast(`Added ${x.n}`); },
+      onPick: x => { mutateShip(s => s.mods.push({ name: x.n, notes: `${x.type}, grade ${x.grade}`.slice(0, 300), type: x.type, grade: n0(x.grade), pre: String(x.pre || '').slice(0, 200), free: false })); H.toast(`Added ${x.n}`); },
     });
   }
   async function openDeployment(name) {

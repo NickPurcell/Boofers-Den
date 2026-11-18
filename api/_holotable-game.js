@@ -150,7 +150,7 @@ function cleanShip(sh, chars) {
     weapons: list(sh.weapons, 30, (w) => ({ name: s(w.name, 80), atkMisc: clamp(int(w.atkMisc), -20, 20), dmg: s(w.dmg, 40), type: s(w.type, 30),
       range: s(w.range, 40), props: s(w.props, 300), ...Ships.cleanWeapon(w) })),
     equipment: list(sh.equipment, 60, (e) => ({ name: s(e.name, 80), notes: s(e.notes, 300) })),
-    mods: list(sh.mods, 80, (e) => ({ name: s(e.name, 80), notes: s(e.notes, 300) })),
+    mods: list(sh.mods, 80, (e) => ({ name: s(e.name, 80), notes: s(e.notes, 300), ...Ships.cleanMod(e) })),
     notes: s(sh.notes, 10000), ...Ships.cleanFields(sh), updated: now(),
   };
 }
