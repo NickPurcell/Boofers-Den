@@ -12,6 +12,7 @@ const Ships = require("./_holotable-ships.js");   // a ship in a fight (ship.dam
 const Space = require("./_holotable-space.js");   // the space map (space.*): ship fights on their own map, jpesus's call on #146
 const Ask = require("./_holotable-ask.js");   // the GM asking for a roll (audit 9.12)
 const Downtime = require("./_holotable-downtime.js");   // downtime days and their log (audit 11.1, #202)
+const Craft = require("./_holotable-craft.js");         // crafting (audit 11.2, #167): its requests, the GM's to approve
 const Story = require("./_holotable-story.js");   // factions, rivals and lifestyle between fights (audit section 11)
 const R = globalThis.SW5E;   // rules.js, loaded by the fight module (senses)
 
@@ -173,6 +174,7 @@ function cleanChar(ch) {
     _format: "holotable-sw5e", id: ch.id, name: s(ch.name, 80) || "Unnamed", species: s(ch.species, 60), background: s(ch.background, 60),
     alignment: s(ch.alignment, 60), xp: numOr(ch.xp, 0), credits: numOr(ch.credits, 0),
     ...((d) => (d ? { downtime: d } : {}))(Downtime.clean(ch.downtime)),   // downtime days and log (11.1): the server's to write
+    ...((c) => (c ? { craft: c } : {}))(Craft.clean(ch.craft)),             // crafting requests (11.2): the server's to write
     classes: list(ch.classes, 6, (k) => ({ name: s(k.name, 40) || "Fighter", level: clamp(int(k.level, 1), 0, 20), archetype: s(k.archetype, 60) })),
     abilities: nums(ch.abilities, ABILS, 10),
     saves: Object.fromEntries(ABILS.map((a) => [a, !!(ch.saves || {})[a]])),
@@ -561,6 +563,7 @@ function applyAction(camp, cid, gm, type, p) {
   if (Ships.handles(type)) return Ships.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, shownName, Forbidden, Invalid });
   if (Space.handles(type)) return Space.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, shownName, applyAction, rid, Forbidden, Invalid });
   if (Downtime.handles(type)) return Downtime.apply(camp, cid, gm, type, p, { addChat, shownName, applyAction, rollDice, Forbidden, Invalid });
+  if (Craft.handles(type)) return Craft.apply(camp, cid, gm, type, p, { addChat, shownName, rollDice, Forbidden, Invalid });
 
   switch (type) {
     // ---- characters
@@ -605,6 +608,7 @@ function applyAction(camp, cid, gm, type, p) {
       clean.image = old ? old.image || "" : "";
       clean.tokenImage = old ? old.tokenImage || "" : "";
       if (old && old.downtime) clean.downtime = old.downtime; else delete clean.downtime;   // only downtime actions change it (11.1)
+      if (old && old.craft) clean.craft = old.craft; else delete clean.craft;               // only craft actions change it (11.2)
       clean.updated = now();
       if (!(camp.variants || []).includes("Simplified Forcecasting")) delete clean.forceAbility;   // only while the GM uses it
       chars[id] = clean;
@@ -1069,6 +1073,7 @@ function applyAction(camp, cid, gm, type, p) {
       const back = cleanChar(Object.assign({}, u.sheet, { id }));
       back.owner = cur.owner; back.image = cur.image || ""; back.tokenImage = cur.tokenImage || ""; back.updated = now();
       if (cur.downtime) back.downtime = cur.downtime; else delete back.downtime;   // days granted and spent since stay (11.1, #226 review)
+      if (cur.craft) back.craft = cur.craft; else delete back.craft;   // and the crafts asked for since, which spent them (11.2)
       chars[id] = back;
       for (const e of camp.initiative.entries) if (e.charId === id) { e.hp = (back.hp || {}).current; e.maxHp = (back.hp || {}).max; }
       camp.levelUps = camp.levelUps || {};

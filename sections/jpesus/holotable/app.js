@@ -710,6 +710,65 @@
   }
   // the party stash (6.9): what the party found and hasn't split yet. Anyone takes an item onto their own character;
   // the GM puts things in (🎁 Loot in the GM tab), shares out the credits and removes things.
+  // ---- crafting (audit 11.2, Wretched Hives): ask, the GM approves (value, days, materials, tool), then roll
+  function craftRows(ch, ro) {
+    const list = (ch.craft && ch.craft.pending) || [];
+    if (!list.length) return '';
+    return `<div class="craft-list">${list.map(q => `<div class="row craft-row"><span>🔨 <b>${esc(q.item.name)}</b> <span class="muted">${q.ok
+      ? `approved: ${n0(q.days)} day${n0(q.days) === 1 ? '' : 's'}, ${n0(q.cost).toLocaleString()} cr in materials, Intelligence with ${esc(q.tool)}`
+      : `asked (about ${n0(q.value).toLocaleString()} cr); waiting for the GM`}</span></span><span class="spacer"></span>
+      ${q.ok ? (!ro ? `<button class="btn tiny amber" data-act="craft-roll" data-id="${esc(q.id)}" title="Roll the Intelligence check, then the d100 for how it went">Roll</button>` : '')
+        : (isGM() ? `<button class="btn tiny" data-act="craft-ok" data-id="${esc(q.id)}">Approve</button><button class="btn tiny ghost" data-act="craft-no" data-id="${esc(q.id)}">Turn down</button>` : '')
+          + (!ro && !isGM() ? `<button class="btn tiny ghost" data-act="craft-cancel" data-id="${esc(q.id)}">Withdraw</button>` : '')}</div>`).join('')}</div>`;
+  }
+  async function openCraft(ch) {
+    let std = [], enh = [];
+    try { [std, enh] = await Promise.all([equipList('standard'), equipList('enhanced')]); } catch (err) { return toast(err.message, true); }
+    const all = std.map(it => ({ it, enh: false })).concat(enh.map(it => ({ it, enh: true })));
+    const byName = new Map(all.map(x => [x.it.n.toLowerCase(), x]));
+    modal(`<h3>🔨 Craft</h3>
+      <input id="craftName" list="dlCraft" placeholder="An item from SW5e's gear or enhanced items" style="width:100%">
+      <datalist id="dlCraft">${all.map(x => `<option value="${esc(x.it.n)}">${esc(x.enh ? `${x.it.rar || ''} ${x.it.cat}` : x.it.cat)}</option>`).join('')}</datalist>
+      <div id="craftInfo" class="muted" style="margin:8px 0">Wretched Hives: it takes the item's value ÷ 250 days, materials worth half its value, and the right tools.</div>
+      <input id="craftNote" placeholder="A note for the GM (optional)" style="width:100%">
+      <div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn" id="craftNo">Cancel</button><button class="btn primary" id="craftAsk">Ask the GM</button></div>`, box => {
+      const info = () => {
+        const x = byName.get($('#craftName', box).value.trim().toLowerCase());
+        if (!x) return null;
+        const v = R.craftValue(x.it, x.enh);
+        $('#craftInfo', box).textContent = `${x.it.n}: about ${v.toLocaleString()} cr · ${R.craftDays(v)} day${R.craftDays(v) === 1 ? '' : 's'} · ${Math.floor(v / 2).toLocaleString()} cr in materials · ${R.craftTool(x.it, x.enh)}`
+          + (x.enh ? '. An enhanced item also needs its blueprint and a rare material; the GM decides.' : '');
+        return Object.assign(x, { v });
+      };
+      box.oninput = e => { if (e.target.id === 'craftName') info(); };
+      box.onclick = async e => {
+        if (e.target.id === 'craftNo') return closeModal();
+        if (e.target.id !== 'craftAsk') return;
+        const x = info(); if (!x) return toast('Pick an item from the list.', true);
+        const it = x.it, item = sheetItem(it, x.enh);   // what "+ from SW5e" would add: a medpac keeps its Use, an enhanced item its +N
+        if (await act('craft.request', { charId: ch.id, item, value: x.v, tool: R.craftTool(it, x.enh), note: $('#craftNote', box).value.trim() })) { closeModal(); toast('Asked the GM.'); }
+      };
+    });
+  }
+  function craftApprove(ch, id) {   // the GM: the book's numbers to start with, any of them changed
+    const q = ((ch.craft && ch.craft.pending) || []).find(x => x.id === id); if (!q) return;
+    const tool = q.tool || R.craftTool({ n: q.item.name, cat: q.item.armor ? 'Armor' : '', sub: '' }, !!q.item.rar);
+    modal(`<h3>Approve: ${esc(ch.name)} crafts ${esc(q.item.name)}</h3>${q.note ? `<p class="muted">"${esc(q.note)}"</p>` : ''}
+      <div class="row wrap"><label>Value (cr) <input id="caValue" type="number" min="0" value="${n0(q.value)}" style="width:110px"></label>
+        <label>Days <input id="caDays" type="number" min="0" value="${R.craftDays(q.value)}" style="width:80px"></label>
+        <label>Materials (cr) <input id="caCost" type="number" min="0" value="${Math.floor(n0(q.value) / 2)}" style="width:110px"></label></div>
+      <label style="margin-top:8px">Tool <input id="caTool" value="${esc(tool)}" style="width:100%"></label>
+      <p class="muted" style="font-size:12px">Approving takes the days and the materials from ${esc(ch.name)}'s downtime and credits. ${q.item.rar ? 'An enhanced item needs its blueprint and a rare material: approve only if they have them.' : ''}</p>
+      <div class="row"><span class="spacer"></span><button class="btn" id="caNo">Cancel</button><button class="btn primary" id="caOk">Approve</button></div>`, box => {
+      $('#caValue', box).oninput = () => { const v = +$('#caValue', box).value || 0; $('#caDays', box).value = R.craftDays(v); $('#caCost', box).value = Math.floor(v / 2); };
+      box.onclick = async e => {
+        if (e.target.id === 'caNo') return closeModal();
+        if (e.target.id !== 'caOk') return;
+        if (await act('craft.decide', { charId: ch.id, id, ok: true, value: +$('#caValue', box).value || 0, days: +$('#caDays', box).value || 0, cost: +$('#caCost', box).value || 0, tool: $('#caTool', box).value })) closeModal();
+      };
+    });
+  }
+
   function stashBox(ch, ro) {
     const st = S.st.stash;
     if (!st && !isGM()) return '';
@@ -963,7 +1022,7 @@
 
     if (sub === 'gear') {
       html += `<div class="grid g2">
-        <div class="box eq-box"><h4>Equipment <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-equip">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-item" title="Add an item by hand">custom</button>' : ''}</h4>
+        <div class="box eq-box"><h4>Equipment <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="craft" title="Ask the GM to craft an item in downtime (Wretched Hives)">🔨 Craft</button><button class="btn tiny" data-act="pick-equip">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-item" title="Add an item by hand">custom</button>' : ''}</h4>
           <div class="row" style="margin-bottom:8px"><span class="muted">Credits</span>${inp('credits', +ch.credits || 0, { ro, type: 'number', w: '120px' })}</div>
           ${(cw => `<div class="row carry ${cw.state ? 'carry-' + cw.state : ''}" style="margin-bottom:8px" title="Carrying capacity: Strength x 15 (PHB, Lifting and Carrying)${cw.variant ? '. Encumbrance variant: over 5 x Strength, speed -10 ft; over 10 x Strength, speed -20 ft and disadvantage on Str, Dex and Con rolls' : ''}">
             <span class="muted">Carrying</span> <b>${n0(cw.weight)}</b> <span class="muted">of ${n0(cw.capacity)} lb</span>${cw.text ? ` <span class="carry-state">${esc(cw.text)}</span>` : ''}
@@ -978,7 +1037,7 @@
             <td class="armor-cell">${inp(`equipment.${i}.armor.kind`, (e.armor || {}).kind || '', { ro, type: 'select', options: [{ v: '', t: '—' }, ...R.ARMOR_KINDS] })}${e.armor && e.armor.kind ? inp(`equipment.${i}.armor.ac`, +e.armor.ac || 0, { ro, type: 'number' }) : ''}</td>
             <td class="eq-cell">${inp(`equipment.${i}.equipped`, e.equipped, { ro, type: 'checkbox' })}${e.att ? `<span class="attune" title="Attuned (Wretched Hives: it takes a short rest with the item)${e.rar ? ` · ${esc(e.rar)}` : ''}">⟡${inp(`equipment.${i}.attuned`, !!e.attuned, { ro, type: 'checkbox' })}</span>` : ''}</td>
             <td style="white-space:nowrap">${!ro ? `${e.chassis ? `<button class="btn tiny" data-act="mods" data-i="${i}" title="Modifications: install and remove (Wretched Hives)">Mods ${(e.chassis.mods || []).length}/${R.modSlots(e.rar).base + R.modSlots(e.rar).aug}</button>` : ''}${e.use ? `<button class="btn tiny" data-act="use-item" data-i="${i}" title="Use one: ${esc(useText(e.use) || 'lowers the count')}">Use</button>` : ''}<button class="btn tiny ghost" data-act="sell" data-i="${i}" title="Sell one${+e.cost > 0 ? ` (half its cost: ${R.sellPrice(e).toLocaleString()} cr)` : ''}">Sell</button><button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Empty.</td></tr>'}
-          </tbody></table></div></div>
+          </tbody></table></div>${craftRows(ch, ro)}</div>
         ${stashBox(ch, ro)}
         <div class="box"><h4>Features & Traits <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-feature" title="Feats, class features, maneuvers, fighting styles, lightsaber forms, ventures">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-feature" title="Write a feature by hand">custom</button>' : ''}</h4>
           <div class="feature-list">${(ch.features || []).map((f, i) => `<div class="feature-row">
@@ -1190,6 +1249,11 @@
           <div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn" id="infoClose">Close</button></div>`, box => { box.onclick = ev => { if (ev.target.id === 'infoClose') closeModal(); }; });
         break;
       }
+      case 'craft': openCraft(ch); break;
+      case 'craft-cancel': act('craft.cancel', { charId: ch.id, id: b.dataset.id }); break;
+      case 'craft-roll': act('craft.roll', { charId: ch.id, id: b.dataset.id }); break;
+      case 'craft-no': if (confirm('Turn this request down?')) act('craft.decide', { charId: ch.id, id: b.dataset.id, ok: false }); break;
+      case 'craft-ok': craftApprove(ch, b.dataset.id); break;
       case 'sell': {   // selling (audit 6.8): one of the item, for half its cost by default (PHB, Selling Treasure); the table can agree another price
         const it = ch.equipment[i]; if (!it) break;
         const ans = prompt(`Sell one ${it.name} for how many credits?${+it.cost > 0 ? ` (Half its cost is ${R.sellPrice(it).toLocaleString()} cr.)` : ''}`, String(R.sellPrice(it)));
@@ -1336,6 +1400,18 @@
     const crit = R.critFrom(props);   // Keen N: the crit range grows by N
     return { name: it.n, ab, damage: it.dmg || '1', type: it.dt || 'kinetic', props: props.slice(0, 200), proficient: true, ...(crit < 20 ? { critRange: crit } : {}) };
   }
+  // a sheet item from an SW5e gear or enhanced item: one builder for "+ from SW5e" and for crafting (11.2)
+  function sheetItem(it, enh) {
+    const armor = !enh && R.armorFromItem(it);
+    return Object.assign({ name: it.n, qty: 1, equipped: false, notes: itemNotes(it, enh).slice(0, 200) }, armor ? { armor } : {},
+      !enh && parseFloat(it.wt) > 0 ? { wt: parseFloat(it.wt) } : {}, !enh && it.cost > 0 ? { cost: it.cost } : {},   // weight (6.5) and cost (6.8)
+      enh && R.RARITIES.includes(it.rar) ? { rar: it.rar } : {}, enh && it.att ? { att: true } : {},   // rarity and attunement (6.3)
+      (enh ? it.cat === 'Consumable' : ['Medical', 'Explosive'].includes(it.cat)) ? { use: R.consumableUse(it.desc) || {} } : {},   // a consumable (6.7)
+      enh && R.enhancedBonus(it.desc) ? { bonus: R.enhancedBonus(it.desc) } : {},   // an enhanced item's +N (6.2)
+      // a chassis, with its kind and no modifications yet; a modification, with the kind of chassis it fits (6.4)
+      enh && R.chassisKind(it.n) ? { chassis: { kind: R.chassisKind(it.n), mods: [] } } : {},
+      enh && it.cat === 'Item Modification' && R.cleanMod({ kind: String(it.sub || '').toLowerCase() }) ? { mod: { kind: String(it.sub).toLowerCase() } } : {});
+  }
   function itemNotes(it, enhanced) {
     if (enhanced) return [it.rar && `${it.rar} ${it.cat.toLowerCase()}`, it.sub, it.att && 'requires attunement'].filter(Boolean).join(' · ');
     if (it.cat === 'Weapon') return [it.dmg && `${it.dmg} ${it.dt}`, (it.props || []).join(', ')].filter(Boolean).join(' · ');
@@ -1428,14 +1504,7 @@
             if (buy) c.credits = n0(c.credits) - it.cost;
             const ex = c.equipment.find(x => String(x.name).toLowerCase() === it.n.toLowerCase());
             if (ex) ex.qty = (n0(ex.qty) || 1) + 1;
-            else { const armor = !enh && R.armorFromItem(it); c.equipment.push({ name: it.n, qty: 1, equipped: false, notes: itemNotes(it, enh).slice(0, 200), ...(armor ? { armor } : {}),
-              ...(!enh && parseFloat(it.wt) > 0 ? { wt: parseFloat(it.wt) } : {}), ...(!enh && it.cost > 0 ? { cost: it.cost } : {}),   // weight (6.5) and cost (6.8)
-              ...(enh && R.RARITIES.includes(it.rar) ? { rar: it.rar } : {}), ...(enh && it.att ? { att: true } : {}),   // rarity and attunement (6.3)
-              ...((enh ? it.cat === 'Consumable' : ['Medical', 'Explosive'].includes(it.cat)) ? { use: R.consumableUse(it.desc) || {} } : {}),   // a consumable (6.7)
-              ...(enh && R.enhancedBonus(it.desc) ? { bonus: R.enhancedBonus(it.desc) } : {}),   // an enhanced item's +N (6.2)
-              // a chassis, with its kind and no modifications yet; a modification, with the kind of chassis it fits (6.4)
-              ...(enh && R.chassisKind(it.n) ? { chassis: { kind: R.chassisKind(it.n), mods: [] } } : {}),
-              ...(enh && it.cat === 'Item Modification' && R.cleanMod({ kind: String(it.sub || '').toLowerCase() }) ? { mod: { kind: String(it.sub).toLowerCase() } } : {}) });
+            else { c.equipment.push(sheetItem(it, enh));
               // an enhanced weapon of a known kind ("Vibroblade (Fine)", or its subtype) also gets that weapon's attack, with its +N
               const plus = enh && it.cat === 'Weapon' ? R.enhancedBonus(it.desc) : null, base = plus && plus.hit ? enhancedBase(it) : null;
               if (base && !c.attacks.some(x => String(x.name).toLowerCase() === it.n.toLowerCase())) c.attacks.push(Object.assign(weaponAttack(base), { name: it.n }, plus.dmg === plus.hit ? { magic: plus.hit } : {})); }   // the attack box adds to both

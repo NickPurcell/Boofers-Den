@@ -558,7 +558,7 @@ async function handlePost(req, res, q, b, ses) {
       if (ss) b.payload = Object.assign({}, b.payload, { [G.SPECIES_SENSES]: ss });
     }
     // rolling a downtime activity (11.1): its tables, from SW5e's Wretched Hives, read here, before the lock
-    if (String(b.type || "") === "downtime.roll" && b.payload) {
+    if ((String(b.type || "") === "downtime.roll" || String(b.type || "") === "craft.roll") && b.payload) {   // and crafting's (11.2)
       const acts = await downtimeTables(r);
       if (acts) b.payload = Object.assign({}, b.payload, { [G.DOWNTIME_ACTS]: acts });
     }
