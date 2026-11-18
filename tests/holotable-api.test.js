@@ -759,7 +759,7 @@ test("SW5e lists: a failed fetch isn't retried for a minute, and only one reques
 });
 
 test("SW5e books: every other list comes through op=sw5e, trimmed, from fixed paths only", async () => {
-  const { p1 } = await table();
+  const { gm, p1 } = await table();
   const realFetch = global.fetch;
   const urls = [];
   global.fetch = async (url) => {
@@ -787,6 +787,10 @@ test("SW5e books: every other list comes through op=sw5e, trimmed, from fixed pa
     assert.deepEqual(ft.map((x) => [x.n, x.lvl, x.k, x.of, x.text]), [["Rage", 1, "class", "Berserker", "Rage.\nHard."]], "class/archetype features only");
     const mon = JSON.parse((await p1.call("GET", { op: "sw5e", list: "monsters" })).data)[0];
     assert.deepEqual([mon.n, mon.ac, mon.hp, mon.ab.dex, mon.b[0].atk, mon.b[0].dmg, mon.b[0].d], ["Death Trooper", 16, 97, 19, 7, "2d6 + 4", "Ranged: blaster shot."]);
+    await gm.act("settings.statBlocks", { hidden: true });   // 9.17: the GM keeps them
+    assert.equal((await p1.call("GET", { op: "sw5e", list: "monsters" })).code, 403, "a player isn't sent the stat blocks");
+    assert.equal((await gm.call("GET", { op: "sw5e", list: "monsters" })).code, 200, "the GM is");
+    await gm.act("settings.statBlocks", { hidden: false });
     const vr = JSON.parse((await p1.call("GET", { op: "sw5e", list: "rules-variant" })).data);
     assert.equal(vr[0].n, "Flanking");
     await p1.call("GET", { op: "sw5e", list: "species" });
@@ -2190,4 +2194,29 @@ test("Infuse Item (Engineer): +1/+2/+3 to the infused weapon's attack and damage
   assert.equal(s.ac, 14, "the server's auto AC includes it");
   const id2 = (await p1.act("char.save", { char: eng(10, { name: "Odd", infused: "javascript:alert(1)" }) })).data.id;
   assert.equal((await gm.poll()).data.state.characters[id2].infused, undefined);
+});
+
+test("the GM's table rules: only the GM changes levels, XP and max HP (12.6); stat blocks kept from players (9.17)", async () => {
+  const { gm, p1 } = await table();
+  const sheet = { name: "Kira", xp: 300, classes: [{ name: "Operative", level: 3, archetype: "" }], hp: { max: 20, current: 20, temp: 0 } };
+  const id = (await p1.act("char.save", { char: sheet })).data.id;
+  assert.equal((await p1.act("settings.sheetLock", { on: true })).code, 403);
+  await gm.act("settings.sheetLock", { on: true });
+  assert.equal((await p1.poll()).data.state.sheetLock, true);
+  const c0 = (await p1.poll()).data.state.characters[id];
+  await p1.act("char.save", { char: Object.assign({}, c0, { xp: 99999, credits: 50, classes: [{ name: "Operative", level: 20, archetype: "Gunslinger Practice" }], hp: { max: 999, current: 15, temp: 0 } }) });
+  let c = (await gm.poll()).data.state.characters[id];
+  assert.deepEqual([c.xp, c.classes[0].level, c.hp.max], [300, 3, 20], "a player's save keeps them");
+  assert.deepEqual([c.classes[0].archetype, c.credits, c.hp.current], ["Gunslinger Practice", 50, 15], "the rest is still the player's");
+  await gm.act("char.save", { char: Object.assign({}, c, { xp: 900 }) });
+  assert.equal((await gm.poll()).data.state.characters[id].xp, 900, "the GM's own edits go through");
+  await gm.act("settings.sheetLock", { on: false });
+  await p1.act("char.save", { char: Object.assign({}, (await p1.poll()).data.state.characters[id], { xp: 1000 }) });
+  assert.equal((await gm.poll()).data.state.characters[id].xp, 1000, "off: as before");
+
+  await gm.act("settings.statBlocks", { hidden: true });
+  const st = (await p1.poll()).data.state;
+  assert.equal(st.statBlocksHidden, true);
+  await gm.act("settings.statBlocks", { hidden: false });
+  assert.equal((await p1.poll()).data.state.statBlocksHidden, undefined);
 });
