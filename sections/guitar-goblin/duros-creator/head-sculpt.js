@@ -53,7 +53,7 @@ export async function makeHead(THREE, opts = {}) {
   object.add(headMesh, eyesMesh, lidsMesh);
   if (r.mouth && r.mouth.length > 2) {
     const curve = new THREE.CatmullRomCurve3(r.mouth.map((p) => new THREE.Vector3(...p)));
-    object.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 40, 0.0008, 6, false), mouthMat));
+    object.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.0013, 6, false), mouthMat));
   }
 
   const setSkin = (hex) => {

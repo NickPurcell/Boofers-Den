@@ -36,12 +36,12 @@ export function headBField(shapeKey = 'round', exprKey = 'neutral', age = 0) {
   age = Math.max(0, Math.min(1, +age || 0));
   const old = Math.max(0, (age - 0.5) / 0.5);
   // the eye: a squashed ball (x radius 0.026, 0.5 as tall, 0.55 as deep), rolled by the slant, yawed outward
-  const eye = { x: 0.05 * fw, y: 0.0, z: 0.062, r: 0.026, sy: 0.5, sz: 0.55, slant: 0.175, yaw: 0.31 };
+  const eye = { x: 0.05 * fw, y: 0.0, z: 0.061, r: 0.026, sy: 0.6, sz: 0.55, slant: 0.175, yaw: 0.31 };
 
   /* ---- the skull: a box with big corner radii, widest high up, carried well back ---- */
   // the box from y -0.029 up to the crown (less what the blends add), its big corner radius rounding it over late
   const top = S.crown - 0.008, crY = (top - 0.029) / 2, hy = (top + 0.029) / 2;
-  const cranium = roundBox(0, crY, -0.036, 0.094 * fw, hy, 0.094, 0.085);
+  const cranium = roundBox(0, crY, -0.036, 0.096 * fw, hy, 0.094, 0.07);   // corner radius under the half-width: broad high up, still bulbous
   const crownBack = ellipsoid(0, top - 0.045, -0.045, 0.06 * fw, 0.042, 0.07);       // the crown's high point, over the neck
   const back = ellipsoid(0, 0.045, -0.068, 0.074 * fw, 0.1, 0.058);                        // the back of the skull at z -0.135
   const forehead = roundBox(0, 0.048, 0.03, 0.07 * fw, 0.042, 0.045, 0.034);             // rising almost straight over the brow
@@ -53,16 +53,16 @@ export function headBField(shapeKey = 'round', exprKey = 'neutral', age = 0) {
   const browPlate = ellipsoid(0, 0.022, 0.058, 0.07 * fw, 0.02, 0.022);
   // the face below the eyes: 0.080 at the eyes, 0.062 at the jaw hinge, tapering hard to the chin
   const midface = ellipsoid(0, -0.016, 0.018, 0.068 * fw, 0.045, 0.05);
-  const lowerFace = roundCone([0, -0.03, 0.012], [0, -0.1, 0.052], 0.05 * fw, 0.01);
+  const lowerFace = roundCone([0, -0.03, 0.012], [0, -0.098, 0.043], 0.05 * fw, 0.017 * fw);
   const jawSide = mirrorX(capsule([0.054 * fw, -0.035, -0.028], [0.012 * fw, -0.104, 0.042], 0.008));
-  const chin = ellipsoid(0, -0.105, 0.054, 0.014 * fw, 0.01, 0.012);                       // bottom at -0.114, 10 mm back
+  const chin = ellipsoid(0, -0.104, 0.046, 0.017 * fw, 0.011, 0.013);                      // bottom at -0.114, behind the mouth
   const cheekbone = mirrorX(ellipsoid(0.055 * fw, -0.022 + X.cheek, 0.052, 0.02, 0.011, 0.016));
   // the long flat central plane, between the brows to just above the mouth, its lower end overhanging the line
-  const plane = roundCone([0, 0.006, 0.07], [0, -0.068, 0.068], 0.02 * fw, 0.014 * fw);   // its lower end ~2-3 mm above the mouth
+  const plane = roundCone([0, 0.006, 0.07], [0, -0.066, 0.058], 0.02 * fw, 0.017 * fw);   // its lower end sinks into the muzzle above the mouth
   const planeFlat = (x, y, z) => Math.max(plane(x, y, z), z - 0.079);                      // flat across the front
 
   // the mouth's own plate: as wide as the mouth, a little behind the plane, so the line lies on it under the overhang
-  const mouthPlate = ellipsoid(0, -0.089, 0.062, 0.032 * fw, 0.015, 0.012);   // wide enough for a smile's corners
+  const mouthPlate = ellipsoid(0, -0.087, 0.054, 0.038 * fw, 0.02, 0.0115);   // a broad, shallow muzzle, wide enough for a smile's corners
 
   /* ---- carved in ---- */
   // the socket: the same slanted, yawed almond as the eye, a little larger, under the brow
@@ -71,27 +71,27 @@ export function headBField(shapeKey = 'round', exprKey = 'neutral', age = 0) {
   // the creases down each side of the plane, from the inner eye corner to just outside the mouth's corner
   const crease = mirrorX(chain([[0.024 * fw, -0.008, 0.071], [0.023 * fw, -0.04, 0.073], [0.021 * fw, -0.07, 0.071], [0.022 * fw, -0.082, 0.066]], 0.0026));
   // flat-to-hollow below the cheekbones, a little more with age
-  const hollow = mirrorX(ellipsoid(0.05 * fw, -0.052, 0.056, 0.017, 0.018, 0.003 + 0.0025 * old));
-  const temple = mirrorX(ellipsoid(0.088 * fw, 0.035, 0.0, 0.022, 0.034, 0.003 + 0.003 * age));
+  const hollow = mirrorX(ellipsoid(0.05 * fw, -0.052, 0.056, 0.017, 0.018, 0.002 + 0.0025 * old));
+  const temple = mirrorX(ellipsoid(0.099 * fw, 0.03, 0.012, 0.0035 + 0.003 * age, 0.03, 0.026));
   const bags = old > 0 ? mirrorX(ellipsoid(eye.x, eye.y - 0.022, eye.z + 0.006, 0.026, 0.005, 0.0022 + 0.0012 * old)) : null;
 
   /* ---- the neck (to the clothes' measurements), its long muscles, the nape ---- */
-  const neck = roundCone([0, -0.06, -0.032], [0, -0.3, -0.026], 0.041 * fw, 0.05);
-  const neckMuscle = mirrorX(capsule([0.056 * fw, -0.05, -0.04], [0.015, -0.262, 0.03], 0.0095));
-  const nape = capsule([0, -0.07, -0.062], [0, -0.28, -0.06], 0.028);
+  const neck = roundCone([0, -0.06, -0.032], [0, -0.3, -0.026], 0.047 * fw, 0.05);
+  const neckMuscle = mirrorX(capsule([0.057 * fw, -0.046, -0.04], [0.015, -0.262, 0.03], 0.0105));
+  const nape = roundCone([0, -0.07, -0.064], [0, -0.21, -0.056], 0.031, 0.022);
 
   let skull = smin(0.03, cranium, crownBack, back, forehead, occiput);
   skull = smin(0.024, skull, browPlate, midface, lowerFace);
   skull = smin(0.01, skull, jawSide, chin, cheekbone);
   skull = smin(0.01, skull, brow);
-  skull = smin(0.01, skull, mouthPlate);
+  skull = smin(0.018, skull, mouthPlate);
   skull = smin(0.008, skull, planeFlat);
   if (bags) skull = smin(0.02, skull, bags);
   skull = smin(0.03, skull, neck, nape);
   skull = smin(0.016, skull, neckMuscle);
-  skull = ssub(0.026, skull, temple);
+  skull = ssub(0.02, skull, temple);
   skull = ssub(0.02, skull, hollow);
-  skull = ssub(0.006, skull, translateIn(crease, 0.0014));
+  skull = ssub(0.007, skull, translateIn(crease, 0.0018));
   skull = ssub(0.005, skull, socket);
 
   // the forehead's rolls: low (1.5-2 mm) and broad (~5 mm), laid on the surface as built and dipping a little at the
@@ -99,7 +99,7 @@ export function headBField(shapeKey = 'round', exprKey = 'neutral', age = 0) {
   for (let k = 0; k < S.folds; k++) {
     const yb = 0.045 + k * 0.02 * (S.crown / 0.171), pts = [];
     for (let t = -1; t <= 1.0001; t += 0.125) {
-      const x = t * 0.06 * fw, y = yb - 0.004 * (1 - t * t) + 0.0015 * Math.sin(t * Math.PI * 2 + k);
+      const x = t * 0.06 * fw, y = yb - 0.005 * (1 - t * t) + 0.003 * Math.sin(t * Math.PI * 2.3 + k * 1.7);
       const hit = cast(skull, [x, y, 0.3], [0, 0, -1], 0.5);
       if (hit) pts.push([hit.p[0] - hit.n[0] * 0.0012, hit.p[1] - hit.n[1] * 0.0012, hit.p[2] - hit.n[2] * 0.0012]);
     }
@@ -139,7 +139,7 @@ export function headBField(shapeKey = 'round', exprKey = 'neutral', age = 0) {
   return {
     field: skull, mouthLine, eye, earAt,
     // the lids on the squashed eye: the almond's opening comes from the eye's own shape, the lids just frame it
-    lid: { upper: 1.16 + X.lid * 0.4 + age * 0.06, lower: 1.06 + X.lower * 0.5 },
+    lid: { upper: 0.9 + X.lid * 0.5 + age * 0.08, lower: 0.9 + X.lower * 0.5 },   // about 20 mm of eye showing: twice as wide as tall
     bounds: [[-0.13, -0.31, -0.16], [0.13, S.crown + 0.02, 0.11]],
   };
 }
