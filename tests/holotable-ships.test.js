@@ -1032,3 +1032,15 @@ test("travel: hyperspace times by region and class, rushing and care, fuel by re
   await gm.act("space.next", {});
   assert.equal((await p1.act("ship.astro", { id: party })).code, 200, "on its own turn");
 });
+
+// ---------------------------------------------------------------- buying, building, upgrading, docking, crew (10.17)
+test("costs: SotG's own figures for buying, building, upgrading, docking and the minimum crew", () => {
+  let c = SR.costs({ size: "Small", tier: 0 });
+  assert.deepEqual([c.stock, c.bankDown, c.bankMonthly, c.build, c.buildDays[0], c.nextTier], [25000, 5000, 500, 12500, 10, 3900], "SotG: a Small ship is 25,000 cr; tier 1 costs 3,900");
+  c = SR.costs({ size: "Huge", tier: 2 });
+  assert.deepEqual([c.nextTier, c.upgradeDays, c.buildDays[0]], [29700000, 118.8, 200], "SotG's own example: Huge, tier 2 to 3: 29,700,000 cr, 118.8 days with 500");
+  assert.equal(SR.costs({ size: "Gargantuan", tier: 5 }).nextTier, null);
+  assert.deepEqual([SR.costs({ size: "Small" }).docking, SR.costs({ size: "Medium" }).docking, SR.costs({ size: "Huge" }).docking], [20, 40, 1000]);
+  assert.deepEqual([SR.minCrew({ size: "Tiny" }), SR.minCrew({ size: "Small" }), SR.minCrew({ size: "Medium", abilities: { int: 10 } }), SR.minCrew({ size: "Large", abilities: { int: 14 } }),
+    SR.minCrew({ size: "Gargantuan", abilities: { int: 30 } }), SR.minCrew({ size: "Huge", abilities: { int: 30 } })], [0, 1, 4, 120, 10000, 1000]);
+});

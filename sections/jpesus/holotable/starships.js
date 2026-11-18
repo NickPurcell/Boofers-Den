@@ -814,6 +814,31 @@
   ];
   const mishapFor = (total) => MISHAPS.find(([lo]) => int(total) >= lo)[1];
 
+  // ---- buying, building, upgrading, docking and crewing (SotG chapters 3, 5 and 8)
+  const STOCK_COST = { Tiny: 12500, Small: 25000, Medium: 75000, Large: 500000, Huge: 100000000, Gargantuan: 1000000000 };
+  const BUILD_WORKFORCE = { Tiny: [3, 18], Small: [5, 30], Medium: [10, 60], Large: [100, 600], Huge: [1000, 6000], Gargantuan: [10000, 60000] };
+  const TIER_COST = [0, 3900, 77500, 297000, 620000, 1150000];
+  const EQUIP_COST = { Tiny: 0.5, Small: 1, Medium: 2, Large: 5, Huge: 50, Gargantuan: 500 };
+  // minimum effective crew by Intelligence modifier (-2 to 7), Medium and up; Small 1; Tiny none
+  const MIN_CREW = { Medium: [6, 5, 4, 3, 2, 1, 1, 1, 1, null], Large: [800, 600, 400, 200, 120, 64, 32, 16, 8, null], Huge: [10000, 8000, 7000, 6000, 5000, 4000, 3000, 2000, 1000, null],
+    Gargantuan: [120000, 100000, 80000, 70000, 60000, 50000, 40000, 30000, 20000, 10000] };
+  function minCrew(ship) {
+    const size = sizeKey(ship); if (size === 'Tiny') return 0; if (size === 'Small') return 1;
+    const row = own(MIN_CREW, size), i = clamp(modOf(ship, 'int') + 2, 0, 9);
+    for (let k = i; k >= 0; k--) if (row[k] != null) return row[k];
+    return row[0];
+  }
+  function costs(ship) {
+    const size = sizeKey(ship), tier = tierOf(ship), stock = own(STOCK_COST, size), bw = own(BUILD_WORKFORCE, size), uw = own(UPGRADE_WORKFORCE, size);
+    const next = tier < 5 ? Math.round(TIER_COST[tier + 1] * own(UPGRADE_COST, size)) : null;
+    return {
+      stock, bankDown: Math.round(stock * 0.2), bankMonthly: Math.round(stock * 0.02), sharkMonthly: Math.round(stock * 0.1),
+      build: stock / 2, buildWorkforce: bw, buildDays: [stock / (500 * bw[0]), stock / (500 * bw[1])].map((d) => Math.round(d * 10) / 10),
+      nextTier: next, upgradeWorkforce: uw, upgradeDays: next != null ? Math.round(next / (500 * uw) * 10) / 10 : null,
+      docking: Math.round(20 * Math.max(1, own(EQUIP_COST, size))), minCrew: minCrew(ship),
+    };
+  }
+
   // what the sheet shows of a ship's state, in short phrases
   function summary(ship) {
     const st = statusOf(ship), hullNow = int(ship && ship.hull && ship.hull.current), out = [];
@@ -828,5 +853,5 @@
     setCondition, summary, SIZE_DATA, SHIELD_TYPES, REACTORS, COUPLINGS, SYSTEMS, POOLS, SYSTEM_NAMES, POWER_DIE, sizeOf, roleOf, reactorOf, couplingOf,
     shieldTypeOf, powerDie, powerDieText, powerCaps, diceOf, diceLeft, regenRate, boostDC, regenDC, boostedSpeed, startTurn, usePower, setPower,
     setDiceUsed, boost, regenerateShields, SQUARE_FT, SQUARES, squaresOf, FACING_NAMES, DIRS, gridFeet, turnSteps, turnCost, moveCost, inBounds, shipGap,
-    arcOf, INIT_SIZE_MOD, npcInitBonus, REGIONS, HYPER_HOURS, START_UP, hyperClass, stepsFor, jumpHours, jumpFuel, fuelOf, mishapFor, MOD_TYPES, modsSummary, modCost, installDC, pastCapacity, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck };
+    arcOf, INIT_SIZE_MOD, npcInitBonus, STOCK_COST, TIER_COST, minCrew, costs, REGIONS, HYPER_HOURS, START_UP, hyperClass, stepsFor, jumpHours, jumpFuel, fuelOf, mishapFor, MOD_TYPES, modsSummary, modCost, installDC, pastCapacity, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck };
 });

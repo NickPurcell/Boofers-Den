@@ -914,18 +914,21 @@
 
     if (sub === 'gear') {
       html += `<div class="grid g2">
-        <div class="box"><h4>Equipment <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-equip">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-item" title="Add an item by hand">custom</button>' : ''}</h4>
+        <div class="box eq-box"><h4>Equipment <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-equip">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-item" title="Add an item by hand">custom</button>' : ''}</h4>
           <div class="row" style="margin-bottom:8px"><span class="muted">Credits</span>${inp('credits', +ch.credits || 0, { ro, type: 'number', w: '120px' })}</div>
           ${(cw => `<div class="row carry ${cw.state ? 'carry-' + cw.state : ''}" style="margin-bottom:8px" title="Carrying capacity: Strength x 15 (PHB, Lifting and Carrying)${cw.variant ? '. Encumbrance variant: over 5 x Strength, speed -10 ft; over 10 x Strength, speed -20 ft and disadvantage on Str, Dex and Con rolls' : ''}">
             <span class="muted">Carrying</span> <b>${n0(cw.weight)}</b> <span class="muted">of ${n0(cw.capacity)} lb</span>${cw.text ? ` <span class="carry-state">${esc(cw.text)}</span>` : ''}
             ${isGM() ? `<label class="muted carry-var" title="PHB variant: weight slows characters down (the GM's call, for the whole table)"><input type="checkbox" data-act-change="encumbrance" ${cw.variant ? 'checked' : ''}> Encumbrance variant</label>` : ''}</div>`)(R.carrying(ch, S.st.variants))}
+          ${(at => (ch.equipment || []).some(e => e.att) || at.simple ? `<div class="row carry ${at.used > at.max ? 'carry-over' : ''}" style="margin-bottom:8px" title="Wretched Hives: as many slots as the proficiency bonus; advanced, legendary and artifact items take two">
+            <span class="muted">Attunement</span> <b>${n0(at.used)}</b> <span class="muted">of ${n0(at.max)} slots</span>${at.used > at.max ? ' <span class="carry-state">over the limit</span>' : ''}
+            ${isGM() ? `<label class="muted carry-var" title="Wretched Hives variant: three slots, every item takes one (the GM's call, for the whole table)"><input type="checkbox" data-act-change="simple-attune" ${at.simple ? 'checked' : ''}> Simpler attunement</label>` : ''}</div>` : '')(R.attunement(ch, S.st.variants))}
           <div class="eq-wrap"><table class="t eq-table"><thead><tr><th>Qty</th><th>Item</th><th>Notes</th><th title="Weight in pounds, each">Wt</th><th title="Armor or shield, for the auto AC: its kind and AC (a shield's bonus)">Armor</th><th>Eq.</th><th></th></tr></thead><tbody>
           ${(ch.equipment || []).map((e, i) => `<tr><td class="n">${inp(`equipment.${i}.qty`, +e.qty || 1, { ro, type: 'number' })}</td>
             <td>${inp(`equipment.${i}.name`, e.name, { ro })}</td><td>${inp(`equipment.${i}.notes`, e.notes || '', { ro })}</td>
             <td class="n eq-wt">${inp(`equipment.${i}.wt`, +e.wt || '', { ro, type: 'number', ph: '0' })}</td>
             <td class="armor-cell">${inp(`equipment.${i}.armor.kind`, (e.armor || {}).kind || '', { ro, type: 'select', options: [{ v: '', t: '—' }, ...R.ARMOR_KINDS] })}${e.armor && e.armor.kind ? inp(`equipment.${i}.armor.ac`, +e.armor.ac || 0, { ro, type: 'number' }) : ''}</td>
-            <td>${inp(`equipment.${i}.equipped`, e.equipped, { ro, type: 'checkbox' })}</td>
-            <td style="white-space:nowrap">${!ro ? `<button class="btn tiny ghost" data-act="sell" data-i="${i}" title="Sell one${+e.cost > 0 ? ` (half its cost: ${R.sellPrice(e).toLocaleString()} cr)` : ''}">Sell</button><button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Empty.</td></tr>'}
+            <td class="eq-cell">${inp(`equipment.${i}.equipped`, e.equipped, { ro, type: 'checkbox' })}${e.att ? `<span class="attune" title="Attuned (Wretched Hives: it takes a short rest with the item)${e.rar ? ` · ${esc(e.rar)}` : ''}">⟡${inp(`equipment.${i}.attuned`, !!e.attuned, { ro, type: 'checkbox' })}</span>` : ''}</td>
+            <td style="white-space:nowrap">${!ro ? `${e.use ? `<button class="btn tiny" data-act="use-item" data-i="${i}" title="Use one: ${esc(useText(e.use) || 'lowers the count')}">Use</button>` : ''}<button class="btn tiny ghost" data-act="sell" data-i="${i}" title="Sell one${+e.cost > 0 ? ` (half its cost: ${R.sellPrice(e).toLocaleString()} cr)` : ''}">Sell</button><button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Empty.</td></tr>'}
           </tbody></table></div></div>
         ${stashBox(ch, ro)}
         <div class="box"><h4>Features & Traits <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-feature" title="Feats, class features, maneuvers, fighting styles, lightsaber forms, ventures">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-feature" title="Write a feature by hand">custom</button>' : ''}</h4>
@@ -973,6 +976,15 @@
   $('#sheet').addEventListener('change', e => {
     const t = e.target;
     const ch = selChar(); if (!ch) return;
+    if (t.dataset.actChange === 'simple-attune') {   // the GM's switch for the whole table (audit 6.3)
+      const v = new Set(S.st.variants || []); t.checked ? v.add(R.SIMPLE_ATTUNEMENT) : v.delete(R.SIMPLE_ATTUNEMENT);
+      return act('variants.set', { variants: [...v] });
+    }
+    const att = /^equipment\.(\d+)\.attuned$/.exec(t.dataset.path || '');
+    if (att && t.checked && canEdit(ch)) {   // attuning past the slots (audit 6.3): a player is refused; the GM is asked
+      const no = R.attuneBlocked(ch, +att[1], S.st.variants);
+      if (no && (!isGM() || !confirm(`${no.text}\n\nAttune anyway?`))) { if (!isGM()) toast(no.text, true); t.checked = false; return; }
+    }
     if (t.dataset.actChange === 'encumbrance') {   // the GM's switch for the whole table (audit 6.5), kept with the variant rules
       const v = new Set(S.st.variants || []); t.checked ? v.add(R.ENCUMBRANCE) : v.delete(R.ENCUMBRANCE);
       return act('variants.set', { variants: [...v] });
@@ -1116,6 +1128,7 @@
       case 'pick-archetype': if (window.HTB) HTB.openArchetypePicker(ch.id, i); break;
       case 'pick-feature': HTB.openFeaturePicker(ch.id); break;
       case 'del': mutate(c => c[b.dataset.list].splice(i, 1)); break;
+      case 'use-item': useItem(ch, i); break;
       case 'sell': {   // selling (audit 6.8): one of the item, for half its cost by default (PHB, Selling Treasure); the table can agree another price
         const it = ch.equipment[i]; if (!it) break;
         const ans = prompt(`Sell one ${it.name} for how many credits?${+it.cost > 0 ? ` (Half its cost is ${R.sellPrice(it).toLocaleString()} cr.)` : ''}`, String(R.sellPrice(it)));
@@ -1341,7 +1354,9 @@
             const ex = c.equipment.find(x => String(x.name).toLowerCase() === it.n.toLowerCase());
             if (ex) ex.qty = (n0(ex.qty) || 1) + 1;
             else { const armor = !enh && R.armorFromItem(it); c.equipment.push({ name: it.n, qty: 1, equipped: false, notes: itemNotes(it, enh).slice(0, 200), ...(armor ? { armor } : {}),
-              ...(!enh && parseFloat(it.wt) > 0 ? { wt: parseFloat(it.wt) } : {}), ...(!enh && it.cost > 0 ? { cost: it.cost } : {}) }); }   // weight (6.5) and cost (6.8)
+              ...(!enh && parseFloat(it.wt) > 0 ? { wt: parseFloat(it.wt) } : {}), ...(!enh && it.cost > 0 ? { cost: it.cost } : {}),   // weight (6.5) and cost (6.8)
+              ...(enh && R.RARITIES.includes(it.rar) ? { rar: it.rar } : {}), ...(enh && it.att ? { att: true } : {}),   // rarity and attunement (6.3)
+              ...((enh ? it.cat === 'Consumable' : ['Medical', 'Explosive'].includes(it.cat)) ? { use: R.consumableUse(it.desc) || {} } : {}) }); }   // a consumable (6.7)
             if (!enh && it.cat === 'Weapon' && !c.attacks.some(x => String(x.name).toLowerCase() === it.n.toLowerCase())) c.attacks.push(weaponAttack(it));
           });
           toast(`${buy ? 'Bought' : 'Added'} ${it.n}${!enh && it.cat === 'Weapon' ? ' (and its attack)' : ''}${buy ? ` for ${it.cost.toLocaleString()} cr` : ''}`);
@@ -1369,6 +1384,41 @@
   const ALIGN = { light: 'Light', dark: 'Dark', universal: 'Universal' };
   // opts.onAdd(power): hand the picked power to someone else (the level-up wizard) instead of the sheet;
   // opts.onDone(): called by Done; opts.taken(): names already picked there
+  // --------------------------------------------------------------------------- consumables (audit 6.7)
+  // Use: one comes off the count, and what the item does is rolled (from its SW5e text, read when it was added): a medpac's
+  // Hit Dice + Con or a stim's healing, on this character or for someone else to read; a grenade's save DC and damage.
+  const useText = u => [u.hd && `${u.hd} Hit Die${u.hd > 1 ? 'Dice' : ''} + Con of healing`, u.heal && `${u.heal} healing`,
+    u.save && `DC ${u.save.dc} ${u.save.ab.toUpperCase()} save`, u.dmg && u.dmg.map(([d, t]) => `${d} ${t}`).join(' + '), u.half && 'half on a save'].filter(Boolean).join(', ');
+  function useItem(ch, i) {
+    const e = ch.equipment[i]; if (!e || !e.use) return;
+    if ((n0(e.qty) || 0) < 1) return toast(`No ${e.name} left.`, true);
+    const u = e.use, con = R.abilityMod(ch, 'con'), die = R.commonHitDie(ch);
+    const healExpr = u.hd ? `${u.hd}d${die}${con ? (con > 0 ? '+' : '') + con : ''}` : u.heal || '';
+    const dmgExpr = (u.dmg || []).map(d => d[0]).join('+');
+    const spend = () => mutate(c => { const x = c.equipment[i]; if (!x || x.name !== e.name) return; if ((n0(x.qty) || 1) > 1) x.qty = (n0(x.qty) || 1) - 1; else c.equipment.splice(i, 1); });
+    const go = async (self) => {
+      closeModal(); spend();
+      const what = useText(u);
+      // no `as` and no character on the rolls: the lines show their sender, never a name the GM may be hiding (#187's review)
+      act('chat', { text: `*uses ${e.name}${what ? `: ${what}` : ''}.*` });
+      if (healExpr) {
+        const res = await roll(healExpr, `${e.name}: healing${u.hd ? ` (the user's Hit Die${u.hd > 1 ? 's' : ''} and Con; another creature rolls its own)` : ''}`, { kind: 'heal' });
+        const n = res && res.roll ? Math.max(u.hd ? 1 : 0, res.roll.total) : 0;   // a medpac heals at least one
+        if (self && n) mutate(c => { const was = +c.hp.current || 0; c.hp.current = Math.min(+c.hp.max || 0, was + n); if (c.hp.current > 0) { c.deathSaves = { s: 0, f: 0 }; if (was <= 0) c.conditions = (c.conditions || []).filter(x => x !== 'Unconscious'); } });
+      }
+      if (dmgExpr) await roll(dmgExpr, `${e.name}: ${(u.dmg || []).map(d => d[1]).join(' and ')} damage${u.half ? ', half on a save' : ''}`, { kind: 'damage' });
+    };
+    modal(`<h3>Use ${esc(e.name)}</h3><p class="muted">${n0(e.qty)} left. ${esc(useText(u) || 'Nothing to roll: one comes off the count.')}</p>
+      <div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn" id="useNo">Cancel</button>
+      ${healExpr ? `<button class="btn" id="useOther" title="Roll it and post it; whoever it's used on applies it">For someone else</button><button class="btn primary" id="useSelf">On ${esc(ch.name)}</button>` : '<button class="btn primary" id="useGo">Use one</button>'}</div>`, box => {
+      box.onclick = e2 => {
+        if (e2.target.id === 'useNo') closeModal();
+        if (e2.target.id === 'useSelf') go(true);
+        if (e2.target.id === 'useOther' || e2.target.id === 'useGo') go(false);
+      };
+    });
+  }
+
   // --------------------------------------------------------------------------- the sheet's Cast (#73, audit 4.4-4.7)
   // Choose the level (upcasting pays a point more per level, up to the max power level; the GM may go past it), and,
   // for a power the table has data for, its targets on the map: the server rolls it as the combat view does (attack or
@@ -3348,7 +3398,7 @@
     if (!ch0) return;
     if (!pendingFor(charId)) return toast('The GM hasn\'t granted this character a level yet.', true);
     const W = resume || { cls: ch0.classes[0].name, newCls: '', archetype: '', hpMode: 'average', asiMode: 'two', a1: 'str', a2: 'dex', featName: '', featText: '', powers: [],
-      auto: [], autoKey: '', autoState: '', archList: [], archFor: '', archMenu: false, featList: [], picks: {}, expTools: '', lists: null, listsErr: '' };
+      auto: [], autoKey: '', autoState: '', archList: [], archFor: '', archMenu: false, featList: [], picks: {}, expTools: '', lists: null, listsErr: '', feats: null, featAsi: '' };
     modal('<div id="wiz"></div>', box => {
       const wiz = $('#wiz', box);
       // SW5e's class/archetype features for the level being gained (fetched once per class/level/archetype)
@@ -3369,7 +3419,7 @@
           HTB.list('archetypes').then(all => { if (W.archFor !== P.cls) return; W.archList = all.filter(a => a.cls.toLowerCase() === P.cls.toLowerCase()); draw(); }).catch(() => {});
         }
       };
-      if (window.HTB && S.st.sw5eBooks !== false) HTB.featNames().then(f => { W.featList = f; draw(); }).catch(() => {});
+      if (window.HTB && S.st.sw5eBooks !== false) HTB.list('feats').then(l => { W.feats = l; W.featList = l.map(f => f.n); draw(); }).catch(() => {});
       // the lists this level's choices come from (audit 2.9): class options, maneuvers, fighting styles
       if (window.HTB && HTB.levelChoices && S.st.sw5eBooks !== false && !W.lists) {
         Promise.all(['classes', 'maneuvers', 'styles'].map(k => HTB.list(k))).then(([classes, maneuvers, styles]) => { W.lists = { classes, maneuvers, styles }; draw(); })
@@ -3391,6 +3441,12 @@
           return;
         }
         if (t.type === 'text' || t.tagName === 'TEXTAREA') W[f] = t.value;
+        if (f === 'featName') {   // as you type (2.5): a feat from SW5e's list brings its own text, prerequisite and +1
+          W.featAsi = '';
+          const fd = (W.feats || []).find(x => x.n.toLowerCase() === W.featName.trim().toLowerCase());
+          if (fd) { W.featText = fd.text; const ta = wiz.querySelector('[data-w=featText]'); if (ta) ta.value = fd.text; }
+          const el = wiz.querySelector('#wizFeatInfo'); if (el) el.innerHTML = featInfoHtml(charId, W);
+        }
       });
       // hovering an archetype in the menu shows its description
       wiz.addEventListener('mouseover', e => {
@@ -3471,6 +3527,16 @@
     if (kk) kk.level = newClassLevel; else after.classes.push({ name: cls, level: 1, archetype: '' });
     if (kk && archDue && W.archetype) kk.archetype = W.archetype;
     if (asi) for (const [ab, v] of Object.entries(asi)) after.abilities[ab] = n0(after.abilities[ab]) + v;
+    // a feat from SW5e's list (audit 2.5): its prerequisite, checked at the new level, and a half-feat's own +1
+    const fd = feat && W.feats ? W.feats.find(x => x.n.toLowerCase() === feat.name.toLowerCase()) : null;
+    const prereq = fd ? R.featPrereq(after, fd.pre) : null;
+    const featAsiOpts = fd ? [...new Set((fd.asi || []).flatMap(a => a === 'Any' ? R.ABILITIES.map(x => x.key) : R.ABILITIES.filter(x => x.name === a).map(x => x.key)))] : [];
+    if (prereq && prereq.ok === false) error = error || `${fd.n} needs ${prereq.unmet.join(', ')}.`;
+    if (featAsiOpts.length) {
+      if (!featAsiOpts.includes(W.featAsi)) error = error || `Choose the ability ${fd.n} raises.`;
+      else if (n0(ch.abilities[W.featAsi]) + 1 > 20) error = error || `${ABN[W.featAsi]} can't go above 20.`;
+      else { feat.asi = { [W.featAsi]: 1 }; after.abilities[W.featAsi] = n0(after.abilities[W.featAsi]) + 1; }
+    }
     const hd = (R.CLASSES[cls] || {}).hd || 8;
     const oldCon = R.abilityMod(ch, 'con'), newCon = R.abilityMod(after, 'con');
     const retro = (newCon - oldCon) * before;
@@ -3506,9 +3572,19 @@
     const payload = { charId, className: cls, hpMode: W.hpMode, archetype: archDue && W.archetype ? W.archetype : undefined, hitDie: hd, override: unmet.length && isGM() ? true : undefined,
       asi: asi || undefined, feat: feat || undefined, expertise: expertise.length ? expertise : undefined,
       features: choiceFeatures.concat((W.auto || []).filter(f => !f.have).map(f => ({ name: f.name, text: f.text }))).slice(0, 20), powers: W.powers.filter(p => p.name.trim()).slice(0, 20) };
-    return { ch, after, cls, k, newClassLevel, before, due, asiOn, archDue, archTerm, hd, oldCon, newCon, retro, avgGain, maxGain, payload, error, groups, picked, chosen, tools, powerRoom };
+    return { ch, after, cls, k, newClassLevel, before, due, asiOn, archDue, archTerm, hd, oldCon, newCon, retro, avgGain, maxGain, payload, error, groups, picked, chosen, tools, powerRoom, fd, prereq, featAsiOpts };
   }
 
+  // the chosen feat's prerequisite and, for a half-feat, which ability its +1 goes to (audit 2.5)
+  function featInfoHtml(charId, W) {
+    const P = wizardPlan(charId, W);
+    if (!P.fd) return W.featName.trim() && W.feats ? '<p class="muted" style="margin:4px 0 0;font-size:12px">Not in SW5e\'s feat list, so nothing is checked.</p>' : '';
+    const q = P.prereq, req = !P.fd.pre || /^none$/i.test(P.fd.pre) ? 'No prerequisite.'
+      : `Requires ${esc(P.fd.pre)}: ${q.ok === true ? '<span class="up">✓ met</span>' : q.ok === false ? `<span class="error">✗ needs ${esc(q.unmet.join(', '))}</span>` : `<span class="muted">${esc(q.unknown.join(', '))} is your GM's call</span>`}`;
+    return `<p style="margin:4px 0 0;font-size:12px">${req}</p>
+      ${P.featAsiOpts.length ? `<div class="row" style="margin-top:4px;font-size:13px">${esc(P.fd.n)} raises one ability by 1:
+        <select data-w="featAsi"><option value="">choose…</option>${P.featAsiOpts.map(k => `<option value="${k}" ${W.featAsi === k ? 'selected' : ''} ${n0(P.ch.abilities[k]) >= 20 ? 'disabled' : ''}>${ABN[k]} (${n0(P.ch.abilities[k])})</option>`).join('')}</select></div>` : ''}`;
+  }
   function wizardHtml(charId, W) {
     const P = wizardPlan(charId, W), ch = P.ch;
     const ciB = R.casterInfo(ch), ciA = R.casterInfo(P.after);
@@ -3548,7 +3624,8 @@
           ${[['two', '+1 to two scores'], ['one', '+2 to one score'], ['feat', 'Take a feat']].map(([v, t]) => `<label class="choice ${W.asiMode === v ? 'on' : ''}"><input type="radio" name="asi" data-w="asiMode" value="${v}" ${W.asiMode === v ? 'checked' : ''}><b>${t}</b></label>`).join('')}</div>
           <div class="row wrap" style="margin-top:6px">${W.asiMode === 'feat'
             ? `<input data-w="featName" type="text" list="wizFeats" value="${esc(W.featName)}" placeholder="Pick or type a feat" style="flex:1"><datalist id="wizFeats">${(W.featList || []).map(f => `<option value="${esc(f)}">`).join('')}</datalist>
-               <textarea data-w="featText" rows="3" placeholder="What it does (filled in from SW5e when you pick one)">${esc(W.featText)}</textarea>`
+               <textarea data-w="featText" rows="3" placeholder="What it does (filled in from SW5e when you pick one)">${esc(W.featText)}</textarea>
+               <div id="wizFeatInfo" style="width:100%">${featInfoHtml(charId, W)}</div>`
             : W.asiMode === 'one' ? abilitySelect('a1', W.a1) : abilitySelect('a1', W.a1) + abilitySelect('a2', W.a2)}</div>` : ''}
       </section>
       ${choicesHtml(P, W)}

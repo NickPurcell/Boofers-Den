@@ -552,6 +552,9 @@
   }
 
   // --------------------------------------------------------------------------- features & traits picker
+  // whether the sheet meets a feat's prerequisite (audit 2.5): ✓, ✗ with what's missing, or the GM's call
+  const prereqTag = (ch, pre) => { const q = R.featPrereq(ch, pre);
+    return q.ok === true ? ' <span class="up">✓</span>' : q.ok === false ? ` <span class="error" title="${esc('Needs ' + q.unmet.join(', '))}">✗ needs ${esc(q.unmet.join(', '))}</span>` : ` <span class="muted">(${esc(q.unknown.join(', '))}: the GM's call)</span>`; };
   const featureTabs = charId => {
     const ch = () => charOf(charId);
     const add = (name, text) => { mutateChar(charId, c => { c.features.push({ name: name.slice(0, 80), text: text.slice(0, 4000) }); }); H.toast(`Added ${name}`); };
@@ -559,7 +562,7 @@
     const classNames = () => (ch().classes || []).map(k => k.name);
     return [
       { key: 'feats', label: 'Feats', load: () => list('feats'), facets: [{ key: 'src', label: 'books', get: x => x.src }],
-        row: x => `<b>${esc(x.n)}</b>${srcTag(x.src)}${x.asi.length ? `<span class="pp-tag">+1 ${esc(x.asi.join(' or '))}</span>` : ''}<div class="pp-meta">${x.pre ? 'Requires ' + esc(x.pre) : ''}</div>`,
+        row: x => `<b>${esc(x.n)}</b>${srcTag(x.src)}${x.asi.length ? `<span class="pp-tag">+1 ${esc(x.asi.join(' or '))}</span>` : ''}<div class="pp-meta">${x.pre ? 'Requires ' + esc(x.pre) + prereqTag(ch(), x.pre) : ''}</div>`,
         detail: x => md(x.text), action: act, onPick: x => add(x.n, `Feat${x.pre ? ' (requires ' + x.pre + ')' : ''}\n${x.text}`) },
       { key: 'class', label: 'Class features', load: async () => (await list('features')).filter(f => classNames().some(c => lc(c) === lc(f.of)) || (ch().classes || []).some(k => lc(k.archetype) === lc(f.of))),
         facets: [{ key: 'of', label: 'classes', get: x => x.of }, { key: 'lvl', label: 'levels', get: x => x.lvl, names: {} }],

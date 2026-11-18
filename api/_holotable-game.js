@@ -162,6 +162,9 @@ const cleanVariants = (v) => [...new Set((Array.isArray(v) ? v : []).slice(0, 80
 // set by the server (holotable.js) on a player's char.save: the senses of the species they chose, from SW5e's own list.
 // A Symbol, so it can't arrive in a client's JSON.
 const SPECIES_SENSES = Symbol("speciesSenses");
+// set by holotable.js on levelup.apply: the abilities a feat's own +1 may go to (audit 2.5), from SW5e's feat list,
+// never from a client. Missing when the list couldn't be read.
+const FEAT_ASI = Symbol("featAsi");
 function cleanChar(ch) {
   const s = (v, n = 200) => str(v, n);
   const list = (v, max, fn) => (Array.isArray(v) ? v.slice(0, max).filter((x) => x && typeof x === "object").map(fn) : []);
@@ -202,7 +205,10 @@ function cleanChar(ch) {
     equipment: list(ch.equipment, 200, (e) => ({ name: s(e.name, 80), qty: numOr(e.qty, 1), equipped: !!e.equipped, notes: s(e.notes, 200),
       ...(e.armor && R.ARMOR_KINDS.includes(e.armor.kind) ? { armor: { kind: e.armor.kind, ac: clamp(int(e.armor.ac), 0, 30) } } : {}),
       // weight in pounds each (audit 6.5) and cost in credits each (6.8), from SW5e's gear or typed; kept only when set
-      ...(+e.wt > 0 ? { wt: Math.min(10000, Math.round(+e.wt * 100) / 100) } : {}), ...(+e.cost > 0 ? { cost: Math.min(1e9, Math.round(+e.cost)) } : {}) })),
+      ...(+e.wt > 0 ? { wt: Math.min(10000, Math.round(+e.wt * 100) / 100) } : {}), ...(+e.cost > 0 ? { cost: Math.min(1e9, Math.round(+e.cost)) } : {}),
+      // an enhanced item's rarity, whether it requires attunement, and whether it's attuned (audit 6.3), kept only when set
+      ...(R.RARITIES.includes(e.rar) ? { rar: e.rar } : {}), ...(e.att ? { att: true } : {}), ...(e.att && e.attuned ? { attuned: true } : {}),
+      ...(e.use && R.cleanUse(e.use) ? { use: R.cleanUse(e.use) } : {}) })),   // a consumable: what using it rolls (audit 6.7)
     conditions: (Array.isArray(ch.conditions) ? ch.conditions : []).slice(0, 20).map((c) => s(c, 30)),
     exhaustion: clamp(int(ch.exhaustion), 0, 6), inspiration: !!ch.inspiration,
     // variant rules on the sheet (9.16): Simplified Forcecasting's one ability, and Hunted's disturbance points
@@ -455,12 +461,23 @@ function applyLevelUp(camp, cid, gm, p) {
   for (const sk of expertise) {   // one of the sheet's skills (SW5e's list), held at proficiency 1
     if (!SKILL_KEYS.has(sk) || !ch.skills || !Object.prototype.hasOwnProperty.call(ch.skills, sk) || +ch.skills[sk] !== 1) throw new Invalid("Expertise goes on a skill you're proficient in.");
   }
+  // a half-feat's own +1 (audit 2.5): one ability, among the ones SW5e's feat list gives that feat, to at most 20
+  let featAsi = null;
+  if (feat && p.feat.asi) {
+    const entries = p.feat.asi && typeof p.feat.asi === "object" ? Object.entries(p.feat.asi) : [];
+    const ok = Array.isArray(p[FEAT_ASI]) ? p[FEAT_ASI] : null;
+    if (!ok) throw new Invalid("Couldn't check that feat's ability increase just now. Try again in a moment.");
+    if (entries.length !== 1 || int(entries[0][1]) !== 1 || !ok.includes(entries[0][0])) throw new Invalid("That feat doesn't raise that ability.");
+    if (num(ch.abilities[entries[0][0]], 10) + 1 > 20) throw new Invalid("Ability scores can't go above 20.");
+    featAsi = entries[0][0];
+  }
   if (p.hpMode === "max" && camp.hpMax === false) throw new Invalid("The GM has turned off taking maximum hit points.");
 
   // hit points: rolled on the server (shown in chat), the fixed average, or the die's maximum (a table's choice);
   // Con changes count for every level
   const hd = hitDieFor(k.name, p.hitDie);
   if (p.asi) for (const [ab, v] of Object.entries(p.asi)) ch.abilities[ab] = num(ch.abilities[ab], 10) + int(v);
+  if (featAsi) ch.abilities[featAsi] = num(ch.abilities[featAsi], 10) + 1;
   const newCon = abMod(ch, "con");
   const die = p.hpMode === "roll"
     ? doRoll(camp, cid, `1d${hd}`, `${ch.name}: level ${before + 1} hit points (d${hd})`, ch.id, false, "hp").total
@@ -496,7 +513,7 @@ function applyLevelUp(camp, cid, gm, p) {
 
   const bits = [`HP +${gain}`];
   if (p.asi) bits.push(Object.entries(p.asi).filter(([, v]) => int(v)).map(([ab, v]) => `${ab.toUpperCase()} +${int(v)}`).join(", "));
-  if (feat) bits.push(`feat: ${feat}`);
+  if (feat) bits.push(`feat: ${feat}${featAsi ? ` (${featAsi.toUpperCase()} +1)` : ""}`);
   if (expertise.length) bits.push(`expertise: ${expertise.join(", ")}`);
   addChat(camp, { levelup: true, text: `🎉 ${ch.name} reached level ${before + 1}! ${multiclass ? "Multiclassed into " : ""}${k.name} ${k.level}${k.archetype ? " (" + k.archetype + ")" : ""} · ${bits.join(" · ")}` });
   return { level: before + 1, hpGain: gain, die };
@@ -1391,7 +1408,7 @@ function cleanGame(g) {
 
 module.exports = {
   cleanGame,
-  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, propSightSegments, SPECIES_SENSES, DOWNTIME_ACTS: Downtime.ACT_TABLES, validImg, validColor, cleanChar, cleanShip, rid, charById,
+  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, propSightSegments, SPECIES_SENSES, DOWNTIME_ACTS: Downtime.ACT_TABLES, FEAT_ASI, validImg, validColor, cleanChar, cleanShip, rid, charById,
   applyAction: (camp, ...a) => { const out = applyAction(camp, ...a); Fight.noteSeen(camp); return out; },   // fog of war: what players see now joins what they've explored
   Forbidden, Invalid, IMG_PREFIX,
 };
