@@ -6,7 +6,7 @@
   const H = window.HT, SR = window.HTShips;
   if (!H || !SR) return;
   const { $, esc } = H;
-  const V = { sel: null, seenN: null, cell: 24 };
+  const V = { sel: null, seenN: null, cell: 24, weapon: 0, target: null, crew: 0 };
   const sp = () => (H.S.st && H.S.st.space) || null;
   const shipById = (id) => ((H.S.st && H.S.st.ships) || []).find((s) => s.id === id);
   const tokById = (id) => ((sp() || {}).tok || []).find((t) => t.id === id);
@@ -33,7 +33,7 @@
     </div>
     <div class="space-body"><div class="space-side">${side(s, gm)}</div><div class="space-wrap" id="spaceWrap"><canvas id="spaceCanvas"></canvas></div></div>`;
     el.innerHTML = html;
-    draw();
+    draw(); preview();
   }
 
   function side(s, gm) {
@@ -54,8 +54,39 @@
           <span class="muted" style="font-size:12px">Click a square on the map to move it there.</span></div>
           <div class="row wrap" style="gap:4px;margin-top:6px">${gm ? `<label class="toggle"><input type="checkbox" data-spt="hidden" ${t.hidden ? 'checked' : ''}> off players' maps</label>${t.enemy ? `<label class="toggle"><input type="checkbox" data-spt="named" ${t.named ? 'checked' : ''}> players see its name</label>` : ''}` : ''}
           ${ship ? '<button class="btn tiny ghost" data-spx="sheet">Ship sheet</button>' : ''}<button class="btn tiny ghost" data-spx="remove">Take off the map</button></div>` : ''}</div>`;
+      if (ship && mayMove(t)) h += fireBox(s, t, ship);
     }
     return h;
+  }
+
+  // the Fire action: a weapon of the selected ship at another ship on the map; the preview is only a preview, the
+  // server checks the arc and range again and rolls
+  function fireBox(s, t, ship) {
+    const weapons = ship.weapons || [], targets = s.tok.filter((x) => x.id !== t.id), crew = ship.crew || [];
+    if (!weapons.length) return '<div class="box" style="margin-top:8px"><h4>Fire</h4><p class="muted" style="font-size:12px">No weapons on its sheet.</p></div>';
+    if (!targets.length) return '';
+    if (!targets.some((x) => x.id === V.target)) V.target = targets[0].id;
+    if (V.weapon >= weapons.length) V.weapon = 0;
+    if (V.crew >= Math.max(1, crew.length)) V.crew = 0;
+    const crewName = (c) => (c.charId && H.S.st.characters[c.charId] ? H.S.st.characters[c.charId].name : c.name) || 'Crew member';
+    return `<div class="box" style="margin-top:8px"><h4>Fire</h4>
+      <label class="ship-lv">Gunner <select id="spCrew">${crew.length ? crew.map((c, i) => `<option value="${i}" ${i === V.crew ? 'selected' : ''}>${esc(crewName(c))}</option>`).join('') : '<option value="0">no crew (+2)</option>'}</select></label>
+      <label class="ship-lv">Weapon <select id="spWeapon">${weapons.map((w, i) => `<option value="${i}" ${i === V.weapon ? 'selected' : ''}>${esc(w.name)}${w.arc ? ' · ' + esc(w.arc) : ''}${typeof w.ammo === 'number' ? ` · ${w.ammo} left` : ''}</option>`).join('')}</select></label>
+      <label class="ship-lv">Target <select id="spTarget">${targets.map((x) => `<option value="${esc(x.id)}" ${x.id === V.target ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
+      <p class="muted" id="spPreview" style="font-size:12px;margin:6px 0"></p>
+      <button class="btn small amber" data-spx="fire">Fire</button></div>`;
+  }
+  function preview() {
+    const el = $('#spPreview'); if (!el) return;
+    const t = tokById(V.sel), ship = t && shipById(t.id), tt = tokById(V.target), w = ship && (ship.weapons || [])[V.weapon];
+    if (!t || !ship || !tt || !w) { el.textContent = ''; return; }
+    const target = shipById(tt.id) || { size: tt.size }, c = SR.fireCheck(ship, t, w, target, tt);
+    const crew = (ship.crew || [])[V.crew], pb = crew && crew.charId && H.S.st.characters[crew.charId] ? H.R.profBonus(H.S.st.characters[crew.charId]) : (crew && +crew.pb) || 2;
+    const sign = (n) => (n >= 0 ? '+' : '') + n;
+    if (!c.ok) { el.textContent = `Can't fire: ${c.why}.`; return; }
+    const how = c.kind === 'attack' ? `attack ${sign(SR.attackBonusOf(ship, w, pb))}, damage ${SR.damageExpr(ship, w, false) || '—'}` : `Dexterity save DC ${SR.saveDcOf(ship, w, pb)}, damage ${SR.damageExpr(ship, w, false) || '—'}`;
+    const mods = [...c.adv.map((x) => '+' + x), ...c.dis.map((x) => '−' + x)];
+    el.textContent = `${c.feet} ft, in its ${c.arc} arc · ${how}${mods.length ? ` · ${c.kind === 'attack' ? 'advantage/disadvantage' : 'their save'}: ${mods.join(', ')}` : ''}`;
   }
 
   function draw() {
@@ -126,11 +157,15 @@
     if (a === 'end') { if (confirm('End ship combat?')) H.act('space.end', {}); return; }
     if (!t) return;
     if (a === 'turn') return H.act('space.place', { id: t.id, x: t.x, y: t.y, f: (t.f + (+b.dataset.d) + 8) % 8 });
+    if (a === 'fire') return H.act('space.fire', { id: t.id, target: V.target, weapon: V.weapon, crew: V.crew, mode: H.rollModeFromEvent(e) });
     if (a === 'remove') { if (confirm(`Take ${t.name} off the space map?`)) { await H.act('space.remove', { id: t.id }); V.sel = null; } return; }
     if (a === 'sheet') { H.setTab('ships'); const sel = document.querySelector(`#ships [data-sa="sel"][data-id="${t.id}"]`); if (sel) sel.click(); return; }
   });
   document.addEventListener('change', (e) => {
     const el = $('#space'); if (!el || !el.contains(e.target)) return;
+    if (e.target.id === 'spWeapon') { V.weapon = +e.target.value || 0; return preview(); }
+    if (e.target.id === 'spTarget') { V.target = e.target.value; return preview(); }
+    if (e.target.id === 'spCrew') { V.crew = +e.target.value || 0; return preview(); }
     const t = tokById(V.sel), k = e.target.dataset.spt;
     if (k && t) return H.act('space.token', { id: t.id, [k]: e.target.checked });
     if (e.target.id === 'spCols' || e.target.id === 'spRows') return H.act('space.size', { cols: +($('#spCols') || {}).value, rows: +($('#spRows') || {}).value });

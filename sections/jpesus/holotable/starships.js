@@ -472,6 +472,78 @@
   const INIT_SIZE_MOD = { Tiny: 0, Small: -3, Medium: -7, Large: -9, Huge: -10, Gargantuan: -11 };
   const npcInitBonus = (ship) => Math.floor((int((ship && ship.abilities || {}).dex, 10) - 10) / 2) + (own(INIT_SIZE_MOD, ship && ship.size) || 0);
 
+
+  // ---- firing a ship weapon (SotG chapter 5, "Weapons" and "Weapon Properties"; chapter 9, "Making an Attack")
+  const WEAPON_CATS = ['primary', 'secondary', 'tertiary', 'quaternary'];
+  const MOUNTS = ['forward', 'starboard', 'aft', 'port', 'turret'];   // a fixed hardpoint fires in one arc; a turret in any
+  const SIZE_ORDER = ['Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan'];
+  const sizeRank = (ship) => Math.max(0, SIZE_ORDER.indexOf(ship && ship.size));
+  const catOf = (w) => (WEAPON_CATS.includes(w && w.cat) ? w.cat : 'primary');
+  // "1200/4800", or the "(range 1200/4800)" in its properties
+  function weaponRange(w) {
+    const m = /(\d{1,6})\s*\/\s*(\d{1,6})/.exec(String((w && w.range) || '')) || /range\s*(\d{1,6})\s*\/\s*(\d{1,6})/i.exec(String((w && w.props) || ''));
+    return m ? { a: int(m[1]), b: int(m[2]) } : null;
+  }
+  // a property from the weapon's list: its number ("keen 1", "vicious 2", "con. 15"), true when it has no number
+  function weaponProp(w, name) {
+    const text = String((w && w.props) || '').toLowerCase(), alias = name === 'constitution' ? '(?:constitution|con\\.?)' : name;
+    const m = new RegExp(`(?:^|[,;(]\\s*|\\s)${alias}(?:\\s+(\\d{1,3}))?(?=\\s*(?:[,;)]|$))`).exec(text);
+    return m ? (m[1] !== undefined ? int(m[1]) : true) : null;
+  }
+  const crewPbOf = (pb) => clamp(int(pb, 2), 0, 10);
+  // the attack bonus (primary and secondary) and save DC (tertiary and quaternary): the ship's Wisdom, the gunner's
+  // proficiency, the weapon's own bonus
+  const wisMod = (ship) => Math.floor((int((ship && ship.abilities || {}).wis, 10) - 10) / 2);
+  const strMod = (ship) => Math.floor((int((ship && ship.abilities || {}).str, 10) - 10) / 2);
+  const attackBonusOf = (ship, w, pb) => wisMod(ship) + crewPbOf(pb) + int(w && w.atkMisc);
+  const saveDcOf = (ship, w, pb) => 8 + crewPbOf(pb) + wisMod(ship) + int(w && w.atkMisc);
+  // The damage of a hit: the weapon's dice (twice on a critical) plus the ship's Strength for primary and secondary
+  // weapons, plus half of it (rounded up, at least 1) for a heavy weapon.
+  function damageExpr(ship, w, crit) {
+    const m = /^\s*(\d{1,2})d(\d{1,3})\s*([+-]\s*\d{1,3})?\s*$/i.exec(String((w && w.dmg) || ''));
+    if (!m) return '';
+    const n = int(m[1]) * (crit ? 2 : 1), flat = m[3] ? int(m[3].replace(/\s/g, '')) : 0, cat = catOf(w);
+    let bonus = flat;
+    if (cat === 'primary' || cat === 'secondary') bonus += strMod(ship);
+    if (weaponProp(w, 'heavy')) bonus += Math.max(1, Math.ceil(strMod(ship) / 2));
+    return `${n}d${m[2]}` + (bonus ? (bonus > 0 ? '+' : '') + bonus : '');
+  }
+  // Can this weapon fire at that ship from here, and how? a / ta: the two tokens (x, y, f); returns
+  // { ok, why, feet, arc, kind: 'attack' | 'save', adv: [reasons], dis: [reasons] } where adv / dis are for the attack
+  // roll, or (kind 'save') for the target's saving throw.
+  function fireCheck(ship, a, w, target, ta) {
+    const sa = squaresOf(ship), st = squaresOf(target), feet = shipGap(a, sa, ta, st), arc = arcOf(a, sa, ta, st), cat = catOf(w);
+    const big = sizeRank(ship) >= 4;   // Huge or larger: its primary weapons (point-defense) call for a save, like tertiary ones
+    const out = { ok: true, why: '', feet, arc, kind: cat === 'tertiary' || cat === 'quaternary' || (cat === 'primary' && big) ? 'save' : 'attack', adv: [], dis: [] };
+    const no = (why) => Object.assign(out, { ok: false, why });
+    if (w && w.arc && w.arc !== 'turret' && MOUNTS.includes(w.arc) && arc !== w.arc) return no(`it is in the ${arc} arc, and this weapon fires ${w.arc}`);
+    if (cat === 'quaternary') return no('bombs and mines are dropped or launched, not fired at a ship');
+    const r = weaponRange(w);
+    // primary: past normal range, disadvantage on the attack (a Huge or larger ship's: advantage on the target's save)
+    if (cat === 'primary' && r) { if (feet > r.b) return no(`${feet} ft is beyond its long range (${r.b} ft)`); if (feet > r.a) (big ? out.adv : out.dis).push('long range'); }
+    if (cat === 'secondary') {
+      if (big && sizeRank(target) <= 1) return no('a Huge or larger ship\'s secondary weapons can\'t target Small or Tiny ships');
+      if (r) { if (feet > r.b) return no(`${feet} ft is beyond its range (${r.b} ft)`); if (feet <= r.a) out.dis.push('close range'); }
+      if (big && sizeRank(target) <= 3) out.dis.push('a smaller target');
+    }
+    if (cat === 'tertiary') {
+      if (r && feet > r.b) return no(`${feet} ft is beyond its long range (${r.b} ft)`);
+      const homing = !!weaponProp(w, 'homing');
+      if (r && feet > r.a && !homing) out.adv.push('long range');
+      if (homing && (!r || feet <= r.a)) out.dis.push('homing');
+      const d = sizeRank(target) - sizeRank(ship);
+      if (d <= -2) out.adv.push('a much smaller ship'); if (d >= 2) out.dis.push('a much larger ship');
+    }
+    if (out.kind === 'attack') {
+      if (feet <= 50) out.dis.push('within 50 ft');
+      const mine = rollEffects(ship, 'attack'), theirs = rollEffects(target, 'against');
+      out.adv.push(...mine.adv, ...theirs.adv); out.dis.push(...mine.dis, ...theirs.dis);
+      const con = weaponProp(w, 'constitution');
+      if (typeof con === 'number' && int((ship.abilities || {}).con, 10) < con) out.dis.push(`Constitution under ${con}`);
+    }
+    return out;
+  }
+
   // what the sheet shows of a ship's state, in short phrases
   function summary(ship) {
     const st = statusOf(ship), hullNow = int(ship && ship.hull && ship.hull.current), out = [];
@@ -486,5 +558,5 @@
     setCondition, summary, SIZE_DATA, SHIELD_TYPES, REACTORS, COUPLINGS, SYSTEMS, POOLS, SYSTEM_NAMES, POWER_DIE, sizeOf, roleOf, reactorOf, couplingOf,
     shieldTypeOf, powerDie, powerDieText, powerCaps, diceOf, diceLeft, regenRate, boostDC, regenDC, boostedSpeed, startTurn, usePower, setPower,
     setDiceUsed, boost, regenerateShields, SQUARE_FT, SQUARES, squaresOf, FACING_NAMES, DIRS, gridFeet, turnSteps, turnCost, moveCost, inBounds, shipGap,
-    arcOf, INIT_SIZE_MOD, npcInitBonus };
+    arcOf, INIT_SIZE_MOD, npcInitBonus, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck };
 });
