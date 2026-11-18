@@ -96,3 +96,9 @@ test("the ◈ background on a sheet (audit 1.8): chosen skills become ticked dot
   assert.equal(x.skills.piloting, 1); assert.equal(x.skills.deception, 1, "dots already ticked stay");
   assert.equal(JSON.parse(JSON.stringify(B.applyBackground(x, agent, [], null))).notes.match(/disguise kit/g).length, 1, "the same equipment isn't noted twice");
 });
+
+test("SW5e ability names map only to the six: an inherited name like 'constructor' is dropped", () => {
+  assert.deepEqual(D.LISTS.classes.build([{ name: "X", savingThrows: ["constructor", "Strength"] }])[0].saves, ["str"]);
+  assert.equal(D.LISTS.species.build([{ name: "Y", abilitiesIncreased: [[{ abilities: ["__proto__"], amount: 2 }]] }])[0].asi, null);
+  assert.deepEqual(D.LISTS.species.build([{ name: "Z", abilitiesIncreased: [[{ abilities: ["Wisdom"], amount: 2 }]] }])[0].asi, { wis: 2 });
+});

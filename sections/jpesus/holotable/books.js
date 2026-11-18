@@ -254,13 +254,19 @@
   // Choosing within a background (audit 1.8): the skills from its "Choose two from …" list (minus ones already held) and
   // one of its feats. done(skills, feat) with skill keys and { n, text } (or null when it lists no feats).
   function backgroundChoices(b, held, title, nextLabel, done) {
-    const ch = skillChoice(b.skills), from = ch.from.filter(k => !(held || []).includes(k)), n = Math.min(ch.n, from.length);
+    // a skill the sheet already has can be swapped for any other (SW5e follows 5e here): when fewer of the listed ones are
+    // left than the background gives, every other skill is offered too
+    const ch = skillChoice(b.skills), from = ch.from.filter(k => !(held || []).includes(k));
+    const other = from.length < ch.n ? R.SKILLS.map(x => x.key).filter(k => !from.includes(k) && !(held || []).includes(k)) : [];
+    const n = Math.min(ch.n, from.length + other.length);
     let skills = [], feat = null;
     const ready = () => skills.length === n && (!b.feats.length || !!feat);
     H.modal(`<h3>${title}</h3>
       <h4>Choose ${n} skill${n === 1 ? '' : 's'} <span class="muted" id="bcCount">(0 of ${n})</span></h4>
       <div class="row wrap" style="gap:4px 14px">${from.map(k => `<label class="toggle"><input type="checkbox" data-bc="skill" value="${k}"> ${esc(R.SKILLS.find(x => x.key === k).name)}</label>`).join('')}</div>
-      ${ch.from.length > from.length ? '<p class="muted" style="font-size:12px">Skills you already have are left out.</p>' : ''}
+      ${other.length ? `<p class="muted" style="font-size:12px;margin:8px 0 4px">You already have ${ch.from.length - from.length === 1 ? 'one' : 'some'} of this background's skills, so any other skill can take ${ch.from.length - from.length === 1 ? 'its' : 'their'} place:</p>
+        <div class="row wrap" style="gap:4px 14px">${other.map(k => `<label class="toggle"><input type="checkbox" data-bc="skill" value="${k}"> ${esc(R.SKILLS.find(x => x.key === k).name)}</label>`).join('')}</div>`
+        : ch.from.length > from.length ? '<p class="muted" style="font-size:12px">Skills you already have are left out.</p>' : ''}
       ${b.feats.length ? `<h4 style="margin-top:12px">Choose a feat</h4><select data-bc="feat"><option value="">— choose —</option>${b.feats.map(f => `<option>${esc(f)}</option>`).join('')}</select>
         <div class="muted" id="bcFeat" style="font-size:12px;margin-top:6px"></div>` : ''}
       <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn" data-bc="cancel">Cancel</button>
@@ -392,6 +398,7 @@
           const b = e.target.closest('[data-gb]'); if (!b) return;
           if (b.dataset.gb === 'cancel') return H.closeModal();
           if (b.dataset.gb === 'next') {
+            b.disabled = true; b.textContent = 'Loading the class features…';   // the first load of the features list takes a moment
             D.classFeatures = (await featuresFor(D.cls.n, 'class', 1, 1).catch(() => [])).map(f => ({ n: f.n, text: f.text }));
             H.scoresDialog({ name: D.name }, sc => { D.scores = sc; stepBackground(); });
           }
