@@ -4,7 +4,7 @@
 //           marks: 'none'|'freckles'|'cheeks'|'scar', skin: '#rrggbb', eyes: '#rrggbb' }
 // Frame: metres, y up, facing +z, the figure's left is +x; the origin is the point between the eyes. The neck runs to
 // 0.29 m below the eyes and matches the clothes' neck from (0, -0.07, -0.032) r 0.044 to (0, -0.25, -0.03) r 0.051.
-// Two draw calls (skin, eyes), about 60k triangles. No lights and no environment: the page provides both.
+// Two draw calls (skin, eyes), about 60k triangles. Folds and openings are shaded darker through vertex colours. No lights and no environment: the page provides both.
 //
 // How it's made: a fine sphere pushed into the Duros head shape (tall, wide across the eyes and crown, a small chin,
 // the cranium swept back; no nose, no ears), then sculpted along its normals where a face has form: eye sockets,
@@ -12,7 +12,8 @@
 // caps of slightly larger spheres tipped back so their edges arch over the eyes. Markings and the eye's depth are
 // painted in code onto the meshes' own maps.
 
-const UNIT = 0.09;   // metres per unit of the sculpting space (a head about 0.24 m tall, 0.18 m wide)
+const UNIT = 0.106;   // metres per unit of the sculpting space (a head about 0.3 m tall, 0.21 m wide): sized to Head A's
+const CRANIUM = 1.16; // the head above the eyes is this much taller than below, the Duros' high skull
 const HEADS = {
   round: { H: 1.32, jaw: 0.52, crown: 1.0, back: 1.06, wide: 1.0, eye: 0.32 },
   tall: { H: 1.55, jaw: 0.5, crown: 1.03, back: 1.24, wide: 1.0, eye: 0.32 },
@@ -49,7 +50,10 @@ export async function makeHead(THREE, opts = {}) {
     else z *= lerp(0.88, h.back, smooth(0.3, 0.9, t));
     z -= smooth(0.55, 1, t) * (h.back - 1) * 1.1;
     if (t < 0.22 && v.z > 0) z += (0.22 - t) * 0.5;
-    pos.setXYZ(i, v.x * w, v.y * h.H, z);
+    // in profile the Duros skull sweeps back from the brow, and the face leans a little forward below the eyes
+    const yy = v.y * h.H * (v.y > 0 ? CRANIUM : 1);
+    z += yy > 0 ? -yy * 0.32 * smooth(0.0, 0.6, v.y) : -yy * 0.06;
+    pos.setXYZ(i, v.x * w, yy, z);
   }
   geo.computeVertexNormals();
 
@@ -62,14 +66,36 @@ export async function makeHead(THREE, opts = {}) {
     return hit ? { p: hit.point.clone(), n: hit.face.normal.clone().normalize(), uv: hit.uv && hit.uv.clone() } : null;
   };
   const eyes = [-1, 1].map((sx) => front(sx * 0.43 * h.wide, h.H * 0.06)).filter(Boolean);
+  // the ear openings (Duros have no outer ear): on each side a little below and behind the eyes, found from the side
+  const fromSide = (sx, y, z) => {
+    ray.set(V(sx * 20, y, z), V(-sx, 0, 0));
+    const hit = ray.intersectObject(probe, false)[0];
+    return hit ? { p: hit.point.clone(), n: hit.face.normal.clone().normalize() } : null;
+  };
+  const ears = [-1, 1].map((sx) => fromSide(sx, -h.H * 0.2, -0.06)).filter(Boolean);
+  // the jaw line, as seen from the front: from below the ear down to the chin
+  const jaw = [[0.62, -0.3], [0.56, -0.5], [0.42, -0.72], [0.22, -0.9], [0.0, -0.98]].map(([x, y]) => [x * h.wide, y * h.H]);
+  const segDist = (px, py, pts) => {
+    let best = 1e9;
+    for (let k = 0; k + 1 < pts.length; k++) {
+      const [ax, ay] = pts[k], [bx, by] = pts[k + 1], dx = bx - ax, dy = by - ay;
+      const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)));
+      best = Math.min(best, Math.hypot(px - ax - t * dx, py - ay - t * dy));
+    }
+    return best;
+  };
   const my = -h.H * 0.56;
 
   /* ---- sculpting along the normals ---- */
   const nrm = geo.attributes.normal, n = V(), p = V(), out = new Float32Array(pos.count);
   for (let i = 0; i < pos.count; i++) {
     p.fromBufferAttribute(pos, i); n.fromBufferAttribute(nrm, i);
-    if (n.z < -0.25) continue;   // the back of the head stays as it is
     let d = 0;
+    for (const e of ears) {   // a small recessed opening with a soft rim round it
+      const r = p.distanceTo(e.p) / 0.09;
+      d += -0.075 * gauss(r * r * 2.2) + 0.018 * gauss(((r - 1.15) / 0.35) ** 2);
+    }
+    if (n.z < -0.25) { out[i] = d; continue; }   // the rest of the back of the head stays as it is
     for (const e of eyes) {
       const side = Math.sign(e.p.x), dx = (p.x - e.p.x) / R, dy = (p.y - e.p.y) / R, dz = (p.z - e.p.z) / R;
       d -= 0.42 * (1 + 0.35 * age) * R * gauss((dx * dx + dy * dy + dz * dz) / 0.78);                    // the socket
@@ -77,7 +103,7 @@ export async function makeHead(THREE, opts = {}) {
       const across = (p.x - e.p.x) / (R * 1.25), inner = smooth(0.6, -0.9, across * side);   // 1 toward the middle
       const lift = (ex.browIn * inner + ex.browOut * (1 - inner)) * 1.0;
       const by = (p.y - e.p.y - R * 1.02 - lift) / (R * 0.34);
-      d += (0.055 + 0.015 * age + (ex.browIn < 0 ? 0.02 * inner : 0)) * gauss(across * across + by * by);
+      d += (0.068 + 0.015 * age + (ex.browIn < 0 ? 0.02 * inner : 0)) * gauss(across * across + by * by);
       // the cheekbone, fuller when young or smiling; a hollow under it with age
       const cx = (p.x - e.p.x - side * R * 0.35) / (R * 0.9), cy = (p.y - e.p.y + R * 1.2 - ex.cheek * 4) / (R * 0.45);
       d += (0.04 * (1 - 0.45 * age) + ex.cheek) * gauss(cx * cx + cy * cy);
@@ -89,6 +115,10 @@ export async function makeHead(THREE, opts = {}) {
       // the temple, deeper with age
       const tx = (p.x - e.p.x - side * R * 1.6) / (R * 0.7), ty = (p.y - e.p.y - R * 0.3) / (R * 0.9);
       d -= (0.025 + 0.025 * age) * gauss(tx * tx + ty * ty);
+    }
+    if (n.z > -0.3 && p.y < -h.H * 0.2) {   // the jaw line: a soft edge from below the ear to the chin
+      const jd = segDist(Math.abs(p.x), p.y, jaw) / 0.06;
+      d += 0.022 * gauss(jd * jd) - 0.01 * gauss(((segDist(Math.abs(p.x), p.y + 0.09, jaw)) / 0.06) ** 2);
     }
     if (p.z > 0.15) {
       // the mouth: a thin cut with soft lines either side; its ends follow the expression
@@ -112,6 +142,9 @@ export async function makeHead(THREE, opts = {}) {
     }
     out[i] = d;
   }
+  const shade = new Float32Array(pos.count * 3);
+  for (let i = 0; i < pos.count; i++) { const k = Math.max(0.62, 1 + 2.4 * Math.min(0, out[i])); shade.set([k, k, k], i * 3); }
+  geo.setAttribute('color', new THREE.BufferAttribute(shade, 3));
   for (let i = 0; i < pos.count; i++) if (out[i]) {
     n.fromBufferAttribute(nrm, i);
     pos.setXYZ(i, pos.getX(i) + n.x * out[i], pos.getY(i) + n.y * out[i], pos.getZ(i) + n.z * out[i]);
@@ -143,8 +176,23 @@ export async function makeHead(THREE, opts = {}) {
 
   /* ---- the neck, to the clothes' measurements ---- */
   {
-    const prof = [[0.001, 0.05], [0.04, 0.045], [0.05, 0.0], [0.046, -0.04], [0.044, -0.07], [0.0475, -0.16], [0.051, -0.25], [0.052, -0.29], [0.001, -0.292]];
-    const ng = new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), 48);
+    const prof = [[0.001, -0.02], [0.03, -0.025], [0.046, -0.045], [0.044, -0.07], [0.0458, -0.115], [0.0475, -0.16], [0.0495, -0.21], [0.051, -0.25], [0.052, -0.29], [0.001, -0.292]];
+    const ng = new THREE.LatheGeometry(prof.map(([r, y]) => new THREE.Vector2(r, y)), 64, 0, Math.PI * 2);
+    { // two cords from behind the ears to the collar's front, and a soft hollow in the throat between them; below
+      // -0.17 they stay within 3 mm of the clothes' neck
+      const np = ng.attributes.position;
+      for (let i = 0; i < np.count; i++) {
+        const x = np.getX(i), y = np.getY(i), z = np.getZ(i), r = Math.hypot(x, z);
+        if (r < 0.01 || y > -0.03 || y < -0.285) continue;
+        const a = Math.atan2(x, z), down = smooth(-0.05, -0.24, y);
+        let dr = 0;
+        for (const s of [-1, 1]) { const ca = s * lerp(1.8, 0.24, down); dr += 0.0045 * gauss(((a - ca) / 0.22) ** 2); }
+        dr -= 0.0025 * gauss((a / 0.28) ** 2) * smooth(-0.06, -0.1, y) * smooth(-0.24, -0.18, y);
+        dr *= smooth(-0.03, -0.06, y) * (y < -0.17 ? 0.65 : 1);
+        np.setXYZ(i, x + (x / r) * dr, y, z + (z / r) * dr);
+      }
+      ng.computeVertexNormals();
+    }
     // the clothes' neck runs from z -0.032 at the top to -0.03 at -0.25: lean it the same, a touch
     const lean = new THREE.Matrix4().makeShear(0, 0, 0, 0, 0, -0.011);   // makeShear(xy, xz, yx, yz, zx, zy): z += -0.011 * y
     ng.applyMatrix4(lean); ng.translate(0, 0, -0.0328);
@@ -156,7 +204,7 @@ export async function makeHead(THREE, opts = {}) {
   /* ---- materials: skin with its markings and grain, eyes with depth ---- */
   const skinMap = paintMarks(THREE, marks, eyes, h, opts.seed || 7);
   const skinMat = new THREE.MeshPhysicalMaterial({
-    color: 0xffffff, map: skinMap, roughness: 0.46 + 0.16 * age, metalness: 0, dithering: true,   // dithering: no banding on the smooth gradients
+    color: 0xffffff, map: skinMap, vertexColors: true, roughness: 0.46 + 0.16 * age, metalness: 0, dithering: true,   // dithering: no banding on the smooth gradients
     sheen: 0.35 * (1 - 0.5 * age), sheenRoughness: 0.6, sheenColor: 0x9fd0ff, clearcoat: 0.12 * (1 - age), clearcoatRoughness: 0.6,
     bumpMap: grain(THREE), bumpScale: 0.05 + 0.05 * age,   // gentle: this is a head about 0.24 m tall
   });
@@ -182,19 +230,20 @@ export async function makeHead(THREE, opts = {}) {
 function merge(THREE, geos) {
   let vn = 0, in_ = 0;
   for (const g of geos) { vn += g.attributes.position.count; in_ += g.index ? g.index.count : g.attributes.position.count; }
-  const P = new Float32Array(vn * 3), N = new Float32Array(vn * 3), U = new Float32Array(vn * 2), I = new Uint32Array(in_);
+  const P = new Float32Array(vn * 3), N = new Float32Array(vn * 3), U = new Float32Array(vn * 2), C = new Float32Array(vn * 3).fill(1), I = new Uint32Array(in_);
   let vo = 0, io = 0;
   for (const g of geos) {
     const c = g.attributes.position.count;
     P.set(g.attributes.position.array, vo * 3); N.set(g.attributes.normal.array, vo * 3);
     if (g.attributes.uv) U.set(g.attributes.uv.array, vo * 2);
+    if (g.attributes.color) C.set(g.attributes.color.array, vo * 3);
     const idx = g.index ? g.index.array : Array.from({ length: c }, (_, k) => k);
     for (let k = 0; k < idx.length; k++) I[io + k] = idx[k] + vo;
     vo += c; io += idx.length;
   }
   const m = new THREE.BufferGeometry();
   m.setAttribute('position', new THREE.BufferAttribute(P, 3)); m.setAttribute('normal', new THREE.BufferAttribute(N, 3));
-  m.setAttribute('uv', new THREE.BufferAttribute(U, 2)); m.setIndex(new THREE.BufferAttribute(I, 1));
+  m.setAttribute('uv', new THREE.BufferAttribute(U, 2)); m.setAttribute('color', new THREE.BufferAttribute(C, 3)); m.setIndex(new THREE.BufferAttribute(I, 1));
   m.computeBoundingSphere();
   return m;
 }
