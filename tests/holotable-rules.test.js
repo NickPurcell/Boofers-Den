@@ -136,6 +136,10 @@ test("carrying (audit 6.5): weight times quantity against Str x 15; the encumbra
   assert.equal(R.carrying(c(10, [[-3, 10], [1, -5]])).weight, 0);
 });
 
+test("selling (audit 6.8): half the cost, rounded down; no cost, nothing", () => {
+  assert.deepEqual([R.sellPrice({ cost: 50 }), R.sellPrice({ cost: 75 }), R.sellPrice({ cost: 1 }), R.sellPrice({}), R.sellPrice({ cost: -10 })], [25, 37, 0, 0, 0]);
+});
+
 test("Engineers and Scouts get tech points back on a short rest; others don't", () => {
   assert.equal(R.techOnShortRest(char([["Engineer", 1]])), true);
   assert.equal(R.techOnShortRest(char([["Scout", 2]])), true);
