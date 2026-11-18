@@ -279,8 +279,35 @@
          <button class="btn small amber-fill" id="restoreLatest">Restore latest backup</button> <span class="muted">or pick one in the GM tab</span>`
       : `⚠ The table's save is missing. The GM needs to restore a backup before play can continue.`;
     $('#campName').textContent = S.st.name;
+    const ck = S.st.clock, clk = $('#clock');   // in-game time (9.18): everyone sees it, the GM sets it
+    clk.classList.toggle('hidden', !ck && !isGM());
+    clk.textContent = ck ? `🕑 Day ${n0(ck.day)} · ${String(Math.floor(n0(ck.min) / 60)).padStart(2, '0')}:${String(n0(ck.min) % 60).padStart(2, '0')}` : '🕑 Set the time';
+    clk.disabled = !isGM(); clk.classList.toggle('ghost', !ck);
     const gmTag = n => (/^\s*gm\s*$/i.test(n || '') ? '' : ' (GM)');
     $('#online').innerHTML = S.st.online.map(o => `<span class="pill ${o.gm ? 'gm' : ''}">${esc(o.name)}${o.gm ? gmTag(o.name) : ''}</span>`).join('');
+  }
+  $('#clock').addEventListener('click', () => { if (isGM()) openClock(); });
+  function openClock() {
+    const ck = S.st.clock || { day: 1, min: 8 * 60 };
+    const hhmm = `${String(Math.floor(ck.min / 60)).padStart(2, '0')}:${String(ck.min % 60).padStart(2, '0')}`;
+    modal(`<h3>🕑 The time in the story</h3>
+      <div class="row wrap"><label>Day<input id="ckDay" type="number" min="1" value="${n0(ck.day)}" style="width:90px"></label><label>Time<input id="ckTime" type="time" value="${hhmm}"></label>
+        <button class="btn small" id="ckSet">Set</button>${S.st.clock ? '<button class="btn small ghost" id="ckOff" title="Hide the clock">Hide clock</button>' : ''}</div>
+      <h4 style="margin-top:12px">Move time on</h4>
+      <div class="row wrap">${[['+10 min', 10, ''], ['+1 hour', 60, ''], ['Short rest', 60, 'short rest'], ['Long rest', 480, 'long rest'], ['+1 day', 1440, '']].map(([t, m, w]) => `<button class="btn small" data-ck="${m}" data-why="${w}">${t}</button>`).join('')}</div>
+      <div class="row wrap" style="margin-top:8px"><label>Or<input id="ckMins" type="number" min="1" placeholder="minutes" style="width:90px"></label><input id="ckWhy" maxlength="60" placeholder="why, e.g. the trip to Mos Shuuta" style="flex:1">
+        <button class="btn small" id="ckGo">Advance</button></div>
+      <label class="toggle" style="margin-top:8px"><input type="checkbox" id="ckSay" checked> say it in chat</label>
+      <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn ghost" id="ckClose">Close</button></div>`, box => {
+      box.onclick = async e => {
+        const t = e.target, say = $('#ckSay').checked;
+        if (t.id === 'ckClose') closeModal();
+        if (t.id === 'ckOff') { await act('clock.set', { off: true }); closeModal(); }
+        if (t.id === 'ckSet') { const [h, m] = ($('#ckTime').value || '08:00').split(':').map(Number); if (await act('clock.set', { day: +$('#ckDay').value || 1, min: (h || 0) * 60 + (m || 0) })) closeModal(); }
+        if (t.dataset.ck) { if (await act('clock.advance', { mins: +t.dataset.ck, why: t.dataset.why, announce: say })) closeModal(); }
+        if (t.id === 'ckGo' && +$('#ckMins').value > 0) { if (await act('clock.advance', { mins: +$('#ckMins').value, why: $('#ckWhy').value, announce: say })) closeModal(); }
+      };
+    });
   }
   $('#missingBar').addEventListener('click', async e => {
     if (e.target.id !== 'restoreLatest') return;
@@ -588,7 +615,7 @@
         <button class="btn" onclick="document.getElementById('newCharBtn').click()">＋ New character</button></div></div>`;
       return;
     }
-    const ro = !canEdit(ch);
+    const ro = !canEdit(ch), lock = ro || (!isGM() && !!S.st.sheetLock);   // the GM's lock (12.6): levels, XP, max HP
     const pb = R.profBonus(ch), lvl = R.totalLevel(ch), ci = R.casterInfo(ch);
     const owner = (S.st.players[ch.owner] || {}).name || 'unknown';
     const note = S.importNotes[ch.id];
@@ -616,7 +643,7 @@
         </div>
         <div class="row wrap">${(ch.classes || []).map((k, i) => `
           <span class="row">${inp(`classes.${i}.name`, k.name, { ro, list: 'dlClasses', w: '110px' })}
-          ${inp(`classes.${i}.level`, +k.level || 1, { ro, type: 'number', w: '58px' })}
+          ${inp(`classes.${i}.level`, +k.level || 1, { ro: lock, type: 'number', w: '58px' })}
           ${k.archetype ? `<span class="muted class-arch" title="${esc((R.CLASSES[k.name] || {}).arch || 'Archetype')}">${esc(k.archetype)}</span>` : ''}
           ${archetypeButton(k, i, ro)}
           ${!ro && ch.classes.length > 1 ? `<button class="btn tiny ghost" data-act="del-class" data-i="${i}">✕</button>` : ''}</span>`).join('')}
@@ -638,14 +665,17 @@
       <div class="stat rollable" data-roll="${d20(R.initiative(ch))}" data-label="Initiative" data-d20="1"><div class="lbl">Initiative</div><div class="val">${R.fmt(R.initiative(ch))}</div></div>
       <div class="stat"><div class="lbl">Speed</div>${inp('speed', +ch.speed || 30, { ro, type: 'number' })}</div>
       <div class="stat"><div class="lbl">Proficiency</div><div class="val">${R.fmt(pb)}</div></div>
-      <div class="stat"><div class="lbl">Passive Perc.</div><div class="val">${R.passive(ch, 'perception')}</div></div>
+      <div class="stat" title="Passive scores: 10 + the skill's bonus (audit 5.13)"><div class="lbl">Passive Perc.</div><div class="val">${R.passive(ch, 'perception')}</div>
+        <div class="muted" style="font-size:11px">Insight ${R.passive(ch, 'insight')} · Invest. ${R.passive(ch, 'investigation')}</div></div>
       <div class="stat"><div class="lbl">Hit Dice</div><div class="val" style="font-size:15px;padding-top:6px">${esc(R.hitDiceSummary(ch))}</div>
         <div class="muted" style="font-size:11px" title="${esc(R.hitDice(ch).map(d => `d${d.die}: ${d.used} of ${d.total} used`).join(' · '))}">used ${inp('hitDiceUsed', R.hitDiceUsedTotal(ch), { ro, type: 'number', w: '58px' })}</div></div>
       <div class="stat"><div class="lbl">Inspiration</div><div style="padding-top:6px">${inp('inspiration', ch.inspiration, { ro, type: 'checkbox' })}</div></div>
     </div>
     <div class="senses-row" title="What this character perceives in the dark or unseen. Choosing a species sets them; only the GM changes them by hand.">
       <span class="lbl">Senses</span> <span>${esc(R.sensesText(ch.senses)) || '<span class="muted">none (normal sight)</span>'}</span>
-      ${isGM() ? '<button class="btn tiny ghost" data-act="senses" title="Set the senses of this character (GM)">✎</button>' : ''}</div>
+      ${isGM() ? '<button class="btn tiny ghost" data-act="senses" title="Set the senses of this character (GM)">✎</button>' : ''}
+      <span class="lbl" style="margin-left:14px" title="Choosing a species sets it; the GM can change it. A token placed for this character takes its size.">Size</span>
+      ${isGM() ? inp('size', ch.size || 'Medium', { type: 'select', w: '120px', options: R.SIZES }) : `<span>${esc(ch.size || 'Medium')}</span>`}</div>
     <div class="subtabs">${[['main', 'Abilities & Skills'], ['actions', 'Attacks & Powers'], ['gear', 'Features & Gear'], ['bio', 'Bio & Notes']]
       .map(([k, t]) => `<button data-act="sub" data-sub="${k}" class="${sub === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
 
@@ -661,7 +691,7 @@
       <div class="grid g2">
         <div class="box hp-box"><h4>Hit Points</h4>
           <div class="row wrap"><span>${inp('hp.current', +ch.hp.current || 0, { ro, type: 'number', cls: 'hpnum' })}</span><span class="muted">/</span>
-            <span>${inp('hp.max', +ch.hp.max || 0, { ro, type: 'number', cls: 'hpnum' })}</span>
+            <span>${inp('hp.max', +ch.hp.max || 0, { ro: lock, type: 'number', cls: 'hpnum' })}</span>
             <span class="muted">temp</span>${inp('hp.temp', +ch.hp.temp || 0, { ro, type: 'number', w: '60px' })}</div>
           ${!ro ? `<div class="row hp-adjust" style="margin-top:8px"><input id="hpDelta" placeholder="-7 or +5">
             <button class="btn small danger" data-act="hp" data-sign="-1">Damage</button><button class="btn small" data-act="hp" data-sign="1" style="color:var(--green)">Heal</button></div>
@@ -683,7 +713,7 @@
             <span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${d20(b)}" data-label="${a.name} save" data-d20="1">${a.name}</span>
             ${miscBox('saveMisc.' + a.key, (ch.saveMisc || {})[a.key], ro)}</div>`;
         }).join('')}</div></div>
-        <div class="box" style="grid-row: span 2"><h4>Skills <span class="muted" style="text-transform:none;letter-spacing:0">click dot: none → proficient → expertise</span></h4><div class="list-rows">${R.SKILLS.map(s => {
+        <div class="box" style="grid-row: span 2"><h4>Skills <span class="muted" style="text-transform:none;letter-spacing:0">click dot: none → proficient → expertise → half</span></h4><div class="list-rows">${R.SKILLS.map(s => {
           const b = R.skillBonus(ch, s.key), lv = +(ch.skills[s.key] || 0);
           return `<div class="lr"><button class="prof ${lv === 2 ? 'p2' : lv === 1 ? 'p1' : lv === 0.5 ? 'p05' : ''}" data-act="skill-prof" data-sk="${s.key}" ${ro ? 'disabled' : ''}></button>
             ${(sr => `<span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${esc(sr.expr)}" data-label="${s.name}${sr.reliable ? ' (Reliable Talent)' : ''}" data-d20="1"${sr.reliable ? ' title="Reliable Talent: the d20 counts as at least 8"' : ''}>${s.name}</span>`)(R.skillRollExpr(ch, s.key))}<span class="ab">${s.ab}</span>
@@ -706,6 +736,10 @@
           <span class="bonus">${r.max - r.used}/${r.max}</span>
           ${!ro ? `<button class="btn tiny" data-act="res-use" data-i="${r.i}" ${r.used >= r.max ? 'disabled' : ''} title="Spend one">Use</button><button class="btn tiny ghost" data-act="res-back" data-i="${r.i}" ${r.used <= 0 ? 'disabled' : ''} title="Get one back">+1</button>` : ''}
           <span class="muted res-refill">${refill[r.refill] || ''}</span></div>`).join('')}</div>` : '<p class="muted">Nothing to track yet.</p>'}
+        ${R.infuseBonus(ch) ? `<div class="lr res-row" title="Infuse Item (Engineer): one armor, shield or weapon until your next long rest. +${R.infuseBonus(ch)} to AC, or to attack and damage rolls.">
+          <span class="nm">Infuse Item <span class="muted">+${R.infuseBonus(ch)}</span></span>
+          ${ro ? `<span>${esc(String(ch.infused || '').replace(/^(attack|equipment):/, '') || '—')}</span>` : `<select data-act-change="infuse"><option value="">— nothing infused —</option>${(ch.attacks || []).map(a => `<option value="attack:${esc(a.name)}" ${ch.infused === 'attack:' + a.name ? 'selected' : ''}>⚔ ${esc(a.name)}</option>`).join('')}${(ch.equipment || []).filter(e => e.armor && e.armor.kind).map(e => `<option value="equipment:${esc(e.name)}" ${ch.infused === 'equipment:' + e.name ? 'selected' : ''}>🛡 ${esc(e.name)}</option>`).join('')}</select>`}
+          <span class="muted res-refill">until long rest</span></div>` : ''}
         ${tbl.filter(t => t.cols.length).map(t => `<div class="class-tbl"><b>${esc(t.cls)} ${t.level}</b> ${t.cols.map(([h, v]) => `<span><span class="muted">${esc(h)}</span> ${esc(v)}</span>`).join(' · ')}</div>`).join('')}
       </div>`;
     }
@@ -713,10 +747,11 @@
       const fMax = ch.force.max !== '' && ch.force.max != null ? +ch.force.max : ci.forceMax;
       const tMax = ch.tech.max !== '' && ch.tech.max != null ? +ch.tech.max : ci.techMax;
       const pts = (k, max, used, cls, label, extra) => `<div class="box"><h4>${label}</h4>
-        <div class="points"><b>${Math.max(0, max - used)}</b><span class="muted">/ ${max}</span>
+        <div class="points"><b>${Math.max(0, max - used) + (+ch[k].temp || 0)}</b><span class="muted">/ ${max}${+ch[k].temp ? ` (+${n0(ch[k].temp)} temp)` : ''}</span>
           <div class="meter ${cls}"><div style="width:${max ? 100 * Math.max(0, max - used) / max : 0}%"></div></div>
           <span class="muted">used</span>${inp(k + '.used', +used || 0, { ro, type: 'number' })}
-          <span class="muted">max override</span>${inp(k + '.max', ch[k].max ?? '', { ro, type: 'number', ph: String(k === 'force' ? ci.forceMax : ci.techMax) })}</div>
+          <span class="muted">max override</span>${inp(k + '.max', ch[k].max ?? '', { ro, type: 'number', ph: String(k === 'force' ? ci.forceMax : ci.techMax) })}
+          <span class="muted" title="Temporary points: spent first, gone after a long rest. A new source replaces them; they don't add up.">temp</span>${inp(k + '.temp', +ch[k].temp || 0, { ro, type: 'number', w: '56px' })}</div>
         <div class="muted" style="margin-top:6px;font-size:12px">${extra}</div></div>`;
       html += `<div class="box"><h4>Attacks <span class="spacer"></span>${!ro ? `<button class="btn tiny" data-act="pick-weapon">＋ weapon from SW5e</button><button class="btn tiny ghost" data-act="add-attack">custom</button>` : ''}</h4>
         <table class="t"><thead><tr><th>Name</th><th>Ability</th><th title="Tick if proficient with this weapon">Prof.</th><th>Hit</th><th title="The d20 this attack crits on (19 = 19-20)">Crit</th><th>Damage die</th><th>Type</th><th>Properties</th><th></th></tr></thead><tbody>
@@ -787,7 +822,7 @@
             ${ch.tokenImage ? '<button class="btn small ghost" data-act="clear-token-photo">Token: use profile photo</button>' : ''}</div>` : ''}
           <p class="muted" style="font-size:12px;margin:0 0 6px">The token uses the profile photo unless you upload a separate one.</p>
           <label style="margin-top:8px">Token colour${inp('color', ch.color || '#4fc3f7', { ro, type: 'color' })}</label>
-          <label style="margin-top:8px">Experience points${inp('xp', +ch.xp || 0, { ro, type: 'number' })}</label>
+          <label style="margin-top:8px">Experience points${inp('xp', +ch.xp || 0, { ro: lock, type: 'number' })}</label>
           <label style="margin-top:8px">Proficiency bonus override${inp('profOverride', ch.profOverride ?? '', { ro, type: 'number', ph: String(2 + Math.floor((lvl - 1) / 4)) })}</label>
           <label style="margin-top:8px">Initiative bonus (misc)${inp('initMisc', +ch.initMisc || 0, { ro, type: 'number' })}</label>
           ${isGM() ? `<label style="margin-top:8px">Owner (GM)<select data-act-change="assign">${Object.entries(S.st.players).map(([id, p]) => `<option value="${esc(id)}" ${id === ch.owner ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>` : ''}
@@ -812,10 +847,12 @@
     else setTimeout(() => guarded('sheet', renderSheet), 0);
   });
   function sheetChangeAction(kind, val, t) {
+    if (kind === 'infuse' && !val) return mutate(c => { c.infused = ''; });   // nothing infused
     if (!val) return;
     if (kind === 'add-cond') mutate(c => { c.conditions = [...new Set([...(c.conditions || []), val])]; });
     if (kind === 'add-weapon') { const w = R.WEAPONS[+val]; mutate(c => c.attacks.push({ name: w.name, ab: w.ab, damage: w.damage, type: w.type, props: w.props, proficient: true })); }
     if (kind === 'assign') act('char.assign', { id: S.selected, owner: val });
+    if (kind === 'infuse') return mutate(c => { c.infused = val; });
     t.value = '';
   }
   $('#sheet').addEventListener('click', async e => {
@@ -832,7 +869,8 @@
       case 'dismiss-note': delete S.importNotes[ch.id]; renderSheet($('#sheet')); break;
       case 'del-class': mutate(c => c.classes.splice(i, 1)); break;
       case 'save-prof': mutate(c => { c.saves[b.dataset.ab] = !c.saves[b.dataset.ab]; }); break;
-      case 'skill-prof': mutate(c => { const v = +(c.skills[b.dataset.sk] || 0); c.skills[b.dataset.sk] = v === 0 ? 1 : v === 1 ? 2 : 0; }); break;
+      // none → proficient → expertise → half (a feature that adds half your proficiency, audit 5.6) → none
+      case 'skill-prof': mutate(c => { const v = +(c.skills[b.dataset.sk] || 0); c.skills[b.dataset.sk] = v === 0 ? 1 : v === 1 ? 2 : v === 2 ? 0.5 : 0; }); break;
       case 'hp': {
         const raw = $('#hpDelta').value.trim(); const n = Math.abs(parseInt(raw, 10)); if (!n) return;
         const sign = raw.startsWith('-') ? -1 : raw.startsWith('+') ? 1 : +b.dataset.sign;
@@ -843,7 +881,7 @@
       case 'short-rest': case 'short-rest-done': shortRestDialog(); break;   // hit dice by size, then the rest itself (#71)
       case 'long-rest':
         mutate(c => {
-          c.hp.current = +c.hp.max; c.hp.temp = 0; c.force.used = 0; c.tech.used = 0; c.deathSaves = { s: 0, f: 0 };
+          c.hp.current = +c.hp.max; c.hp.temp = 0; c.force.used = 0; c.tech.used = 0; c.force.temp = 0; c.tech.temp = 0; c.deathSaves = { s: 0, f: 0 }; c.infused = '';   // Infuse Item ends; infuse again
           delete c.force.high; delete c.tech.high;   // high-level powers can be cast again (#160)
           // half the total hit dice back (at least one), the largest first (audit 7.5)
           const dice = R.hitDice(c); let back = Math.max(1, Math.floor(dice.reduce((n, d) => n + d.total, 0) / 2));
@@ -1181,10 +1219,11 @@
     if (ov && !isGM()) return toast(ov.text, true);
     if (ov && !ovAsked && !confirm(`${ov.text}\n\nCast anyway?`)) return;
     const max = ch[k].max !== '' && ch[k].max != null ? +ch[k].max : (k === 'force' ? ci.forceMax : ci.techMax);
-    if (cost && (+ch[k].used || 0) + cost > max) return toast(`Not enough ${k} points (${cost} needed).`, true);
+    const spend = R.pointsSpend(ch[k], cost, max);   // temporary points first (audit 4.9)
+    if (cost && !spend) return toast(`Not enough ${k} points (${cost} needed).`, true);
     const from = R.highCastFrom(ch, k);   // a level that goes once per long rest is noted (#160)
     if (cost || (from && L >= from)) mutate(c => {
-      c[k].used = (+c[k].used || 0) + cost;
+      if (cost) { c[k].used = spend.used; c[k].temp = spend.temp; }
       if (from && L >= from) c[k].high = [...new Set(R.highCastUsed(c, k).concat(L))].sort((a, b) => a - b);
     });
     const dc = k === 'tech' ? `DC ${ci.techDC}, atk ${R.fmt(ci.techAtk)}` : p.alignment === 'dark' ? `DC ${ci.darkDC}, atk ${R.fmt(ci.darkAtk)}` : p.alignment === 'light' ? `DC ${ci.lightDC}, atk ${R.fmt(ci.lightAtk)}` : `DC ${Math.max(ci.lightDC, ci.darkDC)}, atk ${R.fmt(Math.max(ci.lightAtk, ci.darkAtk))}`;
@@ -2429,7 +2468,7 @@
         <h4 style="margin-top:12px">Who's here</h4>
         ${Object.entries(S.st.players).map(([id, p]) => `<div>${esc(p.name)} ${p.role === 'gm' && !/^\s*gm\s*$/i.test(p.name || '') ? '<span class="muted">(GM)</span>' : ''} ${S.st.online.some(o => o.clientId === id) ? '<span style="color:var(--green)">● online</span>' : '<span class="muted">offline</span>'}
           <span class="muted">— ${chars().filter(c => c.owner === id).map(c => esc(c.name)).join(', ') || 'no characters'}</span>${id !== clientId && !S.st.online.some(o => o.clientId === id) && !chars().some(c => c.owner === id) ? ` <button class="btn tiny ghost" data-rmplayer="${esc(id)}" title="Remove this old entry from the list (offline, no characters)" aria-label="Remove ${esc(p.name)} from the player list">✕</button>` : ''}</div>`).join('')}
-        <div class="row" style="margin-top:12px"><button class="btn small danger" id="clearChat">Clear chat log</button></div>
+        <div class="row" style="margin-top:12px"><a class="btn small" href="${API}?op=chatlog" download title="The whole chat the table keeps (the last 400 messages), as a text file">⇩ Download chat log</a><button class="btn small danger" id="clearChat">Clear chat log</button></div>
       </div>
       <div class="box"><h4>Level ups</h4>
         <p style="margin-top:0" class="muted">After a big fight or a hard-won conversation, give the party a level. Each player gets a pop-up and picks how to level.
@@ -2439,6 +2478,10 @@
         <button class="btn small" id="gmAsk" title="Everyone roll Perception, a group check, a secret Insight roll for a player…">🎲 Ask for a roll…</button>
         <label class="toggle" style="margin-top:8px" title="A table rule: whether players may take the hit die's maximum instead of the average or a roll">
           <input type="checkbox" id="gmHpMax" ${S.st.hpMax !== false ? 'checked' : ''}> Players may take maximum hit points when levelling</label>
+        <label class="toggle" style="margin-top:4px" title="On: class levels, XP and maximum HP change only by your grant or your own edits. Archetype picks, credits and everything else stay the player's.">
+          <input type="checkbox" id="gmSheetLock" ${S.st.sheetLock ? 'checked' : ''}> Only I change levels, XP and max HP</label>
+        <label class="toggle" style="margin-top:4px" title="On: players can't open Scum and Villainy's creature stat blocks in the Rules library">
+          <input type="checkbox" id="gmStatBlocks" ${S.st.statBlocksHidden ? 'checked' : ''}> Keep creature stat blocks to myself</label>
         ${pendingNames.length ? `<p class="muted" style="font-size:12px">Waiting to level: ${pendingNames.join(', ')}</p>` : ''}
       </div>
       <div class="box"><h4>Saving &amp; backups</h4>
@@ -2509,7 +2552,7 @@
     const id = e.target.id;
     if (id === 'copyLink') navigator.clipboard?.writeText(location.origin + location.pathname).then(() => toast('Link copied'));
     if (id === 'doRename') act('campaign.rename', { name: $('#campRename').value });
-    if (id === 'clearChat' && confirm('Clear the chat log for everyone?')) act('chat.clear');
+    if (id === 'clearChat' && confirm('Clear the chat log for everyone?\n\nTip: "Download chat log" keeps a copy first.')) act('chat.clear');
     if (id === 'gmGrant') openGrant();
     if (id === 'gmXp') openAwardXp(0);
     if (id === 'gmAsk') openAskRoll();
@@ -2526,6 +2569,8 @@
   });
   $('#gm').addEventListener('change', async e => {
     if (e.target.id === 'gmHpMax') { act('settings.hpMax', { on: e.target.checked }); return; }
+    if (e.target.id === 'gmSheetLock') { act('settings.sheetLock', { on: e.target.checked }); return; }
+    if (e.target.id === 'gmStatBlocks') { act('settings.statBlocks', { hidden: e.target.checked }); return; }
     if (e.target.id !== 'restoreFile' || !e.target.files[0]) return;
     const f = e.target.files[0]; e.target.value = '';
     let campaign;

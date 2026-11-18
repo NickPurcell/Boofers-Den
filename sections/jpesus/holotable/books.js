@@ -206,6 +206,7 @@
           for (const t of x.traits) if (!SKIP_TRAITS.has(lc(t.n))) c.features.push({ name: t.n.slice(0, 80), text: `Species trait (${x.n})\n${t.d}`.slice(0, 4000) });
           const speed = x.traits.find(t => lc(t.n) === 'speed'); const sp = speed && /(\d+)\s*feet/.exec(speed.d); if (sp) c.speed = +sp[1];
           c.senses = R.sensesFromTraits(x.traits);   // the species' own senses (the server applies the same for a player)
+          if (R.SIZES.includes(x.size)) c.size = x.size;   // and its size (audit 5.12)
           const lang = x.traits.find(t => lc(t.n) === 'languages'); if (lang && !c.languages.includes(lang.d.slice(0, 40))) c.languages = (c.languages ? c.languages + '\n' : '') + lang.d.slice(0, 300);
           if (apply) for (const [k, v] of Object.entries(x.asi)) c.abilities[k] = Math.min(30, n0(c.abilities[k]) + v);
         });
@@ -218,7 +219,7 @@
   // --------------------------------------------------------------------------- backgrounds
   function openBackgroundPicker(charId) {
     picker({
-      title: '◈ Choose a background', intro: "Sets the background, adds its feature, and notes its proficiencies, languages and equipment.",
+      title: '◈ Choose a background', intro: "Sets the background and adds its feature; then you choose its skills (ticked on the sheet) and its feat. Its tools, languages and equipment are noted.",
       load: () => list('backgrounds'),
       facets: [{ key: 'src', label: 'books', get: x => x.src }],
       row: x => `<b>${esc(x.n)}</b>${srcTag(x.src)}<div class="pp-meta">${esc([x.skills, x.feature && 'Feature: ' + x.feature].filter(Boolean).join(' · '))}</div>`,
@@ -227,17 +228,12 @@
         ${x.feats.length ? `<p><b>Suggested feats.</b> ${esc(x.feats.join(', '))}</p>` : ''}`,
       action: (x, i) => pickBtn(i, 'Choose'), pickedLabel: '✓ Chosen',
       onPick: x => {
-        mutateChar(charId, c => {
-          c.features = c.features.filter(f => !/^Background feature \(/.test(f.text || ''));
-          c.background = x.n;
-          if (x.feature) c.features.push({ name: x.feature.slice(0, 80), text: `Background feature (${x.n})\n${x.featureText}`.slice(0, 4000) });
-          const line = `Background (${x.n}): ${[x.skills && 'Skills: ' + x.skills, x.tools && 'Tools: ' + x.tools].filter(Boolean).join('. ')}`;
-          c.proficiencies = (c.proficiencies || '').split('\n').filter(l => !/^Background \(/.test(l)).concat(line).join('\n').trim().slice(0, 2000);
-          if (x.langs && !(c.languages || '').includes(x.langs)) c.languages = ((c.languages ? c.languages + '\n' : '') + 'Background: ' + x.langs).slice(0, 500);
-          if (x.equip && !(c.notes || '').includes(x.equip.slice(0, 40))) c.notes = ((c.notes ? c.notes + '\n\n' : '') + `Starting equipment (${x.n}): ${x.equip}`).slice(0, 20000);
+        const held = heldSkills(charOf(charId).skills);
+        backgroundChoices(x, held, `◈ ${esc(x.n)}`, 'Use this background', (skills, feat) => {
+          mutateChar(charId, c => applyBackground(c, x, skills, feat));
+          H.toast(`${x.n} chosen${skills.length ? ': ' + skills.map(k => R.SKILLS.find(sk => sk.key === k).name).join(', ') : ''}${feat ? ', feat ' + feat.n : ''}`);
+          H.closeModal();
         });
-        H.toast(`${x.n} chosen`);
-        H.closeModal();
       },
     });
   }
@@ -256,6 +252,73 @@
   }
   // a class's skill list as sheet keys ("Any" is every skill)
   const classSkills = cl => (cl.skills.some(x => lc(x) === 'any') ? R.SKILLS.map(k => k.key) : cl.skills.map(skillKey).filter(Boolean));
+  // Choosing within a background (audit 1.8): the skills from its "Choose two from …" list (minus ones already held) and
+  // one of its feats. done(skills, feat) with skill keys and { n, text } (or null when it lists no feats).
+  // What a background's skill choice offers a character who already has some skills (held: sheet keys at full proficiency).
+  // SW5e, Personality and Backgrounds: "If a character would gain the same proficiency from two different sources, he or
+  // she can choose a different proficiency of the same kind instead." So each listed skill already held is a swap: up to
+  // that many picks may come from any other skill. n is how many to pick in all.
+  // the skills a sheet has the proficiency in: a dot at 1 or 2 (expertise); the half step (0.5, #185) isn't it
+  const heldSkills = skills => Object.keys(skills || {}).filter(k => +skills[k] >= 1);
+  function backgroundSkillOptions(b, held) {
+    held = held || [];
+    const ch = skillChoice(b.skills), from = ch.from.filter(k => !held.includes(k)), swaps = Math.min(ch.n, ch.from.length - from.length);
+    const other = swaps > 0 ? R.SKILLS.map(x => x.key).filter(k => !ch.from.includes(k) && !held.includes(k)) : [];
+    return { n: Math.min(ch.n, from.length + Math.min(swaps, other.length)), from, other, swaps, listed: ch.from.length };
+  }
+  function backgroundChoices(b, held, title, nextLabel, done) {
+    const { n, from, other, swaps, listed } = backgroundSkillOptions(b, held);
+    let skills = [], feat = null;
+    const ready = () => skills.length === n && (!b.feats.length || !!feat);
+    H.modal(`<h3>${title}</h3>
+      <h4>Choose ${n} skill${n === 1 ? '' : 's'} <span class="muted" id="bcCount">(0 of ${n})</span></h4>
+      <div class="row wrap" style="gap:4px 14px">${from.map(k => `<label class="toggle"><input type="checkbox" data-bc="skill" value="${k}"> ${esc(R.SKILLS.find(x => x.key === k).name)}</label>`).join('')}</div>
+      ${other.length ? `<p class="muted" style="font-size:12px;margin:8px 0 4px">You already have ${swaps === 1 ? 'one' : swaps} of this background's skills, so ${swaps === 1 ? 'one pick' : `up to ${swaps} picks`} can be any other skill instead:</p>
+        <div class="row wrap" style="gap:4px 14px">${other.map(k => `<label class="toggle"><input type="checkbox" data-bc="skill" data-other="1" value="${k}"> ${esc(R.SKILLS.find(x => x.key === k).name)}</label>`).join('')}</div>`
+        : listed > from.length ? '<p class="muted" style="font-size:12px">Skills you already have are left out.</p>' : ''}
+      ${b.feats.length ? `<h4 style="margin-top:12px">Choose a feat</h4><select data-bc="feat"><option value="">— choose —</option>${b.feats.map(f => `<option>${esc(f)}</option>`).join('')}</select>
+        <div class="muted" id="bcFeat" style="font-size:12px;margin-top:6px"></div>` : ''}
+      <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn" data-bc="cancel">Cancel</button>
+        <button class="btn primary" data-bc="ok" ${ready() ? '' : 'disabled'}>${esc(nextLabel)}</button></div>`, box => {
+      box.onchange = async e => {
+        if (e.target.dataset.bc === 'skill') {
+          const swapped = box.querySelectorAll('[data-bc=skill][data-other]:checked').length;
+          if (box.querySelectorAll('[data-bc=skill]:checked').length > n || swapped > swaps) e.target.checked = false;   // too many, or more swaps than held skills
+          skills = [...box.querySelectorAll('[data-bc=skill]:checked')].map(i => i.value);
+          box.querySelector('#bcCount').textContent = `(${skills.length} of ${n})`;
+        }
+        if (e.target.dataset.bc === 'feat') {
+          const name = e.target.value, f = name ? await featNamed(name) : null;
+          feat = name ? { n: name, text: f ? f.text : '' } : null;
+          box.querySelector('#bcFeat').innerHTML = f ? mdBlock(f.text).html : '';
+        }
+        box.querySelector('[data-bc=ok]').disabled = !ready();
+      };
+      box.onclick = e => {
+        const t = e.target.closest('[data-bc]'); if (!t) return;
+        if (t.dataset.bc === 'cancel') return H.closeModal();
+        if (t.dataset.bc === 'ok' && ready()) done(skills, feat);
+      };
+    });
+  }
+
+  // A background on a sheet (audit 1.8): its feature; the skills chosen from its list as ticked dots; the feat chosen from
+  // its options; its tools, languages and (unless the caller lists equipment itself) equipment as text. Re-choosing a
+  // background replaces the old background feature and feat (dots already ticked stay: they may come from elsewhere).
+  function applyBackground(c, b, skills, feat, opts = {}) {
+    c.features = (c.features || []).filter(f => !/^Background (feature|feat) \(/.test(f.text || ''));
+    c.background = b.n;
+    if (b.feature) c.features.push({ name: b.feature.slice(0, 80), text: `Background feature (${b.n})\n${b.featureText}`.slice(0, 4000) });
+    if (feat) c.features.push({ name: feat.n.slice(0, 80), text: `Background feat (${b.n})\n${feat.text || ''}`.slice(0, 4000) });
+    c.skills = c.skills || {};
+    const picked = (skills || []).filter(k => R.SKILLS.some(sk => sk.key === k));
+    for (const k of picked) c.skills[k] = Math.max(1, +(c.skills[k] || 0));
+    const line = `Background (${b.n}): ${[picked.length && 'Skills: ' + picked.map(k => R.SKILLS.find(sk => sk.key === k).name).join(', '), b.tools && 'Tools: ' + b.tools].filter(Boolean).join('. ')}`;
+    c.proficiencies = (c.proficiencies || '').split('\n').filter(l => !/^Background \(/.test(l)).concat(line).join('\n').trim().slice(0, 2000);
+    if (b.langs && !(c.languages || '').includes(b.langs)) c.languages = ((c.languages ? c.languages + '\n' : '') + 'Background: ' + b.langs).slice(0, 500);
+    if (opts.equip !== false && b.equip && !(c.notes || '').includes(b.equip.slice(0, 40))) c.notes = ((c.notes ? c.notes + '\n\n' : '') + `Starting equipment (${b.n}): ${b.equip}`).slice(0, 20000);
+    return c;
+  }
   // The character a finished guide makes, from what was chosen (pure: the tests call it). D: { name, color, species,
   // asi (bool), cls, classSkills [keys], classFeatures [{n, text}], scores {str..}, bg, bgSkills [keys], feat {n, text} }
   function buildLevel1(D) {
@@ -281,17 +344,11 @@
       c.proficiencies = [cl.armor.length && 'Armor: ' + cl.armor.join(', '), cl.weapons.length && 'Weapons: ' + cl.weapons.join(', '),
         cl.tools.length && 'Tools: ' + cl.tools.join(', ')].filter(Boolean).join('\n');
     }
-    for (const k of [...(D.classSkills || []), ...(D.bgSkills || [])]) if (R.SKILLS.some(s => s.key === k)) c.skills[k] = 1;
+    for (const k of D.classSkills || []) if (R.SKILLS.some(s => s.key === k)) c.skills[k] = 1;
     c.ac = 10 + mod(c.abilities.dex);   // unarmored; armor goes on with the equipment
     c.acAuto = true;                    // brand-new: the sheet works its AC out from worn armor (#165), as ＋ New's blank sheet does
     const b = D.bg;
-    if (b) {
-      c.background = b.n;
-      if (b.feature) c.features.push({ name: b.feature.slice(0, 80), text: `Background feature (${b.n})\n${b.featureText}`.slice(0, 4000) });
-      if (D.feat) c.features.push({ name: D.feat.n.slice(0, 80), text: `Background feat (${b.n})\n${D.feat.text || ''}`.slice(0, 4000) });
-      if (b.tools) c.proficiencies = (c.proficiencies ? c.proficiencies + '\n' : '') + `Background (${b.n}) tools: ${b.tools}`;
-      if (b.langs) c.languages = ((c.languages ? c.languages + '\n' : '') + 'Background: ' + b.langs).slice(0, 500);
-    }
+    if (b) applyBackground(c, b, D.bgSkills, D.feat, { equip: false });   // the guide lists the equipment itself, below
     const plain = x => String(x).replace(/\*/g, '').replace(/^\s*-\s*/, '• ');   // SW5e's markdown: *(a)* -> (a), "- " -> a bullet
     const eq = [cl && cl.equip.length && `${cl.n}:\n${cl.equip.map(plain).join('\n')}`, b && b.equip && `${b.n}: ${plain(b.equip)}`].filter(Boolean);
     if (eq.length) c.notes = ('Starting equipment (choose where it says (a) or (b)):\n' + eq.join('\n\n')).slice(0, 20000);
@@ -351,6 +408,7 @@
           const b = e.target.closest('[data-gb]'); if (!b) return;
           if (b.dataset.gb === 'cancel') return H.closeModal();
           if (b.dataset.gb === 'next') {
+            b.disabled = true; b.textContent = 'Loading the class features…';   // the first load of the features list takes a moment
             D.classFeatures = (await featuresFor(D.cls.n, 'class', 1, 1).catch(() => [])).map(f => ({ n: f.n, text: f.text }));
             H.scoresDialog({ name: D.name }, sc => { D.scores = sc; stepBackground(); });
           }
@@ -371,32 +429,7 @@
       });
     }
     function stepBgChoices() {
-      const ch = skillChoice(D.bg.skills), from = ch.from.filter(k => !D.classSkills.includes(k));
-      const n = Math.min(ch.n, from.length);
-      const draw = () => `<h3>${step(4, esc(D.bg.n))}</h3>
-        <h4>Choose ${n} skill${n === 1 ? '' : 's'} <span class="muted" id="gbCount2">(${D.bgSkills.length} of ${n})</span></h4>
-        <div class="row wrap" style="gap:4px 14px">${from.map(k => `<label class="toggle"><input type="checkbox" data-gb="bskill" value="${k}" ${D.bgSkills.includes(k) ? 'checked' : ''}> ${esc(R.SKILLS.find(s => s.key === k).name)}</label>`).join('')}</div>
-        ${ch.from.length > from.length ? '<p class="muted" style="font-size:12px">Skills your class already gives are left out.</p>' : ''}
-        ${D.bg.feats.length ? `<h4 style="margin-top:12px">Choose a feat</h4><select data-gb="feat"><option value="">— choose —</option>${D.bg.feats.map(f => `<option ${D.feat && D.feat.n === f ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select>` : ''}
-        <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn" data-gb="cancel">Cancel</button>
-          <button class="btn primary" data-gb="next2" disabled>Next: review</button></div>`;
-      const ready = () => D.bgSkills.length === n && (!D.bg.feats.length || !!D.feat);
-      H.modal(draw(), box => {
-        box.onchange = async e => {
-          if (e.target.dataset.gb === 'bskill') {
-            D.bgSkills = [...box.querySelectorAll('[data-gb=bskill]:checked')].map(i => i.value);
-            if (D.bgSkills.length > n) { e.target.checked = false; D.bgSkills = D.bgSkills.filter(k => k !== e.target.value); }
-            box.querySelector('#gbCount2').textContent = `(${D.bgSkills.length} of ${n})`;
-          }
-          if (e.target.dataset.gb === 'feat') { const f = e.target.value && await featNamed(e.target.value); D.feat = e.target.value ? { n: e.target.value, text: f ? f.text : '' } : null; }
-          box.querySelector('[data-gb=next2]').disabled = !ready();
-        };
-        box.onclick = e => {
-          const b = e.target.closest('[data-gb]'); if (!b) return;
-          if (b.dataset.gb === 'cancel') return H.closeModal();
-          if (b.dataset.gb === 'next2' && ready()) stepReview();
-        };
-      });
+      backgroundChoices(D.bg, D.classSkills, step(4, esc(D.bg.n)), 'Next: review', (skills, feat) => { D.bgSkills = skills; D.feat = feat; stepReview(); });
     }
     // 5. equipment and a last look
     function stepReview() {
@@ -667,7 +700,7 @@
     { key: 'rules-wh', name: 'Wretched Hives' },
     { key: 'rules-sotg', name: 'Starships of the Galaxy' },
     { key: 'rules-variant', name: 'Variant Rules', variants: true },
-    { key: 'monsters', name: 'Scum and Villainy', monsters: true },
+    { key: 'monsters', name: 'Scum and Villainy', monsters: true, gmOnly: 'statBlocksHidden' },
     { key: 'tables', name: 'Reference tables', entries: true },
     { key: 'weapon-props', name: 'Weapon properties', entries: true },
     { key: 'armor-props', name: 'Armor properties', entries: true },
@@ -675,7 +708,7 @@
   const LIB = { book: null, ch: 0, q: '' };
   function libraryBar() {
     const v = (H.S.st && H.S.st.variants) || [];
-    return `<div class="box lib-bar"><h4>SW5e rulebooks <span class="spacer"></span><span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">from <a href="https://sw5e.com" target="_blank" rel="noopener noreferrer">sw5e.com</a>, a free fan project</span></h4><div class="row wrap">${BOOKS.map(b => `<button class="btn small" data-lib="${esc(b.key)}">${esc(b.name)}</button>`).join('')}</div>
+    return `<div class="box lib-bar"><h4>SW5e rulebooks <span class="spacer"></span><span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">from <a href="https://sw5e.com" target="_blank" rel="noopener noreferrer">sw5e.com</a>, a free fan project</span></h4><div class="row wrap">${BOOKS.filter(b => !(b.gmOnly && !H.isGM() && (H.S.st || {})[b.gmOnly])).map(b => `<button class="btn small" data-lib="${esc(b.key)}">${esc(b.name)}</button>`).join('')}</div>
       ${v.length ? `<div style="margin-top:8px"><span class="muted">Variant rules in use at this table:</span> ${v.map(n => `<button class="chip lib-var" data-lib="rules-variant" data-libch="${esc(n)}">${esc(n)}</button>`).join(' ')}</div>` : ''}</div>`;
   }
   async function openBook(key, chapterName) {
@@ -908,7 +941,7 @@
 
   window.HTB = {
     list, mdBlock, libraryBar, openBook, openSpeciesPicker, openBackgroundPicker, openArchetypePicker, openFeaturePicker,
-    guidedBuild, buildLevel1, skillChoice,
+    guidedBuild, buildLevel1, skillChoice, applyBackground, backgroundSkillOptions, heldSkills,
     levelFeatures, dropArchetypeFeatures, archetypesOf, featNamed, featNames, openMonsterPicker, openStatBlock, rollCreatureSave, bonuses, saveBonus, difficulty, xpMultiplier, renderEncounter, renderShips, renderShipsSafe,
   };
   // the rules tab and ships tab were drawn before this file loaded
