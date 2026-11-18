@@ -1,0 +1,123 @@
+{
+ "pieces": [
+  {
+   "card": "title",
+   "dur": 4.0,
+   "fade": [
+    0.8,
+    0.5
+   ]
+  },
+  {
+   "file": "../wt-combine/jpesus-agent/jpesus-cut-1m41.mp4",
+   "from": 4.01,
+   "to": 17.02,
+   "note": "theirs: fog, Blocks-sight shuttle, ??? hunter"
+  },
+  {
+   "file": "../wt-combine/jpesus-agent/jpesus-cut-1m41.mp4",
+   "from": 17.02,
+   "to": 24.03,
+   "note": "theirs: combat-start moves"
+  },
+  {
+   "file": "../wt-combine/jpesus-agent/jpesus-cut-1m41.mp4",
+   "from": 24.03,
+   "to": 30.09,
+   "note": "theirs: initiative, meter"
+  },
+  {
+   "file": "../wt-combine/jpesus-agent/jpesus-cut-1m41.mp4",
+   "from": 30.1,
+   "to": 35.11,
+   "note": "theirs: lit movement"
+  },
+  {
+   "file": "holotable-combat-reel.mp4",
+   "from": 41.49,
+   "to": 49.53,
+   "note": "ours: attack odds and a hit"
+  },
+  {
+   "file": "holotable-combat-reel.mp4",
+   "from": 52.71,
+   "to": 62.82,
+   "note": "ours: cover, temp HP"
+  },
+  {
+   "file": "holotable-combat-reel.mp4",
+   "from": 62.82,
+   "to": 72.08,
+   "note": "ours: area stops at walls"
+  },
+  {
+   "file": "../wt-combine/jpesus-agent/jpesus-cut-1m41.mp4",
+   "from": 42.34,
+   "to": 54.18,
+   "note": "theirs: opportunity attack"
+  },
+  {
+   "file": "holotable-combat-reel.mp4",
+   "from": 80.51,
+   "to": 86.44,
+   "note": "ours: recharge used"
+  },
+  {
+   "file": "holotable-combat-reel.mp4",
+   "from": 129.35,
+   "to": 132.58,
+   "note": "ours: recharge back"
+  },
+  {
+   "file": "holotable-combat-reel.mp4",
+   "from": 90.95,
+   "to": 95.95,
+   "note": "ours: legendary"
+  },
+  {
+   "file": "holotable-combat-reel.mp4",
+   "from": 102.36,
+   "to": 112.32,
+   "note": "ours: Dash"
+  },
+  {
+   "file": "holotable-combat-reel.mp4",
+   "from": 112.32,
+   "to": 117.05,
+   "note": "ours: GM-only save"
+  },
+  {
+   "file": "holotable-combat-reel.mp4",
+   "from": 117.05,
+   "to": 129.35,
+   "note": "ours: flanking"
+  },
+  {
+   "file": "../wt-combine/jpesus-agent/jpesus-cut-1m41.mp4",
+   "from": 77.99,
+   "to": 86.43,
+   "note": "theirs: chat follows sight"
+  },
+  {
+   "file": "../wt-combine/jpesus-agent/jpesus-cut-1m41.mp4",
+   "from": 70.98,
+   "to": 77.99,
+   "note": "theirs: sniper drops Kira to 0"
+  },
+  {
+   "file": "../wt-combine/jpesus-agent/jpesus-cut-1m41.mp4",
+   "from": 86.43,
+   "to": 97.49,
+   "note": "theirs: death save, end combat"
+  },
+  {
+   "card": "credits",
+   "dur": 6.0,
+   "fade": [
+    0.6,
+    1.0
+   ]
+  }
+ ],
+ "caps_dir": "caps-combine"
+}
