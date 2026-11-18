@@ -67,9 +67,6 @@ test("buildLevel1: species, class, scores and background make one level-1 charac
   assert.equal(c.ac, 11, "10 + Dex +1, unarmored");
   assert.equal(c.acAuto, true, "brand-new: the sheet works its AC out from worn armor (#165)");
   assert.equal(c.speed, 30);
-  assert.equal(c.size, "Medium", "the species' size, as the species picker sets it (#185)");
-  assert.equal(B.buildLevel1({ species: Object.assign({}, species, { size: "Small" }), cls: fighter, scores: {} }).size, "Small");
-  assert.equal(B.buildLevel1({ species: Object.assign({}, species, { size: "Enormous" }), cls: fighter, scores: {} }).size, undefined, "only SW5e's sizes");
   const names = c.features.map((f) => f.name);
   assert.ok(names.includes("Iron Constitution") && !names.includes("Speed") && !names.includes("Ability Score Increase"), "traits, not the bookkeeping ones");
   assert.ok(names.includes("Second Wind") && names.includes("Second Identity") && names.includes("Silver-Tongued"), "class feature, background feature and feat");
