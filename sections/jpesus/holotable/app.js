@@ -1676,7 +1676,7 @@
     for (const t of mp.tokens) {
       const drag = M.drag && M.drag.id === t.id;
       const ap = ANIM.pos[t.id];   // mid scene-movement
-      const px = drag ? M.drag.px : (ap ? ap.x : t.x) * g, py = drag ? M.drag.py : (ap ? ap.y : t.y) * g, sz = (t.size || 1) * g, r = sz / 2 - 3;
+      const px = drag ? M.drag.px : (ap ? ap.x : t.x) * g, py = drag ? M.drag.py : (ap ? ap.y : t.y) * g, sz = (t.size || 1) * g, r = t.tiny ? sz / 4 - 1 : sz / 2 - 3;   // Tiny: half size, in its square (8.15)
       const cx = px + sz / 2, cy = py + sz / 2;
       ctx.globalAlpha = t.hidden ? 0.45 : 1;
       const isCur = cur && (cur.tok ? cur.tok === t.id : (cur.charId && cur.charId === t.charId) || (!cur.charId && cur.name !== '???' && cur.name === t.name));
@@ -1700,6 +1700,13 @@
         const pct = Math.max(0, Math.min(1, ch.hp.current / ch.hp.max));
         ctx.fillStyle = '#300'; ctx.fillRect(px + 4, py + sz - 6, sz - 8, 4);
         ctx.fillStyle = pct < .3 ? themeHex('red', '#ef5350') : pct < .6 ? themeHex('amber', '#ffb74d') : themeHex('green', '#66bb6a'); ctx.fillRect(px + 4, py + sz - 6, (sz - 8) * pct, 4);
+      }
+      if (t.elev) {   // elevation or flying height (audit 8.14): a badge at the token's top right, ↑ up, ↓ down
+        const txt = `${t.elev > 0 ? '↑' : '↓'}${Math.abs(t.elev)}`;
+        ctx.font = `700 ${Math.max(10 / z, g * 0.18)}px ${UI_FONT}`; ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+        const w = ctx.measureText(txt).width + 6 / z, h = Math.max(13 / z, g * 0.24), bx = px + sz, by = py;
+        ctx.fillStyle = 'rgba(4,18,27,.85)'; ctx.fillRect(bx - w, by, w, h);
+        ctx.fillStyle = themeHex('holo', '#4fc3f7'); ctx.fillText(txt, bx - 3 / z, by + 1 / z);
       }
       // a short label that fits under the token (so neighbours don't overlap); hover shows the full name
       ctx.font = `600 ${Math.max(11 / z, g * 0.2)}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
@@ -1890,7 +1897,8 @@
     const ch = t.charId && S.st.characters[t.charId];
     pop.innerHTML = `<b>${esc(t.name)}</b>${ch ? `<span class="muted">HP ${n0(ch.hp.current)}/${n0(ch.hp.max)} · AC ${n0(ch.ac)}</span><button class="btn small" data-tp="sheet">Open sheet</button>` : ''}
       ${canEditTok ? `<label>Colour<input type="color" value="${color(t.color)}" data-tp="color"></label>
-      <label>Size<select data-tp="size">${[1, 2, 3, 4].map(n => `<option ${n === (t.size || 1) ? 'selected' : ''} value="${n}">${['Medium/Small', 'Large', 'Huge', 'Gargantuan'][n - 1]}</option>`).join('')}</select></label>
+      <label>Size<select data-tp="size"><option value="tiny" ${t.tiny ? 'selected' : ''}>Tiny</option>${[1, 2, 3, 4].map(n => `<option ${!t.tiny && n === (t.size || 1) ? 'selected' : ''} value="${n}">${['Medium/Small', 'Large', 'Huge', 'Gargantuan'][n - 1]}</option>`).join('')}</select></label>
+      <label title="Height above the ground in feet: flying, a balcony, a ledge (negative: below, e.g. a pit)">Elevation (ft)<input type="number" step="5" value="${n0(t.elev)}" data-tp="elev" style="width:80px"></label>
       ${isGM() && A.sel ? `<button class="btn small" data-tp="img">Use selected asset as image</button>` : ''}
       ${t.img ? '<button class="btn small ghost" data-tp="noimg">Remove image</button>' : ''}
       ${isGM() ? `<button class="btn small" data-tp="hide">${t.hidden ? 'Reveal to players' : 'Hide from players'}</button>
@@ -1911,7 +1919,9 @@
     });
     pop.addEventListener('change', ev => {
       const a = ev.target.dataset.tp;
-      if (a === 'color' || a === 'size') act('token.update', { id: t.id, fields: { [a]: a === 'size' ? +ev.target.value : ev.target.value } });
+      if (a === 'color') act('token.update', { id: t.id, fields: { color: ev.target.value } });
+      if (a === 'size') act('token.update', { id: t.id, fields: ev.target.value === 'tiny' ? { size: 1, tiny: true } : { size: +ev.target.value, tiny: false } });
+      if (a === 'elev') act('token.update', { id: t.id, fields: { elev: +ev.target.value || 0 } });
     });
   }
 

@@ -1927,3 +1927,27 @@ test("AC from armor, Unarmored Defense and misc (audit 5.3), crit range, misc bo
   c = (await gm.poll()).data.state.characters[id3];
   assert.equal(c.ac, 17, "an old sheet (or an import) filled from the blank keeps its typed AC");
 });
+
+test("tokens: Tiny creatures and elevation (audit 8.14, 8.15)", async () => {
+  const { gm, p1 } = await table();
+  await gm.act("token.add", { name: "Mynock", x: 2, y: 2 });
+  const tok = () => gm.poll().then((r) => r.data.state.map.tokens.find((t) => t.name === "Mynock"));
+  const id = (await tok()).id;
+  await gm.act("token.update", { id, fields: { tiny: true, elev: 32 } });
+  let t = await tok();
+  assert.equal(t.tiny, true);
+  assert.equal(t.size, 1, "still one square for walls, fog and the combat view");
+  assert.equal(t.elev, 30, "in 5-ft steps");
+  await gm.act("token.update", { id, fields: { size: 2 } });
+  t = await tok();
+  assert.equal(t.tiny, undefined, "a bigger size isn't Tiny");
+  await gm.act("token.update", { id, fields: { size: 1, tiny: true, elev: -999999 } });
+  t = await tok();
+  assert.equal(t.elev, -9995, "clamped");
+  await gm.act("token.update", { id, fields: { elev: 0 } });
+  t = await tok();
+  assert.equal(t.elev, undefined, "the ground isn't kept");
+  assert.equal(t.tiny, true);
+  assert.equal((await p1.act("token.update", { id, fields: { elev: 10 } })).code, 403, "only the GM or the token's owner");
+  assert.equal((await p1.poll()).data.state.map.tokens.find((x) => x.id === id).tiny, true, "players see it Tiny too");
+});

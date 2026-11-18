@@ -755,6 +755,11 @@ function applyAction(camp, cid, gm, type, p) {
       if ("name" in f) t.name = str(f.name, 40);
       if ("color" in f) t.color = validColor(f.color);
       if ("size" in f) t.size = clamp(int(f.size, 1), 1, 4);
+      // a Tiny creature (audit 8.15) still takes its square for walls, fog and the combat view; it's drawn smaller
+      if ("tiny" in f) { if (f.tiny && (t.size || 1) === 1) t.tiny = true; else delete t.tiny; }
+      if ((t.size || 1) > 1) delete t.tiny;
+      // elevation or flying height in feet (audit 8.14), in 5-ft steps; 0 is the ground and isn't kept
+      if ("elev" in f) { const e = Math.round(clamp(int(f.elev), -9995, 99995) / 5) * 5; if (e) t.elev = e; else delete t.elev; }
       if ("hidden" in f && gm) t.hidden = !!f.hidden;
       if ("nameHidden" in f && gm) t.nameHidden = !!f.nameHidden;
       if ("img" in f) t.img = validImg(f.img);
@@ -1013,7 +1018,8 @@ function cleanMap(g, raw) {
     gridSize: clamp(int(m.gridSize, 70), 5, 200), gridV2: true, cols: clamp(int(m.cols, 24), 5, 200), rows: clamp(int(m.rows, 16), 5, 200), showGrid: m.showGrid !== false,
     tokens: (Array.isArray(m.tokens) ? m.tokens : []).slice(0, 300).filter((t) => t && typeof t === "object").map((t) => ({
       id: /^[a-z0-9]{6,20}$/.test(t.id || "") ? t.id : rid(), name: str(t.name, 40), color: validColor(t.color), x: clamp(int(t.x), -500, 1000), y: clamp(int(t.y), -500, 1000),
-      size: clamp(int(t.size, 1), 1, 4), charId: charById(g, t.charId) ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, nameHidden: !!t.nameHidden, img: validImg(t.img), moves: cleanMoves(t.moves) })),
+      size: clamp(int(t.size, 1), 1, 4), ...(t.tiny && clamp(int(t.size, 1), 1, 4) === 1 ? { tiny: true } : {}),
+      ...((e) => (e ? { elev: e } : {}))(Math.round(clamp(int(t.elev), -9995, 99995) / 5) * 5), charId: charById(g, t.charId) ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, nameHidden: !!t.nameHidden, img: validImg(t.img), moves: cleanMoves(t.moves) })),
     ...(Array.isArray(m.walls) && m.walls.length ? { walls: Fight.cleanWalls(m.walls) } : {}),   // the combat view's walls (issue #93), only on a map that has some
     ...(m.fog && typeof m.fog === "object" ? { fog: Fight.cleanFog(m.fog) } : {}),   // fog of war (issue #93), only on a map the GM switched it on for
     ...(m.light && typeof m.light === "object" ? { light: Fight.cleanLight(m.light) } : {}),   // its light (#93 step 5), only on a map the GM dimmed or lit
