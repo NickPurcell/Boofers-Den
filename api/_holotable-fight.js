@@ -20,8 +20,11 @@ const SIZES = ["Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"];
 // the conditions the DM can set from the combat view: HoloTable's list, plus SW5e's levelled ones until #77 brings them to rules.js
 const CONDS = new Set([...Object.keys((R && R.CONDITIONS) || {}), ...Object.keys(E.CONDITION_EFFECTS), "Deafened", "Diseased"]);
 const ID = /^[a-z0-9]{6,20}$/;
+const idOr = (v) => (ID.test(String(v || "")) ? String(v) : "");   // a unit id from a request, or nothing (never "__proto__")
 const str = (v, n) => String(v == null ? "" : v).slice(0, n);
 const int = (v, d = 0) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : d; };
+// a creature's Athletics and Acrobatics bonuses, the only skills the combat view rolls (#144)
+const contestSkills = (x) => Object.fromEntries(Object.entries(x && typeof x === "object" && !Array.isArray(x) ? x : {}).filter(([k, v]) => (k === "athletics" || k === "acrobatics") && Number.isFinite(+v) && v !== null && v !== "").map(([k, v]) => [k, Math.max(-10, Math.min(30, parseInt(v, 10) || 0))]));
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const now = () => Date.now() / 1000;
 const plainObj = (o) => (o && typeof o === "object" && !Array.isArray(o) ? o : {});
@@ -40,7 +43,7 @@ function state(camp) {
       const o = typeof v === "object" && v ? v : { speed: v };
       const abl = (x, lo, hi) => Object.fromEntries(Object.entries(plainObj(x)).filter(([ab, n]) => ["str", "dex", "con", "int", "wis", "cha"].includes(ab) && Number.isFinite(+n)).map(([ab, n]) => [ab, clamp(int(n), lo, hi)]));
       return [k, Object.assign({ speed: clamp(int(o.speed, 30), 0, 200), saves: abl(o.saves, -10, 30), mods: abl(o.mods, -5, 15),
-        sizeCat: o.sizeCat == null || o.sizeCat === "" ? null : clamp(int(o.sizeCat, 2), 0, 5), reach: clamp(int(o.reach, 5), 5, 30) }, defences(o))];
+        sizeCat: o.sizeCat == null || o.sizeCat === "" ? null : clamp(int(o.sizeCat, 2), 0, 5), reach: clamp(int(o.reach, 5), 5, 30), skills: contestSkills(o.skills) }, defences(o))];
     })),
     // a character's resistances, immunities and vulnerabilities (set by its owner or the GM in the combat view)
     defenses: Object.fromEntries(Object.entries(plainObj(f.defenses)).filter(([k]) => ID.test(k)).slice(0, 60).map(([k, v]) => [k, defences(plainObj(v))])),
@@ -169,6 +172,7 @@ function worldOf(camp, forPlayer, G, cid) {
   if (!forPlayer) for (const e of entries) if (w.units[e.id] && hiddenEntry(camp, e, ut[e.id])) w.units[e.id].hidden = true;
   // the dark matters in a fight where it matters to fog: a dimmed or dark map with fog on (step 5)
   if (fogOn(camp) && lightOn(camp)) { const { cols, rows } = sizeOf(camp); w.light = { lit: litOf(camp), cols, rows }; }
+  w.board = sizeOf(camp);   // the board's edge, which a push can't go past (#147)
   return w;
 }
 
@@ -485,7 +489,10 @@ function apply(camp, cid, gm, type, p, G) {
       const lines = (v) => (Array.isArray(v) ? v : []).slice(0, 12).map((x) => str(x, 80));
       const abl = (x, lo, hi) => Object.fromEntries(Object.entries(plainObj(x)).filter(([ab, n]) => ["str", "dex", "con", "int", "wis", "cha"].includes(ab) && Number.isFinite(+n)).map(([ab, n]) => [ab, clamp(int(n), lo, hi)]));
       const sizeAt = SIZES.indexOf(str(p.size, 12));
-      f.npc[e.id] = Object.assign({ speed: clamp(int(p.speed, 30), 0, 200), saves: abl(p.saves, -10, 30), mods: abl(p.mods, -5, 15), sizeCat: sizeAt >= 0 ? sizeAt : null, reach: clamp(int(p.reach, 5), 5, 30) },
+      // its Athletics and Acrobatics for Grapple and Shove (#144), from the stat block's skill lines ("Athletics +5")
+      const sk = {};
+      for (const x of (Array.isArray(p.skills) ? p.skills : []).slice(0, 18)) { const m = /^(athletics|acrobatics)\s*([+-]\d{1,2})/i.exec(str(x, 40)); if (m) sk[m[1].toLowerCase()] = +m[2]; }
+      f.npc[e.id] = Object.assign({ speed: clamp(int(p.speed, 30), 0, 200), saves: abl(p.saves, -10, 30), mods: abl(p.mods, -5, 15), sizeCat: sizeAt >= 0 ? sizeAt : null, reach: clamp(int(p.reach, 5), 5, 30), skills: contestSkills(sk) },
         defences({ resist: E.readDefenses(lines(p.resist)), immune: E.readDefenses(lines(p.immune)), vuln: E.readDefenses(lines(p.vuln)), condImmune: lines(p.condImmune), senses: E.readSenses(lines(p.senses)) }));
       return {};
     }
@@ -635,7 +642,8 @@ function apply(camp, cid, gm, type, p, G) {
       report(camp, cid, gm, G, re, world, r, false);
       return {};
     }
-    case "fight.move": case "fight.attack": case "fight.end": case "fight.use": case "fight.stand": case "fight.douse": case "fight.common": case "fight.deathsave": {
+    case "fight.move": case "fight.attack": case "fight.end": case "fight.use": case "fight.stand": case "fight.douse": case "fight.common": case "fight.deathsave":
+    case "fight.grapple": case "fight.shove": case "fight.escape": case "fight.release": {
       if (!f.on) throw new G.Invalid("The combat view is off.");
       const cur = ini.entries[ini.turn];
       if (!ini.active || !cur) throw new G.Invalid("Combat hasn't started: start initiative first.");
@@ -669,8 +677,11 @@ function apply(camp, cid, gm, type, p, G) {
       if (type === "fight.move") act = { type: "move", unit: cur.id, x: p.x, y: p.y };
       else if (type === "fight.end") act = { type: "end", unit: cur.id };
       else if (type === "fight.stand") act = { type: "stand", unit: cur.id };
-      else if (type === "fight.douse") act = { type: "douse", unit: cur.id, target: String(p.target || "") };
-      else if (type === "fight.common") act = { type: "common", unit: cur.id, key: String(p.key || "") };
+      else if (type === "fight.douse") act = { type: "douse", unit: cur.id, target: idOr(p.target) };
+      else if (type === "fight.common") act = { type: "common", unit: cur.id, key: String(p.key || ""), target: idOr(p.target) };   // Help names its target (#144)
+      else if (type === "fight.grapple" || type === "fight.shove") act = { type: type.slice(6), unit: cur.id, target: idOr(p.target), push: !!p.push, multi: gm && !cur.charId ? clamp(int(p.multi, 1), 1, 6) : 1 };
+      else if (type === "fight.escape") act = { type: "escape", unit: cur.id, skill: p.skill === "athletics" ? "athletics" : "acrobatics" };
+      else if (type === "fight.release") act = { type: "release", unit: cur.id, target: idOr(p.target) };
       else if (type === "fight.deathsave") act = { type: "deathsave", unit: cur.id };
       else if (type === "fight.use") {
         const ch = cur.charId && camp.characters[cur.charId];
@@ -678,7 +689,7 @@ function apply(camp, cid, gm, type, p, G) {
         const ability = E.abilitiesOf(ch, R, f.lib).find((a) => a.key === String(p.ability || ""));
         if (!ability) throw new G.Invalid("The table has no data for that ability on this sheet.");
         const point = p.point && Number.isFinite(+p.point.x) && Number.isFinite(+p.point.y) ? { x: clamp(+p.point.x, -500, 1000), y: clamp(+p.point.y, -500, 1000) } : null;
-        act = { type: "use", unit: cur.id, ability, point, targets: Array.isArray(p.targets) ? p.targets.slice(0, 40).map(String) : [String(p.target || "")], upcast: clamp(int(p.upcast), 0, 9), adv: !!p.adv, dis: !!p.dis };
+        act = { type: "use", unit: cur.id, ability, point, targets: Array.isArray(p.targets) ? p.targets.slice(0, 40).map(idOr).filter(Boolean) : [idOr(p.target)].filter(Boolean), upcast: clamp(int(p.upcast), 0, 9), adv: !!p.adv, dis: !!p.dis };
       }
       else {
         let spec;
@@ -687,7 +698,7 @@ function apply(camp, cid, gm, type, p, G) {
           spec = ch && E.attacksOf(ch, R).find((a) => a.key === String(p.attack));
           if (!spec) throw new G.Invalid("That attack isn't on the sheet.");
         } else spec = cleanSpec(p.attack, G);
-        act = { type: "attack", unit: cur.id, target: String(p.target || ""), attack: spec, adv: !!p.adv, dis: !!p.dis, no: Array.isArray(p.no) ? p.no.slice(0, 4).map((x) => str(x, 20)) : [],
+        act = { type: "attack", unit: cur.id, target: idOr(p.target), attack: spec, adv: !!p.adv, dis: !!p.dis, no: Array.isArray(p.no) ? p.no.slice(0, 4).map((x) => str(x, 20)) : [],
           add: { fes: clamp(int(p.add && p.add.fes), 0, 20), double: !!(p.add && p.add.double) }, twoHands: !!p.twoHands,   // only how many, never the dice: the engine works those out
           multi: gm && !cur.charId ? clamp(int(p.multi, 1), 1, 6) : 1,
           offhand: !!cur.charId && !!p.offhand };   // Two- or Double-Weapon Fighting (5.8): the engine checks it may   // a creature's Multiattack (#139): the GM's screen reads it from the stat block
@@ -696,7 +707,7 @@ function apply(camp, cid, gm, type, p, G) {
       if (limited && limited.used >= limited.max) throw new G.Invalid(`${limited.name} is spent${limited.recharge ? ` until it recharges (${limited.recharge}-6 at the start of ${cur.name}'s turn)` : ""}.`);
       const r = E.apply(world, act, (expr) => G.rollDice(expr));
       if (!r.ok) throw new G.Invalid(r.why);
-      const label = type === "fight.deathsave" ? `${G.shownName(camp, cur)}'s death save` : type === "fight.common" ? `${G.shownName(camp, cur)} took ${String(p.key || "an action")}` : type === "fight.douse" ? `${G.shownName(camp, cur)} put out flames` : type === "fight.stand" ? `${G.shownName(camp, cur)} stood up` : type === "fight.move" ? `${G.shownName(camp, cur)} moved` : type === "fight.end" ? `${G.shownName(camp, cur)} ended the turn` : type === "fight.use" ? `${G.shownName(camp, cur)} used ${act.ability.name}` : `${G.shownName(camp, cur)}'s attack`;
+      const label = type === "fight.deathsave" ? `${G.shownName(camp, cur)}'s death save` : type === "fight.common" ? `${G.shownName(camp, cur)} took ${String(p.key || "an action")}` : type === "fight.douse" ? `${G.shownName(camp, cur)} put out flames` : type === "fight.grapple" || type === "fight.shove" || type === "fight.escape" || type === "fight.release" ? `${G.shownName(camp, cur)}: ${type.slice(6)}` : type === "fight.stand" ? `${G.shownName(camp, cur)} stood up` : type === "fight.move" ? `${G.shownName(camp, cur)} moved` : type === "fight.end" ? `${G.shownName(camp, cur)} ended the turn` : type === "fight.use" ? `${G.shownName(camp, cur)} used ${act.ability.name}` : `${G.shownName(camp, cur)}'s attack`;
       snapshot(camp, label);
       if (limited) limited.used += 1;   // after the snapshot, so Undo gives it back
       writeBack(camp, cid, world, r.world, G);
@@ -749,6 +760,7 @@ function view(camp, cid, gm, shownName) {
     npcSpeed: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v.speed : v])) : {},
     npcSaves: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, (v && v.saves) || {}])) : {},
     npcMods: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, (v && v.mods) || {}])) : {},
+    npcSkills: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, (v && v.skills) || {}])) : {},   // Athletics, Acrobatics (#144): the GM's
     ...(gm ? { propWalls: propWalls(camp) } : {}),   // the GM's previews see what the server sees (#110's sight-blocking objects)
     npcRes: gm ? f.npcres || {} : {},   // a creature's limited abilities: the GM's
     npcDefenses: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, defences(plainObj(v))])) : {},

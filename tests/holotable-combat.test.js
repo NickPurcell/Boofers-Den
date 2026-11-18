@@ -2773,3 +2773,168 @@ test("Two-Weapon Fighting through the API: the server works out the off-hand att
   assert.ok(at >= 0, "the off-hand attack is in the log");
   if (/a hit|critical/.test(rolls[at].label)) assert.match(rolls[at + 1].expr, /^[12]d6$/, "no Dex on the off-hand damage");
 });
+
+/* ---------------------------------------------------------------- Grapple, Shove, escaping, Help (#144) */
+test("Grapple and Shove: a contest in place of one attack, within reach, no more than one size larger", () => {
+  const ft = (o) => unit(Object.assign({ id: "ft", name: "Fenn", side: "pc", x: 0, y: 0, attacks: 2, skills: { athletics: 5, acrobatics: 1 }, mods: { str: 3, dex: 1 } }, o));
+  const r1 = (o) => unit(Object.assign({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, skills: {}, mods: { str: 1, dex: 2 } }, o));
+  let d = dice({ total: 15 }, { total: 9 });
+  let r = E.apply(world([ft(), r1()], "ft"), { type: "grapple", unit: "ft", target: "r1" }, d.roll);
+  assert.equal(r.ok, true, r.why);
+  assert.deepEqual(d.asked, ["1d20+5", "1d20+2"], "the Raider picks its better: Dex +2 over Str +1 (no skills known)");
+  assert.ok(r.world.units.r1.conditions.includes("Grappled"));
+  assert.ok(r.world.effects.some((ef) => ef.unit === "r1" && ef.condition === "Grappled" && ef.source === "ft"));
+  assert.deepEqual([E.budget(r.world).action, E.budget(r.world).attacks], [false, 1], "one attack of the Attack action");
+  assert.match(r.log[1].text, /Fenn wins/);
+  assert.equal(E.apply(r.world, { type: "grapple", unit: "ft", target: "r1" }, dice({ total: 15 }, { total: 9 }).roll).why, "Fenn is already grappling Raider.");
+  // moving away ends it (settle); letting go needs no action
+  let m = E.apply(r.world, { type: "move", unit: "ft", x: -1, y: 0 }, dice().roll);
+  assert.ok(!m.world.units.r1.conditions.includes("Grappled"), "out of reach: no longer grappled");
+  const rel = E.apply(r.world, { type: "release", unit: "ft" }, dice().roll);
+  assert.deepEqual([rel.ok, rel.world.units.r1.conditions.includes("Grappled"), E.budget(rel.world).attacks], [true, false, 1]);
+  // a tie or a loss changes nothing, and still uses the attack
+  r = E.apply(world([ft({ attacks: 1 }), r1()], "ft"), { type: "grapple", unit: "ft", target: "r1" }, dice({ total: 10 }, { total: 10 }).roll);
+  assert.deepEqual([r.ok, (r.world.units.r1.conditions || []).includes("Grappled"), E.budget(r.world).action], [true, false, false]);
+  assert.match(r.log[1].text, /Raider holds \(a tie changes nothing\)/);
+  // shove: prone, or 5 ft straight away
+  r = E.apply(world([ft(), r1()], "ft"), { type: "shove", unit: "ft", target: "r1" }, dice({ total: 15 }, { total: 9 }).roll);
+  assert.ok(r.world.units.r1.conditions.includes("Prone"));
+  r = E.apply(world([ft(), r1()], "ft"), { type: "shove", unit: "ft", target: "r1", push: true }, dice({ total: 15 }, { total: 9 }).roll);
+  assert.deepEqual([r.world.units.r1.x, r.world.units.r1.y], [2, 0]);
+  const wall = { id: "w1", a: [2, -1], b: [2, 2], kind: "wall" };
+  r = E.apply(world([ft(), r1()], "ft", { walls: [wall] }), { type: "shove", unit: "ft", target: "r1", push: true }, dice({ total: 15 }, { total: 9 }).roll);
+  assert.deepEqual([r.world.units.r1.x, r.log[2].text], [1, "There's no room to push Raider: it stays where it is."]);
+  r = E.apply(world([ft(), r1(), unit({ id: "r2", name: "Thug", side: "npc", x: 2, y: 0 })], "ft"), { type: "shove", unit: "ft", target: "r1", push: true }, dice({ total: 15 }, { total: 9 }).roll);
+  assert.equal(r.world.units.r1.x, 1, "the square behind is taken");
+  // refusals
+  const no = (u, t, act) => E.apply(world([u, t], "ft"), Object.assign({ unit: "ft", target: t.id }, act), dice({ total: 15 }, { total: 9 }).roll).why;
+  assert.equal(no(ft(), r1({ x: 3 }), { type: "grapple" }), "Raider is 15 ft away: out of reach.");
+  assert.equal(no(ft(), r1({ sizeCat: 4 }), { type: "shove" }), "Raider is too big for Fenn to shove: no more than one size larger.");
+  assert.equal(no(ft(), r1({ sizeCat: 3 }), { type: "shove" }) === undefined, true, "one size larger is fine");
+  assert.equal(no(ft(), r1({ condImmune: ["Grappled"] }), { type: "grapple" }), "Raider can't be grappled.");
+  const dashed = E.apply(world([ft(), r1()], "ft"), { type: "common", unit: "ft", key: "dash" }, dice().roll);
+  assert.equal(E.apply(dashed.world, { type: "grapple", unit: "ft", target: "r1" }, dice().roll).why, "Fenn has already used the action this turn.");
+  // after an attack, the second attack of the action can be a shove
+  r = E.apply(world([ft(), r1({ hp: 90, maxHp: 90 })], "ft"), { type: "attack", unit: "ft", target: "r1", attack: blade }, dice({ total: 15, nat: 12 }, { total: 5 }).roll);
+  r = E.apply(r.world, { type: "shove", unit: "ft", target: "r1" }, dice({ total: 15 }, { total: 9 }).roll);
+  assert.deepEqual([r.ok, E.budget(r.world).attacks], [true, 0]);
+  // frightened: disadvantage on the check
+  d = dice({ total: 15 }, { total: 9 });
+  E.apply(world([ft({ conditions: ["Frightened"] }), r1()], "ft"), { type: "grapple", unit: "ft", target: "r1" }, d.roll);
+  assert.equal(d.asked[0], "2d20kl1+5");
+});
+
+test("Escaping a grapple: the grappled one's action, its better skill against the grappler's Athletics", () => {
+  const ft = unit({ id: "ft", name: "Fenn", side: "pc", x: 0, y: 0, skills: { athletics: 5, acrobatics: 1 } });
+  const r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, skills: { acrobatics: 4 }, mods: { str: 0, dex: 2 }, conditions: ["Grappled"] });
+  const held = { id: "g1", unit: "r1", condition: "Grappled", ends: "never", of: "r1", rounds: 1, save: null, source: "ft", conc: false, level: 0, amount: "" };
+  let d = dice({ total: 14 }, { total: 12 });
+  let r = E.apply(world([ft, r1], "r1", { effects: [held] }), { type: "escape", unit: "r1", skill: "acrobatics" }, d.roll);
+  assert.deepEqual([r.ok, d.asked, r.world.units.r1.conditions.includes("Grappled"), E.budget(r.world).action], [true, ["1d20+4", "1d20+5"], false, false]);
+  assert.match(r.log[2].text, /Raider escapes Fenn's grapple/);
+  r = E.apply(world([ft, r1], "r1", { effects: [held] }), { type: "escape", unit: "r1" }, dice({ total: 5 }, { total: 12 }).roll);
+  assert.deepEqual([r.ok, r.world.units.r1.conditions.includes("Grappled")], [true, true], "a failed escape still takes the action");
+  const bare = unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, conditions: ["Grappled"] });
+  assert.match(E.apply(world([ft, bare], "r1"), { type: "escape", unit: "r1" }, dice().roll).why, /doesn't know who is grappling Raider/);
+  assert.equal(E.apply(world([ft, unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0 })], "r1"), { type: "escape", unit: "r1" }, dice().roll).why, "Raider isn't grappled.");
+});
+
+test("Help: the first attack an ally makes on that creature before the helper's next turn has advantage", () => {
+  const ava = unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 }), bo = unit({ id: "bo", name: "Bolt", side: "pc", x: 2, y: 1 });
+  const r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 90, maxHp: 90 });
+  let r = E.apply(world([ava, bo, r1], "ava"), { type: "common", unit: "ava", key: "help", target: "r1" }, dice().roll);
+  assert.equal(r.ok, true, r.why);
+  assert.equal(E.budget(r.world).action, false);
+  assert.equal(E.apply(world([ava, bo, unit(Object.assign({}, r1, { x: 3 }))], "ava"), { type: "common", unit: "ava", key: "help", target: "r1" }, dice().roll).why, "Raider is 15 ft away: Help needs it within 5 ft.");
+  // Bolt's turn: advantage, then used up
+  let w = Object.assign({}, r.world, { turnId: "bo" });
+  let pv = E.preview(w, "bo", "r1", blade);
+  assert.deepEqual([pv.mode, pv.tilts.map((x) => x.text)], ["adv", ["helped by Avery"]]);
+  assert.equal(E.preview(w, "ava", "r1", blade).mode, "normal", "not for the helper itself");
+  const d = dice({ total: 15, nat: 12 }, { total: 4 });
+  r = E.apply(w, { type: "attack", unit: "bo", target: "r1", attack: blade }, d.roll);
+  assert.equal(d.asked[0], "2d20kh1+5");
+  assert.equal(E.preview(Object.assign({}, r.world, { turnId: "bo" }), "bo", "r1", blade).mode, "normal", "used up by the first attack");
+  // unused, it ends at the start of the helper's next turn, with no line about it
+  const t = E.turnPassed(Object.assign({}, w, { turnId: "r1" }), "r1", "ava", dice().roll);
+  assert.deepEqual([t.world.effects.filter((ef) => ef.condition === "Helped").length, t.log.length], [0, 0]);
+});
+
+test("Grapple, Shove and Help through the API: the server rolls both sides from the sheet; a creature's skills from its stat block", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { skills: { athletics: 1 } }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await gm.act("fight.npc", { id: ids.raider, speed: 30, saves: {}, mods: { str: 1, dex: 2 }, skills: ["Athletics +6", "Stealth +4", "Acrobatics +99"] })).code, 200);
+  st = await gm.state();
+  assert.deepEqual(st.fight.npcSkills[ids.raider], { athletics: 6, acrobatics: 30 }, "the contest skills only, clamped");
+  assert.deepEqual((await sam.state()).fight.npcSkills, {}, "a creature's skills are the GM's");
+  assert.equal((await sam.act("fight.grapple", { target: ids.raider })).code, 200);
+  st = await gm.state();
+  const checks = st.chat.filter((m) => m.fight && m.roll && m.roll.kind === "check").map((m) => m.roll.expr);
+  assert.deepEqual(checks.slice(-2), ["1d20+5", "1d20+30"], "Avery: Str +3 and proficiency +2; the Raider: its better skill");
+  assert.equal(st.fight.budget.action, false);
+  assert.equal((await sam.act("fight.shove", { target: ids.raider })).code, 400, "one attack a turn at level 1");
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  // the Raider's turn: the GM helps no one (nobody of its side), but can shove
+  assert.equal((await sam.act("fight.escape", {})).code, 403, "not Sam's turn");
+  assert.equal((await gm.act("fight.common", { key: "help", target: ids.avery })).code, 200);
+  st = await gm.state();
+  assert.ok(st.fight.effects.some((ef) => ef.condition === "Helped" && ef.unit === ids.avery));
+});
+
+test("review of #147: a target named like Object's own keys is no target; a push stops at the board's edge; Help counts for a power's attack", async () => {
+  const ft = unit({ id: "ft", name: "Fenn", side: "pc", x: 0, y: 0, skills: { athletics: 5 } });
+  const r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, mods: { str: 0, dex: 0 } });
+  for (const bad of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+    for (const act of [{ type: "grapple" }, { type: "shove" }, { type: "shove", push: true }, { type: "release" }, { type: "common", key: "help" }]) {
+      const r = E.apply(world([ft, r1], "ft"), Object.assign({ unit: "ft", target: bad }, act), dice({ total: 15 }, { total: 2 }).roll);
+      assert.equal(r.ok, false, `${act.type} on ${bad}`);
+    }
+    assert.equal(E.preview(world([ft, r1], "ft"), "ft", bad, blade).legal, false);
+  }
+  // the older paths too: a power with a save (no AC needed), putting out flames, an attack
+  const zap = { key: "pw:zap", name: "Zap", kind: "power", level: 0, use: "action", cost: {}, reach: null, range: [60, 60], area: null, targets: 1, attack: null,
+    save: { ability: "con", dc: 30, onSave: "none" }, damage: [{ dice: "1d6", add: 0, type: "lightning" }], applies: [{ condition: "Stunned" }], concentration: false };
+  for (const bad of ["__proto__", "constructor"]) {
+    assert.equal(E.apply(world([ft, r1], "ft"), { type: "use", unit: "ft", ability: zap, targets: [bad] }, dice({ total: 1 }, { total: 3 }).roll).ok, false, `use on ${bad}`);
+    assert.equal(E.apply(world([ft, r1], "ft"), { type: "douse", unit: "ft", target: bad }, dice().roll).ok, false);
+    assert.equal(E.apply(world([ft, r1], "ft"), { type: "attack", unit: "ft", target: bad, attack: blade }, dice({ total: 15, nat: 12 }, { total: 3 }).roll).ok, false);
+    assert.equal(E.apply(world([ft, r1], "ft"), { type: "move", unit: bad, x: 1, y: 1 }, dice().roll).ok, false);
+  }
+  assert.ok(!("conditions" in {}) && !("x" in {}) && !("hp" in {}), "nothing reached Object.prototype");
+  // the one lookup to use for an id from a request (exported for the other combat-adjacent code)
+  const w0 = world([ft, r1], "ft");
+  assert.deepEqual([E.unitAt(w0, "r1").name, E.unitAt(w0, "__proto__"), E.unitAt(w0, "constructor"), E.unitAt(w0, 5), E.unitAt(null, "r1")], ["Raider", null, null, null, null]);
+  // the board's edge: pushed from x 1 towards x 0 by someone at x 2, on a board known to the world
+  const edge = E.apply(world([unit({ id: "ft", name: "Fenn", side: "pc", x: 1, y: 0, skills: { athletics: 5 } }), unit({ id: "r1", name: "Raider", side: "npc", x: 0, y: 0 })], "ft"),
+    { type: "shove", unit: "ft", target: "r1", push: true }, dice({ total: 15 }, { total: 2 }).roll);
+  assert.deepEqual([edge.world.units.r1.x, edge.log[2].text], [0, "There's no room to push Raider: it stays where it is."]);
+  const far = E.apply(world([ft, r1], "ft", { board: { cols: 2, rows: 2 } }), { type: "shove", unit: "ft", target: "r1", push: true }, dice({ total: 15 }, { total: 2 }).roll);
+  assert.equal(far.world.units.r1.x, 1, "a 2-square board: x 2 is off it");
+  // Help and a power's attack roll: advantage, and used up
+  const bo = unit({ id: "bo", name: "Bolt", side: "pc", x: 0, y: 4 });   // 20 ft off: no close-enemy disadvantage to cancel it
+  let r = E.apply(world([ft, bo, unit(Object.assign({}, r1, { ac: 10, hp: 50, maxHp: 50 }))], "ft"), { type: "common", unit: "ft", key: "help", target: "r1" }, dice().roll);
+  const bolt = { key: "pw:shock", name: "Shock", kind: "power", level: 0, use: "action", cost: {}, reach: null, range: [60, 60], area: null, targets: 1,
+    attack: { bonus: 5, abil: "wis" }, save: null, damage: [{ dice: "1d8", add: 0, type: "lightning" }], applies: [], concentration: false };
+  const d = dice({ total: 15, nat: 12 }, { total: 4 });
+  r = E.apply(Object.assign({}, r.world, { turnId: "bo" }), { type: "use", unit: "bo", ability: bolt, targets: ["r1"] }, d.roll);
+  assert.equal(r.ok, true, r.why);
+  assert.equal(d.asked[0], "2d20kh1+5", "helped");
+  assert.equal(r.world.effects.filter((ef) => ef.condition === "Helped").length, 0, "and used up");
+});
+
+test("review of #147 through the API: fight.grapple, shove, release and help on \"__proto__\" are refused and touch nothing", async () => {
+  const { gm, sam, ids } = await fight();
+  const st = await sam.state();
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  for (const bad of ["__proto__", "constructor"]) {
+    for (const [type, p] of [["fight.grapple", {}], ["fight.shove", {}], ["fight.shove", { push: true }], ["fight.release", {}], ["fight.common", { key: "help" }]]) {
+      assert.equal((await sam.act(type, Object.assign({ target: bad }, p))).code, 400, `${type} ${bad}`);
+    }
+  }
+  assert.ok(!("conditions" in {}) && !("x" in {}) && !("y" in {}), "Object.prototype untouched");
+  assert.equal((await sam.act("fight.grapple", { target: ids.raider })).code, 200, "a real target still works");
+});
