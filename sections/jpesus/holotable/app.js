@@ -279,8 +279,35 @@
          <button class="btn small amber-fill" id="restoreLatest">Restore latest backup</button> <span class="muted">or pick one in the GM tab</span>`
       : `⚠ The table's save is missing. The GM needs to restore a backup before play can continue.`;
     $('#campName').textContent = S.st.name;
+    const ck = S.st.clock, clk = $('#clock');   // in-game time (9.18): everyone sees it, the GM sets it
+    clk.classList.toggle('hidden', !ck && !isGM());
+    clk.textContent = ck ? `🕑 Day ${n0(ck.day)} · ${String(Math.floor(n0(ck.min) / 60)).padStart(2, '0')}:${String(n0(ck.min) % 60).padStart(2, '0')}` : '🕑 Set the time';
+    clk.disabled = !isGM(); clk.classList.toggle('ghost', !ck);
     const gmTag = n => (/^\s*gm\s*$/i.test(n || '') ? '' : ' (GM)');
     $('#online').innerHTML = S.st.online.map(o => `<span class="pill ${o.gm ? 'gm' : ''}">${esc(o.name)}${o.gm ? gmTag(o.name) : ''}</span>`).join('');
+  }
+  $('#clock').addEventListener('click', () => { if (isGM()) openClock(); });
+  function openClock() {
+    const ck = S.st.clock || { day: 1, min: 8 * 60 };
+    const hhmm = `${String(Math.floor(ck.min / 60)).padStart(2, '0')}:${String(ck.min % 60).padStart(2, '0')}`;
+    modal(`<h3>🕑 The time in the story</h3>
+      <div class="row wrap"><label>Day<input id="ckDay" type="number" min="1" value="${n0(ck.day)}" style="width:90px"></label><label>Time<input id="ckTime" type="time" value="${hhmm}"></label>
+        <button class="btn small" id="ckSet">Set</button>${S.st.clock ? '<button class="btn small ghost" id="ckOff" title="Hide the clock">Hide clock</button>' : ''}</div>
+      <h4 style="margin-top:12px">Move time on</h4>
+      <div class="row wrap">${[['+10 min', 10, ''], ['+1 hour', 60, ''], ['Short rest', 60, 'short rest'], ['Long rest', 480, 'long rest'], ['+1 day', 1440, '']].map(([t, m, w]) => `<button class="btn small" data-ck="${m}" data-why="${w}">${t}</button>`).join('')}</div>
+      <div class="row wrap" style="margin-top:8px"><label>Or<input id="ckMins" type="number" min="1" placeholder="minutes" style="width:90px"></label><input id="ckWhy" maxlength="60" placeholder="why, e.g. the trip to Mos Shuuta" style="flex:1">
+        <button class="btn small" id="ckGo">Advance</button></div>
+      <label class="toggle" style="margin-top:8px"><input type="checkbox" id="ckSay" checked> say it in chat</label>
+      <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn ghost" id="ckClose">Close</button></div>`, box => {
+      box.onclick = async e => {
+        const t = e.target, say = $('#ckSay').checked;
+        if (t.id === 'ckClose') closeModal();
+        if (t.id === 'ckOff') { await act('clock.set', { off: true }); closeModal(); }
+        if (t.id === 'ckSet') { const [h, m] = ($('#ckTime').value || '08:00').split(':').map(Number); if (await act('clock.set', { day: +$('#ckDay').value || 1, min: (h || 0) * 60 + (m || 0) })) closeModal(); }
+        if (t.dataset.ck) { if (await act('clock.advance', { mins: +t.dataset.ck, why: t.dataset.why, announce: say })) closeModal(); }
+        if (t.id === 'ckGo' && +$('#ckMins').value > 0) { if (await act('clock.advance', { mins: +$('#ckMins').value, why: $('#ckWhy').value, announce: say })) closeModal(); }
+      };
+    });
   }
   $('#missingBar').addEventListener('click', async e => {
     if (e.target.id !== 'restoreLatest') return;
@@ -626,6 +653,7 @@
         <button class="btn small amber" data-act="init">⚔ Initiative</button>
         ${pendingFor(ch.id) && !ro ? `<button class="btn small lvl-go" data-act="levelup">⬆ Level up${n0(pendingFor(ch.id).count) > 1 ? ' ×' + n0(pendingFor(ch.id).count) : ''}</button>` : ''}
         ${isGM() && !pendingFor(ch.id) ? '<button class="btn small ghost" data-act="grant" title="Give this character a new level">⬆ Grant level</button>' : ''}
+        ${isGM() && (S.st.levelUndo || {})[ch.id] ? `<button class="btn small ghost" data-act="undo-level" title="Put the sheet back to just before its last level, and grant the level again">↶ Undo level ${n0(S.st.levelUndo[ch.id])}</button>` : ''}
         <button class="btn small" data-act="token">◉ Token</button>
         <button class="btn small" data-act="export">⇩ Export</button>
         ${!ro ? '<button class="btn small danger" data-act="delete">Delete</button>' : ''}
@@ -925,6 +953,9 @@
       case 'dmg': { const at = ch.attacks[i]; roll(R.damageExpr(ch, at), `${at.name} — ${at.type || ''} damage`, { charId: ch.id, kind: 'damage' }); break; }
       case 'crit': { const at = ch.attacks[i], cd = R.critDamage(ch, at); roll(cd.expr, `${at.name} — CRITICAL ${at.type || ''} damage${cd.brutal ? ` (Brutal Critical +${cd.brutal})` : ''}`, { charId: ch.id, kind: 'damage' }); break; }
       case 'add-class-res': mutate(c => { c.resources = R.withClassResources(c); }); break;
+      case 'undo-level':   // the GM's undo of the last level (2.15)
+        if (confirm(`Take back ${ch.name}'s level ${n0((S.st.levelUndo || {})[ch.id])}?\n\nThe sheet goes back to just before it (anything changed since is lost), and the level is granted again to take properly.`)) act('levelup.undo', { charId: ch.id });
+        break;
       case 'res-use': case 'res-back': {
         const res0 = (ch.resources || [])[i];
         if (a === 'res-use' && res0 && res0.key === 'second-wind') {   // Second Wind heals: 1d10 + fighter level (#65)
@@ -2441,7 +2472,7 @@
         <h4 style="margin-top:12px">Who's here</h4>
         ${Object.entries(S.st.players).map(([id, p]) => `<div>${esc(p.name)} ${p.role === 'gm' && !/^\s*gm\s*$/i.test(p.name || '') ? '<span class="muted">(GM)</span>' : ''} ${S.st.online.some(o => o.clientId === id) ? '<span style="color:var(--green)">● online</span>' : '<span class="muted">offline</span>'}
           <span class="muted">— ${chars().filter(c => c.owner === id).map(c => esc(c.name)).join(', ') || 'no characters'}</span>${id !== clientId && !S.st.online.some(o => o.clientId === id) && !chars().some(c => c.owner === id) ? ` <button class="btn tiny ghost" data-rmplayer="${esc(id)}" title="Remove this old entry from the list (offline, no characters)" aria-label="Remove ${esc(p.name)} from the player list">✕</button>` : ''}</div>`).join('')}
-        <div class="row" style="margin-top:12px"><button class="btn small danger" id="clearChat">Clear chat log</button></div>
+        <div class="row" style="margin-top:12px"><a class="btn small" href="${API}?op=chatlog" download title="The whole chat the table keeps (the last 400 messages), as a text file">⇩ Download chat log</a><button class="btn small danger" id="clearChat">Clear chat log</button></div>
       </div>
       <div class="box"><h4>Level ups</h4>
         <p style="margin-top:0" class="muted">After a big fight or a hard-won conversation, give the party a level. Each player gets a pop-up and picks how to level.
@@ -2525,7 +2556,7 @@
     const id = e.target.id;
     if (id === 'copyLink') navigator.clipboard?.writeText(location.origin + location.pathname).then(() => toast('Link copied'));
     if (id === 'doRename') act('campaign.rename', { name: $('#campRename').value });
-    if (id === 'clearChat' && confirm('Clear the chat log for everyone?')) act('chat.clear');
+    if (id === 'clearChat' && confirm('Clear the chat log for everyone?\n\nTip: "Download chat log" keeps a copy first.')) act('chat.clear');
     if (id === 'gmGrant') openGrant();
     if (id === 'gmXp') openAwardXp(0);
     if (id === 'gmAsk') openAskRoll();
@@ -3007,7 +3038,9 @@
     const avgGain = Math.max(1, hd / 2 + 1 + newCon) + retro;
     const maxGain = Math.max(1, hd + newCon) + retro;
     if (W.hpMode === 'max' && S.st.hpMax === false) W.hpMode = 'average';
-    const payload = { charId, className: cls, hpMode: W.hpMode, archetype: archDue && W.archetype ? W.archetype : undefined, hitDie: hd,
+    const unmet = !k && cls ? R.multiclassUnmet(ch, cls) : [];   // multiclassing prerequisites (2.12): the GM may allow it
+    if (unmet.length && !isGM()) error = error || `Multiclassing into ${cls}: ${unmet.join('; ')}. Ask your GM.`;
+    const payload = { charId, className: cls, hpMode: W.hpMode, archetype: archDue && W.archetype ? W.archetype : undefined, hitDie: hd, override: unmet.length && isGM() ? true : undefined,
       asi: asi || undefined, feat: feat || undefined,
       features: (W.auto || []).filter(f => !f.have).map(f => ({ name: f.name, text: f.text })).slice(0, 20), powers: W.powers.filter(p => p.name.trim()).slice(0, 20) };
     return { ch, after, cls, k, newClassLevel, before, due, asiOn, archDue, archTerm, hd, oldCon, newCon, retro, avgGain, maxGain, payload, error };
@@ -3027,7 +3060,8 @@
           <b>${esc(k.name)}</b> ${n0(k.level)} → ${n0(k.level) + 1}${k.archetype ? `<br><span class="muted">${esc(k.archetype)}</span>` : ''}</label>`).join('')}
           <label class="choice ${W.cls === '__new' ? 'on' : ''}"><input type="radio" name="cls" data-w="cls" value="__new" ${W.cls === '__new' ? 'checked' : ''}><b>Multiclass</b><br><span class="muted">start a new class at 1</span></label></div>
         ${W.cls === '__new' ? `<div class="row" style="margin-top:6px"><select data-w="newCls"><option value="">Pick a class…</option>${others.map(c => `<option ${c === W.newCls ? 'selected' : ''}>${c}</option>`).join('')}</select>
-          <span class="muted" style="font-size:12px">Multiclassing usually needs 13+ in the new class's key ability; check with your GM.</span></div>` : ''}
+          ${(un => un.length ? `<span class="wiz-warn" style="font-size:12px">⚠ ${esc(un.join('; '))}. ${isGM() ? 'As GM you can allow it anyway.' : 'Ask your GM: only they can allow it.'}</span>`
+            : W.newCls ? `<span class="muted" style="font-size:12px">Prerequisites met. A new class gives its multiclass proficiencies: ${esc(R.MC_PROFS[W.newCls] || 'none')}.</span>` : '')(W.newCls ? R.multiclassUnmet(ch, W.newCls) : [])}</div>` : ''}
         ${P.archDue ? `<div class="arch-pick">
           <p class="muted" style="margin:6px 0 4px">At ${esc(P.cls)} level 3 you choose your ${esc(P.archTerm)}. You choose it once, and it gives you features as you level.</p>
           <div class="row wrap"><button class="btn small ${W.archetype ? '' : 'amber'}" data-wa="arch-menu" aria-expanded="${W.archMenu ? 'true' : 'false'}">${W.archetype ? 'Change' : 'Pick'} ${esc(P.archTerm)} ▾</button>

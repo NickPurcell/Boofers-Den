@@ -285,8 +285,10 @@ function viewFor(camp, cid, gm, online) {
     notes: gm ? camp.notes : null,
     handouts: (camp.handouts || []).filter((h) => gm || h.shared),
     levelUps: camp.levelUps || {},
+    ...(gm && camp.levelUndo && Object.keys(camp.levelUndo).length ? { levelUndo: Object.fromEntries(Object.entries(camp.levelUndo).map(([id, u]) => [id, u.level])) } : {}),   // 2.15
     variants: camp.variants || [],
     hpMax: camp.hpMax !== false,
+    ...(camp.clock ? { clock: camp.clock } : {}),   // in-game time (9.18)
     ...(camp.sheetLock ? { sheetLock: true } : {}), ...(camp.statBlocksHidden ? { statBlocksHidden: true } : {}),   // the GM's table rules (12.6, 9.17)
     audio: camp.audio ? Object.assign({}, camp.audio, { now: now() }) : null,   // "now" lets each screen line its clock up
     ships: (camp.ships || []).filter((x) => gm || !x.hidden),
@@ -413,6 +415,10 @@ function applyLevelUp(camp, cid, gm, p) {
   if (!clsName) throw new Invalid("Pick a class to level up.");
   let k = ch.classes.find((x) => String(x.name || "").toLowerCase() === clsName.toLowerCase());
   const multiclass = !k;
+  // multiclassing prerequisites (audit 2.12): a player is held to them; the GM may let a character through (override)
+  const unmet = multiclass ? R.multiclassUnmet(ch, clsName) : [];
+  if (unmet.length && !(gm && p.override)) throw new Invalid(`Multiclassing into ${clsName}: ${unmet.join("; ")}. The GM can allow it.`);
+  const snapshot = JSON.parse(JSON.stringify(ch));   // for the GM's undo of this level (audit 2.15)
   if (!k) { k = { name: clsName, level: 0, archetype: "" }; ch.classes.push(k); }
   if (!ch.abilities) ch.abilities = {};
   const oldCon = abMod(ch, "con");
@@ -459,9 +465,12 @@ function applyLevelUp(camp, cid, gm, p) {
     ch.powers.push({ name: str(pw.name, 80).trim(), level: clamp(int(pw.level), 0, 9), type: pw.type === "tech" ? "tech" : "force",
       alignment: ["light", "dark"].includes(pw.alignment) ? pw.alignment : "universal", notes: str(pw.notes, 300), description: str(pw.description, 4000) });
   }
+  // a new class gives only its multiclass proficiencies (audit 2.13), noted on the sheet
+  if (multiclass && R.MC_PROFS[k.name] && ch.classes.length > 1) ch.proficiencies = `${str(ch.proficiencies, 1800)}${ch.proficiencies ? "\n" : ""}Multiclass ${k.name}: ${R.MC_PROFS[k.name]}`.slice(0, 2000);
   ch.updated = now();
   pend.count -= 1;
   if (pend.count < 1) delete camp.levelUps[ch.id];
+  camp.levelUndo = Object.assign({}, camp.levelUndo, { [ch.id]: { level: before + 1, at: now(), sheet: snapshot } });
   for (const e of camp.initiative.entries) if (e.charId === ch.id) { e.hp = ch.hp.current; e.maxHp = ch.hp.max; }
 
   const bits = [`HP +${gain}`];
@@ -984,6 +993,24 @@ function applyAction(camp, cid, gm, type, p) {
       addChat(camp, { levelup: true, text: `⬆ Level up! ${names.join(", ")} ${names.length > 1 ? "have" : "has"} earned a new level${reason ? ": " + reason : ""}.` });
       return { granted: names.length };
     }
+    // the GM takes back a character's last level (audit 2.15): the sheet goes back to just before it, and the level
+    // is granted again so it can be taken properly. Anything changed on the sheet since is lost (the GM is asked first).
+    case "levelup.undo": {
+      need(gm);
+      const id = String(p.charId || ""), u = Object.prototype.hasOwnProperty.call(camp.levelUndo || {}, id) && camp.levelUndo[id];
+      const cur = charById(camp, id);
+      if (!u || !cur) throw new Invalid("There's no level to undo for that character.");
+      const back = cleanChar(Object.assign({}, u.sheet, { id }));
+      back.owner = cur.owner; back.image = cur.image || ""; back.tokenImage = cur.tokenImage || ""; back.updated = now();
+      chars[id] = back;
+      for (const e of camp.initiative.entries) if (e.charId === id) { e.hp = (back.hp || {}).current; e.maxHp = (back.hp || {}).max; }
+      camp.levelUps = camp.levelUps || {};
+      const pend = camp.levelUps[id] || { count: 0 };
+      pend.count += 1; pend.grantId = rid(); pend.at = now(); camp.levelUps[id] = pend;
+      delete camp.levelUndo[id];
+      addChat(camp, { levelup: true, text: `↶ The GM took back ${back.name}'s level ${u.level}. It's ready to take again.` });
+      return { level: totalLevel(back) };
+    }
     case "levelup.cancel": {
       need(gm);
       if (camp.levelUps && camp.levelUps[p.charId]) delete camp.levelUps[p.charId];
@@ -1022,6 +1049,26 @@ function applyAction(camp, cid, gm, type, p) {
       return {};
     }
     case "chat.clear": need(gm); camp.chat = []; return {};
+
+    // ---- in-game time (audit 9.18): a day count and the time of day, the GM's to set and move on; everyone sees it
+    case "clock.set": {
+      need(gm);
+      if (p.off) { delete camp.clock; return {}; }
+      camp.clock = cleanClock({ day: p.day, min: p.min });
+      return { clock: camp.clock };
+    }
+    case "clock.advance": {
+      need(gm);
+      const mins = clamp(int(p.mins), 1, 365 * 1440);
+      const c = cleanClock(camp.clock || { day: 1, min: 8 * 60 }), total = c.min + mins;
+      camp.clock = cleanClock({ day: c.day + Math.floor(total / 1440), min: total % 1440 });
+      if (p.announce !== false) {
+        const span = mins % 1440 === 0 ? `${mins / 1440} day${mins === 1440 ? "" : "s"}` : mins % 60 === 0 ? `${mins / 60} hour${mins === 60 ? "" : "s"}` : `${mins} minutes`;
+        const why = str(p.why, 60).trim();
+        addChat(camp, { system: true, text: `🕑 ${span} pass${why ? ` (${why})` : ""}. It's now ${clockText(camp.clock)}.` });
+      }
+      return { clock: camp.clock };
+    }
 
     // ---- which SW5e variant rules this table uses (the GM decides; everyone sees the list)
     case "variants.set": need(gm); camp.variants = cleanVariants(p.variants); return {};
@@ -1121,6 +1168,12 @@ function cleanDrawings(list) {
     pts: d.pts.slice(0, 600).map((v) => Math.round(clamp(Number.isFinite(+v) ? +v : 0, -50, 300) * 100) / 100).slice(0, d.pts.length - (d.pts.length % 2)),
   })).filter((d) => d.pts.length >= 4);
 }
+// in-game time (9.18): day 1 and up, minutes into the day 0-1439
+function cleanClock(c) {
+  if (!c || typeof c !== "object") return null;
+  return { day: clamp(int(c.day, 1), 1, 999999), min: clamp(int(c.min), 0, 1439) };
+}
+const clockText = (c) => `Day ${c.day}, ${String(Math.floor(c.min / 60)).padStart(2, "0")}:${String(c.min % 60).padStart(2, "0")}`;
 function cleanMap(g, raw) {
   const m = raw && typeof raw === "object" ? raw : {};
   const n = (v, d) => (Number.isFinite(+v) ? +v : d);
@@ -1161,6 +1214,7 @@ function cleanGame(g) {
   g.audio = au && /^au[a-f0-9]{12}$/.test(String(au.track || "")) ? { track: au.track, name: str(au.name, 80) || "Track", playing: !!au.playing,
     pos: clamp(num(au.pos), 0, 86400), at: num(au.at, now()), loop: !!au.loop, vol: clamp(num(au.vol, 1), 0, 1) } : null;
   g.hpMax = g.hpMax !== false;
+  if (g.clock) g.clock = cleanClock(g.clock); if (!g.clock) delete g.clock;
   if (g.sheetLock !== true) delete g.sheetLock;
   if (g.statBlocksHidden !== true) delete g.statBlocksHidden;
   if (Array.isArray(g.npcs) && g.npcs.length) g.npcs = cleanNpcs(g.npcs); else delete g.npcs;
@@ -1173,6 +1227,10 @@ function cleanGame(g) {
   const fx = g.sceneFx && typeof g.sceneFx === "object" ? g.sceneFx : null;
   g.sceneFx = fx && /^[a-f0-9]{6,20}$/.test(fx.n || "") ? { n: fx.n, k: clamp(int(fx.k), -1, SCENE_WIPES - 1) } : null;
   if (g.fight !== undefined) Fight.restored(g);   // the combat view's own record, checked like a live one (absent: stays absent)
+  // the GM's undo of a last level (2.15): one per character, the sheet cleaned like any other
+  const lu = Object.entries(g.levelUndo && typeof g.levelUndo === "object" ? g.levelUndo : {}).filter(([id, u]) => charById(g, id) && u && u.sheet && typeof u.sheet === "object")
+    .map(([id, u]) => [id, { level: clamp(int(u.level, 1), 1, 20), at: num(u.at), sheet: cleanChar(Object.assign({}, u.sheet, { id })) }]);
+  if (lu.length) g.levelUndo = Object.fromEntries(lu); else delete g.levelUndo;
   g.levelUps = Object.fromEntries(Object.entries(g.levelUps || {}).filter(([id]) => charById(g, id))
     .map(([id, v]) => [id, { count: clamp(int((v || {}).count), 0, 20), grantId: rid(), at: now() }]).filter(([, v]) => v.count > 0));
   return g;

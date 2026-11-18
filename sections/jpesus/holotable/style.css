@@ -763,3 +763,8 @@ table.t td.n { width: 56px; }
 .draw-col { width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(0,0,0,.5); padding: 0; cursor: pointer; }
 .draw-col.on { border-color: #fff; }
 canvas.drawing { cursor: crosshair; }
+
+/* the in-game clock in the top bar (audit 9.18) */
+.topbar .clock { margin-left: 10px; padding: 2px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font-size: 12px; white-space: nowrap; cursor: pointer; }
+.topbar .clock:disabled { cursor: default; opacity: 1; }
+.topbar .clock.ghost { color: var(--muted); border-style: dashed; }
