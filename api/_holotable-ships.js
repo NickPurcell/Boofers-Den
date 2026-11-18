@@ -49,7 +49,7 @@ function onTurn(camp, gm, ship) {
 const TYPES = new Set(["ship.damage", "ship.restore", "ship.points", "ship.dsave", "ship.stabilize", "ship.condition", "ship.reset",
   "ship.turn", "ship.power", "ship.poweruse", "ship.dice", "ship.boost", "ship.regen", "ship.helm", "ship.patch", "ship.direct", "ship.cool", "ship.reload",
   "ship.recharge", "ship.hulldie", "ship.refit", "ship.install",
-  "ship.astro", "ship.plot", "ship.jump", "ship.startup", "ship.technique"]);
+  "ship.astro", "ship.plot", "ship.jump", "ship.startup", "ship.technique", "ship.pace", "ship.fly"]);
 const handles = (type) => TYPES.has(type);
 
 // On a sheet save: the fight state and the current hull and shield points stay as stored (they change only through
@@ -81,7 +81,8 @@ function apply(camp, cid, gm, type, p, h) {
   if (!(gm || !ship.hidden)) throw new Forbidden("That ship is the GM's.");
   if (TURN_ACTIONS.has(type) && !onTurn(camp, gm, ship)) throw new Invalid(`Not ${ship.name}'s turn.`);
   // recharging (an hour) and refitting (docked) happen between fights: a player can't start them during ship combat
-  if (["ship.recharge", "ship.hulldie", "ship.refit", "ship.install", "ship.plot"].includes(type) && !gm && camp.space && camp.space.active) throw new Invalid("Not during ship combat.");   // plotting with care: 10 minutes   // installing a modification takes days too
+  // so do plotting with care (10 minutes), installing a modification (days), and realspace travel (pace, days of flight)
+  if (["ship.recharge", "ship.hulldie", "ship.refit", "ship.install", "ship.plot", "ship.pace", "ship.fly"].includes(type) && !gm && camp.space && camp.space.active) throw new Invalid("Not during ship combat.");
   const say = (lines) => {
     for (const text of lines.filter(Boolean)) {
       const msg = { system: true, text: str(text, 400) };
@@ -341,6 +342,29 @@ function apply(camp, cid, gm, type, p, h) {
       }
       put(s); say(lines);
       return { hours, fuel };
+    }
+    case "ship.pace": {     // realspace travel pace (SotG ch. 8): normal, fast or slow
+      const pace = str(p.pace, 10);
+      if (!Object.prototype.hasOwnProperty.call(SR.PACES, pace)) throw new Invalid("A pace is normal, fast or slow.");
+      const s = JSON.parse(JSON.stringify(ship)); s.status = SR.statusOf(s);
+      if (s.status.pace === pace) return {};
+      s.status.pace = pace;
+      put(s);
+      say([`${ship.name} travels at a ${pace} pace${pace === "fast" ? `: speed ${SR.travelSpeed(s)} ft; disadvantage on Probe and Scan checks, and -5 to passive Scan to notice threats`
+        : pace === "slow" ? `: speed ${SR.travelSpeed(s)} ft, and it can travel stealthily` : ""}.`]);
+      return {};
+    }
+    case "ship.fly": {      // days of flight in realspace, or hours in atmosphere: a unit of fuel each, times the reactor's use
+      const where = p.where === "atmosphere" ? "atmosphere" : "realspace", n = clamp(int(p.n), 1, 365);
+      if (SR.isDisabled(SR.statusOf(ship)) || SR.isLost(SR.statusOf(ship))) throw new Invalid(`${ship.name} can't fly.`);
+      const fuel = SR.flyFuel(ship, n), have = SR.fuelOf(ship);
+      if (have !== null && have < fuel) throw new Invalid(`${ship.name} needs ${fuel} units of fuel and has ${have}.`);
+      const s = JSON.parse(JSON.stringify(ship));
+      if (have !== null) s.fuel = String(Math.round((have - fuel) * 10) / 10);
+      put(s);
+      const span = where === "atmosphere" ? `${n} hour${n === 1 ? "" : "s"} in atmosphere` : `${n} day${n === 1 ? "" : "s"} in realspace`;
+      say([`${ship.name} flies ${span}: ${fuel} unit${fuel === 1 ? "" : "s"} of fuel${have !== null ? `, ${s.fuel} left` : " (no fuel count on its sheet)"}.`]);
+      return { fuel };
     }
     case "ship.technique": {   // a crew member uses a technique they know: a power die from a store (central or the
       // technique's system), or a mechanic's tech die, which isn't spent; rolled here

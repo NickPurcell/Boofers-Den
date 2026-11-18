@@ -107,7 +107,7 @@ test("ship conditions: slowed levels, system damage levels, and what they do to 
     { cond: ["Ionized"], slowed: 4, system: 0, zero: { s: 0, f: 0, stable: false, destroyed: false }, power: { central: 0, engines: 0, shields: 0, weapons: 0, sensors: 0, comms: 0 },
       sdUsed: 0, hdUsed: 0, tempShield: 0, boost: { tries: 0, engines: 0, weapons: false, shields: false, regen: false },
       fx: { evade: 0, fly: 0, hardTurn: false, helm: false, interfered: false, directed: false, interferedBy: "" }, recharged: false, astro: 0, startup: 0,
-      course: { rush: 0, careful: false } }, "anything else is cleaned away");
+      course: { rush: 0, careful: false }, pace: "normal" }, "anything else is cleaned away");
   assert.deepEqual(SR.capPoints({ hull: { current: 30, max: 0 }, shield: { current: 5, max: 4 } }).hull.current, 30, "no maximum typed yet: current stays");
 });
 
@@ -1031,6 +1031,54 @@ test("travel: hyperspace times by region and class, rushing and care, fuel by re
   assert.match((await p1.act("ship.plot", { id: party })).data.error || "", /Not during ship combat/);
   await gm.act("space.next", {});
   assert.equal((await p1.act("ship.astro", { id: party })).code, 200, "on its own turn");
+});
+
+test("realspace: pace (speed, Probe and Scan), sample times, fuel by the day or the hour; GM-only for a hidden ship; not mid-fight", async () => {
+  const fast = { speed: 300, status: { pace: "fast" } }, slow = { speed: 300, status: { pace: "slow" } };
+  assert.deepEqual([SR.travelSpeed(fast), SR.travelSpeed(slow), SR.travelSpeed({ speed: 300 })], [600, 150, 300], "fast doubles, slow halves");
+  assert.equal(SR.statusOf({ status: { pace: "__proto__" } }).pace, "normal", "only the three paces");
+  assert.deepEqual(SR.rollEffects(fast, "check", "wis", "scan").dis, ["Fast pace"]);
+  assert.deepEqual(SR.rollEffects(fast, "check", "int", "probe").dis, ["Fast pace"]);
+  assert.deepEqual(SR.rollEffects(fast, "check", "int", "data").dis, [], "only Probe and Scan");
+  assert.deepEqual(SR.rollEffects(slow, "check", "wis", "scan").dis, []);
+  assert.deepEqual(SR.REALSPACE_TIMES.map((r) => SR.realspaceTime(r, "normal")), ["1 to 5 minutes", "1 minute", "10 to 30 minutes", "2 to 6 hours", "12 to 24 hours"], "SotG's sample table");
+  assert.equal(SR.realspaceTime(SR.REALSPACE_TIMES[0], "fast"), "30 seconds to 2.5 minutes");
+  assert.equal(SR.realspaceTime(SR.REALSPACE_TIMES[4], "slow"), "24 to 48 hours");
+  assert.deepEqual([SR.flyFuel({ reactor: "Fuel Cell" }, 3), SR.flyFuel({ reactor: "Ionization" }, 3), SR.flyFuel({ reactor: "Power Core" }, 2)], [3, 1.5, 3], "a unit a day, times the reactor's use");
+  // on the server
+  const { gm, p1, party, enemy } = await table();
+  await p1.act("ship.save", { ship: Object.assign({}, shipIn(await p1.state(), party), { fuel: "10", reactor: "Ionization" }) });
+  assert.equal((await p1.act("ship.pace", { id: party, pace: "constructor" })).code, 400);
+  assert.equal((await p1.act("ship.pace", { id: party, pace: "fast" })).code, 200);
+  let st = await p1.state();
+  assert.equal(shipIn(st, party).status.pace, "fast");
+  assert.ok(st.chat.some((m) => /Dawn Skiff travels at a fast pace: speed \d+ ft; disadvantage on Probe and Scan/.test(m.text || "")));
+  await p1.act("ship.save", { ship: Object.assign({}, shipIn(await p1.state(), party), { status: { pace: "slow" } }) });
+  assert.equal(shipIn(await p1.state(), party).status.pace, "fast", "a sheet save keeps the stored pace");
+  let r = await p1.act("ship.fly", { id: party, where: "realspace", n: 4 });
+  assert.deepEqual([r.code, r.data.fuel], [200, 2], "4 days x0.5 for an ionization reactor");
+  st = await p1.state();
+  assert.equal(shipIn(st, party).fuel, "8");
+  assert.ok(st.chat.some((m) => /flies 4 days in realspace: 2 units of fuel, 8 left/.test(m.text || "")));
+  r = await p1.act("ship.fly", { id: party, where: "atmosphere", n: 3 });
+  assert.equal(shipIn(await p1.state(), party).fuel, "6.5", "an hour in atmosphere is a unit");
+  assert.equal((await p1.act("ship.fly", { id: party, n: 20 })).code, 400, "not enough fuel");
+  assert.equal((await p1.act("ship.pace", { id: enemy, pace: "slow" })).code, 403);
+  // a hidden ship's travel lines reach the GM only
+  const n0 = (await gm.state()).chat.length;
+  await gm.act("ship.pace", { id: enemy, pace: "slow" }); await gm.act("ship.fly", { id: enemy, n: 1 });
+  const lines = (await gm.state()).chat.slice(n0);
+  assert.equal(lines.length, 2);
+  assert.ok(lines.every((m) => m.to && m.to.length === 1 && m.to[0] === "@gm" && !m.fromId));
+  assert.ok(!(await p1.state()).chat.some((m) => /slow pace|flies 1 day/.test(m.text || "")), "the player sees neither");
+  // ship combat: travel waits for players; rolling initiative puts every ship on the map back to a normal pace
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 2, f: 2 });
+  await gm.act("space.place", { id: enemy, x: 9, y: 2, f: 6 });
+  await gm.act("space.init", {});
+  st = await gm.state();
+  assert.deepEqual([shipIn(st, party).status.pace, shipIn(st, enemy).status.pace], ["normal", "normal"]);
+  for (const t of ["ship.pace", "ship.fly"]) assert.match((await p1.act(t, { id: party, pace: "fast", n: 1 })).data.error || "", /Not during ship combat/, t);
 });
 
 // ---------------------------------------------------------------- buying, building, upgrading, docking, crew (10.17)

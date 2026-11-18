@@ -611,6 +611,7 @@ function applyAction(camp, cid, gm, type, p) {
       clean.updated = now();
       if (!(camp.variants || []).includes("Simplified Forcecasting")) delete clean.forceAbility;   // only while the GM uses it
       chars[id] = clean;
+      Fight.woundsHealed(camp, id, clean);   // back at its hit point maximum: no wounded levels (the Wounds variant, #233)
       if (old) {   // the record of changes (12.5)
         const changes = sheetDiff(old, clean);
         if (changes.length) {
@@ -796,6 +797,7 @@ function applyAction(camp, cid, gm, type, p) {
         if (ini.turn < 0) { ini.turn = n - 1; ini.round = Math.max(1, ini.round - 1); }
       } else if (type === "init.start") {
         Object.assign(ini, { active: true, turn: 0, round: 1 });
+        if (camp.fight) camp.fight.strenuousAt = "";   // a new fight: Strenuous Combat's saves can be made again (#233)
         addChat(camp, { system: true, text: "Combat begins! Roll initiative." });
         combatMoves(camp);
       } else if (type === "init.clear") {
@@ -1069,6 +1071,7 @@ function applyAction(camp, cid, gm, type, p) {
       if (!u || !cur) throw new Invalid("There's no level to undo for that character.");
       const back = cleanChar(Object.assign({}, u.sheet, { id }));
       back.owner = cur.owner; back.image = cur.image || ""; back.tokenImage = cur.tokenImage || ""; back.updated = now();
+      if (cur.downtime) back.downtime = cur.downtime; else delete back.downtime;   // days granted and spent since stay (11.1, #226 review)
       chars[id] = back;
       for (const e of camp.initiative.entries) if (e.charId === id) { e.hp = (back.hp || {}).current; e.maxHp = (back.hp || {}).max; }
       camp.levelUps = camp.levelUps || {};
