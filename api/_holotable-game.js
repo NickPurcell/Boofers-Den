@@ -212,7 +212,10 @@ function cleanChar(ch) {
       ...(R.RARITIES.includes(e.rar) ? { rar: e.rar } : {}), ...(e.att ? { att: true } : {}), ...(e.att && e.attuned ? { attuned: true } : {}),
       ...(e.use && R.cleanUse(e.use) ? { use: R.cleanUse(e.use) } : {}),   // a consumable: what using it rolls (audit 6.7)
       ...(R.cleanBonus(e.bonus) ? { bonus: R.cleanBonus(e.bonus) } : {}),   // an enhanced item's +N (audit 6.2)
-      ...(R.cleanChassis(e.chassis) ? { chassis: R.cleanChassis(e.chassis) } : {}), ...(R.cleanMod(e.mod) ? { mod: R.cleanMod(e.mod) } : {}) })),   // modification (6.4)
+      ...(R.cleanChassis(e.chassis) ? { chassis: R.cleanChassis(e.chassis) } : {}), ...(R.cleanMod(e.mod) ? { mod: R.cleanMod(e.mod) } : {}),   // modification (6.4)
+      ...(R.cleanImplant(e.implant) ? { implant: R.cleanImplant(e.implant) } : {}) })),   // a cybernetic augmentation or droid customization (6.4)
+    // installed cybernetics and droid customizations, and a droid's motor slots past the two it starts with (6.4)
+    ...(R.cleanImplants(ch.implants).length ? { implants: R.cleanImplants(ch.implants) } : {}), ...(R.motorSlots(ch) > 2 ? { motor: R.motorSlots(ch) } : {}),
     conditions: (Array.isArray(ch.conditions) ? ch.conditions : []).slice(0, 20).map((c) => s(c, 30)),
     exhaustion: clamp(int(ch.exhaustion), 0, 6), inspiration: !!ch.inspiration,
     // variant rules on the sheet (9.16): Simplified Forcecasting's one ability, and Hunted's disturbance points

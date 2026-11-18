@@ -113,6 +113,20 @@ test("enhanced items (6.2): an item keeps its checked +N, and the server's own A
   assert.equal(c.ac, 10 + 1 + 2, "unarmored 10 + Dex, +2 from the worn item");
 });
 
+test("cybernetics and droid customizations (6.4): the sheet keeps the installed list, the motor and the item's kind, checked", async () => {
+  const { gm, sam, avery } = await table();
+  const av = await sheet(sam, avery);
+  await sam.act("char.save", { char: Object.assign({}, av, { motor: 4, implants: [{ name: "Droid Arm", kind: "part", rar: "Premium" }, { name: "X", kind: "__proto__" }],
+    equipment: [{ name: "Optical Implant", qty: 1, implant: { kind: "enhancement" } }, { name: "Odd", qty: 1, implant: { kind: "toaster" } }] }) });
+  const c = await sheet(gm, avery);
+  assert.deepEqual([c.motor, c.implants], [4, [{ name: "Droid Arm", kind: "part", rar: "Premium" }]]);
+  assert.deepEqual(c.equipment[0].implant, { kind: "enhancement" });
+  assert.ok(!("implant" in c.equipment[1]));
+  await sam.act("char.save", { char: Object.assign({}, c, { motor: 1, implants: [] }) });
+  const c2 = await sheet(gm, avery);
+  assert.ok(!("motor" in c2) && !("implants" in c2), "two motor slots and nothing installed: nothing stored");
+});
+
 test("item modification (6.4): a chassis and a modification keep their checked shapes", async () => {
   const { gm, sam, avery } = await table();
   const av = await sheet(sam, avery);
