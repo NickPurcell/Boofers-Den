@@ -639,7 +639,8 @@ function applyAction(camp, cid, gm, type, p) {
       // the real sender always stays in `from`, so every message shows who sent it
       const wantAs = str(p.as, 80).trim().toLowerCase();
       const asCh = wantAs && Object.values(chars).find((c) => c && String(c.name || "").toLowerCase() === wantAs && (gm || c.owner === cid));
-      const as = asCh ? asCh.name : null;
+      // a character whose token's name the GM is hiding isn't named to the table: the line shows its sender instead (#187's review)
+      const as = asCh && shownName(camp, { charId: asCh.id, name: asCh.name }) === asCh.name ? asCh.name : null;
       if (/^\/(r|roll) /.test(low)) {
         let expr = text.split(" ").slice(1).join(" "), label = "";
         if (expr.includes("#")) [expr, label] = [expr.slice(0, expr.indexOf("#")), expr.slice(expr.indexOf("#") + 1)];
