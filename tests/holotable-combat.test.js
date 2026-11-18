@@ -1849,14 +1849,22 @@ test("review #102: walls without a usable id get their own on the way in; erasin
   assert.equal((await gm.act("fight.wall", { op: "remove", id: "" })).code, 400);
   assert.equal((await gm.act("fight.wall", { op: "door", id: "", open: true })).code, 400);
   assert.equal((await gm.state()).map.walls.length, 1);
-  // 2,000 walls far away: the reachable squares are the same as with none, and quick to find
-  const far = Array.from({ length: 2000 }, (_, i) => ({ a: [100 + (i % 40), 100 + Math.floor(i / 40)], b: [101 + (i % 40), 100 + Math.floor(i / 40)], kind: "wall" }));
+  // 2,000 walls far away: the reachable squares are the same as with none, and the far walls are only looked at once
+  // each (to see they're out of the way), never on every step. Counted by reads, not timed: a clock here failed under
+  // load (a parallel test run), and a count can't.
+  let reads = 0;
+  const walls = (x0, y0) => Array.from({ length: 2000 }, (_, i) => {
+    const a = [x0 + (i % 40), y0 + Math.floor(i / 40)], b = [x0 + 1 + (i % 40), y0 + Math.floor(i / 40)];
+    return { get a() { reads++; return a; }, get b() { reads++; return b; }, kind: "wall" };
+  });
   const ava = unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 });
-  const t0 = Date.now();
-  const lots = E.reachable(world([ava], "ava", { walls: far }), "ava", 60);
-  const took = Date.now() - t0;
+  const lots = E.reachable(world([ava], "ava", { walls: walls(100, 100) }), "ava", 60);
+  const farReads = reads;
   assert.deepEqual(Object.keys(lots).length, Object.keys(E.reachable(world([ava], "ava"), "ava", 60)).length);
-  assert.ok(took < 400, `took ${took} ms`);
+  assert.ok(farReads <= 4 * 2000, `${farReads} reads of 2,000 far walls`);
+  reads = 0;
+  E.reachable(world([ava], "ava", { walls: walls(-20, -20) }), "ava", 60);
+  assert.ok(reads > 20 * farReads, `walls in the way are checked step by step (${reads} reads), so the count above means something`);
 });
 
 test("review of #109 (and #111): an id that every object inherits (__proto__, constructor) is never taken for a character", async () => {
@@ -2446,14 +2454,18 @@ test("Force-Empowered Strikes through the API: the points come off the sheet on 
     attacks: [{ name: "Lightsaber", ab: "str", damage: "1d8", type: "energy", props: "" }], force: { max: "", used: 0 } }) });
   await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
   await gm.act("fight.toggle", { on: true });
-  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0", add: { fes: 2, dice: "50d8" } })).code, 200);
+  const res = await sam.act("fight.attack", { target: ids.raider, attack: "0", add: { fes: 2, dice: "50d8" } });
+  assert.equal(res.code, 200, JSON.stringify(res.data));
   st = await gm.state();
+  // reported once as flaky on #145 and not reproduced (max, min and 123 seeded dice all pass): if it fails again, the
+  // messages below say what the fight's log held
+  const rolls = st.chat.filter((m) => m.fight && m.roll).map((m) => `${m.roll.kind}: ${m.roll.label}`);
   const dmg = st.chat.filter((m) => m.fight && m.roll && m.roll.kind === "damage").pop();
   if (dmg) {
-    assert.match(dmg.roll.label, /Force-Empowered Strikes (2d8|4d8), 2 force points/);
-    assert.equal(st.characters[avery].force.used, 2, "spent from the sheet's force points");
-  } else assert.equal(st.characters[avery].force.used, 0, "a miss costs nothing");
-  assert.ok(!/50d8/.test(JSON.stringify(st.chat)));
+    assert.match(dmg.roll.label, /Force-Empowered Strikes (2d8|4d8), 2 force points/, rolls.join(" | "));
+    assert.equal(st.characters[avery].force.used, 2, `spent from the sheet's force points; log: ${rolls.join(" | ")}`);
+  } else assert.equal(st.characters[avery].force.used, 0, `a miss costs nothing; log: ${rolls.join(" | ")}`);
+  assert.ok(!st.chat.some((m) => /50d8/.test(`${m.text || ""} ${(m.roll && (m.roll.expr + " " + m.roll.label + " " + m.roll.detail)) || ""}`)), "the request's dice never reach a roll");
 });
 
 /* ---------------------------------------------------------------- weapon properties in the combat view (audit 5.8) */
