@@ -3286,11 +3286,13 @@ test("Parry through the API: the creature's hit waits for the player's answer, a
   assert.equal((await sam.act("fight.end", {})).code, 200);
   const claw = { name: "Claw", bonus: 30, damage: "1d6+2", type: "kinetic", melee: 5 };
   const hitOnce = async () => {
-    assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: claw })).code, 200);
+    const crypto = require("crypto"), real = crypto.randomInt;
+    crypto.randomInt = (a, b) => (b === 21 ? 15 : real(a, b));   // the creature's d20: a 15, a hit
+    try { assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: claw })).code, 200); } finally { crypto.randomInt = real; }
     return ((await sam.state()).fight.pending || []).find((x) => x.kind === "parry");
   };
   let pend = await hitOnce();
-  if (!pend) return;   // a natural 1 misses even at +30
+  assert.ok(pend, "a parry prompt");
   assert.ok(pend.hit.amount >= 3 && pend.mine, JSON.stringify(pend));
   assert.equal((await gm.state()).characters[avery].hp.current, 20, "it waits");
   assert.equal((await sam.act("fight.react", { id: pend.id, take: true })).code, 200);
@@ -3312,9 +3314,12 @@ test("Parry, unanswered: when the tracker moves the turn on, the hit that waited
   await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
   await gm.act("fight.toggle", { on: true });
   assert.equal((await sam.act("fight.end", {})).code, 200);
-  assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 30, damage: "1d6+2", type: "kinetic", melee: 5 } })).code, 200);
+  const crypto = require("crypto"), real = crypto.randomInt;
+  crypto.randomInt = (a, b) => (b === 21 ? 15 : real(a, b));   // the creature's d20: a 15, a hit
+  try { assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 30, damage: "1d6+2", type: "kinetic", melee: 5 } })).code, 200); }
+  finally { crypto.randomInt = real; }
   const pend = ((await gm.state()).fight.pending || []).find((x) => x.kind === "parry");
-  if (!pend) return;   // a natural 1
+  assert.ok(pend, "a parry prompt");
   assert.equal((await gm.act("init.next", {})).code, 200, "the tracker's own Next");
   assert.equal((await rae.act("fight.end", {})).code, 200, "Bolt's turn: the combat view catches up");
   st = await gm.state();
@@ -3330,14 +3335,19 @@ test("Parry, lapsed by hiding: the GM hides the attacker while the prompt is up;
   await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
   await gm.act("fight.toggle", { on: true });
   assert.equal((await sam.act("fight.end", {})).code, 200);
-  assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 30, damage: "1d6+2", type: "kinetic", melee: 5 } })).code, 200);
+  const crypto = require("crypto"), real = crypto.randomInt;
+  crypto.randomInt = (a, b) => (b === 21 ? 15 : real(a, b));   // the creature's d20: a 15, a hit
+  try { assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 30, damage: "1d6+2", type: "kinetic", melee: 5 } })).code, 200); }
+  finally { crypto.randomInt = real; }
   const pend = ((await gm.state()).fight.pending || []).find((x) => x.kind === "parry");
-  if (!pend) return;
+  assert.ok(pend, "a parry prompt (the class's superiority pool is there without being stored, #164's follow-up)");
+  const seen = (await sam.state()).chat.length;
   assert.equal((await gm.act("init.update", { id: ids.raider, fields: { hidden: true } })).code, 200);
   assert.equal((await gm.act("fight.end", {})).code, 200, "the turn isn't blocked by a lapsed prompt");
   st = await gm.state();
   assert.equal(st.characters[avery].hp.current, 20 - pend.hit.amount);
-  assert.ok(!JSON.stringify((await sam.state()).chat).includes("Raider"), "the hidden Raider is not named to the player");
+  const after = (await sam.state()).chat.slice(seen);
+  assert.ok(!JSON.stringify(after).includes("Raider"), "nothing after the hiding names the Raider to the player");
 });
 
 
@@ -3379,4 +3389,18 @@ test("#190 in the engine: poolLeft and payPool, spend(), and Force-Empowered Str
   assert.equal(offer.max, 2, "two temporary points: up to 2d8");
   const r = E.apply(world([gd, r1], "gd"), { type: "attack", unit: "gd", target: "r1", attack: sword, add: { fes: 2 } }, dice({ total: 15, nat: 12 }, { total: 12 }).roll);
   assert.deepEqual([r.world.units.gd.pools.force.used, r.world.units.gd.pools.force.temp], [10, 0]);
+});
+
+test("class pools in the world (#164): a sheet that hasn't added its class's resources still has them in a fight, so maneuvers and Action Surge show", () => {
+  const ch = { id: "c1", name: "Fenn", classes: [{ name: "Fighter", level: 5 }], abilities: { str: 16, dex: 12, con: 14, int: 8, wis: 10, cha: 8 }, hp: { max: 30, current: 30 }, ac: 15,
+    attacks: [{ name: "Sword", ab: "str", damage: "1d8", props: "" }], features: [{ name: "Trip Attack" }] };
+  const w = E.buildWorld({ characters: { c1: ch }, entries: [{ id: "e1", name: "Fenn", charId: "c1" }, { id: "e2", name: "Raider", hp: 20, ac: 5 }], active: true, turn: 0,
+    tokens: [{ id: "t1", x: 0, y: 0 }, { id: "t2", x: 1, y: 0 }], unitTokens: { e1: "t1", e2: "t2" } }, R);
+  assert.deepEqual(Object.keys(w.units.e1.pools).sort(), ["action-surge", "hitdice", "second-wind", "superiority"]);
+  assert.deepEqual([w.units.e1.pools.superiority.max, w.units.e1.pools.superiority.die, w.units.e1.pools["action-surge"].max], [3, "d6", 1]);
+  assert.ok((E.preview(w, "e1", "e2", E.attacksOf(ch, R)[0]).riders || []).some((x) => x.key === "maneuver"), "Trip Attack is offered");
+  assert.equal(ch.resources, undefined, "the sheet itself is untouched until something is spent");
+  const kept = Object.assign({}, ch, { resources: [{ key: "superiority", name: "Superiority dice", max: 3, die: "d6", used: 2, refill: "short" }] });
+  const w2 = E.buildWorld({ characters: { c1: kept }, entries: [{ id: "e1", name: "Fenn", charId: "c1" }], active: true, turn: 0, tokens: [{ id: "t1", x: 0, y: 0 }], unitTokens: { e1: "t1" } }, R);
+  assert.equal(w2.units.e1.pools.superiority.used, 2, "a stored pool keeps its count");
 });

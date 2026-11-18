@@ -1819,7 +1819,9 @@
         hp: ch ? +hp.current : e.hp == null || e.hp === '' ? null : +e.hp, maxHp: ch ? +hp.max : e.maxHp == null ? null : +e.maxHp,
         temp: ch ? +hp.temp || 0 : 0,
         speed: ch ? +ch.speed || 30 : +((table.npcSpeed || {})[e.id]) || 30,
-        pools: ch ? Object.fromEntries(resourcesOf(ch, rules).map((r) => [r.key, r])) : {},
+        // its classes' own pools (#108's presets) are there even before the sheet has added them; the server stores one on
+        // the sheet the first time it's spent (writeBack), so Action Surge, maneuvers and the rest work on any sheet
+        pools: ch ? Object.fromEntries(resourcesOf(rules && rules.withClassResources ? Object.assign({}, ch, { resources: cleanResources(rules.withClassResources(ch)) }) : ch, rules).map((r) => [r.key, r])) : {},
         riders: ch ? ridersOf(ch, rules) : {},
         attacks: ch ? attacksPerAction(ch) : 1, offhands: ch ? bonusAttacksOf(ch) : 0, maneuvers: ch ? maneuversOf(ch, rules) : null, styles: ch ? stylesOf(ch) : {},   // per Attack action (#139); a creature's Multiattack comes with its attack
         // Raging is a rage in progress: without its live effect (the fight ended, a new one began) it's dropped here

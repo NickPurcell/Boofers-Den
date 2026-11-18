@@ -281,7 +281,12 @@ function writeBack(camp, cid, before, after, G) {
       for (const [key, pool] of Object.entries(a.pools || {})) {
         if (!b.pools[key] || (b.pools[key].used === pool.used && (b.pools[key].temp || 0) === (pool.temp || 0))) continue;
         // force and tech take their temporary points too (#190): spent before the pool's own
-        const ch = camp.characters[a.charId], next = E.setPoolUsed(ch, key, pool.used, R, pool.temp);
+        const ch = camp.characters[a.charId];
+        let next = E.setPoolUsed(ch, key, pool.used, R, pool.temp);
+        if (next === ch && R.withClassResources) {   // a class pool the sheet hasn't stored yet (the world fills them in): store it, then spend
+          ch.resources = E.cleanResources(R.withClassResources(ch));
+          next = E.setPoolUsed(ch, key, pool.used, R, pool.temp);
+        }
         Object.assign(ch, { resources: next.resources, force: next.force, tech: next.tech, hitDiceUsed: next.hitDiceUsed });
       }
     }
@@ -1007,7 +1012,8 @@ function apply(camp, cid, gm, type, p, G) {
       const tgt = type === "fight.attack" && entry(idOr(p.target)), tch = tgt && tgt.charId && charOf(camp, tgt.charId);
       if (tch && (tch.features || []).some((x) => x && /^(riposte|return fire)$/i.test(String(x.name || "").trim()))) seedSup(tch);
       // Rage and Action Surge count their uses: a sheet from before #108 gets its class's resource from the class table first
-      const poolKey = type === "fight.common" ? { rage: "rage", surge: "action-surge" }[String(p.key || "")] : null;
+      const POOL_KEYS = new Map([["rage", "rage"], ["surge", "action-surge"]]);   // a Map, so a key named like Object's own is no pool (#164 review)
+      const poolKey = type === "fight.common" ? POOL_KEYS.get(String(p.key || "")) || null : null;
       const rager = poolKey && cur.charId && charOf(camp, cur.charId);
       if (rager && R.withClassResources && !(rager.resources || []).some((r) => r && r.key === poolKey)) {
         const withRage = E.cleanResources(R.withClassResources(rager));
