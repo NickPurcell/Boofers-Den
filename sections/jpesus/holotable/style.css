@@ -777,3 +777,5 @@ canvas.drawing { cursor: crosshair; }
 .carry { align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .carry .carry-state { color: var(--amber); font-size: 12px; }
 .carry.carry-heavy .carry-state, .carry.carry-over .carry-state { color: var(--red); }
+/* buying (audit 6.8): Buy beside Add in the gear picker */
+.eq-btns { display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
