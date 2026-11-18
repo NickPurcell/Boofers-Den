@@ -129,7 +129,12 @@
         if (r.status === 401) return signedOut('Your session ended. Please sign in again.');
         if (!r.ok) throw new Error(j.error || 'poll failed');
         $('#conn').classList.add('ok'); $('#conn').title = 'Connected'; backoff = 1000;
-        if (j.state) { S.v = j.v; onState(j.state); }
+        if (j.state) {
+          // the GM moved the table to another campaign (12.9): this page's selection belonged to the old one
+          const camp = v => (String(v || '').includes(':') ? String(v).split(':')[0] : 'main');
+          if (S.v && camp(S.v) !== camp(j.v)) S.selected = null;
+          S.v = j.v; onState(j.state);
+        }
         if (lib !== null && j.lib !== lib && A.packs) { await loadPacks(); renderDrawer(); }
         lib = j.lib;
         if (S.lib !== j.lib) { S.lib = j.lib; if (window.HTA) HTA.sync(); }   // the GM's track list changed
