@@ -3382,7 +3382,7 @@
     if (unmet.length && !isGM()) error = error || `Multiclassing into ${cls}: ${unmet.join('; ')}. Ask your GM.`;
     const payload = { charId, className: cls, hpMode: W.hpMode, archetype: archDue && W.archetype ? W.archetype : undefined, hitDie: hd, override: unmet.length && isGM() ? true : undefined,
       asi: asi || undefined, feat: feat || undefined, expertise: expertise.length ? expertise : undefined,
-      features: (W.auto || []).filter(f => !f.have).map(f => ({ name: f.name, text: f.text })).concat(choiceFeatures).slice(0, 20), powers: W.powers.filter(p => p.name.trim()).slice(0, 20) };
+      features: choiceFeatures.concat((W.auto || []).filter(f => !f.have).map(f => ({ name: f.name, text: f.text }))).slice(0, 20), powers: W.powers.filter(p => p.name.trim()).slice(0, 20) };
     return { ch, after, cls, k, newClassLevel, before, due, asiOn, archDue, archTerm, hd, oldCon, newCon, retro, avgGain, maxGain, payload, error, groups, picked, chosen, tools };
   }
 
@@ -3474,7 +3474,7 @@
         const want = g.min === g.max ? `choose ${g.min}` : `choose ${g.min} to ${g.max}`;
         const why = g.kind === 'expertise' ? 'Two of your skill proficiencies, or a tool (name it), get double your proficiency bonus.'
           : g.kind === 'style' ? 'A style of fighting as your specialty.'
-          : `A ${esc(P.cls)} ${P.newClassLevel} knows ${g.total}; the sheet has ${g.have}.`;
+          : `${/^[aeiou]/i.test(P.cls) ? 'An' : 'A'} ${esc(P.cls)} ${P.newClassLevel} knows ${g.total}; the sheet has ${g.have}.`;
         return `<div class="wiz-choice"><h5 class="wiz-sub">${esc(g.title)}: ${want} <span class="${ok ? 'up' : 'muted'}">· ${n} chosen</span></h5>
           <p class="muted" style="margin:0 0 4px;font-size:12px">${why}</p>
           <div class="wiz-opts" data-scroll="${esc(g.key)}">${g.items.map(x => `<label class="wiz-opt" ${x.text ? `title="${esc(x.text.slice(0, 600))}"` : ''}><input type="checkbox" data-w="pick.${esc(g.key)}" value="${esc(x.n)}" ${mine.includes(x.n) ? 'checked' : ''}><span>${esc(x.n)}${x.pre ? ` <span class="muted">(${esc(x.pre)})</span>` : ''}</span></label>`).join('')
