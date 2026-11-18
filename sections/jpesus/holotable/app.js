@@ -977,7 +977,7 @@
             <td class="n eq-wt">${inp(`equipment.${i}.wt`, +e.wt || '', { ro, type: 'number', ph: '0' })}</td>
             <td class="armor-cell">${inp(`equipment.${i}.armor.kind`, (e.armor || {}).kind || '', { ro, type: 'select', options: [{ v: '', t: '—' }, ...R.ARMOR_KINDS] })}${e.armor && e.armor.kind ? inp(`equipment.${i}.armor.ac`, +e.armor.ac || 0, { ro, type: 'number' }) : ''}</td>
             <td class="eq-cell">${inp(`equipment.${i}.equipped`, e.equipped, { ro, type: 'checkbox' })}${e.att ? `<span class="attune" title="Attuned (Wretched Hives: it takes a short rest with the item)${e.rar ? ` · ${esc(e.rar)}` : ''}">⟡${inp(`equipment.${i}.attuned`, !!e.attuned, { ro, type: 'checkbox' })}</span>` : ''}</td>
-            <td style="white-space:nowrap">${!ro ? `${e.use ? `<button class="btn tiny" data-act="use-item" data-i="${i}" title="Use one: ${esc(useText(e.use) || 'lowers the count')}">Use</button>` : ''}<button class="btn tiny ghost" data-act="sell" data-i="${i}" title="Sell one${+e.cost > 0 ? ` (half its cost: ${R.sellPrice(e).toLocaleString()} cr)` : ''}">Sell</button><button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Empty.</td></tr>'}
+            <td style="white-space:nowrap">${!ro ? `${e.chassis ? `<button class="btn tiny" data-act="mods" data-i="${i}" title="Modifications: install and remove (Wretched Hives)">Mods ${(e.chassis.mods || []).length}/${R.modSlots(e.rar).base + R.modSlots(e.rar).aug}</button>` : ''}${e.use ? `<button class="btn tiny" data-act="use-item" data-i="${i}" title="Use one: ${esc(useText(e.use) || 'lowers the count')}">Use</button>` : ''}<button class="btn tiny ghost" data-act="sell" data-i="${i}" title="Sell one${+e.cost > 0 ? ` (half its cost: ${R.sellPrice(e).toLocaleString()} cr)` : ''}">Sell</button><button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Empty.</td></tr>'}
           </tbody></table></div></div>
         ${stashBox(ch, ro)}
         <div class="box"><h4>Features & Traits <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-feature" title="Feats, class features, maneuvers, fighting styles, lightsaber forms, ventures">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-feature" title="Write a feature by hand">custom</button>' : ''}</h4>
@@ -1179,6 +1179,7 @@
       case 'pick-feature': HTB.openFeaturePicker(ch.id); break;
       case 'del': mutate(c => c[b.dataset.list].splice(i, 1)); break;
       case 'use-item': useItem(ch, i); break;
+      case 'mods': modsDialog(ch, i); break;
       case 'item-info': {   // the item's SW5e text (audit 6.2), looked up by name, never stored on the sheet
         const e0 = ch.equipment[i]; if (!e0) break;
         const found = await itemInfo(e0.name);
@@ -1431,7 +1432,10 @@
               ...(!enh && parseFloat(it.wt) > 0 ? { wt: parseFloat(it.wt) } : {}), ...(!enh && it.cost > 0 ? { cost: it.cost } : {}),   // weight (6.5) and cost (6.8)
               ...(enh && R.RARITIES.includes(it.rar) ? { rar: it.rar } : {}), ...(enh && it.att ? { att: true } : {}),   // rarity and attunement (6.3)
               ...((enh ? it.cat === 'Consumable' : ['Medical', 'Explosive'].includes(it.cat)) ? { use: R.consumableUse(it.desc) || {} } : {}),   // a consumable (6.7)
-              ...(enh && R.enhancedBonus(it.desc) ? { bonus: R.enhancedBonus(it.desc) } : {}) });   // an enhanced item's +N (6.2)
+              ...(enh && R.enhancedBonus(it.desc) ? { bonus: R.enhancedBonus(it.desc) } : {}),   // an enhanced item's +N (6.2)
+              // a chassis, with its kind and no modifications yet; a modification, with the kind of chassis it fits (6.4)
+              ...(enh && R.chassisKind(it.n) ? { chassis: { kind: R.chassisKind(it.n), mods: [] } } : {}),
+              ...(enh && it.cat === 'Item Modification' && R.cleanMod({ kind: String(it.sub || '').toLowerCase() }) ? { mod: { kind: String(it.sub).toLowerCase() } } : {}) });
               // an enhanced weapon of a known kind ("Vibroblade (Fine)", or its subtype) also gets that weapon's attack, with its +N
               const plus = enh && it.cat === 'Weapon' ? R.enhancedBonus(it.desc) : null, base = plus && plus.hit ? enhancedBase(it) : null;
               if (base && !c.attacks.some(x => String(x.name).toLowerCase() === it.n.toLowerCase())) c.attacks.push(Object.assign(weaponAttack(base), { name: it.n }, plus.dmg === plus.hit ? { magic: plus.hit } : {})); }   // the attack box adds to both
@@ -1462,6 +1466,65 @@
   const ALIGN = { light: 'Light', dark: 'Dark', universal: 'Universal' };
   // opts.onAdd(power): hand the picked power to someone else (the level-up wizard) instead of the sheet;
   // opts.onDone(): called by Done; opts.taken(): names already picked there
+  // --------------------------------------------------------------------------- item modification (audit 6.4)
+  // A chassis's slots: install a modification from the inventory, or remove one, each with a check with the item's tool
+  // against the DC its rarity sets (the GM may skip the check). A failed install leaves it in the inventory ("try again
+  // after 24 hours"); a failed removal destroys it. The chassis requires attunement once anything is in it, and its
+  // modifications' plain +N become its own.
+  function modsDialog(ch, i) {
+    const item = ch.equipment[i]; if (!item || !item.chassis) return;
+    const ro = !canEdit(ch), slots = R.modSlots(item.rar), mods = item.chassis.mods || [];
+    const fits = (ch.equipment || []).map((e, j) => ({ e, j })).filter(({ e }) => e.mod && !R.installBlocked(item, e));
+    const tool = kind => R.MOD_TOOL[kind] || "Tinker's implements";
+    // #218's tool check: Int, the tier the sheet gives that tool, its dice (mastery, Reliable Talent)
+    const tierOf = kind => (R.toolTierFromText ? R.toolTierFromText(ch, tool(kind)) : 0);
+    const exprOf = kind => { const t = tierOf(kind), b = R.toolBonus ? R.toolBonus(ch, 'int', t) : R.abilityMod(ch, 'int');
+      return R.checkRollExpr ? R.checkRollExpr(ch, t, b).expr : `1d20${b >= 0 ? '+' : ''}${b}`; };
+    const check = async (what, kind, rar) => {   // the tool check, rolled by the table; true on a success
+      const dc = R.modDC(rar);
+      const res = await roll(exprOf(kind), `${what}: ${tool(kind)} (Int) against DC ${dc}`, { d20: true });   // no character named (#187's review)
+      return res && res.roll ? res.roll.total >= dc : null;
+    };
+    modal(`<h3>${esc(item.name)}: modifications</h3>
+      <p class="muted">${esc(item.rar || 'Standard')} ${esc(item.chassis.kind)} chassis · ${slots.base} slots${slots.aug ? ` + ${slots.aug} augment` : ''} · checks with ${esc(tool(item.chassis.kind))} (augments: ${esc(tool('augment'))})</p>
+      ${mods.length ? mods.map((m, k) => `<div class="row" style="margin:4px 0"><span style="flex:1">${m.aug ? '⟡ ' : ''}${esc(m.name)} <span class="muted">${esc(m.rar || '')}</span></span>
+        ${ro ? '' : `<button class="btn tiny ghost" data-mod-rm="${k}" title="A check against DC ${R.modDC(m.rar)}: on a success it's salvaged, on a failure destroyed">Remove</button>`}</div>`).join('') : '<p class="muted">Nothing installed.</p>'}
+      ${ro ? '' : fits.length ? `<div class="row" style="margin-top:10px"><select id="modPick" style="flex:1">${fits.map(({ e, j }) => `<option value="${j}">${esc(e.name)} (${esc(e.rar || 'Standard')}, DC ${R.modDC(e.rar)})</option>`).join('')}</select>
+        <button class="btn primary" id="modInstall">Install</button></div>` : '<p class="muted">Nothing in the inventory fits: a modification of this kind (or an augment), at this rarity or lower, with a slot free.</p>'}
+      ${isGM() && !ro ? '<label class="muted carry-var" style="margin-top:8px"><input type="checkbox" id="modNoCheck"> GM: no check</label>' : ''}
+      <div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn" id="modClose">Close</button></div>`, box => {
+      box.onclick = async e => {
+        if (e.target.id === 'modClose') return closeModal();
+        const skip = isGM() && $('#modNoCheck', box) && $('#modNoCheck', box).checked;
+        if (e.target.id === 'modInstall') {
+          const j = +$('#modPick', box).value, m = ch.equipment[j]; if (!m) return;
+          const why = R.installBlocked(item, m); if (why) return toast(why, true);
+          closeModal();
+          const ok = skip ? true : await check(`Install ${m.name} in ${item.name}`, m.mod.kind, m.rar);
+          if (ok === null) return;
+          if (!ok) return act('chat', { text: `*fails to install ${m.name} in ${item.name}: it stays in the pack; try again after 24 hours.*` });
+          mutate(c => {
+            const it = c.equipment[i], mm = c.equipment[j]; if (!it || !mm || it.name !== item.name || mm.name !== m.name) return;
+            R.installMod(c, i, j);
+          });
+          act('chat', { text: `*installs ${m.name} in ${item.name}.*` });
+        }
+        const rm = e.target.closest('[data-mod-rm]');
+        if (rm) {
+          const k = +rm.dataset.modRm, m = mods[k]; if (!m) return;
+          closeModal();
+          const ok = skip ? true : await check(`Remove ${m.name} from ${item.name}`, m.aug ? 'augment' : item.chassis.kind, m.rar);
+          if (ok === null) return;
+          mutate(c => {
+            const it = c.equipment[i]; if (!it || it.name !== item.name || !it.chassis || !(it.chassis.mods || [])[k] || it.chassis.mods[k].name !== m.name) return;
+            R.removeMod(c, i, k, ok);
+          });
+          act('chat', { text: ok ? `*removes ${m.name} from ${item.name} and salvages it.*` : `*removes ${m.name} from ${item.name}, but it's destroyed.*` });
+        }
+      };
+    });
+  }
+
   // --------------------------------------------------------------------------- consumables (audit 6.7)
   // Use: one comes off the count, and what the item does is rolled (from its SW5e text, read when it was added): a medpac's
   // Hit Dice + Con or a stim's healing, on this character or for someone else to read; a grenade's save DC and damage.
