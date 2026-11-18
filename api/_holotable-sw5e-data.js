@@ -157,6 +157,49 @@ function chapters(d) {
     n: t(e.chapterName, 80), num: int(e.chapterNumber, -5, 99), md: t(e.contentMarkdown, 600000),
   })).sort((a, b) => a.num - b.num || a.n.localeCompare(b.n));
 }
+// Wretched Hives' downtime activities (audit 11.1, #202), from its chapter 2, "Entertainment and Downtime". Each
+// activity (a "## " heading, before its "### Uptime") has a Roll Modifier table (the ability check DC met gives a d100
+// modifier), a d100 Results table, a complication chance ("a 10 percent chance") and a Complications table (dN). Buying,
+// selling and crafting add a rarity table (its d100 modifier). Rivals isn't an activity, and crafting is 11.2's.
+const cells = (line) => line.split("|").slice(1, -1).map((c) => c.trim());
+function mdTable(md, title) {
+  const at = md.search(new RegExp(`^#####\\s+${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`, "m"));
+  if (at < 0) return null;
+  const rows = md.slice(at).split("\n").slice(1).filter((l) => l.trim()).reduce((acc, l) => (acc.done || !l.trim().startsWith("|") ? Object.assign(acc, { done: acc.rows.length > 0 }) : (acc.rows.push(cells(l)), acc)), { rows: [], done: false }).rows;
+  return rows.length > 2 ? { head: rows[0], rows: rows.slice(2) } : null;   // past the header and the |:--:| line
+}
+const range = (txt) => {   // "40 or lower", "41-70", "111 or higher", "05"
+  const s = String(txt).replace(/\s+/g, " ").trim(), n = (x) => parseInt(x, 10);
+  let m = /^(\d+) or (lower|less)$/i.exec(s); if (m) return [-999, n(m[1])];
+  m = /^(\d+) or (higher|more)$/i.exec(s); if (m) return [n(m[1]), 999];
+  m = /^(\d+)\s*[-–]\s*(\d+)$/.exec(s); if (m) return [n(m[1]), n(m[2])];
+  m = /^(\d+)$/.exec(s); if (m) return [n(m[1]), n(m[1])];
+  return null;
+};
+function downtimeActs(d) {
+  const ch = (Array.isArray(d) ? d : []).find((e) => e && /entertainment and downtime/i.test(String(e.chapterName || "")));
+  const md = String((ch && ch.contentMarkdown) || "").split(CR).join("");
+  return md.split(/\n## /).slice(1).map((part) => {
+    const n = part.split("\n")[0].trim(), up = part.search(/\n### Uptime/), body = up > 0 ? part.slice(0, up) : part;
+    if (!n || /^rivals$/i.test(n) || /^crafting$/i.test(n)) return null;
+    const titles = [...body.matchAll(/^#####\s+(.+?)\s*$/gm)].map((m) => m[1]);
+    const find = (re) => titles.find((x) => re.test(x));
+    const modT = mdTable(body, find(/roll modifier$/i) || "\u0000"), resT = mdTable(body, find(/results$|^(buying|selling) an /i) || "\u0000");
+    const compT = mdTable(body, find(/complications$/i) || "\u0000"), rarT = mdTable(body, find(/^(purchasable|salable) /i) || "\u0000");
+    // the check's DC met gives the d100 modifier; for buying, the rarity table's "DC to Find Seller" does (with its rarity)
+    const dcRarity = rarT && /dc/i.test(String(rarT.head[1] || ""));
+    const mods = modT ? modT.rows.map((r) => ({ dc: int(r[0], 0, 99), mod: int(String(r[1]).replace("+", ""), -99, 99) })).filter((r) => r.dc > 0)
+      : dcRarity ? rarT.rows.map((r) => ({ dc: int(r[1], 0, 99), mod: int(String(r[2]).replace("+", ""), -99, 99), label: t(r[0], 20) })).filter((r) => r.dc > 0) : [];
+    const results = resT ? resT.rows.map((r) => [range(r[0]), t(unlink(r[1]), 400)]).filter((r) => r[0] && r[1]).map(([[lo, hi], text]) => ({ lo, hi, text })) : [];
+    const dieN = compT ? int(String(compT.head[0]).replace(/^d/i, ""), 0, 100) : 0;
+    const compls = compT ? compT.rows.map((r) => t(unlink(r[1]), 400)).filter(Boolean).slice(0, 20) : [];
+    const rarity = rarT && !dcRarity ? rarT.rows.map((r) => ({ r: t(r[0], 20), note: t(r[1], 30), mod: int(String(r[r.length - 1]).replace("+", ""), -99, 99) })).slice(0, 8) : [];
+    const pct = /(\d+) percent chance/i.exec(body);
+    const key = n.toLowerCase().replace(/[^a-z]+/g, "-").replace(/^-|-$/g, "").slice(0, 30);
+    const section = (h) => { const m = new RegExp(`### ${h}[ \\t]*\\n([\\s\\S]*?)(?=\\n#{2,5} |$)`).exec(body); return m ? t(unlink(m[1].trim()), 1500) : ""; };
+    return { key, n: t(n, 40), resources: section("Resources"), resolution: section("Resolution"), mods, results, complPct: pct ? int(pct[1], 0, 100) : 0, dieN, compls, rarity };
+  }).filter((a) => a && a.results.length);
+}
 const entries = (field) => (d) => named(d).map((e) => ({ n: t(e.name, 80), md: t(e[field], 20000) })).sort(byName);
 
 // Starships of the Galaxy
@@ -207,6 +250,7 @@ const LISTS = {
   monsters: { path: "monster", build: monsters, maxBytes: 8 * MB, maxItems: 2000, cacheAs: "monsters-2" },   // 2.59 MB, 271; cacheAs: a new shape (r) is a new cache
   "rules-phb": { path: "playerHandbookRule", build: chapters, maxBytes: 3 * MB, maxItems: 60 },    // 0.47 MB
   "rules-wh": { path: "wretchedHivesRule", build: chapters, maxBytes: 3 * MB, maxItems: 60 },      // 0.41 MB
+  downtime: { path: "wretchedHivesRule", build: downtimeActs, maxBytes: 3 * MB, maxItems: 40 },    // 13 activities (11.1)
   "rules-sotg": { path: "starshipRule", build: chapters, maxBytes: 3 * MB, maxItems: 60 },         // 0.27 MB
   "rules-ec": { path: "expandedContent", build: chapters, maxBytes: 6 * MB, maxItems: 60 },        // 1.79 MB
   "rules-variant": { path: "variantRule", build: chapters, maxBytes: 2 * MB, maxItems: 300 },      // 0.15 MB, 40

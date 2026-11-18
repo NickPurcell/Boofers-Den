@@ -369,6 +369,37 @@ test("level up: GM grants to everyone or one character; players level their own"
   assert.ok(st.chat.some((m) => m.roll && /Rook: level 5 hit points \(d10\)/.test(m.roll.label)));
 });
 
+test("downtime (audit 11.1): the GM grants days; only the server writes a sheet's downtime", async () => {
+  const { gm, p1 } = await table();
+  const kira = (await p1.act("char.save", { char: { name: "Kira", credits: 100, downtime: { days: 999, log: [] } } })).data.id;
+  let st = (await gm.poll()).data.state;
+  assert.equal(st.characters[kira].downtime, undefined, "a new sheet can't bring its own days");
+  assert.equal((await p1.act("downtime.grant", { days: 5, chars: [kira] })).code, 403, "the GM grants");
+  assert.equal((await gm.act("downtime.grant", { days: 0, chars: [kira] })).code, 400);
+  assert.equal((await gm.act("downtime.grant", { days: 5, chars: ["__proto__", "constructor"] })).code, 400);
+  assert.equal((await gm.act("downtime.grant", { days: 10, chars: [kira, kira], reason: "in port at Nar Shaddaa" })).code, 200);
+  st = (await p1.poll()).data.state;
+  const d = st.characters[kira].downtime;
+  assert.equal(d.days, 10, "listed twice, granted once");
+  assert.deepEqual([d.log.length, d.log[0].act, d.log[0].days, d.log[0].text], [1, "grant", 10, "in port at Nar Shaddaa"]);
+  assert.match(st.chat.at(-1).text, /10 days of downtime \(in port at Nar Shaddaa\) for Kira/);
+  // a player's save keeps the sheet's downtime, whatever it sends
+  const ch = st.characters[kira];
+  await p1.act("char.save", { char: Object.assign({}, ch, { notes: "x", downtime: { days: 3650, log: [] } }) });
+  assert.deepEqual((await p1.poll()).data.state.characters[kira].downtime, d);
+  assert.ok(!Object.prototype.hasOwnProperty.call({}, "days"), "Object.prototype untouched");
+  // with living costs: the same days of each one's lifestyle, through lifestyle.charge (11.5)
+  await gm.act("char.save", { char: Object.assign({}, (await gm.poll()).data.state.characters[kira], { lifestyle: "Modest" }) });
+  const r = await gm.act("downtime.grant", { days: 7, chars: [kira], living: true });
+  assert.deepEqual([r.code, r.data.living], [200, 1]);
+  st = (await gm.poll()).data.state;
+  assert.deepEqual([st.characters[kira].downtime.days, st.characters[kira].credits], [17, 100 - 70]);
+  const rook = (await p1.act("char.save", { char: { name: "Rook" } })).data.id;
+  const r2 = await gm.act("downtime.grant", { days: 3, chars: [rook], living: true });
+  assert.deepEqual([r2.code, r2.data.living], [200, 0], "no lifestyle set: the days still come, the GM is told");
+  assert.match((await gm.poll()).data.state.chat.at(-1).text, /No living costs charged/);
+});
+
 test("level up: Expertise goes on up to two skills the character is proficient in (audit 2.9)", async () => {
   const { gm, p1 } = await table();
   const ved = (await p1.act("char.save", { char: { name: "Ved", classes: [{ name: "Operative", level: 5 }], abilities: { con: 12 }, hp: { max: 30, current: 30 },
@@ -389,6 +420,48 @@ test("level up: Expertise goes on up to two skills the character is proficient i
   st = (await p1.poll()).data.state;
   assert.deepEqual(st.characters[ved].skills, { stealth: 2, perception: 2, deception: 1, insight: 2, constructor: 1 });
   assert.match(st.chat.at(-1).text, /expertise: stealth, perception/);
+});
+
+test("downtime activities (audit 11.1): the player asks, the GM approves first, the character rolls", async () => {
+  const { gm, p1, p2 } = await table();
+  await db.set(S.K.sw5e("downtime"), JSON.stringify([{ key: "work", n: "Work", mods: [{ dc: 10, mod: 5 }, { dc: 15, mod: 10 }],
+    results: [{ lo: -999, hi: 40, text: "Poor." }, { lo: 41, hi: 999, text: "Modest." }], complPct: 0, dieN: 0, compls: [], rarity: [] }]));
+  const kira = (await p1.act("char.save", { char: { name: "Kira", credits: 200, abilities: { str: 14 }, skills: { athletics: 1 } } })).data.id;
+  await gm.act("downtime.grant", { days: 10, chars: [kira] });
+  const ask = (who, body) => who.act("downtime.request", Object.assign({ charId: kira }, body));
+  assert.equal((await ask(p2, { act: "work", days: 5 })).code, 403, "someone else's character");
+  assert.equal((await ask(p1, { act: "smuggling", days: 5 })).code, 400);
+  assert.equal((await ask(p1, { act: "__proto__", days: 5 })).code, 400);
+  assert.equal((await ask(p1, { act: "work", days: 11 })).code, 400, "more days than granted");
+  assert.equal((await p1.act("downtime.request", { charId: "constructor", act: "work", days: 1 })).code, 400);
+  const a = await ask(p1, { act: "work", days: 5, note: "dock work" });
+  assert.equal(a.code, 200);
+  assert.equal((await ask(p1, { act: "work", days: 6 })).code, 400, "5 of 10 are asked for already");
+  let st = (await p1.poll()).data.state, d = st.characters[kira].downtime;
+  assert.deepEqual([d.days, d.pending.length, d.pending[0].ok, st.characters[kira].credits], [10, 1, false, 200], "nothing spent before the GM's yes");
+  assert.equal((await p1.act("downtime.roll", { charId: kira, id: a.data.id })).code, 400, "not approved yet");
+  // the GM approves: the check to roll, the cost; the days and credits go now
+  const decide = (who, body) => who.act("downtime.decide", Object.assign({ charId: kira, id: a.data.id }, body));
+  assert.equal((await decide(p1, { ok: true, check: { what: "skill", key: "athletics" } })).code, 403, "the GM decides");
+  assert.equal((await decide(gm, { ok: true, check: { what: "skill", key: "__proto__" } })).code, 400);
+  assert.equal((await decide(gm, { ok: true, cr: 50, check: { what: "skill", key: "athletics" } })).code, 200);
+  st = (await p1.poll()).data.state; d = st.characters[kira].downtime;
+  assert.deepEqual([d.days, st.characters[kira].credits, d.pending[0].ok, d.log.at(-1).act, d.log.at(-1).days], [5, 150, true, "work", 5]);
+  // the character rolls: Athletics from the sheet, then d100 + the modifier on SW5e's table
+  assert.equal((await p2.act("downtime.roll", { charId: kira, id: a.data.id })).code, 403);
+  const r = await p1.act("downtime.roll", { charId: kira, id: a.data.id });
+  assert.equal(r.code, 200);
+  st = (await p1.poll()).data.state; d = st.characters[kira].downtime;
+  assert.equal(d.pending, undefined, "done");
+  assert.match(d.log.at(-1).text, /^Athletics \d+ → [+-]\d+; d100 \d+.*: (Poor|Modest)\.$/);
+  assert.ok(st.chat.some((m) => m.roll && /Work: Athletics/.test(m.roll.label)), "the check is a roll in chat");
+  assert.match(st.chat.at(-1).text, /Kira \(work\): Athletics/);
+  // a request the GM turns down: removed, nothing spent
+  const b = await ask(p1, { act: "work", days: 2 });
+  assert.equal((await gm.act("downtime.decide", { charId: kira, id: b.data.id, ok: false })).code, 200);
+  st = (await p1.poll()).data.state;
+  assert.deepEqual([st.characters[kira].downtime.days, st.characters[kira].downtime.pending], [5, undefined]);
+  await db.del(S.K.sw5e("downtime"));
 });
 
 test("level up: the GM can level an absent player's character, and cancel a grant", async () => {
