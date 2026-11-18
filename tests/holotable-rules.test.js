@@ -367,3 +367,24 @@ test("Wretched Hives' proficiency tiers (5.7), tool checks (6.10) and the tech f
   c.equipment.push({ name: "Wristpad" });
   assert.equal(R.hasTechFocus(c), true);
 });
+
+test("feat prerequisites (audit 2.5), read from SW5e's own wording", () => {
+  const ch = { classes: [{ name: "Fighter", level: 3 }], abilities: { str: 14, dex: 13, con: 12, int: 10, wis: 10, cha: 8 }, features: [{ name: "Lucky" }], size: "Medium" };
+  const pr = (c, p) => R.featPrereq(c, p);
+  assert.deepEqual(pr(ch, "None"), { ok: true, unmet: [], unknown: [] });
+  assert.deepEqual(pr(ch, "4th level").unmet, ["4th level"]);
+  assert.equal(pr(Object.assign({}, ch, { classes: [{ name: "Fighter", level: 4 }] }), "4th level, Lucky feat").ok, true);
+  assert.deepEqual(pr(ch, "4th level, Durable feat").unmet, ["4th level", "the Durable feat"]);
+  assert.deepEqual(pr(ch, "4th level; Dexterity, Intelligence, Wisdom, or Charisma 13").unmet, ["4th level"], "any one of the four at 13: Dex 13 counts");
+  assert.deepEqual(pr(ch, "Charisma 13").unmet, ["Charisma 13"]);
+  assert.equal(pr(ch, "Strength 13, size Medium").ok, true);
+  assert.deepEqual(pr(ch, "Strength 13, size Small").unmet, ["size Small"]);
+  assert.deepEqual(pr({ classes: [], abilities: { str: 13 } }, "Strength 13, size Small"), { ok: null, unmet: [], unknown: ["size Small"] }, "no size on the sheet: unknown");
+  assert.deepEqual(pr(ch, "Type droid"), { ok: null, unmet: [], unknown: ["type droid"] }, "the GM's call");
+  const con = { classes: [{ name: "Consular", level: 5 }], abilities: { wis: 16 } };
+  assert.equal(pr(con, "The ability to cast 3rd-level force powers").ok, true, "a Consular 5 casts 3rd-level powers");
+  assert.equal(pr(con, "The ability to cast 4th-level force powers").ok, false);
+  assert.equal(pr(con, "The ability to cast tech powers").ok, false);
+  assert.equal(pr(ch, "4th level, the ability to cast force or tech powers").unmet.length, 2);
+  assert.deepEqual(pr(ch, "12th level, Dexterity 20").unmet, ["12th level", "Dexterity 20"]);
+});

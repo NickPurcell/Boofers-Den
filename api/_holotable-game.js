@@ -162,6 +162,9 @@ const cleanVariants = (v) => [...new Set((Array.isArray(v) ? v : []).slice(0, 80
 // set by the server (holotable.js) on a player's char.save: the senses of the species they chose, from SW5e's own list.
 // A Symbol, so it can't arrive in a client's JSON.
 const SPECIES_SENSES = Symbol("speciesSenses");
+// set by holotable.js on levelup.apply: the abilities a feat's own +1 may go to (audit 2.5), from SW5e's feat list,
+// never from a client. Missing when the list couldn't be read.
+const FEAT_ASI = Symbol("featAsi");
 function cleanChar(ch) {
   const s = (v, n = 200) => str(v, n);
   const list = (v, max, fn) => (Array.isArray(v) ? v.slice(0, max).filter((x) => x && typeof x === "object").map(fn) : []);
@@ -457,12 +460,23 @@ function applyLevelUp(camp, cid, gm, p) {
   for (const sk of expertise) {   // one of the sheet's skills (SW5e's list), held at proficiency 1
     if (!SKILL_KEYS.has(sk) || !ch.skills || !Object.prototype.hasOwnProperty.call(ch.skills, sk) || +ch.skills[sk] !== 1) throw new Invalid("Expertise goes on a skill you're proficient in.");
   }
+  // a half-feat's own +1 (audit 2.5): one ability, among the ones SW5e's feat list gives that feat, to at most 20
+  let featAsi = null;
+  if (feat && p.feat.asi) {
+    const entries = p.feat.asi && typeof p.feat.asi === "object" ? Object.entries(p.feat.asi) : [];
+    const ok = Array.isArray(p[FEAT_ASI]) ? p[FEAT_ASI] : null;
+    if (!ok) throw new Invalid("Couldn't check that feat's ability increase just now. Try again in a moment.");
+    if (entries.length !== 1 || int(entries[0][1]) !== 1 || !ok.includes(entries[0][0])) throw new Invalid("That feat doesn't raise that ability.");
+    if (num(ch.abilities[entries[0][0]], 10) + 1 > 20) throw new Invalid("Ability scores can't go above 20.");
+    featAsi = entries[0][0];
+  }
   if (p.hpMode === "max" && camp.hpMax === false) throw new Invalid("The GM has turned off taking maximum hit points.");
 
   // hit points: rolled on the server (shown in chat), the fixed average, or the die's maximum (a table's choice);
   // Con changes count for every level
   const hd = hitDieFor(k.name, p.hitDie);
   if (p.asi) for (const [ab, v] of Object.entries(p.asi)) ch.abilities[ab] = num(ch.abilities[ab], 10) + int(v);
+  if (featAsi) ch.abilities[featAsi] = num(ch.abilities[featAsi], 10) + 1;
   const newCon = abMod(ch, "con");
   const die = p.hpMode === "roll"
     ? doRoll(camp, cid, `1d${hd}`, `${ch.name}: level ${before + 1} hit points (d${hd})`, ch.id, false, "hp").total
@@ -498,7 +512,7 @@ function applyLevelUp(camp, cid, gm, p) {
 
   const bits = [`HP +${gain}`];
   if (p.asi) bits.push(Object.entries(p.asi).filter(([, v]) => int(v)).map(([ab, v]) => `${ab.toUpperCase()} +${int(v)}`).join(", "));
-  if (feat) bits.push(`feat: ${feat}`);
+  if (feat) bits.push(`feat: ${feat}${featAsi ? ` (${featAsi.toUpperCase()} +1)` : ""}`);
   if (expertise.length) bits.push(`expertise: ${expertise.join(", ")}`);
   addChat(camp, { levelup: true, text: `🎉 ${ch.name} reached level ${before + 1}! ${multiclass ? "Multiclassed into " : ""}${k.name} ${k.level}${k.archetype ? " (" + k.archetype + ")" : ""} · ${bits.join(" · ")}` });
   return { level: before + 1, hpGain: gain, die };
@@ -1393,7 +1407,7 @@ function cleanGame(g) {
 
 module.exports = {
   cleanGame,
-  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, propSightSegments, SPECIES_SENSES, DOWNTIME_ACTS: Downtime.ACT_TABLES, validImg, validColor, cleanChar, cleanShip, rid, charById,
+  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, propSightSegments, SPECIES_SENSES, DOWNTIME_ACTS: Downtime.ACT_TABLES, FEAT_ASI, validImg, validColor, cleanChar, cleanShip, rid, charById,
   applyAction: (camp, ...a) => { const out = applyAction(camp, ...a); Fight.noteSeen(camp); return out; },   // fog of war: what players see now joins what they've explored
   Forbidden, Invalid, IMG_PREFIX,
 };
