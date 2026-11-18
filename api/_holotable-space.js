@@ -217,6 +217,9 @@ function apply(camp, cid, gm, type, p, h) {
       if (typeof sw.ammo === "number") sw.ammo -= cost;
       if (cap !== null) sw.heat = int(sw.heat) + cost;
       const pb = Ships.crewPb(camp, s0, p.crew), A = shownOf(s0, a), T = shownOf(t0, ta);
+      // dire, piercing and melt: accuracy traded for damage, chosen with the shot; capped by the weapon (SotG ch. 5)
+      const tr = SR.weaponTrade(w, { dire: p.dire, piercing: p.piercing, melt: p.melt === true }, pb, chk.kind === "attack" && fm === "single" ? "attack" : "save");
+      const trWhy = tr.notes.length ? ` [${tr.notes.join(", ")}]` : "";
       // jpesus (#65, 17 Nov): while a GM ship's token is off the players' map, its lines go to the GM only; a hit
       // still shows its damage on the party's own ship sheet. Here: every line and roll of this shot, including the
       // party ship's save and its damage lines, when either token is hidden.
@@ -237,13 +240,21 @@ function apply(camp, cid, gm, type, p, h) {
         if (!expr) return { total: 0, expr: "" };
         let r = rollDice(expr);
         if (s.status && s.status.boost && s.status.boost.weapons) { const r2 = rollDice(expr); if (r2.total > r.total) r = r2; s.status.boost.weapons = false; }
-        rollMsg(r, expr, `${s0.hidden ? s0.name : A}: ${w.name} damage${tag ? ` (${tag})` : crit ? " (critical)" : ""}`, "damage");
-        return { total: Math.max(0, r.total), expr };
+        // vicious: a die at its maximum adds the weapon's number; dire, piercing and melt move damage as chosen
+        const vic = SR.viciousBonus(w, r.detail), more = [vic ? `vicious +${vic}` : "", tr.dmg ? `${tr.notes.join(", ")}: ${tr.dmg > 0 ? "+" : ""}${tr.dmg}` : ""].filter(Boolean);
+        rollMsg(r, expr, `${s0.hidden ? s0.name : A}: ${w.name} damage${tag ? ` (${tag})` : crit ? " (critical)" : ""}${more.length ? ` [${more.join("; ")}]` : ""}`, "damage");
+        return { total: Math.max(0, r.total + vic + tr.dmg), expr };
       };
       const hurtShip = (ship, amount, crit, tok) => {
         const r = SR.takeDamage(shipOf(ship.id), amount, w.type, { crit });
         putShip(r.ship);
         for (const l of r.log) line(l, !!ship.hidden || !!(tok && tok.hidden));   // its hull and shields: the GM's for an enemy ship or a hidden token
+        // explosive: anyone aboard keeping concentration saves, DC 10 or half the damage the ship took
+        const taken = (r.shieldLost || 0) + (r.hullLost || 0);
+        if (SR.weaponProp(w, "explosive") && taken > 0) {
+          const tk = tok || sp.tok.find((x) => x.id === ship.id), gmOnly = !!ship.hidden || !!(tk && tk.hidden);
+          line(`The blast shakes ${gmOnly ? ship.name : shownOf(ship, tk)}: anyone aboard keeping concentration makes a Constitution save, DC ${Math.max(10, Math.floor(taken / 2))}.`, gmOnly);   // the GM reads the real name
+        }
         return r;
       };
       const hurt = (amount, crit) => hurtShip(t0, amount, crit);
@@ -263,10 +274,10 @@ function apply(camp, cid, gm, type, p, h) {
         // rapid: the target saves or takes the damage plus its dice again; burst: every ship in a 150-ft cube on the
         // target saves or takes the damage; nothing on a success. Where the attack roll would have had disadvantage, the
         // ships save with advantage.
-        const dc = 8 + SR.attackBonusOf(s0, w, pb), atk = SR.rollMode({ adv: chk.adv, dis: chk.dis }, "normal");
+        const dc = 8 + SR.attackBonusOf(s0, w, pb) + tr.dc, atk = SR.rollMode({ adv: chk.adv, dis: chk.dis }, "normal");
         const box = SR.burstBox(ta, SR.squaresOf(t0));
         const hit = fm === "rapid" ? [[t0, ta]] : sp.tok.filter((x) => x.id !== s0.id && shipOf(x.id) && SR.inBox(box, x, SR.squaresOf(shipOf(x.id)))).map((x) => [shipOf(x.id), x]);
-        line(`${A} fires ${w.name} in ${fm} mode at ${T}: ${fm === "burst" ? "every ship in a 150-ft cube makes" : "a"} Dexterity save, DC ${dc}${atk === "dis" ? " (with advantage: the shot would have had disadvantage)" : ""}.`);
+        line(`${A} fires ${w.name} in ${fm} mode at ${T}${trWhy}: ${fm === "burst" ? "every ship in a 150-ft cube makes" : "a"} Dexterity save, DC ${dc}${atk === "dis" ? " (with advantage: the shot would have had disadvantage)" : ""}.`);
         const dmg = rollDamage(fm === "rapid", fm);
         result = { mode: fm, ships: [] };
         for (const [ship, tok] of hit) {
@@ -278,10 +289,10 @@ function apply(camp, cid, gm, type, p, h) {
         }
       } else if (chk.kind === "attack") {
         const mode = SR.rollMode({ adv: chk.adv, dis: chk.dis }, ["adv", "dis"].includes(p.mode) ? p.mode : "normal");
-        const bonus = SR.attackBonusOf(s0, w, pb), expr = d20(mode, bonus), roll = rollDice(expr);
+        const bonus = SR.attackBonusOf(s0, w, pb) + tr.atk, expr = d20(mode, bonus), roll = rollDice(expr);
         const keen = typeof SR.weaponProp(w, "keen") === "number" ? SR.weaponProp(w, "keen") : 0;
         const crit = roll.nat !== null && roll.nat >= 20 - keen, hit = roll.nat !== 1 && (crit || roll.total >= int(t0.ac, 10));
-        rollMsg(roll, expr, `${s0.hidden ? s0.name : A} fires ${w.name} at ${s0.hidden ? t0.name : T}${why([...chk.adv, ...chk.dis])}`, "attack");
+        rollMsg(roll, expr, `${s0.hidden ? s0.name : A} fires ${w.name} at ${s0.hidden ? t0.name : T}${why([...chk.adv, ...chk.dis, ...tr.notes])}`, "attack");
         if (!hit) { line(`${A} misses ${T} with ${w.name}.`); result = { hit: false }; }
         else {
           const dmg = rollDamage(crit), dealt = SR.afterDR(t0, dmg.total), dr = dmg.total - dealt;   // armor's damage reduction counts against attack rolls
@@ -301,8 +312,8 @@ function apply(camp, cid, gm, type, p, h) {
       } else {
         // tertiary weapons, and a Huge or larger ship's primary weapons: the target's Dexterity save against the
         // weapon's DC; half damage on a success
-        const dc = SR.saveDcOf(s0, w, pb);
-        line(`${A} fires ${w.name} at ${T}: a Dexterity save, DC ${dc}${why([...chk.adv, ...chk.dis])}.`);
+        const dc = SR.saveDcOf(s0, w, pb) + tr.dc;
+        line(`${A} fires ${w.name} at ${T}: a Dexterity save, DC ${dc}${why([...chk.adv, ...chk.dis, ...tr.notes])}.`);
         const saved = dexSave(t0, ta, dc, chk.adv, chk.dis);
         const dmg = rollDamage(false), st00 = SR.statusOf(s0);
         // an Attack Run with a tertiary weapon: + its feet / 50, up to the ship's Strength (at least 1)

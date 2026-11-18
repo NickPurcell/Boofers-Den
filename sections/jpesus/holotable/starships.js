@@ -566,6 +566,37 @@
     if (weaponProp(w, 'heavy')) bonus += Math.max(1, Math.ceil(strMod(ship) / 2));
     return `${n}d${m[2]}` + (bonus ? (bonus > 0 ? '+' : '') + bonus : '');
   }
+  // Trading accuracy for damage (SotG ch. 5), chosen before the shot: dire N, up to N off the attack roll and as much
+  // onto the damage on a hit; piercing N, up to N onto the attack roll and as much off the damage; melt, the gunner's
+  // proficiency bonus off the attack roll (or off the save DC, for a weapon the target saves against) and onto the
+  // damage. Dire and piercing are for attack rolls only. kind: 'attack' (a single shot's attack roll) or 'save'.
+  // Returns { atk, dc, dmg, notes } from what was asked, capped by the weapon.
+  function weaponTrade(w, ask, pb, kind) {
+    const out = { atk: 0, dc: 0, dmg: 0, notes: [] }, q = ask || {};
+    const num = (k) => { const v = weaponProp(w, k); return typeof v === 'number' ? v : 0; };
+    if (kind === 'attack') {
+      const d = clamp(int(q.dire), 0, num('dire')), pc = clamp(int(q.piercing), 0, num('piercing'));
+      if (d) { out.atk -= d; out.dmg += d; out.notes.push(`dire ${d}`); }
+      if (pc) { out.atk += pc; out.dmg -= pc; out.notes.push(`piercing ${pc}`); }
+    }
+    if (q.melt === true && weaponProp(w, 'melt')) {
+      const b = crewPbOf(pb);
+      if (kind === 'attack') out.atk -= b; else out.dc -= b;
+      out.dmg += b; out.notes.push(`melt ${b}`);
+    }
+    return out;
+  }
+  // vicious N: a damage roll with a weapon die at its maximum gains N (once per roll). detail: the roller's
+  // "2d10[10,3]+4" text, struck dice "~3~" not counting
+  function viciousBonus(w, detail) {
+    const n = weaponProp(w, 'vicious'); if (typeof n !== 'number' || !n) return 0;
+    const re = /\d+d(\d+)[a-z0-9]*\[([^\]]*)\]/g;
+    for (let m; (m = re.exec(String(detail || ''))); ) {
+      const sides = int(m[1]);
+      if (m[2].split(',').some((v) => !/~/.test(v) && int(v.split('→').pop()) === sides)) return n;
+    }
+    return 0;
+  }
   // Can this weapon fire at that ship from here, and how? a / ta: the two tokens (x, y, f); returns
   // { ok, why, feet, arc, kind: 'attack' | 'save', adv: [reasons], dis: [reasons] } where adv / dis are for the attack
   // roll, or (kind 'save') for the target's saving throw.
@@ -909,5 +940,5 @@
     setCondition, summary, SIZE_DATA, SHIELD_TYPES, REACTORS, COUPLINGS, SYSTEMS, POOLS, SYSTEM_NAMES, POWER_DIE, sizeOf, roleOf, reactorOf, couplingOf,
     shieldTypeOf, powerDie, powerDieText, powerCaps, diceOf, diceLeft, regenRate, boostDC, regenDC, boostedSpeed, startTurn, usePower, setPower,
     setDiceUsed, boost, regenerateShields, SQUARE_FT, SQUARES, squaresOf, FACING_NAMES, DIRS, gridFeet, turnSteps, turnCost, moveCost, inBounds, shipGap,
-    arcOf, INIT_SIZE_MOD, npcInitBonus, deploymentInfo, techniquesKnown, techDie, STOCK_COST, TIER_COST, minCrew, costs, REGIONS, HYPER_HOURS, START_UP, hyperClass, stepsFor, jumpHours, jumpFuel, fuelOf, mishapFor, MOD_TYPES, modsSummary, modCost, installDC, pastCapacity, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck, PACES, flyFuel, travelSpeed, REALSPACE_TIMES, realspaceTime };
+    arcOf, INIT_SIZE_MOD, npcInitBonus, deploymentInfo, techniquesKnown, techDie, STOCK_COST, TIER_COST, minCrew, costs, REGIONS, HYPER_HOURS, START_UP, hyperClass, stepsFor, jumpHours, jumpFuel, fuelOf, mishapFor, MOD_TYPES, modsSummary, modCost, installDC, pastCapacity, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck, PACES, flyFuel, travelSpeed, REALSPACE_TIMES, realspaceTime, weaponTrade, viciousBonus };
 });
