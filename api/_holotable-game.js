@@ -327,7 +327,7 @@ function viewFor(camp, cid, gm, online) {
     ...((pg) => (pg.length ? { pings: pg } : {}))((camp.pings || []).filter((q) => q && now() - q.ts < 10).map((q) => ({ id: q.id, x: q.x, y: q.y, gm: q.gm, name: playerName(camp, q.by) }))),
     ...(camp.fight && camp.fight.on ? { fight: Fight.view(camp, cid, gm, shownName) } : {}),
     // the sheet's Cast (#73), combat view on or off: which powers the table has data for, and who concentrates on what
-    ...((sc) => (sc ? { sheetCast: sc } : {}))(Fight.sheetView(camp, gm ? camp.characters : sheetsFor(camp, cid))),
+    ...((sc) => (sc ? { sheetCast: sc } : {}))(Fight.sheetView(camp, gm ? camp.characters : sheetsFor(camp, cid), gm, gm ? null : new Set(ini.entries.map((e) => e.id)))),
     ...((a) => (a ? { ask: a } : {}))(Ask.view(camp, cid, gm)),
     ...Story.view(camp, gm),   // factions and rivals the GM shows (11.3, 11.4)   // an open roll request (9.12), for whom it names
     ...(fogState ? { fog: fogState } : {}),   // the map's fog of war (#93), combat view or not: only while the GM has it on   // the combat view, only while it is on
@@ -801,9 +801,11 @@ function applyAction(camp, cid, gm, type, p) {
         const i = ini.entries.findIndex((e) => e.id === p.id);
         if (i >= 0) { ini.entries.splice(i, 1); if (i < ini.turn) ini.turn--; ini.turn = clamp(ini.turn, 0, Math.max(0, ini.entries.length - 1)); }
       } else if (type === "init.next" && n) {
+        const prev = ini.active ? ini.entries[ini.turn] : null, round = ini.round;
         ini.active = true; ini.turn++;
         if (ini.turn >= n) { ini.turn = 0; ini.round++; }
         const cur = ini.entries[ini.turn];
+        Fight.sheetTurn(camp, prev, cur, ini.round > round, { shownName, addChat });   // the sheet's Cast's conditions count down (4.10)
         // "???" while the GM hides the name; under fog, only to those who can see whose turn it is (#93, chat follows sight)
         if (!cur.hidden) { const to = Fight.sightTo(camp, null, [cur.id]); addChat(camp, Object.assign({ system: true, text: `Round ${ini.round} - ${shownName(camp, cur)}'s turn.` }, to ? { to } : {})); }
       } else if (type === "init.prev" && n) {
@@ -816,6 +818,7 @@ function applyAction(camp, cid, gm, type, p) {
         combatMoves(camp);
       } else if (type === "init.clear") {
         Object.assign(ini, { entries: [], turn: 0, round: 1, active: false });
+        if (camp.fight) camp.fight.sheetFx = [];   // nothing counts rounds out of a fight: what the sheet's Cast gave stays until taken off
         addChat(camp, { system: true, text: "Combat has ended." });
       }
       return {};
