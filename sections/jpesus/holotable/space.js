@@ -6,7 +6,7 @@
   const H = window.HT, SR = window.HTShips;
   if (!H || !SR) return;
   const { $, esc } = H;
-  const V = { sel: null, seenN: null, cell: 24, weapon: 0, target: null, crew: 0, mode: 'single' };
+  const V = { sel: null, seenN: null, cell: 24, weapon: 0, target: null, crew: 0, mode: 'single', dire: 0, piercing: 0, melt: false };
   const sp = () => (H.S.st && H.S.st.space) || null;
   const shipById = (id) => ((H.S.st && H.S.st.ships) || []).find((s) => s.id === id);
   const tokById = (id) => ((sp() || {}).tok || []).find((t) => t.id === id);
@@ -85,7 +85,7 @@
     return `<div class="box" style="margin-top:8px"><h4>Actions</h4>
       <label class="ship-lv">Crew member <select id="spCrew">${crew.length ? crew.map((c, i) => `<option value="${i}" ${i === V.crew ? 'selected' : ''}>${esc(crewName(c))}</option>`).join('') : '<option value="0">no crew (+2)</option>'}</select></label>
       <label class="ship-lv">Weapon <select id="spWeapon">${weapons.map((w, i) => `<option value="${i}" ${i === V.weapon ? 'selected' : ''}>${esc(w.name)}${w.arc ? ' · ' + esc(w.arc) : ''}${typeof w.ammo === 'number' ? ` · ${w.ammo} left` : ''}${SR.heatCap(w) !== null ? ` · heat ${+w.heat || 0}/${SR.heatCap(w)}` : ''}</option>`).join('')}</select></label>
-      ${modeSel(weapons[V.weapon])}
+      ${modeSel(weapons[V.weapon])}${tradeSel(weapons[V.weapon])}
       <label class="ship-lv">Target <select id="spTarget">${targets.map((x) => `<option value="${esc(x.id)}" ${x.id === V.target ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
       <p class="muted" id="spPreview" style="font-size:12px;margin:6px 0"></p>
       <button class="btn small amber" data-spx="fire">Fire</button>${coolReload(weapons[V.weapon])}${helmRow}</div>`;
@@ -97,6 +97,16 @@
     if (modes.length < 2) return modes[0] === 'single' ? '' : `<span class="muted" style="font-size:12px">${modes[0]} only</span>`;
     return `<label class="ship-lv">Mode <select id="spMode">${modes.map((m) => `<option ${m === V.mode ? 'selected' : ''}>${m}</option>`).join('')}</select></label>`;
   }
+  // dire, piercing and melt: accuracy traded for damage, chosen before the shot (SotG ch. 5)
+  function tradeSel(w) {
+    const n = (k) => { const v = SR.weaponProp(w, k); return typeof v === 'number' ? v : 0; }, out = [];
+    const pick = (k, max, tip) => `<label class="ship-lv" title="${esc(tip)}">${k} <select data-sptr="${k}">${Array.from({ length: max + 1 }, (_, i) => `<option value="${i}" ${+V[k] === i ? 'selected' : ''}>${i}</option>`).join('')}</select></label>`;
+    if (n('dire')) out.push(pick('dire', n('dire'), 'Up to this much off the attack roll, and as much onto the damage on a hit (attack rolls only)'));
+    if (n('piercing')) out.push(pick('piercing', n('piercing'), 'Up to this much onto the attack roll, and as much off the damage on a hit (attack rolls only)'));
+    if (SR.weaponProp(w, 'melt')) out.push(`<label class="toggle" title="The gunner's proficiency bonus off the attack roll (or off the save DC), and onto the damage"><input type="checkbox" data-sptr="melt" ${V.melt ? 'checked' : ''}> melt</label>`);
+    return out.join('');
+  }
+  const tradeAsk = () => ({ dire: +V.dire || 0, piercing: +V.piercing || 0, melt: !!V.melt });
   function coolReload(w) {
     if (!w) return '';
     const cap = SR.heatCap(w), rl = SR.reloadOf(w);
@@ -111,12 +121,15 @@
     const crew = (ship.crew || [])[V.crew], pb = crew && crew.charId && H.S.st.characters[crew.charId] ? H.R.profBonus(H.S.st.characters[crew.charId]) : (crew && +crew.pb) || 2;
     const sign = (n) => (n >= 0 ? '+' : '') + n;
     if (!c.ok) { el.textContent = `Can't fire: ${c.why}.`; return; }
+    const tr = SR.weaponTrade(w, tradeAsk(), pb, c.kind === 'attack' && V.mode !== 'rapid' && V.mode !== 'burst' ? 'attack' : 'save');
+    const dmgX = (crit) => { const x = SR.damageExpr(ship, w, crit); return x ? x + (tr.dmg ? ` ${tr.dmg > 0 ? '+' : '−'} ${Math.abs(tr.dmg)}` : '') : '—'; };
+    const extra = [tr.notes.join(', '), SR.weaponProp(w, 'vicious') ? `vicious ${SR.weaponProp(w, 'vicious')} on a top die` : '', SR.weaponProp(w, 'explosive') ? 'explosive' : ''].filter(Boolean).join(' · ');
     if (V.mode === 'rapid' || V.mode === 'burst') {
       const atkDis = SR.rollMode({ adv: c.adv, dis: c.dis }, 'normal') === 'dis';
-      el.textContent = `${c.feet} ft, in its ${c.arc} arc · ${V.mode} (${SR.shotCost(w, V.mode)} shots): ${V.mode === 'burst' ? 'every ship in a 150-ft cube makes' : 'a'} Dexterity save DC ${8 + SR.attackBonusOf(ship, w, pb)}, damage ${SR.damageExpr(ship, w, V.mode === 'rapid') || '—'}, none on a success${atkDis ? ' · they save with advantage' : ''}`;
+      el.textContent = `${c.feet} ft, in its ${c.arc} arc · ${V.mode} (${SR.shotCost(w, V.mode)} shots): ${V.mode === 'burst' ? 'every ship in a 150-ft cube makes' : 'a'} Dexterity save DC ${8 + SR.attackBonusOf(ship, w, pb) + tr.dc}, damage ${dmgX(V.mode === 'rapid')}, none on a success${atkDis ? ' · they save with advantage' : ''}${extra ? ' · ' + extra : ''}`;
       return;
     }
-    const how = c.kind === 'attack' ? `attack ${sign(SR.attackBonusOf(ship, w, pb))}, damage ${SR.damageExpr(ship, w, false) || '—'}` : `Dexterity save DC ${SR.saveDcOf(ship, w, pb)}, damage ${SR.damageExpr(ship, w, false) || '—'}`;
+    const how = (c.kind === 'attack' ? `attack ${sign(SR.attackBonusOf(ship, w, pb) + tr.atk)}, damage ${dmgX(false)}` : `Dexterity save DC ${SR.saveDcOf(ship, w, pb) + tr.dc}, damage ${dmgX(false)}`) + (extra ? ` (${extra})` : '');
     const mods = [...c.adv.map((x) => '+' + x), ...c.dis.map((x) => '−' + x)];
     el.textContent = `${c.feet} ft, in its ${c.arc} arc · ${how}${mods.length ? ` · ${c.kind === 'attack' ? 'advantage/disadvantage' : 'their save'}: ${mods.join(', ')}` : ''}`;
   }
@@ -189,7 +202,7 @@
     if (a === 'end') { if (confirm('End ship combat?')) H.act('space.end', {}); return; }
     if (!t) return;
     if (a === 'turn') return H.act('space.place', { id: t.id, x: t.x, y: t.y, f: (t.f + (+b.dataset.d) + 8) % 8 });
-    if (a === 'fire') return H.act('space.fire', { id: t.id, target: V.target, weapon: V.weapon, crew: V.crew, fireMode: V.mode, mode: H.rollModeFromEvent(e) });
+    if (a === 'fire') return H.act('space.fire', Object.assign({ id: t.id, target: V.target, weapon: V.weapon, crew: V.crew, fireMode: V.mode, mode: H.rollModeFromEvent(e) }, tradeAsk()));
     if (a === 'cool' || a === 'reload') return H.act('ship.' + a, { id: t.id, weapon: V.weapon });
     if (a === 'helm') return H.act('ship.helm', { id: t.id, what: b.dataset.what });
     if (a === 'ram' || a === 'interfere' || a === 'dogfight' || a === 'run') return H.act('space.' + a, { id: t.id, target: V.target, crew: V.crew });
@@ -201,7 +214,9 @@
   });
   document.addEventListener('change', (e) => {
     const el = $('#space'); if (!el || !el.contains(e.target)) return;
-    if (e.target.id === 'spWeapon') { V.weapon = +e.target.value || 0; e.target.blur(); return render(); }
+    if (e.target.id === 'spWeapon') { V.weapon = +e.target.value || 0; Object.assign(V, { dire: 0, piercing: 0, melt: false }); e.target.blur(); return render(); }
+    const tk = e.target.dataset && e.target.dataset.sptr;
+    if (tk) { V[tk] = tk === 'melt' ? e.target.checked : +e.target.value || 0; return preview(); }
     if (e.target.id === 'spMode') { V.mode = e.target.value; return preview(); }
     if (e.target.id === 'spTarget') { V.target = e.target.value; return preview(); }
     if (e.target.id === 'spCrew') { V.crew = +e.target.value || 0; return preview(); }
