@@ -10,8 +10,16 @@ import { HEAD_AT } from './anatomy.js';
 import { cached, mesh, poolSize, cache_ } from './pool.js';
 import { makeHead, paintSkin, geometryFrom, smoothNoise } from './head.js';
 
+/* ---------------- the heads ---------------- */
+// Two heads to the same contract while we compare them (#65): A, sculpted from signed distance shapes (head.js), and
+// B, jpesus's agent's sculpted sphere (head-sculpt.js). The switch goes once one is chosen, or the best of each merged.
+const HEADS = { a: { name: 'Head A', make: makeHead } };
+try { const m = await import('./head-sculpt.js'); if (typeof m.makeHead === 'function') HEADS.b = { name: 'Head B', make: m.makeHead }; }
+catch (e) { /* only head A */ }
+
 /* ---------------- the options ---------------- */
 export const OPTIONS = {
+  ...(HEADS.b ? { hv: { label: 'Sculpt (comparing two heads)', type: 'seg', items: Object.entries(HEADS).map(([key, h]) => ({ key, name: h.name })) } } : {}),
   skin: { label: 'Skin', type: 'swatch', items: [
     { key: 'duro', name: 'Duro blue', c: '#4f86b6' }, { key: 'sky', name: 'Pale blue', c: '#6d9cc4' },
     { key: 'deep', name: 'Deep blue', c: '#2f5c92' }, { key: 'slate', name: 'Slate blue', c: '#4d6a8e' },
@@ -30,7 +38,7 @@ export const OPTIONS = {
   marks: { label: 'Markings', type: 'seg', items: [{ key: 'none', name: 'None' }, { key: 'freckles', name: 'Freckles' }, { key: 'cheeks', name: 'Cheek bars' }, { key: 'scar', name: 'Scar' }] },
   outfit: { label: 'Outfit', type: 'seg', items: OUTFITS.map((o) => ({ key: o.key, name: o.name })) },
 };
-const DEFAULT = { skin: 'duro', eyes: 'red', head: 'round', build: 'average', age: 'adult', expr: 'neutral', marks: 'none', outfit: 'scout' };
+const DEFAULT = { hv: 'a', skin: 'duro', eyes: 'red', head: 'round', build: 'average', age: 'adult', expr: 'neutral', marks: 'none', outfit: 'scout' };
 const pick = (opt, key) => OPTIONS[opt].items.find((o) => o.key === key) || OPTIONS[opt].items[0];
 function readHash() {
   const st = Object.assign({}, DEFAULT), q = new URLSearchParams(location.hash.slice(1));
@@ -149,7 +157,7 @@ async function rebuild(what) {
   status.hidden = false;
   const s = pick('build', state.build).s, age = pick('age', state.age).a;
   const jobs = [];
-  if (what.head) jobs.push(makeHead(THREE, { shape: state.head, expr: state.expr, age, marks: state.marks, skin: pick('skin', state.skin).c, eyes: pick('eyes', state.eyes).c }).then((h) => ['head', h]));
+  if (what.head) jobs.push((HEADS[state.hv] || HEADS.a).make(THREE, { shape: state.head, expr: state.expr, age, marks: state.marks, skin: pick('skin', state.skin).c, eyes: pick('eyes', state.eyes).c }).then((h) => ['head', h]));
   if (what.body) jobs.push(Promise.all([cached(`hand:1:${s}`, 'hand', { side: 1, build: s }), cached(`hand:-1:${s}`, 'hand', { side: -1, build: s })]).then((r) => ['hands', r]));
   if (what.outfit) {
     // the outfit's pieces shared out between the workers, then put back in order
@@ -186,7 +194,7 @@ async function rebuild(what) {
 /* ---------------- the panel ---------------- */
 function summary() {
   const s = (k) => pick(k, state[k]).name.toLowerCase();
-  document.getElementById('summary').textContent = `${pick('age', state.age).name} Duros, ${s('build')} build, ${s('skin')} skin, ${s('eyes')} eyes, ${s('head')} head, ${s('expr')}${state.marks !== 'none' ? ', ' + s('marks') : ''}, in a ${s('outfit')}.`;
+  document.getElementById('summary').textContent = `${HEADS.b ? (HEADS[state.hv] || HEADS.a).name + ': ' : ''}${pick('age', state.age).name} Duros, ${s('build')} build, ${s('skin')} skin, ${s('eyes')} eyes, ${s('head')} head, ${s('expr')}${state.marks !== 'none' ? ', ' + s('marks') : ''}, in a ${s('outfit')}.`;
 }
 function paint() {
   for (const el of document.querySelectorAll('[data-opt]')) for (const b of el.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.key === state[el.dataset.opt]));
@@ -195,7 +203,7 @@ function paint() {
 function set(opt, k) {
   if (state[opt] === k) return;
   state[opt] = k;
-  if (opt === 'head' || opt === 'expr' || opt === 'age' || opt === 'marks') rebuild({ head: true });
+  if (opt === 'head' || opt === 'expr' || opt === 'age' || opt === 'marks' || opt === 'hv') rebuild({ head: true });
   else if (opt === 'build') rebuild({ body: true, outfit: true });
   else if (opt === 'outfit') rebuild({ outfit: true });
   else if (opt === 'eyes') { if (head) head.setEyes(pick('eyes', state.eyes).c); redraw(); }
@@ -220,6 +228,7 @@ document.getElementById('random').addEventListener('click', () => {
   const before = Object.assign({}, state);
   for (const k of Object.keys(OPTIONS)) { const it = OPTIONS[k].items; state[k] = it[Math.floor(Math.random() * it.length)].key; }
   if (Math.random() < 0.6) state.marks = 'none';
+  state.hv = before.hv;   // randomising doesn't swap the head being compared
   const headChanged = ['head', 'expr', 'age', 'marks'].some((k) => before[k] !== state[k]);
   rebuild({ head: headChanged, body: before.build !== state.build, outfit: before.outfit !== state.outfit || before.build !== state.build });
   if (!headChanged && head) head.setEyes(pick('eyes', state.eyes).c);
