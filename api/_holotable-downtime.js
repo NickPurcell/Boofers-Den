@@ -1,8 +1,9 @@
 "use strict";
 // Downtime between adventures (audit 11.1, #202). The GM grants days; activities spend them. Each character keeps
-//   downtime: { days, log: [{ id, act, days, cr, text, at }] }
-// (days granted and not yet spent; the log newest last, the last 100 kept). Only the server writes it: a sheet save
-// keeps what the sheet had. Crafting (11.2) spends days through spend() too, with act "crafting".
+//   downtime: { days, log: [{ id, act, days, cr, text, at }], pending?: [{ id, act, days, note, at, ok, … }] }
+// (days granted and not yet spent; the log newest last, the last 100 kept; requests waiting for the GM or, approved,
+// for the roll). Only the server writes it: a sheet save keeps what the sheet had, and every write keeps the parts it
+// doesn't change (#267). Crafting (11.2) spends days through spend() too, with act "crafting".
 const crypto = require("crypto");
 require("../sections/jpesus/holotable/rules.js");
 const R = globalThis.SW5E;
