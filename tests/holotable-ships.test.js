@@ -104,7 +104,8 @@ test("ship conditions: slowed levels, system damage levels, and what they do to 
   assert.equal(SR.rollMode(fx(SR.setCondition(ship(), "system", 3), "save", "wis"), "adv"), "normal", "a shift-click advantage cancels it too");
   assert.equal(SR.rollMode(fx(ship(), "attack"), "dis"), "dis");
   assert.deepEqual(SR.cleanStatus({ cond: ["Hungry", "Ionized", "Ionized"], slowed: 9, system: -2, zero: "x" }),
-    { cond: ["Ionized"], slowed: 4, system: 0, zero: { s: 0, f: 0, stable: false, destroyed: false } }, "anything else is cleaned away");
+    { cond: ["Ionized"], slowed: 4, system: 0, zero: { s: 0, f: 0, stable: false, destroyed: false }, power: { central: 0, engines: 0, shields: 0, weapons: 0, sensors: 0, comms: 0 },
+      sdUsed: 0, hdUsed: 0, tempShield: 0, boost: { tries: 0, engines: 0, weapons: false, shields: false, regen: false } }, "anything else is cleaned away");
   assert.deepEqual(SR.capPoints({ hull: { current: 30, max: 0 }, shield: { current: 5, max: 4 } }).hull.current, 30, "no maximum typed yet: current stays");
 });
 
@@ -118,6 +119,89 @@ test("repairs: up to the maximum, and hull back above 0 ends the destruction sav
   assert.equal(r.ship.shield.current, 20);
   const dead = SR.takeDamage(ship(), 999, "energy").ship;
   assert.equal(SR.restore(dead, "hull", 10).gained, 0, "a destroyed ship can't be repaired");
+});
+
+test("power: die size by tier, stores by coupling, recovery by reactor; reactor, coupling and shields from the sheet, equipment or role", () => {
+  const med = ship({ size: "Medium", role: "Freighter", tier: 2 });   // SotG: a Medium freighter is fuel cell, hub & spoke
+  assert.deepEqual([SR.reactorOf(med), SR.couplingOf(med), SR.shieldTypeOf(med)], ["Fuel Cell", "Hub & Spoke", ""], "Medium roles leave the shields to equipment");
+  assert.deepEqual(SR.powerCaps(med), { central: 2, engines: 1, shields: 1, weapons: 1, sensors: 1, comms: 1 });
+  assert.deepEqual(SR.powerCaps(ship({ coupling: "Direct" })).central, 4);
+  assert.deepEqual(SR.powerCaps(ship({ coupling: "Distributed" })), { central: 0, engines: 2, shields: 2, weapons: 2, sensors: 2, comms: 2 });
+  assert.equal(SR.powerDieText(med), "d6"); assert.equal(SR.powerDieText(ship({ tier: 0 })), "1"); assert.equal(SR.powerDie(ship({ tier: 5 })), 12);
+  assert.equal(SR.shieldTypeOf(ship({ size: "Large", role: "Cruiser" })), "Fortress", "Large and up: the role's shields");
+  const eq = ship({ equipment: [{ name: "Power Core Reactor" }, { name: "Distributed Power Coupling" }, { name: "Quick-Charge Shield" }] });
+  assert.deepEqual([SR.reactorOf(eq), SR.couplingOf(eq), SR.shieldTypeOf(eq)], ["Power Core", "Distributed", "Quick-Charge"], "equipment picked from SotG names them");
+  assert.equal(SR.reactorOf(Object.assign({}, eq, { reactor: "Ionization" })), "Ionization", "the sheet's own choice wins");
+  for (const k of ["constructor", "__proto__", "toString"]) {   // names typed on a sheet never reach an inherited entry (#111)
+    assert.equal(SR.damageType(k), "energy");
+    assert.equal(SR.reactorOf(ship({ role: k, reactor: k, coupling: k })), "");
+    assert.equal(SR.couplingOf(ship({ role: k, coupling: k })), "");
+  }
+  // dice: typed on the sheet, else the size and tier's
+  assert.deepEqual(SR.diceOf(med, "shield"), { n: 7, die: 8 }, "a tier 2 Medium ship: 7d8");
+  assert.deepEqual(SR.diceOf(ship({ shieldDice: "4d10" }), "shield"), { n: 4, die: 10 });
+  assert.deepEqual(SR.diceOf(ship({ size: "Gargantuan", tier: 0 }), "hull"), { n: 11, die: 20 });
+  // regeneration: the shield die's maximum times the coefficient (SotG's own example: a d8 fortress shield regenerates 5)
+  assert.equal(SR.regenRate(ship({ size: "Medium", shieldType: "Fortress" })), 5);
+  assert.equal(SR.regenRate(ship({ size: "Small", shieldType: "Directional" })), 6);
+  assert.equal(SR.regenRate(ship({ size: "Small", shieldType: "Quick-Charge" })), 9);
+  assert.equal(SR.regenRate(ship({ shieldRegen: "7" })), 7, "a number typed in Regen wins");
+  assert.equal(SR.regenRate(SR.setCondition(ship({ size: "Medium", shieldType: "Directional" }), "system", 4)), 4, "halved at system damage 4");
+});
+
+test("the start of a ship's turn: power dice back and stored, passive shield regeneration, boosts end", () => {
+  const dice = (vals) => (e) => ({ total: e === "1" ? 1 : vals.shift() });
+  let s = ship({ size: "Small", reactor: "Power Core", coupling: "Hub & Spoke", shieldType: "Directional", shield: { current: 5, max: 20 } });
+  let r = SR.startTurn(s, dice([2]), { regen: true });
+  let st = SR.statusOf(r.ship);
+  assert.deepEqual([st.power.central, st.power.engines], [2, 0], "1d2 rolled 2: both into central storage");
+  assert.equal(r.ship.shield.current, 11, "regenerates 6 (a d6, directional)"); assert.equal(st.sdUsed, 1, "for a shield die");
+  r = SR.startTurn(r.ship, dice([2]), { regen: false });
+  st = SR.statusOf(r.ship);
+  assert.deepEqual([st.power.central, st.power.engines, st.power.shields, r.ship.shield.current, st.sdUsed], [2, 1, 1, 11, 1], "central full: the systems in order; no regeneration unticked");
+  const down = Object.assign(SR.capPoints(JSON.parse(JSON.stringify(r.ship))), { shield: { current: 0, max: 20 } });
+  assert.equal(SR.startTurn(down, dice([1]), { regen: true }).ship.shield.current, 0, "shields that are down don't regenerate passively");
+  const full = SR.setPower(SR.setPower(ship({ coupling: "Direct", reactor: "Fuel Cell" }), "central", 4), "central", 9);
+  assert.equal(SR.statusOf(full).power.central, 4, "a store holds no more than its capacity");
+  r = SR.startTurn(full, dice([]), {});
+  assert.match(r.log[0], /1 with nowhere to go/);
+  // spending
+  const u = SR.usePower(SR.setPower(ship({ coupling: "Direct", tier: 3 }), "central", 2), "central", (e) => ({ total: e === "1d8" ? 7 : 0 }));
+  assert.deepEqual([u.value, SR.statusOf(u.ship).power.central], [7, 1], "a tier 3 power die is a d8");
+  assert.equal(SR.usePower(ship({ coupling: "Direct" }), "central", () => ({ total: 1 })).value, null, "an empty store");
+  assert.equal(SR.startTurn(SR.takeDamage(ship({ reactor: "Fuel Cell", coupling: "Direct" }), 40, "energy").ship, dice([]), {}).log.length, 0, "a disabled ship gets no power");
+});
+
+test("Boost and Regenerate Shields: DC 10, 5 more for each try this turn; each function once; temporary shields soak first", () => {
+  const d = (n) => () => ({ total: n });
+  let s = ship({ size: "Medium", shieldType: "Directional", shield: { current: 4, max: 30 } });
+  let r = SR.boost(s, "engines", 12, d(0));
+  assert.ok(r.ok); assert.equal(SR.boostedSpeed(r.ship), 350, "+50 ft");
+  assert.equal(SR.boostDC(r.ship), 15, "the next boost is DC 15");
+  assert.ok(SR.boost(r.ship, "engines", 30, d(0)).already, "engines once a turn");
+  r = SR.boost(r.ship, "shields", 14, d(6));
+  assert.ok(!r.ok, "14 misses DC 15"); assert.equal(SR.boostDC(r.ship), 20);
+  r = SR.boost(r.ship, "shields", 21, d(6));
+  assert.ok(r.ok); assert.equal(SR.statusOf(r.ship).tempShield, 6, "a shield die rolled, not spent");
+  assert.equal(SR.statusOf(r.ship).sdUsed, 0);
+  const hit = SR.takeDamage(r.ship, 8, "energy");
+  assert.deepEqual([SR.statusOf(hit.ship).tempShield, hit.ship.shield.current], [0, 2], "6 temporary, then 2 from the shields");
+  r = SR.boost(r.ship, "weapons", 25, d(0)); assert.ok(SR.statusOf(r.ship).boost.weapons);
+  // the next turn: boosts end, engines last through it
+  let t = SR.startTurn(r.ship, () => ({ total: 0 }), {});
+  let st = SR.statusOf(t.ship);
+  assert.deepEqual([st.tempShield, st.boost.tries, st.boost.weapons, SR.boostedSpeed(t.ship)], [0, 0, false, 350], "engines boosted until the end of the next turn");
+  t = SR.startTurn(t.ship, () => ({ total: 0 }), {});
+  assert.equal(SR.boostedSpeed(t.ship), 300);
+  // Regenerate Shields: DC is 10 or half the missing shield points
+  s = ship({ size: "Medium", shield: { current: 0, max: 30 } });
+  assert.equal(SR.regenDC(s), 15);
+  const two = [7, 3];
+  r = SR.regenerateShields(s, 12, () => ({ total: two.shift() }));
+  assert.deepEqual([r.ok, r.gain, r.ship.shield.current, SR.statusOf(r.ship).sdUsed], [false, 3, 3, 1], "a failure keeps the lower of two rolls; down shields come back");
+  assert.equal(SR.regenerateShields(r.ship, 30, () => ({ total: 8 })).done, false, "once a ship turn");
+  r = SR.regenerateShields(s, 15, () => ({ total: 8 }));
+  assert.deepEqual([r.ok, r.gain], [true, 8]);
 });
 
 // ---------------------------------------------------------------- the actions on the server
@@ -195,7 +279,7 @@ test("ship actions: damage by type, 0 hull, destruction saves rolled on the serv
   assert.equal(shipIn(await p1.state(), party).shield.current, 20);
 });
 
-test("ship actions: the fight state is the server's; a stale sheet save can't undo it, but typed hull brings a ship back", async () => {
+test("ship actions: the fight state and current points are the server's; a stale sheet save can't undo them; typed hull brings a ship back", async () => {
   const { p1, party } = await table();
   const stale = shipIn(await p1.state(), party);
   await p1.act("ship.damage", { id: party, amount: 40, type: "energy" });
@@ -204,14 +288,16 @@ test("ship actions: the fight state is the server's; a stale sheet save can't un
   // a save from a browser that hadn't seen any of that, carrying its own idea of the status
   await p1.act("ship.save", { ship: Object.assign({}, stale, { notes: "fuel low", hull: { current: 0, max: 40 }, status: { cond: [], system: 0, zero: { destroyed: false } } }) });
   let sh = shipIn(await p1.state(), party);
-  assert.deepEqual([sh.notes, sh.status.cond, sh.status.slowed, sh.status.system], ["fuel low", ["Disabled", "Ionized"], 2, 1], "conditions and system damage stay");
-  sh.hull.current = 12;   // the GM or a player types the hull back up after a repair at a station
-  await p1.act("ship.save", { ship: sh });
+  assert.deepEqual([sh.notes, sh.status.cond, sh.status.slowed, sh.status.system, sh.hull.current, sh.shield.current], ["fuel low", ["Disabled", "Ionized"], 2, 1, 0, 0],
+    "conditions, system damage and the points stay");
+  await p1.act("ship.points", { id: party, what: "hull", current: 12 });   // a player types the hull back up after a repair at a station
   sh = shipIn(await p1.state(), party);
   assert.deepEqual([sh.hull.current, sh.status.cond, sh.status.zero.s], [12, ["Ionized"], 0], "no longer disabled by 0 hull");
-  sh.hull.current = 999;
-  await p1.act("ship.save", { ship: sh });
+  await p1.act("ship.points", { id: party, what: "hull", current: 999 });
   assert.equal(shipIn(await p1.state(), party).hull.current, 40, "never above the maximum");
+  await p1.act("ship.points", { id: party, what: "shield", current: 7 });
+  assert.equal(shipIn(await p1.state(), party).shield.current, 7);
+  assert.equal((await p1.act("ship.points", { id: "__proto__", what: "hull", current: 5 })).code, 400);
   // system damage 4 halves the maximums, and the points follow
   await p1.act("ship.condition", { id: party, name: "system", level: 4 });
   sh = shipIn(await p1.state(), party);
@@ -241,6 +327,9 @@ test("ship actions: only the GM undoes a destruction; the status survives a back
   let sh = shipIn(await p1.state(), party);
   assert.ok(sh.status.zero.destroyed);
   assert.equal((await p1.act("ship.restore", { id: party, what: "hull", amount: 10 })).data.gained, 0, "no repairing a destroyed ship");
+  assert.equal((await p1.act("ship.points", { id: party, what: "hull", current: 25 })).code, 400, "nor typing its hull back");
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { hull: { current: 25, max: 40 } }) });
+  assert.equal(shipIn(await p1.state(), party).hull.current, 0, "nor saving a sheet that says otherwise");
   assert.equal((await p1.act("ship.reset", { id: party })).code, 403);
   assert.equal((await gm.act("ship.reset", { id: party })).code, 200);
   sh = shipIn(await p1.state(), party);
@@ -250,4 +339,55 @@ test("ship actions: only the GM undoes a destruction; the status survives a back
   assert.deepEqual(g.ships[0].status, sh.status);
   const clean = G.cleanShip(JSON.parse(JSON.stringify(sh)), {});
   assert.deepEqual(clean.status, sh.status, "cleanShip keeps a stored status");
+});
+
+test("ship actions: start of turn, power dice, Boost and Regenerate Shields on the server", async () => {
+  const { gm, p1, p2, party, enemy } = await table();
+  let sh = shipIn(await p1.state(), party);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { reactor: "Fuel Cell", coupling: "Direct", shieldType: "Directional", reactorX: "?" }) });
+  sh = shipIn(await p1.state(), party);
+  assert.deepEqual([sh.reactor, sh.coupling, sh.shieldType, sh.reactorX], ["Fuel Cell", "Direct", "Directional", undefined]);
+  assert.equal((await p1.act("ship.save", { ship: Object.assign({}, sh, { reactor: "constructor" }) })).code, 200);
+  assert.equal(shipIn(await p1.state(), party).reactor, "", "only SotG's reactors");
+  await p1.act("ship.save", { ship: sh });
+  await p1.act("ship.turn", { id: party, regen: true });
+  sh = shipIn(await p2.state(), party);
+  assert.equal(sh.status.power.central, 1, "a fuel cell gives one die");
+  assert.equal(sh.shield.current, 9, "3 + a d6's 6");
+  assert.equal(sh.status.sdUsed, 1);
+  let res = await p2.act("ship.poweruse", { id: party, pool: "central" });
+  assert.equal(res.code, 200); assert.equal(res.data.value, 1, "tier 0: a flat 1");
+  assert.equal((await p2.act("ship.poweruse", { id: party, pool: "central" })).code, 400, "the store is empty");
+  assert.equal((await p2.act("ship.poweruse", { id: party, pool: "__proto__" })).code, 400);
+  await p2.act("ship.power", { id: party, pool: "central", n: 99 });
+  assert.equal(shipIn(await p2.state(), party).status.power.central, 4, "within the coupling's capacity");
+  res = await p1.act("ship.boost", { id: party, what: "engines", bonus: 30 });
+  assert.equal(res.code, 200);
+  if (res.data.ok) assert.equal((await p1.act("ship.boost", { id: party, what: "engines" })).code, 400, "once a turn");
+  assert.equal((await p1.act("ship.boost", { id: party, what: "hyperdrive" })).code, 400);
+  res = await p1.act("ship.regen", { id: party });
+  assert.equal(res.code, 200);
+  sh = shipIn(await p1.state(), party);
+  assert.ok(sh.shield.current > 9 && sh.status.sdUsed === 2 && sh.status.boost.regen);
+  assert.equal((await p1.act("ship.regen", { id: party })).code, 400, "once a ship turn");
+  const chat = (await p2.state()).chat;
+  assert.ok(chat.some((m) => m.roll && /^Dawn Skiff: Boost engines \(DC 10\)/.test(m.roll.label) && m.roll.expr === "1d20+0"), "the bonus is the sheet's (Strength 10, no Boost proficiency), not the request's +30");
+  assert.ok(chat.some((m) => /spends a central power die on Dawn Skiff: 1/.test(m.text || "")));
+  // the bonus: ship Strength + the rolling crew member's proficiency times the Boost equipment; the request only picks the row
+  sh = shipIn(await p1.state(), party);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { abilities: Object.assign({}, sh.abilities, { str: 16 }), skills: Object.assign({}, sh.skills, { boost: 2 }),
+    crew: [{ name: "Ione", pb: 4 }, { name: "Tam", pb: 3 }] }) });
+  await p1.act("ship.turn", { id: party });
+  await p1.act("ship.boost", { id: party, what: "shields", crew: 1, bonus: 900 });
+  await p1.act("ship.boost", { id: party, what: "weapons", crew: "__proto__" });
+  const exprs = (await p2.state()).chat.filter((m) => m.roll && m.roll.kind === "boost").map((m) => m.roll.expr);
+  assert.deepEqual(exprs.slice(-2), ["1d20+9", "1d20+11"], "+3 Str + 2 x 3 for Tam; a bad row reads as the first (+3 + 2 x 4)");
+  assert.equal((await p1.act("ship.turn", { id: enemy })).code, 403);
+  assert.equal((await p1.act("ship.boost", { id: enemy, what: "engines" })).code, 403);
+  // a disabled ship can't act; its turn rolls its destruction save
+  await gm.act("ship.damage", { id: enemy, amount: 25, type: "kinetic" });
+  assert.equal((await gm.act("ship.boost", { id: enemy, what: "engines", bonus: 5 })).code, 400);
+  await gm.act("ship.turn", { id: enemy });
+  assert.ok((await gm.state()).chat.some((m) => m.roll && m.roll.label === "Black Lance: destruction save"), "the start of its turn rolls the save");
+  assert.ok(!(await p1.state()).chat.some((m) => /Black Lance/.test((m.text || "") + ((m.roll || {}).label || ""))));
 });

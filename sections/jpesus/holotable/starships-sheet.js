@@ -9,7 +9,36 @@
   const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
   // the box: the ship's state at 0 hull, damage by type, repairs, conditions and what they do right now
-  function block(s, ro) {
+  // power dice, shield dice and the Boost actions; ctx: { pb, as }, the crew row the sheet is rolling as and its proficiency bonus
+  const ctxOf = {};   // per ship, the crew row the sheet is rolling as (the server works the bonus out from it)
+  function powerBlock(s, ro, ctx) {
+    ctxOf[s.id] = ctx || {};
+    const st = SR.statusOf(s), caps = SR.powerCaps(s), dis = ro || SR.isDisabled(st) || SR.isLost(st);
+    const auto = (field, fn, table) => { const v = s[field] || '', a = fn(Object.assign({}, s, { [field]: '' }));
+      return `<select data-sp="${field}" ${ro ? 'disabled' : ''}><option value="" ${v ? '' : 'selected'}>${a ? `${esc(a)} (role or equipment)` : '(none)'}</option>${Object.keys(table).map(k => `<option ${k === v ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select>`; };
+    const pools = ['central', ...SR.SYSTEMS].filter(k => caps[k] > 0).map(k => {
+      const n = st.power[k] || 0, pips = Array.from({ length: caps[k] }, (_, i) => `<span class="dpip ${i < n ? 'on' : ''}"></span>`).join('');
+      return `<span class="ship-pool"><b>${SR.SYSTEM_NAMES[k]}</b> ${pips}${ro ? '' : ` <button class="btn tiny amber" data-sx="puse" data-pool="${k}" ${n ? '' : 'disabled'} title="Spend a power die (${SR.powerDieText(s)})">use</button><button class="btn tiny ghost" data-sx="pset" data-pool="${k}" data-n="${n + 1}" ${n < caps[k] ? '' : 'disabled'}>+</button><button class="btn tiny ghost" data-sx="pset" data-pool="${k}" data-n="${n - 1}" ${n ? '' : 'disabled'}>−</button>`}</span>`;
+    }).join('');
+    const sd = SR.diceOf(s, 'shield'), sdLeft = SR.diceLeft(s, 'shield'), used = st.sdUsed, rate = SR.regenRate(s);
+    const str = Math.floor(((+(s.abilities || {}).str || 10) - 10) / 2), boostBonus = str + (+((s.skills || {}).boost) || 0) * ((ctx && ctx.pb) || 0);
+    const b = st.boost, done = [b.engines > 0 && 'engines +50 ft', b.shields && 'shields boosted', b.weapons && 'weapons boosted (next damage roll with advantage)', b.regen && 'shields regenerated'].filter(Boolean);
+    const sign = n => (n >= 0 ? '+' : '') + n;
+    return `<div class="ship-power">
+      <div class="row wrap" style="gap:6px">${ro ? '' : `<button class="btn small primary" data-sx="turn" title="At the start of the ship's turn: the reactor's power dice come back, shields regenerate if ticked, this turn's boosts end, and a ship at 0 hull makes its destruction save">▶ Start of the ship's turn</button>
+        <label class="toggle" title="Spend a shield die, without rolling, for the regeneration rate. Not when the shields are down."><input type="checkbox" id="shipRegen" checked> regenerate shields</label>`}
+        <span class="spacer"></span><label class="ship-lv">Reactor ${auto('reactor', SR.reactorOf, SR.REACTORS)}</label><label class="ship-lv">Coupling ${auto('coupling', SR.couplingOf, SR.COUPLINGS)}</label><label class="ship-lv">Shields ${auto('shieldType', SR.shieldTypeOf, SR.SHIELD_TYPES)}</label></div>
+      <div class="row wrap" style="gap:10px;margin-top:6px"><span class="muted" style="font-size:12px">Power dice (${SR.powerDieText(s)})</span>${pools || '<span class="muted" style="font-size:12px">Pick a power coupling to store power dice.</span>'}</div>
+      <div class="row wrap" style="gap:8px;margin-top:6px;font-size:12px"><span>Shield dice <b>${sdLeft}</b> of ${sd.n} left (d${sd.die})${ro ? '' : ` <button class="btn tiny ghost" data-sx="sdset" data-n="${used + 1}" ${sdLeft ? '' : 'disabled'} title="Spend one">−</button><button class="btn tiny ghost" data-sx="sdset" data-n="${used - 1}" ${used ? '' : 'disabled'} title="Get one back">+</button>`}</span>
+        <span>Regeneration <b>${rate}</b> a round</span>${st.tempShield ? `<span>Temporary shields <b>${st.tempShield}</b></span>` : ''}</div>
+      ${dis ? '' : `<div class="row wrap" style="gap:6px;margin-top:6px"><span class="muted" style="font-size:12px" title="Strength (Boost): the ship's Strength plus the crew member's proficiency if the ship is proficiently equipped in Boost">Boost ${sign(boostBonus)} vs DC ${SR.boostDC(s)}</span>
+        ${['engines', 'shields', 'weapons'].map(w => `<button class="btn tiny" data-sx="boost" data-what="${w}" ${(w === 'engines' ? b.engines >= 2 : b[w]) ? 'disabled' : ''}>Boost ${w}</button>`).join('')}
+        <button class="btn tiny" data-sx="regen" ${b.regen || !sdLeft ? 'disabled' : ''} title="The action: spend a shield die and roll it (twice, keeping the lower, on a failed check). Works when the shields are down.">Regenerate shields (DC ${SR.regenDC(s)})</button>
+        ${done.length ? `<span class="muted" style="font-size:12px">This turn: ${esc(done.join(', '))}</span>` : ''}</div>`}
+    </div>`;
+  }
+
+  function block(s, ro, ctx) {
     const st = SR.statusOf(s), gm = H.isGM(), z = st.zero, hullNow = +((s.hull || {}).current) || 0;
     const lost = SR.isLost(st), dying = SR.dying(s), atZero = hullNow <= 0 && SR.hullMax(s) > 0;
     let state = '';
@@ -38,13 +67,16 @@
       <div class="row wrap" style="margin-top:8px;gap:4px">${chips}
         <span class="spacer"></span><label class="ship-lv" title="${esc('Speed -150 / -250 / -300 ft; at 4, speed 0')}">Slowed ${lvSel('slowed', 4, i => (i ? (i >= 4 ? 'Speed 0' : `Speed -${SR.SLOWED_FEET[i]} ft`) : 'None'))}</label>
         <label class="ship-lv" title="${esc(SR.SYSTEM_NOTES.slice(1).map((t, i) => `${i + 1}: ${t}`).join('\n'))}">System damage ${lvSel('system', 6, sysTitle)}</label></div>
+      ${powerBlock(s, ro, ctx)}
     </div>`;
   }
 
   // the ship's conditions in effect, as short phrases for the box's heading
   function effects(s) {
     const st = SR.statusOf(s), out = [], sp = SR.speedOf(s), lv = SR.slowedLevel(s);
-    if (lv) out.push(`Speed ${sp} ft (slowed ${lv})`);
+    const bs = SR.boostedSpeed(s);
+    if (lv) out.push(`Speed ${bs} ft (slowed ${lv})`);
+    else if (bs !== sp) out.push(`Speed ${bs} ft (engines boosted)`);
     if (st.system >= 4) out.push(`Maximums halved: hull ${SR.hullMax(s)}, shields ${SR.shieldMax(s)}; regeneration halved`);
     const fx = (k, ab) => SR.rollEffects(s, k, ab);
     const words = (f) => [f.adv.length && 'advantage', f.dis.length && 'disadvantage'].filter(Boolean).join(' and ');
@@ -82,6 +114,11 @@
       return true;
     }
     if (a === 'dsave') { await H.act('ship.dsave', { id }); return true; }
+    if (a === 'turn') { await H.act('ship.turn', { id, regen: !!($('#shipRegen') || {}).checked }); return true; }
+    if (a === 'puse') { await H.act('ship.poweruse', { id, pool: b.dataset.pool }); return true; }
+    if (a === 'pset') { await H.act('ship.power', { id, pool: b.dataset.pool, n: +b.dataset.n }); return true; }
+    if (a === 'sdset') { await H.act('ship.dice', { id, kind: 'shield', used: +b.dataset.n }); return true; }
+    if (a === 'boost' || a === 'regen') { await H.act(a === 'boost' ? 'ship.boost' : 'ship.regen', { id, what: b.dataset.what, crew: (ctxOf[id] || {}).as || 0, mode: H.rollModeFromEvent(e) }); return true; }
     if (a === 'stabilize') { await H.act('ship.stabilize', { id }); return true; }
     if (a === 'cond') { const c = b.dataset.c; await H.act('ship.condition', { id, name: c, on: !SR.statusOf(s).cond.includes(c) }); return true; }
     if (a === 'reset') { if (confirm(`Undo ${s.name}'s destruction?`)) await H.act('ship.reset', Object.assign({ id }, b.dataset.system ? { system: +b.dataset.system } : {})); return true; }

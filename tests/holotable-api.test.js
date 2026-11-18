@@ -70,6 +70,49 @@ test("dice: keeps, drops, constants and natural 20s", () => {
   assert.throws(() => G.rollDice("500d6"), G.Invalid);
 });
 
+test("dice: a minimum roll threshold (min N) counts a lower die as N and shows it (#150)", () => {
+  for (let i = 0; i < 300; i++) {
+    const r = G.rollDice("2d6min2+1d12min5+3");
+    assert.ok(r.total >= 2 + 2 + 5 + 3 && r.total <= 6 + 6 + 12 + 3, r.detail);
+  }
+  const crypto = require("crypto"), real = crypto.randomInt;
+  try {
+    const faces = [1, 5, 2, 1];
+    crypto.randomInt = () => faces.shift();
+    const r = G.rollDice("4d6min2");
+    assert.deepEqual([r.total, r.detail], [11, "4d6min2[1→2,5,2,1→2]"], "a 1 counts as 2, and shows it");
+  } finally { crypto.randomInt = real; }
+  const d = G.rollDice("1d20min8+5");
+  assert.ok(d.total >= 13 && d.nat >= 1 && d.nat <= 20, "the natural d20 is the die as rolled");
+  assert.match(G.rollDice("1d8min3").detail, /^1d8min3\[/);
+  assert.equal(G.rollDice("1d4min9").total, 4, "never above the die's own size");
+  assert.ok(G.rollDice("1d8").detail.indexOf("min") < 0, "an expression without min rolls as before");
+});
+
+test("dice, review of #152: ! explodes on the natural maximum only, and one roll is at most 300 dice (refused, never cut short)", () => {
+  const crypto = require("crypto"), real = crypto.randomInt;
+  try {
+    const faces = [1, 6, 3];
+    crypto.randomInt = () => faces.shift();
+    const r = G.rollDice("2d6min6!");
+    assert.deepEqual([r.total, r.detail], [18, "2d6min6[1→6,6,3→6]"], "a 1 lifted to 6 doesn't explode; a natural 6 does, once");
+  } finally { crypto.randomInt = real; }
+  // min at the die's size no longer forces every die to explode: natural 2, 1, 2, 1… is 100 explosions, not 2,000
+  try {
+    let k = 0;
+    crypto.randomInt = () => (k++ % 2 ? 1 : 2);
+    const r = G.rollDice("100d2min2!");
+    assert.deepEqual([r.total, (r.detail.match(/,/g) || []).length + 1], [400, 200], "200 dice, each counting 2");
+  } finally { crypto.randomInt = real; }
+  assert.doesNotThrow(() => G.rollDice("100d6+100d6+100d6"));
+  assert.throws(() => G.rollDice("100d6+100d6+100d6+1d6"), (e) => e instanceof G.Invalid && /Too many dice/.test(e.message));
+  // explosions count: 100 d1000 that always explode would be 2,100 dice
+  try {
+    crypto.randomInt = (a, b) => b - 1;
+    assert.throws(() => G.rollDice("100d1000!"), (e) => e instanceof G.Invalid && /Too many dice/.test(e.message));
+  } finally { crypto.randomInt = real; }
+});
+
 test("unset or equal passwords: every request is refused", async () => {
   fresh();
   const saved = [process.env.HOLOTABLE_PLAYER_PASSWORD, process.env.HOLOTABLE_GM_PASSWORD];
@@ -776,8 +819,11 @@ test("starships: party ships are shared, hidden ships are the GM's, and everythi
   let sh = (await p2.poll()).data.state.ships[0];
   assert.deepEqual([sh.name, sh.size, sh.tier, sh.ac, sh.hull.current, sh.abilities.dex, sh.abilities.con, sh.hidden], ["Ebon Hawk", "Medium", 5, 15, 40, 30, 10, false], "players can't hide ships; numbers are clamped");
   assert.deepEqual([sh.skills.boost, sh.skills.hack, sh.crew[0].charId, sh.crew[0].rank, sh.crew[1].deployment, sh.notes.length], [2, undefined, null, 5, "", 10000]);
-  sh.hull.current = 12;
+  sh.hull.current = 12; sh.model = "YT-2400";
   assert.equal((await p2.act("ship.save", { ship: sh })).code, 200, "anyone at the table can update a party ship");
+  assert.deepEqual([(await gm.poll()).data.state.ships[0].model, (await gm.poll()).data.state.ships[0].hull.current], ["YT-2400", 40],
+    "a sheet save keeps the server's current points (#151): they change through ship.points and the damage and repair actions");
+  assert.equal((await p2.act("ship.points", { id: sh.id, what: "hull", current: 12 })).code, 200);
   assert.equal((await gm.poll()).data.state.ships[0].hull.current, 12);
   assert.equal((await p2.act("ship.delete", { id: sh.id })).code, 403, "only the GM or the ship's creator deletes it");
   await gm.act("ship.save", { ship: { name: "Imperial Interdictor", hidden: true } });
