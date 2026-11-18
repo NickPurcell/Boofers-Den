@@ -6,9 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#f6f1e7" />
   <title>HoloTable against SW5e: what's done, what's missing</title>
-  <meta name="description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules (first at commit 4427cbe, kept up to date since): 117 done, 29 partial, 15 missing, and the ten gaps that matter most." />
+  <meta name="description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules (first at commit 4427cbe, kept up to date since): 126 done, 34 partial, 1 missing, and the ten gaps that matter most." />
   <meta property="og:title" content="HoloTable against SW5e: what's done, what's missing" />
-  <meta property="og:description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules (first at commit 4427cbe, kept up to date since): 117 done, 29 partial, 15 missing, and the ten gaps that matter most." />
+  <meta property="og:description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules (first at commit 4427cbe, kept up to date since): 126 done, 34 partial, 1 missing, and the ten gaps that matter most." />
   <link rel="stylesheet" href="audit.css" />
 </head>
 <body>
@@ -19,18 +19,18 @@
       <h1>HoloTable against SW5e <span>what a table needs to play the whole system, and what is there</span></h1>
       <p class="lead">This is a line-by-line check of <a href="https://boofers-den.vercel.app/sections/jpesus/holotable/">HoloTable</a>, the Star Wars 5e tabletop jpesus built on the Den, against what the SW5e rules ask of a table: making and levelling characters, class resources, powers, the sheet's arithmetic, gear, rests and conditions, combat on the map, the GM's side, starships, downtime, and the table itself. It was first checked at commit <code>4427cbe</code> (17 Nov 2026, 08:01 PST), and each line marked "Since 17 Nov" says what has landed on main since and which pull request did it, so the counts are today's. It is meant as a to-do list for the group, not a verdict.</p>
       <ul class="counts" aria-label="The 161 lines">
-        <li class="done"><b>117</b> <span aria-hidden="true">✓</span> done</li>
-        <li class="partial"><b>29</b> <span aria-hidden="true">◐</span> partial</li>
-        <li class="missing"><b>15</b> <span aria-hidden="true">✗</span> missing</li>
+        <li class="done"><b>126</b> <span aria-hidden="true">✓</span> done</li>
+        <li class="partial"><b>34</b> <span aria-hidden="true">◐</span> partial</li>
+        <li class="missing"><b>1</b> <span aria-hidden="true">✗</span> missing</li>
       </ul>
     </header>
 
     <section aria-labelledby="gaps">
       <h2 id="gaps">The ten gaps that matter most</h2>
       <ol class="gaps">
-        <li><strong>Class resources (<a href="#l-3-1">3.1</a>–<a href="#l-3-11">3.11</a>).</strong> No class's spendable numbers are tracked: rages, superiority dice, focus points, exploits, Channel the Force, Second Wind, Action Surge, Indomitable, Potent Aptitude, Kinetic Combat, Ranger's Quarry, Sage Advice and the rest. Every class has some, and they are spent every session. <strong>Since 17 Nov:</strong> every class's uses are tracked and its table values shown (#108). In the combat view, Rage, Sneak Attack, Force-Empowered Strikes, Double Strike, Action Surge and the Fighter's and Scholar's maneuvers do what they say. Still to come are listed on <a href="#l-3-2">3.2</a>–<a href="#l-3-10">3.10</a>.</li>
+        <li><strong>Class resources (<a href="#l-3-1">3.1</a>–<a href="#l-3-11">3.11</a>).</strong> No class's spendable numbers are tracked: rages, superiority dice, focus points, exploits, Channel the Force, Second Wind, Action Surge, Indomitable, Potent Aptitude, Kinetic Combat, Ranger's Quarry, Sage Advice and the rest. Every class has some, and they are spent every session. <strong>Since 17 Nov:</strong> every class's uses are tracked and its table values shown (#108). In the combat view, Rage, Sneak Attack, Force-Empowered Strikes, Double Strike, Action Surge and the Fighter's and Scholar's maneuvers do what they say. The per-class entries <a href="#l-3-2">3.2</a>–<a href="#l-3-11">3.11</a> are in (#108, #173, #212, #229, #254, #264).</li>
         <li><strong>Rests recover the wrong things (<a href="#l-7-2">7.2</a>–<a href="#l-7-5">7.5</a>).</strong> Tech points should come back on a short rest and don't. The Consular's Force Recovery and every short-rest class use (Channel the Force, Action Surge, Second Wind and the like) aren't there, and hit dice are spent from one pool at the largest die size. <strong>Since 17 Nov:</strong> done (<a href="#l-7-2">7.2</a>–<a href="#l-7-5">7.5</a>).</li>
-        <li><strong>Caster numbers that are wrong today (<a href="#l-3-12">3.12</a>–<a href="#l-3-14">3.14</a>).</strong> The Sentinel's max power level is one too low at nine of its twenty levels. The 12 archetypes that grant casting get no points. A multiclassed caster's max power level uses the wrong rule. <strong>Since 17 Nov:</strong> the casting archetypes and multiclass max power level are done (<a href="#l-3-13">3.13</a>, <a href="#l-3-14">3.14</a>). The Sentinel's max power level (<a href="#l-3-12">3.12</a>) is still open.</li>
+        <li><strong>Caster numbers that are wrong today (<a href="#l-3-12">3.12</a>–<a href="#l-3-14">3.14</a>).</strong> The Sentinel's max power level is one too low at nine of its twenty levels. The 12 archetypes that grant casting get no points. A multiclassed caster's max power level uses the wrong rule. <strong>Since 17 Nov:</strong> the casting archetypes and multiclass max power level are done (<a href="#l-3-13">3.13</a>, <a href="#l-3-14">3.14</a>). The Sentinel's max power level (<a href="#l-3-12">3.12</a>) follows its own table since #77.</li>
         <li><strong>Measuring and areas on the map (<a href="#l-8-4">8.4</a>, <a href="#l-8-5">8.5</a>).</strong> There's no ruler and no cone, cube, cylinder, line or sphere template, and both are needed in every fight. <strong>Since 17 Nov:</strong> done in the combat view (<a href="#l-8-4">8.4</a>, <a href="#l-8-5">8.5</a>).</li>
         <li><strong>SW5e's own conditions, with effects and durations (<a href="#l-7-7">7.7</a>–<a href="#l-7-10">7.10</a>).</strong> Five of SW5e's 21 conditions are missing, exhaustion follows the wrong table, and no condition changes a roll or ends on its own. <strong>Since 17 Nov:</strong> done (<a href="#l-7-7">7.7</a>–<a href="#l-7-10">7.10</a>).</li>
         <li><strong>Casting beyond spending points (<a href="#l-4-4">4.4</a>–<a href="#l-4-7">4.7</a>).</strong> Upcasting, the max power level check, concentration, and rolling a power's damage and its targets' saves are all missing. <strong>Since 17 Nov:</strong> upcasting, the max power level check and concentration are done from the sheet and in the combat view (<a href="#l-4-4">4.4</a>–<a href="#l-4-6">4.6</a>). A power rolls its attack, saves and damage for powers the table has data for (<a href="#l-4-7">4.7</a>).</li>
@@ -67,9 +67,9 @@
       </dl>
       <div class="filters" id="filters" hidden>
         <div class="fgroup" role="group" aria-label="Show by state">
-          <button type="button" data-f="state" data-v="done" aria-pressed="true">✓ Done 117</button>
-          <button type="button" data-f="state" data-v="partial" aria-pressed="true">◐ Partial 29</button>
-          <button type="button" data-f="state" data-v="missing" aria-pressed="true">✗ Missing 15</button>
+          <button type="button" data-f="state" data-v="done" aria-pressed="true">✓ Done 126</button>
+          <button type="button" data-f="state" data-v="partial" aria-pressed="true">◐ Partial 34</button>
+          <button type="button" data-f="state" data-v="missing" aria-pressed="true">✗ Missing 1</button>
         </div>
         <div class="fgroup" role="group" aria-label="Show by how much it matters">
           <button type="button" data-f="matters" data-v="every" aria-pressed="true">Every session 59</button>
@@ -83,7 +83,7 @@
         </div>
       </div>
 <details class="sec" id="s-1">
-<summary><span class="sn">1.</span> <span class="st">Making a character (level 1)</span> <span class="sc"><span class="tally">6 done · 2 partial · 2 missing</span><span class="shown" hidden></span></span></summary>
+<summary><span class="sn">1.</span> <span class="st">Making a character (level 1)</span> <span class="sc"><span class="tally">8 done · 2 partial · 0 missing</span><span class="shown" hidden></span></span></summary>
 
 <ul class="items">
 <li class="item done" id="l-1-1" data-state="done" data-matters="some">
@@ -94,7 +94,7 @@
 <li class="item partial" id="l-1-2" data-state="partial" data-matters="some">
 <p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">1.2</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Import fidelity. The builder's character JSON carries no power levels (every power arrives as level 0), AC is set to 10 + Dex unless the export overrides it, HP is recomputed, saving throws come from the first class only, and custom weapons default to 1d6 Str. The importer lists these as notes for the player to check, but each is a wrong number until fixed by hand.</p>
-<p class="ev">Evidence: importer.js:165–216, 225.</p>
+<p class="ev">Evidence: importer.js:165–216, 225. <strong>Since 17 Nov:</strong> before an imported sheet is saved, each power found in SW5e's power list gets its level, alignment, text and prerequisite, worn armor gets its kind and AC so the sheet works the AC out when the export didn't set it, and a custom weapon keeps the export's own die (#241). Still missing: a power whose builder name isn't SW5e's (the builder's &quot;Force Push&quot;) keeps level 0, and the import notes only count those (&quot;filled in from SW5e for n of m powers; set the rest by hand&quot;) without naming them. HP stays computed from the hit dice the export records, and saves stay the first class's, as SW5e's multiclassing rules give.</p>
 </li>
 <li class="item done" id="l-1-3" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">1.3</span> <span class="meta">computes · sometimes</span></p>
@@ -106,15 +106,15 @@
 <p class="text">Ability score generation: the PHB's standard array, point buy and rolled scores, assigned to abilities. Only <code>/r 4d6dl1</code> in chat; scores are typed.</p>
 <p class="ev">Evidence: no code; abilities are number inputs in <code>renderSheet</code> (app.js:380). <strong>Since 17 Nov:</strong> a 🎲 Ability scores… dialog sets all six from the standard set, six server rolls of 4d6 (highest three, in chat), or SW5e's 27-point buy (#166).</p>
 </li>
-<li class="item partial" id="l-1-5" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">1.5</span> <span class="meta">text · sometimes</span></p>
+<li class="item done" id="l-1-5" data-state="done" data-matters="some">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">1.5</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Species: traits, speed, languages, size and the ability increase. The ◈ picker adds each trait as a feature, sets walking speed, appends languages, and applies the increase only when it is one fixed choice. Size, senses (darkvision etc.), resistances and other movement speeds are not set anywhere on the sheet.</p>
-<p class="ev">Evidence: <code>openSpeciesPicker</code> (books.js:189); <code>fixedAsi</code> (_holotable-sw5e-data.js:23).</p>
+<p class="ev">Evidence: <code>openSpeciesPicker</code> (books.js:189); <code>fixedAsi</code> (_holotable-sw5e-data.js:23). <strong>Since 17 Nov:</strong> the species picker sets size and senses (#129, #185), and so does the guided build (senses #171, size #188), and swim, climb and fly speeds are read from the species' traits for the speed box (#238). A species' damage resistances, immunities and vulnerabilities fill the sheet's Defences from its traits, the GM's to edit, and the combat view applies them (#259).</p>
 </li>
-<li class="item missing" id="l-1-6" data-state="missing" data-matters="some">
-<p class="row"><span class="state missing"><span aria-hidden="true">✗</span> Missing</span> <span class="id">1.6</span> <span class="meta">none · sometimes</span></p>
+<li class="item done" id="l-1-6" data-state="done" data-matters="some">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">1.6</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Species whose increase is a choice (&quot;any one&quot;, or one of several options): let the player pick. Today the player types the new scores.</p>
-<p class="ev">Evidence: <code>fixedAsi</code> returns null for choices (_holotable-sw5e-data.js:23).</p>
+<p class="ev">Evidence: <code>fixedAsi</code> returns null for choices (_holotable-sw5e-data.js:23). <strong>Since 17 Nov:</strong> when a species' increase is a choice, the species picker and the guided build ask which abilities get it, offer only the allowed ones and apply it; a sheet that already has it can skip (#200). Half-human, whose increase is its other half's, is still typed.</p>
 </li>
 <li class="item done" id="l-1-7" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">1.7</span> <span class="meta">computes · sometimes</span></p>
@@ -126,10 +126,10 @@
 <p class="text">Background: skill and tool proficiencies, languages, equipment, feature, and the background feat (the PHB's Personality and Backgrounds chapter gives backgrounds a feat; SW5e's background data lists each one's feat options). The ◈ picker writes skills and tools into the Proficiencies text box but does <strong>not</strong> tick the skill dots, so skill bonuses stay wrong until the player ticks them; equipment goes into Notes as text; the feat is shown only as &quot;suggested feats&quot; and is never added.</p>
 <p class="ev">Evidence: <code>openBackgroundPicker</code> (books.js:218–243). <strong>Since 17 Nov:</strong> after picking a background, the sheet asks for two skills from its list (ticked as proficiency) and one of its feats (added as a feature, with its text); the guided build uses the same step (#174). A feat's own effects are added as text, not to the numbers.</p>
 </li>
-<li class="item missing" id="l-1-9" data-state="missing" data-matters="some">
-<p class="row"><span class="state missing"><span aria-hidden="true">✗</span> Missing</span> <span class="id">1.9</span> <span class="meta">none · sometimes</span></p>
+<li class="item partial" id="l-1-9" data-state="partial" data-matters="some">
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">1.9</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Starting equipment by class and background, or starting wealth instead. Background equipment is copied into Notes as text; class equipment is not offered.</p>
-<p class="ev">Evidence: books.js:236; no code for class equipment.</p>
+<p class="ev">Evidence: books.js:236; no code for class equipment. <strong>Since 17 Nov:</strong> the guided build's last step lists the class's and background's starting equipment in Notes, with the (a)/(b) choices (#171), or takes the class's starting wealth instead, rolled on the server where everyone sees it (#237). Still missing: the chosen equipment going onto the sheet as items; they're added by hand from the gear picker.</p>
 </li>
 <li class="item done" id="l-1-10" data-state="done" data-matters="nice">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">1.10</span> <span class="meta">stores · nicety</span></p>
@@ -140,7 +140,7 @@
 <p class="nomatch" hidden>Nothing in this section matches the filters.</p>
 </details>
 <details class="sec" id="s-2">
-<summary><span class="sn">2.</span> <span class="st">Levelling from 1 to 20</span> <span class="sc"><span class="tally">10 done · 4 partial · 3 missing</span><span class="shown" hidden></span></span></summary>
+<summary><span class="sn">2.</span> <span class="st">Levelling from 1 to 20</span> <span class="sc"><span class="tally">12 done · 4 partial · 1 missing</span><span class="shown" hidden></span></span></summary>
 
 <ul class="items">
 <li class="item done" id="l-2-1" data-state="done" data-matters="every">
@@ -164,9 +164,9 @@
 <p class="ev">Evidence: <code>ASI_AT</code> (app.js:2211); server check (_holotable-game.js:297–306).</p>
 </li>
 <li class="item partial" id="l-2-5" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">2.5</span> <span class="meta">text · sometimes</span></p>
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">2.5</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Feats: prerequisites must be met, and a feat's own ability increase (half-feats) and effects apply. The wizard takes a feat name from SW5e's list and adds its text; no prerequisite is checked and no part of the feat is applied (not its +1, not a skill it grants).</p>
-<p class="ev">Evidence: <code>wizardPlan</code> (app.js:2362–2381); <code>featNamed</code> (books.js:313).</p>
+<p class="ev">Evidence: <code>wizardPlan</code> (app.js:2362–2381); <code>featNamed</code> (books.js:313). <strong>Since 17 Nov:</strong> the level-up wizard won't take a feat whose prerequisite isn't met (a species prerequisite is the GM's call), and the feat picker marks each feat; a half-feat asks which ability gets its +1 and applies it (#231). A feat's other effects (a skill, a proficiency) are still text, and a feat added from the picker gets no +1.</p>
 </li>
 <li class="item done" id="l-2-6" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">2.6</span> <span class="meta">computes · sometimes</span></p>
@@ -176,27 +176,27 @@
 <li class="item done" id="l-2-7" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">2.7</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Choose or change an archetype for a character already past class level 3 without one (an imported character, or a missed pick). The wizard only offers it at exactly class level 3. A picker for this exists but nothing opens it.</p>
-<p class="ev">Evidence: <code>openArchetypePicker</code> (books.js:249) is exported but never called. <strong>Since 17 Nov:</strong> a class at level 3 or higher with no archetype gets a &quot;◈ Choose …&quot; button on the sheet, and one that has an archetype can change it; the picker adds its features up to the class's level (#176).</p>
+<p class="ev">Evidence: <code>openArchetypePicker</code> (books.js:249) is exported but never called. <strong>Since 17 Nov:</strong> a class at level 3 or higher with no archetype gets a &quot;◈ Choose …&quot; button on the sheet, and one that has an archetype can change it; the picker adds its features up to the class's level (#176). Changing it takes off the features the old one added (#196).</p>
 </li>
 <li class="item done" id="l-2-8" data-state="done" data-matters="every">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">2.8</span> <span class="meta">text · every session</span></p>
 <p class="text">Class and archetype features for the new level are added to Features &amp; Traits with SW5e's text.</p>
 <p class="ev">Evidence: <code>levelFeatures</code> (books.js:306); wizard step 4 (app.js:2439–2444).</p>
 </li>
-<li class="item missing" id="l-2-9" data-state="missing" data-matters="some">
-<p class="row"><span class="state missing"><span aria-hidden="true">✗</span> Missing</span> <span class="id">2.9</span> <span class="meta">none · sometimes</span></p>
+<li class="item partial" id="l-2-9" data-state="partial" data-matters="some">
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">2.9</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Choices inside class features, with how many the class allows at that level: Fighter maneuvers and strategies, Scholar maneuvers and discoveries, Berserker instincts, Monk vows, Operative exploits, Sentinel ideals, Guardian auras, Scout routines, fighting styles (Fighter 1, Guardian 2, Scout 2), Expertise picks (Operative 1 and 6, Scholar 3 and 10, Scout 6 and 14), Engineer tool expertise. The &quot;＋ from SW5e&quot; picker can add maneuvers, styles, masteries and forms as text, but the wizard never asks for these choices and nothing counts them.</p>
-<p class="ev">Evidence: <code>featureTabs</code> (books.js:273–303); no count anywhere.</p>
+<p class="ev">Evidence: <code>featureTabs</code> (books.js:273–303); no count anywhere. <strong>Since 17 Nov:</strong> the level-up wizard asks for the level's choices and counts each against the class table: class options, maneuvers, a fighting style, and Expertise, which doubles the skills picked (#188, #214, #225). Still missing: the Engineer's tool expertise, and the 1st-level style and Expertise when a character is built.</p>
 </li>
 <li class="item partial" id="l-2-10" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">2.10</span> <span class="meta">text · sometimes</span></p>
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">2.10</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Powers known per level (each caster class has a &quot;powers known&quot; column, e.g. Consular 9 at level 1 rising to 40). The wizard lets a player add any number of powers; the picker marks powers above the character's max level but allows them.</p>
-<p class="ev">Evidence: <code>openPowerPicker</code> (app.js:849–916); wizard powers step (app.js:2445–2450).</p>
+<p class="ev">Evidence: <code>openPowerPicker</code> (app.js:849–916); wizard powers step (app.js:2445–2450). <strong>Since 17 Nov:</strong> the level-up wizard counts force and tech powers against the class tables' Powers Known and refuses more than the level allows, and the sheet's Powers box shows &quot;Force 11 / 13&quot; (#232). Still missing: an archetype caster's own Powers Known table (Adept Specialist, Saboteur Practice and the rest) isn't counted.</p>
 </li>
-<li class="item missing" id="l-2-11" data-state="missing" data-matters="some">
-<p class="row"><span class="state missing"><span aria-hidden="true">✗</span> Missing</span> <span class="id">2.11</span> <span class="meta">none · sometimes</span></p>
+<li class="item partial" id="l-2-11" data-state="partial" data-matters="some">
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">2.11</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Power prerequisites: 127 of SW5e's force powers need an earlier power known first, and it must stay known to cast them. Shown in the picker as &quot;Requires …&quot;; not checked.</p>
-<p class="ev">Evidence: app.js:872.</p>
+<p class="ev">Evidence: app.js:872. <strong>Since 17 Nov:</strong> the power picker marks a power's prerequisite as known or not yet; a player can't add it until the prerequisite is known (the GM may allow it), and the sheet's Cast checks again (#232). The check is the page's; the server doesn't hold a power's cast to it. Still missing: the combat view, where powers are cast in a fight, lists and uses every power on the sheet without checking its prerequisite.</p>
 </li>
 <li class="item done" id="l-2-12" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">2.12</span> <span class="meta">computes · sometimes</span></p>
@@ -208,10 +208,10 @@
 <p class="text">Multiclass proficiencies: a new class gives only its smaller multiclass set. Nothing is added either way.</p>
 <p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> a new class past the first adds only its multiclass proficiencies from SW5e's class data (#194).</p>
 </li>
-<li class="item partial" id="l-2-14" data-state="partial" data-matters="nice">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">2.14</span> <span class="meta">stores · nicety</span></p>
+<li class="item done" id="l-2-14" data-state="done" data-matters="nice">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">2.14</span> <span class="meta">computes · nicety</span></p>
 <p class="text">XP and the level thresholds. XP is a number on the Bio tab; the thresholds are reference text; nothing compares them. (The table levels by GM grant, which matches the PHB's Milestone Levelling variant, so this matters only if the table switches to XP.)</p>
-<p class="ev">Evidence: app.js:553; rules.js:129.</p>
+<p class="ev">Evidence: app.js:553; rules.js:129. <strong>Since 17 Nov:</strong> the Bio tab shows the next level's XP and how far off it is, or that there's enough for the GM to grant it, hidden under Milestone Leveling (#246); the GM's XP award says who has reached it (#184), and both read one table.</p>
 </li>
 <li class="item done" id="l-2-15" data-state="done" data-matters="nice">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">2.15</span> <span class="meta">computes · nicety</span></p>
@@ -223,27 +223,27 @@
 <p class="text">Companions (Expanded Content): gaining a companion, its nature (beast, droid, humanoid, tracker droid, turret), its own progression and companion versions of the classes, acting in combat.</p>
 <p class="ev">Evidence: no code; the Expanded Content chapter is readable in the library only.</p>
 </li>
-<li class="item partial" id="l-2-17" data-state="partial" data-matters="nice">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">2.17</span> <span class="meta">text · nicety</span></p>
+<li class="item done" id="l-2-17" data-state="done" data-matters="nice">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">2.17</span> <span class="meta">computes · nicety</span></p>
 <p class="text">The Expanded Content's Class, Multiclass and Splashclass Improvement feats, each of which opens a per-class option. The feats are in the feat list; the per-class options they unlock (SW5e's <code>classImprovement</code>, <code>multiclassImprovement</code> and <code>splashclassImprovement</code> data) are not fetched.</p>
-<p class="ev">Evidence: <code>LISTS</code> (_holotable-sw5e-data.js:137–160).</p>
+<p class="ev">Evidence: <code>LISTS</code> (_holotable-sw5e-data.js:137–160). <strong>Since 17 Nov:</strong> taking Class, Multiclass or Splashclass Improvement in the level-up wizard lists its options from SW5e's data (one, two and one), with those whose class-level prerequisite isn't met shown and held back; the picks go on the sheet with their text (#247).</p>
 </li>
 </ul>
 <p class="nomatch" hidden>Nothing in this section matches the filters.</p>
 </details>
 <details class="sec" id="s-3">
-<summary><span class="sn">3.</span> <span class="st">Class resources and per-class arithmetic</span> <span class="sc"><span class="tally">9 done · 6 partial · 0 missing</span><span class="shown" hidden></span></span></summary>
+<summary><span class="sn">3.</span> <span class="st">Class resources and per-class arithmetic</span> <span class="sc"><span class="tally">15 done · 0 partial · 0 missing</span><span class="shown" hidden></span></span></summary>
 <p class="intro">Every SW5e class has numbers that change with level and are spent and recovered in play. HoloTable adds each feature's text but tracks none of these numbers.</p>
 <ul class="items">
 <li class="item done" id="l-3-1" data-state="done" data-matters="every">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">3.1</span> <span class="meta">computes · every session</span></p>
 <p class="text">A resource tracker: uses and dice pools with a maximum set by class level, spent in play, refilled on a short or long rest as the feature says. Some archetypes add their own pools too (several give superiority dice to classes that otherwise have none).</p>
-<p class="ev">Evidence: no field for it in <code>cleanChar</code> (_holotable-game.js:134–167) or the sheet. <strong>Since 17 Nov:</strong> the combat view (#89, #94; on main, off until the GM switches it on) has the shared tracker: any resource with a maximum, spent from a chip and refilled on its rest; force points, tech points and hit dice where the sheet keeps them. The per-class entries (3.2–3.11) are still to come.</p>
+<p class="ev">Evidence: no field for it in <code>cleanChar</code> (_holotable-game.js:134–167) or the sheet. <strong>Since 17 Nov:</strong> the combat view (#89, #94; on main, off until the GM switches it on) has the shared tracker: any resource with a maximum, spent from a chip and refilled on its rest; force points, tech points and hit dice where the sheet keeps them. The per-class entries 3.2–3.11 are in (#108, #173, #212, #229, #254, #264).</p>
 </li>
-<li class="item partial" id="l-3-2" data-state="partial" data-matters="every">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">3.2</span> <span class="meta">computes · every session (for a Berserker)</span></p>
+<li class="item done" id="l-3-2" data-state="done" data-matters="every">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">3.2</span> <span class="meta">computes · every session (for a Berserker)</span></p>
 <p class="text">Berserker: rages per long rest (2 rising to unlimited at 20), rage damage bonus (+2 to +5), number of instincts known, Unarmored Defense AC, Brutal Critical extra dice.</p>
-<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> the sheet tracks Rages and shows Berserker Instincts known (#108), Unarmored Defense sets AC (#165), and the sheet's Crit button adds Brutal Critical's dice on a melee hit (#179). In the combat view (on main, off until the GM switches it on), Rage is a bonus action that spends a use and adds the Rage Damage bonus on Strength melee weapon hits, with resistance to kinetic and energy damage, ending with the fight or at 0 hit points (#134). Brutal Critical in the combat view is still to come.</p>
+<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> the sheet tracks Rages and shows Berserker Instincts known (#108), Unarmored Defense sets AC (#165), and the sheet's Crit button adds Brutal Critical's dice on a melee hit (#179). In the combat view (on main, off until the GM switches it on), Rage is a bonus action that spends a use and adds the Rage Damage bonus on Strength melee weapon hits, with resistance to kinetic and energy damage, ending with the fight or at 0 hit points (#134). In the combat view, a Berserker's melee critical adds Brutal Critical's extra weapon dice (#212).</p>
 </li>
 <li class="item done" id="l-3-3" data-state="done" data-matters="every">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">3.3</span> <span class="meta">computes · every session (for a Consular)</span></p>
@@ -265,40 +265,40 @@
 <p class="text">Guardian: Channel the Force uses (two, one more at 5, 9, 13 and 17, back on a short or long rest), Focused Strikes dice (2d8 to 6d8), auras known and aura radius.</p>
 <p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> the sheet tracks Channel the Force uses and shows auras known and aura radius at the Guardian's level (#108). In the combat view (on main, off until the GM switches it on), Force-Empowered Strikes spends force points for d8s on a melee weapon hit, up to the Focused Strikes column (#136).</p>
 </li>
-<li class="item partial" id="l-3-7" data-state="partial" data-matters="every">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">3.7</span> <span class="meta">computes · every session (for a Monk)</span></p>
+<li class="item done" id="l-3-7" data-state="done" data-matters="every">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">3.7</span> <span class="meta">computes · every session (for a Monk)</span></p>
 <p class="text">Monk: focus points (equal to Monk level from 2nd), Martial Arts die, vows known, Unarmored Movement bonus, Unarmored Defense AC.</p>
-<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> the sheet tracks focus points and shows the Martial Arts die, vows known and the Unarmored Movement bonus (#108), and Unarmored Defense sets AC (#165). In the combat view, unarmed strikes and monk weapons get finesse and the Martial Arts die, the Attack action is followed by a bonus-action unarmed strike and Flurry of Blows' second for a focus point, Dash and Disengage can be bonus actions, and a grapple or shove may use Dex (#173). Still missing: the Unarmored Movement bonus added to speed.</p>
+<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> the sheet tracks focus points and shows the Martial Arts die, vows known and the Unarmored Movement bonus (#108), and Unarmored Defense sets AC (#165). In the combat view, unarmed strikes and monk weapons get finesse and the Martial Arts die, the Attack action is followed by a bonus-action unarmed strike and Flurry of Blows' second for a focus point, Dash and Disengage can be bonus actions, and a grapple or shove may use Dex (#173). The Unarmored Movement bonus is added to speed in the combat view (#254) and to the sheet's Speed (#264), and Martial Arts and Unarmored Movement switch off in armor or with a shield, except the light or medium armor the Vow of the Sentry allows (#254).</p>
 </li>
-<li class="item partial" id="l-3-8" data-state="partial" data-matters="every">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">3.8</span> <span class="meta">computes · every session (for an Operative)</span></p>
+<li class="item done" id="l-3-8" data-state="done" data-matters="every">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">3.8</span> <span class="meta">computes · every session (for an Operative)</span></p>
 <p class="text">Operative: Sneak Attack dice (1d6 to 10d6) as a damage option, exploits known, Reliable Talent at 11 (a minimum d20 result).</p>
-<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> the sheet shows Sneak Attack dice and exploits known at the Operative's level (#108), and from 11th level a proficient skill roll's d20 counts at least 8 (Reliable Talent, #179). In the combat view (on main, off until the GM switches it on), Sneak Attack is added on a hit when its condition is met (#134). Reliable Talent in the combat view's contests is still to come.</p>
+<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> the sheet shows Sneak Attack dice and exploits known at the Operative's level (#108), and from 11th level a proficient skill roll's d20 counts at least 8 (Reliable Talent, #179). In the combat view (on main, off until the GM switches it on), Sneak Attack is added on a hit when its condition is met (#134). In the combat view, Reliable Talent's minimum 8 counts in grapple, shove and escape contests too (#212).</p>
 </li>
-<li class="item partial" id="l-3-9" data-state="partial" data-matters="every">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">3.9</span> <span class="meta">computes · every session (for a Scholar)</span></p>
+<li class="item done" id="l-3-9" data-state="done" data-matters="every">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">3.9</span> <span class="meta">computes · every session (for a Scholar)</span></p>
 <p class="text">Scholar: superiority dice (3 at 1st rising to 12; d4 to d12), maneuvers and discoveries known, Sage Advice uses (long rest, then short rest from 13).</p>
-<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> the sheet tracks the Scholar's superiority dice and shows maneuvers and discoveries known (#108); in the combat view (on main, off until the GM switches it on) its maneuvers spend them as a Fighter's do (#155). Still missing: Sage Advice uses.</p>
+<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> the sheet tracks the Scholar's superiority dice and shows maneuvers and discoveries known (#108); in the combat view (on main, off until the GM switches it on) its maneuvers spend them as a Fighter's do (#155). Sage Advice is tracked from 2nd level: back on a long rest, and on a short rest from 13th (#218).</p>
 </li>
-<li class="item partial" id="l-3-10" data-state="partial" data-matters="every">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">3.10</span> <span class="meta">computes · every session (for a Scout)</span></p>
+<li class="item done" id="l-3-10" data-state="done" data-matters="every">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">3.10</span> <span class="meta">computes · every session (for a Scout)</span></p>
 <p class="text">Scout: Ranger's Quarry die (d4 to d12), routines known and routine radius.</p>
-<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> the sheet shows the Ranger's Quarry die, routines known and routine radius at the Scout's level (#108). Still missing: the Quarry die applied to damage.</p>
+<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> the sheet shows the Ranger's Quarry die, routines known and routine radius at the Scout's level (#108). In the combat view (on main, off until the GM switches it on), a Scout marks a quarry it can see within 120 ft, with no action, once a turn, and once a turn a weapon hit on that creature adds the Quarry die at the Scout's level (#229). The 5th-level reaction mark isn't offered.</p>
 </li>
 <li class="item done" id="l-3-11" data-state="done" data-matters="every">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">3.11</span> <span class="meta">computes · every session (for a Sentinel)</span></p>
 <p class="text">Sentinel: Kinetic Combat die (d4 to d12), ideals known, and the shared pool of ideal manifestations (2 rising to 4).</p>
 <p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> the sheet tracks ideal manifestations and shows ideals known and the Kinetic Combat die at the Sentinel's level (#108). In the combat view (on main, off until the GM switches it on), Double Strike spends a force point for a Kinetic Combat die on a weapon hit, once a turn (#136).</p>
 </li>
-<li class="item partial" id="l-3-12" data-state="partial" data-matters="every">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">3.12</span> <span class="meta">computes · every session (for a Sentinel)</span></p>
+<li class="item done" id="l-3-12" data-state="done" data-matters="every">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">3.12</span> <span class="meta">computes · every session (for a Sentinel)</span></p>
 <p class="text">Sentinel max power level. SW5e's table gives 1st at level 1, 2nd at 3, 3rd at 6, 4th at 9, 5th at 11, 6th at 14, 7th at 17. HoloTable's three-quarter formula gives one level too low at nine class levels: 3, 6, 9, 11, 12, 14, 15, 17 and 18 (e.g. it shows 1st at level 3 and 6th at 17 and 18). The sheet, the wizard and the picker's &quot;above your level&quot; tag all use it.</p>
-<p class="ev">Evidence: <code>maxLvl</code> in <code>casterInfo</code> (rules.js:153).</p>
+<p class="ev">Evidence: <code>maxLvl</code> in <code>casterInfo</code> (rules.js:153). <strong>Since 17 Nov:</strong> the max power level follows the Sentinel's own table (2nd at 3, 3rd at 6, 4th at 9, 5th at 11, 6th at 14, 7th at 17) on the sheet, in the level-up wizard and in the power picker (#77).</p>
 </li>
 <li class="item done" id="l-3-13" data-state="done" data-matters="every">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">3.13</span> <span class="meta">computes · every session (for one of these archetypes)</span></p>
 <p class="text">Archetypes that grant casting: 12 of SW5e's 137 archetypes (by the archetype data's casting-type field) give force or tech casting to a non-caster class or the other kind to a caster (for example Marauder Approach and Industrial Approach for Berserkers, Shield Specialist and Adept Specialist for Fighters, Beguiler and Saboteur Practice for Operatives, Slicer and Archaeologist Pursuit for Scholars, Aing-Tii Order for Monks). HoloTable gives these characters no force or tech points and no max power level.</p>
-<p class="ev">Evidence: <code>casterInfo</code> reads only the class (rules.js:151–170); <code>casterType</code> is fetched but unused (_holotable-sw5e-data.js:44). <strong>Since 17 Nov:</strong> the nine archetypes whose SW5e data has a casting type and its own casting table get force or tech points and a max power level from that table (#149). Artificer, Inquisitor and Synthesis give two powers of the caster's own kind and no pool, as their text says.</p>
+<p class="ev">Evidence: <code>casterInfo</code> reads only the class (rules.js:151–170); <code>casterType</code> is fetched but unused (_holotable-sw5e-data.js:44). <strong>Since 17 Nov:</strong> the nine archetypes whose SW5e data has a casting type and its own casting table get force or tech points and a max power level from that table (#149). Artificer, Inquisitor and Synthesis give two powers of the caster's own kind and no pool, as their text says. Rakatan Order (Monk) and Mechanist Technique (Scout), which SW5e's data gives no casting type, cast by their own Techcasting tables too (#180).</p>
 </li>
 <li class="item done" id="l-3-14" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">3.14</span> <span class="meta">computes · sometimes (for a multiclassed caster)</span></p>
@@ -314,7 +314,7 @@
 <p class="nomatch" hidden>Nothing in this section matches the filters.</p>
 </details>
 <details class="sec" id="s-4">
-<summary><span class="sn">4.</span> <span class="st">Powers and casting</span> <span class="sc"><span class="tally">8 done · 2 partial · 1 missing</span><span class="shown" hidden></span></span></summary>
+<summary><span class="sn">4.</span> <span class="st">Powers and casting</span> <span class="sc"><span class="tally">9 done · 2 partial · 0 missing</span><span class="shown" hidden></span></span></summary>
 
 <ul class="items">
 <li class="item done" id="l-4-1" data-state="done" data-matters="every">
@@ -352,20 +352,20 @@
 <p class="text">A power's damage, healing and saving throw as rolls: Cast posts the DC and text, but there is no button to roll the power's damage or for targets to roll the save. Players type <code>/r</code>.</p>
 <p class="ev">Evidence: app.js:675–685. <strong>Since 17 Nov:</strong> a power the table has data for (the GM enters its numbers once) rolls its attack or each target's save, then its damage or healing and its conditions, in the combat view and from the sheet's Cast, with the combat view on or off (#156). A power without data still posts its DC only.</p>
 </li>
-<li class="item missing" id="l-4-8" data-state="missing" data-matters="some">
-<p class="row"><span class="state missing"><span aria-hidden="true">✗</span> Missing</span> <span class="id">4.8</span> <span class="meta">none · sometimes</span></p>
+<li class="item partial" id="l-4-8" data-state="partial" data-matters="some">
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">4.8</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Tech focus (wristpad or chassis) needed to cast tech powers. Reference text only.</p>
-<p class="ev">Evidence: rules.js:116.</p>
+<p class="ev">Evidence: rules.js:116. <strong>Since 17 Nov:</strong> a tech caster with no wristpad or chassis in the gear sees a note under Tech Points; casting isn't stopped (#218).</p>
 </li>
 <li class="item done" id="l-4-9" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">4.9</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Temporary force and tech points (spent first; one source at a time; PHB Combat chapter). No field.</p>
 <p class="ev">Evidence: <code>cleanChar</code> force/tech fields (_holotable-game.js:151–152). <strong>Since 17 Nov:</strong> each pool has a temporary box, the sheet's Cast spends temporary points first and a long rest clears them (#185). In the combat view they're spent first too, and an undo keeps them (#193).</p>
 </li>
-<li class="item partial" id="l-4-10" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">4.10</span> <span class="meta">computes · sometimes</span></p>
+<li class="item done" id="l-4-10" data-state="done" data-matters="some">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">4.10</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Ongoing power effects on targets (duration, who is affected, when it ends).</p>
-<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> in the combat view (#89, #94; on main, off until the GM switches it on), a condition a power gives lasts until the start or end of a named combatant's turn, for N rounds or until a save, or while its caster concentrates.</p>
+<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> in the combat view (#89, #94; on main, off until the GM switches it on), a condition a power gives lasts until the start or end of a named combatant's turn, for N rounds or until a save, or while its caster concentrates. On the tracker too, a condition the sheet's Cast gives in a fight keeps its countdown from the power's data: the GM's Next counts it down and takes it off on the right turn, and a save-ends one posts its save for a person to roll (#256). Out of a fight, such a condition keeps the power's SW5e duration and the GM's clock runs it down; a fight turns that into rounds and back (#260).</p>
 </li>
 <li class="item done" id="l-4-11" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">4.11</span> <span class="meta">computes · sometimes</span></p>
@@ -376,7 +376,7 @@
 <p class="nomatch" hidden>Nothing in this section matches the filters.</p>
 </details>
 <details class="sec" id="s-5">
-<summary><span class="sn">5.</span> <span class="st">The sheet's arithmetic</span> <span class="sc"><span class="tally">11 done · 2 partial · 1 missing</span><span class="shown" hidden></span></span></summary>
+<summary><span class="sn">5.</span> <span class="st">The sheet's arithmetic</span> <span class="sc"><span class="tally">12 done · 2 partial · 0 missing</span><span class="shown" hidden></span></span></summary>
 
 <ul class="items">
 <li class="item done" id="l-5-1" data-state="done" data-matters="every">
@@ -392,7 +392,7 @@
 <li class="item done" id="l-5-3" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">5.3</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Armor Class. SW5e derives AC from the armor worn (light adds Dex, medium adds up to +2 Dex, heavy is fixed), shields (light, medium, heavy), Unarmored Defense (Berserker, Monk), fighting styles and enhanced items. HoloTable's AC is a typed number; marking armor &quot;equipped&quot; changes nothing.</p>
-<p class="ev">Evidence: AC input (app.js:431); <code>equipped</code> flag only (app.js:528). <strong>Since 17 Nov:</strong> with &quot;auto&quot; ticked, AC is worked out from the equipped armor (light + Dex, medium + Dex up to +2, heavy fixed) and shield, or Unarmored Defense (Berserker, Monk, Blademaster), with the working in a tooltip; the server works it out too, and the tracker and combat view read it (#165). An Engineer's infused armor or shield adds its bonus (#189). Existing sheets keep their typed AC until auto is ticked.</p>
+<p class="ev">Evidence: AC input (app.js:431); <code>equipped</code> flag only (app.js:528). <strong>Since 17 Nov:</strong> with &quot;auto&quot; ticked, AC is worked out from the equipped armor (light + Dex, medium + Dex up to +2, heavy fixed) and shield, or Unarmored Defense (Berserker, Monk, Blademaster), with the working in a tooltip; the server works it out too, and the tracker and combat view read it (#165). An Engineer's infused armor or shield adds its bonus (#189). Existing sheets keep their typed AC until auto is ticked. A worn enhanced armor or shield's +N (once attuned, if it needs attunement) counts in the auto AC too (#234).</p>
 </li>
 <li class="item done" id="l-5-4" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">5.4</span> <span class="meta">computes · sometimes</span></p>
@@ -409,20 +409,20 @@
 <p class="text">Half proficiency. The arithmetic supports it, but the skill dot cycles none → proficient → expertise and can never set it.</p>
 <p class="ev">Evidence: rules.js:145; app.js:597. <strong>Since 17 Nov:</strong> the skill dot cycles none → proficient → expertise → half (#185).</p>
 </li>
-<li class="item missing" id="l-5-7" data-state="missing" data-matters="some">
-<p class="row"><span class="state missing"><span aria-hidden="true">✗</span> Missing</span> <span class="id">5.7</span> <span class="meta">none · sometimes</span></p>
+<li class="item partial" id="l-5-7" data-state="partial" data-matters="some">
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">5.7</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Wretched Hives' wider proficiency tiers (trained, mastery, high mastery, grand mastery, beside proficiency and expertise).</p>
-<p class="ev">Evidence: skills accept only 0, 0.5, 1, 2 (_holotable-game.js:144).</p>
+<p class="ev">Evidence: skills accept only 0, 0.5, 1, 2 (_holotable-game.js:144). <strong>Since 17 Nov:</strong> skills take mastery, high mastery and grand mastery (right-click the proficiency dot): twice the bonus and always advantage, high and grand mastery rolling the best of three; tool checks roll at any tier (#218). Saves are still proficient or not, and a tool's tier isn't kept on the sheet.</p>
 </li>
-<li class="item partial" id="l-5-8" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">5.8</span> <span class="meta">computes · sometimes</span></p>
+<li class="item done" id="l-5-8" data-state="done" data-matters="some">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">5.8</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Weapon property mechanics: versatile's two-handed die, reload and ammunition count, burst and rapid (area/save attacks), heavy and Strength/Dexterity requirements, range bands with long-range disadvantage, double-weapon and two-weapon bonus attacks. Properties are a text column.</p>
-<p class="ev">Evidence: attack <code>props</code> (app.js:498). <strong>Since 17 Nov:</strong> in the combat view (on main, off until the GM switches it on): versatile's two-handed die, heavy's Strength bonus, Strength or Dexterity numbers unmet giving disadvantage, Burst and Rapid as Dexterity saves (#137); long range at disadvantage (#89); Two- and Double-Weapon Fighting bonus attacks with a light weapon or a light and double weapon's other end (#143). Still missing: reload and ammunition counts (6.6).</p>
+<p class="ev">Evidence: attack <code>props</code> (app.js:498). <strong>Since 17 Nov:</strong> in the combat view (on main, off until the GM switches it on): versatile's two-handed die, heavy's Strength bonus, Strength or Dexterity numbers unmet giving disadvantage, Burst and Rapid as Dexterity saves (#137); long range at disadvantage (#89); Two- and Double-Weapon Fighting bonus attacks with a light weapon or a light and double weapon's other end (#143). Reload numbers and ammunition count in the combat view too: each attack uses a shot, and Reload refills the weapon from the gear (#212, 6.6). A Keen weapon's wider crit range, or the attack row's crit box, counts in the combat view: a roll in the range is a critical hit and always hits (#165, #219).</p>
 </li>
 <li class="item done" id="l-5-9" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">5.9</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Bonus damage from class features and styles (rage damage, Sneak Attack, Focused Strikes, Kinetic Combat, the fighting styles that change an attack (corrected 17 Nov: SW5e has no flat +2 style)) as options on the damage roll. Players type them into the damage box.</p>
-<p class="ev">Evidence: <code>damageExpr</code> (rules.js:178). <strong>Since 17 Nov:</strong> in the combat view (on main, off until the GM switches it on), the class features add their damage on a hit: Rage Damage and Sneak Attack (#134), Force-Empowered Strikes and Kinetic Combat's Double Strike, paid in force points (#136). SW5e's current fighting styles have no flat +2 (that was 5e's Dueling). The styles that change an attack are applied: Dual Wield, Split and Twin-Blade for two-weapon and double-weapon attacks (#143), Great Weapon and Snapshot's minimum roll thresholds (#152), and Snapshot and Sharpshooter stepping partial cover down (#159).</p>
+<p class="ev">Evidence: <code>damageExpr</code> (rules.js:178). <strong>Since 17 Nov:</strong> in the combat view (on main, off until the GM switches it on), the class features add their damage on a hit: Rage Damage and Sneak Attack (#134), Force-Empowered Strikes and Kinetic Combat's Double Strike, paid in force points (#136). SW5e's current fighting styles have no flat +2 (that was 5e's Dueling). The styles that change an attack are applied: Dual Wield, Split and Twin-Blade for two-weapon and double-weapon attacks (#143), Great Weapon and Snapshot's minimum roll thresholds (#152), and Snapshot and Sharpshooter stepping partial cover down (#159). Ranger's Quarry adds its die once a turn on a weapon hit on the marked creature (#229).</p>
 </li>
 <li class="item done" id="l-5-10" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">5.10</span> <span class="meta">computes · sometimes</span></p>
@@ -430,9 +430,9 @@
 <p class="ev">Evidence: <code>case 'hp'</code> (app.js:598–605). <strong>Since 17 Nov:</strong> the combat view (#89, #94; on main, off until the GM switches it on) applies a character's resistances, immunities and vulnerabilities, set in its Defences dialog, when it takes damage there.</p>
 </li>
 <li class="item partial" id="l-5-11" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">5.11</span> <span class="meta">stores · sometimes</span></p>
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">5.11</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Speed: walking speed is typed (or set by the species picker); armor and encumbrance penalties, slowed levels and other movement types (fly, swim, climb) are not modelled.</p>
-<p class="ev">Evidence: app.js:433; books.js:207.</p>
+<p class="ev">Evidence: app.js:433; books.js:207. <strong>Since 17 Nov:</strong> the sheet's speed and the combat view's go down for armor a character is too weak for (−10 ft), for cumbersome armor (−5 ft), and for load under the GM's Encumbrance variant (#172, #222, #238); the combat view counts slowed levels, exhaustion's too (#89); swim, climb, fly and burrow speeds show on the sheet from the species traits (#238), and a Monk's Unarmored Movement is added to the sheet's Speed and the combat view's (#254, #264). Still missing: the combat view moves everyone at walking speed; those speeds come only from trait text; the sheet's own Speed ignores exhaustion.</p>
 </li>
 <li class="item done" id="l-5-12" data-state="done" data-matters="nice">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">5.12</span> <span class="meta">stores · nicety</span></p>
@@ -453,7 +453,7 @@
 <p class="nomatch" hidden>Nothing in this section matches the filters.</p>
 </details>
 <details class="sec" id="s-6">
-<summary><span class="sn">6.</span> <span class="st">Equipment, enhanced items, modifications, credits, carrying</span> <span class="sc"><span class="tally">2 done · 5 partial · 3 missing</span><span class="shown" hidden></span></span></summary>
+<summary><span class="sn">6.</span> <span class="st">Equipment, enhanced items, modifications, credits, carrying</span> <span class="sc"><span class="tally">4 done · 6 partial · 0 missing</span><span class="shown" hidden></span></span></summary>
 
 <ul class="items">
 <li class="item done" id="l-6-1" data-state="done" data-matters="every">
@@ -462,39 +462,39 @@
 <p class="ev">Evidence: <code>openEquipPicker</code> (app.js:742); <code>buildEquipment</code> (api/holotable.js:134).</p>
 </li>
 <li class="item partial" id="l-6-2" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">6.2</span> <span class="meta">text · sometimes</span></p>
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">6.2</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Enhanced items (1,918 in SW5e's data): picker shows rarity and attunement; the item is added by name with a short note. Its bonuses (a +1 weapon, a shield's AC) are not applied unless typed into the attack's small box; the item's text is not kept on the sheet.</p>
-<p class="ev">Evidence: <code>itemNotes</code> (app.js:736); <code>buildEnhanced</code> (api/holotable.js:150).</p>
+<p class="ev">Evidence: <code>itemNotes</code> (app.js:736); <code>buildEnhanced</code> (api/holotable.js:150). <strong>Since 17 Nov:</strong> an enhanced item keeps the +N to attack, damage or AC its SW5e text gives: a worn item's +AC counts in the auto AC (once attuned, if it needs attunement), an enhanced weapon made from a known standard weapon gets that weapon's attack with its +N, and an ⓘ on any gear row shows the item's text (#234). Still missing: a weapon whose base isn't found, or whose bonus is to attack only, gets no +N on an attack; a weapon's +N doesn't wait for attunement; other effects (resistances, save bonuses, charges) are text.</p>
 </li>
-<li class="item missing" id="l-6-3" data-state="missing" data-matters="some">
-<p class="row"><span class="state missing"><span aria-hidden="true">✗</span> Missing</span> <span class="id">6.3</span> <span class="meta">none · sometimes</span></p>
+<li class="item done" id="l-6-3" data-state="done" data-matters="some">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">6.3</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Attunement: an attuned flag per item; the limit is the character's proficiency bonus, with advanced, legendary and artifact items taking two slots each (Wretched Hives); attuning takes a short rest.</p>
-<p class="ev">Evidence: no field in equipment (<code>cleanChar</code>, _holotable-game.js:159).</p>
+<p class="ev">Evidence: no field in equipment (<code>cleanChar</code>, _holotable-game.js:159). <strong>Since 17 Nov:</strong> enhanced items from the picker keep their rarity and whether they need attunement, and get an attune tick. Slots follow the proficiency bonus, advanced and higher items take two, and a player can't go past them (the GM can); attuning's short rest is said on the tick. The GM can switch on Simpler Attunement (#227). A modified chassis needs attunement while anything is installed (#236).</p>
 </li>
-<li class="item missing" id="l-6-4" data-state="missing" data-matters="some">
-<p class="row"><span class="state missing"><span aria-hidden="true">✗</span> Missing</span> <span class="id">6.4</span> <span class="meta">none · sometimes</span></p>
+<li class="item partial" id="l-6-4" data-state="partial" data-matters="some">
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">6.4</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Wretched Hives item modification: modifiable item chassis with 4 to 6 modification slots by rarity, modifications installed into them, chassis rarity upgrades, cybernetic augmentations and droid customizations. This is the largest part of SW5e's item data: 1,025 of its 1,918 enhanced items are item modifications, plus 46 augmentations and 48 droid customizations. HoloTable's enhanced picker lists them, and adding one puts a line in the inventory, but there is no chassis, no slot and no installed modification. No data model.</p>
-<p class="ev">Evidence: no code.</p>
+<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> a chassis from the enhanced picker has slots by rarity (four, plus augment slots at prototype and above); a Mods dialog installs a fitting modification or removes one, with the item's tool against its rarity's DC (the GM may skip the check), and the modifications' +N add up (#236). Cybernetic augmentations (up to the proficiency bonus, with side effects) and droid customizations (motor slots, upgraded for credits) install the same way (#251), and a chassis upgrades one rarity step on a check, a d20 of 1 destroying a modification (#252). Still missing: a weapon chassis gets no attack row, so its +N to attack and damage reaches no roll (only an armor or shield chassis's +AC counts); other effects of modifications and implants are text.</p>
 </li>
-<li class="item missing" id="l-6-5" data-state="missing" data-matters="some">
-<p class="row"><span class="state missing"><span aria-hidden="true">✗</span> Missing</span> <span class="id">6.5</span> <span class="meta">none · sometimes</span></p>
+<li class="item partial" id="l-6-5" data-state="partial" data-matters="some">
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">6.5</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Carrying capacity and encumbrance (PHB &quot;Lifting and Carrying&quot;, and the encumbrance variant). Item weight is shown in the picker but not stored.</p>
-<p class="ev">Evidence: equipment fields (_holotable-game.js:159).</p>
+<p class="ev">Evidence: equipment fields (_holotable-game.js:159). <strong>Since 17 Nov:</strong> items keep their weight, and the sheet adds up what a character carries against a carrying capacity that follows its size; with the GM's Encumbrance variant on, Speed shows the slower pace (#172). In the combat view, the variant slows an encumbered character, and a heavily encumbered one rolls Str, Dex and Con attacks, saves and checks at disadvantage (#222). Still missing: the sheet's Carrying row names that disadvantage, but the sheet's own rolls don't apply it, and pushing, dragging and lifting past the capacity aren't applied.</p>
 </li>
-<li class="item partial" id="l-6-6" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">6.6</span> <span class="meta">computes · sometimes</span></p>
+<li class="item done" id="l-6-6" data-state="done" data-matters="some">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">6.6</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Ammunition and power cells: count shots, reload.</p>
-<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> on the sheet, a Reload N weapon shows its shots, each attack uses one and is refused at 0, and ⟳ Reload refills it from a power cell or slug cartridge in the gear, the GM able to reload anyway (#179). The combat view's half is still to come.</p>
+<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> on the sheet, a Reload N weapon shows its shots, each attack uses one and is refused at 0, and ⟳ Reload refills it from a power cell or slug cartridge in the gear, the GM able to reload anyway (#179). In the combat view too, each attack uses its shots (a volley its burst or rapid number), and Reload, an action or a bonus action, takes a power cell or slug cartridge from the gear; Undo gives both back (#212).</p>
 </li>
 <li class="item partial" id="l-6-7" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">6.7</span> <span class="meta">stores · sometimes</span></p>
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">6.7</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Consumables (medpacs, stims, grenades): quantity is editable, but there is no &quot;use&quot; that rolls the effect and lowers the count.</p>
-<p class="ev">Evidence: equipment rows (app.js:526–528).</p>
+<p class="ev">Evidence: equipment rows (app.js:526–528). <strong>Since 17 Nov:</strong> a medpac, stim or grenade keeps what its SW5e text does: Use takes one off the count and rolls it, a medpac or stim's healing applied to this character or posted for someone else, a grenade's save DC posted and its damage rolled (#228). Still missing: a grenade's save and damage aren't applied to anyone (no area, no target saves, no Use in the combat view); an item whose text isn't read only loses one from its count.</p>
 </li>
 <li class="item partial" id="l-6-8" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">6.8</span> <span class="meta">stores · sometimes</span></p>
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">6.8</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Credits: a number. Buying from the picker doesn't spend credits; selling and Wretched Hives' buying and selling of enhanced items aren't modelled.</p>
-<p class="ev">Evidence: app.js:524; picker <code>add</code> (app.js:817–825).</p>
+<p class="ev">Evidence: app.js:524; picker <code>add</code> (app.js:817–825). <strong>Since 17 Nov:</strong> gear with a price can be bought from the picker, which takes the credits and refuses when they're short, and an inventory row sells one at a time for half its cost or an agreed price, said in chat (#187). Wretched Hives' buying and selling of enhanced items are downtime activities: the GM approves the days and the cost, the check finds a seller by rarity, and the offer comes from Wretched Hives' tables (#226); the item and the price still change hands by hand, and enhanced items have no price to buy at in the picker.</p>
 </li>
 <li class="item done" id="l-6-9" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">6.9</span> <span class="meta">computes · sometimes</span></p>
@@ -502,9 +502,9 @@
 <p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> a 🎒 Party stash everyone sees: items with a rarity, Take onto a character's gear (a player onto their own), and the GM's Share out of the credits (#195).</p>
 </li>
 <li class="item partial" id="l-6-10" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">6.10</span> <span class="meta">stores · sometimes</span></p>
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">6.10</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Tools and kits: proficiency is free text, there is no tool check button, and Wretched Hives' special tool uses are text in the library.</p>
-<p class="ev">Evidence: Proficiencies box (app.js:539).</p>
+<p class="ev">Evidence: Proficiencies box (app.js:539). <strong>Since 17 Nov:</strong> a Tool check button rolls with a kit from the gear or Proficiencies, the ability the GM calls for, and its tier (#218). Tool proficiency is still free text, and the special tool uses are still text. Installing, removing and upgrading modifications and implants (#236, #251, #252), and crafting (#245), roll Intelligence with the tool Wretched Hives' Item Specific Tools names, at the tier the Proficiencies text gives.</p>
 </li>
 </ul>
 <p class="nomatch" hidden>Nothing in this section matches the filters.</p>
@@ -664,7 +664,7 @@
 <p class="nomatch" hidden>Nothing in this section matches the filters.</p>
 </details>
 <details class="sec" id="s-9">
-<summary><span class="sn">9.</span> <span class="st">The GM's side</span> <span class="sc"><span class="tally">17 done · 1 partial · 0 missing</span><span class="shown" hidden></span></span></summary>
+<summary><span class="sn">9.</span> <span class="st">The GM's side</span> <span class="sc"><span class="tally">15 done · 3 partial · 0 missing</span><span class="shown" hidden></span></span></summary>
 
 <ul class="items">
 <li class="item done" id="l-9-1" data-state="done" data-matters="every">
@@ -707,15 +707,15 @@
 <p class="text">XP awarded after an encounter, split among characters.</p>
 <p class="ev">Evidence: no code; XP is typed on each sheet. <strong>Since 17 Nov:</strong> ★ Award XP… splits an amount among the characters (prefilled from the encounter meter), and the GM is told who has enough for a level; nobody levels on their own (#184).</p>
 </li>
-<li class="item done" id="l-9-9" data-state="done" data-matters="some">
-<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">9.9</span> <span class="meta">computes · sometimes</span></p>
+<li class="item partial" id="l-9-9" data-state="partial" data-matters="some">
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">9.9</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Custom NPCs: name, initiative bonus, HP, AC and count only. No custom stat block, no saved NPC template, no editing of an SW5e creature.</p>
-<p class="ev">Evidence: NPC form (app.js:978–985). <strong>Since 17 Nov:</strong> the GM saves NPC templates (stats, attack lines, private notes) and adds them to the tracker with a GM-only card of rolls; players never get them (#184).</p>
+<p class="ev">Evidence: NPC form (app.js:978–985). <strong>Since 17 Nov:</strong> the GM saves NPC templates (stats, attack lines, private notes) and adds them to the tracker with a GM-only card of rolls; players never get them (#184). Still missing: a template has no ability scores, saves, skills, resistances or speed; its attacks roll from its card but aren't offered in the combat view; and an SW5e creature can't be copied into a template to edit.</p>
 </li>
-<li class="item done" id="l-9-10" data-state="done" data-matters="some">
-<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">9.10</span> <span class="meta">computes · sometimes</span></p>
+<li class="item partial" id="l-9-10" data-state="partial" data-matters="some">
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">9.10</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Loot: enhanced items awarded by rarity and level (Wretched Hives, &quot;Awarding Enhanced Items&quot;), or treasure rolls.</p>
-<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> 🎁 Loot… rolls enhanced items from SW5e's list by rarity and kind (reroll a row, untick any), with optional credits, into the party stash (#195).</p>
+<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> 🎁 Loot… rolls enhanced items from SW5e's list by rarity and kind (reroll a row, untick any), with optional credits, into the party stash (#195). Still missing: Wretched Hives' tables by party level; the GM chooses the rarity.</p>
 </li>
 <li class="item done" id="l-9-11" data-state="done" data-matters="every">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">9.11</span> <span class="meta">computes · every session</span></p>
@@ -745,7 +745,7 @@
 <li class="item partial" id="l-9-16" data-state="partial" data-matters="some">
 <p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">9.16</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Variant rules: all 40 are in the library and the GM marks which the table uses, for everyone to see. None of them changes any arithmetic (for example Flanking, Called Shots, Crueler Criticals, Critical Saving Throws, Defense Rolls, Wounds, Destiny, Force Alignment, Exertion, Tactical Initiative).</p>
-<p class="ev">Evidence: <code>variants.set</code> (_holotable-game.js:762); books.js:447–452. <strong>Since 17 Nov:</strong> the combat view (on main, off until the GM switches it on) applies four of them when marked: Flanking, Compound Advantage, Crueler Criticals and Critical Saving Throws. The rest change nothing yet.</p>
+<p class="ev">Evidence: <code>variants.set</code> (_holotable-game.js:762); books.js:447–452. <strong>Since 17 Nov:</strong> the combat view (on main, off until the GM switches it on) applies four of them when marked: Flanking, Compound Advantage, Crueler Criticals and Critical Saving Throws (#105); its encumbrance (#222) is the Player's Handbook's variant, not one of the 40, and is on 6.5. On the sheet, seven more act when marked: Longer Rests, Exertion, Simplified Forcecasting, Saving Throw Checks, Force and Tech Prowess, Hunted, and Milestone Leveling (a note) (#221). The combat view also applies Wounds (dropping to 0 asks a Con save at a rising DC, and each wounded level is a death save failure) and Strenuous Combat (each survivor's Con save against exhaustion when the GM ends the fight) (#233). That makes 13 of the 40 that act when marked, and Careful Checks is always on (#195). Still missing: the other 26, among them Called Shots, Defense Rolls, Destiny, Force Alignment and Tactical Initiative.</p>
 </li>
 <li class="item done" id="l-9-17" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">9.17</span> <span class="meta">computes · sometimes</span></p>
@@ -761,7 +761,7 @@
 <p class="nomatch" hidden>Nothing in this section matches the filters.</p>
 </details>
 <details class="sec" id="s-10">
-<summary><span class="sn">10.</span> <span class="st">Starships and space combat (Starships of the Galaxy)</span> <span class="sc"><span class="tally">10 done · 7 partial · 2 missing</span><span class="shown" hidden></span></span></summary>
+<summary><span class="sn">10.</span> <span class="st">Starships and space combat (Starships of the Galaxy)</span> <span class="sc"><span class="tally">11 done · 8 partial · 0 missing</span><span class="shown" hidden></span></span></summary>
 
 <ul class="items">
 <li class="item done" id="l-10-1" data-state="done" data-matters="some">
@@ -787,7 +787,7 @@
 <li class="item partial" id="l-10-5" data-state="partial" data-matters="some">
 <p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">10.5</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">What size and tier give a ship: hull and shield dice, hull points per hull die, modification capacity, maximum suites, stock modifications, base ability scores, minimum crew. Every number is typed; changing size or tier changes nothing. (SW5e's <code>starshipBaseSize</code> reply carries these as zeros, so they would come from the SotG chapter tables.)</p>
-<p class="ev">Evidence: <code>blankShip</code> (books.js:469); no code. <strong>Since 17 Nov:</strong> a &quot;From size, tier and role&quot; panel sets hull and shield dice and points, AC (armor and tier), the role's speed and turning, suites, modification slots and the size's saves, checked against SotG's worked example (#154, #183). Ability adjustments are shown as guidance; the scores are typed. Still missing: stock modifications and minimum crew.</p>
+<p class="ev">Evidence: <code>blankShip</code> (books.js:469); no code. <strong>Since 17 Nov:</strong> a &quot;From size, tier and role&quot; panel sets hull and shield dice and points, AC (armor and tier), the role's speed and turning, suites, modification slots and the size's saves, checked against SotG's worked example (#154, #183). Ability adjustments are shown as guidance; the scores are typed. The minimum crew, by size and Intelligence, is in the Costs and crew panel (#224). Still missing: stock modifications.</p>
 </li>
 <li class="item done" id="l-10-6" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">10.6</span> <span class="meta">computes · sometimes</span></p>
@@ -797,7 +797,7 @@
 <li class="item done" id="l-10-7" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">10.7</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Shields: regeneration rate and shield types (directional, fortress, quick-charge) as rules, and the Regenerate Shields action. Regen is a text box; &quot;Restore shields&quot; adds a typed number.</p>
-<p class="ev">Evidence: books.js:516, 595. <strong>Since 17 Nov:</strong> regeneration rate from the shield type and die (halved at system damage 4), passive regeneration at the start of the ship's turn (not while shields are down), the Regenerate Shields action, and Boost Shields' temporary points (#154). Shield capacity is still typed (10.5).</p>
+<p class="ev">Evidence: books.js:516, 595. <strong>Since 17 Nov:</strong> regeneration rate from the shield type and die (halved at system damage 4), passive regeneration at the start of the ship's turn (not while shields are down), the Regenerate Shields action, and Boost Shields' temporary points (#154). Shield capacity comes from the shield dice and the shield type, set by the From size, tier and role panel (#183).</p>
 </li>
 <li class="item done" id="l-10-8" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">10.8</span> <span class="meta">computes · sometimes</span></p>
@@ -817,42 +817,42 @@
 <li class="item partial" id="l-10-11" data-state="partial" data-matters="some">
 <p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">10.11</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Ship combat turn structure: initiative with the size modifier, each crew member acting by role (Boost, Detect, Direct, Fire, Helm with its manoeuvres, Interfere, Patch, Regenerate Shields), facing, firing arcs and turning speed. Ships can be added to the character tracker as plain NPC rows; nothing else.</p>
-<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> Boost and Regenerate Shields; initiative (party ships at their crew's lowest roll, enemy ships at Dexterity plus the size modifier); turn order on the space map; facing; movement in feet with turning speed (#154, #161). Fire with arcs, ranges and weapon properties (#169). Still missing: Dogfight, Attack Run, Conceal and Harass.</p>
+<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> Boost and Regenerate Shields; initiative (party ships at their crew's lowest roll, enemy ships at Dexterity plus the size modifier); turn order on the space map; facing; movement in feet with turning speed (#154, #161). Fire with arcs, ranges and weapon properties (#169). Helm's Evade, Fly, Hard Turn and Ram, and the Patch, Interfere and Direct actions (#177); Dogfight, Harass, Attack Run and Conceal, and a pilot firing from the helm at disadvantage (#239). Still missing: Detect (a Scan or Probe check rolls from the sheet, but nothing finds a concealed ship, which stays unseen until it attacks), Direct's advantage on an ally's ability check, and Fire's once-per-weapon-a-turn limit.</p>
 </li>
 <li class="item partial" id="l-10-12" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">10.12</span> <span class="meta">stores · sometimes</span></p>
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">10.12</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Deployments and ranks: deployment and rank 0–5 are stored per crew member and each deployment's features open in a pop-up; rank features and their uses aren't tracked.</p>
-<p class="ev">Evidence: books.js:518–524, 628–639.</p>
+<p class="ev">Evidence: books.js:518–524, 628–639. <strong>Since 17 Nov:</strong> each crew row shows its deployment's rank features up to its rank, with their text, and the techniques it knows (two at 1st rank, one more each rank after); Use spends a power die from the technique's system or central store, or rolls a mechanic's tech die, on the server (#230). Still missing: rank features' uses (Dependable Pilot's uses, I'll Try Spinning's once a long rest) and the limit of one technique a turn.</p>
 </li>
-<li class="item partial" id="l-10-13" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">10.13</span> <span class="meta">text · sometimes</span></p>
+<li class="item done" id="l-10-13" data-state="done" data-matters="some">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">10.13</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Ship modifications (257 in SW5e's data): the SotG picker shows type, grade and prerequisites, and adds the name; slots used against capacity, grade against tier, prerequisites and the installation check aren't checked.</p>
-<p class="ev">Evidence: <code>openShipModPicker</code> (books.js:619).</p>
+<p class="ev">Evidence: <code>openShipModPicker</code> (books.js:619). <strong>Since 17 Nov:</strong> the Modifications box counts slots and suites against the ship's size, each modification shows its installation DC (by grade and tier), cost and prerequisites (✓, ✗ or ? for the GM), and Install check rolls the mechanic's check on the server (#216).</p>
 </li>
 <li class="item partial" id="l-10-14" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">10.14</span> <span class="meta">text · sometimes</span></p>
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">10.14</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Ship equipment (104 items: armor, shields, reactors, couplings, hyperdrives, navcomputers, ammunition): picked and listed with notes; their effects on AC, shields, speed and power aren't applied.</p>
-<p class="ev">Evidence: <code>openShipEquipPicker</code> (books.js:602–616).</p>
+<p class="ev">Evidence: <code>openShipEquipPicker</code> (books.js:602–616). <strong>Since 17 Nov:</strong> armor, shields, reactors, couplings and hyperdrives picked from SotG's list now count: armor sets how much Dexterity reaches AC and the damage reduction against hits (reinforced armor also gives disadvantage on Conceal), shields set capacity and regeneration, reactors power dice and fuel use, couplings the power stores (except that a ship with a Directional Shield in its equipment reads as the Direct coupling, #266), and a hyperdrive's class the trip time (#154, #183, #220, #239). A tertiary launcher fires the round loaded in it, from SotG chapter 5's Tertiary Ammunition table (damage by ship size, type, range and properties); tertiary and quaternary reloads scale with the ship's size; and a natural 1 on the save against a tertiary weapon takes the damage at its maximum (#250). Still missing: the special rounds (the Conner net, the discord missile, the S-thread tracer, the flechette torpedo) work only from their text; navcomputers aren't read; and equipment cost, workforce and installation time by size.</p>
 </li>
 <li class="item partial" id="l-10-15" data-state="partial" data-matters="some">
 <p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">10.15</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Ship weapon properties and ammunition (rapid, burst, homing, ionizing, reload, missiles and torpedoes counted). Text only.</p>
-<p class="ev">Evidence: weapon <code>props</code> (books.js:536–544). <strong>Since 17 Nov:</strong> on the space map, Fire reads a weapon's category, mount arc and ranges, counts ammunition, and applies heavy, keen, ionizing, homing and the Constitution requirement (#169). Still missing: rapid and burst, overheat, reload timing, dire, piercing, melt, saturate, vicious and zone.</p>
+<p class="ev">Evidence: weapon <code>props</code> (books.js:536–544). <strong>Since 17 Nov:</strong> on the space map, Fire reads a weapon's category, mount arc and ranges, counts ammunition, and applies heavy, keen, ionizing, homing and the Constitution requirement (#169). Rapid and burst fire, overheat with Cool, Reload and saturate (#209); dire, piercing, melt, vicious and explosive (#244); zone, switched on with an action, making difficult terrain in its arc and normal range and giving advantage against tertiary weapons from outside it (#249). A tertiary launcher fires the round loaded in it, tertiary and quaternary reloads scale with the ship's size, and a natural 1 on the save against a tertiary weapon takes the damage at its maximum (#250). Still missing: quaternary weapons (bombs and mines can't be dropped or launched), the special rounds' effects (Conner net, discord missile, flechette torpedo, S-thread tracer, the bombs and mines), and Huge ships' point-defense primaries working by zone (they fire as a save instead).</p>
 </li>
-<li class="item missing" id="l-10-16" data-state="missing" data-matters="some">
-<p class="row"><span class="state missing"><span aria-hidden="true">✗</span> Missing</span> <span class="id">10.16</span> <span class="meta">none · sometimes</span></p>
+<li class="item partial" id="l-10-16" data-state="partial" data-matters="some">
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">10.16</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Hyperspace and realspace travel: travel times, astrogation checks and their results, fuel use, start-up procedures.</p>
-<p class="ev">Evidence: no code; fuel is a text box.</p>
+<p class="ev">Evidence: no code; fuel is a text box. <strong>Since 17 Nov:</strong> a Travel panel on the ship sheet gives a hyperspace trip's time and fuel by region and hyperdrive class, rushed or with care; astrogation and emergency start-up checks roll on the server, and the jump spends the fuel and rolls a mishap when rushed (#220). Realspace too: a travel pace (fast doubles the speed with disadvantage on Probe and Scan, slow halves it), SotG's sample travel times at that pace, and fuel by the day in realspace or the hour in atmosphere, spent on the server (#242). Still missing: taking off before the start-up is done (the Start-Up Mishaps table), an emergency start-up count that never resets, and a rushed jump's lasting mishaps (AC −2, no hyperdrive, disadvantage until refitted), which are text only.</p>
 </li>
-<li class="item missing" id="l-10-17" data-state="missing" data-matters="nice">
-<p class="row"><span class="state missing"><span aria-hidden="true">✗</span> Missing</span> <span class="id">10.17</span> <span class="meta">none · nicety</span></p>
+<li class="item partial" id="l-10-17" data-state="partial" data-matters="nice">
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">10.17</span> <span class="meta">computes · nicety</span></p>
 <p class="text">Buying, financing, building and upgrading ships (stock cost, tier upgrade cost and workforce), docking fees, NPC crew costs.</p>
-<p class="ev">Evidence: no code.</p>
+<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> a Costs and crew panel shows what a ship of its size costs new, on a bank loan or from a loan shark, to build, and to upgrade to the next tier (with workforce and days), to dock and to crew, with the minimum crew and what a short crew means (#224). It informs; it doesn't spend credits or change the tier. Still missing from NPC crew costs: droid crews (900 cr each, 2 cr a day), officers by tier (hiring bonus and daily salary, or a droid officer's price and upkeep), and room and board changing the pay.</p>
 </li>
 <li class="item partial" id="l-10-18" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">10.18</span> <span class="meta">text · sometimes</span></p>
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">10.18</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Ventures (67 starship feats), gunning styles and masteries, multispecializing. Ventures are in the feature picker as text with prerequisites shown, not checked; gunning styles and masteries are not in any picker.</p>
-<p class="ev">Evidence: <code>featureTabs</code> ventures (books.js:295).</p>
+<p class="ev">Evidence: <code>featureTabs</code> ventures (books.js:295). <strong>Since 17 Nov:</strong> each crew row picks its ventures (one per rank, from SW5e's list; Gunning Stylist and Gunning Mastery may repeat), gunning styles (a Gunner's 2nd and 4th rank, plus ventures) and masteries (4th rank, plus ventures), and the firing crew member's Cannoneer, Heavy Gunner, Payload Delivery and the three masteries change their shots. One character on several crew rows (multispecializing) shows its summed rank (#253). Still missing: a venture's prerequisites are shown, not checked, and the other ventures act only as their text.</p>
 </li>
 <li class="item done" id="l-10-19" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">10.19</span> <span class="meta">computes · sometimes</span></p>
@@ -863,23 +863,23 @@
 <p class="nomatch" hidden>Nothing in this section matches the filters.</p>
 </details>
 <details class="sec" id="s-11">
-<summary><span class="sn">11.</span> <span class="st">Downtime, factions and the rest of Wretched Hives</span> <span class="sc"><span class="tally">4 done · 0 partial · 2 missing</span><span class="shown" hidden></span></span></summary>
+<summary><span class="sn">11.</span> <span class="st">Downtime, factions and the rest of Wretched Hives</span> <span class="sc"><span class="tally">2 done · 4 partial · 0 missing</span><span class="shown" hidden></span></span></summary>
 
 <ul class="items">
-<li class="item missing" id="l-11-1" data-state="missing" data-matters="some">
-<p class="row"><span class="state missing"><span aria-hidden="true">✗</span> Missing</span> <span class="id">11.1</span> <span class="meta">text · sometimes</span></p>
+<li class="item partial" id="l-11-1" data-state="partial" data-matters="some">
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">11.1</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Downtime activities, each with resources, resolution, complications and &quot;uptime&quot;: bounty hunting, buying enhanced items, carousing, crafting, crime, espionage, gambling, mercenary contracting, pit fighting, racing, research, selling enhanced items, training, work. Readable in the Rules library; nothing tracks days spent, costs or results.</p>
-<p class="ev">Evidence: library only (books.js:395).</p>
+<p class="ev">Evidence: library only (books.js:395). <strong>Since 17 Nov:</strong> the GM grants downtime days (and can charge living costs with them); a player asks for one of 13 activities, the GM approves it and sets the check and the cost, and the character rolls, the result read from Wretched Hives' tables and a complication sent to the GM (#226). Still missing: each activity's uptime; crafting is 11.2. A GM's level undo keeps the downtime granted since (#240). The credits a result earns are added by the GM by hand.</p>
 </li>
-<li class="item missing" id="l-11-2" data-state="missing" data-matters="some">
-<p class="row"><span class="state missing"><span aria-hidden="true">✗</span> Missing</span> <span class="id">11.2</span> <span class="meta">none · sometimes</span></p>
+<li class="item partial" id="l-11-2" data-state="partial" data-matters="some">
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">11.2</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Crafting: blueprints known (half level, or level with expertise), materials, tool checks, time and cost; experimenting and reverse engineering.</p>
-<p class="ev">Evidence: no code.</p>
+<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> a player picks an item from SW5e's gear or enhanced items and asks to craft it; the GM approves the value, the days (value ÷ 250), the materials (half the value) and the tool, spent from downtime; the character rolls Intelligence with the tool, Wretched Hives' Crafting Results set what the materials really cost, and the item lands in the gear, with a chance of a complication each workweek (#245). Still missing: blueprints known (the list and the half-level count); rare materials are a reminder to the GM only; experimenting and reverse engineering.</p>
 </li>
-<li class="item done" id="l-11-3" data-state="done" data-matters="some">
-<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">11.3</span> <span class="meta">computes · sometimes</span></p>
+<li class="item partial" id="l-11-3" data-state="partial" data-matters="some">
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">11.3</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Factions: membership, ranks, renown, dues, faction training, insignia, stockpiles; and the party's own faction (ideals, headquarters, faction ability scores, recruitment).</p>
-<p class="ev">Evidence: no code; GM notes are free text. <strong>Since 17 Nov:</strong> factions with a tier, renown, members with ranks and rank names, insignia, dues the GM collects from each member's credits, training on offer, a stockpile, public and GM-only notes, and the party's own faction with headquarters, ideals, recruitment and named scores; the GM moves renown, said in chat when the faction is shown (#199, #215).</p>
+<p class="ev">Evidence: no code; GM notes are free text. <strong>Since 17 Nov:</strong> factions with a tier, renown, members with ranks and rank names, insignia, dues the GM collects from each member's credits, training on offer, a stockpile, public and GM-only notes, and the party's own faction with headquarters, ideals, recruitment and named scores; the GM moves renown, said in chat when the faction is shown (#199, #215). Still missing: Wretched Hives' thresholds. The tier and each member's rank are typed by the GM, not reached by renown, and a rank's requirements aren't checked; there's no faction proficiency bonus, no faction checks (the party's scores are free-named), and no monthly renown or headquarters costs.</p>
 </li>
 <li class="item done" id="l-11-4" data-state="done" data-matters="nice">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">11.4</span> <span class="meta">stores · nicety</span></p>
@@ -889,18 +889,18 @@
 <li class="item done" id="l-11-5" data-state="done" data-matters="nice">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">11.5</span> <span class="meta">computes · nicety</span></p>
 <p class="text">Lifestyle expenses and other costs of living between adventures (PHB, Adventuring).</p>
-<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> a lifestyle on each sheet, and the GM's 🏠 Charge takes N days of it from each character's credits at SW5e's rates (#199).</p>
+<p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> a lifestyle on each sheet, and the GM's 🏠 Charge takes N days of it from each character's credits at SW5e's rates (#199). Granting downtime days can charge each character's lifestyle for the same days (#226).</p>
 </li>
-<li class="item done" id="l-11-6" data-state="done" data-matters="nice">
-<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">11.6</span> <span class="meta">computes · nicety</span></p>
+<li class="item partial" id="l-11-6" data-state="partial" data-matters="nice">
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">11.6</span> <span class="meta">computes · nicety</span></p>
 <p class="text">Wretched Hives' critical saving throws and careful checks (&quot;taking 10&quot;) as roll options.</p>
-<p class="ev">Evidence: <code>rollDice</code> (_holotable-game.js:26) has keep/drop/exploding only. <strong>Since 17 Nov:</strong> Alt-click makes an ability check or skill carefully (10 on the d20, 15 with advantage, refused with disadvantage) (#195). Critical saving throws are the variant the combat view applies (#94).</p>
+<p class="ev">Evidence: <code>rollDice</code> (_holotable-game.js:26) has keep/drop/exploding only. <strong>Since 17 Nov:</strong> Alt-click makes an ability check or skill carefully (10 on the d20, 15 with advantage, refused with disadvantage) (#195). Critical saving throws are the variant the combat view applies (#105). Still missing: the critical fail and success ranges that Wretched Hives' features and items give (only the variant's 1 and 20 count, in the combat view); and a careful check can't be made on a tool check, a downtime roll, a roll the GM asks for, or the ship sheet's checks, or on a touch screen.</p>
 </li>
 </ul>
 <p class="nomatch" hidden>Nothing in this section matches the filters.</p>
 </details>
 <details class="sec" id="s-12">
-<summary><span class="sn">12.</span> <span class="st">The table itself</span> <span class="sc"><span class="tally">12 done · 0 partial · 1 missing</span><span class="shown" hidden></span></span></summary>
+<summary><span class="sn">12.</span> <span class="st">The table itself</span> <span class="sc"><span class="tally">10 done · 3 partial · 0 missing</span><span class="shown" hidden></span></span></summary>
 
 <ul class="items">
 <li class="item done" id="l-12-1" data-state="done" data-matters="every">
@@ -908,30 +908,30 @@
 <p class="text">Dice rolled on the server: any expression with keep/drop highest/lowest and exploding dice; totals, kept and dropped dice shown; natural 20 and 1 flagged.</p>
 <p class="ev">Evidence: <code>rollDice</code> (_holotable-game.js:26–68); test &quot;dice…&quot;.</p>
 </li>
-<li class="item done" id="l-12-2" data-state="done" data-matters="some">
-<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">12.2</span> <span class="meta">computes · sometimes</span></p>
+<li class="item partial" id="l-12-2" data-state="partial" data-matters="some">
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">12.2</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Dice modifiers the rules use: reroll low dice (some fighting styles), a minimum d20 result (the PHB's Minimum Roll Threshold; Reliable Talent). Not supported by the roller.</p>
-<p class="ev">Evidence: <code>TERM</code> (_holotable-game.js:23). <strong>Since 17 Nov:</strong> SW5e replaced rerolls with minimum roll thresholds (PHB chapter 7). The roller takes them as <code>min</code> (1d12min5: a die under 5 counts as 5, shown as 3→5), and the combat view (on main, off until the GM switches it on) applies Great Weapon and Snapshot Styles' thresholds (#152). One roll is capped at 300 dice. Reliable Talent's minimum d20 is still to come.</p>
+<p class="ev">Evidence: <code>TERM</code> (_holotable-game.js:23). <strong>Since 17 Nov:</strong> SW5e replaced rerolls with minimum roll thresholds (PHB chapter 7). The roller takes them as <code>min</code> (1d12min5: a die under 5 counts as 5, shown as 3→5), and the combat view (on main, off until the GM switches it on) applies Great Weapon and Snapshot Styles' thresholds (#152). One roll is capped at 300 dice. Reliable Talent's minimum 8 applies to the sheet's proficient skill and tool checks (#179, #218) and in the combat view's grapple and shove contests (#212). Still missing: a roll the GM asks for (#170), a downtime activity's check (#226), and the ship sheet's hull-die recharge, Install and emergency start-up checks roll a plain d20, with no Reliable Talent and no mastery dice.</p>
 </li>
 <li class="item done" id="l-12-3" data-state="done" data-matters="every">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">12.3</span> <span class="meta">computes · every session</span></p>
 <p class="text">Chat: whispers to a player or a character, GM-only rolls, yell, emotes, out-of-character, GM narration, a <code>/</code> command menu; the real sender always shown.</p>
 <p class="ev">Evidence: <code>case &quot;chat&quot;</code> (_holotable-game.js:419–480); <code>COMMANDS</code> (app.js:1989).</p>
 </li>
-<li class="item done" id="l-12-4" data-state="done" data-matters="some">
-<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">12.4</span> <span class="meta">stores · sometimes</span></p>
+<li class="item partial" id="l-12-4" data-state="partial" data-matters="some">
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">12.4</span> <span class="meta">stores · sometimes</span></p>
 <p class="text">A log of play. Chat keeps the last 400 messages (200 sent to the page) and the GM can clear it; there is no session log or export of chat.</p>
-<p class="ev">Evidence: <code>CHAT_LIMIT</code> (_holotable-game.js:11); <code>viewFor</code> (_holotable-game.js:184). <strong>Since 17 Nov:</strong> the GM downloads the whole chat the table keeps (all 400 messages) as a text file, and Clear chat log reminds them first (#192).</p>
+<p class="ev">Evidence: <code>CHAT_LIMIT</code> (_holotable-game.js:11); <code>viewFor</code> (_holotable-game.js:184). <strong>Since 17 Nov:</strong> the GM downloads the whole chat the table keeps (all 400 messages) as a text file, and Clear chat log reminds them first (#192). Still missing: a log longer than the chat. Only the last 400 messages are kept, so what rolls off before a download, or is cleared, is gone, and nothing is kept by session.</p>
 </li>
 <li class="item done" id="l-12-5" data-state="done" data-matters="nice">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">12.5</span> <span class="meta">computes · nicety</span></p>
 <p class="text">A record of sheet changes (who changed which number, and undo).</p>
 <p class="ev">Evidence: no code. <strong>Since 17 Nov:</strong> every sheet save that changes a tracked number records who, when and from → to; the GM's 🕘 History lists the last 30 with ↶ Undo for each (#201). Class levels, conditions and gear are shown, not undone.</p>
 </li>
-<li class="item done" id="l-12-6" data-state="done" data-matters="some">
-<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">12.6</span> <span class="meta">computes · sometimes</span></p>
+<li class="item partial" id="l-12-6" data-state="partial" data-matters="some">
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">12.6</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Values the GM controls by the table's rules (class level, XP, credits, HP maximum, items) can be typed by the player on their own sheet; class levels can be changed there without a GM grant. The server accepts any owner's sheet save.</p>
-<p class="ev">Evidence: class level input in <code>renderSheet</code> (app.js:416); <code>char.save</code> (_holotable-game.js:369). <strong>Since 17 Nov:</strong> the GM's &quot;Only I change levels, XP and max HP&quot; switch (off by default): with it on, a player's sheet save keeps those three, and only the GM's grant or edits move them (#191).</p>
+<p class="ev">Evidence: class level input in <code>renderSheet</code> (app.js:416); <code>char.save</code> (_holotable-game.js:369). <strong>Since 17 Nov:</strong> the GM's &quot;Only I change levels, XP and max HP&quot; switch (off by default): with it on, a player's sheet save keeps those three, and only the GM's grant or edits move them (#191). Under the lock a player's new sheet starts at 1st level with no XP and its class's 1st-level hit points, and current hit points can't pass the maximum (#197). Still missing: credits and items stay the player's to type with the lock on; the GM sees those changes only afterwards, in 🕘 History (#201).</p>
 </li>
 <li class="item done" id="l-12-7" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">12.7</span> <span class="meta">stores · sometimes</span></p>
@@ -943,10 +943,10 @@
 <p class="text">Saving and backups: every change saved, an automatic backup every 10 minutes of play (10 kept), a full download including images, restore, and a guard that refuses to save over a lost game.</p>
 <p class="ev">Evidence: _holotable-store.js:151–165; <code>op=export</code>, <code>op=restore</code> (api/holotable.js:366, 456); tests.</p>
 </li>
-<li class="item missing" id="l-12-9" data-state="missing" data-matters="nice">
-<p class="row"><span class="state missing"><span aria-hidden="true">✗</span> Missing</span> <span class="id">12.9</span> <span class="meta">none · nicety</span></p>
+<li class="item done" id="l-12-9" data-state="done" data-matters="nice">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">12.9</span> <span class="meta">stores · nicety</span></p>
 <p class="text">More than one campaign (a second game, a one-shot, a test table). There is one game.</p>
-<p class="ev">Evidence: <code>GAME = &quot;main&quot;</code> (api/holotable.js:24).</p>
+<p class="ev">Evidence: <code>GAME = &quot;main&quot;</code> (api/holotable.js:24). <strong>Since 17 Nov:</strong> the GM keeps up to five campaigns (a second game, a one-shot, a test table) under the same two passwords, and renames, deletes and switches between them. Players only ever reach the live one, and a switch moves everyone at once, said in chat (#208, #213). One campaign is live at a time, so two groups can't play different ones at the same moment.</p>
 </li>
 <li class="item done" id="l-12-10" data-state="done" data-matters="every">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">12.10</span> <span class="meta">computes · every session</span></p>
