@@ -1,5 +1,5 @@
 // The protocol frame: a slim, plated humanoid about 1.72 m tall. The type is from a study of many such droids (a
-// rounded mask of a head with round lit eyes or a visor, a plated chest with a round boss, a bare midriff of cables,
+// rounded mask of a head with round lit eyes or a visor, a plated chest, a bare midriff of cables,
 // limbs as plated tubes with open joints); this one's plating, face and fittings are our own.
 // It is built of the same panels as the others, wrapped round turned shapes: a dark core with shells over it, so every
 // plate has a real seam.
@@ -52,9 +52,11 @@ function head(K, state, scheme, rnd) {
     // the face: a mask plate with a mouth slot and a ridge down the middle
     m.panel(map, rad(-56), rad(56), y(0.014), y(0.166), { h: 0.0032, role: role('face'), rad: 0.014, seed: rnd(), drop: 0.008 });
     m.panel(map, rad(-56), rad(56), y(0.166), y(0.19), { role: role('domeskin', 3), rad: 0.008, seed: rnd() });   // the forehead
-    const mouth = [rad(-13), rad(13), y(0.042), y(0.058)], q = 0.0032, su = map.su((mouth[2] + mouth[3]) / 2), slot = [mouth[0] + q / su, mouth[1] - q / su, mouth[2] + q, mouth[3] - q];
-    m.frame(map, mouth, slot, { h: 0.0062, gap: 0, role: ROLE.steel, rad: 0.004, holeRad: 0.002, holeDrop: 0.003, wall: { out: 0.001, dh: -0.0032 } });
-    m.panel(map, slot[0], slot[1], slot[2], slot[3], { h: 0.0036, gap: 0, rad: 0.002, role: ROLE.dark, wall: null, edge: false });
+    for (const a of [-9, 0, 9]) {   // the voice: three upright slots
+      const o = [rad(a - 3.2), rad(a + 3.2), y(0.038), y(0.062)], q = 0.0026, su = map.su((o[2] + o[3]) / 2), slot = [o[0] + q / su, o[1] - q / su, o[2] + q, o[3] - q];
+      m.frame(map, o, slot, { h: 0.0058, gap: 0, role: ROLE.steel, rad: 0.003, holeRad: 0.0015, holeDrop: 0.0026, wall: { out: 0.001, dh: -0.0028 } });
+      m.panel(map, slot[0], slot[1], slot[2], slot[3], { h: 0.0034, gap: 0, rad: 0.0015, role: ROLE.dark, wall: null, edge: false });
+    }
     m.panel(map, rad(-2.4), rad(2.4), y(0.068), y(0.104), { h: 0.0058, gap: 0, rad: 0.002, role: role('face'), wall: { out: 0.0015, dh: -0.0028 }, seed: rnd() });
     if (state.form === 'visor') {
       // one band of dark glass with a lit line behind it
@@ -89,17 +91,28 @@ function trunk(K, state, scheme, rnd, spare) {
     const map = turned(pf, { deg: 6, stepV: 0.02, uvR: 0.18 }), c = context(K, map, scheme, rnd), y = (v) => pf.sAt(v);
     m.lathe(pf.pts.map(([r, v]) => [Math.max(r - 0.008, 0.001), v]), { role: ROLE.dark, wear: false, smooth: true, segs: 40 });
     const lo = y(1.134), hi = y(1.392), top = pf.len - 0.006;
-    const plates = [[-30, 30, 'trim'], [30, 92, 'skin'], [92, 128, 'side'], [128, 162, 'skin'], [-162, -128, 'skin'], [-128, -92, 'side'], [-92, -30, 'skin']];
+    const plates = [[30, 92, 'skin'], [92, 128, 'side'], [128, 162, 'skin'], [-162, -128, 'skin'], [-128, -92, 'side'], [-92, -30, 'skin']];
     plates.forEach(([a, b, tag], i) => m.panel(map, rad(a), rad(b), lo, hi, { role: role(tag, i, (a + b) / 2), rad: 0.012, seed: rnd(), flag: tag === 'skin' && rnd() < 0.2 ? 1 : 0 }));
+    // the breastbone plate, in pieces round the speaker
+    m.panel(map, rad(-30), rad(30), y(1.338), hi, { role: role('trim', 0), rad: 0.01, seed: rnd() });
+    m.panel(map, rad(-30), rad(-13), y(1.268), y(1.338), { role: role('trim', 0), rad: 0.006, seed: rnd() });
+    m.panel(map, rad(13), rad(30), y(1.268), y(1.338), { role: role('trim', 0), rad: 0.006, seed: rnd() });
+    m.panel(map, rad(-30), rad(30), lo, y(1.268), { role: role('trim', 0), rad: 0.01, seed: rnd() });
     // down the spine: a plate, a cooling grille, a plate
     m.panel(map, rad(162), rad(198), y(1.318), hi, { role: role('rim', 9, 180), rad: 0.008, seed: rnd() });
     KINDS.grille(c, [rad(162), rad(198), y(1.225), y(1.318)], { slats: 6 }, { deg: 180, i: 0 });
     m.panel(map, rad(162), rad(198), lo, y(1.225), { role: role('rim', 9, 180), rad: 0.008, seed: rnd() });
     [[-45, 45], [45, 135], [135, 225], [225, 315]].forEach(([a, b], i) => m.panel(map, rad(a), rad(b), hi, top, { role: role('rim', i, a + 45), rad: 0.008, seed: rnd() }));
-    const boss = (r0, r1, h, rl) => { const v = y(1.3), su = map.su(v); m.frame(map, [-r0 / su, r0 / su, v - r0, v + r0], [-r1 / su, r1 / su, v - r1, v + r1], { h, gap: 0, role: rl, rad: 1, holeRad: 1, holeDrop: h * 0.8, wall: { out: 0.0015, dh: -h }, cornerSegs: 6 }); };
-    boss(0.037, 0.029, 0.004, ROLE.steel); boss(0.023, 0.016, 0.0055, ROLE.brass);
-    { const v = y(1.3), su = map.su(v), r = 0.009; m.panel(map, -r / su, r / su, v - r, v + r, { h: 0.007, gap: 0, rad: 1, role: ROLE.metal, wall: { out: 0.0015, dh: -0.007 } }); }
-    for (const sx of [-1, 1]) for (let k = 0; k < 3; k++) m.panel(map, rad(sx * 17 - 6), rad(sx * 17 + 6), y(1.168 + k * 0.022), y(1.182 + k * 0.022), { h: 0.0022, gap: 0, rad: 0.003, role: ROLE.steel, drop: 0.0025, bevel: 0.0008 });
+    // on the breastbone: a small louvred speaker and a row of three lights under it (our own arrangement)
+    KINDS.vent(c, [rad(-13), rad(13), y(1.268), y(1.338)], {}, { deg: 0, i: 0 });
+    const cols = [[0.3, 0.6, 1], [1, 0.6, 0.08], [0.2, 1, 0.4]];
+    for (let k = 0; k < 3; k++) {
+      const v = y(1.236), su = map.su(v), x = (k - 1) * 0.02, rr = 0.0052, q = [(x - rr) / su, (x + rr) / su, v - rr, v + rr];
+      m.frame(map, [(x - rr - 0.002) / su, (x + rr + 0.002) / su, v - rr - 0.002, v + rr + 0.002], q, { h: 0.0022, gap: 0, role: ROLE.metal, rad: 1, holeRad: 1, holeDrop: 0.0015, drop: 0.0025, bevel: 0.0007 });
+      K.glow.color = cols[k]; K.glow.panel(map, q[0], q[1], q[2], q[3], { h: 0.0012, gap: 0, rad: 1, wall: null, edge: false });
+      c.halo(q, cols[k], 0.035);
+    }
+    for (const sx of [-1, 1]) for (let k = 0; k < 3; k++) m.panel(map, rad(sx * 19 - 5), rad(sx * 19 + 5), y(1.166 + k * 0.02), y(1.178 + k * 0.02), { h: 0.0022, gap: 0, rad: 0.003, role: ROLE.steel, drop: 0.0025, bevel: 0.0008 });
     if (state.bolt) K.bolt = M.mul(S, c.seat(rad(-21), y(1.36), 0));
   });
   // the neck: a dark column, a brass collar and four thin rods

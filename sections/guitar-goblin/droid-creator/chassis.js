@@ -1,5 +1,7 @@
 // The kinds of droid this page can build. Each chassis says what can be chosen for it, how to build its pieces,
 // which piece hangs on which, how to pose them, and where the cameras stand.
+// Each opens in colours and a layout of our own, chosen so that no default echoes a well-known unit; any look a
+// person builds from the options is theirs.
 import * as THREE from 'three';
 import { M, ROLE } from './hard.js';
 import { buildUtility, poseUtility } from './utility.js';
@@ -33,7 +35,7 @@ export const CHASSIS = {
       look: { label: 'Looking', items: [{ key: 'left', name: 'Left' }, { key: 'ahead', name: 'Ahead' }, { key: 'right', name: 'Right' }] },
       kit: { label: 'Attachments', multi: true, items: named(FITTINGS) },
     },
-    defaults: { form: 'round', layout: 'standard', scheme: 'service', stance: 'three', look: 'ahead', kit: '', finish: 'paint' },
+    defaults: { form: 'round', layout: 'technician', scheme: 'banded', stance: 'three', look: 'ahead', kit: '', primary: 'yellow', secondary: 'graphite', finish: 'paint', eye: 'amber' },
     moves: ['stance', 'look'],
     anim: { stance: (s) => (s.stance === 'three' ? 1 : 0), look: (s) => (s.look === 'left' ? -1 : s.look === 'right' ? 1 : 0) },
     build(state, on) { const st = { ...state, dome: state.form }, kits = buildUtility(st); addFittings(kits, st, on); return kits; },
@@ -50,7 +52,7 @@ export const CHASSIS = {
       stance: { label: 'Stance', items: [{ key: 'stand', name: 'Standing' }, { key: 'step', name: 'Mid-step' }] },
       kit: { label: 'Attachments', multi: true, items: [{ key: 'antenna', name: 'Antenna' }, { key: 'bolt', name: 'Restraining bolt' }, { key: 'leads', name: 'Jump leads' }] },
     },
-    defaults: { scheme: 'solid', stance: 'stand', kit: '', finish: 'paint' },
+    defaults: { scheme: 'solid', stance: 'stand', kit: '', primary: 'sand', secondary: 'graphite', finish: 'paint', eye: 'red' },
     moves: ['stance'],
     anim: { stance: (s) => (s.stance === 'step' ? 1 : 0) },
     build(state, on) {
@@ -75,7 +77,7 @@ export const CHASSIS = {
       look: { label: 'Looking', items: [{ key: 'left', name: 'Left' }, { key: 'ahead', name: 'Ahead' }, { key: 'right', name: 'Right' }] },
       kit: { label: 'Attachments', multi: true, items: [{ key: 'bolt', name: 'Restraining bolt' }, { key: 'comm', name: 'Comlink aerial' }, { key: 'limb', name: 'Replacement leg' }] },
     },
-    defaults: { form: 'twin', scheme: 'solid', stance: 'ease', look: 'ahead', kit: '', finish: 'metal' },
+    defaults: { form: 'twin', scheme: 'solid', stance: 'ease', look: 'ahead', kit: '', primary: 'cream', secondary: 'maroon', finish: 'paint', eye: 'amber' },
     moves: ['stance', 'look'],
     anim: { attend: (s) => (s.stance === 'attend' ? 1 : 0), greet: (s) => (s.stance === 'greet' ? 1 : 0), look: (s) => (s.look === 'left' ? -1 : s.look === 'right' ? 1 : 0) },
     build(state, on) { const kits = buildProtocol(state, on); if (kits.body.bolt) boltAt(kits.body, kits.body.bolt); return kits; },

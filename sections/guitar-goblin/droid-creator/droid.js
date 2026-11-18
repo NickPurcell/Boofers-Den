@@ -31,7 +31,8 @@ const SHARED_LAST = {
   eye: { label: 'Photoreceptor', swatch: true, items: EYES },
   wear: { label: 'Weathering', items: [{ key: 'fresh', name: 'Factory fresh', w: 0.0 }, { key: 'worn', name: 'In service', w: 0.45 }, { key: 'battered', name: 'Battered', w: 0.72 }, { key: 'scavenged', name: 'Scavenged', w: 1.0 }] },
 };
-const SHARED_DEFAULT = { chassis: 'utility', primary: 'white', secondary: 'teal', finish: 'paint', eye: 'red', wear: 'worn', seed: '7' };
+const SHARED_DEFAULT = { chassis: 'utility', primary: 'sand', secondary: 'graphite', finish: 'paint', eye: 'red', wear: 'worn', seed: '7' };
+const chosen = new Set();   // the shared choices a person has made themselves; the rest follow the chassis
 const state = {};
 const chassis = () => CHASSIS[state.chassis] || CHASSIS.utility;
 const options = () => ({ ...SHARED_FIRST, ...chassis().options, ...SHARED_LAST });
@@ -51,7 +52,7 @@ function settle(from = {}) {
   }
   state.seed = /^\d{1,4}$/.test(from.seed ?? state.seed ?? '') ? String(from.seed ?? state.seed) : SHARED_DEFAULT.seed;
 }
-settle(Object.fromEntries(new URLSearchParams(location.hash.slice(1))));
+{ const q = Object.fromEntries(new URLSearchParams(location.hash.slice(1))); for (const k of Object.keys(SHARED_LAST)) if (k in q) chosen.add(k); settle(q); }
 const writeHash = () => history.replaceState(null, '', '#' + new URLSearchParams(state).toString());
 
 /* ---------------- the renderer and the scene ---------------- */
@@ -205,8 +206,8 @@ function set(opt, k) {
   if (def.multi) { const on = kitSet(state[opt]); if (on.has(k)) on.delete(k); else on.add(k); state[opt] = [...on].join('.'); rebuild(); }
   else {
     if (state[opt] === k) return;
-    state[opt] = k;
-    if (opt === 'chassis') { for (const [q, v] of Object.entries(chassis().defaults)) if (SHARED_LAST[q]) state[q] = v; settle(); aim(true); panel(); rebuild(); frameView('whole'); }
+    state[opt] = k; if (SHARED_LAST[opt]) chosen.add(opt);
+    if (opt === 'chassis') { for (const [q, v] of Object.entries(chassis().defaults)) if (SHARED_LAST[q] && !chosen.has(q)) state[q] = v; settle(); aim(true); panel(); rebuild(); frameView('whole'); }
     else if (opt === 'primary' || opt === 'secondary' || opt === 'wear' || opt === 'finish') colours();
     else if ((chassis().moves || []).includes(opt)) aim(false);
     else rebuild();
@@ -238,6 +239,9 @@ document.getElementById('random').addEventListener('click', () => {
     state[k] = def.multi ? def.items.map((o) => o.key).filter(() => Math.random() < 0.35).join('.') : any(k);
   }
   do state.secondary = any('secondary'); while (state.secondary === state.primary);
+  // never roll the one combination that reads as the best-known unit of the type: a pale round-domed unit with blue trim
+  if (state.chassis === 'utility' && state.form === 'round' && ['white', 'cream', 'grey'].includes(state.primary) && ['blue', 'navy', 'teal'].includes(state.secondary)) state.primary = ['sand', 'olive', 'graphite', 'maroon'][Math.floor(Math.random() * 4)];
+  for (const k of Object.keys(SHARED_LAST)) chosen.add(k);
   state.seed = String(1 + Math.floor(Math.random() * 999));
   aim(false); rebuild(); paint(); writeHash();
 });
