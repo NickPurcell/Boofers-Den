@@ -5,6 +5,7 @@ import { headField } from './head-field.js';
 import { hairField } from './hair.js';
 import { extraFor } from './features.js';
 import { outfitPieces } from './outfits.js';
+import { tendrils } from './mikkian.js';
 
 export const RES = { head: 0.0027, bust: 0.008, hand: 0.0036, hair: 0.0034, cloth: 0.007, gear: 0.003 };
 const CUT = -0.128;   // where the head mesh stops and the bust mesh takes over, below the eyes
@@ -46,6 +47,10 @@ export function run(job, a) {
     const h = handField(a.side, a);
     return { mesh: mesh(h.field, h.bounds, RES.hand * Q, { aoStep: 0.003, uvScale: 0.03 }) };
   }
+  if (job === 'hair' && a.species === 'mikkian') {   // a Mikkian's head-tendrils, with how far along its tendril each vertex is
+    const T = tendrils(a.style, a.thick, headField(a).field), m = mesh(T.field, T.bounds, RES.hair * Q, { aoStep: 0.006, uvScale: 0.03 });
+    return { mesh: m, t: T.param(m.position) };
+  }
   if (job === 'hair') {   // in the head's own frame; the page sets it on the head
     const h = headField({ ...a, extra: extraFor(a) }), hair = hairField(a.style, h.field);
     if (!hair) return { mesh: null };
@@ -68,6 +73,7 @@ export function run(job, a) {
 export function transferables(out) {
   const list = [], take = (m) => { if (m) for (const k of ['position', 'normal', 'ao', 'uv', 'index']) if (m[k]) list.push(m[k].buffer); };
   take(out.mesh);
+  if (out.t) list.push(out.t.buffer);
   for (const p of out.pieces || []) take(p.mesh);
   return list;
 }

@@ -92,7 +92,7 @@ export function facePainter(size = 2048) {
     const arch = 0.6 + 0.6 * (1 - P.masc), lift = 0.0035 * (1 - P.masc);
     const spine = [[0.0085, 0.0158], [0.016, 0.0182], [0.026, 0.0198], [0.037, 0.0202], [0.047, 0.0186], [0.0545, 0.0155]].map(([x, y]) => [x * P.fw, 0.0182 + (y - 0.0158) * arch + lift]);
     const thick = [0.0034, 0.0036, 0.0031, 0.0025, 0.0017, 0.0008].map((t) => t * bw);
-    both((s) => {
+    if (o.brows !== false) both((s) => {
       soft(1.4, brow, () => { g.globalAlpha = 0.55; const top = spine.map(([x, y], i) => [s * x, y + thick[i]]), bot = spine.map(([x, y], i) => [s * x, y - thick[i]]).reverse(); path([...top, ...bot]); g.fill(); });
       g.save(); g.strokeStyle = brow; g.lineCap = 'round';
       for (let k = 0; k < 150; k++) {

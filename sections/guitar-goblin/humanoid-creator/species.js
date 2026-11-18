@@ -3,6 +3,7 @@
 // species; no default is any one named person's look.
 import { SPURS, TENDRILS, RIDGES } from './pureblood.js';
 import { PLACES, SHAPES, INKS } from './tattoos.js';
+import { ARRANGE, THICK, PATTERNS } from './mikkian.js';
 
 const named = (o) => Object.entries(o).map(([key, v]) => ({ key, name: v.name }));
 const sw = (...list) => list.map(([key, name, c]) => ({ key, name, c }));
@@ -41,6 +42,21 @@ export const SPECIES = {
     outfits: ['jacket', 'robe', 'coat', 'wraps'],
     defaults: { frame: 'fem', build: 'average', face: 'heart', age: 'adult', skin: 'olive', eyes: 'blue', style: 'tail', hair: 'black', marks: 'none', liner: 'soft', tattoo: 'brow.eyes', shape: 'triangle', ink: 'black', outfit: 'jacket', hood: 'down', gear: 'none', main: 'navy', second: 'sand' },
     groups: { tattoo: { label: 'Tattoos', multi: true, items: named(PLACES) }, shape: { label: 'Tattoo shape', items: named(SHAPES) }, ink: { label: 'Tattoo ink', swatch: true, items: INKS } },
+  },
+  mikkian: {
+    name: 'Mikkian', blurb: 'Bright skin and, in place of hair, a mane of slim head-tendrils.',
+    skins: sw(['blue', 'Medium blue', '#3d6fc0'], ['sky', 'Sky blue', '#6fa3d8'], ['teal', 'Teal', '#2f9a98'], ['green', 'Green', '#6aa84a'], ['yellowgreen', 'Yellow-green', '#b3be4a'], ['yellow', 'Yellow', '#dfc040'],
+      ['coral', 'Coral pink', '#e07a78'], ['rose', 'Rose', '#d2577a'], ['red', 'Red', '#c8443c'], ['magenta', 'Magenta', '#b2459a'], ['violet', 'Violet', '#7a55b8'], ['lavender', 'Lavender', '#b9a6dc']),
+    eyes: sw(['blue', 'Blue', '#3f78c8'], ['dark', 'Dark', '#2a2230'], ['violet', 'Violet', '#7a5ac0'], ['green', 'Green', '#3f9a6a'], ['amber', 'Amber', '#e0a030'], ['silver', 'Silver', '#b0bac8']),
+    // a Mikkian has no hair: these are the accent colours of the tendrils (their tips, bands or roots) and the lips
+    hairs: sw(['dkblue', 'Dark blue', '#1b2f6e'], ['navy', 'Navy', '#141c44'], ['teal', 'Deep teal', '#0f5a5c'], ['forest', 'Forest', '#1f5a2c'], ['gold', 'Gold', '#d8b030'], ['white', 'Pale', '#e8e4dc'],
+      ['pink', 'Pink', '#e88aa8'], ['crimson', 'Crimson', '#8c1c2c'], ['purple', 'Purple', '#4a2a78'], ['black', 'Black', '#18161c']),
+    styles: named(ARRANGE), styleLabel: 'Head-tendrils', hairLabel: 'Accent colour',
+    look: { white: '#e9e6e2', flush: '#7a4a9a', brows: false, scalp: 0, accentLips: 0.55 },
+    outfits: ['coat', 'robe', 'jacket', 'wraps', 'armour'],
+    // opens on the look its first player asked for: mostly medium blue with dark blue accents
+    defaults: { frame: 'andro', build: 'average', face: 'oval', age: 'adult', skin: 'blue', eyes: 'dark', style: 'swept', hair: 'dkblue', thick: 'medium', pattern: 'tips', marks: 'none', liner: 'none', outfit: 'coat', hood: 'none', gear: 'none', main: 'charcoal', second: 'steel' },
+    groups: { thick: { label: 'Tendril thickness', items: named(THICK) }, pattern: { label: 'Tendril pattern', items: named(PATTERNS) } },
   },
   human: {
     name: 'Human', blurb: 'The common stock of the galaxy.',

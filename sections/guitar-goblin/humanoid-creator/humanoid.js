@@ -27,7 +27,7 @@ function options() {
     species: { label: 'Species', items: named(SPECIES) },
     frame: { label: 'Frame', items: FRAMES }, build: { label: 'Build', items: BUILDS }, face: { label: 'Face', items: named(FACES) }, age: { label: 'Age', items: AGES },
     skin: { label: 'Skin', swatch: true, items: S.skins }, eyes: { label: 'Eyes', swatch: true, items: S.eyes },
-    style: { label: 'Hair', items: named(STYLES) }, hair: { label: 'Hair colour', swatch: true, items: S.hairs },
+    style: { label: S.styleLabel || 'Hair', items: S.styles || named(STYLES) }, hair: { label: S.hairLabel || 'Hair colour', swatch: true, items: S.hairs },
     ...S.groups,
   };
   if (state.species !== 'pureblood') o.marks = { label: 'Face detail', items: MARKS };
@@ -66,17 +66,18 @@ const figure = new THREE.Group(); stage.scene.add(figure);
 const face = facePainter(stage.phone ? 1024 : 2048);
 const skin = skinMaterial(face.texture), bodySkin = skinMaterial(null), hairMat = hairMaterial();
 const lidMat = new THREE.MeshPhysicalMaterial({ roughness: 0.5, sheen: 0.3, sheenRoughness: 0.5 });
+const tendrilMat = skinMaterial(null);   // a Mikkian's head-tendrils: skin, painted per vertex
 const eyeMat = new THREE.MeshPhysicalMaterial({ roughness: 0.16, clearcoat: 1, clearcoatRoughness: 0.04 }), lashMat = new THREE.MeshStandardMaterial({ color: 0x120d0a, roughness: 0.8 });
 const ringMat = new THREE.MeshStandardMaterial({ color: 0xc9a24a, metalness: 1, roughness: 0.28, emissive: 0xc9a24a, emissiveIntensity: 0.22 });   // a little glow of its own, or polished metal goes black in a dark room
 const CLOTHS = { cloth: clothMaterial, leather: leatherMaterial, metal: metalMaterial, plastic: (hex) => { const m = plasticMaterial(hex); m.roughness = 0.46; m.clearcoat = 0.25; return m; } };
-const KEEP = new Set([skin, bodySkin, hairMat, lidMat, eyeMat, lashMat, ringMat, gearMaterial()]);
+const KEEP = new Set([skin, bodySkin, hairMat, lidMat, eyeMat, lashMat, ringMat, tendrilMat, gearMaterial()]);
 let built = null, cloth = [], info = {}, ticket = 0, current = Promise.resolve(), eyeKey = '';
 
 function args() {
   const base = { face: state.face, masc: val(FRAMES, state.frame), age: val(AGES, state.age), build: val(BUILDS, state.build), coarse: stage.phone ? 1.2 : 1 };
   const feat = state.species === 'pureblood' ? { species: 'pureblood', spurs: state.spurs, tendrils: state.tendrils, ridges: state.ridges } : {};
   const body = { face: 'oval', masc: base.masc, age: 0.3, build: base.build, coarse: base.coarse };
-  return { head: { ...base, ...feat }, bust: base, body, hair: { face: base.face, masc: base.masc, age: 0.3, build: 0.5, coarse: base.coarse, style: state.style } };
+  return { head: { ...base, ...feat }, bust: base, body, hair: { face: base.face, masc: base.masc, age: 0.3, build: 0.5, coarse: base.coarse, style: state.style, ...(state.species === 'mikkian' ? { species: 'mikkian', thick: state.thick } : {}) } };
 }
 const copy = (m) => ({ position: m.position.slice(), normal: m.normal.slice(), uv: m.uv.slice(), index: m.index.slice(), ao: m.ao });
 async function rebuild() {
@@ -103,7 +104,11 @@ async function rebuild() {
   const hg = new THREE.Group(); hg.position.set(...HEAD_AT); figure.add(hg);
   const eg = eyeGeometries(head.eye, head.lid);
   add(eg.balls, eyeMat, hg).receiveShadow = false; add(eg.lids, lidMat, hg); add(eg.lashes, lashMat, hg);
-  if (hair.mesh && state.hood !== 'up') add(skinGeometry(copy(hair.mesh), { hair: true }), hairMat, hg);   // a raised hood covers the hair
+  let mane = null;
+  if (hair.mesh && state.hood !== 'up') {   // a raised hood covers the hair
+    if (hair.t) mane = { mesh: add(skinGeometry(copy(hair.mesh)), tendrilMat, hg), t: hair.t, ao: hair.mesh.ao };
+    else add(skinGeometry(copy(hair.mesh), { hair: true }), hairMat, hg);
+  }
   if (state.jewel && state.jewel !== 'none' && head.tendrils.length) {   // a ring on each tendril
     const rings = head.tendrils.map((t) => {
       const a = new THREE.Vector3(...t.a), b = new THREE.Vector3(...t.b), f = 0.42, at = a.clone().lerp(b, f), rad = t.r0 + (t.r1 - t.r0) * f + 0.0012;
@@ -113,7 +118,7 @@ async function rebuild() {
   }
   for (const p of outfit.pieces) { const m = add(skinGeometry(copy(p.mesh), { cloth: true }), (CLOTHS[p.material] || clothMaterial)('#777777')); m.name = p.name; cloth.push({ mesh: m, role: p.role }); }
   const gear = makeGear(state.gear, A.body, state.outfit); if (gear) figure.add(gear);
-  built = { head, fresh: true };
+  built = { head, fresh: true, mane };
   let tris = 0; figure.traverse((o) => { if (o.isMesh) tris += o.geometry.index.count / 3; });
   info = { tris, ms: Math.round(performance.now() - t0) };
   while (pool.cache.size > 40) pool.cache.delete(pool.cache.keys().next().value);   // don't keep every figure ever tried
@@ -129,11 +134,20 @@ function recolour() {
   const ek = pick('eyes').c + S.look.white;
   if (ek !== eyeKey) { eyeKey = ek; if (eyeMat.map) eyeMat.map.dispose(); eyeMat.map = eyeTexture(pick('eyes').c, { white: S.look.white }); eyeMat.needsUpdate = true; }
   face.paint({
-    mesh: built.fresh ? built.head.mesh : null, at: HEAD_AT, P: built.head.P, skin: skinHex, hair: hairHex, scalp: (STYLES[state.style] || {}).roots ?? 0.9,
-    stubble: state.marks === 'stubble' ? 1 : 0, freckles: state.marks === 'freckles', liner, flush: S.look.flush, lips: S.look.lips ? c.clone().lerp(new THREE.Color(S.look.lips), 0.6) : null,
+    mesh: built.fresh ? built.head.mesh : null, at: HEAD_AT, P: built.head.P, skin: skinHex, hair: hairHex, scalp: state.species === 'mikkian' ? (state.pattern === 'roots' ? 0.5 : 0) : (STYLES[state.style] || {}).roots ?? 0.9, brows: S.look.brows,
+    stubble: state.marks === 'stubble' ? 1 : 0, freckles: state.marks === 'freckles', liner, flush: S.look.flush, lips: S.look.accentLips ? c.clone().lerp(new THREE.Color(hairHex), S.look.accentLips) : S.look.lips ? c.clone().lerp(new THREE.Color(S.look.lips), 0.6) : null,
     marks: state.species === 'mirialan' && state.tattoo ? tattooMarks(setOf(state.tattoo, options().tattoo), state.shape, pick('ink').c) : null,
   });
   built.fresh = false;
+  if (built.mane) {   // the tendrils: the skin's colour, with the accent on their tips, in bands or at their roots
+    const { mesh, t, ao } = built.mane, col = mesh.geometry.attributes.color, acc = new THREE.Color(hairHex), k = new THREE.Color(), bell = (x, m) => Math.exp(-(((x - m) / 0.045) ** 2));
+    for (let i = 0; i < t.length; i++) {
+      const u = t[i], w = u > 1.2 ? 1 : state.pattern === 'tips' ? Math.min(1, Math.max(0, (u - 0.5) / 0.38)) : state.pattern === 'bands' ? Math.min(1, bell(u, 0.38) + bell(u, 0.58) + bell(u, 0.78)) : state.pattern === 'roots' ? 1 - Math.min(1, Math.max(0, (u - 0.04) / 0.34)) : 0;
+      const a = Math.pow(ao[i], 1.5), v = 0.5 + 0.5 * a;
+      k.copy(c).lerp(acc, w); col.setXYZ(i, k.r * v, k.g * v, k.b * v);
+    }
+    col.needsUpdate = true; tendrilMat.sheenColor.copy(c).lerp(new THREE.Color(0xffffff), 0.5);
+  }
   const cols = { main: pick('main').c, second: pick('second').c, dark: '#25272d', leather: '#46321f', metal: '#a4a9b0', trim: '#c9a24a' };
   for (const p of cloth) p.mesh.material.color.set(cols[p.role] || '#777777');
   ringMat.color.set(state.jewel === 'silver' ? '#c3c7cd' : '#c9a24a'); ringMat.emissive.copy(ringMat.color);
@@ -143,11 +157,11 @@ function recolour() {
 const go = () => { current = rebuild(); return current; };
 
 /* ---------------- the panel ---------------- */
-const GEOMETRY = new Set(['frame', 'build', 'face', 'age', 'style', 'spurs', 'tendrils', 'ridges', 'jewel', 'outfit', 'hood', 'gear']);
+const GEOMETRY = new Set(['frame', 'build', 'face', 'age', 'style', 'thick', 'spurs', 'tendrils', 'ridges', 'jewel', 'outfit', 'hood', 'gear']);
 function summary() {
   const n = (k) => pick(k).name.toLowerCase(), S = sp();
   document.getElementById('title').textContent = S.name; document.getElementById('blurb').textContent = S.blurb;
-  document.getElementById('summary').textContent = `${S.name}: ${n('frame')} frame, ${n('build')} build, ${n('face')} face, ${n('age')}; ${n('skin')} skin, ${n('eyes')} eyes, ${n('hair')} hair worn ${n('style')}; in ${pick('outfit').name.toLowerCase()}, ${n('main')} and ${n('second')}${state.hood !== 'none' ? ', hood ' + n('hood') : ''}${state.gear !== 'none' ? ', carrying a ' + n('gear') : ''}.`;
+  document.getElementById('summary').textContent = `${S.name}: ${n('frame')} frame, ${n('build')} build, ${n('face')} face, ${n('age')}; ${n('skin')} skin, ${n('eyes')} eyes, ${state.species === 'mikkian' ? `head-tendrils ${n('style')} with ${n('hair')} accents` : `${n('hair')} hair worn ${n('style')}`}; in ${pick('outfit').name.toLowerCase()}, ${n('main')} and ${n('second')}${state.hood !== 'none' ? ', hood ' + n('hood') : ''}${state.gear !== 'none' ? ', carrying a ' + n('gear') : ''}.`;
 }
 function paintPanel() {
   const opts = options();
