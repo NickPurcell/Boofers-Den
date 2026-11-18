@@ -1263,7 +1263,7 @@
           w.effects = w.effects.filter((ef) => !(ef.condition === 'Quarry' && ef.source === me.id));
           w.effects.push({ id: `quarry-${me.id}-${t.id}-${w.effects.length}`, unit: t.id, condition: 'Quarry', ends: 'never', of: t.id, rounds: 1, save: null, source: me.id, conc: false, level: 0, amount: '' });
           w.spent[me.id] = Object.assign(spentOf(w, me.id), { qm: 1 });
-          return { ok: true, world: w, log: [{ unit: me.id, about: t.id, text: `${me.name} marks ${t.name} as its quarry: once a turn, a weapon hit on it deals ${me.riders.quarry} more.` }], events: [] };
+          return { ok: true, world: w, log: [{ unit: me.id, about: t.id, text: `${me.name} marks ${t.name} as its quarry: once a turn, a weapon hit on it deals 1${me.riders.quarry} more.` }], events: [] };
         }
         if (act.key === 'surge') {   // a Fighter's Action Surge (#67): one more action this turn, once a turn, a use of its pool
           const pool = (me.pools || {})['action-surge'];

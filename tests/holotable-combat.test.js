@@ -3512,6 +3512,7 @@ test("Ranger's Quarry: no action, once a turn, a creature in sight within 120 ft
   let r = E.apply(world([sc(), r1, r2, far], "sc"), { type: "common", unit: "sc", key: "quarry", target: "r1" }, dice().roll);
   assert.equal(r.ok, true, r.why);
   assert.deepEqual([E.quarryOf(r.world, "sc"), E.budget(r.world).action, E.budget(r.world).bonus], ["r1", true, true], "no action");
+  assert.equal(r.log[0].text, "Sola marks Raider as its quarry: once a turn, a weapon hit on it deals 1d6 more.");
   assert.equal(E.apply(r.world, { type: "common", unit: "sc", key: "quarry", target: "r2" }, dice().roll).why, "Sola has already marked a quarry this turn.");
   assert.equal(E.apply(world([sc(), r1, far], "sc"), { type: "common", unit: "sc", key: "quarry", target: "r3" }, dice().roll).why, "Sniper is 150 ft away: a quarry is marked within 120 ft.");
   assert.equal(E.apply(world([sc({ riders: {} }), r1], "sc"), { type: "common", unit: "sc", key: "quarry", target: "r1" }, dice().roll).why, "Sola has no Ranger's Quarry.");
