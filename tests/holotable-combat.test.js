@@ -3598,6 +3598,13 @@ test("Unarmored Movement: a Monk's column adds to the sheet's speed out of armor
   assert.equal(E.attacksOf(monk(5, [vest]), R).some((a) => a.unarmed), false, "nor its unarmed strike");
   assert.equal(at(monk(5, [], { classes: [{ name: "Fighter", level: 5 }] })).speed, 30, "not a monk");
   assert.equal(at(monk(5, [], { speed: 25 })).speed, 40, "on the sheet's own speed");
+  // the Vow of the Sentry: light or medium armor keeps both; heavy armor or a shield still doesn't (#254 review)
+  const sentry = { features: [{ name: "Vow of the Sentry", text: "" }] }, medium = { name: "Battle armor", equipped: true, armor: { kind: "medium", ac: 14 } };
+  assert.deepEqual([at(monk(5, [medium], sentry)).speed, E.martialDieOf(monk(5, [medium], sentry), R)], [45, "d6"], "Sentry in medium armor");
+  assert.deepEqual([at(monk(5, [vest], sentry)).speed, E.martialDieOf(monk(5, [vest], sentry), R)], [45, "d6"], "Sentry in light armor");
+  assert.deepEqual([at(monk(5, [medium, shield], sentry)).speed, E.martialDieOf(monk(5, [shield], sentry), R)], [30, null], "Sentry with a shield");
+  assert.deepEqual([at(monk(5, [{ name: "Plate", equipped: true, armor: { kind: "heavy", ac: 18 } }], sentry)).speed], [30], "Sentry in heavy armor");
+  assert.deepEqual([at(monk(5, [medium])).speed, E.martialDieOf(monk(5, [medium]), R)], [30, null], "no vow, medium armor");
 });
 
 /* ---------------------------------------------------------------- the Wounds and Strenuous Combat variants (9.16, the combat view's half) */
