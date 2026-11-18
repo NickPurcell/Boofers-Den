@@ -297,14 +297,14 @@
 
   // ---- power and shields (SotG chapter 5, "Armor and Shields" and "Ship Power"; chapter 9, Boost and Regenerate Shields)
   // Per size, from SW5e's own size data (starshipBaseSize): the hull and shield die, how many of each by tier, and each
-  // role's reactor, power coupling, shields (Large and up) and speed / turning speed.
+  // role's reactor, power coupling, shields (Large and up), speed / turning speed, ability adjustment and armor.
   const SIZE_DATA = {
-    Tiny: { die: 4, dice: [1, 2, 3, 4, 5, 6], roles: { "Droid": ["Fuel Cell", "Distributed", "", 450, 200], "Munition": ["Fuel Cell", "Direct", "", 450, 200], "Predator": ["Ionization", "Direct", "", 350, 100], "Probe": ["Ionization", "Direct", "", 400, 150], "Satellite": ["Ionization", "Direct", "", 400, 150], "Worker": ["Fuel Cell", "Direct", "", 350, 100] } },
-    Small: { die: 6, dice: [3, 4, 5, 6, 7, 8], roles: { "Attack Fighter": ["Power Core", "Direct", "", 350, 100], "Bomber": ["Fuel Cell", "Hub & Spoke", "", 450, 200], "Scout": ["Ionization", "Distributed", "", 450, 200], "Scrambler": ["Power Core", "Direct", "", 400, 150], "Shuttle": ["Fuel Cell", "Direct", "", 350, 100], "Superiority Fighter": ["Ionization", "Hub & Spoke", "", 400, 150] } },
-    Medium: { die: 8, dice: [5, 6, 7, 8, 9, 10], roles: { "Courier": ["Ionization", "Hub & Spoke", "", 400, 250], "Freighter": ["Fuel Cell", "Hub & Spoke", "", 300, 150], "Gunship": ["Power Core", "Hub & Spoke", "", 300, 150], "Missile Boat": ["Power Core", "Direct", "", 400, 250], "Navigator": ["Ionization", "Distributed", "", 350, 200], "Yacht": ["Fuel Cell", "Distributed", "", 350, 200] } },
-    Large: { die: 10, dice: [7, 8, 9, 10, 11, 12], roles: { "Ambassador": ["Ionization", "Hub & Spoke", "Fortress", 350, 250], "Corvette": ["Fuel Cell", "Direct", "Directional", 400, 300], "Cruiser": ["Power Core", "Distributed", "Fortress", 400, 300], "Explorer": ["Ionization", "Distributed", "Directional", 350, 250], "Picket Ship": ["Power Core", "Hub & Spoke", "Quick-Charge", 300, 200], "Ship's Tender": ["Fuel Cell", "Direct", "Quick-Charge", 300, 200] } },
-    Huge: { die: 12, dice: [9, 11, 13, 15, 17, 19], roles: { "Battleship": ["Power Core", "Hub & Spoke", "Directional", 200, 400], "Carrier": ["Ionization", "Hub & Spoke", "Directional", 300, 500], "Colonizer": ["Ionization", "Distributed", "Quick-Charge", 400, 600], "Command Ship": ["Fuel Cell", "Distributed", "Fortress", 300, 500], "Interdictor": ["Power Core", "Distributed", "Quick-Charge", 200, 400], "Juggernaut": ["Power Core", "Direct", "Fortress", 400, 600] } },
-    Gargantuan: { die: 20, dice: [11, 13, 15, 17, 19, 21], roles: { "Blockade Ship": ["Fuel Cell", "Direct", "Directional", 100, 400], "Flag Ship": ["Power Core", "Distributed", "Quick-Charge", 200, 500], "Industrial Center": ["Fuel Cell", "Hub & Spoke", "Quick-Charge", 300, 600], "Mobile Metropolis": ["Ionization", "Distributed", "Directional", 300, 600], "Researcher": ["Fuel Cell", "Hub & Spoke", "Fortress", 100, 400], "Warship": ["Power Core", "Distributed", "Fortress", 200, 500] } },
+    Tiny: { die: 4, dice: [1, 2, 3, 4, 5, 6], roles: { "Droid": ["Fuel Cell", "Distributed", "", 450, 200, {"int": 1}, "Deflection"], "Munition": ["Fuel Cell", "Direct", "", 450, 200, {"con": 1}, "Reinforced"], "Predator": ["Ionization", "Direct", "", 350, 100, {"dex": 1}, "Lightweight"], "Probe": ["Ionization", "Direct", "", 400, 150, {"wis": 1}, "Lightweight"], "Satellite": ["Ionization", "Direct", "", 400, 150, {"cha": 1}, "Lightweight"], "Worker": ["Fuel Cell", "Direct", "", 350, 100, {"str": 1}, "Reinforced"] } },
+    Small: { die: 6, dice: [3, 4, 5, 6, 7, 8], roles: { "Attack Fighter": ["Power Core", "Direct", "", 350, 100, {"str": 1}, "Reinforced"], "Bomber": ["Fuel Cell", "Hub & Spoke", "", 450, 200, {"wis": 1}, "Deflection"], "Scout": ["Ionization", "Distributed", "", 450, 200, {"int": 1}, "Lightweight"], "Scrambler": ["Power Core", "Direct", "", 400, 150, {"cha": 1}, "Deflection"], "Shuttle": ["Fuel Cell", "Direct", "", 350, 100, {"con": 1}, "Deflection"], "Superiority Fighter": ["Ionization", "Hub & Spoke", "", 400, 150, {"dex": 1}, "Lightweight"] } },
+    Medium: { die: 8, dice: [5, 6, 7, 8, 9, 10], roles: { "Courier": ["Ionization", "Hub & Spoke", "", 400, 250, {"dex": 1}, "Lightweight"], "Freighter": ["Fuel Cell", "Hub & Spoke", "", 300, 150, {"con": 1}, "Deflection"], "Gunship": ["Power Core", "Hub & Spoke", "", 300, 150, {"str": 1}, "Reinforced"], "Missile Boat": ["Power Core", "Direct", "", 400, 250, {"wis": 1}, "Reinforced"], "Navigator": ["Ionization", "Distributed", "", 350, 200, {"int": 1}, "Deflection"], "Yacht": ["Fuel Cell", "Distributed", "", 350, 200, {"cha": 1}, "Lightweight"] } },
+    Large: { die: 10, dice: [7, 8, 9, 10, 11, 12], roles: { "Ambassador": ["Ionization", "Hub & Spoke", "Fortress", 350, 250, {"cha": 1, "con": 1}, "Deflection"], "Corvette": ["Fuel Cell", "Direct", "Directional", 400, 300, {"str": 1, "dex": 1}, "Deflection"], "Cruiser": ["Power Core", "Distributed", "Fortress", 400, 300, {"wis": 1, "str": 1}, "Reinforced"], "Explorer": ["Ionization", "Distributed", "Directional", 350, 250, {"dex": 1, "int": 1}, "Lightweight"], "Picket Ship": ["Power Core", "Hub & Spoke", "Quick-Charge", 300, 200, {"dex": 1, "wis": 1}, "Deflection"], "Ship's Tender": ["Fuel Cell", "Direct", "Quick-Charge", 300, 200, {"con": 1, "str": 1}, "Reinforced"] } },
+    Huge: { die: 12, dice: [9, 11, 13, 15, 17, 19], roles: { "Battleship": ["Power Core", "Hub & Spoke", "Directional", 200, 400, {"wis": 1, "str": 1}, "Reinforced"], "Carrier": ["Ionization", "Hub & Spoke", "Directional", 300, 500, {"cha": 1, "int": 1}, "Deflection"], "Colonizer": ["Ionization", "Distributed", "Quick-Charge", 400, 600, {"con": 1, "int": 1}, "Deflection"], "Command Ship": ["Fuel Cell", "Distributed", "Fortress", 300, 500, {"cha": 1, "wis": 1}, "Reinforced"], "Interdictor": ["Power Core", "Distributed", "Quick-Charge", 200, 400, {"dex": 1, "str": 1}, "Deflection"], "Juggernaut": ["Power Core", "Direct", "Fortress", 400, 600, {"con": 1, "str": 1}, "Reinforced"] } },
+    Gargantuan: { die: 20, dice: [11, 13, 15, 17, 19, 21], roles: { "Blockade Ship": ["Fuel Cell", "Direct", "Directional", 100, 400, {"dex": 1, "str": 1}, "Reinforced"], "Flag Ship": ["Power Core", "Distributed", "Quick-Charge", 200, 500, {"cha": 1, "wis": 1}, "Reinforced"], "Industrial Center": ["Fuel Cell", "Hub & Spoke", "Quick-Charge", 300, 600, {"con": 1, "str": 1}, "Deflection"], "Mobile Metropolis": ["Ionization", "Distributed", "Directional", 300, 600, {"con": 1, "wis": 1}, "Deflection"], "Researcher": ["Fuel Cell", "Hub & Spoke", "Fortress", 100, 400, {"int": 1, "wis": 1}, "Deflection"], "Warship": ["Power Core", "Distributed", "Fortress", 200, 500, {"wis": 1, "str": 1}, "Reinforced"] } },
   };
   const SHIELD_TYPES = { Directional: { cap: 1, regen: 1 }, Fortress: { cap: 3 / 2, regen: 2 / 3 }, 'Quick-Charge': { cap: 2 / 3, regen: 3 / 2 } };
   // power dice back at the start of each of the ship's turns, by reactor; fuel use is chapter 8's (travel)
@@ -317,7 +317,7 @@
   const POWER_DIE = [1, 4, 6, 8, 10, 12];   // by tier; at tier 0 a power die is a flat 1
 
   const sizeOf = (ship) => own(SIZE_DATA, ship && ship.size) || SIZE_DATA.Small;
-  const roleOf = (ship) => { const r = own(sizeOf(ship).roles, String((ship && ship.role) || '').trim()); return r ? { reactor: r[0], coupling: r[1], shields: r[2], speed: r[3], turn: r[4] } : null; };
+  const roleOf = (ship) => { const r = own(sizeOf(ship).roles, String((ship && ship.role) || '').trim()); return r ? { reactor: r[0], coupling: r[1], shields: r[2], speed: r[3], turn: r[4], adj: r[5] || {}, armor: r[6] || '' } : null; };
   const tierOf = (ship) => clamp(int(ship && ship.tier), 0, 5);
   // the ship's reactor, coupling and shields: what the sheet says, else what its equipment says, else its role's
   function pickFrom(ship, field, table) {
@@ -609,6 +609,45 @@
     return { ship: r.ship, done: true, ok, dc, gain: r.gained, log: [`${name} is patched up: ${check} against DC ${dc}, ${ok ? 'a success' : 'a failure (the lower of two rolls)'}, +${r.gained} hull point${r.gained === 1 ? '' : 's'}.`] };
   }
 
+
+  // ---- what size, tier and role give a ship (SotG chapters 1, 3 and 5; SW5e's size data)
+  // armor: how much Dexterity counts toward AC, and the damage reduction against attack rolls
+  const ARMORS = { Lightweight: { cap: 99, dr: 0 }, Deflection: { cap: 2, dr: 3 }, Reinforced: { cap: 0, dr: 6 } };
+  const armorOf = (ship) => pickFrom(ship, 'armor', ARMORS);
+  const SIZE_ADJ = { Tiny: { dex: 4, con: -4 }, Small: { dex: 2, con: -2 }, Medium: {}, Large: { dex: -2, con: 2 }, Huge: { dex: -4, con: 4 }, Gargantuan: { dex: -6, con: 6 } };
+  const SLOTS = { Tiny: 10, Small: 20, Medium: 30, Large: 50, Huge: 60, Gargantuan: 70 };
+  const SUITES = { Small: [-1, 1], Medium: [3, 1], Large: [3, 2], Huge: [6, 3], Gargantuan: [10, 4] };   // base + k x Con modifier, at least 0; Tiny: none
+  const SAVES = { Tiny: ['dex', 'int'], Small: ['str', 'dex'], Medium: [], Large: ['wis'], Huge: ['wis'], Gargantuan: ['wis'] };
+  const SAVE_NOTE = { Medium: 'your choice of two', Large: 'Wisdom and your choice of Strength or Constitution', Huge: 'Wisdom and your choice of Strength or Constitution', Gargantuan: 'Wisdom and your choice of Strength or Constitution' };
+  const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
+  const modOf = (ship, ab) => Math.floor((int((ship && ship.abilities || {})[ab], 10) - 10) / 2);
+  const avgDie = (d) => Math.floor(d / 2) + 1;   // the fixed value for a die after the first (rounded up)
+  // points from dice: the first die's maximum, the fixed value for each one after, and the ability modifier on each
+  const dicePoints = (n, d, mod) => (n > 0 ? d + avgDie(d) * (n - 1) + mod * n : 0);
+  // everything the rules work out from the ship's size, tier, role, armor, shields and ability scores
+  function derive(ship) {
+    const size = own(SIZE_DATA, ship && ship.size) ? ship.size : 'Small', tier = tierOf(ship), role = roleOf(ship);
+    const hd = diceOf(Object.assign({}, ship, { hullDice: '' }), 'hull'), sd = diceOf(Object.assign({}, ship, { shieldDice: '' }), 'shield');
+    const con = modOf(ship, 'con'), str = modOf(ship, 'str'), dex = modOf(ship, 'dex');
+    const shieldType = own(SHIELD_TYPES, shieldTypeOf(ship)), shieldBase = dicePoints(sd.n, sd.die, str);
+    const armor = armorOf(ship), cap = (own(ARMORS, armor) || ARMORS.Lightweight).cap;
+    const suite = own(SUITES, size);
+    return {
+      size, tier, role: role ? ship.role : '', armor,
+      hullDice: `${hd.n}d${hd.die}`, shieldDice: `${sd.n}d${sd.die}`,
+      hull: Math.max(1, dicePoints(hd.n, hd.die, con)),
+      shieldBase, shield: shieldType ? Math.floor(shieldBase * shieldType.cap) : 0, shieldType: shieldType ? shieldTypeOf(ship) : '',
+      ac: 10 + Math.min(dex, cap) + Math.max(0, tier - 1),
+      speed: role ? role.speed : null, turn: role ? role.turn : null,
+      suites: suite ? Math.max(0, suite[0] + suite[1] * con) : 0, slots: own(SLOTS, size) || 0,
+      saves: own(SAVES, size) || [], saveNote: own(SAVE_NOTE, size) || '',
+      sizeAdj: own(SIZE_ADJ, size) || {}, roleAdj: role ? role.adj : {},
+    };
+  }
+  // the armor's damage reduction against a hit from an attack roll; damage it would bring to 0 is 1 instead
+  const armorDR = (ship) => (own(ARMORS, armorOf(ship)) || { dr: 0 }).dr;
+  const afterDR = (ship, amount) => { const n = int(amount), dr = armorDR(ship); return n <= 0 || !dr ? n : Math.max(1, n - dr); };
+
   // what the sheet shows of a ship's state, in short phrases
   function summary(ship) {
     const st = statusOf(ship), hullNow = int(ship && ship.hull && ship.hull.current), out = [];
@@ -623,5 +662,5 @@
     setCondition, summary, SIZE_DATA, SHIELD_TYPES, REACTORS, COUPLINGS, SYSTEMS, POOLS, SYSTEM_NAMES, POWER_DIE, sizeOf, roleOf, reactorOf, couplingOf,
     shieldTypeOf, powerDie, powerDieText, powerCaps, diceOf, diceLeft, regenRate, boostDC, regenDC, boostedSpeed, startTurn, usePower, setPower,
     setDiceUsed, boost, regenerateShields, SQUARE_FT, SQUARES, squaresOf, FACING_NAMES, DIRS, gridFeet, turnSteps, turnCost, moveCost, inBounds, shipGap,
-    arcOf, INIT_SIZE_MOD, npcInitBonus, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck };
+    arcOf, INIT_SIZE_MOD, npcInitBonus, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck };
 });

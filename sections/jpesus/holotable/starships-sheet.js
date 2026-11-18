@@ -40,6 +40,30 @@
     </div>`;
   }
 
+  const buildOpen = {};   // per ship, whether the panel below is open (the sheet is redrawn on every change)
+  document.addEventListener('toggle', (e) => { const d = e.target; if (d && d.classList && d.classList.contains('ship-build')) buildOpen[d.dataset.sid] = d.open; }, true);
+  // what the ship's size, tier and role give it (SotG chapters 1, 3 and 5), next to what the sheet says, with Apply
+  function buildBlock(s, ro) {
+    const d = SR.derive(s), roles = Object.keys(SR.sizeOf(s).roles), sign = (n) => (n >= 0 ? '+' : '') + n;
+    const adj = (o) => Object.entries(o || {}).map(([k, v]) => `${k.toUpperCase()} ${sign(v)}`).join(', ') || 'none';
+    const armorAuto = SR.armorOf(Object.assign({}, s, { armor: '' }));
+    const row = (label, mine, theirs) => `<tr><td>${label}</td><td>${esc(String(mine))}</td><td><b>${esc(String(theirs))}</b></td></tr>`;
+    const saves = d.saves.length ? d.saves.map((k) => k.toUpperCase()).join(', ') + (d.saveNote ? ' + ' + d.saveNote.replace(/^Wisdom and /, '') : '') : d.saveNote;
+    return `<details class="ship-build" data-sid="${esc(s.id)}" style="margin-top:10px" ${buildOpen[s.id] ? 'open' : ''}><summary>From size, tier and role <span class="muted" style="font-size:12px">(Starships of the Galaxy)</span></summary>
+      <div class="row wrap" style="gap:8px;margin:6px 0"><label class="ship-lv">Role <select data-sp="role" ${ro ? 'disabled' : ''}><option value="" ${d.role ? '' : 'selected'}>${s.role && !d.role ? esc(s.role) + ' (not a SotG role)' : '(pick)'}</option>${roles.map((r) => `<option ${r === s.role ? 'selected' : ''}>${esc(r)}</option>`).join('')}</select></label>
+        <label class="ship-lv">Armor <select data-sp="armor" ${ro ? 'disabled' : ''}><option value="" ${s.armor ? '' : 'selected'}>${armorAuto ? `${esc(armorAuto)} (role or equipment)` : 'Lightweight (none set)'}</option>${Object.keys(SR.ARMORS).map((k) => `<option ${k === s.armor ? 'selected' : ''}>${k}</option>`).join('')}</select></label>
+        <span class="muted" style="font-size:12px">Damage reduction against attack rolls: ${SR.armorDR(s)}</span></div>
+      <table class="t"><thead><tr><th></th><th>Sheet</th><th>From the rules</th></tr></thead><tbody>
+        ${row('Hull dice', s.hullDice || '—', d.hullDice)}${row('Hull points', (s.hull || {}).max || 0, d.hull)}
+        ${row('Shield dice', s.shieldDice || '—', d.shieldDice)}${row('Shield points', (s.shield || {}).max || 0, d.shieldType ? `${d.shield} (${d.shieldBase} base, ${d.shieldType.toLowerCase()})` : `${d.shieldBase} base (pick shields)`)}
+        ${row('Armor Class', s.ac, d.ac)}${row('Speed / turning', `${s.speed} / ${s.turn}`, d.speed != null ? `${d.speed} / ${d.turn}` : '(pick a role)')}
+        ${row('Suites', s.suites || '—', s.size === 'Tiny' ? 'none' : `up to ${d.suites}`)}${row('Modification slots', s.slots || '—', d.slots)}
+        ${row('Saving throws', ['str', 'dex', 'con', 'int', 'wis', 'cha'].filter((k) => (s.saves || {})[k]).map((k) => k.toUpperCase()).join(', ') || '—', saves || '—')}</tbody></table>
+      <p class="muted" style="font-size:12px;margin:6px 0">Ability scores: the standard array ${SR.STANDARD_ARRAY.join(', ')}, then size ${adj(d.sizeAdj)} and role ${adj(d.roleAdj)}, and +2 (or +1 and +1) at each tier from 1. Type them above; Apply doesn't change them.</p>
+      ${ro ? '' : '<button class="btn small" data-sx="build" title="Sets hull and shield dice and points, AC, speed and turning, slots and the saving throws the size gives. A ship with no points yet starts full.">Apply these to the sheet</button>'}
+    </details>`;
+  }
+
   function block(s, ro, ctx) {
     const st = SR.statusOf(s), gm = H.isGM(), z = st.zero, hullNow = +((s.hull || {}).current) || 0;
     const lost = SR.isLost(st), dying = SR.dying(s), atZero = hullNow <= 0 && SR.hullMax(s) > 0;
@@ -70,6 +94,7 @@
         <span class="spacer"></span><label class="ship-lv" title="${esc('Speed -150 / -250 / -300 ft; at 4, speed 0')}">Slowed ${lvSel('slowed', 4, i => (i ? (i >= 4 ? 'Speed 0' : `Speed -${SR.SLOWED_FEET[i]} ft`) : 'None'))}</label>
         <label class="ship-lv" title="${esc(SR.SYSTEM_NOTES.slice(1).map((t, i) => `${i + 1}: ${t}`).join('\n'))}">System damage ${lvSel('system', 6, sysTitle)}</label></div>
       ${powerBlock(s, ro, ctx)}
+      ${buildBlock(s, ro)}
     </div>`;
   }
 
@@ -125,6 +150,18 @@
     if (a === 'puse') { await H.act('ship.poweruse', { id, pool: b.dataset.pool }); return true; }
     if (a === 'pset') { await H.act('ship.power', { id, pool: b.dataset.pool, n: +b.dataset.n }); return true; }
     if (a === 'sdset') { await H.act('ship.dice', { id, kind: 'shield', used: +b.dataset.n }); return true; }
+    if (a === 'build') {
+      const d = SR.derive(s), x = JSON.parse(JSON.stringify(s)), fresh = !((s.hull || {}).max > 0);
+      x.hullDice = d.hullDice; x.shieldDice = d.shieldDice; x.hull.max = d.hull; if (d.shieldType) x.shield.max = d.shield;
+      x.ac = d.ac; if (d.speed != null) { x.speed = d.speed; x.turn = d.turn; }
+      const used = /^\s*(\d+)\s*\//.exec(String(s.slots || '')); x.slots = `${used ? used[1] : 0} / ${d.slots}`;
+      if (s.size !== 'Tiny') x.suites = x.suites && !/^up to \d+$/.test(x.suites) ? x.suites : `up to ${d.suites}`;
+      for (const k of d.saves) x.saves[k] = true;
+      await H.act('ship.save', { ship: x });
+      if (fresh) { await H.act('ship.points', { id, what: 'hull', current: d.hull }); if (d.shieldType) await H.act('ship.points', { id, what: 'shield', current: d.shield }); }
+      H.toast('Applied from size, tier and role');
+      return true;
+    }
     if (a === 'hdset') { await H.act('ship.dice', { id, kind: 'hull', used: +b.dataset.n }); return true; }
     if (a === 'patch') { await H.act('ship.patch', { id, crew: (ctxOf[id] || {}).as || 0, mode: H.rollModeFromEvent(e) }); return true; }
     if (a === 'boost' || a === 'regen') { await H.act(a === 'boost' ? 'ship.boost' : 'ship.regen', { id, what: b.dataset.what, crew: (ctxOf[id] || {}).as || 0, mode: H.rollModeFromEvent(e) }); return true; }

@@ -219,10 +219,10 @@ function apply(camp, cid, gm, type, p, h) {
         rollMsg(roll, expr, `${s0.hidden ? s0.name : A} fires ${w.name} at ${s0.hidden ? t0.name : T}${why([...chk.adv, ...chk.dis])}`, "attack");
         if (!hit) { line(`${A} misses ${T} with ${w.name}.`); result = { hit: false }; }
         else {
-          const dmg = rollDamage(crit);
-          line(`${A} hits ${T} with ${w.name}${crit ? ", a critical" : ""}: ${dmg.total} ${SR.damageType(w.type)} damage.`);
-          hurt(dmg.total, crit);
-          result = { hit: true, crit, damage: dmg.total };
+          const dmg = rollDamage(crit), dealt = SR.afterDR(t0, dmg.total), dr = dmg.total - dealt;   // armor's damage reduction counts against attack rolls
+          line(`${A} hits ${T} with ${w.name}${crit ? ", a critical" : ""}: ${dealt} ${SR.damageType(w.type)} damage${dr > 0 ? ` (${dr} stopped by its armor)` : ""}.`);
+          hurt(dealt, crit);
+          result = { hit: true, crit, damage: dealt };
           // ionizing: a DC 13 Constitution save or ionized; a larger target has advantage
           if (SR.weaponProp(w, "ionizing") && !SR.isLost(SR.statusOf(shipOf(t0.id)))) {
             const t1 = shipOf(t0.id), cb = Math.floor((int((t1.abilities || {}).con, 10) - 10) / 2) + ((t1.saves || {}).con ? Ships.crewPb(camp, t1, 0) : 0);

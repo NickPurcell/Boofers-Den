@@ -11,6 +11,7 @@ const Fight = require("./_holotable-fight.js");   // the combat view (fight.*), 
 const Ships = require("./_holotable-ships.js");   // a ship in a fight (ship.damage, destruction saves, ship conditions): Starships of the Galaxy
 const Space = require("./_holotable-space.js");   // the space map (space.*): ship fights on their own map, jpesus's call on #146
 const Ask = require("./_holotable-ask.js");   // the GM asking for a roll (audit 9.12)
+const Story = require("./_holotable-story.js");   // factions, rivals and lifestyle between fights (audit section 11)
 const R = globalThis.SW5E;   // rules.js, loaded by the fight module (senses)
 
 const CHAT_LIMIT = 400;
@@ -200,6 +201,7 @@ function cleanChar(ch) {
     conditions: (Array.isArray(ch.conditions) ? ch.conditions : []).slice(0, 20).map((c) => s(c, 30)),
     exhaustion: clamp(int(ch.exhaustion), 0, 6), inspiration: !!ch.inspiration,
     proficiencies: s(ch.proficiencies, 2000), languages: s(ch.languages, 500), notes: s(ch.notes, 20000),
+    ...(Object.prototype.hasOwnProperty.call(Story.LIFESTYLES, ch.lifestyle) ? { lifestyle: ch.lifestyle } : {}),   // 11.5
     image: validImg(ch.image) || "", tokenImage: validImg(ch.tokenImage) || "", color: validColor(ch.color),
   };
   if (!out.classes.length) out.classes = [{ name: "Fighter", level: 1, archetype: "" }];
@@ -300,7 +302,8 @@ function viewFor(camp, cid, gm, online) {
     ...(camp.fight && camp.fight.on ? { fight: Fight.view(camp, cid, gm, shownName) } : {}),
     // the sheet's Cast (#73), combat view on or off: which powers the table has data for, and who concentrates on what
     ...((sc) => (sc ? { sheetCast: sc } : {}))(Fight.sheetView(camp, gm ? camp.characters : sheetsFor(camp, cid))),
-    ...((a) => (a ? { ask: a } : {}))(Ask.view(camp, cid, gm)),   // an open roll request (9.12), for whom it names
+    ...((a) => (a ? { ask: a } : {}))(Ask.view(camp, cid, gm)),
+    ...Story.view(camp, gm),   // factions and rivals the GM shows (11.3, 11.4)   // an open roll request (9.12), for whom it names
     ...(fogState ? { fog: fogState } : {}),   // the map's fog of war (#93), combat view or not: only while the GM has it on   // the combat view, only while it is on
     scene: (camp.scenes || []).filter((x) => x.id === camp.activeScene).map((x) => ({ id: x.id, name: x.name }))[0] || null,
     scenes: gm ? (camp.scenes || []).map((x) => ({ id: x.id, name: x.name, savedAt: x.savedAt })) : null,
@@ -513,6 +516,7 @@ function applyAction(camp, cid, gm, type, p) {
   const chars = camp.characters, ini = camp.initiative, mp = camp.map;
   mp.props = mp.props || [];
   const need = (ok, why = "GM only") => { if (!ok) throw new Forbidden(why); };
+  if (Story.handles(type)) return Story.apply(camp, cid, gm, type, p, { addChat, shownName, Forbidden, Invalid });
   if (type.startsWith("ask.")) return Ask.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
   if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, fightHelpers());
   if (Ships.handles(type)) return Ships.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
@@ -562,6 +566,13 @@ function applyAction(camp, cid, gm, type, p) {
       clean.tokenImage = old ? old.tokenImage || "" : "";
       clean.updated = now();
       chars[id] = clean;
+      if (old) {   // the record of changes (12.5)
+        const changes = sheetDiff(old, clean);
+        if (changes.length) {
+          camp.sheetLog = camp.sheetLog || {};
+          camp.sheetLog[id] = [...(camp.sheetLog[id] || []), { id: rid(), ts: now(), by: playerName(camp, cid) + (gm ? " (GM)" : ""), changes }].slice(-30);
+        }
+      }
       if (old) reviveChar(camp, clean, (old.hp || {}).current);   // healed up from 0: awake, death saves reset (#138)
       const ch = clean;
       for (const e of ini.entries) if (e.charId === id) { e.name = ch.name || e.name; const hp = ch.hp || {}; e.hp = hp.current; e.maxHp = hp.max; }
@@ -1012,6 +1023,26 @@ function applyAction(camp, cid, gm, type, p) {
       addChat(camp, { levelup: true, text: `↶ The GM took back ${back.name}'s level ${u.level}. It's ready to take again.` });
       return { level: totalLevel(back) };
     }
+    case "sheet.revert": {   // the GM puts back one recorded change's numbers (12.5); lists of things are shown, not undone
+      need(gm);
+      const id = String(p.charId || ""), ch = charById(camp, id);
+      const e = ch && ((camp.sheetLog || {})[id] || []).find((x) => x.id === String(p.entry || ""));
+      if (!e) throw new Invalid("That change isn't in the record any more.");
+      const before = JSON.parse(JSON.stringify(ch));
+      for (const c of e.changes) {
+        if (c.view) continue;
+        const path = c.k.split("."), last = path.pop();
+        let o = ch; for (const k of path) { if (!o[k] || typeof o[k] !== "object") o[k] = {}; o = o[k]; }
+        o[last] = c.from;
+      }
+      const back = cleanChar(Object.assign({}, ch, { id }));
+      Object.assign(back, { owner: ch.owner, image: ch.image || "", tokenImage: ch.tokenImage || "", updated: now() });
+      chars[id] = back;
+      for (const en of camp.initiative.entries) if (en.charId === id) { en.hp = (back.hp || {}).current; en.maxHp = (back.hp || {}).max; }
+      const changes = sheetDiff(before, back);
+      if (changes.length) camp.sheetLog[id] = [...camp.sheetLog[id], { id: rid(), ts: now(), by: "GM (undo)", changes }].slice(-30);
+      return { undone: changes.length };
+    }
     case "levelup.cancel": {
       need(gm);
       if (camp.levelUps && camp.levelUps[p.charId]) delete camp.levelUps[p.charId];
@@ -1070,6 +1101,7 @@ function applyAction(camp, cid, gm, type, p) {
       if (at < 0) throw new Invalid("That's no longer in the stash.");
       if (!ch) throw new Invalid("No such character.");
       need(gm || ch.owner === cid, "not your character");
+      if ((ch.equipment || []).length >= 200) throw new Invalid(`${ch.name}'s gear is full (200 items). Make room first; it stays in the stash.`);   // #195 review
       const [it] = st.items.splice(at, 1);
       const notes = [it.rar && `${it.rar}${it.att ? ", requires attunement" : ""}`, it.notes].filter(Boolean).join(" · ").slice(0, 200);
       chars[ch.id] = cleanChar(Object.assign({}, ch, { equipment: [...(ch.equipment || []), Object.assign({}, it, { id: undefined, equipped: false, notes })] }));
@@ -1246,6 +1278,25 @@ function cleanClock(c) {
   return { day: clamp(int(c.day, 1), 1, 999999), min: clamp(int(c.min), 0, 1439) };
 }
 const clockText = (c) => `Day ${c.day}, ${String(Math.floor(c.min / 60)).padStart(2, "0")}:${String(c.min % 60).padStart(2, "0")}`;
+// A record of sheet changes (audit 12.5): each save that changes a tracked number notes who changed what, from and
+// to. The GM reads it on the sheet and can put any one change's numbers back. The last 30 changes per character.
+const TRACKED = [["name"], ["xp"], ["credits"], ["ac"], ["speed"], ["hp", "max"], ["hp", "current"], ["hp", "temp"],
+  ["force", "used"], ["tech", "used"], ["exhaustion"], ["inspiration"], ...["str", "dex", "con", "int", "wis", "cha"].map((a) => ["abilities", a])];
+const getIn = (o, p) => p.reduce((a, k) => (a && typeof a === "object" ? a[k] : undefined), o);
+const levelsText = (c) => (c.classes || []).map((k) => `${k.name} ${k.level}`).join(" / ");
+const prim = (v) => (typeof v === "number" || typeof v === "boolean" ? v : v == null ? null : String(v).slice(0, 80));
+function sheetDiff(a, b) {
+  const out = [];
+  for (const p of TRACKED) { const x = prim(getIn(a, p)), y = prim(getIn(b, p)); if (x !== y) out.push({ k: p.join("."), from: x, to: y }); }
+  for (const [k, f] of [["classes", levelsText], ["conditions", (c) => (c.conditions || []).join(", ")], ["equipment", (c) => (c.equipment || []).map((e) => `${e.qty > 1 ? e.qty + "× " : ""}${e.name}`).join(", ")]]) {
+    const x = prim(f(a)), y = prim(f(b)); if (x !== y) out.push({ k, from: x, to: y, view: true });   // shown, not undone
+  }
+  return out;
+}
+const cleanHistory = (log, chars) => Object.fromEntries(Object.entries(log && typeof log === "object" ? log : {}).filter(([id, l]) => Object.prototype.hasOwnProperty.call(chars || {}, id) && Array.isArray(l))
+  .map(([id, l]) => [id, l.slice(-30).filter((e) => e && Array.isArray(e.changes)).map((e) => ({ id: /^[a-z0-9]{4,20}$/.test(String(e.id || "")) ? String(e.id) : rid(), ts: num(e.ts), by: str(e.by, 40),
+    changes: e.changes.slice(0, 30).filter((c) => c && typeof c.k === "string" && (TRACKED.some((p) => p.join(".") === c.k) || ["classes", "conditions", "equipment"].includes(c.k)))
+      .map((c) => ({ k: c.k, from: prim(c.from), to: prim(c.to), ...(c.view ? { view: true } : {}) })) }))]).filter(([, l]) => l.length));
 function cleanMap(g, raw) {
   const m = raw && typeof raw === "object" ? raw : {};
   const n = (v, d) => (Number.isFinite(+v) ? +v : d);
@@ -1292,6 +1343,7 @@ function cleanGame(g) {
   if (g.statBlocksHidden !== true) delete g.statBlocksHidden;
   if (Array.isArray(g.npcs) && g.npcs.length) g.npcs = cleanNpcs(g.npcs); else delete g.npcs;
   g.ask = Ask.clean(g.ask, g.characters);
+  Story.clean(g);
   g.ships = (Array.isArray(g.ships) ? g.ships : []).slice(0, MAX_SHIPS).filter((x) => x && typeof x === "object").map((x) => cleanShip(x, g.characters));
   if (g.space) g.space = Space.clean(g.space, g.ships);
   g.scenes = (Array.isArray(g.scenes) ? g.scenes : []).slice(0, 30).filter((x) => x && typeof x === "object")
@@ -1304,6 +1356,7 @@ function cleanGame(g) {
   const lu = Object.entries(g.levelUndo && typeof g.levelUndo === "object" ? g.levelUndo : {}).filter(([id, u]) => charById(g, id) && u && u.sheet && typeof u.sheet === "object")
     .map(([id, u]) => [id, { level: clamp(int(u.level, 1), 1, 20), at: num(u.at), sheet: cleanChar(Object.assign({}, u.sheet, { id })) }]);
   if (lu.length) g.levelUndo = Object.fromEntries(lu); else delete g.levelUndo;
+  const sl = cleanHistory(g.sheetLog, g.characters); if (Object.keys(sl).length) g.sheetLog = sl; else delete g.sheetLog;
   g.levelUps = Object.fromEntries(Object.entries(g.levelUps || {}).filter(([id]) => charById(g, id))
     .map(([id, v]) => [id, { count: clamp(int((v || {}).count), 0, 20), grantId: rid(), at: now() }]).filter(([, v]) => v.count > 0));
   return g;
