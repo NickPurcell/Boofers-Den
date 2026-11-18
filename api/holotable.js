@@ -242,7 +242,7 @@ async function sw5eRoomFor(r, name, bytes) {
 
 // The cached list as a JSON string, or null when it isn't available right now (caller answers 503).
 // species name (lower case) -> its senses, built once per instance from the cached species list
-let SPECIES_SENSES_MAP = null, SPECIES_SENSES_AT = 0;
+let SPECIES_SENSES_MAP = null, SPECIES_SENSES_AT = 0, SPECIES_DEF_MAP = null;   // senses (#129), and resistances (1.5)
 async function speciesSenses(r, name) {
   if (!SPECIES_SENSES_MAP || Date.now() - SPECIES_SENSES_AT > 10 * 60 * 1000) {   // rebuilt at most every 10 minutes
     SPECIES_SENSES_MAP = null; SPECIES_SENSES_AT = Date.now();
@@ -250,6 +250,7 @@ async function speciesSenses(r, name) {
     if (!raw) return null;
     let list = []; try { list = JSON.parse(raw); } catch { return null; }
     SPECIES_SENSES_MAP = new Map(list.map((s) => [String(s.n || "").toLowerCase(), globalThis.SW5E.sensesFromTraits(s.traits)]));
+    SPECIES_DEF_MAP = new Map(list.map((s) => [String(s.n || "").toLowerCase(), globalThis.SW5E.defensesFromTraits(s.traits)]));
   }
   return SPECIES_SENSES_MAP.get(String(name || "").trim().toLowerCase()) || [];
 }
@@ -286,24 +287,34 @@ async function featAsiOptions(r, name) {
 // action tries again. camp.sensesFilled marks it done, and an instance that has seen the mark stops reading the list.
 let SPECIES_FILL_SEEN = false;
 const needsSenses = (c) => !!(c && c.species && !(Array.isArray(c.senses) && c.senses.length));
+// and their species' resistances (audit 1.5), once, where a sheet has a species and no defences: camp.defensesFilled
+const needsDefenses = (c) => !!(c && c.species && !c.defenses);
+const fillsDone = (camp) => !!(camp.sensesFilled && camp.defensesFilled);
 async function warmSpeciesFill(r, GAME) {
   if (SPECIES_FILL_SEEN) return;
   const camp = await S.getCampaign(GAME).catch(() => null);   // a peek, unlocked: is there anything to fill at all?
-  if (!camp || camp.sensesFilled) { if (camp) SPECIES_FILL_SEEN = true; return; }
+  if (!camp || fillsDone(camp)) { if (camp) SPECIES_FILL_SEEN = true; return; }
   // builds the name -> senses map (null if SW5e is out), waiting at most a second: a cold cache with SW5e slow mustn't
   // hold every action; the read carries on, and a later action finds the map built
-  if (Object.values(camp.characters || {}).some(needsSenses)) await Promise.race([speciesSenses(r, "").catch(() => null), new Promise((ok) => setTimeout(ok, 1000))]);
+  const chars = Object.values(camp.characters || {});
+  if ((!camp.sensesFilled && chars.some(needsSenses)) || (!camp.defensesFilled && chars.some(needsDefenses))) await Promise.race([speciesSenses(r, "").catch(() => null), new Promise((ok) => setTimeout(ok, 1000))]);
 }
 function fillSpeciesSenses(camp) {
-  if (camp.sensesFilled) { SPECIES_FILL_SEEN = true; return; }
+  if (fillsDone(camp)) { SPECIES_FILL_SEEN = true; return; }
   SPECIES_FILL_SEEN = false;   // a game without the mark (an old backup restored): warm up again before later actions
-  const need = Object.values(camp.characters || {}).filter(needsSenses);
-  if (need.length && !SPECIES_SENSES_MAP) return;   // the list isn't read yet: try again on a later action
+  const chars = Object.values(camp.characters || {});
+  const need = camp.sensesFilled ? [] : chars.filter(needsSenses), needD = camp.defensesFilled ? [] : chars.filter(needsDefenses);
+  if ((need.length || needD.length) && !(SPECIES_SENSES_MAP && SPECIES_DEF_MAP)) return;   // the list isn't read yet: try again on a later action
   for (const c of need) {
     const clean = globalThis.SW5E.cleanSenses(SPECIES_SENSES_MAP.get(String(c.species).trim().toLowerCase()) || []);
     if (clean.length) c.senses = clean;
   }
+  for (const c of needD) {   // 1.5: the species' defences, as if just chosen
+    const d = globalThis.SW5E.withSpeciesDefenses(null, SPECIES_DEF_MAP.get(String(c.species).trim().toLowerCase()) || {});
+    if (d) c.defenses = d;
+  }
   camp.sensesFilled = true;   // done (or nothing was waiting for it)
+  camp.defensesFilled = true;
   SPECIES_FILL_SEEN = true;
 }
 async function sw5eList(r, name) {
@@ -552,10 +563,12 @@ async function handlePost(req, res, q, b, ses) {
 
   if (op === "action") {
     let result, drop;
-    // a player choosing a species gets that species' senses, looked up here from SW5e's list (the client can't set them)
-    if (!gm && String(b.type || "") === "char.save" && b.payload && b.payload.char && b.payload.char.species) {
+    // a player choosing a species gets that species' senses, looked up here from SW5e's list (the client can't set them);
+    // anyone's species change brings its resistances (audit 1.5), from the same list
+    if (String(b.type || "") === "char.save" && b.payload && b.payload.char && b.payload.char.species) {
       const ss = await speciesSenses(r, b.payload.char.species);
-      if (ss) b.payload = Object.assign({}, b.payload, { [G.SPECIES_SENSES]: ss });
+      if (!gm && ss) b.payload = Object.assign({}, b.payload, { [G.SPECIES_SENSES]: ss });
+      if (ss && SPECIES_DEF_MAP) b.payload = Object.assign({}, b.payload, { [G.SPECIES_DEFENSES]: SPECIES_DEF_MAP.get(String(b.payload.char.species).trim().toLowerCase()) || {} });
     }
     // rolling a downtime activity (11.1): its tables, from SW5e's Wretched Hives, read here, before the lock
     if ((String(b.type || "") === "downtime.roll" || String(b.type || "") === "craft.roll") && b.payload) {   // and crafting's (11.2)
@@ -649,11 +662,12 @@ async function handlePost(req, res, q, b, ses) {
       // every part of the game a backup holds (cleanGame checks each one below). sceneFx is left out on purpose:
       // a restored table shouldn't replay the last scene change's wipe and movements.
       for (const k of ["name", "players", "chat", "initiative", "map", "notes", "handouts", "levelUps", "created",
-        "scenes", "activeScene", "ships", "variants", "hpMax", "fight", "sensesFilled",
+        "scenes", "activeScene", "ships", "variants", "hpMax", "fight", "sensesFilled", "defensesFilled",
         // and what came since (each cleaned by cleanGame like the rest): the space map, the stash, the clock, the GM's
         // switches and NPCs, the level undo, factions and rivals
         "space", "stash", "clock", "sheetLock", "statBlocksHidden", "npcs", "levelUndo", "factions", "rivals", "sheetLog"]) if (file[k] !== undefined) g[k] = file[k];
       if (g.sensesFilled !== undefined) g.sensesFilled = g.sensesFilled === true;   // the one-time senses fill (#132): done or not, nothing else
+      if (g.defensesFilled !== undefined) g.defensesFilled = g.defensesFilled === true;   // and the resistances fill (1.5)
       // everything coming back in goes through the same checks as a live edit
       g.characters = {};
       for (const [id, ch] of Object.entries(file.characters).slice(0, 60)) {
@@ -1193,4 +1207,4 @@ module.exports = async function handler(req, res) {
 };
 module.exports.SW5E_BOOKS = SW5E_BOOKS;   // tests switch the books off and on
 module.exports.SW5E_TOTAL_MAX = SW5E_TOTAL_MAX;
-module.exports.resetSpeciesSenses = () => { SPECIES_SENSES_MAP = null; SPECIES_FILL_SEEN = false; };   // tests: forget the species list read so far
+module.exports.resetSpeciesSenses = () => { SPECIES_SENSES_MAP = null; SPECIES_DEF_MAP = null; SPECIES_FILL_SEEN = false; };   // tests: forget the species list read so far

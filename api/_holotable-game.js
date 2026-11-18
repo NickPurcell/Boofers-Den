@@ -163,6 +163,8 @@ const cleanVariants = (v) => [...new Set((Array.isArray(v) ? v : []).slice(0, 80
 // set by the server (holotable.js) on a player's char.save: the senses of the species they chose, from SW5e's own list.
 // A Symbol, so it can't arrive in a client's JSON.
 const SPECIES_SENSES = Symbol("speciesSenses");
+// set by holotable.js on char.save with a species: that species' resistances (audit 1.5), from SW5e's list, never a client's
+const SPECIES_DEFENSES = Symbol("speciesDefenses");
 // set by holotable.js on levelup.apply: the abilities a feat's own +1 may go to (audit 2.5), from SW5e's feat list,
 // never from a client. Missing when the list couldn't be read.
 const FEAT_ASI = Symbol("featAsi");
@@ -173,6 +175,7 @@ function cleanChar(ch) {
   const out = {
     _format: "holotable-sw5e", id: ch.id, name: s(ch.name, 80) || "Unnamed", species: s(ch.species, 60), background: s(ch.background, 60),
     alignment: s(ch.alignment, 60), xp: numOr(ch.xp, 0), credits: numOr(ch.credits, 0),
+    ...((d) => (d ? { defenses: d } : {}))(R.cleanDefenses(ch.defenses)),   // damage defences (1.5): the GM's, filled by the species
     ...((d) => (d ? { downtime: d } : {}))(Downtime.clean(ch.downtime)),   // downtime days and log (11.1): the server's to write
     ...((c) => (c ? { craft: c } : {}))(Craft.clean(ch.craft)),             // crafting requests (11.2): the server's to write
     classes: list(ch.classes, 6, (k) => ({ name: s(k.name, 40) || "Fighter", level: clamp(int(k.level, 1), 0, 20), archetype: s(k.archetype, 60) })),
@@ -607,6 +610,13 @@ function applyAction(camp, cid, gm, type, p) {
         const newSpecies = !old || lc(old.species) !== lc(clean.species);
         const s = newSpecies && Array.isArray(p[SPECIES_SENSES]) ? R.cleanSenses(p[SPECIES_SENSES]) : (old && old.senses) || [];
         if (s.length) clean.senses = s; else delete clean.senses;
+      }
+      // damage defences (audit 1.5; jpesus on #198: the senses pattern): the GM sets them by hand, a player's save keeps
+      // what the sheet had, and a new species brings its resistances (looked up by holotable.js) without wiping the GM's
+      if (!gm) { if (old && old.defenses) clean.defenses = old.defenses; else delete clean.defenses; }
+      if ((!old || String(old.species || "").trim().toLowerCase() !== String(clean.species || "").trim().toLowerCase()) && p[SPECIES_DEFENSES] && typeof p[SPECIES_DEFENSES] === "object") {
+        const d = R.withSpeciesDefenses(clean.defenses, p[SPECIES_DEFENSES]);
+        if (d) clean.defenses = d; else delete clean.defenses;
       }
       clean.image = old ? old.image || "" : "";
       clean.tokenImage = old ? old.tokenImage || "" : "";
@@ -1432,7 +1442,7 @@ function cleanGame(g) {
 
 module.exports = {
   cleanGame,
-  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, propSightSegments, SPECIES_SENSES, DOWNTIME_ACTS: Downtime.ACT_TABLES, FEAT_ASI, validImg, validColor, cleanChar, cleanShip, rid, charById,
+  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, propSightSegments, SPECIES_SENSES, SPECIES_DEFENSES, DOWNTIME_ACTS: Downtime.ACT_TABLES, FEAT_ASI, validImg, validColor, cleanChar, cleanShip, rid, charById,
   applyAction: (camp, ...a) => { const out = applyAction(camp, ...a); Fight.noteSeen(camp); return out; },   // fog of war: what players see now joins what they've explored
   Forbidden, Invalid, IMG_PREFIX,
 };

@@ -1822,6 +1822,43 @@ test("images a kept backup still uses aren't deleted until that backup rolls off
   assert.ok(await S.used() < used + 3 * PNG.length, "storage given back");
 });
 
+test("damage defences on the sheet (audit 1.5): the species fills them, the GM edits them, a species change keeps the GM's", async () => {
+  const { gm, p1 } = await table();
+  await db.set(S.K.sw5e("species-2"), JSON.stringify([
+    { n: "Droid, Class I", traits: [{ n: "Droid Resistances", d: "You are resistant to necrotic, poison, and psychic damage, and are immune to poison and disease." },
+      { n: "Droid Vulnerabilities", d: "You are vulnerable to ion damage." }] },
+    { n: "Givin", traits: [{ n: "Vacuum Sealed", d: "You have resistance to cold damage." }] },
+    { n: "Odd", traits: [{ n: "Choice", d: "You have resistance to cold or fire damage (your choice)." }] },
+    { n: "Human", traits: [{ n: "Versatile", d: "Skill." }] },
+  ]));
+  handler.resetSpeciesSenses();
+  const defs = async (id) => (await gm.poll()).data.state.characters[id].defenses;
+  const types = (d, k = "resist") => ((d && d[k]) || []).map((x) => x.type + (x.only ? "/" + x.only : ""));
+  // a player can't bring their own; choosing a species brings its resistances
+  const kix = (await p1.act("char.save", { char: { name: "Kix", species: "Droid, Class I", defenses: { immune: [{ type: "fire" }] } } })).data.id;
+  let d = await defs(kix);
+  assert.deepEqual([types(d), types(d, "immune"), types(d, "vuln"), d.fromSpecies], [["necrotic", "poison", "psychic"], [], ["ion"], ["resist:necrotic", "resist:poison", "resist:psychic", "vuln:ion"]],
+    "SW5e's wording: resistant to … damage; vulnerable to ion damage; immune to poison (not damage) isn't a damage immunity");
+  // a player's save keeps what the sheet had
+  let ch = (await p1.poll()).data.state.characters[kix];
+  await p1.act("char.save", { char: Object.assign({}, ch, { notes: "x", defenses: { resist: [], immune: [{ type: "kinetic" }] } }) });
+  assert.deepEqual(await defs(kix), d);
+  // the GM edits: adds kinetic (unenhanced), clears psychic; a type that isn't SW5e's is dropped
+  ch = (await gm.poll()).data.state.characters[kix];
+  await gm.act("char.save", { char: Object.assign({}, ch, { defenses: { resist: [{ type: "necrotic" }, { type: "poison" }, { type: "kinetic", only: "unenhanced" }, { type: "__proto__" }], immune: [], vuln: [{ type: "ion" }], fromSpecies: ch.defenses.fromSpecies } }) });
+  assert.deepEqual(types(await defs(kix)), ["necrotic", "poison", "kinetic/unenhanced"]);
+  // a later species change swaps the species' own and keeps the GM's
+  ch = (await p1.poll()).data.state.characters[kix];
+  await p1.act("char.save", { char: Object.assign({}, ch, { species: "Givin" }) });
+  d = await defs(kix);
+  assert.deepEqual([types(d), types(d, "vuln"), d.fromSpecies], [["kinetic/unenhanced", "cold"], [], ["resist:cold"]], "the Droid's ion vulnerability goes with it");
+  // a resistance the species leaves to a choice isn't filled; nothing at all: no field
+  const odd = (await p1.act("char.save", { char: { name: "Odd", species: "Odd" } })).data.id;
+  assert.equal(await defs(odd), undefined);
+  assert.ok(!Object.prototype.hasOwnProperty.call({}, "resist"), "Object.prototype untouched");
+  await db.del(S.K.sw5e("species-2"));
+});
+
 test("senses on the sheet are the GM's: players get their species' senses, never their own edits (#92)", async () => {
   const { gm, p1 } = await table();
   await db.set(S.K.sw5e("species-2"), JSON.stringify([
@@ -1853,6 +1890,38 @@ test("senses on the sheet are the GM's: players get their species' senses, never
   ch = (await p1.poll()).data.state.characters[kira];
   await p1.act("char.save", { char: Object.assign({}, ch, { species: "Kaleesh" }) });
   assert.deepEqual(await senses(kira), [{ kind: "blindsight", range: 30 }]);
+});
+
+test("sheets made before 1.5 get their species' resistances once; never over defences already set; the mark survives a restore", async () => {
+  const { gm } = await table();
+  await db.del(S.K.sw5e("species-2"));
+  await db.set(S.K.sw5eFail("species"), "1");   // unreachable while the sheets are made: none filled at save
+  handler.resetSpeciesSenses();
+  const make = async (name, species, defenses) => (await gm.act("char.save", { char: Object.assign({ name, species }, defenses ? { defenses } : {}) })).data.id;
+  const kix = await make("Kix", "Droid, Class I"), gil = await make("Gil", "Droid, Class I", { resist: [{ type: "fire" }] }), hal = await make("Hal", "Human");
+  const file = JSON.parse((await gm.call("GET", { op: "export" })).data);
+  delete file.defensesFilled;
+  assert.equal((await gm.post("restore", { campaign: file })).code, 200);
+  await db.del(S.K.sw5eFail("species"));
+  await db.set(S.K.sw5e("species-2"), JSON.stringify([
+    { n: "Droid, Class I", traits: [{ n: "Droid Resistances", d: "You are resistant to necrotic, poison, and psychic damage." }] }, { n: "Human", traits: [] }]));
+  handler.resetSpeciesSenses();
+  await gm.act("notes.save", { notes: "an action" });
+  const defs = async (id) => (await gm.poll()).data.state.characters[id].defenses;
+  assert.deepEqual(((await defs(kix)) || {}).fromSpecies, ["resist:necrotic", "resist:poison", "resist:psychic"], "filled from its species");
+  assert.deepEqual((await defs(gil)).resist.map((x) => x.type), ["fire"], "never over defences already set");
+  assert.equal(await defs(hal), undefined);
+  // once: the GM clearing Kix's afterwards stands, through a later action and a restore of that game
+  const ch = (await gm.poll()).data.state.characters[kix];
+  await gm.act("char.save", { char: Object.assign({}, ch, { defenses: null }) });
+  await gm.act("notes.save", { notes: "another action" });
+  assert.equal(await defs(kix), undefined);
+  const again = JSON.parse((await gm.call("GET", { op: "export" })).data);
+  assert.equal(again.defensesFilled, true);
+  assert.equal((await gm.post("restore", { campaign: again })).code, 200);
+  await gm.act("notes.save", { notes: "a third action" });
+  assert.equal(await defs(kix), undefined, "the mark came back with the restore");
+  await db.del(S.K.sw5e("species-2"));
 });
 
 test("sheets made before #129 get their species' senses once; never over senses already set; nothing while the list is unreachable (#92)", async () => {
