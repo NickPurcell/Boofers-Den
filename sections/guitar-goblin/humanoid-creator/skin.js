@@ -123,7 +123,11 @@ function fibreTexture() {
 export function hairMaterial() {
   return new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.46, metalness: 0, normalMap: fibreTexture(), normalScale: new THREE.Vector2(0.55, 0.55), sheen: 0.55, sheenRoughness: 0.4, side: THREE.DoubleSide });
 }
-// a heavy lock (a Mikkian's dreads): matte and fibrous, like dense rope, not bare skin; its colour is the vertex colour
+// a smooth tentacle (a Mikkian's dreads, smooth): skin with a soft sheen and a little gloss; colour is the vertex colour
+export function tentacleMaterial() {
+  return new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.36, metalness: 0, normalMap: textures.skin, normalScale: new THREE.Vector2(0.1, 0.1), clearcoat: 0.45, clearcoatRoughness: 0.3, sheen: 0.3, sheenRoughness: 0.45 });
+}
+// a heavy lock (a Mikkian's dreads, locked): matte and fibrous, like dense rope, not bare skin; its colour is the vertex colour
 export function lockMaterial() {
   return new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, normalMap: fibreTexture(), normalScale: new THREE.Vector2(1.15, 1.15), sheen: 0.3, sheenRoughness: 0.75 });
 }

@@ -52,10 +52,11 @@ export function run(job, a) {
     // dreads hang to the shoulders and below, so they lie on the body in its clothes as well as on the head
     const bf = dreads ? bodyField({ masc: a.masc, build: a.bodyBuild ?? 0.5 }).field : null, hy = HEAD_AT[1];
     const obstacle = bf ? (x, y, z) => Math.min(head(x, y, z), bf(x, y + hy, z) - 0.026) : head;
-    const T = tendrils(a.style, a.thick, head, { length: a.length, obstacle });
+    const T = tendrils(a.style, a.thick, head, { length: a.length, surface: a.surface, obstacle });
     // dreads are thick enough for a coarser mesh; their uvs are stretched so the fibres show at the size of a lock's strands
-    const m = mesh(T.field, T.bounds, (dreads ? 0.0042 : RES.hair) * Q, { aoStep: dreads ? 0.008 : 0.006, uvScale: dreads ? 0.2 : 0.03 });
-    return { mesh: m, t: T.param(m.position) };
+    let m = mesh(T.field, T.bounds, (dreads ? 0.0048 : RES.hair) * Q, { aoStep: dreads ? 0.009 : 0.006, uvScale: dreads ? 0.2 : 0.03 });
+    if (dreads) m = refine(m, T.field);   // smooth tendrils catch the light: their normals must come from the shapes, not the grid
+    return { mesh: m, t: T.param(m.position), d: T.fromTip ? T.fromTip(m.position) : null };
   }
   if (job === 'hair') {   // in the head's own frame; the page sets it on the head
     const h = headField({ ...a, extra: extraFor(a) }), hair = hairField(a.style, h.field);
@@ -80,6 +81,7 @@ export function transferables(out) {
   const list = [], take = (m) => { if (m) for (const k of ['position', 'normal', 'ao', 'uv', 'index']) if (m[k]) list.push(m[k].buffer); };
   take(out.mesh);
   if (out.t) list.push(out.t.buffer);
+  if (out.d) list.push(out.d.buffer);
   for (const p of out.pieces || []) take(p.mesh);
   return list;
 }

@@ -5,10 +5,11 @@
 //
 // Interface: tendrils(style, thick, head, o) -> { field, bounds, param(positions) }
 //   style: a key of ARRANGE; thick: a key of THICK; head: the head's own field (metres from between the eyes);
-//   o.length: a key of LENGTHS; o.obstacle: what the locks must lie on and not pass through (the head, and the
+//   o.length: a key of LENGTHS; o.surface: a key of SURFACES (dreads only); o.obstacle: what the locks must lie on and not pass through (the head, and the
 //   shoulders and back in their clothes), in the same frame; the head alone if not given.
 //   param(positions) gives, for each vertex of the mesh, how far along its tendril it is (0 at the scalp, 1 at the
-//   tip; 1.5 on the band that binds them), so the page can paint tips, bands and roots.
+//   tip; 1.5 on the band that binds them), so the page can paint tips, bands and roots; for dreads, fromTip(positions)
+//   gives each vertex's distance from its tendril's tip in metres, so rings can be evenly spaced.
 import { chain, ellipsoid, smin, cast, gradient } from '../duros-creator/sdf.js';
 import { hairline } from './hair.js';
 
@@ -17,6 +18,8 @@ export const THICK = { slender: { name: 'Slender', r: 0.0064 }, medium: { name: 
 // dreads are heavier than the other arrangements: the same three choices, thicker
 const DREAD_R = { slender: 0.0078, medium: 0.0098, thick: 0.0128 };
 export const LENGTHS = { shoulder: { name: 'To the shoulders' }, long: { name: 'Long' } };
+// smooth like a tentacle, or lumpy like a matted lock
+export const SURFACES = { smooth: { name: 'Smooth' }, locked: { name: 'Locked' } };
 export const PATTERNS = { plain: { name: 'Plain' }, tips: { name: 'Tips' }, bands: { name: 'Bands' }, roots: { name: 'Roots' } };
 const LEN = { swept: 0.21, short: 0.062, bound: 0.2 };
 const hash = (i, j = 0) => { const s = Math.sin(i * 127.1 + j * 311.7 + 17.3) * 43758.5453; return s - Math.floor(s); };
@@ -77,12 +80,19 @@ function dreadPath(p, n0, id, r, obstacle, yEnd, rest) {
   };
   let q = [p[0] + n0[0] * r * 0.7, p[1] + n0[1] * r * 0.7, p[2] + n0[2] * r * 0.7];   // the short lift at the root
   clear(q); pts.push(q.slice());
-  let dir = norm([n0[0] * 0.35 + off[0], n0[1] * 0.35 - 0.5, n0[2] * 0.35 + off[2]]), touching = true, shelf = false;
+  let dir = norm([n0[0] * 0.35 + off[0], n0[1] * 0.35 - 0.5, n0[2] * 0.35 + off[2]]), touching = true, shelf = false, fall = 0;
   for (let i = 0; i < 44 && q[1] > yEnd; i++) {
     // over the shoulders a lock falls to the front or the back, whichever side of them it is on
     // (and not out along them: a lock does not ride along the top of a shoulder to its edge)
-    const low = shelf || q[1] < -0.16, lean = low ? [-0.25 * Math.sign(q[0]), 0, q[2] > 0.01 ? 1.3 : -1.3] : off, w = touching ? (low ? 0.8 : 0.6) : 0.12;
-    const want = norm([lean[0] * w + sway[0], -1, lean[2] * w + sway[2]]), s = i < 1 ? 0.5 : 0.22;
+    const low = shelf || q[1] < -0.16;
+    // decided once, where it first reaches the shoulders, so it cannot dither along them: those hanging beside the ears
+    // and forward of them fall in front, as locks do, and those behind fall down the back
+    if (low && !fall) fall = q[2] > -0.015 ? 1 : -1;
+    const lean = low ? [-0.25 * Math.sign(q[0]), 0, 1.3 * fall] : off, w = touching ? (low ? 0.8 : 0.6) : 0.12;
+    // one from the front of the scalp first climbs back over the skull, as hair pushed back does, and only then falls;
+    // falling at once it would come down over the brow and be shoved aside by the guard over the face
+    const climb = p[2] > 0.035 && Math.abs(p[0]) < 0.058 && q[2] > -0.015 && q[1] > 0.0;   // rooted on the forehead, and not yet past the crown
+    const want = climb ? norm([p[0] * 2, 0.15, -1]) : norm([lean[0] * w + sway[0], -1, lean[2] * w + sway[2]]), s = i < 1 ? 0.5 : 0.22;
     dir = norm([dir[0] * s + want[0] * (1 - s), dir[1] * s + want[1] * (1 - s), dir[2] * s + want[2] * (1 - s)]);
     const nq = [q[0] + dir[0] * seg, q[1] + dir[1] * seg, q[2] + dir[2] * seg];
     const nrm = clear(nq); touching = !!nrm;
@@ -91,7 +101,7 @@ function dreadPath(p, n0, id, r, obstacle, yEnd, rest) {
     dir = norm([nq[0] - q[0], nq[1] - q[1], nq[2] - q[2]]); q = nq; pts.push(q.slice());
     if (rest && shelf && i > 2) break;   // cut to the shoulders: it ends where it lands on them
   }
-  return smooth(pts);
+  return { pts, clear };   // the raw points: separated from the other locks, then smoothed, by tendrilPaths
 }
 // Every lock's surface at once: tubes along the paths whose radius changes along their length (narrower where they
 // leave the scalp, tapering a little, lumpy as a matted lock is). Dozens of locks crowd round the head, so a query
@@ -107,7 +117,7 @@ function lockGrid(locks, cell = 0.025, M = 0.022) {
       s += len;
     }
     for (let t = 0; t <= s; t += 0.004) rmax = Math.max(rmax, lk.radAt(t));
-    for (const g of segs) { g.R = g.len / 2 + rmax; S.push(g); for (const [c, k] of [[g.mx, 0], [g.my, 1], [g.mz, 2]]) { lo[k] = Math.min(lo[k], c - g.R - M); hi[k] = Math.max(hi[k], c + g.R + M); } }
+    for (const g of segs) { g.L = s; g.R = g.len / 2 + rmax; S.push(g); for (const [c, k] of [[g.mx, 0], [g.my, 1], [g.mz, 2]]) { lo[k] = Math.min(lo[k], c - g.R - M); hi[k] = Math.max(hi[k], c + g.R + M); } }
   });
   const nx = Math.ceil((hi[0] - lo[0]) / cell), ny = Math.ceil((hi[1] - lo[1]) / cell), nz = Math.ceil((hi[2] - lo[2]) / cell), cells = new Array(nx * ny * nz);
   const at = (v, k, n) => Math.max(0, Math.min(n - 1, Math.floor((v - lo[k]) / cell)));
@@ -134,18 +144,63 @@ function lockGrid(locks, cell = 0.025, M = 0.022) {
     }
     return d;
   };
-  // how far along its lock the nearest axis point is (0 at the scalp, 1 at the tip)
-  const along = (x, y, z) => {
-    const L = list(x, y, z); if (!L) return 0;
+  // how far along its lock the nearest axis point is (0 at the scalp, 1 at the tip), or with `tip` its distance from
+  // the lock's tip in metres
+  const along = (x, y, z, tip) => {
+    const L = list(x, y, z); if (!L) return tip ? 1 : 0;
     let best = Infinity, t = 0;
     for (let q = 0; q < L.length; q++) {
       const g = S[L[q]], px = x - g.a[0], py = y - g.a[1], pz = z - g.a[2], h = Math.max(0, Math.min(1, (px * g.bx + py * g.by + pz * g.bz) / g.l2));
       const dd = Math.hypot(px - g.bx * h, py - g.by * h, pz - g.bz * h) - g.radAt(g.s0 + g.len * h);
-      if (dd < best) { best = dd; t = (g.i + h) / g.n; }
+      if (dd < best) { best = dd; t = tip ? g.L - (g.s0 + g.len * h) : (g.i + h) / g.n; }
     }
     return t;
   };
   return { field, along, bounds: [lo.map((v) => v + M - 0.004), hi.map((v) => v - M + 0.004)] };
+}
+
+// Locks that pass through one another merge into a single melted mass, which a glossy skin shows at once. So, after
+// they have fallen, push apart any two points of different locks closer than their thicknesses allow (the first few
+// points, at the scalp, stay put), keep the moved points clear of the head and body, and repeat until they settle.
+function separate(locks, ITER = 40, fixed = 3, smoothing = 0) {
+  const cell = 0.035, key = (x, y, z) => `${x},${y},${z}`;
+  // the way a lock runs at its k-th point
+  const along = (pts, k) => { const a = pts[Math.max(0, k - 1)], b = pts[Math.min(pts.length - 1, k + 1)]; return norm([b[0] - a[0], b[1] - a[1], b[2] - a[2]]); };
+  for (let it = 0; it < ITER; it++) {
+    const grid = new Map();
+    locks.forEach((lk, li) => lk.pts.forEach((p, k) => {
+      if (k < fixed) return;
+      const kk = key(Math.floor(p[0] / cell), Math.floor(p[1] / cell), Math.floor(p[2] / cell)); if (!grid.has(kk)) grid.set(kk, []); grid.get(kk).push(li, k);
+    }));
+    let moved = 0;
+    locks.forEach((lk, li) => {
+      for (let k = fixed; k < lk.pts.length; k++) {
+        const p = lk.pts[k], cx = Math.floor(p[0] / cell), cy = Math.floor(p[1] / cell), cz = Math.floor(p[2] / cell), t = along(lk.pts, k);
+        for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) {
+          const L = grid.get(key(cx + a, cy + b, cz + c)); if (!L) continue;
+          for (let m = 0; m < L.length; m += 2) {
+            const lj = L[m]; if (lj <= li) continue;
+            const q = locks[lj].pts[L[m + 1]], need = (lk.r + locks[lj].r) * 0.94;
+            let dx = q[0] - p[0], dy = q[1] - p[1], dz = q[2] - p[2];
+            if (Math.hypot(dx, dy, dz) >= need) continue;
+            // apart sideways, across the way the lock runs: moving along it would only slide one point past the other
+            const dt = dx * t[0] + dy * t[1] + dz * t[2]; dx -= t[0] * dt; dy -= t[1] * dt; dz -= t[2] * dt;
+            let d = Math.hypot(dx, dy, dz);
+            if (d < 1e-4) { const o = norm([p[0] || 1e-3, 0, p[2] + 0.012]); dx = o[0] * 1e-4; dy = 0; dz = o[2] * 1e-4; d = 1e-4; }   // one exactly over the other: part them outward from the head
+            const push = ((need - d) / 2 / d) * 1.2;
+            p[0] -= dx * push; p[1] -= dy * push; p[2] -= dz * push; q[0] += dx * push; q[1] += dy * push; q[2] += dz * push; moved++;
+          }
+        }
+      }
+    });
+    // and each lock relaxed back toward a smooth curve, so a push moves a stretch of it rather than one point
+    if (smoothing) for (const lk of locks) {
+      const P = lk.pts, old = P.map((p) => p.slice());
+      for (let k = fixed; k < P.length - 1; k++) for (let c = 0; c < 3; c++) P[k][c] = old[k][c] * (1 - smoothing) + (old[k - 1][c] + old[k + 1][c]) * smoothing * 0.5;
+    }
+    for (const lk of locks) for (let k = fixed; k < lk.pts.length; k++) lk.clear(lk.pts[k]);
+    if (!moved && it > 4) break;
+  }
 }
 
 // every tendril as a line of points from the scalp out, with its radius at each point (or, for dreads, its own field)
@@ -153,12 +208,21 @@ export function tendrilPaths(style, thick, head, o = {}) {
   const obstacle = o.obstacle || head, out = [], N = 6;
   if (style === 'dreads') {
     const r0 = DREAD_R[thick] || DREAD_R.medium, yEnd0 = o.length === 'long' ? -0.4 : -0.215;
-    for (const { id, p, n } of roots(head, Math.max(0.62, Math.min(1.1, 0.0098 / r0)))) {
-      const r = r0 * (0.86 + 0.26 * hash(id, 7)), pts = dreadPath(p, n, id, r, obstacle, yEnd0 - 0.045 * hash(id, 2), o.length !== 'long');
+    const fallen = roots(head, Math.max(0.55, Math.min(1, 0.0084 / r0))).map(({ id, p, n }) => {
+      const r = r0 * (0.86 + 0.26 * hash(id, 7)), { pts, clear } = dreadPath(p, n, id, r, obstacle, yEnd0 - 0.045 * hash(id, 2), o.length !== 'long');
+      return { id, r, pts, clear };
+    });
+    // smoothed first, so the points are close enough together that two locks cannot cross between them unseen; then
+    // pushed apart and relaxed in turn until they settle
+    for (const f of fallen) f.pts = smooth(f.pts);
+    separate(fallen, 60, 6, 0.4);
+    for (const { id, r, pts } of fallen) {
       let L = 0; for (let i = 0; i + 1 < pts.length; i++) L += Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1], pts[i + 1][2] - pts[i][2]);
-      // lumpy, but not in a row of beads: three slow waves at unrelated lengths
+      // smooth like a tentacle: as thick as a lock at the root, then a gentle taper to a rounded tip at a little over half
+      // its width; or locked, lumpy as a matted lock is (three slow waves at unrelated lengths, so not a row of beads)
       const ph = hash(id, 8) * 6.28, ph2 = hash(id, 9) * 6.28, ph3 = hash(id, 10) * 6.28, k1 = 0.021 + 0.006 * hash(id, 15);
-      const radAt = (s) => r * (0.8 + 0.2 * Math.min(1, s / 0.03)) * (1 - 0.13 * (s / L)) * (1 + 0.04 * Math.sin((s / k1) * 6.283 + ph) + 0.04 * Math.sin((s / 0.053) * 6.283 + ph2) + 0.022 * Math.sin((s / 0.0127) * 6.283 + ph3));
+      const radAt = o.surface !== 'locked' ? (s) => r * 1.1 * (0.93 + 0.07 * Math.min(1, s / 0.025)) * (1 - 0.45 * Math.pow(Math.min(1, s / L), 1.6))
+        : (s) => r * (0.8 + 0.2 * Math.min(1, s / 0.03)) * (1 - 0.13 * (s / L)) * (1 + 0.04 * Math.sin((s / k1) * 6.283 + ph) + 0.04 * Math.sin((s / 0.053) * 6.283 + ph2) + 0.022 * Math.sin((s / 0.0127) * 6.283 + ph3));
       out.push({ pts, radAt });
     }
     return out;
@@ -193,7 +257,8 @@ export function tendrils(style, thick, head, o = {}) {
   if (style === 'dreads') {
     const G = lockGrid(list);
     const param = (P) => { const n = P.length / 3, T = new Float32Array(n); for (let i = 0; i < n; i++) T[i] = G.along(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]); return T; };
-    return { field: G.field, bounds: G.bounds, param };
+    const fromTip = (P) => { const n = P.length / 3, D = new Float32Array(n); for (let i = 0; i < n; i++) D[i] = G.along(P[i * 3], P[i * 3 + 1], P[i * 3 + 2], true); return D; };
+    return { field: G.field, bounds: G.bounds, param, fromTip };
   }
   const ropes = list.map((t) => chain(t.pts, t.rad));
   const band = style === 'bound' ? ellipsoid(0, 0.004, -0.142, 0.036, 0.014, 0.032) : null;
