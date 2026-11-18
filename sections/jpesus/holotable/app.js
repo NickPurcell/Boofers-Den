@@ -880,6 +880,7 @@
           <label style="margin-top:8px">Token colour${inp('color', ch.color || '#4fc3f7', { ro, type: 'color' })}</label>
           <label style="margin-top:8px">Experience points${inp('xp', +ch.xp || 0, { ro: lock, type: 'number' })}</label>
           <label style="margin-top:8px">Proficiency bonus override${inp('profOverride', ch.profOverride ?? '', { ro, type: 'number', ph: String(2 + Math.floor((lvl - 1) / 4)) })}</label>
+          <label style="margin-top:8px" title="Your quality of life between adventures (SW5e, PHB): the GM charges it by the day">Lifestyle${inp('lifestyle', ch.lifestyle || '', { ro, type: 'select', options: [{ v: '', t: '—' }, ...Object.entries(LIFESTYLES).map(([k, v]) => ({ v: k, t: `${k} (${v ? (k === 'Aristocratic' ? '100+' : v) + ' cr' : 'free'}/day)` }))] })}</label>
           <label style="margin-top:8px">Initiative bonus (misc)${inp('initMisc', +ch.initMisc || 0, { ro, type: 'number' })}</label>
           ${isGM() ? `<label style="margin-top:8px">Owner (GM)<select data-act-change="assign">${Object.entries(S.st.players).map(([id, p]) => `<option value="${esc(id)}" ${id === ch.owner ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>` : ''}
         </div>
@@ -2398,6 +2399,54 @@
   }
 
   // --------------------------------------------------------------------------- handouts
+  // ---- between fights (audit section 11): factions, rivals and complications, lifestyle. The GM keeps them;
+  // players see factions the GM shows and rivals the GM has made known, without the GM's notes.
+  const LIFESTYLES = { Wretched: 0, Squalid: 1, Poor: 2, Modest: 10, Comfortable: 20, Wealthy: 40, Aristocratic: 100 };
+  function storyHtml() {
+    const gm = isGM(), fs = S.st.factions || [], rs = S.st.rivals || [], name = id => (S.st.characters[id] || {}).name || '?';
+    const facts = fs.map(f => `<div class="box story-item"><h4 style="text-transform:none;letter-spacing:0">⚑ ${esc(f.name)} <span class="muted" style="font-weight:400">tier ${n0(f.tier)} · ${n0(f.renown)} renown${gm && !f.shown ? ' · hidden from players' : ''}</span>
+        ${gm ? `<span class="spacer"></span><button class="btn tiny" data-st="edit-f" data-id="${esc(f.id)}">✎</button>` : ''}</h4>
+      ${f.notes ? `<div>${md(f.notes)}</div>` : ''}${gm && f.gmNotes ? `<div class="muted" style="margin-top:4px">🔒 ${md(f.gmNotes)}</div>` : ''}
+      ${Object.keys(f.members || {}).length ? `<div class="list-rows" style="margin-top:6px">${Object.entries(f.members).map(([id, m]) => `<div class="lr"><span class="nm">${esc(name(id))}</span><span class="muted">rank ${n0(m.rank)}</span><span class="bonus">${n0(m.renown)}</span>
+        ${gm ? `<button class="btn tiny" data-st="ren" data-id="${esc(f.id)}" data-c="${esc(id)}" data-d="1">+1</button><button class="btn tiny ghost" data-st="ren" data-id="${esc(f.id)}" data-c="${esc(id)}" data-d="-1">−1</button>` : ''}</div>`).join('')}</div>` : ''}</div>`).join('');
+    const rivs = rs.map(r => `<div class="box story-item"><h4 style="text-transform:none;letter-spacing:0">${r.kind === 'complication' ? '⚠' : '☠'} ${esc(r.name)} <span class="muted" style="font-weight:400">${r.kind}${(r.chars || []).length ? ' · ' + r.chars.map(name).map(esc).join(', ') : ''}${gm && !r.known ? ' · not known to players' : ''}</span>
+        ${gm ? `<span class="spacer"></span><button class="btn tiny" data-st="edit-r" data-id="${esc(r.id)}">✎</button>` : ''}</h4>
+      ${r.notes ? `<div>${md(r.notes)}</div>` : ''}${gm && r.gmNotes ? `<div class="muted" style="margin-top:4px">🔒 ${md(r.gmNotes)}</div>` : ''}</div>`).join('');
+    if (!gm && !facts && !rivs) return '';
+    return `<h3 style="margin-top:18px">Factions${gm ? ' <button class="btn tiny" data-st="new-f">＋ Faction</button>' : ''}</h3>${facts || '<p class="muted">None yet.</p>'}
+      <h3 style="margin-top:18px">Rivals &amp; complications${gm ? ' <button class="btn tiny" data-st="new-r">＋ Add</button>' : ''}</h3>${rivs || '<p class="muted">None yet.</p>'}
+      ${gm ? `<h3 style="margin-top:18px">Lifestyle</h3><div class="row wrap"><span class="muted">Charge each character's lifestyle (set on Bio &amp; Notes) for</span><input id="lsDays" type="number" min="1" value="7" style="width:70px"><span class="muted">days</span><button class="btn small" data-st="charge">🏠 Charge</button></div>` : ''}`;
+  }
+  function openStoryEditor(kind, x) {
+    const f = kind === 'f', cs = chars();
+    x = x || (f ? { name: '', tier: 1, renown: 0, notes: '', gmNotes: '', shown: true, members: {} } : { name: '', kind: 'rival', notes: '', gmNotes: '', known: false, chars: [] });
+    modal(`<h3>${f ? '⚑ Faction' : '☠ Rival or complication'}</h3>
+      <label>Name<input id="soName" value="${esc(x.name)}" maxlength="80"></label>
+      ${f ? `<div class="row wrap"><label>Tier<input id="soTier" type="number" min="1" max="20" value="${n0(x.tier)}" style="width:70px"></label><label>Faction renown<input id="soRen" type="number" min="0" value="${n0(x.renown)}" style="width:100px"></label>
+        <label class="toggle"><input type="checkbox" id="soShown" ${x.shown ? 'checked' : ''}> players see it</label></div>
+        <h4 style="margin-top:8px">Members <span class="muted" style="text-transform:none;letter-spacing:0">rank 0–5 and renown</span></h4>
+        ${cs.map(c => { const m = (x.members || {})[c.id]; return `<div class="row"><label class="toggle" style="flex:1"><input type="checkbox" class="soM" value="${esc(c.id)}" ${m ? 'checked' : ''}> ${esc(c.name)}</label><input class="soRank" data-c="${esc(c.id)}" type="number" min="0" max="5" value="${n0(m && m.rank)}" style="width:60px"><input class="soMR" data-c="${esc(c.id)}" type="number" min="0" value="${n0(m && m.renown)}" style="width:80px"></div>`; }).join('')}`
+      : `<div class="row wrap"><label>Kind<select id="soKind"><option value="rival" ${x.kind === 'rival' ? 'selected' : ''}>Rival</option><option value="complication" ${x.kind === 'complication' ? 'selected' : ''}>Complication</option></select></label>
+        <label class="toggle"><input type="checkbox" id="soKnown" ${x.known ? 'checked' : ''}> players know about it</label></div>
+        <div class="ask-who">${cs.map(c => `<label class="toggle"><input type="checkbox" class="soC" value="${esc(c.id)}" ${(x.chars || []).includes(c.id) ? 'checked' : ''}> ${esc(c.name)}</label>`).join('')}</div>`}
+      <label style="margin-top:8px">Notes <span class="muted">(players see these when it's shown)</span><textarea id="soNotes" rows="3">${esc(x.notes || '')}</textarea></label>
+      <label style="margin-top:8px">🔒 GM notes<textarea id="soGm" rows="3">${esc(x.gmNotes || '')}</textarea></label>
+      <div class="row" style="margin-top:12px">${x.id ? '<button class="btn small danger" id="soDel">Delete</button>' : ''}<span class="spacer"></span><button class="btn ghost" id="soClose">Cancel</button><button class="btn primary" id="soSave">Save</button></div>`, box => {
+      box.onclick = async e => {
+        const t = e.target;
+        if (t.id === 'soClose') closeModal();
+        if (t.id === 'soDel' && confirm(`Delete ${x.name}?`)) { await act(f ? 'faction.remove' : 'rival.remove', { id: x.id }); closeModal(); }
+        if (t.id === 'soSave') {
+          const item = { id: x.id, name: $('#soName').value, notes: $('#soNotes').value, gmNotes: $('#soGm').value };
+          if (f) {
+            Object.assign(item, { tier: +$('#soTier').value || 1, renown: +$('#soRen').value || 0, shown: $('#soShown').checked, members: {} });
+            for (const c of box.querySelectorAll('.soM:checked')) item.members[c.value] = { rank: +box.querySelector(`.soRank[data-c="${c.value}"]`).value || 0, renown: +box.querySelector(`.soMR[data-c="${c.value}"]`).value || 0 };
+          } else Object.assign(item, { kind: $('#soKind').value, known: $('#soKnown').checked, chars: [...box.querySelectorAll('.soC:checked')].map(c => c.value) });
+          if (await act(f ? 'faction.save' : 'rival.save', { item })) closeModal();
+        }
+      };
+    });
+  }
   function renderHandouts(el) {
     const gm = isGM(), hs = S.st.handouts || [];
     el.innerHTML = `${gm ? `<div class="box"><h4>New handout</h4>
@@ -2410,9 +2459,19 @@
           ${gm ? `<span class="spacer"></span><span class="muted" style="font-size:11px">${h.shared ? 'shared' : 'GM only'}</span>
           <button class="btn tiny" data-ho="toggle" data-id="${esc(h.id)}">${h.shared ? 'Unshare' : 'Share'}</button><button class="btn tiny ghost" data-ho="del" data-id="${esc(h.id)}">✕</button>` : ''}</h4>
         ${imgUrl(h.img) ? `<img src="${esc(imgUrl(h.img))}" style="max-width:100%;border-radius:6px;margin-bottom:6px">` : ''}<div>${md(h.text || '')}</div></div>`).join('')
-        || '<p class="muted">No handouts yet.</p>'}</div>`;
+        || '<p class="muted">No handouts yet.</p>'}</div>${storyHtml()}`;
   }
   $('#handouts').addEventListener('click', async e => {
+    const sb = e.target.closest('[data-st]');
+    if (sb && isGM()) {
+      const a = sb.dataset.st, id = sb.dataset.id;
+      if (a === 'new-f') return openStoryEditor('f');
+      if (a === 'new-r') return openStoryEditor('r');
+      if (a === 'edit-f') return openStoryEditor('f', (S.st.factions || []).find(x => x.id === id));
+      if (a === 'edit-r') return openStoryEditor('r', (S.st.rivals || []).find(x => x.id === id));
+      if (a === 'ren') return act('faction.renown', { id, charId: sb.dataset.c, delta: +sb.dataset.d });
+      if (a === 'charge') { const days = +$('#lsDays').value || 1, ids = chars().filter(c => c.lifestyle).map(c => c.id); if (!ids.length) return toast('Nobody has a lifestyle set yet (Bio & Notes on the sheet).', true); if (confirm(`Charge ${days} day${days === 1 ? '' : 's'} of lifestyle to ${ids.length} character${ids.length === 1 ? '' : 's'}?`)) act('lifestyle.charge', { days, chars: ids }); return; }
+    }
     const t = e.target;
     if (t.id === 'hoUpload') return $('#hoFile').click();
     if (t.id === 'hoSave') {
