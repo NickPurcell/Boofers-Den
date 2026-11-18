@@ -3126,3 +3126,58 @@ test("maneuvers through the API: the sheet's maneuver and pool, the die from the
   assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0", add: { maneuver: "__proto__" } })).code, 200);
   assert.ok(!("mv" in {}) && !("conditions" in {}));
 });
+
+test("Riposte and Return Fire (#67): a miss against one who knows them gives a reaction prompt; taking it spends the die and adds it on a hit", () => {
+  const sup = (used) => ({ superiority: { key: "superiority", name: "Superiority dice", max: 3, die: "d6", used, refill: "short" } });
+  const ft = (o) => unit(Object.assign({ id: "ft", name: "Fenn", side: "pc", x: 1, y: 0, ac: 18, pools: sup(0), maneuvers: { known: ["riposte", "return-fire", "trip-attack"], dc: { physical: 14, mental: 12, general: 14 } } }, o));
+  const r1 = () => unit({ id: "r1", name: "Raider", side: "npc", x: 0, y: 0, hp: 60, maxHp: 60 });
+  const claw = { name: "Claw", bonus: 2, damage: "1d4", type: "kinetic", melee: 5, range: null };
+  // the Raider's melee miss: a riposte prompt for Fenn
+  let r = E.apply(world([ft(), r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: claw }, dice({ total: 8, nat: 6 }).roll);
+  assert.deepEqual(r.reactions, [{ reactor: "ft", against: "r1", kind: "riposte" }]);
+  // a hit, or a ranged miss, or no die, reaction or maneuver: other or no prompt
+  assert.deepEqual(E.apply(world([ft(), r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: claw }, dice({ total: 20, nat: 18 }, { total: 2 }).roll).reactions, []);
+  const shot = { name: "Blaster", bonus: 2, damage: "1d6", type: "energy", melee: 0, range: [60, 240] };
+  assert.deepEqual(E.apply(world([ft({ x: 5 }), r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: shot }, dice({ total: 8, nat: 6 }).roll).reactions.map((x) => x.kind), ["return-fire"]);
+  assert.deepEqual(E.apply(world([ft({ pools: sup(3) }), r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: claw }, dice({ total: 8, nat: 6 }).roll).reactions, [], "no dice left");
+  assert.deepEqual(E.apply(world([ft({ maneuvers: { known: ["trip-attack"], dc: {} } }), r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: claw }, dice({ total: 8, nat: 6 }).roll).reactions, [], "doesn't know it");
+  // the on-hit list never offers a reaction maneuver
+  const wpn = Object.assign({}, blade, { weapon: true });
+  assert.deepEqual(E.preview(world([ft(), r1()], "ft"), "ft", "r1", wpn).riders.find((x) => x.key === "maneuver").options.map((o) => o.key), ["trip-attack"]);
+  // taking the riposte: a melee weapon attack, the die on its damage, the die and the reaction spent
+  const d = dice({ total: 16, nat: 13 }, { total: 9 });
+  const rr = E.react(r.world, { kind: "riposte", reactor: "ft", against: "r1", attack: wpn }, d.roll);
+  assert.equal(rr.ok, true, rr.why);
+  assert.equal(d.asked[1], "1d8+3+1d6");
+  assert.match(rr.log[0].text, /Fenn makes a riposte against Raider/);
+  assert.match(rr.log[1].text, /with Riposte 1d6/);
+  assert.deepEqual([rr.world.units.ft.pools.superiority.used, E.budget(rr.world, "ft").reaction], [1, false]);
+  assert.equal(E.react(rr.world, { kind: "riposte", reactor: "ft", against: "r1", attack: wpn }, dice({ total: 16, nat: 13 }, { total: 9 }).roll).ok, false, "one reaction");
+  // a riposte must be a melee weapon attack; return fire a ranged one
+  assert.equal(E.react(r.world, { kind: "riposte", reactor: "ft", against: "r1", attack: Object.assign({}, rifle, { weapon: true }) }, dice().roll).why, "A riposte is a melee weapon attack.");
+  assert.equal(E.react(r.world, { kind: "return-fire", reactor: "ft", against: "r1", attack: wpn }, dice().roll).why, "Return fire is a ranged weapon attack.");
+  // a missed riposte still spends the die
+  const miss = E.react(r.world, { kind: "riposte", reactor: "ft", against: "r1", attack: wpn }, dice({ total: 2, nat: 2 }).roll);
+  assert.equal(miss.world.units.ft.pools.superiority.used, 1);
+  assert.equal(E.react(r.world, { kind: "riposte", reactor: "__proto__", against: "r1", attack: wpn }, dice().roll).ok, false);
+});
+
+test("Riposte through the API: the creature's miss raises the prompt, the player takes it from the sheet", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { ac: 25, classes: [{ name: "Fighter", level: 5 }], features: [{ name: "Riposte", text: "" }] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 0, damage: "1d4", type: "kinetic", melee: 5 } })).code, 200);
+  st = await sam.state();
+  const pend = (st.fight.pending || []).find((x) => x.kind === "riposte");
+  if (!pend) return;   // a natural 20 hits even AC 25: no prompt this time
+  assert.equal((await gm.act("fight.end", {})).code, 400, "the turn waits for the answer");
+  assert.equal((await sam.act("fight.react", { id: pend.id, take: true, attack: "0" })).code, 200);
+  st = await gm.state();
+  const rolls = st.chat.filter((m) => m.fight && m.roll).map((m) => m.roll);
+  assert.ok(rolls.some((x) => x.kind === "attack" && /riposte against Raider/.test(x.label)));
+  assert.equal((st.characters[avery].resources || []).find((r) => r.key === "superiority").used, 1);
+  assert.deepEqual(st.fight.pending, []);
+});
