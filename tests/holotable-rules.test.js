@@ -206,6 +206,69 @@ test("enhanced items (audit 6.2): a +N to attack and damage, or to AC, read from
   assert.equal(R.armorClass(c).total, 16);
 });
 
+test("item modification (audit 6.4): chassis kinds, slots by rarity, what fits, the DC, and the chassis's own +N", () => {
+  assert.deepEqual(["Blaster Chassis (Premium)", "Tunic Chassis (Standard)", "Focus Generator Chassis (Advanced)", "Reinforced Chassis (Premium)", "Blaster"].map(R.chassisKind),
+    ["blaster", "clothing", "focus generator", null, null]);
+  assert.deepEqual(["Standard", "Premium", "Prototype", "Advanced", "Legendary", "Artifact"].map((r) => R.modSlots(r).aug), [0, 0, 1, 1, 2, 2]);
+  assert.deepEqual(["Standard", "Artifact", undefined].map(R.modDC), [10, 30, 10]);
+  const chassis = (rar, mods = []) => ({ name: `Blaster Chassis (${rar})`, rar, chassis: { kind: "blaster", mods } });
+  const mod = (name, kind, rar, extra) => Object.assign({ name, rar, mod: { kind } }, extra);
+  assert.equal(R.installBlocked(chassis("Premium"), mod("Accuracy Focus Mk II", "blaster", "Premium")), null);
+  assert.match(R.installBlocked(chassis("Premium"), mod("Edge", "vibroweapon", "Standard")), /a vibroweapon modification; Blaster Chassis \(Premium\) is a blaster chassis/);
+  assert.match(R.installBlocked(chassis("Standard"), mod("Accuracy Focus Mk II", "blaster", "Premium")), /holds modifications up to Standard/);
+  assert.match(R.installBlocked(chassis("Premium"), mod("Charisma Augment (Basic)", "augment", "Standard")), /has no augment slot/);
+  assert.equal(R.installBlocked(chassis("Prototype"), mod("Charisma Augment (Basic)", "augment", "Standard")), null);
+  assert.match(R.installBlocked(chassis("Legendary", [{ name: "Charisma Augment (Basic)", aug: true }]), mod("Charisma Augment (Basic)", "augment", "Standard")), /No two of the same augment/);
+  const full = chassis("Premium", [1, 2, 3, 4].map((n) => ({ name: `M${n}` })));
+  assert.match(R.installBlocked(full, mod("Accuracy Focus Mk II", "blaster", "Premium")), /No modification slot is free/);
+  assert.match(R.installBlocked({ name: "Rock" }, mod("X", "blaster", "Standard")), /isn't a chassis/);
+  // the chassis's own +N: its modifications' added up
+  assert.deepEqual(R.chassisBonus(chassis("Premium", [{ name: "A", bonus: { hit: 1 } }, { name: "B", bonus: { hit: 1, dmg: 2 } }])), { hit: 2, dmg: 2 });
+  assert.equal(R.chassisBonus(chassis("Premium", [{ name: "A" }])), null);
+  // only this shape is kept
+  assert.deepEqual(R.cleanChassis({ kind: "blaster", mods: [{ name: " A ", rar: "Premium", aug: 1, bonus: { hit: 9 } }, { name: "" }, "x"] }), { kind: "blaster", mods: [{ name: "A", rar: "Premium", aug: true }] });
+  assert.equal(R.cleanChassis({ kind: "__proto__", mods: [] }), null);
+  assert.deepEqual([R.cleanMod({ kind: "augment" }), R.cleanMod({ kind: "toaster" })], [{ kind: "augment" }, null]);
+  assert.deepEqual(R.cleanChassis({ kind: "blaster", mods: [], att0: false }), { kind: "blaster", mods: [], att0: false });
+  assert.deepEqual(R.cleanChassis({ kind: "blaster", mods: [], att0: "yes" }), { kind: "blaster", mods: [] });
+});
+
+test("installing and removing a modification (audit 6.4, #236's review): the list's order doesn't matter, and attunement goes back", () => {
+  const barrel = () => ({ name: "Barrel Mod", qty: 1, rar: "Standard", mod: { kind: "blaster" }, bonus: { hit: 1 } });
+  const chassis = () => ({ name: "Blaster Chassis (Premium)", qty: 1, rar: "Premium", chassis: { kind: "blaster", mods: [] } });
+  const blade = () => ({ name: "Vibroblade +2", qty: 1, bonus: { hit: 2, dmg: 2 }, att: false, chassis: { kind: "vibroweapon", mods: [] } });
+  // the modification listed above the chassis, and another chassis after it: the right one gets it, and the other is untouched
+  const c = { equipment: [barrel(), chassis(), blade()] };
+  assert.equal(R.installMod(c, 1, 0), null);
+  assert.deepEqual(c.equipment.map((e) => e.name), ["Blaster Chassis (Premium)", "Vibroblade +2"]);
+  assert.deepEqual(c.equipment[0].chassis.mods, [{ name: "Barrel Mod", rar: "Standard", bonus: { hit: 1 } }]);
+  assert.deepEqual([c.equipment[0].bonus, c.equipment[0].att], [{ hit: 1 }, true]);
+  assert.deepEqual(c.equipment[1], blade());
+  // listed below it: the same
+  const d = { equipment: [chassis(), barrel()] };
+  assert.equal(R.installMod(d, 0, 1), null);
+  assert.deepEqual([d.equipment.length, d.equipment[0].bonus], [1, { hit: 1 }]);
+  // two in the pack: one goes in, one stays
+  const e = { equipment: [Object.assign(barrel(), { qty: 2 }), chassis()] };
+  assert.equal(R.installMod(e, 1, 0), null);
+  assert.deepEqual([e.equipment[0].qty, e.equipment[1].chassis.mods.length], [1, 1]);
+  // what doesn't fit is refused, and nothing moves
+  const f = { equipment: [barrel(), blade()] };
+  assert.match(R.installMod(f, 1, 0), /a blaster modification/);
+  assert.equal(f.equipment.length, 2);
+  // salvaged: back in the pack, and the chassis needs no attunement again; destroyed: gone
+  assert.equal(R.removeMod(c, 0, 0, true), null);
+  assert.deepEqual([c.equipment[0].chassis.mods, c.equipment[0].bonus, c.equipment[0].att, "att0" in c.equipment[0].chassis], [[], undefined, undefined, false]);
+  assert.deepEqual(c.equipment[2], { name: "Barrel Mod", qty: 1, equipped: false, notes: "Standard modification", rar: "Standard", mod: { kind: "blaster" }, bonus: { hit: 1 } });
+  assert.equal(R.removeMod(d, 0, 0, false), null);
+  assert.deepEqual(d.equipment.map((x) => x.name), ["Blaster Chassis (Premium)"]);
+  // a chassis that needed attunement anyway still does with everything out
+  const g = { equipment: [Object.assign(chassis(), { att: true }), barrel()] };
+  R.installMod(g, 0, 1); R.removeMod(g, 0, 0, false);
+  assert.equal(g.equipment[0].att, true);
+  assert.match(R.removeMod(g, 0, 0, true), /gone/);
+});
+
 test("speed (audit 5.11): SW5e's strength and cumbersome armor properties, the encumbrance variant, other movement from traits", () => {
   assert.deepEqual(R.armorFromItem({ accl: "Heavy", ac: "17", props: ["Bulky", "cumbersome", "strength 15"] }), { kind: "heavy", ac: 17, str: 15, cumbersome: true });
   assert.deepEqual(R.armorFromItem({ accl: "Light", ac: "11", props: [] }), { kind: "light", ac: 11 });
@@ -448,4 +511,13 @@ test("XP and the level thresholds (audit 2.14): the next level's XP from SW5e's 
   assert.deepEqual(R.xpNext({ classes: [{ name: "Fighter", level: 4 }], xp: 2700 }), { level: 5, need: 6500, left: 3800, ready: false });
   assert.deepEqual(R.xpNext({ classes: [{ name: "Fighter", level: 4 }], xp: 7000 }).ready, true);
   assert.equal(R.xpNext({ classes: [{ name: "Fighter", level: 20 }], xp: 999999 }), null, "nothing past 20");
+});
+
+test("class levels in a prerequisite (audit 2.17): the improvement feats' options", () => {
+  const ch = { classes: [{ name: "Berserker", level: 3 }, { name: "Consular", level: 2 }], abilities: { wis: 14 } };
+  assert.equal(R.featPrereq(ch, "At least 3 levels in berserker").ok, true);
+  assert.deepEqual(R.featPrereq(ch, "At least 3 levels in consular").unmet, ["3 levels in consular"]);
+  assert.deepEqual(R.featPrereq(ch, "No levels in consular, the ability to cast force powers").unmet, ["no levels in consular"]);
+  assert.equal(R.featPrereq(ch, "No levels in sentinel, the ability to cast force powers").ok, true, "a Consular 2 casts force powers");
+  assert.equal(R.featPrereq({ classes: [{ name: "Fighter", level: 4 }] }, "No levels in sentinel, the ability to cast force powers").ok, false);
 });

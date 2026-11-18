@@ -63,7 +63,10 @@
     }
     throw new Error('That image is too large, even after shrinking it.');
   }
-  function downscale(file, maxDim, quality = 0.85) {
+  // keepAlpha (profile and token photos): an image with see-through parts stays a PNG, so a cut-out portrait (the
+  // Duros creator's, say) keeps its transparent background instead of turning black; anything else is a JPEG as before
+  const hasAlpha = ctx => { const d = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height).data; for (let i = 3; i < d.length; i += 4) if (d[i] < 250) return true; return false; };
+  function downscale(file, maxDim, quality = 0.85, keepAlpha = false) {
     return new Promise((res, rej) => {
       const fr = new FileReader();
       fr.onload = () => {
@@ -71,7 +74,11 @@
         img.onload = () => {
           const sc = Math.min(1, maxDim / Math.max(img.width, img.height));
           const c = document.createElement('canvas'); c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
-          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0, c.width, c.height);
+          if (keepAlpha && hasAlpha(ctx)) {
+            const png = c.toDataURL('image/png');
+            if (png.length * 0.75 < 2.9 * 1024 * 1024) return res({ dataUrl: png, w: c.width, h: c.height });
+          }
           res({ dataUrl: c.toDataURL('image/jpeg', quality), w: c.width, h: c.height });
         };
         img.onerror = rej; img.src = fr.result;
@@ -412,12 +419,51 @@
       const f = inp.files[0]; if (!f) return;
       try {
         toast('Uploading photo…');
-        const { dataUrl } = await downscale(f, kind === 'token' ? 400 : 800, 0.86);
+        const { dataUrl } = await downscale(f, kind === 'token' ? 400 : 800, 0.86, true);
         await post('upload', { purpose: 'photo', charId: ch.id, kind, dataUrl });
         toast(kind === 'token' ? 'Token photo updated' : 'Profile photo updated');
       } catch (err) { toast(err.message || 'Could not upload that image', true); }
     };
     inp.click();
+  }
+  // Import fidelity (audit 1.2): what an export leaves out, filled in from SW5e's own lists before the sheet is saved:
+  // each power's level, alignment, text and prerequisite (the builder's JSON names its powers only), and worn armor's
+  // kind and AC, so the sheet works its AC out (acAuto, #165) instead of 10 + Dex. Each fill is said in the import notes.
+  async function enrichImport(res) {
+    const c = res.char, lc = s => String(s || '').trim().toLowerCase();
+    if (S.st.sw5eBooks === false) return;
+    if ((c.powers || []).length) {
+      const list = await powerList().catch(() => null);
+      if (list) {
+        let n = 0;
+        for (const p of c.powers) {
+          const x = list.find(y => lc(y.n) === lc(p.name) && y.t === (p.type === 'tech' ? 'tech' : 'force')) || list.find(y => lc(y.n) === lc(p.name));
+          if (!x) continue;
+          n++;
+          if (!+p.level && x.l) p.level = x.l;
+          p.type = x.t;
+          if (x.t === 'force' && (!p.alignment || p.alignment === 'universal')) p.alignment = x.a || 'universal';
+          if (!p.notes) p.notes = [x.ct, x.r && 'Range ' + x.r, x.d].filter(Boolean).join(' · ').slice(0, 300);
+          if (!p.description) p.description = (x.desc + (x.hl ? '\n\nAt higher levels. ' + x.hl : '')).slice(0, 4000);
+          if (x.pre && !p.pre) p.pre = x.pre;
+        }
+        if (n) {
+          res.notes = res.notes.filter(t => !/include power levels/.test(t));
+          res.notes.push(`Power levels and descriptions filled in from SW5e for ${n} of ${c.powers.length} powers${n < c.powers.length ? '; set the rest by hand' : ''}.`);
+        }
+      }
+    }
+    if (res.acFromDex) {
+      const list = await equipList('standard').catch(() => null);
+      let worn = 0;
+      for (const e of (list ? c.equipment || [] : [])) {
+        const it = list.find(y => lc(y.n) === lc(e.name)), a = it && R.armorFromItem(it);
+        if (a) { e.armor = a; if (e.equipped) worn++; }
+      }
+      c.acAuto = true;   // the sheet works the AC out: worn armor and shield, or the class's unarmored rules
+      res.notes = res.notes.filter(t => !/AC set to 10 \+ Dex/.test(t));
+      res.notes.push(worn ? 'AC is worked out from the armor and shield you wear (their numbers are from SW5e\'s gear).' : 'AC is worked out on the sheet (no armor from SW5e\'s gear is worn); check it.');
+    }
   }
   async function importText(text, src) {
     let results;
@@ -433,6 +479,7 @@
         res.char.force.used = n0(same.force.used); res.char.tech.used = n0(same.tech.used);
         res.char.conditions = same.conditions || [];
       }
+      await enrichImport(res);
       const r = await act('char.save', { char: res.char });
       if (r) {
         S.importNotes[r.id] = { source: res.source, notes: res.notes };
@@ -663,6 +710,65 @@
   }
   // the party stash (6.9): what the party found and hasn't split yet. Anyone takes an item onto their own character;
   // the GM puts things in (🎁 Loot in the GM tab), shares out the credits and removes things.
+  // ---- crafting (audit 11.2, Wretched Hives): ask, the GM approves (value, days, materials, tool), then roll
+  function craftRows(ch, ro) {
+    const list = (ch.craft && ch.craft.pending) || [];
+    if (!list.length) return '';
+    return `<div class="craft-list">${list.map(q => `<div class="row craft-row"><span>🔨 <b>${esc(q.item.name)}</b> <span class="muted">${q.ok
+      ? `approved: ${n0(q.days)} day${n0(q.days) === 1 ? '' : 's'}, ${n0(q.cost).toLocaleString()} cr in materials, Intelligence with ${esc(q.tool)}`
+      : `asked (about ${n0(q.value).toLocaleString()} cr); waiting for the GM`}</span></span><span class="spacer"></span>
+      ${q.ok ? (!ro ? `<button class="btn tiny amber" data-act="craft-roll" data-id="${esc(q.id)}" title="Roll the Intelligence check, then the d100 for how it went">Roll</button>` : '')
+        : (isGM() ? `<button class="btn tiny" data-act="craft-ok" data-id="${esc(q.id)}">Approve</button><button class="btn tiny ghost" data-act="craft-no" data-id="${esc(q.id)}">Turn down</button>` : '')
+          + (!ro && !isGM() ? `<button class="btn tiny ghost" data-act="craft-cancel" data-id="${esc(q.id)}">Withdraw</button>` : '')}</div>`).join('')}</div>`;
+  }
+  async function openCraft(ch) {
+    let std = [], enh = [];
+    try { [std, enh] = await Promise.all([equipList('standard'), equipList('enhanced')]); } catch (err) { return toast(err.message, true); }
+    const all = std.map(it => ({ it, enh: false })).concat(enh.map(it => ({ it, enh: true })));
+    const byName = new Map(all.map(x => [x.it.n.toLowerCase(), x]));
+    modal(`<h3>🔨 Craft</h3>
+      <input id="craftName" list="dlCraft" placeholder="An item from SW5e's gear or enhanced items" style="width:100%">
+      <datalist id="dlCraft">${all.map(x => `<option value="${esc(x.it.n)}">${esc(x.enh ? `${x.it.rar || ''} ${x.it.cat}` : x.it.cat)}</option>`).join('')}</datalist>
+      <div id="craftInfo" class="muted" style="margin:8px 0">Wretched Hives: it takes the item's value ÷ 250 days, materials worth half its value, and the right tools.</div>
+      <input id="craftNote" placeholder="A note for the GM (optional)" style="width:100%">
+      <div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn" id="craftNo">Cancel</button><button class="btn primary" id="craftAsk">Ask the GM</button></div>`, box => {
+      const info = () => {
+        const x = byName.get($('#craftName', box).value.trim().toLowerCase());
+        if (!x) return null;
+        const v = R.craftValue(x.it, x.enh);
+        $('#craftInfo', box).textContent = `${x.it.n}: about ${v.toLocaleString()} cr · ${R.craftDays(v)} day${R.craftDays(v) === 1 ? '' : 's'} · ${Math.floor(v / 2).toLocaleString()} cr in materials · ${R.craftTool(x.it, x.enh)}`
+          + (x.enh ? '. An enhanced item also needs its blueprint and a rare material; the GM decides.' : '');
+        return Object.assign(x, { v });
+      };
+      box.oninput = e => { if (e.target.id === 'craftName') info(); };
+      box.onclick = async e => {
+        if (e.target.id === 'craftNo') return closeModal();
+        if (e.target.id !== 'craftAsk') return;
+        const x = info(); if (!x) return toast('Pick an item from the list.', true);
+        const it = x.it, item = sheetItem(it, x.enh);   // what "+ from SW5e" would add: a medpac keeps its Use, an enhanced item its +N
+        if (await act('craft.request', { charId: ch.id, item, value: x.v, tool: R.craftTool(it, x.enh), note: $('#craftNote', box).value.trim() })) { closeModal(); toast('Asked the GM.'); }
+      };
+    });
+  }
+  function craftApprove(ch, id) {   // the GM: the book's numbers to start with, any of them changed
+    const q = ((ch.craft && ch.craft.pending) || []).find(x => x.id === id); if (!q) return;
+    const tool = q.tool || R.craftTool({ n: q.item.name, cat: q.item.armor ? 'Armor' : '', sub: '' }, !!q.item.rar);
+    modal(`<h3>Approve: ${esc(ch.name)} crafts ${esc(q.item.name)}</h3>${q.note ? `<p class="muted">"${esc(q.note)}"</p>` : ''}
+      <div class="row wrap"><label>Value (cr) <input id="caValue" type="number" min="0" value="${n0(q.value)}" style="width:110px"></label>
+        <label>Days <input id="caDays" type="number" min="0" value="${R.craftDays(q.value)}" style="width:80px"></label>
+        <label>Materials (cr) <input id="caCost" type="number" min="0" value="${Math.floor(n0(q.value) / 2)}" style="width:110px"></label></div>
+      <label style="margin-top:8px">Tool <input id="caTool" value="${esc(tool)}" style="width:100%"></label>
+      <p class="muted" style="font-size:12px">Approving takes the days and the materials from ${esc(ch.name)}'s downtime and credits. ${q.item.rar ? 'An enhanced item needs its blueprint and a rare material: approve only if they have them.' : ''}</p>
+      <div class="row"><span class="spacer"></span><button class="btn" id="caNo">Cancel</button><button class="btn primary" id="caOk">Approve</button></div>`, box => {
+      $('#caValue', box).oninput = () => { const v = +$('#caValue', box).value || 0; $('#caDays', box).value = R.craftDays(v); $('#caCost', box).value = Math.floor(v / 2); };
+      box.onclick = async e => {
+        if (e.target.id === 'caNo') return closeModal();
+        if (e.target.id !== 'caOk') return;
+        if (await act('craft.decide', { charId: ch.id, id, ok: true, value: +$('#caValue', box).value || 0, days: +$('#caDays', box).value || 0, cost: +$('#caCost', box).value || 0, tool: $('#caTool', box).value })) closeModal();
+      };
+    });
+  }
+
   function stashBox(ch, ro) {
     const st = S.st.stash;
     if (!st && !isGM()) return '';
@@ -916,7 +1022,7 @@
 
     if (sub === 'gear') {
       html += `<div class="grid g2">
-        <div class="box eq-box"><h4>Equipment <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-equip">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-item" title="Add an item by hand">custom</button>' : ''}</h4>
+        <div class="box eq-box"><h4>Equipment <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="craft" title="Ask the GM to craft an item in downtime (Wretched Hives)">🔨 Craft</button><button class="btn tiny" data-act="pick-equip">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-item" title="Add an item by hand">custom</button>' : ''}</h4>
           <div class="row" style="margin-bottom:8px"><span class="muted">Credits</span>${inp('credits', +ch.credits || 0, { ro, type: 'number', w: '120px' })}</div>
           ${(cw => `<div class="row carry ${cw.state ? 'carry-' + cw.state : ''}" style="margin-bottom:8px" title="Carrying capacity: Strength x 15 (PHB, Lifting and Carrying)${cw.variant ? '. Encumbrance variant: over 5 x Strength, speed -10 ft; over 10 x Strength, speed -20 ft and disadvantage on Str, Dex and Con rolls' : ''}">
             <span class="muted">Carrying</span> <b>${n0(cw.weight)}</b> <span class="muted">of ${n0(cw.capacity)} lb</span>${cw.text ? ` <span class="carry-state">${esc(cw.text)}</span>` : ''}
@@ -930,8 +1036,8 @@
             <td class="n eq-wt">${inp(`equipment.${i}.wt`, +e.wt || '', { ro, type: 'number', ph: '0' })}</td>
             <td class="armor-cell">${inp(`equipment.${i}.armor.kind`, (e.armor || {}).kind || '', { ro, type: 'select', options: [{ v: '', t: '—' }, ...R.ARMOR_KINDS] })}${e.armor && e.armor.kind ? inp(`equipment.${i}.armor.ac`, +e.armor.ac || 0, { ro, type: 'number' }) : ''}</td>
             <td class="eq-cell">${inp(`equipment.${i}.equipped`, e.equipped, { ro, type: 'checkbox' })}${e.att ? `<span class="attune" title="Attuned (Wretched Hives: it takes a short rest with the item)${e.rar ? ` · ${esc(e.rar)}` : ''}">⟡${inp(`equipment.${i}.attuned`, !!e.attuned, { ro, type: 'checkbox' })}</span>` : ''}</td>
-            <td style="white-space:nowrap">${!ro ? `${e.use ? `<button class="btn tiny" data-act="use-item" data-i="${i}" title="Use one: ${esc(useText(e.use) || 'lowers the count')}">Use</button>` : ''}<button class="btn tiny ghost" data-act="sell" data-i="${i}" title="Sell one${+e.cost > 0 ? ` (half its cost: ${R.sellPrice(e).toLocaleString()} cr)` : ''}">Sell</button><button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Empty.</td></tr>'}
-          </tbody></table></div></div>
+            <td style="white-space:nowrap">${!ro ? `${e.chassis ? `<button class="btn tiny" data-act="mods" data-i="${i}" title="Modifications: install and remove (Wretched Hives)">Mods ${(e.chassis.mods || []).length}/${R.modSlots(e.rar).base + R.modSlots(e.rar).aug}</button>` : ''}${e.use ? `<button class="btn tiny" data-act="use-item" data-i="${i}" title="Use one: ${esc(useText(e.use) || 'lowers the count')}">Use</button>` : ''}<button class="btn tiny ghost" data-act="sell" data-i="${i}" title="Sell one${+e.cost > 0 ? ` (half its cost: ${R.sellPrice(e).toLocaleString()} cr)` : ''}">Sell</button><button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Empty.</td></tr>'}
+          </tbody></table></div>${craftRows(ch, ro)}</div>
         ${stashBox(ch, ro)}
         <div class="box"><h4>Features & Traits <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-feature" title="Feats, class features, maneuvers, fighting styles, lightsaber forms, ventures">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-feature" title="Write a feature by hand">custom</button>' : ''}</h4>
           <div class="feature-list">${(ch.features || []).map((f, i) => `<div class="feature-row">
@@ -1133,6 +1239,7 @@
       case 'pick-feature': HTB.openFeaturePicker(ch.id); break;
       case 'del': mutate(c => c[b.dataset.list].splice(i, 1)); break;
       case 'use-item': useItem(ch, i); break;
+      case 'mods': modsDialog(ch, i); break;
       case 'item-info': {   // the item's SW5e text (audit 6.2), looked up by name, never stored on the sheet
         const e0 = ch.equipment[i]; if (!e0) break;
         const found = await itemInfo(e0.name);
@@ -1143,6 +1250,11 @@
           <div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn" id="infoClose">Close</button></div>`, box => { box.onclick = ev => { if (ev.target.id === 'infoClose') closeModal(); }; });
         break;
       }
+      case 'craft': openCraft(ch); break;
+      case 'craft-cancel': act('craft.cancel', { charId: ch.id, id: b.dataset.id }); break;
+      case 'craft-roll': act('craft.roll', { charId: ch.id, id: b.dataset.id }); break;
+      case 'craft-no': if (confirm('Turn this request down?')) act('craft.decide', { charId: ch.id, id: b.dataset.id, ok: false }); break;
+      case 'craft-ok': craftApprove(ch, b.dataset.id); break;
       case 'sell': {   // selling (audit 6.8): one of the item, for half its cost by default (PHB, Selling Treasure); the table can agree another price
         const it = ch.equipment[i]; if (!it) break;
         const ans = prompt(`Sell one ${it.name} for how many credits?${+it.cost > 0 ? ` (Half its cost is ${R.sellPrice(it).toLocaleString()} cr.)` : ''}`, String(R.sellPrice(it)));
@@ -1289,6 +1401,18 @@
     const crit = R.critFrom(props);   // Keen N: the crit range grows by N
     return { name: it.n, ab, damage: it.dmg || '1', type: it.dt || 'kinetic', props: props.slice(0, 200), proficient: true, ...(crit < 20 ? { critRange: crit } : {}) };
   }
+  // a sheet item from an SW5e gear or enhanced item: one builder for "+ from SW5e" and for crafting (11.2)
+  function sheetItem(it, enh) {
+    const armor = !enh && R.armorFromItem(it);
+    return Object.assign({ name: it.n, qty: 1, equipped: false, notes: itemNotes(it, enh).slice(0, 200) }, armor ? { armor } : {},
+      !enh && parseFloat(it.wt) > 0 ? { wt: parseFloat(it.wt) } : {}, !enh && it.cost > 0 ? { cost: it.cost } : {},   // weight (6.5) and cost (6.8)
+      enh && R.RARITIES.includes(it.rar) ? { rar: it.rar } : {}, enh && it.att ? { att: true } : {},   // rarity and attunement (6.3)
+      (enh ? it.cat === 'Consumable' : ['Medical', 'Explosive'].includes(it.cat)) ? { use: R.consumableUse(it.desc) || {} } : {},   // a consumable (6.7)
+      enh && R.enhancedBonus(it.desc) ? { bonus: R.enhancedBonus(it.desc) } : {},   // an enhanced item's +N (6.2)
+      // a chassis, with its kind and no modifications yet; a modification, with the kind of chassis it fits (6.4)
+      enh && R.chassisKind(it.n) ? { chassis: { kind: R.chassisKind(it.n), mods: [] } } : {},
+      enh && it.cat === 'Item Modification' && R.cleanMod({ kind: String(it.sub || '').toLowerCase() }) ? { mod: { kind: String(it.sub).toLowerCase() } } : {});
+  }
   function itemNotes(it, enhanced) {
     if (enhanced) return [it.rar && `${it.rar} ${it.cat.toLowerCase()}`, it.sub, it.att && 'requires attunement'].filter(Boolean).join(' · ');
     if (it.cat === 'Weapon') return [it.dmg && `${it.dmg} ${it.dt}`, (it.props || []).join(', ')].filter(Boolean).join(' · ');
@@ -1381,11 +1505,7 @@
             if (buy) c.credits = n0(c.credits) - it.cost;
             const ex = c.equipment.find(x => String(x.name).toLowerCase() === it.n.toLowerCase());
             if (ex) ex.qty = (n0(ex.qty) || 1) + 1;
-            else { const armor = !enh && R.armorFromItem(it); c.equipment.push({ name: it.n, qty: 1, equipped: false, notes: itemNotes(it, enh).slice(0, 200), ...(armor ? { armor } : {}),
-              ...(!enh && parseFloat(it.wt) > 0 ? { wt: parseFloat(it.wt) } : {}), ...(!enh && it.cost > 0 ? { cost: it.cost } : {}),   // weight (6.5) and cost (6.8)
-              ...(enh && R.RARITIES.includes(it.rar) ? { rar: it.rar } : {}), ...(enh && it.att ? { att: true } : {}),   // rarity and attunement (6.3)
-              ...((enh ? it.cat === 'Consumable' : ['Medical', 'Explosive'].includes(it.cat)) ? { use: R.consumableUse(it.desc) || {} } : {}),   // a consumable (6.7)
-              ...(enh && R.enhancedBonus(it.desc) ? { bonus: R.enhancedBonus(it.desc) } : {}) });   // an enhanced item's +N (6.2)
+            else { c.equipment.push(sheetItem(it, enh));
               // an enhanced weapon of a known kind ("Vibroblade (Fine)", or its subtype) also gets that weapon's attack, with its +N
               const plus = enh && it.cat === 'Weapon' ? R.enhancedBonus(it.desc) : null, base = plus && plus.hit ? enhancedBase(it) : null;
               if (base && !c.attacks.some(x => String(x.name).toLowerCase() === it.n.toLowerCase())) c.attacks.push(Object.assign(weaponAttack(base), { name: it.n }, plus.dmg === plus.hit ? { magic: plus.hit } : {})); }   // the attack box adds to both
@@ -1416,6 +1536,65 @@
   const ALIGN = { light: 'Light', dark: 'Dark', universal: 'Universal' };
   // opts.onAdd(power): hand the picked power to someone else (the level-up wizard) instead of the sheet;
   // opts.onDone(): called by Done; opts.taken(): names already picked there
+  // --------------------------------------------------------------------------- item modification (audit 6.4)
+  // A chassis's slots: install a modification from the inventory, or remove one, each with a check with the item's tool
+  // against the DC its rarity sets (the GM may skip the check). A failed install leaves it in the inventory ("try again
+  // after 24 hours"); a failed removal destroys it. The chassis requires attunement once anything is in it, and its
+  // modifications' plain +N become its own.
+  function modsDialog(ch, i) {
+    const item = ch.equipment[i]; if (!item || !item.chassis) return;
+    const ro = !canEdit(ch), slots = R.modSlots(item.rar), mods = item.chassis.mods || [];
+    const fits = (ch.equipment || []).map((e, j) => ({ e, j })).filter(({ e }) => e.mod && !R.installBlocked(item, e));
+    const tool = kind => R.MOD_TOOL[kind] || "Tinker's implements";
+    // #218's tool check: Int, the tier the sheet gives that tool, its dice (mastery, Reliable Talent)
+    const tierOf = kind => (R.toolTierFromText ? R.toolTierFromText(ch, tool(kind)) : 0);
+    const exprOf = kind => { const t = tierOf(kind), b = R.toolBonus ? R.toolBonus(ch, 'int', t) : R.abilityMod(ch, 'int');
+      return R.checkRollExpr ? R.checkRollExpr(ch, t, b).expr : `1d20${b >= 0 ? '+' : ''}${b}`; };
+    const check = async (what, kind, rar) => {   // the tool check, rolled by the table; true on a success
+      const dc = R.modDC(rar);
+      const res = await roll(exprOf(kind), `${what}: ${tool(kind)} (Int) against DC ${dc}`, { d20: true });   // no character named (#187's review)
+      return res && res.roll ? res.roll.total >= dc : null;
+    };
+    modal(`<h3>${esc(item.name)}: modifications</h3>
+      <p class="muted">${esc(item.rar || 'Standard')} ${esc(item.chassis.kind)} chassis · ${slots.base} slots${slots.aug ? ` + ${slots.aug} augment` : ''} · checks with ${esc(tool(item.chassis.kind))} (augments: ${esc(tool('augment'))})</p>
+      ${mods.length ? mods.map((m, k) => `<div class="row" style="margin:4px 0"><span style="flex:1">${m.aug ? '⟡ ' : ''}${esc(m.name)} <span class="muted">${esc(m.rar || '')}</span></span>
+        ${ro ? '' : `<button class="btn tiny ghost" data-mod-rm="${k}" title="A check against DC ${R.modDC(m.rar)}: on a success it's salvaged, on a failure destroyed">Remove</button>`}</div>`).join('') : '<p class="muted">Nothing installed.</p>'}
+      ${ro ? '' : fits.length ? `<div class="row" style="margin-top:10px"><select id="modPick" style="flex:1">${fits.map(({ e, j }) => `<option value="${j}">${esc(e.name)} (${esc(e.rar || 'Standard')}, DC ${R.modDC(e.rar)})</option>`).join('')}</select>
+        <button class="btn primary" id="modInstall">Install</button></div>` : '<p class="muted">Nothing in the inventory fits: a modification of this kind (or an augment), at this rarity or lower, with a slot free.</p>'}
+      ${isGM() && !ro ? '<label class="muted carry-var" style="margin-top:8px"><input type="checkbox" id="modNoCheck"> GM: no check</label>' : ''}
+      <div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn" id="modClose">Close</button></div>`, box => {
+      box.onclick = async e => {
+        if (e.target.id === 'modClose') return closeModal();
+        const skip = isGM() && $('#modNoCheck', box) && $('#modNoCheck', box).checked;
+        if (e.target.id === 'modInstall') {
+          const j = +$('#modPick', box).value, m = ch.equipment[j]; if (!m) return;
+          const why = R.installBlocked(item, m); if (why) return toast(why, true);
+          closeModal();
+          const ok = skip ? true : await check(`Install ${m.name} in ${item.name}`, m.mod.kind, m.rar);
+          if (ok === null) return;
+          if (!ok) return act('chat', { text: `*fails to install ${m.name} in ${item.name}: it stays in the pack; try again after 24 hours.*` });
+          mutate(c => {
+            const it = c.equipment[i], mm = c.equipment[j]; if (!it || !mm || it.name !== item.name || mm.name !== m.name) return;
+            R.installMod(c, i, j);
+          });
+          act('chat', { text: `*installs ${m.name} in ${item.name}.*` });
+        }
+        const rm = e.target.closest('[data-mod-rm]');
+        if (rm) {
+          const k = +rm.dataset.modRm, m = mods[k]; if (!m) return;
+          closeModal();
+          const ok = skip ? true : await check(`Remove ${m.name} from ${item.name}`, m.aug ? 'augment' : item.chassis.kind, m.rar);
+          if (ok === null) return;
+          mutate(c => {
+            const it = c.equipment[i]; if (!it || it.name !== item.name || !it.chassis || !(it.chassis.mods || [])[k] || it.chassis.mods[k].name !== m.name) return;
+            R.removeMod(c, i, k, ok);
+          });
+          act('chat', { text: ok ? `*removes ${m.name} from ${item.name} and salvages it.*` : `*removes ${m.name} from ${item.name}, but it's destroyed.*` });
+        }
+      };
+    });
+  }
+
   // --------------------------------------------------------------------------- consumables (audit 6.7)
   // Use: one comes off the count, and what the item does is rolled (from its SW5e text, read when it was added): a medpac's
   // Hit Dice + Con or a stim's healing, on this character or for someone else to read; a grenade's save DC and damage.
@@ -3430,7 +3609,7 @@
     if (!ch0) return;
     if (!pendingFor(charId)) return toast('The GM hasn\'t granted this character a level yet.', true);
     const W = resume || { cls: ch0.classes[0].name, newCls: '', archetype: '', hpMode: 'average', asiMode: 'two', a1: 'str', a2: 'dex', featName: '', featText: '', powers: [],
-      auto: [], autoKey: '', autoState: '', archList: [], archFor: '', archMenu: false, featList: [], picks: {}, expTools: '', lists: null, listsErr: '', feats: null, featAsi: '' };
+      auto: [], autoKey: '', autoState: '', archList: [], archFor: '', archMenu: false, featList: [], picks: {}, expTools: '', lists: null, listsErr: '', feats: null, featAsi: '' , improvements: null };
     modal('<div id="wiz"></div>', box => {
       const wiz = $('#wiz', box);
       // SW5e's class/archetype features for the level being gained (fetched once per class/level/archetype)
@@ -3451,6 +3630,8 @@
           HTB.list('archetypes').then(all => { if (W.archFor !== P.cls) return; W.archList = all.filter(a => a.cls.toLowerCase() === P.cls.toLowerCase()); draw(); }).catch(() => {});
         }
       };
+      if (window.HTB && S.st.sw5eBooks !== false && !W.improvements) Promise.all(['improvements-class', 'improvements-multi', 'improvements-splash'].map(k => HTB.list(k)))   // 2.17
+        .then(([cl, multi, splash]) => { W.improvements = { class: cl, multi, splash }; draw(); }).catch(() => { W.improvements = { class: [], multi: [], splash: [] }; });
       if (window.HTB && S.st.sw5eBooks !== false) HTB.list('feats').then(l => { W.feats = l; W.featList = l.map(f => f.n); draw(); }).catch(() => {});
       // the lists this level's choices come from (audit 2.9): class options, maneuvers, fighting styles
       if (window.HTB && HTB.levelChoices && S.st.sw5eBooks !== false && !W.lists) {
@@ -3474,7 +3655,7 @@
         }
         if (t.type === 'text' || t.tagName === 'TEXTAREA') W[f] = t.value;
         if (f === 'featName') {   // as you type (2.5): a feat from SW5e's list brings its own text, prerequisite and +1
-          W.featAsi = '';
+          W.featAsi = ''; W.picks.improvement = [];
           const fd = (W.feats || []).find(x => x.n.toLowerCase() === W.featName.trim().toLowerCase());
           if (fd) { W.featText = fd.text; const ta = wiz.querySelector('[data-w=featText]'); if (ta) ta.value = fd.text; }
           const el = wiz.querySelector('#wizFeatInfo'); if (el) el.innerHTML = featInfoHtml(charId, W);
@@ -3569,6 +3750,14 @@
       else if (n0(ch.abilities[W.featAsi]) + 1 > 20) error = error || `${ABN[W.featAsi]} can't go above 20.`;
       else { feat.asi = { [W.featAsi]: 1 }; after.abilities[W.featAsi] = n0(after.abilities[W.featAsi]) + 1; }
     }
+    // the Class, Multiclass and Splashclass Improvement feats (audit 2.17): their options, from SW5e's lists, at the new level
+    const impKind = fd ? ({ 'class improvement': 'class', 'multiclass improvement': 'multi', 'splashclass improvement': 'splash' })[fd.n.toLowerCase()] : null;
+    const impNeed = impKind === 'multi' ? 2 : impKind ? 1 : 0;
+    const impOpts = impKind && W.improvements ? (W.improvements[impKind] || []).map(x => Object.assign({}, x, { q: R.featPrereq(after, x.pre) })) : [];
+    const impPicked = (W.picks.improvement || []).filter(n => impOpts.some(x => x.n === n && x.q.ok !== false));
+    if (impKind && !W.improvements && window.HTB && S.st.sw5eBooks !== false) error = error || 'Still looking up the improvement options…';
+    else if (impKind && impOpts.length && impPicked.length !== impNeed) error = error || `${fd.n}: choose ${impNeed} option${impNeed > 1 ? 's' : ''} (${impPicked.length} chosen).`;
+    const impFeatures = impPicked.map(n => { const x = impOpts.find(y => y.n === n); return { name: `${fd.n}: ${x.n}`.slice(0, 80), text: `${fd.n} (${x.n})\n${x.text}`.slice(0, 4000) }; });
     const hd = (R.CLASSES[cls] || {}).hd || 8;
     const oldCon = R.abilityMod(ch, 'con'), newCon = R.abilityMod(after, 'con');
     const retro = (newCon - oldCon) * before;
@@ -3603,8 +3792,8 @@
     if (unmet.length && !isGM()) error = error || `Multiclassing into ${cls}: ${unmet.join('; ')}. Ask your GM.`;
     const payload = { charId, className: cls, hpMode: W.hpMode, archetype: archDue && W.archetype ? W.archetype : undefined, hitDie: hd, override: unmet.length && isGM() ? true : undefined,
       asi: asi || undefined, feat: feat || undefined, expertise: expertise.length ? expertise : undefined,
-      features: choiceFeatures.concat((W.auto || []).filter(f => !f.have).map(f => ({ name: f.name, text: f.text }))).slice(0, 20), powers: W.powers.filter(p => p.name.trim()).slice(0, 20) };
-    return { ch, after, cls, k, newClassLevel, before, due, asiOn, archDue, archTerm, hd, oldCon, newCon, retro, avgGain, maxGain, payload, error, groups, picked, chosen, tools, powerRoom, fd, prereq, featAsiOpts };
+      features: choiceFeatures.concat(impFeatures, (W.auto || []).filter(f => !f.have).map(f => ({ name: f.name, text: f.text }))).slice(0, 20), powers: W.powers.filter(p => p.name.trim()).slice(0, 20) };
+    return { ch, after, cls, k, newClassLevel, before, due, asiOn, archDue, archTerm, hd, oldCon, newCon, retro, avgGain, maxGain, payload, error, groups, picked, chosen, tools, powerRoom, fd, prereq, featAsiOpts, impKind, impNeed, impOpts };
   }
 
   // the chosen feat's prerequisite and, for a half-feat, which ability its +1 goes to (audit 2.5)
@@ -3615,7 +3804,10 @@
       : `Requires ${esc(P.fd.pre)}: ${q.ok === true ? '<span class="up">✓ met</span>' : q.ok === false ? `<span class="error">✗ needs ${esc(q.unmet.join(', '))}</span>` : `<span class="muted">${esc(q.unknown.join(', '))} is your GM's call</span>`}`;
     return `<p style="margin:4px 0 0;font-size:12px">${req}</p>
       ${P.featAsiOpts.length ? `<div class="row" style="margin-top:4px;font-size:13px">${esc(P.fd.n)} raises one ability by 1:
-        <select data-w="featAsi"><option value="">choose…</option>${P.featAsiOpts.map(k => `<option value="${k}" ${W.featAsi === k ? 'selected' : ''} ${n0(P.ch.abilities[k]) >= 20 ? 'disabled' : ''}>${ABN[k]} (${n0(P.ch.abilities[k])})</option>`).join('')}</select></div>` : ''}`;
+        <select data-w="featAsi"><option value="">choose…</option>${P.featAsiOpts.map(k => `<option value="${k}" ${W.featAsi === k ? 'selected' : ''} ${n0(P.ch.abilities[k]) >= 20 ? 'disabled' : ''}>${ABN[k]} (${n0(P.ch.abilities[k])})</option>`).join('')}</select></div>` : ''}
+      ${P.impKind && P.impOpts.length ? `<div style="margin-top:6px;font-size:13px">${esc(P.fd.n)}: choose ${P.impNeed} option${P.impNeed > 1 ? 's' : ''}
+        <div class="wiz-opts" data-scroll="improvement">${P.impOpts.map(x => `<label class="wiz-opt" title="${esc(x.text.slice(0, 600))}"><input type="checkbox" data-w="pick.improvement" value="${esc(x.n)}"
+          ${(W.picks.improvement || []).includes(x.n) ? 'checked' : ''} ${x.q.ok === false ? 'disabled' : ''}><span>${esc(x.n)}${x.q.ok === false ? ` <span class="muted">(needs ${esc(x.q.unmet.join(', '))})</span>` : ''}</span></label>`).join('')}</div></div>` : ''}`;
   }
   function wizardHtml(charId, W) {
     const P = wizardPlan(charId, W), ch = P.ch;

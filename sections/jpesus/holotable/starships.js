@@ -83,7 +83,13 @@
       // until the start of the next; 1: through the next turn); helm: a Helm action taken this turn
       fx: { evade: clamp(int(f.evade), 0, 2), fly: clamp(int(f.fly), 0, 2), hardTurn: f.hardTurn === true, helm: f.helm === true,
         interfered: f.interfered === true, directed: f.directed === true,
-        interferedBy: typeof f.interferedBy === 'string' && /^[a-z0-9]{6,20}$/.test(f.interferedBy) ? f.interferedBy : '' },   // the ship whose next turn ends it
+        interferedBy: typeof f.interferedBy === 'string' && /^[a-z0-9]{6,20}$/.test(f.interferedBy) ? f.interferedBy : '',   // the ship whose next turn ends it
+        // Dogfight (with dogfightVs): its next attack against us at disadvantage (dis), a different ship's next at advantage (adv)
+        dogfightVs: typeof f.dogfightVs === 'string' && /^[a-z0-9]{6,20}$/.test(f.dogfightVs) ? f.dogfightVs : '', dogfightDis: f.dogfightDis === true, dogfightAdv: f.dogfightAdv === true,
+        runVs: typeof f.runVs === 'string' && /^[a-z0-9]{6,20}$/.test(f.runVs) ? f.runVs : '', runFeet: clamp(int(f.runFeet), 0, 100000),   // an Attack Run at that ship, after this many feet
+        concealed: f.concealed === true,   // Conceal succeeded: unseen until it attacks
+        harassWeapon: clamp(int(f.harassWeapon, -1), -1, 29),   // the weapon this ship harassed with: it can't fire this turn
+        harassedBy: typeof f.harassedBy === 'string' && /^[a-z0-9]{6,20}$/.test(f.harassedBy) ? f.harassedBy : '', harassedWeapon: clamp(int(f.harassedWeapon, -1), -1, 29) },   // leaving its square costs a critical hit
       recharged: st.recharged === true,   // a recharge just finished: the crew may spend hull dice
       astro: clamp(int(st.astro), 0, 10), startup: clamp(int(st.startup), 0, 10),   // astrogation equations, start-up procedures done
       // the course choice the equations were worked for (rushes, careful): changing it restarts them (SotG ch. 8)
@@ -387,7 +393,8 @@
     if (isLost(st)) return { ship: s, log: [`${name} is lost.`] };
     st.tempShield = 0; st.boost = { tries: 0, engines: Math.max(0, int(st.boost.engines) - 1), weapons: false, shields: false, regen: false };
     // Direct lasts until the start of the directing ship's next turn (Interfere ends at the interfering ship's: the space map)
-    st.fx = Object.assign(st.fx, { evade: Math.max(0, st.fx.evade - 1), fly: Math.max(0, st.fx.fly - 1), hardTurn: false, helm: false, directed: false });
+    st.fx = Object.assign(st.fx, { evade: Math.max(0, st.fx.evade - 1), fly: Math.max(0, st.fx.fly - 1), hardTurn: false, helm: false, directed: false,
+      dogfightVs: '', dogfightDis: false, dogfightAdv: false, runVs: '', runFeet: 0, harassWeapon: -1 });   // this turn's helm work ends
     st.recharged = false;
     // power
     const rx = own(REACTORS, reactorOf(s));
@@ -559,10 +566,41 @@
     if (weaponProp(w, 'heavy')) bonus += Math.max(1, Math.ceil(strMod(ship) / 2));
     return `${n}d${m[2]}` + (bonus ? (bonus > 0 ? '+' : '') + bonus : '');
   }
+  // Trading accuracy for damage (SotG ch. 5), chosen before the shot: dire N, up to N off the attack roll and as much
+  // onto the damage on a hit; piercing N, up to N onto the attack roll and as much off the damage; melt, the gunner's
+  // proficiency bonus off the attack roll (or off the save DC, for a weapon the target saves against) and onto the
+  // damage. Dire and piercing are for attack rolls only. kind: 'attack' (a single shot's attack roll) or 'save'.
+  // Returns { atk, dc, dmg, notes } from what was asked, capped by the weapon.
+  function weaponTrade(w, ask, pb, kind) {
+    const out = { atk: 0, dc: 0, dmg: 0, notes: [] }, q = ask || {};
+    const num = (k) => { const v = weaponProp(w, k); return typeof v === 'number' ? v : 0; };
+    if (kind === 'attack') {
+      const d = clamp(int(q.dire), 0, num('dire')), pc = clamp(int(q.piercing), 0, num('piercing'));
+      if (d) { out.atk -= d; out.dmg += d; out.notes.push(`dire ${d}`); }
+      if (pc) { out.atk += pc; out.dmg -= pc; out.notes.push(`piercing ${pc}`); }
+    }
+    if (q.melt === true && weaponProp(w, 'melt')) {
+      const b = crewPbOf(pb);
+      if (kind === 'attack') out.atk -= b; else out.dc -= b;
+      out.dmg += b; out.notes.push(`melt ${b}`);
+    }
+    return out;
+  }
+  // vicious N: a damage roll with a weapon die at its maximum gains N (once per roll). detail: the roller's
+  // "2d10[10,3]+4" text, struck dice "~3~" not counting
+  function viciousBonus(w, detail) {
+    const n = weaponProp(w, 'vicious'); if (typeof n !== 'number' || !n) return 0;
+    const re = /\d+d(\d+)[a-z0-9]*\[([^\]]*)\]/g;
+    for (let m; (m = re.exec(String(detail || ''))); ) {
+      const sides = int(m[1]);
+      if (m[2].split(',').some((v) => !/~/.test(v) && int(v.split('→').pop()) === sides)) return n;
+    }
+    return 0;
+  }
   // Can this weapon fire at that ship from here, and how? a / ta: the two tokens (x, y, f); returns
   // { ok, why, feet, arc, kind: 'attack' | 'save', adv: [reasons], dis: [reasons] } where adv / dis are for the attack
   // roll, or (kind 'save') for the target's saving throw.
-  function fireCheck(ship, a, w, target, ta) {
+  function fireCheck(ship, a, w, target, ta, opts = {}) {
     const sa = squaresOf(ship), st = squaresOf(target), feet = shipGap(a, sa, ta, st), arc = arcOf(a, sa, ta, st), cat = catOf(w);
     const big = sizeRank(ship) >= 4;   // Huge or larger: its primary weapons (point-defense) call for a save, like tertiary ones
     const out = { ok: true, why: '', feet, arc, kind: cat === 'tertiary' || cat === 'quaternary' || (cat === 'primary' && big) ? 'save' : 'attack', adv: [], dis: [] };
@@ -589,6 +627,15 @@
       if (feet <= 50) out.dis.push('within 50 ft');
       const mine = rollEffects(ship, 'attack'), theirs = rollEffects(target, 'against');
       out.adv.push(...mine.adv, ...theirs.adv); out.dis.push(...mine.dis, ...theirs.dis);
+      // unseen (Conceal), Dogfight, and firing from the helm (SotG ch. 9)
+      const me = statusOf(ship).fx, them = statusOf(target).fx;
+      if (me.concealed) out.adv.push('unseen');
+      if (them.concealed) out.dis.push('an unseen target');
+      if (them.dogfightVs) { if (them.dogfightVs === ship.id) { if (them.dogfightDis) out.dis.push('dogfight'); } else if (them.dogfightAdv) out.adv.push('dogfight'); }
+      if (opts.fromHelm && (cat === 'primary' || cat === 'secondary')) {
+        const free = arc === 'forward' && ((me.dogfightVs === target.id && cat === 'primary') || me.runVs === target.id);
+        if (!free) out.dis.push('firing from the helm');
+      }
       const con = weaponProp(w, 'constitution');
       if (typeof con === 'number' && int((ship.abilities || {}).con, 10) < con) out.dis.push(`Constitution under ${con}`);
     }
@@ -893,5 +940,5 @@
     setCondition, summary, SIZE_DATA, SHIELD_TYPES, REACTORS, COUPLINGS, SYSTEMS, POOLS, SYSTEM_NAMES, POWER_DIE, sizeOf, roleOf, reactorOf, couplingOf,
     shieldTypeOf, powerDie, powerDieText, powerCaps, diceOf, diceLeft, regenRate, boostDC, regenDC, boostedSpeed, startTurn, usePower, setPower,
     setDiceUsed, boost, regenerateShields, SQUARE_FT, SQUARES, squaresOf, FACING_NAMES, DIRS, gridFeet, turnSteps, turnCost, moveCost, inBounds, shipGap,
-    arcOf, INIT_SIZE_MOD, npcInitBonus, deploymentInfo, techniquesKnown, techDie, STOCK_COST, TIER_COST, minCrew, costs, REGIONS, HYPER_HOURS, START_UP, hyperClass, stepsFor, jumpHours, jumpFuel, fuelOf, mishapFor, MOD_TYPES, modsSummary, modCost, installDC, pastCapacity, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck, PACES, flyFuel, travelSpeed, REALSPACE_TIMES, realspaceTime };
+    arcOf, INIT_SIZE_MOD, npcInitBonus, deploymentInfo, techniquesKnown, techDie, STOCK_COST, TIER_COST, minCrew, costs, REGIONS, HYPER_HOURS, START_UP, hyperClass, stepsFor, jumpHours, jumpFuel, fuelOf, mishapFor, MOD_TYPES, modsSummary, modCost, installDC, pastCapacity, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck, PACES, flyFuel, travelSpeed, REALSPACE_TIMES, realspaceTime, weaponTrade, viciousBonus };
 });

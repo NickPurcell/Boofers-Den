@@ -246,3 +246,10 @@ test("starting wealth (audit 1.9): the class's dice, and the guided build taking
   assert.match(c.notes, /^Starting wealth: 1,700 cr \(8d4 x 100 cr\), instead of the class's and background's equipment/);
   assert.ok(!/mesh armor|disguise kit/.test(c.notes), "neither the class's nor the background's equipment");
 });
+
+test("SW5e's improvement options (audit 2.17): one per class, with the prerequisite and text", () => {
+  for (const k of ["improvements-class", "improvements-multi", "improvements-splash"]) assert.ok(D.LISTS[k] && D.LISTS[k].build, k);
+  assert.deepEqual([D.LISTS["improvements-class"].path, D.LISTS["improvements-multi"].path, D.LISTS["improvements-splash"].path], ["classImprovement", "multiclassImprovement", "splashclassImprovement"]);
+  const l = JSON.parse(JSON.stringify(D.LISTS["improvements-splash"].build([{ name: "Monk", prerequisite: "No levels in monk", description: "Some [focus](#x).\r\n" }, { prerequisite: "x" }])));
+  assert.deepEqual(l, [{ n: "Monk", pre: "No levels in monk", text: "Some focus.\n" }]);
+});
