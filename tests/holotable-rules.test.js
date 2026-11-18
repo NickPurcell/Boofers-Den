@@ -330,6 +330,9 @@ test("speed (5.11, #254): a Monk's Unarmored Movement from its table column, onl
   assert.equal(R.speedOf(monk(5, [{ name: "Light shield", equipped: true, armor: { kind: "shield", ac: 1 } }])).speed, 30, "with a shield");
   assert.equal(R.speedOf(monk(5, [{ name: "Combat suit", equipped: false, armor: { kind: "light", ac: 11 } }])).speed, 45, "armor in the pack");
   assert.equal(R.speedOf(monk(5, [], { classes: [{ name: "Fighter", level: 5 }] })).speed, 30, "not a monk");
+  const sentry = { features: [{ name: "Vow of the Sentry", text: "" }] };
+  assert.equal(R.speedOf(monk(5, [{ name: "Battle armor", equipped: true, armor: { kind: "medium", ac: 14 } }], sentry)).speed, 45, "the Vow of the Sentry: medium armor allowed");
+  assert.equal(R.speedOf(monk(5, [{ name: "Light shield", equipped: true, armor: { kind: "shield", ac: 1 } }], sentry)).speed, 30, "but not a shield");
   assert.equal(R.speedOf(monk(5, [], { features: [{ name: "Wings", text: "You have a flying speed equal to your walking speed." }] })).other.fly, 45, "a speed equal to walking follows it");
 });
 

@@ -614,8 +614,11 @@
     if (!cw.variant) for (const e of worn) if (+e.armor.str > str) { slow += 10; parts.push(`${e.name} needs Str ${e.armor.str}: -10 ft`); break; }
     for (const e of worn) if (e.armor.cumbersome) { slow += 5; parts.push(`${e.name} is cumbersome: -5 ft`); }
     if (cw.slow) { slow += cw.slow; parts.push(`carrying ${cw.weight} lb: -${cw.slow} ft`); }
-    // a Monk with no armor or shield on: Unarmored Movement, from the Monk table's own column at its level
-    const monk = worn.length ? null : classTableAt(c || {}).find(x => x.cls === 'Monk');
+    // a Monk with no armor or shield on: Unarmored Movement, from the Monk table's own column at its level. With the
+    // Vow of the Sentry, light or medium armor is allowed; heavy armor or a shield still isn't.
+    const sentry = ((c && c.features) || []).some(f => /^vow of the sentry$/i.test(String((f && f.name) || '').trim()));
+    const armored = worn.some(e => !sentry || e.armor.kind === 'heavy' || e.armor.kind === 'shield');
+    const monk = armored ? null : classTableAt(c || {}).find(x => x.cls === 'Monk');
     const umv = monk && (monk.cols.find(([h]) => h === 'Unarmored Movement') || [])[1], um = +(/^\+?(\d+)\s*ft/i.exec(String(umv || '')) || [])[1] || 0;
     if (um) parts.push(`Unarmored Movement: +${um} ft`);
     const other = {}, now = Math.max(0, base + um - slow);
