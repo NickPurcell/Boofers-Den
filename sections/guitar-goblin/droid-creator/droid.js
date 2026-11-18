@@ -1,7 +1,7 @@
 // Droid creator: the page. A droid is built from hard-surface parts made in code (hard.js: bevelled panels laid on
 // curved surfaces, turned and lofted solids), painted by one material that also wears it (paint.js). chassis.js
-// lists the kinds of droid: utility.js is the astromech-style one (domes.js its heads, layout.js its panel layouts
-// and the paint schemes, fittings.js its attachments), power.js the walking battery. The scene, lights, studio and picture export are the
+// lists the kinds of droid: t3.js is the Old Republic's four-footed utility droid, utility.js the astromech-style one
+// (domes.js its heads, layout.js its panel layouts and the paint schemes, fittings.js its attachments), power.js the walking battery. The scene, lights, studio and picture export are the
 // shared stage (../creator-kit/stage.js); this file puts the pieces together and runs the panel.
 import * as THREE from 'three';
 import { makeStage } from '../creator-kit/stage.js';
@@ -30,7 +30,7 @@ const SHARED_LAST = {
   eye: { label: 'Photoreceptor', swatch: true, items: EYES },
   wear: { label: 'Weathering', items: [{ key: 'fresh', name: 'Factory fresh', w: 0.0 }, { key: 'worn', name: 'In service', w: 0.45 }, { key: 'battered', name: 'Battered', w: 0.72 }, { key: 'scavenged', name: 'Scavenged', w: 1.0 }] },
 };
-const SHARED_DEFAULT = { chassis: 'utility', primary: 'sand', secondary: 'graphite', finish: 'paint', eye: 'red', wear: 'worn', seed: '7' };
+const SHARED_DEFAULT = { chassis: 't3', primary: 'sand', secondary: 'graphite', finish: 'paint', eye: 'red', wear: 'worn', seed: '7' };
 const chosen = new Set();   // the choices a person has made themselves; the rest follow the chassis
 const state = {};
 const chassis = () => CHASSIS[state.chassis] || CHASSIS.utility;
@@ -173,6 +173,8 @@ document.getElementById('random').addEventListener('click', () => {
   do state.secondary = any('secondary'); while (state.secondary === state.primary);
   // never roll the one combination that reads as the best-known unit of the type: a pale round-domed unit with blue trim
   if (state.chassis === 'utility' && state.form === 'round' && ['white', 'cream', 'grey'].includes(state.primary) && ['blue', 'navy', 'teal'].includes(state.secondary)) state.primary = ['sand', 'olive', 'graphite', 'maroon'][Math.floor(Math.random() * 4)];
+  // the same for the T3-type: never the pale unit with blue on its rim, shoulders and feet and a blue or white eye
+  if (state.chassis === 't3' && ['white', 'cream', 'grey'].includes(state.primary) && ['blue', 'navy', 'teal'].includes(state.secondary)) state.secondary = ['green', 'olive', 'orange', 'maroon', 'violet', 'yellow'][Math.floor(Math.random() * 6)];
   for (const k of Object.keys(opts)) if (k !== 'chassis') chosen.add(k);
   state.seed = String(1 + Math.floor(Math.random() * 999));
   aim(false); rebuild(); paint(); writeHash();
