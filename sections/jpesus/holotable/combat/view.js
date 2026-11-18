@@ -22,7 +22,7 @@
     const w = E.buildWorld({
       characters: s.characters, entries: s.initiative.entries, active: f.active, turnId: f.turn, round: f.round, tokens: s.map.tokens,
       unitTokens: Object.fromEntries(Object.entries(f.units || {}).map(([id, u]) => [id, u.token])), npcSpeed: f.npcSpeed,
-      spent: f.spent, defenses: f.defenses || {}, effects: f.effects || [], conc: f.conc || {}, walls: ((s.map && s.map.walls) || []).concat(f.propWalls || []), variants: s.variants || [],
+      spent: f.spent, defenses: f.defenses || {}, effects: f.effects || [], wounds: f.wounds || {}, conc: f.conc || {}, walls: ((s.map && s.map.walls) || []).concat(f.propWalls || []), variants: s.variants || [],
       npcStats: Object.fromEntries(Array.from(new Set(Object.keys(f.npcDefenses || {}).concat(Object.keys(f.npcBody || {})))).map((k) => [k,
         Object.assign({ saves: (f.npcSaves || {})[k] || {}, mods: (f.npcMods || {})[k] || {}, skills: (f.npcSkills || {})[k] || {} }, (f.npcDefenses || {})[k] || {}, (f.npcBody || {})[k] || {})])),
     }, R);
@@ -295,6 +295,7 @@
     }
     if (mine && u && f.active && E.isDying(u) && !E.spentOf(w, u.id).ds) html += '<button class="btn small primary" data-ct="deathsave" title="At 0 hit points: 10 or more succeeds, a 1 counts twice, a 20 brings you back with 1 hit point">🎲 Death save</button>';
     if (mine && u && f.active) html += '<button class="btn small amber" data-ct="end">End turn ⏭</button>';
+    if (gm() && f.active && (s.variants || []).includes('Strenuous Combat')) html += '<button class="btn small ghost" data-ct="conclude" title="Strenuous Combat (variant): each surviving character makes a CON save against DC 10 + the complete rounds, or gains a level of exhaustion">⚖ Strenuous Combat saves</button>';
     if (gm()) html += `<button class="btn small ghost" data-ct="undo" ${f.undo && f.undo.n ? '' : 'disabled'} title="${esc(f.undo && f.undo.last ? 'Undo: ' + f.undo.last : 'Nothing to undo')}">↶ Undo</button><button class="btn small ghost" data-ct="off" title="Turn the combat view off for everyone">Combat view off</button>`;
     html += '</div>';
     // the order of play, as this viewer's tracker has it (hidden creatures aren't in a player's), and the log
@@ -336,7 +337,7 @@
     // the current combatant's conditions (how long each lasts) and what it is concentrating on
     const flags = u ? E.spentOf(w, u.id) : {};
     const at0 = u && u.side === 'pc' && u.hp === 0;
-    if (f.active && u && ((u.conditions || []).length || (f.conc || {})[u.id] || flags.dodge || flags.disengage || (u.senses || []).length || at0 || gm())) {
+    if (f.active && u && ((u.conditions || []).length || (f.conc || {})[u.id] || flags.dodge || flags.disengage || (u.senses || []).length || at0 || gm() || (u.wounds && u.wounds.level))) {
       const efs = (f.effects || []).filter((ef) => ef.unit === u.id);
       // what the chip says beyond the name: its level, its fire damage, who caused it, or that the DM hasn't set one
       const detail = (c) => {
@@ -355,6 +356,7 @@
         return ` (${ef.save ? `${ef.save.ability.toUpperCase()} save DC ${ef.save.dc} at the end of its turns` : `until the ${ef.ends} of ${whose} ${ef.rounds > 1 ? `turn, ${ef.rounds} rounds` : 'next turn'}`}${ef.conc ? ', while concentrating' : ''})`;
       };
       html += `<div class="ct-row ct-conds">${(u.conditions || []).map((c) => `<span class="ct-chip ct-cond" title="${esc((R.CONDITIONS || {})[c] || c)}${esc(until(c))}">${esc(c)}${esc(detail(c))}${E.CONDITION_EFFECTS[c] ? '' : ' <span class="muted">(no automatic effect yet)</span>'}${esc(until(c))}${gm() ? ` <button class="ct-x" data-ct="uncond" data-c="${esc(c)}" title="Take ${esc(c.toLowerCase())} off ${esc(u.name)}" aria-label="Take ${esc(c.toLowerCase())} off">✕</button>` : ''}</span>`).join('')}
+        ${u.wounds && u.wounds.level ? `<span class="ct-chip ct-cond" title="Wounds (variant): a death save failure for each level whenever it drops to 0; back at its hit point maximum, they're gone">🩸 Wounded ${esc(String(u.wounds.level))}</span>` : ''}
         ${at0 ? (() => {
           const ds = u.deathSaves || { s: 0, f: 0 }, dots = (n, ch) => Array.from({ length: 3 }, (_, i) => (i < n ? ch : '·')).join('');
           return E.isDead(u) ? '<span class="ct-chip ct-cond">💀 Dead</span>' : E.isStable(u) ? '<span class="ct-chip">Stable at 0 hit points</span>'
@@ -483,6 +485,7 @@
     const k = el.dataset.ct;
     if (k === 'on' || k === 'off') return send('fight.toggle', { on: k === 'on' });
     if (k === 'undo') return send('fight.undo', {});
+    if (k === 'conclude') return confirm('End the fight with Strenuous Combat saves? Each surviving character makes a CON save, or gains a level of exhaustion.') && send('fight.conclude', {});
     if (k === 'end') { UI.armed = UI.target = null; return send('fight.end', {}); }
     if (k === 'stand') return send('fight.stand', {});
     if (k === 'douse') return send('fight.douse', { target: el.dataset.id });

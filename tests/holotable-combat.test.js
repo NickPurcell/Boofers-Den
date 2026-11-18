@@ -3503,3 +3503,65 @@ test("class pools in the world (#164): a sheet that hasn't added its class's res
   const w2 = E.buildWorld({ characters: { c1: kept }, entries: [{ id: "e1", name: "Fenn", charId: "c1" }], active: true, turn: 0, tokens: [{ id: "t1", x: 0, y: 0 }], unitTokens: { e1: "t1" } }, R);
   assert.equal(w2.units.e1.pools.superiority.used, 2, "a stored pool keeps its count");
 });
+
+/* ---------------------------------------------------------------- the Wounds and Strenuous Combat variants (9.16, the combat view's half) */
+test("Wounds (variant): dropping to 0 asks a Con save; a failure is a wounded level, and each level is a death save failure", () => {
+  const V = { variants: ["Wounds"] };
+  const av = (o) => unit(Object.assign({ id: "av", name: "Avery", side: "pc", x: 1, y: 0, hp: 5, maxHp: 20, saves: { con: 2 }, deathSaves: { s: 0, f: 0 } }, o));
+  const r1 = () => unit({ id: "r1", name: "Raider", side: "npc", x: 0, y: 0 });
+  const claw = { name: "Claw", bonus: 30, damage: "1d6", type: "kinetic", melee: 5, range: null };
+  const drop = (u, save, extra = V) => { const d = dice({ total: 25, nat: 12 }, { total: 8 }, { total: save }); const r = E.apply(world([u, r1()], "r1", extra), { type: "attack", unit: "r1", target: "av", attack: claw }, d.roll); return { r, d }; };
+  // a failure: 1 wounded level, 1 death save failure
+  let { r, d } = drop(av(), 7);
+  assert.equal(d.asked[2], "1d20+2");
+  assert.match(r.log.map((x) => x.text).join(" | "), /CON save against Wounds \(DC 10\): 7, a failure/);
+  assert.deepEqual([r.world.units.av.wounds, r.world.units.av.deathSaves.f], [{ level: 1, step: 0 }, 1]);
+  // a success with 2 levels already: the DC was 10, next time 15, and 2 failures
+  ({ r } = drop(av({ wounds: { level: 2, step: 0 } }), 14));
+  assert.deepEqual([r.world.units.av.wounds, r.world.units.av.deathSaves.f], [{ level: 2, step: 1 }, 2]);
+  ({ r } = drop(av({ wounds: { level: 2, step: 1 } }), 14));
+  assert.match(r.log.map((x) => x.text).join(" | "), /DC 15\): 14, a failure/, "DC 15 now");
+  // three levels: dead
+  ({ r } = drop(av({ wounds: { level: 2, step: 0 } }), 3));
+  assert.equal(r.world.units.av.deathSaves.f, 3);
+  assert.match(r.log.map((x) => x.text).join(" | "), /Avery dies/);
+  // without the variant: no save, no failures
+  ({ r, d } = drop(av(), 7, {}));
+  assert.deepEqual([d.asked.length, r.world.units.av.deathSaves.f], [2, 0]);
+  // in a built world: the record's levels, gone once the character is back at its hit point maximum
+  const table = (cur) => ({ characters: { c1: { id: "c1", name: "Avery", hp: { max: 20, current: cur }, ac: 10 } }, entries: [{ id: "e1", name: "Avery", charId: "c1" }], active: true, turn: 0,
+    tokens: [{ id: "t1", x: 0, y: 0 }], unitTokens: { e1: "t1" }, wounds: { c1: { level: 2, step: 1 } } });
+  assert.deepEqual(E.buildWorld(table(5), R).units.e1.wounds, { level: 2, step: 1 });
+  assert.deepEqual(E.buildWorld(table(20), R).units.e1.wounds, { level: 0, step: 0 });
+});
+
+test("Wounds and Strenuous Combat through the API: the record kept by character; the GM's conclude saves, once, undone by Undo", async () => {
+  const { gm, sam, rae, avery, bolt, ids } = await fight();
+  let st = await sam.state();
+  await gm.act("variants.set", { variants: ["Wounds", "Strenuous Combat"] });
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hp: { max: 20, current: 2, temp: 0 } }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  const crypto = require("crypto"), real = crypto.randomInt;
+  crypto.randomInt = (a, b) => (b === 21 ? 3 : real(a, b));   // every d20 a 3: the claw still hits at +30; the Wounds save fails
+  try { assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 30, damage: "1d6+5", type: "kinetic", melee: 5 } })).code, 200); }
+  finally { crypto.randomInt = real; }
+  st = await gm.state();
+  assert.deepEqual(st.fight.wounds[avery], { level: 1, step: 0 });
+  assert.equal(st.characters[avery].deathSaves.f, 1);
+  // Strenuous Combat: the GM ends it; a player can't
+  assert.equal((await sam.act("fight.conclude", {})).code, 403);
+  crypto.randomInt = (a, b) => (b === 21 ? 2 : real(a, b));   // both fail DC 10 (round 1: no complete rounds)
+  try { assert.equal((await gm.act("fight.conclude", {})).code, 200); } finally { crypto.randomInt = real; }
+  st = await gm.state();
+  assert.deepEqual([st.characters[avery].exhaustion, st.characters[bolt].exhaustion], [1, 1]);
+  assert.ok(st.chat.some((m) => /CON save against Strenuous Combat \(DC 10\)/.test(m.text || "")));
+  assert.equal((await gm.act("fight.conclude", {})).code, 400, "once");
+  assert.equal((await gm.act("fight.undo", {})).code, 200);
+  st = await gm.state();
+  assert.deepEqual([st.characters[avery].exhaustion || 0, st.characters[bolt].exhaustion || 0], [0, 0], "undone");
+  assert.equal((await gm.act("fight.conclude", {})).code, 200, "and can be made again after the undo");
+  await gm.act("variants.set", { variants: [] });
+  assert.equal((await gm.act("fight.conclude", {})).code, 400, "only with the variant on");
+});
