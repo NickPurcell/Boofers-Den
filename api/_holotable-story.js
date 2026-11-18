@@ -1,6 +1,8 @@
 "use strict";
 // The story between fights (audit section 11, Wretched Hives and the PHB), all the GM's to keep:
-//  - factions (11.3): a tier and renown for the faction, and each character's rank and renown in it;
+//  - factions (11.3): a tier and renown for the faction, and each character's rank and renown in it; the faction's
+//    insignia, rank names, dues (the GM collects them), training on offer, its stockpile, and the party's own faction
+//    (ideals, headquarters, recruitment and the scores the GM keeps for it);
 //  - rivals and complications (11.4): who's after the party, known to the players only when the GM says so;
 //  - lifestyle (11.5): each sheet's lifestyle (the sheet keeps it), and the GM charging N days of it at once.
 // Players see factions the GM shows and rivals the GM has made known; notes marked for the GM stay the GM's.
@@ -22,8 +24,25 @@ function cleanFaction(f, chars) {
     if (!own(chars, id) || !m || typeof m !== "object") continue;
     members[id] = { rank: clamp(int(m.rank), 0, 5), renown: clamp(int(m.renown), 0, 100000) };
   }
-  return { id: ID.test(String(f.id || "")) ? String(f.id) : rid(), name: str(f.name, 80).trim(), tier: clamp(int(f.tier, 1), 1, 20),
+  const out = { id: ID.test(String(f.id || "")) ? String(f.id) : rid(), name: str(f.name, 80).trim(), tier: clamp(int(f.tier, 1), 1, 20),
     renown: clamp(int(f.renown), 0, 1000000), notes: str(f.notes, 2000), gmNotes: str(f.gmNotes, 2000), shown: !!f.shown, members };
+  // the rest of 11.3, each only when the GM fills it in
+  const insignia = str(f.insignia, 120).trim(); if (insignia) out.insignia = insignia;
+  const ranks = (Array.isArray(f.ranks) ? f.ranks : []).slice(0, 6).map((x) => str(x, 40).trim());
+  if (ranks.some(Boolean)) out.ranks = ranks;
+  const dues = clamp(int(f.dues), 0, 1000000); if (dues) { out.dues = dues; out.duesPer = ["week", "month", "year"].includes(f.duesPer) ? f.duesPer : "month"; }
+  const training = str(f.training, 2000); if (training.trim()) out.training = training;
+  const stock = (Array.isArray(f.stockpile) ? f.stockpile : []).slice(0, 60).filter((x) => x && str(x.name, 80).trim())
+    .map((x) => ({ name: str(x.name, 80).trim(), qty: clamp(int(x.qty, 1), 0, 1000000) }));
+  if (stock.length) out.stockpile = stock;
+  if (f.ours) {   // the party's own faction
+    out.ours = true;
+    for (const [k, n] of [["ideals", 1000], ["hq", 200], ["recruitment", 1000]]) { const v = str(f[k], n); if (v.trim()) out[k] = v; }
+    const scores = (Array.isArray(f.scores) ? f.scores : []).slice(0, 8).filter((x) => x && str(x.name, 30).trim())
+      .map((x) => ({ name: str(x.name, 30).trim(), value: clamp(int(x.value, 10), 0, 30) }));
+    if (scores.length) out.scores = scores;
+  }
+  return out;
 }
 function cleanRival(r, chars) {
   if (!r || typeof r !== "object" || !str(r.name, 80).trim()) return null;
@@ -65,6 +84,23 @@ function apply(camp, cid, gm, type, p, G) {
     f.renown = clamp(f.renown + d, 0, 1000000);
     if (d && f.shown && p.announce !== false) G.addChat(camp, { system: true, text: `⚑ ${G.shownName(camp, { charId: id, name: chars[id].name })} ${d > 0 ? "earns" : "loses"} ${Math.abs(d)} renown with ${f.name}${d > 0 ? "" : ""}.` });
     return { renown: m.renown };
+  }
+  if (type === "faction.dues") {   // the GM collects a faction's dues from its members (credits can't go below 0)
+    const f = (camp.factions || []).find((y) => y.id === String(p.id || ""));
+    if (!f) throw new G.Invalid("No such faction.");
+    if (!f.dues) throw new G.Invalid("Set the faction's dues first.");
+    const times = clamp(int(p.times, 1), 1, 52), lines = [], short = [];
+    for (const id of Object.keys(f.members || {})) {
+      const c = chars[id]; if (!c) continue;
+      const cost = f.dues * times, had = Math.max(0, int(c.credits));
+      c.credits = Math.max(0, had - cost);
+      const nm = G.shownName(camp, { charId: id, name: c.name });
+      lines.push(`${nm} ${cost} cr`); if (had < cost) short.push(nm);
+    }
+    if (!lines.length) throw new G.Invalid("The faction has no members.");
+    // a faction the players can't see is collected quietly; the GM sees what happened in the reply
+    if (f.shown) G.addChat(camp, { system: true, text: `⚑ Dues to ${f.name}${times > 1 ? ` (${times} ${f.duesPer}s)` : ""}: ${lines.join(", ")}.${short.length ? ` ${short.join(", ")} couldn't cover it all.` : ""}` });
+    return { charged: lines.length, short: short.length };
   }
   if (type === "lifestyle.charge") {   // N days of each character's lifestyle, taken from their credits (it can't go below 0)
     const days = clamp(int(p.days, 1), 1, 365);
