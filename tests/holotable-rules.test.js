@@ -100,6 +100,26 @@ test("max power level check (audit 4.5): above it is reported, at or below it is
   assert.equal(R.overMaxPowerLevel(kira, { level: 4, type: "force" }, after), null);
 });
 
+test("high-level casting (#160): from which level each level goes once per long rest; a used one is blocked", () => {
+  const from = (classes, kind = "force") => R.highCastFrom({ classes: classes.map(([name, level, archetype]) => ({ name, level, archetype })) }, kind);
+  assert.equal(from([["Consular", 11]]), 6);
+  assert.equal(from([["Engineer", 17]], "tech"), 6);
+  assert.equal(from([["Sentinel", 11]]), 5);
+  assert.equal(from([["Guardian", 13]]), 4);
+  assert.equal(from([["Scout", 13]], "tech"), 4);
+  assert.equal(from([["Berserker", 17, "Marauder Approach"]]), 4);
+  assert.equal(from([["Fighter", 10]]), 0, "no casting, no rule");
+  assert.equal(from([["Consular", 11]], "tech"), 0);
+  // multiclassed: the class with the most levels; on a tie, the later threshold
+  assert.equal(from([["Guardian", 10], ["Consular", 5]]), 4);
+  assert.equal(from([["Consular", 10], ["Guardian", 10]]), 6);
+  const kira = { name: "Kira", classes: [{ name: "Consular", level: 11 }], force: { used: 0, high: [6] } };
+  assert.equal(R.highCastBlocked(kira, { type: "force" }, 5), null, "below the threshold");
+  assert.equal(R.highCastBlocked(kira, { type: "force" }, 7), null, "7th not cast yet");
+  assert.equal(R.highCastBlocked(kira, { type: "force" }, 6).text, "Kira has already cast a 6th-level force power since the last long rest (6th level and up: once each per long rest).");
+  assert.deepEqual(R.highCastUsed({ force: { high: [9, "6", 12, 0] } }, "force"), [9, 6]);
+});
+
 test("Engineers and Scouts get tech points back on a short rest; others don't", () => {
   assert.equal(R.techOnShortRest(char([["Engineer", 1]])), true);
   assert.equal(R.techOnShortRest(char([["Scout", 2]])), true);
