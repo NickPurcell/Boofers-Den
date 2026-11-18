@@ -318,6 +318,25 @@
     const infB = inf && (inf === body || inf.armor.kind === 'shield') ? infuseBonus(c) : 0;
     return { total: best.v + misc + infB, text: [...best.parts, infB ? `infused ${inf.name} +${infB}` : '', misc ? `misc ${fmt(misc)}` : ''].filter(Boolean).join(' · ') };
   }
+  // Carrying (audit 6.5). Each item's weight (wt, in pounds each, from SW5e's gear) times its quantity, against the carrying
+  // capacity (PHB, "Lifting and Carrying": Strength score x 15). With the table's "Encumbrance" variant (PHB, the same
+  // section): over 5 x Strength encumbered (speed -10 ft), over 10 x Strength heavily encumbered (speed -20 ft, and
+  // disadvantage on Strength, Dexterity and Constitution checks, attacks and saves). The capacity follows the sheet's size
+  // (#185; PHB "Size and Strength"): doubled for each size above Medium, halved for Tiny; Small carries as Medium.
+  const ENCUMBRANCE = 'Encumbrance';
+  function carrying(c, variants) {
+    const str = Math.max(0, +((c && c.abilities) || {}).str || 0);
+    const weight = Math.round(((c && c.equipment) || []).reduce((n, e) => n + Math.max(0, +(e && e.qty) || 0) * Math.max(0, +(e && e.wt) || 0), 0) * 100) / 100;
+    const steps = Math.max(0, SIZES.indexOf(c && c.size) - 2), factor = (c && c.size) === 'Tiny' ? 0.5 : 2 ** steps;
+    const capacity = Math.floor(str * 15 * factor), variant = (variants || []).includes(ENCUMBRANCE);
+    const state = weight > capacity ? 'over' : variant && weight > 10 * str ? 'heavy' : variant && weight > 5 * str ? 'encumbered' : '';
+    const slow = state === 'heavy' || (variant && state === 'over') ? 20 : state === 'encumbered' ? 10 : 0;
+    const text = state === 'over' ? `over the carrying capacity (${capacity} lb)` : state === 'heavy' ? 'heavily encumbered: speed -20 ft; disadvantage on Str, Dex and Con checks, attacks and saves'
+      : state === 'encumbered' ? 'encumbered: speed -10 ft' : '';
+    return { weight, capacity, variant, state, slow, text };
+  }
+  Object.assign(SW5E, { carrying, ENCUMBRANCE });
+
   // the d20 a weapon crits on: 20, or lower for an attack's own crit range or a "Keen N" weapon (SW5e: the range grows by N)
   // Reliable Talent (Operative 11, SW5e): ability checks that add the proficiency bonus get the d20's minimum roll
   // threshold, 8 (PHB chapter 7). Skill rolls with proficiency or expertise use 1d20min8.
