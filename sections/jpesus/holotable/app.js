@@ -210,8 +210,65 @@
     }
     renderMapTools(); loadMapBg(); drawMap();
     if (window.HTC) HTC.render();   // combat view
+    renderAsk();
     renderChat();
   }
+
+  // --------------------------------------------------------------------------- the GM asks for a roll (audit 9.12)
+  // The GM picks a skill, save or ability check, who rolls, a DC (shown to players or not) and whether it's secret,
+  // then rolls for them at once or asks the players, who each get a Roll button here. The server rolls from the sheet.
+  function askCheckOptions() {
+    return `<optgroup label="Skills">${R.SKILLS.map(s => `<option value="skill:${s.key}" ${s.key === 'perception' ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</optgroup>
+      <optgroup label="Saving throws">${R.ABILITIES.map(a => `<option value="save:${a.key}">${esc(a.name)} save</option>`).join('')}</optgroup>
+      <optgroup label="Ability checks">${R.ABILITIES.map(a => `<option value="ability:${a.key}">${esc(a.name)} check</option>`).join('')}</optgroup>`;
+  }
+  function openAskRoll() {
+    const gmIds = new Set(Object.entries(S.st.players).filter(([, p]) => p.role === 'gm').map(([id]) => id));
+    const list = chars().map(c => ({ c, pc: !gmIds.has(c.owner) }));
+    modal(`<h3>🎲 Ask for a roll</h3>
+      <label>Roll<select id="askWhat">${askCheckOptions()}</select></label>
+      <h4 style="margin-top:10px">Who</h4>
+      <div class="ask-who">${list.map(({ c, pc }) => `<label class="toggle"><input type="checkbox" class="askChar" value="${esc(c.id)}" ${pc ? 'checked' : ''}> ${esc(c.name)}${pc ? '' : ' <span class="muted">(yours)</span>'}</label>`).join('') || '<p class="muted">No characters yet.</p>'}</div>
+      <div class="row wrap" style="margin-top:10px"><label>DC <input id="askDc" type="number" min="1" max="40" placeholder="none" style="width:80px"></label>
+        <label class="toggle"><input type="checkbox" id="askShowDc"> players see the DC</label>
+        <label class="toggle" title="A group check succeeds if at least half the group succeeds"><input type="checkbox" id="askGroup"> group check</label>
+        <label class="toggle" title="Only you see the numbers; players see only that they rolled"><input type="checkbox" id="askSecret"> secret</label></div>
+      <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" id="askNow" title="Roll for each of them now, from their sheets">Roll for them now</button>
+        <button class="btn primary" id="askOpen" title="Each player gets a Roll button for their character">Ask the players</button></div>`, box => {
+      const send = type => {
+        const [what, key] = $('#askWhat').value.split(':');
+        const ids = [...box.querySelectorAll('.askChar:checked')].map(x => x.value);
+        if (!ids.length) return toast('Pick at least one character');
+        act(type, { what, key, chars: ids, dc: $('#askDc').value, showDc: $('#askShowDc').checked, group: $('#askGroup').checked, secret: $('#askSecret').checked })
+          .then(r => { if (r) closeModal(); });
+      };
+      box.onclick = e => { if (e.target.id === 'askNow') send('ask.roll'); if (e.target.id === 'askOpen') send('ask.open'); };
+    });
+  }
+  function renderAsk() {
+    const card = $('#askCard'), a = S.st.ask;
+    if (!a) { card.classList.add('hidden'); card.innerHTML = ''; return; }
+    const ch = id => S.st.characters[id], name = id => (ch(id) || {}).name || '?';
+    const dc = a.dc != null && (isGM() || a.showDc) ? ` · DC ${n0(a.dc)}${isGM() && !a.showDc ? ' (hidden)' : ''}` : '';
+    const ids = isGM() ? a.chars : (a.mine || []);
+    const row = id => {
+      const r = (a.results || {})[id];
+      const res = r ? (r.done ? '✓' : `${n0(r.total)}${r.ok === true ? ' ✓' : r.ok === false ? ' ✗' : ''}`) : '';
+      const canRoll = !r && (isGM() || (ch(id) && ch(id).owner === clientId));
+      return `<div class="ask-row"><span>${esc(name(id))}</span><span class="spacer"></span>${res ? `<b>${esc(res)}</b>` : canRoll ? `<button class="btn tiny amber" data-ask-roll="${esc(id)}" title="Shift: advantage · Ctrl: disadvantage">Roll</button>` : '<span class="muted">waiting</span>'}</div>`;
+    };
+    const left = a.chars.filter(id => !(a.results || {})[id]).length;
+    card.classList.remove('hidden');
+    card.innerHTML = `<div class="ask-head">🎲 <b>${esc(a.check.name)}</b>${a.group ? ' <span class="muted">group</span>' : ''}${a.secret ? ' <span class="muted">secret</span>' : ''}<span class="muted">${esc(dc)}</span>
+      <span class="spacer"></span>${isGM() ? `<button class="btn tiny ghost" data-ask-close title="End this request">${left ? 'Cancel' : 'Done'}</button>` : ''}</div>
+      ${ids.map(row).join('')}${isGM() ? '' : `<div class="muted" style="font-size:11px">The GM asked for this roll.</div>`}`;
+  }
+  $('#askCard').addEventListener('click', e => {
+    const a = S.st.ask; if (!a) return;
+    const b = e.target.closest('[data-ask-roll]');
+    if (b) { b.disabled = true; act('ask.answer', { id: a.id, charId: b.dataset.askRoll, mode: rollModeFromEvent(e) }); }
+    if (e.target.closest('[data-ask-close]')) act('ask.close');
+  });
 
   // --------------------------------------------------------------------------- top bar
   function renderTop() {
@@ -2217,6 +2274,7 @@
         <p style="margin-top:0" class="muted">After a big fight or a hard-won conversation, give the party a level. Each player gets a pop-up and picks how to level.
           Someone missed the session? Grant just their character, and you can level it for them.</p>
         <button class="btn small amber" id="gmGrant">⬆ Grant a level…</button>
+        <button class="btn small" id="gmAsk" title="Everyone roll Perception, a group check, a secret Insight roll for a player…">🎲 Ask for a roll…</button>
         <label class="toggle" style="margin-top:8px" title="A table rule: whether players may take the hit die's maximum instead of the average or a roll">
           <input type="checkbox" id="gmHpMax" ${S.st.hpMax !== false ? 'checked' : ''}> Players may take maximum hit points when levelling</label>
         ${pendingNames.length ? `<p class="muted" style="font-size:12px">Waiting to level: ${pendingNames.join(', ')}</p>` : ''}
@@ -2291,6 +2349,7 @@
     if (id === 'doRename') act('campaign.rename', { name: $('#campRename').value });
     if (id === 'clearChat' && confirm('Clear the chat log for everyone?')) act('chat.clear');
     if (id === 'gmGrant') openGrant();
+    if (id === 'gmAsk') openAskRoll();
     if (id === 'restoreBtn') $('#restoreFile').click();
     if (id === 'showBackups') {
       post('backups', {}).then(r => {

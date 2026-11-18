@@ -736,6 +736,12 @@ body.no-sw5e-books [data-sa="deploy-info"], body.no-sw5e-books .lib-bar { displa
 .senses-row { display: flex; align-items: center; gap: 8px; margin: 8px 0 2px; font-size: 13px; }
 .senses-row .lbl { font-family: var(--display); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 
+/* the GM asks for a roll (audit 9.12): the card above the chat */
+.ask-card { margin: 6px 8px 0; padding: 8px 10px; border: 1px solid var(--amber, #ffb74d); border-radius: 8px; background: var(--panel, rgba(0,0,0,.3)); font-size: 13px; }
+.ask-card .ask-head, .ask-card .ask-row { display: flex; align-items: center; gap: 6px; }
+.ask-card .ask-row { padding: 3px 0; border-top: 1px solid var(--row-line, rgba(255,255,255,.08)); }
+.ask-card .spacer { flex: 1; }
+.ask-who { display: flex; flex-wrap: wrap; gap: 4px 14px; }
 /* sheet: AC worked out from armor (audit 5.3), misc bonus boxes on saves and skills (5.5) */
 .ac-stat .ac-opts { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 4px; font-size: 11px; }
 .ac-stat .ac-opts label { display: inline-flex; align-items: center; gap: 3px; margin: 0; }
