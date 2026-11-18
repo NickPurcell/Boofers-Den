@@ -389,9 +389,11 @@
       const damage = rules.damageExpr(ch, a);
       const ab = a.ab === 'finesse' ? (rules.abilityMod(ch, 'dex') > rules.abilityMod(ch, 'str') ? 'dex' : 'str') : ABILS.includes(a.ab) ? a.ab : 'str';
       const bonus = rules.attackBonus(ch, a), wp = weaponProps(ch, a, ab, rules);
+      // critFrom: the sheet's crit range (#165) or a Keen N weapon (R.critFrom), a crit on this d20 or higher
       return Object.assign({ key: a.key || String(i), name: a.name || 'Attack', bonus, abil: ab, damage, crit: rules.critExpr(damage), type: a.type || '', enhanced: +a.magic > 0,
         finesse: a.ab === 'finesse' || /\bfinesse\b/i.test(String(a.props || '')), weapon: true, proficient: a.proficient !== false,
-        ...(a.martial ? { martial: true, unarmed: isUnarmed(a) } : {}) }, readRange(a.props), wp, offhandNumbers(ch, a, ab, bonus, wp, st, rules));
+        ...(a.martial ? { martial: true, unarmed: isUnarmed(a) } : {}),
+        ...(() => { const k = Math.min(+a.critRange >= 15 && +a.critRange < 20 ? Math.round(+a.critRange) : 20, rules.critFrom ? +rules.critFrom(a.props) || 20 : 20); return k < 20 ? { critFrom: k } : {}; })() }, readRange(a.props), wp, offhandNumbers(ch, a, ab, bonus, wp, st, rules));
     }).filter((a) => a.melee || a.range);
   }
   /* ---------------- Two- and Double-Weapon Fighting (audit 5.8) ---------------- */
@@ -767,7 +769,7 @@
     if (cover) notes.push(`${cover.name} cover, +${cover.bonus} AC`);   // (after a step-down, the line above says from what)
     if (flank) notes.push(`${t.name} is flanked, -${flank} AC`);
     const ac = +t.ac + (cover ? cover.bonus : 0) - flank;
-    const need = Math.min(20, Math.max(2, ac - bonus));   // the d20 needed; a 20 always hits, a 1 always misses
+    const need = Math.min(+attack.critFrom >= 15 ? +attack.critFrom : 20, Math.max(2, ac - bonus));   // the d20 needed; a 20 (or the crit range) always hits, a 1 always misses
     const chance = d20chance(m, (21 - need) / 20);
     const riders = ridersFor(world, a, t, attack, ranged, mode);
     return { legal: true, feet, ranged, mode, k: m.k, tilts, notes, need, chance, weak, bonus, ac, cover, riders, expr: d20expr(m) + sgn(bonus) };
@@ -1467,7 +1469,7 @@
     const helped = helpOn(w, me, t);   // Help (#144) is used up by this attack, hit or miss
     if (helped) w.effects = w.effects.filter((ef) => ef !== helped);
     const nat = r.nat, fumble = nat === 1;
-    let crit = nat === 20;
+    let crit = nat === 20 || (nat != null && +attack.critFrom >= 15 && nat >= +attack.critFrom);   // a wider crit range (#165), which always hits
     const hit = crit || (!fumble && r.total >= pv.ac);
     if (hit && pv.feet <= FT && has(t, 'closeCrit')) crit = true;   // any hit from within 5 ft on the paralyzed or unconscious
     const tilt = pv.mode === 'normal' ? '' : ` with ${modeName(pv)} (${pv.tilts.map((x) => x.text).join(', ')})`;

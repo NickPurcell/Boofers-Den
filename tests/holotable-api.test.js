@@ -2556,3 +2556,10 @@ test("variant rules on the sheet (9.16): Simplified Forcecasting's ability count
   await gm.act("variants.set", { variants: ["Hunted"] });
   assert.equal((await p1.poll()).data.state.characters[id].forceAbility, undefined, "dropping the variant drops the choice");
 });
+
+test("a sheet keeps Wretched Hives' mastery tiers on skills (5.7)", async () => {
+  const { p1 } = await table();
+  const id = (await p1.act("char.save", { char: { name: "Ace", skills: { stealth: 3, insight: 5, athletics: 6, perception: 0.5 } } })).data.id;
+  const sk = (await p1.poll()).data.state.characters[id].skills;
+  assert.deepEqual([sk.stealth, sk.insight, sk.athletics, sk.perception], [3, 5, 0, 0.5]);
+});

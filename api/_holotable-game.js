@@ -171,7 +171,7 @@ function cleanChar(ch) {
     classes: list(ch.classes, 6, (k) => ({ name: s(k.name, 40) || "Fighter", level: clamp(int(k.level, 1), 0, 20), archetype: s(k.archetype, 60) })),
     abilities: nums(ch.abilities, ABILS, 10),
     saves: Object.fromEntries(ABILS.map((a) => [a, !!(ch.saves || {})[a]])),
-    skills: Object.fromEntries(Object.entries(ch.skills || {}).slice(0, 40).filter(([k]) => /^[a-zA-Z]{1,30}$/.test(k)).map(([k, v]) => [k, [0, 0.5, 1, 2].includes(+v) ? +v : 0])),
+    skills: Object.fromEntries(Object.entries(ch.skills || {}).slice(0, 40).filter(([k]) => /^[a-zA-Z]{1,30}$/.test(k)).map(([k, v]) => [k, [0, 0.5, 1, 2, 3, 4, 5].includes(+v) ? +v : 0])),
     skillMisc: Object.fromEntries(Object.entries(ch.skillMisc || {}).slice(0, 40).filter(([k]) => /^[a-zA-Z]{1,30}$/.test(k)).map(([k, v]) => [k, numOr(v, 0)])),
     saveMisc: nums(ch.saveMisc, ABILS, 0),
     ac: numOr(ch.ac, 10), speed: numOr(ch.speed, 30),
@@ -197,7 +197,9 @@ function cleanChar(ch) {
       alignment: ["light", "dark"].includes(pw.alignment) ? pw.alignment : "universal", notes: s(pw.notes, 300), description: s(pw.description, 4000) })),
     features: list(ch.features, 150, (f) => ({ name: s(f.name, 80), text: s(f.text, 4000) })),
     equipment: list(ch.equipment, 200, (e) => ({ name: s(e.name, 80), qty: numOr(e.qty, 1), equipped: !!e.equipped, notes: s(e.notes, 200),
-      ...(e.armor && R.ARMOR_KINDS.includes(e.armor.kind) ? { armor: { kind: e.armor.kind, ac: clamp(int(e.armor.ac), 0, 30) } } : {}) })),
+      ...(e.armor && R.ARMOR_KINDS.includes(e.armor.kind) ? { armor: { kind: e.armor.kind, ac: clamp(int(e.armor.ac), 0, 30) } } : {}),
+      // weight in pounds each (audit 6.5) and cost in credits each (6.8), from SW5e's gear or typed; kept only when set
+      ...(+e.wt > 0 ? { wt: Math.min(10000, Math.round(+e.wt * 100) / 100) } : {}), ...(+e.cost > 0 ? { cost: Math.min(1e9, Math.round(+e.cost)) } : {}) })),
     conditions: (Array.isArray(ch.conditions) ? ch.conditions : []).slice(0, 20).map((c) => s(c, 30)),
     exhaustion: clamp(int(ch.exhaustion), 0, 6), inspiration: !!ch.inspiration,
     // variant rules on the sheet (9.16): Simplified Forcecasting's one ability, and Hunted's disturbance points

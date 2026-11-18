@@ -532,6 +532,30 @@
       };
     });
   }
+  // a tool or kit check (audit 6.10): the tool, the ability the GM calls for, and the proficiency tier in it
+  function toolCheckDialog(ch) {
+    const tools = R.toolNames(ch), tiers = [[0, 'not proficient'], ...Object.entries(R.PROF_TIERS).map(([k, v]) => [+k, v])];
+    modal(`<h3>🧰 Tool check: ${esc(ch.name)}</h3>
+      <label>Tool or kit<input id="tcName" list="tcList" value="${esc(tools[0] || '')}" maxlength="80" placeholder="e.g. Slicer's kit"><datalist id="tcList">${tools.map(t => `<option value="${esc(t)}">`).join('')}</datalist></label>
+      <div class="row wrap"><label>Ability<select id="tcAb">${R.ABILITIES.map(a => `<option value="${a.key}" ${a.key === 'int' ? 'selected' : ''}>${a.name}</option>`).join('')}</select></label>
+        <label>Proficiency<select id="tcTier">${tiers.map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select></label>
+        <label>Misc<input id="tcMisc" type="number" value="0" style="width:60px"></label></div>
+      <p class="muted" id="tcSum" style="margin:6px 0"></p>
+      <div class="row" style="justify-content:flex-end"><button class="btn ghost" id="tcClose">Cancel</button><button class="btn primary" id="tcRoll">Roll</button></div>`, box => {
+      const sum = () => { const b = R.toolBonus(ch, $('#tcAb').value, +$('#tcTier').value, +$('#tcMisc').value), x = R.checkRollExpr(ch, +$('#tcTier').value, b); $('#tcSum').textContent = `${x.expr}${x.tier ? ` · ${x.tier}: always advantage` : ''}`; return x; };
+      const auto = () => { $('#tcTier').value = String(R.toolTierFromText(ch, $('#tcName').value)); sum(); };
+      auto();
+      box.oninput = e => { if (e.target.id === 'tcName') auto(); else sum(); };
+      box.onchange = sum;
+      box.onclick = async e => {
+        if (e.target.id === 'tcClose') return closeModal();
+        if (e.target.id !== 'tcRoll') return;
+        const x = sum(), name = $('#tcName').value.trim() || 'Tool', ab = $('#tcAb').value;
+        closeModal();
+        roll(x.expr, `${name} check (${ab.toUpperCase()})${x.tier ? ` (${x.tier})` : ''}${x.reliable ? ' (Reliable Talent)' : ''}`, { d20: true, charId: ch.id, kind: 'check' });
+      };
+    });
+  }
   function shortRestDialog() {
     const id = S.selected;
     const draw = () => {
@@ -573,7 +597,7 @@
           mutate(c => {
             if (half && (+c.hp.current || 0) >= 1) c.hp.current = Math.min(+c.hp.max || 0, (+c.hp.current || 0) + half);
             if (R.techOnShortRest(c)) c.tech.used = 0;
-            c.resources = (c.resources || []).map(r => r.refill === 'short' && r.used ? Object.assign({}, r, { used: 0 }) : r);
+            c.resources = (c.resources || []).map(r => R.refillOf(c, r) === 'short' && r.used ? Object.assign({}, r, { used: 0 }) : r);
             if (useFR) {
               c.force.used = Math.max(0, (+c.force.used || 0) - fr);
               const k = (c.resources || []).find(r => r.key === 'force-recovery');
@@ -749,7 +773,7 @@
         ${ch.acAuto ? `<div class="val">${acx.total}</div>` : inp('ac', +ch.ac || 10, { ro, type: 'number' })}
         <div class="ac-opts"><label class="muted">${inp('acAuto', !!ch.acAuto, { ro, type: 'checkbox' })} auto</label>${ch.acAuto ? `<span class="muted">misc</span>${inp('acMisc', +ch.acMisc || 0, { ro, type: 'number', w: '44px' })}` : ''}</div></div>`)(R.armorClass(ch))}
       <div class="stat rollable" data-roll="${d20(R.initiative(ch))}" data-label="Initiative" data-d20="1"><div class="lbl">Initiative</div><div class="val">${R.fmt(R.initiative(ch))}</div></div>
-      <div class="stat"><div class="lbl">Speed</div>${inp('speed', +ch.speed || 30, { ro, type: 'number' })}</div>
+      <div class="stat"><div class="lbl">Speed</div>${inp('speed', +ch.speed || 30, { ro, type: 'number' })}${(cw => cw.slow ? `<div class="muted" style="font-size:11px" title="${esc(cw.text)}">${Math.max(0, (+ch.speed || 30) - cw.slow)} ft carrying ${n0(cw.weight)} lb</div>` : '')(R.carrying(ch, S.st.variants))}</div>
       <div class="stat"><div class="lbl">Proficiency</div><div class="val">${R.fmt(pb)}</div></div>
       <div class="stat" title="Passive scores: 10 + the skill's bonus (audit 5.13)"><div class="lbl">Passive Perc.</div><div class="val">${R.passive(ch, 'perception')}</div>
         <div class="muted" style="font-size:11px">Insight ${R.passive(ch, 'insight')} · Invest. ${R.passive(ch, 'investigation')}</div></div>
@@ -800,10 +824,10 @@
             <span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${d20(b)}" data-label="${a.name} save" data-d20="1">${a.name}</span>
             ${miscBox('saveMisc.' + a.key, (ch.saveMisc || {})[a.key], ro)}</div>`;
         }).join('')}</div></div>
-        <div class="box" style="grid-row: span 2"><h4>Skills <span class="muted" style="text-transform:none;letter-spacing:0">click dot: none → proficient → expertise → half · Alt-click a skill: careful check</span></h4><div class="list-rows">${R.SKILLS.map(s => {
+        <div class="box" style="grid-row: span 2"><h4>Skills <span class="muted" style="text-transform:none;letter-spacing:0">click dot: none → proficient → expertise → half · long-press or right-click a dot: mastery tiers · Alt-click a skill: careful check</span></h4><div class="list-rows">${R.SKILLS.map(s => {
           const b = R.skillBonus(ch, s.key), lv = +(ch.skills[s.key] || 0);
-          return `<div class="lr"><button class="prof ${lv === 2 ? 'p2' : lv === 1 ? 'p1' : lv === 0.5 ? 'p05' : ''}" data-act="skill-prof" data-sk="${s.key}" ${ro ? 'disabled' : ''}></button>
-            ${(sr => `<span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${esc(sr.expr)}" data-label="${s.name}${sr.reliable ? ' (Reliable Talent)' : ''}" data-d20="1" data-check="${b}" title="${sr.reliable ? 'Reliable Talent: the d20 counts as at least 8. ' : ''}Alt-click: a careful check (take 10)">${s.name}</span>`)(R.skillRollExpr(ch, s.key))}<span class="ab">${s.ab}</span>
+          return `<div class="lr"><button class="prof ${lv >= 3 ? 'p2 p' + lv : lv === 2 ? 'p2' : lv === 1 ? 'p1' : lv === 0.5 ? 'p05' : ''}" data-act="skill-prof" data-sk="${s.key}" ${ro ? 'disabled' : ''} title="${lv ? esc(R.PROF_TIERS[lv]) : 'not proficient'}"></button>
+            ${(sr => `<span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${esc(sr.expr)}" data-label="${s.name}${sr.tier ? ` (${sr.tier}${lv >= 5 ? ': may reroll the other die once too' : ''})` : ''}${sr.reliable ? ' (Reliable Talent)' : ''}" data-d20="1" data-check="${b}" title="${sr.tier ? `${sr.tier[0].toUpperCase() + sr.tier.slice(1)}: twice the bonus and always advantage. ` : ''}${sr.reliable ? 'Reliable Talent: the d20 counts as at least 8. ' : ''}Alt-click: a careful check (take 10)">${s.name}</span>`)(R.skillRollExpr(ch, s.key))}<span class="ab">${s.ab}</span>
             ${miscBox('skillMisc.' + s.key, (ch.skillMisc || {})[s.key], ro)}</div>`;
         }).join('')}</div></div>
       </div>`;
@@ -871,6 +895,7 @@
         ${pts('tech', tMax, +ch.tech.used || 0, 'tech', 'Tech Points', `Tech DC ${ci.techDC} / atk ${R.fmt(ci.techAtk)}${ci.techMaxLevel ? ' · max power level ' + ci.techMaxLevel : ''}${highNote(ch, 'tech', ci.techMaxLevel)}`)}
       </div>
       ${variantBits(ch, ci, fMax, tMax, ro)}
+      ${tMax > 0 && !R.hasTechFocus(ch) ? '<p class="muted" style="font-size:12px;margin:6px 0 0" title="SW5e: tech powers are cast through a tech focus. The GM decides how strictly the table holds to it.">⚠ No wristpad or chassis in the gear. SW5e casts tech powers through a tech focus (add one under Equipment).</p>' : ''}
       ${classResourcesBox(ch, ro)}
       <div class="box" style="margin-top:12px"><h4>Powers <span class="spacer"></span>${!ro ? `<button class="btn tiny" data-act="pick-power" data-kind="force">＋ force power</button>
           <button class="btn tiny" data-act="pick-power" data-kind="tech">＋ tech power</button>
@@ -891,13 +916,17 @@
       html += `<div class="grid g2">
         <div class="box"><h4>Equipment <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-equip">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-item" title="Add an item by hand">custom</button>' : ''}</h4>
           <div class="row" style="margin-bottom:8px"><span class="muted">Credits</span>${inp('credits', +ch.credits || 0, { ro, type: 'number', w: '120px' })}</div>
-          <table class="t eq-table"><thead><tr><th>Qty</th><th>Item</th><th>Notes</th><th title="Armor or shield, for the auto AC: its kind and AC (a shield's bonus)">Armor</th><th>Eq.</th><th></th></tr></thead><tbody>
+          ${(cw => `<div class="row carry ${cw.state ? 'carry-' + cw.state : ''}" style="margin-bottom:8px" title="Carrying capacity: Strength x 15 (PHB, Lifting and Carrying)${cw.variant ? '. Encumbrance variant: over 5 x Strength, speed -10 ft; over 10 x Strength, speed -20 ft and disadvantage on Str, Dex and Con rolls' : ''}">
+            <span class="muted">Carrying</span> <b>${n0(cw.weight)}</b> <span class="muted">of ${n0(cw.capacity)} lb</span>${cw.text ? ` <span class="carry-state">${esc(cw.text)}</span>` : ''}
+            ${isGM() ? `<label class="muted carry-var" title="PHB variant: weight slows characters down (the GM's call, for the whole table)"><input type="checkbox" data-act-change="encumbrance" ${cw.variant ? 'checked' : ''}> Encumbrance variant</label>` : ''}</div>`)(R.carrying(ch, S.st.variants))}
+          <div class="eq-wrap"><table class="t eq-table"><thead><tr><th>Qty</th><th>Item</th><th>Notes</th><th title="Weight in pounds, each">Wt</th><th title="Armor or shield, for the auto AC: its kind and AC (a shield's bonus)">Armor</th><th>Eq.</th><th></th></tr></thead><tbody>
           ${(ch.equipment || []).map((e, i) => `<tr><td class="n">${inp(`equipment.${i}.qty`, +e.qty || 1, { ro, type: 'number' })}</td>
             <td>${inp(`equipment.${i}.name`, e.name, { ro })}</td><td>${inp(`equipment.${i}.notes`, e.notes || '', { ro })}</td>
+            <td class="n eq-wt">${inp(`equipment.${i}.wt`, +e.wt || '', { ro, type: 'number', ph: '0' })}</td>
             <td class="armor-cell">${inp(`equipment.${i}.armor.kind`, (e.armor || {}).kind || '', { ro, type: 'select', options: [{ v: '', t: '—' }, ...R.ARMOR_KINDS] })}${e.armor && e.armor.kind ? inp(`equipment.${i}.armor.ac`, +e.armor.ac || 0, { ro, type: 'number' }) : ''}</td>
             <td>${inp(`equipment.${i}.equipped`, e.equipped, { ro, type: 'checkbox' })}</td>
-            <td>${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Empty.</td></tr>'}
-          </tbody></table></div>
+            <td>${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Empty.</td></tr>'}
+          </tbody></table></div></div>
         ${stashBox(ch, ro)}
         <div class="box"><h4>Features & Traits <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-feature" title="Feats, class features, maneuvers, fighting styles, lightsaber forms, ventures">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-feature" title="Write a feature by hand">custom</button>' : ''}</h4>
           <div class="feature-list">${(ch.features || []).map((f, i) => `<div class="feature-row">
@@ -907,7 +936,7 @@
             ${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="features" data-i="${i}" title="Remove">✕</button>` : ''}</div>`).join('') || '<p class="muted">None.</p>'}</div>
           ${(ch.features || []).length ? '<p class="muted" style="font-size:12px;margin:6px 0 0">Hover (or tap) a feature for its description.</p>' : ''}
         </div>
-        <div class="box"><h4>Proficiencies</h4>${inp('proficiencies', ch.proficiencies || '', { ro, type: 'textarea', rows: 3, ph: 'Armor, weapons, tools…' })}
+        <div class="box"><h4>Proficiencies <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="tool-check" title="Roll a check with a tool or kit">🧰 Tool check</button>' : ''}</h4>${inp('proficiencies', ch.proficiencies || '', { ro, type: 'textarea', rows: 3, ph: 'Armor, weapons, tools…' })}
           <h4 style="margin-top:10px">Languages</h4>${inp('languages', ch.languages || '', { ro, type: 'textarea', rows: 2 })}</div>
       </div>`;
     }
@@ -937,6 +966,10 @@
   $('#sheet').addEventListener('change', e => {
     const t = e.target;
     const ch = selChar(); if (!ch) return;
+    if (t.dataset.actChange === 'encumbrance') {   // the GM's switch for the whole table (audit 6.5), kept with the variant rules
+      const v = new Set(S.st.variants || []); t.checked ? v.add(R.ENCUMBRANCE) : v.delete(R.ENCUMBRANCE);
+      return act('variants.set', { variants: [...v] });
+    }
     if (t.dataset.actChange) return sheetChangeAction(t.dataset.actChange, t.value, t);
     const path = t.dataset.path; if (!path || !canEdit(ch)) return;
     let v = t.type === 'checkbox' ? t.checked : t.type === 'number' ? (t.value === '' ? '' : +t.value) : t.value;
@@ -956,6 +989,13 @@
     if (kind === 'infuse') return mutate(c => { c.infused = val; });
     t.value = '';
   }
+  // the mastery tiers (Wretched Hives, audit 5.7): a long press or right-click on a skill's dot steps through them
+  $('#sheet').addEventListener('contextmenu', e => {
+    const b = e.target.closest('[data-act="skill-prof"]'), ch = selChar();
+    if (!b || !ch || b.disabled || !canEdit(ch)) return;
+    e.preventDefault();
+    mutate(c => { const v = +(c.skills[b.dataset.sk] || 0); c.skills[b.dataset.sk] = v < 2 ? 3 : v >= 5 ? 2 : v + 1; });
+  });
   $('#sheet').addEventListener('click', async e => {
     const ch = selChar();
     const r = e.target.closest('[data-roll]');
@@ -975,6 +1015,7 @@
     switch (a) {
       case 'sub': S.sub = b.dataset.sub; renderSheet($('#sheet')); break;
       case 'gen-scores': scoresDialog(ch); break;
+      case 'tool-check': toolCheckDialog(ch); break;
       case 'dismiss-note': delete S.importNotes[ch.id]; renderSheet($('#sheet')); break;
       case 'del-class': mutate(c => c.classes.splice(i, 1)); break;
       case 'save-prof': mutate(c => { c.saves[b.dataset.ab] = !c.saves[b.dataset.ab]; }); break;
@@ -997,7 +1038,7 @@
           for (const d of dice) { const k = Math.min(d.used, back); d.used -= k; back -= k; }
           c.hitDiceUsed = R.hitDiceUsedOf(dice);
           // tracked resources that come back on a short or long rest (the combat view's tracker, 3.1), Force Recovery among them
-          c.resources = (c.resources || []).map(r => (r.refill === 'short' || r.refill === 'long') && r.used ? Object.assign({}, r, { used: 0 }) : r);
+          c.resources = (c.resources || []).map(r => ['short', 'long'].includes(R.refillOf(c, r)) && r.used ? Object.assign({}, r, { used: 0 }) : r);
           c.exhaustion = Math.max(0, (+c.exhaustion || 0) - 1);
           if (vOn('Hunted') && c.disturbance) c.disturbance = Math.max(0, c.disturbance - R.totalLevel(c));   // Hunted: down by the character's level
         });
@@ -1272,7 +1313,8 @@
           mutate(c => {
             const ex = c.equipment.find(x => String(x.name).toLowerCase() === it.n.toLowerCase());
             if (ex) ex.qty = (n0(ex.qty) || 1) + 1;
-            else { const armor = !enh && R.armorFromItem(it); c.equipment.push({ name: it.n, qty: 1, equipped: false, notes: itemNotes(it, enh).slice(0, 200), ...(armor ? { armor } : {}) }); }
+            else { const armor = !enh && R.armorFromItem(it); c.equipment.push({ name: it.n, qty: 1, equipped: false, notes: itemNotes(it, enh).slice(0, 200), ...(armor ? { armor } : {}),
+              ...(!enh && parseFloat(it.wt) > 0 ? { wt: parseFloat(it.wt) } : {}), ...(!enh && it.cost > 0 ? { cost: it.cost } : {}) }); }   // weight (6.5) and cost (6.8)
             if (!enh && it.cat === 'Weapon' && !c.attacks.some(x => String(x.name).toLowerCase() === it.n.toLowerCase())) c.attacks.push(weaponAttack(it));
           });
           toast(!enh && it.cat === 'Weapon' ? `Added ${it.n} (and its attack)` : `Added ${it.n}`);
