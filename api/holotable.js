@@ -594,7 +594,7 @@ async function handlePost(req, res, q, b, ses) {
         "scenes", "activeScene", "ships", "variants", "hpMax", "fight", "sensesFilled",
         // and what came since (each cleaned by cleanGame like the rest): the space map, the stash, the clock, the GM's
         // switches and NPCs, the level undo, factions and rivals
-        "space", "stash", "clock", "sheetLock", "statBlocksHidden", "npcs", "levelUndo", "factions", "rivals"]) if (file[k] !== undefined) g[k] = file[k];
+        "space", "stash", "clock", "sheetLock", "statBlocksHidden", "npcs", "levelUndo", "factions", "rivals", "sheetLog"]) if (file[k] !== undefined) g[k] = file[k];
       if (g.sensesFilled !== undefined) g.sensesFilled = g.sensesFilled === true;   // the one-time senses fill (#132): done or not, nothing else
       // everything coming back in goes through the same checks as a live edit
       g.characters = {};
