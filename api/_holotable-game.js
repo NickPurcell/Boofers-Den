@@ -241,7 +241,7 @@ function viewFor(camp, cid, gm, online) {
   const ini = Object.assign({}, camp.initiative);
   if (!gm) {
     ini.entries = ini.entries.filter((e) => !e.hidden)
-      .map((e) => Object.assign({}, e, e.npc ? { hp: null, maxHp: null, sb: undefined } : {}));
+      .map((e) => Object.assign({}, e, e.npc ? { hp: null, maxHp: null, sb: undefined, tpl: undefined } : {}));
   }
   const map = Object.assign({}, camp.map);
   let fog = null;
@@ -252,7 +252,7 @@ function viewFor(camp, cid, gm, online) {
     if (unk.size) ini.entries = ini.entries.map((e) => {
       const tok = unknownTokenFor(unk, e);
       if (tok === undefined) return e;
-      return Object.assign({}, e, { name: "???", charId: null, sb: undefined, hp: null, maxHp: null, tok: tok || undefined });
+      return Object.assign({}, e, { name: "???", charId: null, sb: undefined, tpl: undefined, hp: null, maxHp: null, tok: tok || undefined });
     });
     delete map.walls;   // walls are the GM's: a player's browser never learns the shape of a room it hasn't seen (issue #93)
     delete map.fog;     // so is the fog's record; a player gets only their own squares
@@ -288,6 +288,7 @@ function viewFor(camp, cid, gm, online) {
     ships: (camp.ships || []).filter((x) => gm || !x.hidden),
     ...(camp.space ? { space: Space.view(camp, gm) } : {}),   // the space map (#146)
     sceneFx: fxView,
+    ...(gm && (camp.npcs || []).length ? { npcs: camp.npcs } : {}),   // the GM's NPC templates (9.9), the GM's only
     ...((pg) => (pg.length ? { pings: pg } : {}))((camp.pings || []).filter((q) => q && now() - q.ts < 10).map((q) => ({ id: q.id, x: q.x, y: q.y, gm: q.gm, name: playerName(camp, q.by) }))),
     ...(camp.fight && camp.fight.on ? { fight: Fight.view(camp, cid, gm, shownName) } : {}),
     // the sheet's Cast (#73), combat view on or off: which powers the table has data for, and who concentrates on what
@@ -312,6 +313,8 @@ function doRoll(camp, cid, expr, label, charId, priv, kind) {
 // Hit die per SW5e class (custom / homebrew classes send their own die from the sheet).
 const HIT_DIE = { berserker: 12, consular: 6, engineer: 8, fighter: 10, guardian: 10, monk: 8, operative: 8, scholar: 8, scout: 10, sentinel: 8 };
 const ABILS = ["str", "dex", "con", "int", "wis", "cha"];
+// SW5e (as 5e): the XP a character needs to reach the next level, by current level (index 1-19)
+const XP_FOR_LEVEL = [0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000, 85000, 100000, 120000, 140000, 165000, 195000, 225000, 265000, 305000, 355000];
 const totalLevel = (ch) => (ch.classes || []).reduce((a, k) => a + (int(k.level) || 0), 0);
 const abMod = (ch, ab) => Math.floor((num((ch.abilities || {})[ab], 10) - 10) / 2);
 const hitDieFor = (name, fallback) => HIT_DIE[String(name || "").toLowerCase()] || ([6, 8, 10, 12].includes(int(fallback)) ? int(fallback) : 8);
@@ -663,6 +666,7 @@ function applyAction(camp, cid, gm, type, p) {
         hidden: !!p.hidden && gm, hp: nullNum(charId ? hp.current : p.hp), maxHp: nullNum(charId ? hp.max : p.hp),
         ac: nullNum(charId ? ch.ac : p.ac), dexTie: num(p.bonus) / 100, conditions: entry.conditions || [],
         sb: !charId && gm && p.sb ? str(p.sb, 80) : undefined,
+        tpl: !charId && gm && (camp.npcs || []).some((t) => t.id === String(p.tpl || "")) ? String(p.tpl) : undefined,   // the GM's NPC (9.9)
       });
       sortInit(ini);
       return {};
@@ -914,6 +918,38 @@ function applyAction(camp, cid, gm, type, p) {
       return { dropImages: [h && h.img] };
     }
     // ---- level ups: the GM grants, the player (or the GM for an absent player) picks how to level
+    // XP after an encounter (audit 9.8): the GM gives an amount, split evenly among the characters chosen. Nobody
+    // levels by themselves: the GM is told who has reached the next level's XP and grants it when it suits the story.
+    case "xp.award": {
+      need(gm);
+      const amount = clamp(int(p.amount), 0, 1000000);
+      if (!amount) throw new Invalid("How much XP?");
+      const ids = [...new Set((Array.isArray(p.chars) ? p.chars : []).map(String))].filter((id) => /^[a-z0-9]{6,20}$/.test(id) && charById(camp, id)).slice(0, 30);
+      if (!ids.length) throw new Invalid("Pick who gets the XP.");
+      const each = Math.floor(amount / ids.length), ready = [];
+      const gmOwned = (ch) => !ch.owner || ((camp.players || {})[ch.owner] || {}).role === "gm";
+      for (const id of ids) {
+        const ch = charById(camp, id), lvl = totalLevel(ch);
+        ch.xp = clamp(num(ch.xp, 0) + each, 0, 10000000);
+        if (lvl >= 1 && lvl < 20 && ch.xp >= XP_FOR_LEVEL[lvl]) ready.push(`${ch.name} (${num(ch.xp, 0).toLocaleString("en-US")} XP, level ${lvl + 1} at ${XP_FOR_LEVEL[lvl].toLocaleString("en-US")})`);
+      }
+      const named = ids.map((id) => charById(camp, id)).filter((ch) => !gmOwned(ch)).map((ch) => ch.name), more = ids.length - named.length;
+      const why = str(p.reason, 80).trim();
+      addChat(camp, { system: true, text: `${why ? why + ": " : ""}${amount.toLocaleString("en-US")} XP, ${each.toLocaleString("en-US")} each for ${[...named, ...(more ? [`${more} more`] : [])].join(", ")}.` });
+      if (ready.length) addChat(camp, { system: true, to: ["@gm"], private: true, text: `Enough XP for the next level: ${ready.join("; ")}. Grant it from the GM tab when it suits the story.` });
+      return { each, ready: ready.length };
+    }
+    case "npc.save": {   // a new NPC template, or a change to one (same id)
+      need(gm);
+      const t = cleanNpc(p.npc);
+      if (!t) throw new Invalid("An NPC needs a name.");
+      const list = cleanNpcs(camp.npcs), at = list.findIndex((x) => x.id === t.id);
+      if (at < 0 && list.length >= 100) throw new Invalid("That's the most NPCs a table can keep (100). Delete one first.");
+      if (at < 0) list.push(t); else list[at] = t;
+      camp.npcs = list;
+      return { id: t.id };
+    }
+    case "npc.remove": need(gm); camp.npcs = cleanNpcs(camp.npcs).filter((x) => x.id !== String(p.id || "")); return {};
     case "levelup.grant": {
       need(gm);
       const ids = (Array.isArray(p.charIds) ? p.charIds : []).filter((id) => charById(camp, id));
@@ -1041,6 +1077,22 @@ function propSightSegments(map) {
   return out;
 }
 
+// The GM's own NPCs (audit 9.9): saved templates that go into initiative like an SW5e creature. GM-only.
+// attacks: { n: name, hit: attack bonus, dmg: a damage expression and type }, rolled GM-only from the tracker's card.
+function cleanNpc(t) {
+  if (!t || typeof t !== "object") return null;
+  const name = str(t.name, 60).trim();
+  if (!name) return null;
+  return {
+    id: /^[a-z0-9]{4,20}$/.test(String(t.id || "")) ? String(t.id) : rid(),
+    name, bonus: clamp(int(t.bonus), -10, 20), hp: clamp(int(t.hp, 1), 1, 9999), ac: clamp(int(t.ac, 10), 0, 40),
+    attacks: (Array.isArray(t.attacks) ? t.attacks : []).slice(0, 12).filter((a) => a && typeof a === "object" && str(a.n, 60).trim())
+      .map((a) => ({ n: str(a.n, 60).trim(), hit: clamp(int(a.hit), -10, 30), dmg: str(a.dmg, 60).trim() })),
+    notes: str(t.notes, 2000),
+  };
+}
+const cleanNpcs = (list) => (Array.isArray(list) ? list : []).slice(0, 100).map(cleanNpc).filter(Boolean)
+  .filter((t, i, a) => a.findIndex((x) => x.id === t.id) === i);
 // The GM's quick drawings on the map (audit 8.13): freehand strokes in grid units, everyone sees them
 const DRAW_COLORS = ["#ffd27a", "#4fc3f7", "#ef5350", "#66bb6a", "#ffffff"];
 function cleanDrawings(list) {
@@ -1090,6 +1142,7 @@ function cleanGame(g) {
   g.audio = au && /^au[a-f0-9]{12}$/.test(String(au.track || "")) ? { track: au.track, name: str(au.name, 80) || "Track", playing: !!au.playing,
     pos: clamp(num(au.pos), 0, 86400), at: num(au.at, now()), loop: !!au.loop, vol: clamp(num(au.vol, 1), 0, 1) } : null;
   g.hpMax = g.hpMax !== false;
+  if (Array.isArray(g.npcs) && g.npcs.length) g.npcs = cleanNpcs(g.npcs); else delete g.npcs;
   g.ask = Ask.clean(g.ask, g.characters);
   g.ships = (Array.isArray(g.ships) ? g.ships : []).slice(0, MAX_SHIPS).filter((x) => x && typeof x === "object").map((x) => cleanShip(x, g.characters));
   if (g.space) g.space = Space.clean(g.space, g.ships);
