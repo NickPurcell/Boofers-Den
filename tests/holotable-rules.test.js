@@ -384,6 +384,23 @@ test("Wretched Hives' proficiency tiers (5.7), tool checks (6.10) and the tech f
   assert.equal(R.hasTechFocus(c), true);
 });
 
+test("power prerequisites (audit 2.11): the named power must be known first, and stay known to cast", () => {
+  const ch = { powers: [{ name: "Choke" }, { name: "Slow" }] };
+  assert.equal(R.powerPrereqUnmet(ch, { name: "Crush", pre: "Choke" }), null);
+  assert.equal(R.powerPrereqUnmet(ch, { name: "Crush", pre: "choke" }), null, "any case");
+  assert.deepEqual(R.powerPrereqUnmet(ch, { name: "Destroy Droid", pre: "Disable Droid" }), { pre: "Disable Droid", text: "Destroy Droid needs Disable Droid known first." });
+  assert.equal(R.powerPrereqUnmet(ch, { name: "Destroy Droid", pre: "Disable Droid" }, ["Disable Droid"]), null, "picked in the same level-up");
+  assert.equal(R.powerPrereqUnmet(ch, { name: "Force Push" }), null, "no prerequisite");
+  assert.equal(R.powerPrereqUnmet({}, { name: "Crush", pre: "Choke" }).pre, "Choke");
+});
+
+test("powers known (audit 2.10): the sheet's against the class tables, summed over classes", () => {
+  const pk = R.powersKnown({ classes: [{ name: "Consular", level: 3 }, { name: "Engineer", level: 2 }], powers: [{ type: "force" }, { type: "tech" }, {}] });
+  assert.deepEqual(pk, { force: { known: 2, max: 13 }, tech: { known: 1, max: 7 } }, "Consular 3 knows 13 force powers, Engineer 2 knows 7 tech powers");
+  assert.deepEqual(R.powersKnown({ classes: [{ name: "Fighter", level: 5 }] }), { force: { known: 0, max: 0 }, tech: { known: 0, max: 0 } });
+  assert.deepEqual(R.powersKnown(null).force, { known: 0, max: 0 });
+});
+
 test("feat prerequisites (audit 2.5), read from SW5e's own wording", () => {
   const ch = { classes: [{ name: "Fighter", level: 3 }], abilities: { str: 14, dex: 13, con: 12, int: 10, wis: 10, cha: 8 }, features: [{ name: "Lucky" }], size: "Medium" };
   const pr = (c, p) => R.featPrereq(c, p);

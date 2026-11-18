@@ -649,6 +649,15 @@
       .filter(x => x.total > 0);
   }
   Object.assign(SW5E, { CHOICE_COLS, choiceCounts });
+  // powers known (audit 2.10): how many force and tech powers the sheet has, and how many its classes' tables allow
+  // (Force/Tech Powers Known, summed over the classes). Archetype casters keep their own tables, so a max of 0 isn't a limit.
+  function powersKnown(ch) {
+    const out = { force: { known: 0, max: 0 }, tech: { known: 0, max: 0 } };
+    for (const p of (ch && ch.powers) || []) out[p && p.type === 'tech' ? 'tech' : 'force'].known++;
+    for (const k of (ch && ch.classes) || []) for (const r of choiceCounts(k.name, k.level)) if (r.kind === 'powers') out[/tech/i.test(r.col) ? 'tech' : 'force'].max += r.total;
+    return out;
+  }
+  Object.assign(SW5E, { powersKnown });
 
   // ---- downtime activities (audit 11.1): Wretched Hives' chapter 2, keyed as SW5e's 'downtime' list builds them from the
   // headings, and "other" for anything else the GM allows (no tables: the GM writes the result). Crafting is 11.2's.
@@ -656,6 +665,16 @@
     espionage: 'Espionage', gambling: 'Gambling', 'mercenary-contracting': 'Mercenary contracting', 'pit-fighting': 'Pit fighting', racing: 'Racing',
     research: 'Research', 'selling-enhanced-items': 'Selling enhanced items', training: 'Training', work: 'Work', other: 'Something else' };
   Object.assign(SW5E, { DOWNTIME_ACTS });
+
+  // ---- power prerequisites (audit 2.11): 127 of SW5e's force powers name an earlier power that must be known first, and
+  // stay known to cast them. pw.pre is that power's name (kept on the sheet from SW5e's list); null when it's known.
+  const powerPrereqUnmet = (ch, pw, extra) => {
+    const pre = String((pw && pw.pre) || '').trim();
+    if (!pre) return null;
+    const known = new Set([...((ch && ch.powers) || []).map(x => String(x.name || '').toLowerCase()), ...(extra || []).map(x => String(x).toLowerCase())]);
+    return known.has(pre.toLowerCase()) ? null : { pre, text: `${pw.name || 'This power'} needs ${pre} known first.` };
+  };
+  Object.assign(SW5E, { powerPrereqUnmet });
 
   // ---- senses (audit 5.12): [{ kind, range }] on the sheet. The four kinds SW5e's creatures and species use; feet 1-9999.
   const SENSES = ['darkvision', 'blindsight', 'tremorsense', 'truesight'];
