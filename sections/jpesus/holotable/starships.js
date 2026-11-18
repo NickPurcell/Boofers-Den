@@ -79,7 +79,8 @@
       // the Helm and crew actions' effects: evade / fly count down at the start of the ship's turns (2: this turn and
       // until the start of the next; 1: through the next turn); helm: a Helm action taken this turn
       fx: { evade: clamp(int(f.evade), 0, 2), fly: clamp(int(f.fly), 0, 2), hardTurn: f.hardTurn === true, helm: f.helm === true,
-        interfered: f.interfered === true, directed: f.directed === true },
+        interfered: f.interfered === true, directed: f.directed === true,
+        interferedBy: typeof f.interferedBy === 'string' && /^[a-z0-9]{6,20}$/.test(f.interferedBy) ? f.interferedBy : '' },   // the ship whose next turn ends it
     };
     if (out.system >= 5 && !out.cond.includes('Used')) out.cond.push('Used');   // system damage 5 makes it used for good
     return out;
@@ -121,14 +122,16 @@
     const st = statusOf(ship), out = { adv: [], dis: [], fail: [] };
     const add = (k, why) => out[k].push(why);
     const fx = st.fx;
+    // Evade ends when the ship is incapacitated (disabled) or its speed drops to 0 (SotG ch. 9)
+    const evade = isDisabled(st) || has(st, 'Stunned') || has(st, 'Tractored') || st.slowed >= 4 ? 0 : fx.evade;
     if (kind === 'check' || kind === 'attack') {   // Evade and Fly cost the whole ship its aim; Interfere the next roll
-      if (fx.evade >= 1) add('dis', 'Evade');
+      if (evade >= 1) add('dis', 'Evade');
       if (fx.fly >= 1) add('dis', 'Fly');
       if (fx.interfered) add('dis', 'Interfered');
     }
     if (kind === 'attack' && fx.directed) add('adv', 'Directed');
-    if (kind === 'save' && ability === 'dex' && fx.evade >= 2) add('adv', 'Evade');
-    if (kind === 'against' && fx.evade >= 2) add('dis', 'Evading');
+    if (kind === 'save' && ability === 'dex' && evade >= 2) add('adv', 'Evade');
+    if (kind === 'against' && evade >= 2) add('dis', 'Evading');
     if (kind === 'check') {
       if (st.system >= 1) add('dis', 'System damage ' + st.system);
       if (has(st, 'Ionized')) add('dis', 'Ionized');
@@ -373,7 +376,8 @@
     const st = s.status = statusOf(s), name = s.name || 'The ship', log = [];
     if (isLost(st)) return { ship: s, log: [`${name} is lost.`] };
     st.tempShield = 0; st.boost = { tries: 0, engines: Math.max(0, int(st.boost.engines) - 1), weapons: false, shields: false, regen: false };
-    st.fx = Object.assign(st.fx, { evade: Math.max(0, st.fx.evade - 1), fly: Math.max(0, st.fx.fly - 1), hardTurn: false, helm: false });
+    // Direct lasts until the start of the directing ship's next turn (Interfere ends at the interfering ship's: the space map)
+    st.fx = Object.assign(st.fx, { evade: Math.max(0, st.fx.evade - 1), fly: Math.max(0, st.fx.fly - 1), hardTurn: false, helm: false, directed: false });
     // power
     const rx = own(REACTORS, reactorOf(s));
     if (rx && !isDisabled(st)) {

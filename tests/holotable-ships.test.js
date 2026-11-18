@@ -106,7 +106,7 @@ test("ship conditions: slowed levels, system damage levels, and what they do to 
   assert.deepEqual(SR.cleanStatus({ cond: ["Hungry", "Ionized", "Ionized"], slowed: 9, system: -2, zero: "x" }),
     { cond: ["Ionized"], slowed: 4, system: 0, zero: { s: 0, f: 0, stable: false, destroyed: false }, power: { central: 0, engines: 0, shields: 0, weapons: 0, sensors: 0, comms: 0 },
       sdUsed: 0, hdUsed: 0, tempShield: 0, boost: { tries: 0, engines: 0, weapons: false, shields: false, regen: false },
-      fx: { evade: 0, fly: 0, hardTurn: false, helm: false, interfered: false, directed: false } }, "anything else is cleaned away");
+      fx: { evade: 0, fly: 0, hardTurn: false, helm: false, interfered: false, directed: false, interferedBy: "" } }, "anything else is cleaned away");
   assert.deepEqual(SR.capPoints({ hull: { current: 30, max: 0 }, shield: { current: 5, max: 4 } }).hull.current, 30, "no maximum typed yet: current stays");
 });
 
@@ -686,4 +686,49 @@ test("helm and crew actions on the server: Evade, Hard Turn on the map, Patch, D
   assert.equal(res.code, 200);
   for (const bad of ["__proto__", "constructor", party]) assert.equal((await p1.act("space.interfere", { id: party, target: bad })).code, 400, bad);
   assert.ok(!JSON.stringify((await p1.state()).chat).includes("Black Lance"));
+});
+
+test("ship combat turns: a player's ship acts only on its own turn; the GM is free; Interfere and Direct end at the actor's next turn; Evade ends when disabled", async () => {
+  // Evade ends when the ship is disabled or its speed drops to 0
+  const ev = SR.helm(ship(), "evade").ship;
+  assert.deepEqual(SR.rollEffects(ev, "against").dis, ["Evading"]);
+  assert.deepEqual(SR.rollEffects(SR.setCondition(ev, "Disabled", true), "against").dis, [], "disabled: no more evading");
+  assert.deepEqual(SR.rollEffects(SR.setCondition(ev, "slowed", 4), "against").dis, [], "speed 0: no more evading");
+  assert.equal(SR.statusOf(SR.startTurn(SR.setCondition(ship(), "Ionized", false), () => ({ total: 0 }), {}).ship).fx.directed, false);
+  const { gm, p1, party, enemy } = await table();
+  let sh = shipIn(await p1.state(), party);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { abilities: Object.assign({}, sh.abilities, { cha: 30 }), skills: Object.assign({}, sh.skills, { interfere: 2 }),
+    weapons: [{ name: "Laser", dmg: "1d4", type: "energy", range: "800/3200", cat: "primary", atkMisc: 20 }] }) });
+  await p1.act("ship.damage", { id: party, amount: 10, type: "kinetic" });
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 2, f: 2 });
+  await gm.act("space.place", { id: enemy, x: 4, y: 2, f: 6 });
+  // before combat starts, nothing is turn-bound
+  assert.equal((await p1.act("ship.patch", { id: party })).code, 200, "Patch between fights");
+  await gm.act("space.init", {});
+  if ((await gm.state()).space.turnId !== enemy) await gm.act("space.next", {});
+  assert.equal((await gm.state()).space.turnId, enemy, "the enemy's turn");
+  for (const [type, payload] of [["ship.helm", { what: "evade" }], ["ship.direct", {}], ["ship.patch", {}], ["ship.boost", { what: "engines" }], ["ship.regen", {}],
+    ["space.interfere", { target: enemy }], ["space.ram", { target: enemy }], ["space.fire", { target: enemy, weapon: 0 }], ["space.place", { x: 3, y: 3, f: 2 }]]) {
+    const r = await p1.act(type, Object.assign({ id: party }, payload));
+    assert.equal(r.code, 400, `${type} on the enemy's turn`); assert.match(r.data.error || "", /Not Dawn Skiff's turn/);
+  }
+  assert.equal(SR.statusOf(shipIn(await p1.state(), party)).fx.helm, false, "no Helm action was spent");
+  assert.equal((await gm.act("ship.helm", { id: party, what: "evade" })).code, 200, "the GM is free to act or fix things");
+  assert.equal((await gm.act("ship.helm", { id: enemy, what: "evade" })).code, 200);
+  // the party's turn: Interfere works, and lasts until the start of the party's next turn if no roll uses it
+  await gm.act("space.next", {});
+  assert.equal((await p1.state()).space.turnId, party);
+  let r;
+  for (let i = 0; i < 8; i++) { r = await p1.act("space.interfere", { id: party, target: enemy }); if (r.code !== 200 || r.data.ok) break; await gm.act("space.next", {}); await gm.act("space.next", {}); }
+  assert.equal(r.code, 200);
+  if (r.data.ok) {
+    let en = shipIn(await gm.state(), enemy);
+    assert.deepEqual([en.status.fx.interfered, en.status.fx.interferedBy], [true, party]);
+    await p1.act("space.next", {});   // the enemy's turn: it takes no roll
+    assert.equal(shipIn(await gm.state(), enemy).status.fx.interfered, true, "still on during its turn");
+    await gm.act("space.next", {});   // the party's next turn starts
+    en = shipIn(await gm.state(), enemy);
+    assert.deepEqual([en.status.fx.interfered, en.status.fx.interferedBy], [false, ""], "ended at the start of the interfering ship's next turn");
+  }
 });

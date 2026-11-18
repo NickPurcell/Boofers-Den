@@ -99,6 +99,8 @@ function apply(camp, cid, gm, type, p, h) {
         return {};
       }
       const from = sp.tok[i];
+      // in ship combat a player moves their ship on its own turn
+      if (!Ships.onTurn(camp, gm, s)) throw new Invalid(`Not ${shownOf(s, from)}'s turn.`);
       if (s.id === curId()) {
         let cost = SR.moveCost(s, from, to);
         const st = SR.statusOf(s), steps = SR.turnSteps(from.f, to.f);
@@ -173,6 +175,7 @@ function apply(camp, cid, gm, type, p, h) {
       if (s0.id === t0.id) throw new Invalid("A ship can't fire at itself.");
       const a = sp.tok.find((x) => x.id === s0.id), ta = sp.tok.find((x) => x.id === t0.id);
       if (!a || !ta || (!gm && ta.hidden)) throw new Invalid("Both ships need to be on the space map.");
+      if (!Ships.onTurn(camp, gm, s0)) throw new Invalid(`Not ${shownOf(s0, a)}'s turn.`);
       if (SR.isDisabled(SR.statusOf(s0)) || SR.isLost(SR.statusOf(s0))) throw new Invalid(`${shownOf(s0, a)} can't take actions.`);
       const weapons = Array.isArray(s0.weapons) ? s0.weapons : [], wi = int(p.weapon, -1);
       if (!(wi >= 0 && wi < weapons.length)) throw new Invalid("No such weapon.");
@@ -266,6 +269,7 @@ function apply(camp, cid, gm, type, p, h) {
       if (s0.id === t0.id) throw new Invalid(ram ? "A ship can't ram itself." : "A ship can't interfere with itself.");
       const a = sp.tok.find((x) => x.id === s0.id), ta = sp.tok.find((x) => x.id === t0.id);
       if (!a || !ta || (!gm && ta.hidden)) throw new Invalid("Both ships need to be on the space map.");
+      if (!Ships.onTurn(camp, gm, s0)) throw new Invalid(`Not ${shownOf(s0, a)}'s turn.`);
       const st0 = SR.statusOf(s0);
       if (SR.isDisabled(st0) || SR.isLost(st0)) throw new Invalid(`${shownOf(s0, a)} can't take actions.`);
       if (ram && st0.fx.helm) throw new Invalid(`${shownOf(s0, a)} has already taken a Helm action this turn.`);
@@ -292,7 +296,8 @@ function apply(camp, cid, gm, type, p, h) {
       const line = (text, gmOnly) => addChat(camp, Object.assign({ system: true, text: str(text, 400) }, gmOnly ? { to: ["@gm"], private: true } : {}));
       if (!won) { line(`${A} ${ram ? "tries to ram" : "tries to interfere with"} ${T}, and fails (${mine} against ${theirs}).`); return { ok: false }; }
       if (!ram) {
-        const t1 = JSON.parse(JSON.stringify(shipOf(t0.id))); t1.status = SR.statusOf(t1); t1.status.fx.interfered = true; putShip(t1);
+        const t1 = JSON.parse(JSON.stringify(shipOf(t0.id))); t1.status = SR.statusOf(t1);
+        Object.assign(t1.status.fx, { interfered: true, interferedBy: s0.id }); putShip(t1);   // until its next roll, or the start of our next turn
         line(`${A} interferes with ${T}: its next check or attack roll has disadvantage.`);
         return { ok: true };
       }
@@ -322,6 +327,11 @@ function startTurn(camp, cid, gm, h) {
   const sp = camp.space, e = sp.order[sp.turn];
   if (!e) return {};
   sp.moved[e.id] = 0;
+  // an Interfere by this ship lasts until the start of its next turn
+  for (let k = 0; k < camp.ships.length; k++) {
+    const x = camp.ships[k], st = x && SR.statusOf(x);
+    if (st && st.fx.interfered && st.fx.interferedBy === e.id) { Object.assign(st.fx, { interfered: false, interferedBy: "" }); camp.ships[k] = Object.assign({}, x, { status: st }); }
+  }
   const s = camp.ships.find((x) => x && x.id === e.id);
   if (!s) return {};
   Ships.apply(camp, cid, true, "ship.turn", { id: s.id, regen: true }, h);   // the turn belongs to the table, not to whoever pressed Next

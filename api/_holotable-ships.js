@@ -34,6 +34,17 @@ function boostBonus(camp, ship, crewIndex) {
   return str + lv * crewPb(camp, ship, crewIndex);
 }
 
+// During ship combat on the space map, a player's ship takes its actions on its own turn (SotG ch. 9: one Helm action
+// a turn; Boost once a turn; Patch, Interfere and Direct on the ship's turn). The GM stays free, to run enemies and fix
+// things. Outside ship combat (the sheet between fights) nothing is turn-bound.
+const TURN_ACTIONS = new Set(["ship.helm", "ship.direct", "ship.patch", "ship.boost", "ship.regen"]);
+function onTurn(camp, gm, ship) {
+  const sp = camp.space;
+  if (gm || !sp || !sp.active || !Array.isArray(sp.order)) return true;
+  const e = sp.order[int(sp.turn)];
+  return !!e && e.id === ship.id;
+}
+
 const TYPES = new Set(["ship.damage", "ship.restore", "ship.points", "ship.dsave", "ship.stabilize", "ship.condition", "ship.reset",
   "ship.turn", "ship.power", "ship.poweruse", "ship.dice", "ship.boost", "ship.regen", "ship.helm", "ship.patch", "ship.direct"]);
 const handles = (type) => TYPES.has(type);
@@ -57,6 +68,7 @@ function apply(camp, cid, gm, type, p, h) {
   if (i < 0) throw new Invalid("No such ship.");
   const ship = camp.ships[i];
   if (!(gm || !ship.hidden)) throw new Forbidden("That ship is the GM's.");
+  if (TURN_ACTIONS.has(type) && !onTurn(camp, gm, ship)) throw new Invalid(`Not ${ship.name}'s turn.`);
   const say = (lines) => {
     for (const text of lines.filter(Boolean)) {
       const msg = { system: true, text: str(text, 400) };
@@ -214,4 +226,4 @@ const cleanFields = (sh) => ({ status: SR.cleanStatus(sh.status), reactor: pick(
 const cleanWeapon = (w) => ({ cat: SR.WEAPON_CATS.includes(w.cat) ? w.cat : "", arc: SR.MOUNTS.includes(w.arc) ? w.arc : "",
   ammo: w.ammo === "" || w.ammo === null || w.ammo === undefined || !Number.isFinite(parseInt(w.ammo, 10)) ? "" : clamp(int(w.ammo), 0, 999) });
 
-module.exports = { handles, apply, keepStatus, cleanStatus: SR.cleanStatus, cleanFields, cleanWeapon, boostBonus, crewPb };
+module.exports = { handles, apply, onTurn, keepStatus, cleanStatus: SR.cleanStatus, cleanFields, cleanWeapon, boostBonus, crewPb };
