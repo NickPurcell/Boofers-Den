@@ -318,7 +318,10 @@
       best = opts.sort((x, y) => y.v - x.v)[0];
     }
     const infB = inf && (inf === body || inf.armor.kind === 'shield') ? infuseBonus(c) : 0;
-    return { total: best.v + misc + infB, text: [...best.parts, infB ? `infused ${inf.name} +${infB}` : '', misc ? `misc ${fmt(misc)}` : ''].filter(Boolean).join(' · ') };
+    // enhanced items' AC bonuses (audit 6.2): each one worn, and attuned when it needs attunement
+    const plus = (c.equipment || []).filter((e) => e && e.equipped && e.bonus && +e.bonus.ac > 0 && (!e.att || e.attuned));
+    const bonus = plus.reduce((n, e) => n + (+e.bonus.ac || 0), 0);
+    return { total: best.v + misc + infB + bonus, text: [...best.parts, infB ? `infused ${inf.name} +${infB}` : '', ...plus.map((e) => `${e.name} +${+e.bonus.ac}`), misc ? `misc ${fmt(misc)}` : ''].filter(Boolean).join(' · ') };
   }
   // Carrying (audit 6.5). Each item's weight (wt, in pounds each, from SW5e's gear) times its quantity, against the carrying
   // capacity (PHB, "Lifting and Carrying": Strength score x 15). With the table's "Encumbrance" variant (PHB, the same
@@ -395,6 +398,24 @@
   // the Hit Die a creature has most of (a medpac's die; on a tie the larger)
   const commonHitDie = c => (hitDice(c).slice().sort((a, b) => b.total - a.total || b.die - a.die)[0] || { die: 8 }).die;
   Object.assign(SW5E, { consumableUse, cleanUse, commonHitDie });
+
+  // Enhanced items' plain bonuses (audit 6.2), read once from their SW5e text when added: a weapon's "+N bonus to attack
+  // and damage rolls" (or attack rolls only), armor's or a shield's "+N bonus to AC". Anything subtler stays text.
+  function enhancedBonus(text) {
+    const t = String(text || ''), out = {};
+    let m = /\+(\d) bonus to attack and damage rolls/.exec(t);
+    if (m) { out.hit = +m[1]; out.dmg = +m[1]; }
+    else if ((m = /\+(\d) bonus to attack rolls/.exec(t))) out.hit = +m[1];
+    if ((m = /\+(\d) bonus to AC\b/.exec(t))) out.ac = +m[1];
+    return cleanBonus(out);
+  }
+  function cleanBonus(b) {
+    if (!b || typeof b !== 'object') return null;
+    const out = {};
+    for (const k of ['hit', 'dmg', 'ac']) if (Number.isInteger(+b[k]) && +b[k] >= 1 && +b[k] <= 5) out[k] = +b[k];
+    return Object.keys(out).length ? out : null;
+  }
+  Object.assign(SW5E, { enhancedBonus, cleanBonus });
 
   // Selling (audit 6.8): equipment fetches half its cost (PHB, "Selling Treasure"), whole credits, rounded down
   const sellPrice = e => Math.floor(Math.max(0, +(e && e.cost) || 0) / 2);
@@ -628,6 +649,15 @@
       .filter(x => x.total > 0);
   }
   Object.assign(SW5E, { CHOICE_COLS, choiceCounts });
+  // powers known (audit 2.10): how many force and tech powers the sheet has, and how many its classes' tables allow
+  // (Force/Tech Powers Known, summed over the classes). Archetype casters keep their own tables, so a max of 0 isn't a limit.
+  function powersKnown(ch) {
+    const out = { force: { known: 0, max: 0 }, tech: { known: 0, max: 0 } };
+    for (const p of (ch && ch.powers) || []) out[p && p.type === 'tech' ? 'tech' : 'force'].known++;
+    for (const k of (ch && ch.classes) || []) for (const r of choiceCounts(k.name, k.level)) if (r.kind === 'powers') out[/tech/i.test(r.col) ? 'tech' : 'force'].max += r.total;
+    return out;
+  }
+  Object.assign(SW5E, { powersKnown });
 
   // ---- downtime activities (audit 11.1): Wretched Hives' chapter 2, keyed as SW5e's 'downtime' list builds them from the
   // headings, and "other" for anything else the GM allows (no tables: the GM writes the result). Crafting is 11.2's.
@@ -635,6 +665,16 @@
     espionage: 'Espionage', gambling: 'Gambling', 'mercenary-contracting': 'Mercenary contracting', 'pit-fighting': 'Pit fighting', racing: 'Racing',
     research: 'Research', 'selling-enhanced-items': 'Selling enhanced items', training: 'Training', work: 'Work', other: 'Something else' };
   Object.assign(SW5E, { DOWNTIME_ACTS });
+
+  // ---- power prerequisites (audit 2.11): 127 of SW5e's force powers name an earlier power that must be known first, and
+  // stay known to cast them. pw.pre is that power's name (kept on the sheet from SW5e's list); null when it's known.
+  const powerPrereqUnmet = (ch, pw, extra) => {
+    const pre = String((pw && pw.pre) || '').trim();
+    if (!pre) return null;
+    const known = new Set([...((ch && ch.powers) || []).map(x => String(x.name || '').toLowerCase()), ...(extra || []).map(x => String(x).toLowerCase())]);
+    return known.has(pre.toLowerCase()) ? null : { pre, text: `${pw.name || 'This power'} needs ${pre} known first.` };
+  };
+  Object.assign(SW5E, { powerPrereqUnmet });
 
   // ---- senses (audit 5.12): [{ kind, range }] on the sheet. The four kinds SW5e's creatures and species use; feet 1-9999.
   const SENSES = ['darkvision', 'blindsight', 'tremorsense', 'truesight'];

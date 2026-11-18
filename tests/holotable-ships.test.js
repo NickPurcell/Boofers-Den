@@ -1044,3 +1044,60 @@ test("costs: SotG's own figures for buying, building, upgrading, docking and the
   assert.deepEqual([SR.minCrew({ size: "Tiny" }), SR.minCrew({ size: "Small" }), SR.minCrew({ size: "Medium", abilities: { int: 10 } }), SR.minCrew({ size: "Large", abilities: { int: 14 } }),
     SR.minCrew({ size: "Gargantuan", abilities: { int: 30 } }), SR.minCrew({ size: "Huge", abilities: { int: 30 } })], [0, 1, 4, 120, 10000, 1000]);
 });
+
+// ---------------------------------------------------------------- deployments: rank features and techniques (10.12)
+test("deployments: rank features and techniques read from SW5e's text; using a technique spends the right die", async () => {
+  // the shape of SW5e's deployment text (made-up names)
+  const md = "##### The Gunner\r\n| Rank | Feature |\r\n|:---:|:---|\r\n| 1st | Venture, Gunner Techniques |\r\n| 2nd | Gunning Style, Improved Critical |\r\n\r\n### Gambits\r\nThe gambits are presented in alphabetical order.\r\n\r\n#### Pinning Shot\r\n_**Power Die Location:** Weapons_\r\nAdd the power die.\r\n\r\n#### Comms Ping\r\n_**Power Die Location:** Comms_\r\nText.\r\n\r\n#### Tune Up\r\nNo die location.";
+  const info = SR.deploymentInfo(md);
+  assert.deepEqual(info.ranks, [[1, ["Venture", "Gunner Techniques"]], [2, ["Gunning Style", "Improved Critical"]]]);
+  assert.deepEqual(info.techniques.map((t) => [t.name, t.loc]), [["Pinning Shot", "weapons"], ["Comms Ping", "comms"], ["Tune Up", null]]);
+  assert.deepEqual([SR.techniquesKnown(0), SR.techniquesKnown(1), SR.techniquesKnown(5), SR.techDie(1), SR.techDie(5)], [0, 2, 6, 4, 12]);
+  // on the server
+  const { gm, p1, party, enemy } = await table();
+  const sh = shipIn(await p1.state(), party);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { coupling: "Hub & Spoke", tier: 2, crew: [
+    { name: "Ione", deployment: "Gunner", rank: 1, known: ["Pinning Shot", "Pinning Shot", "x".repeat(99), "a", "b", "c", "d", "e"] },
+    { name: "Tam", deployment: "Mechanic", rank: 3, known: ["Tune Up"] }] }) });
+  let crew = shipIn(await p1.state(), party).crew;
+  assert.deepEqual([crew[0].known.length, crew[0].known[0], crew[0].known[1].length], [6, "Pinning Shot", 60], "unique, at most six, each cut to 60");
+  assert.equal((await p1.act("ship.technique", { id: party, crew: 0, name: "Pinning Shot", pool: "weapons" })).code, 400, "no weapons power die yet");
+  await p1.act("ship.power", { id: party, pool: "weapons", n: 1 });
+  let r = await p1.act("ship.technique", { id: party, crew: 0, name: "Pinning Shot", pool: "weapons" });
+  assert.equal(r.code, 200); assert.ok(r.data.value >= 1 && r.data.value <= 6, "a tier 2 power die: d6");
+  assert.equal(shipIn(await p1.state(), party).status.power.weapons, 0, "spent");
+  assert.ok((await p1.state()).chat.some((m) => /Ione \(Gunner\) uses Pinning Shot: a weapons power die/.test(m.text || "")));
+  assert.equal((await p1.act("ship.technique", { id: party, crew: 0, name: "Comms Ping", pool: "central" })).code, 400, "not one they know");
+  r = await p1.act("ship.technique", { id: party, crew: 1, name: "Tune Up" });
+  assert.equal(r.code, 200); assert.ok(r.data.value >= 1 && r.data.value <= 8, "a 3rd-rank mechanic's tech die: d8, not spent");
+  for (const bad of [{ crew: "__proto__" }, { crew: 7 }, { pool: "__proto__" }, { name: "constructor" }]) {
+    assert.equal((await p1.act("ship.technique", Object.assign({ id: party, crew: 0, name: "Pinning Shot", pool: "weapons" }, bad))).code, 400, JSON.stringify(bad));
+  }
+  assert.equal((await p1.act("ship.technique", { id: enemy, crew: 0, name: "x" })).code, 403);
+});
+
+test("a crew member whose token's name the GM hides is '???' in ship lines: techniques and initiative (jpesus: keep it hidden)", async () => {
+  const { gm, p1, p2, party } = await table();
+  const inq = (await gm.act("char.save", { char: { name: "Grand Inquisitor", abilities: { dex: 14 } } })).data.id;
+  await gm.act("token.add", { charId: inq, x: 3, y: 3, nameHidden: true });
+  const sh = shipIn(await gm.state(), party);
+  await gm.act("ship.save", { ship: Object.assign({}, sh, { coupling: "Direct", crew: [{ charId: inq, name: "Grand Inquisitor", deployment: "Gunner", rank: 1, known: ["Steady Aim"] }] }) });
+  await gm.act("ship.power", { id: party, pool: "central", n: 2 });
+  assert.equal((await gm.act("ship.technique", { id: party, crew: 0, name: "Steady Aim", pool: "central" })).code, 200);
+  await gm.act("space.on", { on: true });
+  await gm.act("space.place", { id: party, x: 2, y: 2, f: 2 });
+  await gm.act("space.init", {});
+  for (const who of [p1, p2]) {
+    assert.ok(!JSON.stringify(await who.state()).includes("Grand Inquisitor"), "no player's state holds the hidden name: chat, ship crew rows, anything");
+  }
+  assert.equal(shipIn(await gm.state(), party).crew[0].name, "Grand Inquisitor", "the GM's copy keeps it");
+  // a player's ordinary save sends the masked row back: the stored name stays
+  const seen = shipIn(await p1.state(), party);
+  assert.equal(seen.crew[0].name, "???");
+  assert.equal((await p1.act("ship.save", { ship: Object.assign({}, seen, { notes: "fuel low" }) })).code, 200);
+  const back = shipIn(await gm.state(), party);
+  assert.deepEqual([back.notes, back.crew[0].name], ["fuel low", "Grand Inquisitor"], "the save took the notes, not the ???");
+  const lines = (await p1.state()).chat.map((m) => m.text || "");
+  assert.ok(lines.some((t) => /^\?\?\? \(Gunner\) uses Steady Aim: a central power die/.test(t)), "the technique line says ???");
+  assert.ok(lines.some((t) => /initiative \(the lowest of its crew: \?\?\? -?\d+\)/.test(t)), "so does the initiative line");
+});

@@ -258,9 +258,7 @@ test("turn budget: each unit's own turn refills its movement, action, bonus acti
   const hers = Object.assign({}, w, { turnId: "ava", round: 2 });
   assert.deepEqual([E.budget(hers).reaction, E.budget(hers).moveLeft, E.budget(hers).action], [true, 30, true]);
   const r = E.apply(hers, { type: "move", unit: "ava", x: 2, y: 0 }, dice().roll);
-  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0, surge: 0, ma: 0, mab: 0 });
-
-  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0, surge: 0, ma: 0, mab: 0 });
+  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0, surge: 0, ma: 0, mab: 0, quarry: 0, qm: 0 });
 });
 
 // a level-3 Consular with two powers; the table has data for one of them (numbers invented for the test)
@@ -3727,6 +3725,57 @@ test("#233 review: a character whose token name the GM hides isn't in another pl
   assert.ok(!JSON.stringify(raeSt.fight.wounds).includes(avery), "not even the id");
   assert.deepEqual((await sam.state()).fight.wounds[avery], { level: 1, step: 0 }, "the owner still sees it");
   assert.deepEqual((await gm.state()).fight.wounds[avery], { level: 1, step: 0 }, "and the GM");
+});
+
+/* ---------------------------------------------------------------- Ranger's Quarry (#67, 3.10's combat half) */
+test("Ranger's Quarry: no action, once a turn, a creature in sight within 120 ft; once a turn, its die on a weapon hit on that creature", () => {
+  assert.equal(E.ridersOf({ classes: [{ name: "Scout", level: 5 }] }, R).quarry, "d6");
+  const sc = (o) => unit(Object.assign({ id: "sc", name: "Sola", side: "pc", x: 0, y: 0, attacks: 2, riders: { quarry: "d6" } }, o));
+  const r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 90, maxHp: 90 }), r2 = unit({ id: "r2", name: "Thug", side: "npc", x: 1, y: 1, hp: 90, maxHp: 90 });
+  const far = unit({ id: "r3", name: "Sniper", side: "npc", x: 30, y: 0 });
+  const wpn = Object.assign({}, blade, { weapon: true });
+  let r = E.apply(world([sc(), r1, r2, far], "sc"), { type: "common", unit: "sc", key: "quarry", target: "r1" }, dice().roll);
+  assert.equal(r.ok, true, r.why);
+  assert.deepEqual([E.quarryOf(r.world, "sc"), E.budget(r.world).action, E.budget(r.world).bonus], ["r1", true, true], "no action");
+  assert.equal(r.log[0].text, "Sola marks Raider as its quarry: once a turn, a weapon hit on it deals 1d6 more.");
+  assert.equal(E.apply(r.world, { type: "common", unit: "sc", key: "quarry", target: "r2" }, dice().roll).why, "Sola has already marked a quarry this turn.");
+  assert.equal(E.apply(world([sc(), r1, far], "sc"), { type: "common", unit: "sc", key: "quarry", target: "r3" }, dice().roll).why, "Sniper is 150 ft away: a quarry is marked within 120 ft.");
+  assert.equal(E.apply(world([sc({ riders: {} }), r1], "sc"), { type: "common", unit: "sc", key: "quarry", target: "r1" }, dice().roll).why, "Sola has no Ranger's Quarry.");
+  // the die on the first weapon hit on the quarry this turn, not on another creature, not twice
+  let d = dice({ total: 15, nat: 12 }, { total: 9 });
+  let a = E.apply(r.world, { type: "attack", unit: "sc", target: "r2", attack: wpn }, d.roll);
+  assert.equal(d.asked[1], "1d8+3", "not the quarry");
+  d = dice({ total: 15, nat: 12 }, { total: 9 });
+  a = E.apply(a.world, { type: "attack", unit: "sc", target: "r1", attack: wpn }, d.roll);
+  assert.equal(d.asked[1], "1d8+3+1d6");
+  assert.match(a.log[1].text, /with Ranger's Quarry 1d6/);
+  // the next turn: once more; and a new mark moves it
+  const next = Object.assign({}, a.world, { round: 2 });
+  d = dice({ total: 15, nat: 12 }, { total: 9 });
+  E.apply(next, { type: "attack", unit: "sc", target: "r1", attack: wpn }, d.roll);
+  assert.equal(d.asked[1], "1d8+3+1d6", "once a turn, every turn");
+  d = dice({ total: 25, nat: 20 }, { total: 14 });
+  E.apply(Object.assign({}, a.world, { round: 3 }), { type: "attack", unit: "sc", target: "r1", attack: wpn }, d.roll);
+  assert.equal(d.asked[1], "2d8+3+2d6", "a critical doubles the quarry die");
+  const moved = E.apply(next, { type: "common", unit: "sc", key: "quarry", target: "r2" }, dice().roll);
+  assert.deepEqual([E.quarryOf(moved.world, "sc"), moved.world.effects.filter((ef) => ef.condition === "Quarry").length], ["r2", 1], "one at a time");
+  assert.equal(E.apply(world([sc(), r1], "sc"), { type: "common", unit: "sc", key: "quarry", target: "__proto__" }, dice().roll).ok, false);
+});
+
+test("Ranger's Quarry through the API: a Scout 5 marks the Raider, then hits it with the die", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { classes: [{ name: "Scout", level: 5 }] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.common", { key: "quarry", target: ids.raider })).code, 200);
+  assert.equal((await sam.act("fight.common", { key: "quarry", target: "constructor" })).code, 400);
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0" })).code, 200);
+  st = await gm.state();
+  const rolls = st.chat.filter((m) => m.fight && m.roll).map((m) => m.roll);
+  const hit = /hit/.test((rolls.find((x) => x.kind === "attack") || {}).label || "");
+  if (hit) assert.match(rolls.find((x) => x.kind === "damage").expr, /\+[12]d6$/);
+  assert.ok(st.fight.effects.some((ef) => ef.condition === "Quarry" && ef.unit === ids.raider));
 });
 
 test("#212 review: an undo gives back a shot, and a reload's power cell, as they were", async () => {

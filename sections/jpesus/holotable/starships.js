@@ -839,6 +839,25 @@
     };
   }
 
+  // ---- deployments (SotG chapter 2): rank features and techniques, read from SW5e's deployment text
+  // { ranks: [[1, [features]], ...], techniques: [{ name, loc: 'weapons' | ... | null, md }] }
+  const LOCATIONS = { weapons: 'weapons', shields: 'shields', engines: 'engines', sensors: 'sensors', comms: 'comms', communications: 'comms' };
+  function deploymentInfo(md) {
+    const t = String(md || '').replace(/\r/g, '');
+    const ranks = [];
+    for (const m of t.matchAll(/^\|\s*(\d)(?:st|nd|rd|th)\s*\|\s*([^|\n]+)\|/gm)) ranks.push([int(m[1]), m[2].split(',').map((x) => x.trim()).filter(Boolean)]);
+    const at = t.lastIndexOf('presented in alphabetical order'), techniques = [];
+    if (at >= 0) {
+      for (const block of t.slice(at).split(/\n#### /).slice(1)) {
+        const name = block.split('\n')[0].trim(), loc = /Power Die Location:\*\*\s*([A-Za-z]+)/.exec(block);
+        if (name) techniques.push({ name: name.slice(0, 60), loc: loc ? own(LOCATIONS, loc[1].toLowerCase()) || null : null, md: block.slice(name.length).trim().slice(0, 1500) });
+      }
+    }
+    return { ranks, techniques };
+  }
+  const techniquesKnown = (rank) => (int(rank) > 0 ? int(rank) + 1 : 0);   // two at 1st rank, one more at each rank after
+  const techDie = (rank) => [0, 4, 6, 8, 10, 12][clamp(int(rank), 0, 5)];   // a mechanic's tech die (not spent)
+
   // what the sheet shows of a ship's state, in short phrases
   function summary(ship) {
     const st = statusOf(ship), hullNow = int(ship && ship.hull && ship.hull.current), out = [];
@@ -853,5 +872,5 @@
     setCondition, summary, SIZE_DATA, SHIELD_TYPES, REACTORS, COUPLINGS, SYSTEMS, POOLS, SYSTEM_NAMES, POWER_DIE, sizeOf, roleOf, reactorOf, couplingOf,
     shieldTypeOf, powerDie, powerDieText, powerCaps, diceOf, diceLeft, regenRate, boostDC, regenDC, boostedSpeed, startTurn, usePower, setPower,
     setDiceUsed, boost, regenerateShields, SQUARE_FT, SQUARES, squaresOf, FACING_NAMES, DIRS, gridFeet, turnSteps, turnCost, moveCost, inBounds, shipGap,
-    arcOf, INIT_SIZE_MOD, npcInitBonus, STOCK_COST, TIER_COST, minCrew, costs, REGIONS, HYPER_HOURS, START_UP, hyperClass, stepsFor, jumpHours, jumpFuel, fuelOf, mishapFor, MOD_TYPES, modsSummary, modCost, installDC, pastCapacity, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck };
+    arcOf, INIT_SIZE_MOD, npcInitBonus, deploymentInfo, techniquesKnown, techDie, STOCK_COST, TIER_COST, minCrew, costs, REGIONS, HYPER_HOURS, START_UP, hyperClass, stepsFor, jumpHours, jumpFuel, fuelOf, mishapFor, MOD_TYPES, modsSummary, modCost, installDC, pastCapacity, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck };
 });

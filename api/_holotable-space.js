@@ -146,7 +146,8 @@ function apply(camp, cid, gm, type, p, h) {
           const rolls = crew.map((ch) => ({ ch, r: rollDice("1d20" + (R.initiative(ch) >= 0 ? "+" : "") + R.initiative(ch)) }));
           const low = rolls.reduce((a, b) => (b.r.total < a.r.total ? b : a));
           init = low.r.total;
-          label = `${s.name}: initiative (the lowest of its crew: ${rolls.map((x) => `${x.ch.name} ${x.r.total}`).join(", ")})`;
+          // the crew by the names players may read ("???" while the GM hides a token's name)
+          label = `${s.name}: initiative (the lowest of its crew: ${rolls.map((x) => `${h.shownName ? h.shownName(camp, { charId: x.ch.id, name: x.ch.name }) : x.ch.name} ${x.r.total}`).join(", ")})`;
         } else {
           const b = SR.npcInitBonus(s), r = rollDice("1d20" + (b >= 0 ? "+" : "") + b);
           init = r.total; label = `${s.name}: initiative (Dexterity ${b >= 0 ? "+" : ""}${b} with its size)`;

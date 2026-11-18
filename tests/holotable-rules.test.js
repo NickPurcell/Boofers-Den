@@ -190,6 +190,22 @@ test("consumables (audit 6.7): what using one rolls, read from its text; checked
   assert.equal(R.commonHitDie({ classes: [{ name: "Fighter", level: 2 }, { name: "Scholar", level: 2 }] }), 10, "a tie: the larger");
 });
 
+test("enhanced items (audit 6.2): a +N to attack and damage, or to AC, read from the text; the AC counts it when worn", () => {
+  assert.deepEqual(R.enhancedBonus("You have a +2 bonus to attack and damage rolls with this enhanced weapon."), { hit: 2, dmg: 2 });
+  assert.deepEqual(R.enhancedBonus("You have a +1 bonus to attack rolls made with it."), { hit: 1 });
+  assert.deepEqual(R.enhancedBonus("You have a +3 bonus to AC while wearing this armor."), { ac: 3 });
+  assert.equal(R.enhancedBonus("Resistance to one type of damage."), null);
+  assert.equal(R.cleanBonus({ hit: 9, ac: "x", dmg: 0 }), null);
+  const c = { abilities: { dex: 14 }, classes: [{ name: "Fighter", level: 1 }], equipment: [
+    { name: "Combat suit", equipped: true, armor: { kind: "light", ac: 11 } },
+    { name: "Armor (Fine)", equipped: true, bonus: { ac: 1 } },
+    { name: "Shield (Fine)", equipped: true, att: true, bonus: { ac: 2 } },      // needs attunement, not attuned: no bonus
+    { name: "Armor (Superior)", equipped: false, bonus: { ac: 3 } } ] };        // not worn
+  assert.deepEqual(R.armorClass(c), { total: 14, text: "Combat suit (light) 13 · Armor (Fine) +1" });
+  c.equipment[2].attuned = true;
+  assert.equal(R.armorClass(c).total, 16);
+});
+
 test("Engineers and Scouts get tech points back on a short rest; others don't", () => {
   assert.equal(R.techOnShortRest(char([["Engineer", 1]])), true);
   assert.equal(R.techOnShortRest(char([["Scout", 2]])), true);
@@ -366,6 +382,23 @@ test("Wretched Hives' proficiency tiers (5.7), tool checks (6.10) and the tech f
   assert.equal(R.hasTechFocus(c), false);
   c.equipment.push({ name: "Wristpad" });
   assert.equal(R.hasTechFocus(c), true);
+});
+
+test("power prerequisites (audit 2.11): the named power must be known first, and stay known to cast", () => {
+  const ch = { powers: [{ name: "Choke" }, { name: "Slow" }] };
+  assert.equal(R.powerPrereqUnmet(ch, { name: "Crush", pre: "Choke" }), null);
+  assert.equal(R.powerPrereqUnmet(ch, { name: "Crush", pre: "choke" }), null, "any case");
+  assert.deepEqual(R.powerPrereqUnmet(ch, { name: "Destroy Droid", pre: "Disable Droid" }), { pre: "Disable Droid", text: "Destroy Droid needs Disable Droid known first." });
+  assert.equal(R.powerPrereqUnmet(ch, { name: "Destroy Droid", pre: "Disable Droid" }, ["Disable Droid"]), null, "picked in the same level-up");
+  assert.equal(R.powerPrereqUnmet(ch, { name: "Force Push" }), null, "no prerequisite");
+  assert.equal(R.powerPrereqUnmet({}, { name: "Crush", pre: "Choke" }).pre, "Choke");
+});
+
+test("powers known (audit 2.10): the sheet's against the class tables, summed over classes", () => {
+  const pk = R.powersKnown({ classes: [{ name: "Consular", level: 3 }, { name: "Engineer", level: 2 }], powers: [{ type: "force" }, { type: "tech" }, {}] });
+  assert.deepEqual(pk, { force: { known: 2, max: 13 }, tech: { known: 1, max: 7 } }, "Consular 3 knows 13 force powers, Engineer 2 knows 7 tech powers");
+  assert.deepEqual(R.powersKnown({ classes: [{ name: "Fighter", level: 5 }] }), { force: { known: 0, max: 0 }, tech: { known: 0, max: 0 } });
+  assert.deepEqual(R.powersKnown(null).force, { known: 0, max: 0 });
 });
 
 test("feat prerequisites (audit 2.5), read from SW5e's own wording", () => {

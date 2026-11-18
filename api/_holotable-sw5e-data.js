@@ -225,7 +225,7 @@ function shipMods(d) {
 }
 function deployments(d) {
   return named(d).map((e) => ({
-    n: t(e.name, 40), desc: t(e.description, 300), md: t(unlink(e.featureText), 8000),
+    n: t(e.name, 40), desc: t(e.description, 300), md: t(unlink(e.featureText), 12000),   // the longest (Operator) is about 8,900: all its techniques
     features: arr(e.features, 30, (x) => ({ n: t(x && x.name, 80), md: t(unlink(x && x.content), 4000) })).filter((x) => x.n),
   })).sort(byName);
 }
@@ -259,7 +259,7 @@ const LISTS = {
   "armor-props": { path: "armorProperty", build: entries("content"), maxBytes: 1 * MB, maxItems: 300 },
   "ship-equipment": { path: "starshipEquipment", build: shipEquipment, maxBytes: 2 * MB, maxItems: 1500 },
   "ship-mods": { path: "starshipModification", build: shipMods, maxBytes: 2 * MB, maxItems: 1500 },
-  deployments: { path: "starshipDeployment", build: deployments, maxBytes: 1 * MB, maxItems: 100 },
+  deployments: { path: "starshipDeployment", build: deployments, maxBytes: 1 * MB, maxItems: 100, cacheAs: "deployments2" },   // 2: the full text (was cut at 8,000)
   ventures: { path: "starshipVenture", build: ventures, maxBytes: 1 * MB, maxItems: 600 },
 };
 

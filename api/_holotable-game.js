@@ -147,7 +147,7 @@ function cleanShip(sh, chars) {
     saves: Object.fromEntries(ABILS.map((a) => [a, !!(sh.saves || {})[a]])),
     skills: Object.fromEntries(SHIP_SKILLS.map((k) => [k, [0, 1, 2].includes(+(sh.skills || {})[k]) ? +(sh.skills || {})[k] : 0])),
     crew: list(sh.crew, 20, (c) => ({ charId: chars[c.charId] ? c.charId : null, name: s(c.name, 60), deployment: DEPLOYMENTS.includes(c.deployment) ? c.deployment : "",
-      rank: clamp(int(c.rank), 0, 5), pb: clamp(int(c.pb, 2), 0, 10) })),
+      rank: clamp(int(c.rank), 0, 5), pb: clamp(int(c.pb, 2), 0, 10), ...Ships.cleanCrew(c) })),
     weapons: list(sh.weapons, 30, (w) => ({ name: s(w.name, 80), atkMisc: clamp(int(w.atkMisc), -20, 20), dmg: s(w.dmg, 40), type: s(w.type, 30),
       range: s(w.range, 40), props: s(w.props, 300), ...Ships.cleanWeapon(w) })),
     equipment: list(sh.equipment, 60, (e) => ({ name: s(e.name, 80), notes: s(e.notes, 300) })),
@@ -199,7 +199,8 @@ function cleanChar(ch) {
       ...(a.shots != null && a.shots !== "" && Number.isFinite(+a.shots) ? { shots: clamp(int(a.shots), 0, 999) } : {}),   // shots left in a Reload weapon (audit 6.6)
       ...(int(a.critRange, 20) < 20 ? { critRange: clamp(int(a.critRange, 20), 15, 20) } : {}) })),   // crits on this d20 or higher (19 = 19-20)
     powers: list(ch.powers, 150, (pw) => ({ name: s(pw.name, 80), level: clamp(int(pw.level), 0, 9), type: pw.type === "tech" ? "tech" : "force",
-      alignment: ["light", "dark"].includes(pw.alignment) ? pw.alignment : "universal", notes: s(pw.notes, 300), description: s(pw.description, 4000) })),
+      alignment: ["light", "dark"].includes(pw.alignment) ? pw.alignment : "universal", notes: s(pw.notes, 300), description: s(pw.description, 4000),
+      ...(s(pw.pre, 80).trim() ? { pre: s(pw.pre, 80).trim() } : {}) })),   // the power that must be known first (audit 2.11)
     features: list(ch.features, 150, (f) => ({ name: s(f.name, 80), text: s(f.text, 4000) })),
     equipment: list(ch.equipment, 200, (e) => ({ name: s(e.name, 80), qty: numOr(e.qty, 1), equipped: !!e.equipped, notes: s(e.notes, 200),
       ...(e.armor && R.ARMOR_KINDS.includes(e.armor.kind) ? { armor: { kind: e.armor.kind, ac: clamp(int(e.armor.ac), 0, 30) } } : {}),
@@ -207,7 +208,8 @@ function cleanChar(ch) {
       ...(+e.wt > 0 ? { wt: Math.min(10000, Math.round(+e.wt * 100) / 100) } : {}), ...(+e.cost > 0 ? { cost: Math.min(1e9, Math.round(+e.cost)) } : {}),
       // an enhanced item's rarity, whether it requires attunement, and whether it's attuned (audit 6.3), kept only when set
       ...(R.RARITIES.includes(e.rar) ? { rar: e.rar } : {}), ...(e.att ? { att: true } : {}), ...(e.att && e.attuned ? { attuned: true } : {}),
-      ...(e.use && R.cleanUse(e.use) ? { use: R.cleanUse(e.use) } : {}) })),   // a consumable: what using it rolls (audit 6.7)
+      ...(e.use && R.cleanUse(e.use) ? { use: R.cleanUse(e.use) } : {}),   // a consumable: what using it rolls (audit 6.7)
+      ...(R.cleanBonus(e.bonus) ? { bonus: R.cleanBonus(e.bonus) } : {}) })),   // an enhanced item's +N (audit 6.2)
     conditions: (Array.isArray(ch.conditions) ? ch.conditions : []).slice(0, 20).map((c) => s(c, 30)),
     exhaustion: clamp(int(ch.exhaustion), 0, 6), inspiration: !!ch.inspiration,
     // variant rules on the sheet (9.16): Simplified Forcecasting's one ability, and Hunted's disturbance points
@@ -307,7 +309,9 @@ function viewFor(camp, cid, gm, online) {
     ...(camp.clock ? { clock: camp.clock } : {}),   // in-game time (9.18)
     ...(camp.sheetLock ? { sheetLock: true } : {}), ...(camp.statBlocksHidden ? { statBlocksHidden: true } : {}),   // the GM's table rules (12.6, 9.17)
     audio: camp.audio ? Object.assign({}, camp.audio, { now: now() }) : null,   // "now" lets each screen line its clock up
-    ships: (camp.ships || []).filter((x) => gm || !x.hidden),
+    // a ship's crew row keeps its character's name: a player reads "???" while the GM hides that token's name
+    ships: (camp.ships || []).filter((x) => gm || !x.hidden).map((x) => (gm || !Array.isArray(x.crew) ? x
+      : Object.assign({}, x, { crew: x.crew.map((c) => (c && c.charId && shownName(camp, { charId: c.charId, name: c.name }) === "???" ? Object.assign({}, c, { name: "???" }) : c)) }))),
     ...(camp.space ? { space: Space.view(camp, gm) } : {}),   // the space map (#146)
     sceneFx: fxView,
     ...(gm && (camp.npcs || []).length ? { npcs: camp.npcs } : {}),   // the GM's NPC templates (9.9), the GM's only
@@ -553,8 +557,8 @@ function applyAction(camp, cid, gm, type, p) {
   if (Story.handles(type)) return Story.apply(camp, cid, gm, type, p, { addChat, shownName, Forbidden, Invalid });
   if (type.startsWith("ask.")) return Ask.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
   if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, fightHelpers());
-  if (Ships.handles(type)) return Ships.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
-  if (Space.handles(type)) return Space.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, applyAction, rid, Forbidden, Invalid });
+  if (Ships.handles(type)) return Ships.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, shownName, Forbidden, Invalid });
+  if (Space.handles(type)) return Space.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, shownName, applyAction, rid, Forbidden, Invalid });
   if (Downtime.handles(type)) return Downtime.apply(camp, cid, gm, type, p, { addChat, shownName, applyAction, rollDice, Forbidden, Invalid });
 
   switch (type) {
@@ -648,6 +652,15 @@ function applyAction(camp, cid, gm, type, p) {
       mp.tokens = mp.tokens.filter((t) => t.charId !== p.id);
       addChat(camp, { system: true, text: `${said === "???" ? "An unknown character" : said} left the table.` });
       return { dropImages: [ch.image, ch.tokenImage] };
+    }
+    case "char.rest": {   // the sheet says a character finished a short or long rest (it saves the numbers itself, through
+      // char.save); this tells what else resets on a rest, such as the combat view's Wounds DC (#233), through Fight.onRest
+      const id = String(p.charId || ""), ch = charById(camp, id), kind = p.kind === "long" ? "long" : p.kind === "short" ? "short" : "";
+      if (!ch) throw new Invalid("No such character.");
+      if (!kind) throw new Invalid("A short or a long rest.");
+      if (!gm && ch.owner !== cid) throw new Forbidden("Not your character");
+      if (typeof Fight.onRest === "function") Fight.onRest(camp, id, kind);
+      return { rested: kind };
     }
     case "char.assign": {
       need(gm);
@@ -1237,7 +1250,7 @@ function applyAction(camp, cid, gm, type, p) {
       if (old) need(gm || !old.hidden, "That ship is the GM's.");
       else if (camp.ships.length >= MAX_SHIPS) throw new Invalid(`A table can have up to ${MAX_SHIPS} ships.`);
       const sh = cleanShip(Object.assign({}, p.ship, { id: old ? old.id : rid(), owner: old ? old.owner : cid }), chars);
-      Ships.keepStatus(sh, old);   // the fight state (conditions, destruction saves) is the server's; points stay inside the maximums
+      Ships.keepStatus(sh, old, gm);   // the fight state (conditions, destruction saves) is the server's; points stay inside the maximums
       if (!gm) sh.hidden = old ? old.hidden : false;
       if (old) camp.ships[i] = sh; else camp.ships.push(sh);
       return { id: sh.id };
