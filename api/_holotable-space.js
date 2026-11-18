@@ -181,9 +181,13 @@ function apply(camp, cid, gm, type, p, h) {
       if (!(wi >= 0 && wi < weapons.length)) throw new Invalid("No such weapon.");
       const w = weapons[wi], chk = SR.fireCheck(s0, a, w, t0, ta);
       if (!chk.ok) throw new Invalid(`${w.name} can't fire: ${chk.why}.`);
-      if (typeof w.ammo === "number" && w.ammo <= 0) throw new Invalid(`${w.name} is out of ammunition.`);
+      // the firing mode (single, rapid, burst) and what it costs in heat or ammunition
+      const modes = SR.weaponModes(w), fm = modes.includes(p.fireMode) ? p.fireMode : modes[0], cost = SR.shotCost(w, fm), cap = SR.heatCap(w);
+      if (typeof w.ammo === "number" && w.ammo < cost) throw new Invalid(w.ammo <= 0 ? `${w.name} is out of ammunition.` : `${w.name} has ${w.ammo} shots left; ${fm} takes ${cost}.`);
+      if (cap !== null && int(w.heat) + cost > cap) throw new Invalid(`${w.name} is too hot (${int(w.heat)} of ${cap}): cool it first (an action).`);
       const s = JSON.parse(JSON.stringify(s0)), sw = s.weapons[wi];
-      if (typeof sw.ammo === "number") sw.ammo -= 1;
+      if (typeof sw.ammo === "number") sw.ammo -= cost;
+      if (cap !== null) sw.heat = int(sw.heat) + cost;
       const pb = Ships.crewPb(camp, s0, p.crew), A = shownOf(s0, a), T = shownOf(t0, ta);
       // jpesus (#65, 17 Nov): while a GM ship's token is off the players' map, its lines go to the GM only; a hit
       // still shows its damage on the party's own ship sheet. Here: every line and roll of this shot, including the
@@ -198,24 +202,53 @@ function apply(camp, cid, gm, type, p, h) {
       const line = (text, gmOnly) => addChat(camp, Object.assign({ system: true, text: str(text, 400) }, gmOnly || secret ? { to: ["@gm"], private: true } : {}));
       const d20 = (mode, bonus) => (mode === "adv" ? "2d20kh1" : mode === "dis" ? "2d20kl1" : "1d20") + (bonus >= 0 ? "+" : "") + bonus;
       const why = (x) => (x.length ? ` [${x.join(", ")}]` : "");
-      // the damage roll: advantage after Boost Weapons (two rolls, the higher kept), which it then uses up
-      const rollDamage = (crit) => {
+      // the damage roll: advantage after Boost Weapons (two rolls, the higher kept), which it then uses up; crit (or a
+      // rapid volley) rolls the dice twice
+      const rollDamage = (crit, tag) => {
         const expr = SR.damageExpr(s0, w, crit);
         if (!expr) return { total: 0, expr: "" };
         let r = rollDice(expr);
         if (s.status && s.status.boost && s.status.boost.weapons) { const r2 = rollDice(expr); if (r2.total > r.total) r = r2; s.status.boost.weapons = false; }
-        rollMsg(r, expr, `${s0.hidden ? s0.name : A}: ${w.name} damage${crit ? " (critical)" : ""}`, "damage");
+        rollMsg(r, expr, `${s0.hidden ? s0.name : A}: ${w.name} damage${tag ? ` (${tag})` : crit ? " (critical)" : ""}`, "damage");
         return { total: Math.max(0, r.total), expr };
       };
-      const hurt = (amount, crit) => {
-        const r = SR.takeDamage(t0, amount, w.type, { crit });
+      const hurtShip = (ship, amount, crit, tok) => {
+        const r = SR.takeDamage(shipOf(ship.id), amount, w.type, { crit });
         putShip(r.ship);
-        for (const l of r.log) line(l, !!t0.hidden);   // the target's hull and shields: the GM's for an enemy ship
+        for (const l of r.log) line(l, !!ship.hidden || !!(tok && tok.hidden));   // its hull and shields: the GM's for an enemy ship or a hidden token
         return r;
+      };
+      const hurt = (amount, crit) => hurtShip(t0, amount, crit);
+      // a ship's Dexterity save against this weapon: its own bonus, its conditions, and what the shot gives it
+      const dexSave = (ship, tok, dc, adv, dis) => {
+        const fx = SR.rollEffects(ship, "save", "dex"), name = shownOf(ship, tok), unseen = !!(tok && tok.hidden);
+        if (fx.fail.length) { line(`${name} fails it automatically (${fx.fail.join(", ")}).`, unseen); return false; }
+        const mode = SR.rollMode({ adv: [...adv, ...fx.adv], dis: [...dis, ...fx.dis] }, "normal");
+        const bonus = Math.floor((int((ship.abilities || {}).dex, 10) - 10) / 2) + ((ship.saves || {}).dex ? Ships.crewPb(camp, ship, 0) : 0);
+        const se = d20(mode, bonus), sr = rollDice(se);
+        roll2(sr, se, `${ship.hidden ? ship.name : name}: Dexterity save (DC ${dc})`, "save", !!ship.hidden || unseen);
+        return sr.total >= dc;
       };
       s.status = SR.statusOf(s);
       let result;
-      if (chk.kind === "attack") {
+      if (fm === "rapid" || fm === "burst") {
+        // rapid: the target saves or takes the damage plus its dice again; burst: every ship in a 150-ft cube on the
+        // target saves or takes the damage; nothing on a success. Where the attack roll would have had disadvantage, the
+        // ships save with advantage.
+        const dc = 8 + SR.attackBonusOf(s0, w, pb), atk = SR.rollMode({ adv: chk.adv, dis: chk.dis }, "normal");
+        const box = SR.burstBox(ta, SR.squaresOf(t0));
+        const hit = fm === "rapid" ? [[t0, ta]] : sp.tok.filter((x) => x.id !== s0.id && shipOf(x.id) && SR.inBox(box, x, SR.squaresOf(shipOf(x.id)))).map((x) => [shipOf(x.id), x]);
+        line(`${A} fires ${w.name} in ${fm} mode at ${T}: ${fm === "burst" ? "every ship in a 150-ft cube makes" : "a"} Dexterity save, DC ${dc}${atk === "dis" ? " (with advantage: the shot would have had disadvantage)" : ""}.`);
+        const dmg = rollDamage(fm === "rapid", fm);
+        result = { mode: fm, ships: [] };
+        for (const [ship, tok] of hit) {
+          const saved = dexSave(ship, tok, dc, atk === "dis" ? ["a shot at disadvantage"] : [], []);
+          // a ship in the cube whose token is off the players' map: its save and its lines are the GM's (jpesus, #65)
+          line(`${shownOf(ship, tok)} ${saved ? "saves: no damage" : `fails: ${dmg.total} ${SR.damageType(w.type)} damage`}.`, !!tok.hidden);
+          if (!saved && dmg.total) hurtShip(ship, dmg.total, false, tok);
+          result.ships.push({ saved, damage: saved ? 0 : dmg.total });
+        }
+      } else if (chk.kind === "attack") {
         const mode = SR.rollMode({ adv: chk.adv, dis: chk.dis }, ["adv", "dis"].includes(p.mode) ? p.mode : "normal");
         const bonus = SR.attackBonusOf(s0, w, pb), expr = d20(mode, bonus), roll = rollDice(expr);
         const keen = typeof SR.weaponProp(w, "keen") === "number" ? SR.weaponProp(w, "keen") : 0;
@@ -240,24 +273,16 @@ function apply(camp, cid, gm, type, p, h) {
       } else {
         // tertiary weapons, and a Huge or larger ship's primary weapons: the target's Dexterity save against the
         // weapon's DC; half damage on a success
-        const dc = SR.saveDcOf(s0, w, pb), fx = SR.rollEffects(t0, "save", "dex");
-        const mode = SR.rollMode({ adv: chk.adv, dis: [...chk.dis, ...fx.dis] }, "normal");
-        const bonus = Math.floor((int((t0.abilities || {}).dex, 10) - 10) / 2) + ((t0.saves || {}).dex ? Ships.crewPb(camp, t0, 0) : 0);
+        const dc = SR.saveDcOf(s0, w, pb);
         line(`${A} fires ${w.name} at ${T}: a Dexterity save, DC ${dc}${why([...chk.adv, ...chk.dis])}.`);
-        let saved = false;
-        if (fx.fail.length) line(`${T} fails it automatically (${fx.fail.join(", ")}).`);
-        else {
-          const se = d20(mode, bonus), sr = rollDice(se);
-          roll2(sr, se, `${t0.hidden ? t0.name : T}: Dexterity save (DC ${dc})`, "save", !!t0.hidden);
-          saved = sr.total >= dc;
-        }
+        const saved = dexSave(t0, ta, dc, chk.adv, chk.dis);
         const dmg = rollDamage(false), amount = saved ? Math.floor(dmg.total / 2) : dmg.total;
         line(`${T} ${saved ? "saves: half damage" : "fails"}: ${amount} ${SR.damageType(w.type)} damage.`);
         if (amount) hurt(amount, false);
         result = { saved, damage: amount };
       }
       const after = SR.statusOf(shipOf(s0.id));
-      if (chk.kind === "attack") Object.assign(after.fx, { directed: false, interfered: false });   // each lasts one attack roll
+      if (chk.kind === "attack" && fm === "single") Object.assign(after.fx, { directed: false, interfered: false });   // each lasts one attack roll
       putShip(Object.assign(shipOf(s0.id), { weapons: s.weapons, status: Object.assign(after, { boost: s.status.boost }) }));
       return result;
     }
