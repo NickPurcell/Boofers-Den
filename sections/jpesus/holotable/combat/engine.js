@@ -345,6 +345,9 @@
     const burst = /\bburst\s+(\d{1,2})\b/i.exec(p), rapid = /\brapid\s+(\d{1,2})\b/i.exec(p);
     if (burst) out.burst = +burst[1];
     if (rapid) out.rapid = +rapid[1];
+    if (/\blight\b/i.test(p)) out.light = true;                       // Two- and Double-Weapon Fighting need it
+    const dbl = /\bdouble\s*\(\s*(\d*d\d+)/i.exec(p);                  // "Double (1d6 kinetic)": the other end's damage
+    if (dbl) out.otherEnd = dbl[1].toLowerCase();
     for (const [, name, n] of p.matchAll(/\b(strength|dexterity)\s+(\d{1,2})\b/gi)) {
       const k = name.toLowerCase() === 'strength' ? 'str' : 'dex', score = +((ch.abilities || {})[k]) || 10;
       if (score < +n) out.unmet = `${name[0].toUpperCase()}${name.slice(1).toLowerCase()} ${n}`;
@@ -353,12 +356,49 @@
   }
   // the attacks on a character sheet, with HoloTable's own arithmetic (rules.js)
   function attacksOf(ch, rules) {
+    const st = stylesOf(ch);
     return (ch.attacks || []).map((a, i) => {
       const damage = rules.damageExpr(ch, a);
       const ab = a.ab === 'finesse' ? (rules.abilityMod(ch, 'dex') > rules.abilityMod(ch, 'str') ? 'dex' : 'str') : ABILS.includes(a.ab) ? a.ab : 'str';
-      return Object.assign({ key: String(i), name: a.name || 'Attack', bonus: rules.attackBonus(ch, a), abil: ab, damage, crit: rules.critExpr(damage), type: a.type || '', enhanced: +a.magic > 0,
-        finesse: a.ab === 'finesse' || /\bfinesse\b/i.test(String(a.props || '')), weapon: true }, readRange(a.props), weaponProps(ch, a, ab, rules));
+      const bonus = rules.attackBonus(ch, a), wp = weaponProps(ch, a, ab, rules);
+      return Object.assign({ key: String(i), name: a.name || 'Attack', bonus, abil: ab, damage, crit: rules.critExpr(damage), type: a.type || '', enhanced: +a.magic > 0,
+        finesse: a.ab === 'finesse' || /\bfinesse\b/i.test(String(a.props || '')), weapon: true }, readRange(a.props), wp, offhandNumbers(ch, a, ab, bonus, wp, st, rules));
     }).filter((a) => a.melee || a.range);
+  }
+  /* ---------------- Two- and Double-Weapon Fighting (audit 5.8) ---------------- */
+  // The fighting styles that change them, read from the sheet's features ("Dual Wield Style", "Fighting Style: Split")
+  function stylesOf(ch) {
+    const names = ((ch && ch.features) || []).map((f) => String((f && f.name) || '').toLowerCase().replace(/fighting style|style|[:()\[\]\-–—]/g, ' ').replace(/\s+/g, ' ').trim());
+    const has = (n) => names.includes(n);
+    return { twfDamage: has('dual wield') || has('split'), dwfAttack: has('twin blade') || has('split') };
+  }
+  // A light weapon's off-hand attack (Two-Weapon Fighting): no positive ability modifier on its damage. A light and
+  // double weapon's other end (Double-Weapon Fighting): the die in its Double property, no positive ability modifier on
+  // its attack roll. The styles above put the modifier back. A damage box typed in full is left as it is.
+  function offhandNumbers(ch, a, ab, bonus, wp, st, rules) {
+    if (!wp.light) return {};
+    const mod = rules.abilityMod(ch, ab), magic = +a.magic || 0, plus = (n) => (n ? (n > 0 ? '+' : '') + n : '');
+    const out = { offDamage: a.damageFull ? a.damageFull : (a.damage || '1') + plus((st.twfDamage || mod < 0 ? mod : 0) + magic) };
+    if (wp.otherEnd) Object.assign(out, { endDamage: wp.otherEnd + plus(mod + magic), endBonus: bonus - (st.dwfAttack || mod < 0 ? 0 : mod) });
+    return out;
+  }
+  // Can this attack be a bonus action attack now, and as what? { spec } or { why }. After the Attack action: the other
+  // end of the light and double weapon it attacked with, or a different light weapon from the light one it attacked
+  // with. One bonus attack (two for a Fighter from 11th level, Greater Extra Attack).
+  function offhandOf(w, me, a) {
+    if (!me || me.side !== 'pc' || !a || !a.weapon) return { why: 'Only a character\'s weapon makes a bonus attack this way.' };
+    const sp = spentOf(w, me.id), b = budget(w, me.id);
+    if (!(sp.off ? sp.off < (+me.offhands || 1) : b.bonus)) return { why: sp.off ? `${me.name} has made ${sp.off === 1 ? 'its bonus attack' : 'both bonus attacks'} this turn.` : `${me.name} has already used the bonus action this turn.` };
+    if (!sp.atk) return { why: `${me.name} takes the Attack action first, with a light weapon.` };
+    const key = String(a.key);
+    if (a.otherEnd && a.endDamage && sp.dw && key === String(sp.dw - 1)) {
+      return { kind: 'double', spec: Object.assign({}, a, { name: `${a.name} (other end)`, bonus: a.endBonus, damage: a.endDamage, crit: doubleDice(a.endDamage), versatile: null }) };
+    }
+    if (!a.light) return { why: `${a.name} isn't a light weapon.` };
+    if (!sp.lt) return { why: `${me.name} didn't attack with a light weapon this turn.` };
+    if (key === String(sp.lt - 1)) return { why: `Two-Weapon Fighting takes a different light weapon from the one ${me.name} attacked with.` };
+    const dmg = a.offDamage || a.damage;
+    return { kind: 'two', spec: Object.assign({}, a, { name: `${a.name} (off-hand)`, damage: dmg, crit: doubleDice(dmg), versatile: null }) };
   }
   // a creature's attack from its stat block entry ({ n, atk, dmg, dt, rng, d } as HoloTable's creature list keeps it)
   function attackFromBehavior(b) {
@@ -561,16 +601,21 @@
     if (((ch && ch.features) || []).some((f) => f && /^extra attack\b/i.test(String(f.name || '')))) n = Math.max(n, 2);
     return Math.min(4, n);
   }
+  // Greater Extra Attack: from Fighter 11, a Two- or Double-Weapon Fighting bonus action makes two attacks
+  const bonusAttacksOf = (ch) => ((ch && ch.classes) || []).some((k) => String(k.name || '').trim().toLowerCase() === 'fighter' && +k.level >= 11) ? 2 : 1;
   // A creature's attacks per Attack action, from its stat block's Multiattack text: "makes three attacks: two with its
-  // claws and one with its bite" is 3, "attacks twice" is 2, "makes one bite attack and one slam attack" is 2.
-  // Which attacks it may combine isn't checked; the GM picks them.
+  // claws and one with its bite" is 3, "attacks twice" is 2, "makes one bite attack and one slam attack" is 2. Between
+  // alternatives ("two melee attacks or four ranged attacks") the largest counts. Which attacks it may combine, and
+  // conditions such as "if it has half its hit points or fewer", aren't checked; the GM picks.
   const COUNT_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, twice: 2, thrice: 3 };
   function multiattackOf(text) {
-    const t = String(text || '').slice(0, 2500);
-    const m = /\bmakes?\s+(one|two|three|four|five|six|\d)\b/i.exec(t) || /\battacks?\s+(twice|thrice)\b/i.exec(t) || /\b(two|three|four|five|six)\s+(?:\w+\s+){0,3}attacks\b/i.exec(t);
-    if (!m) return 1;
-    let n = COUNT_WORDS[m[1].toLowerCase()] || +m[1] || 1;
-    if (n === 1) n = Math.max(1, (t.match(/\bone\b[^,.;:]*?\battacks?\b/gi) || []).length);
+    const t = String(text || '').slice(0, 2500), num = (x) => COUNT_WORDS[x.toLowerCase()] || +x || 0;
+    let n = 0;
+    for (const m of t.matchAll(/\b(one|two|three|four|five|six|\d)\b(?=\s+(?:[\w-]+\s+){0,4}?attacks?\b)/gi)) n = Math.max(n, num(m[1]));
+    for (const m of t.matchAll(/\battacks?\s+(twice|thrice)\b/gi)) n = Math.max(n, num(m[1]));
+    const mk = /\bmakes?\s+(one|two|three|four|five|six|\d)\b/i.exec(t);
+    if (mk) n = Math.max(n, num(mk[1]));
+    if (n <= 1) n = Math.max(1, (t.match(/\bone\b[^,.;:]*?\battacks?\b/gi) || []).length);
     return clampN(n, 1, 6);
   }
   /* ---------------- bonus damage from class features (audit 5.9) ---------------- */
@@ -896,7 +941,7 @@
   /* ---------------- turns: the turn budget is resources too, refilled at the start of the unit's own turn ---------------- */
   const turnKey = (world) => `${world.round}:${world.turnId}`;
   const TURN = ['move', 'action', 'bonus', 'reaction'];
-  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0 });
+  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0 });
   function spentOf(world, id) {
     const s = (world.spent || {})[id];
     return s && (id !== world.turnId || s.key === turnKey(world)) ? Object.assign(blank(s.key), s) : blank(id === world.turnId ? turnKey(world) : '');
@@ -966,6 +1011,15 @@
         return { ok: true, world: w, log: [{ text: `${me.name} moves ${cost} ft.` }], events: [{ kind: 'move', unit: me.id, feet: cost }], reactions };
       }
       case 'attack': {
+        if (act.offhand) {   // Two- or Double-Weapon Fighting (audit 5.8): a bonus action attack after the Attack action
+          const o = offhandOf(w, me, act.attack);
+          if (!o.spec) return no(o.why);
+          const s = strike(w, me, act.target, o.spec, { adv: !!act.adv, dis: !!act.dis, no: act.no || [], add: act.add || {} }, roll, '');
+          if (!s.ok) return s;
+          const sp = w.spent[me.id];
+          if (sp.off) sp.off += 1; else Object.assign(sp, { bonus: sp.bonus + 1, off: 1 });
+          return { ok: true, world: w, log: s.log, events: s.events };
+        }
         // Extra Attack and Multiattack (#139): the first attack takes the action; the rest of that Attack action don't,
         // and the unit can move between them. A creature's count comes with the attack (its stat block, the GM's).
         const more = b.attacks > 0;
@@ -975,6 +1029,11 @@
         const sp = w.spent[me.id];
         if (more) sp.atk += 1;
         else Object.assign(sp, { action: sp.action + 1, atk: 1, atkMax: me.side === 'npc' ? clampN(Math.round(+act.multi || 1), 1, 6) : Math.max(1, +me.attacks || 1) });
+        // the light (or light and double) weapon it attacked with, for a bonus attack after (audit 5.8)
+        if (me.side === 'pc' && act.attack.light && /^\d{1,2}$/.test(String(act.attack.key))) {
+          if (!sp.lt) sp.lt = 1 + +act.attack.key;
+          if (act.attack.otherEnd && !sp.dw) sp.dw = 1 + +act.attack.key;
+        }
         return { ok: true, world: w, log: s.log, events: s.events };
       }
       case 'common': {   // Dash, Disengage, Dodge; and a Berserker's Rage
@@ -1461,7 +1520,7 @@
         speed: ch ? +ch.speed || 30 : +((table.npcSpeed || {})[e.id]) || 30,
         pools: ch ? Object.fromEntries(resourcesOf(ch, rules).map((r) => [r.key, r])) : {},
         riders: ch ? ridersOf(ch, rules) : {},
-        attacks: ch ? attacksPerAction(ch) : 1,   // per Attack action (#139); a creature's Multiattack comes with its attack
+        attacks: ch ? attacksPerAction(ch) : 1, offhands: ch ? bonusAttacksOf(ch) : 0,   // per Attack action (#139); a creature's Multiattack comes with its attack
         // Raging is a rage in progress: without its live effect (the fight ended, a new one began) it's dropped here
         conditions: Array.from(new Set([].concat(e.conditions || [], ch ? ch.conditions || [] : [])))
           .filter((c) => c !== 'Raging' || (table.effects || []).some((ef) => ef.unit === e.id && ef.condition === 'Raging')),
@@ -1487,5 +1546,5 @@
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
     SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf, d20, flankOf, fixedTotal, cruel, modeName,
-    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, ridersOf, ridersFor, attacksPerAction, multiattackOf, weaponProps, volleysOf };
+    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, ridersOf, ridersFor, attacksPerAction, multiattackOf, offhandOf, stylesOf, weaponProps, volleysOf };
 });
