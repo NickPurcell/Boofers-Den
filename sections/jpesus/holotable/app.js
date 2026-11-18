@@ -371,6 +371,73 @@
   // A short rest (audit 7.2, 7.4; issue #71): spend hit dice by size, each healing its roll + Con (at least 0), then
   // finish it: resources that come back on a short rest, an Engineer's or a Scout's tech points, and a Consular's
   // Force Recovery (once per long rest, kept as a tracked resource that the long rest gives back).
+  // ---- ability scores (audit 1.4), as SW5e's "Step-By-Step Characters" has it: roll 4d6 keeping the highest three,
+  // six times (rolled by the server, in chat for the table), or the standard set; then place each number. Point buy
+  // is SW5e's variant (the GM's option): 27 points on scores from 8 to 15. Species increases come after.
+  function scoresDialog(ch, done) {
+    const st = { how: 'array', values: R.STANDARD_ARRAY.slice(), pick: {}, buy: {} };
+    R.ABILITIES.forEach((a, i) => { st.pick[a.key] = i; st.buy[a.key] = 8; });
+    const scores = () => st.how === 'buy' ? Object.assign({}, st.buy)
+      : Object.fromEntries(R.ABILITIES.map(a => [a.key, st.values[st.pick[a.key]]]));
+    const body = () => {
+      if (st.how === 'buy') {
+        const cost = R.pointBuyCost(st.buy);
+        return `<p class="muted" style="margin:0 0 8px">SW5e's variant, at the GM's option: ${R.POINT_BUDGET} points, every score from 8 to 15.</p>
+          ${R.ABILITIES.map(a => `<div class="row" style="margin:4px 0"><span style="flex:1">${a.name}</span>
+            <button class="btn tiny" data-sg="dn" data-k="${a.key}" ${st.buy[a.key] <= 8 ? 'disabled' : ''}>−</button>
+            <b style="width:28px;text-align:center">${st.buy[a.key]}</b>
+            <button class="btn tiny" data-sg="up" data-k="${a.key}" ${st.buy[a.key] >= 15 ? 'disabled' : ''}>+</button>
+            <span class="muted" style="width:64px;text-align:right">${R.POINT_COST[st.buy[a.key]]} pts</span></div>`).join('')}
+          <p style="margin:8px 0 0"><b style="color:${cost > R.POINT_BUDGET ? 'var(--red)' : 'var(--green)'}">${cost} of ${R.POINT_BUDGET} points</b></p>`;
+      }
+      if (st.how === 'roll' && !st.rolled) return `<p class="muted" style="margin:0 0 8px">Six rolls of 4d6, each keeping the highest three. They're rolled by the table and show in chat.</p>
+        <button class="btn primary" data-sg="roll">🎲 Roll six scores</button>`;
+      return `<p class="muted" style="margin:0 0 8px">${st.how === 'roll' ? 'Your rolls' : 'The standard set'}: <b>${st.values.join(', ')}</b>. Put each number on one ability.</p>
+        ${R.ABILITIES.map(a => `<div class="row" style="margin:4px 0"><span style="flex:1">${a.name}</span>
+          <select data-sg="pick" data-k="${a.key}">${st.values.map((v, i) => `<option value="${i}" ${st.pick[a.key] === i ? 'selected' : ''}>${v}</option>`).join('')}</select></div>`).join('')}`;
+    };
+    const ok = () => st.how === 'buy' ? R.pointBuyCost(st.buy) <= R.POINT_BUDGET : (st.how === 'array' || st.rolled) && R.usesEachOnce(scores(), st.values);
+    const draw = box => {
+      box.querySelector('#sgBody').innerHTML = body();
+      box.querySelectorAll('[data-how]').forEach(b => b.classList.toggle('on', b.dataset.how === st.how));
+      box.querySelector('#sgOk').disabled = !ok();
+    };
+    modal(`<h3>Ability scores: ${esc(ch.name)}</h3>
+      <div class="rollmode" style="display:inline-flex;margin-bottom:10px"><button data-how="array">Standard set</button>
+        <button data-how="roll">Roll 4d6</button><button data-how="buy">Point buy</button></div>
+      <div id="sgBody"></div>
+      <p class="muted" style="font-size:12px">These replace all six scores. Add your species' increase after (◈ on Species).</p>
+      <div class="row"><span class="spacer"></span><button class="btn" id="sgCancel">Cancel</button><button class="btn primary" id="sgOk">Use these scores</button></div>`, box => {
+      draw(box);
+      box.onclick = async e => {
+        const t = e.target.closest('button'); if (!t) return;
+        if (t.dataset.how) { st.how = t.dataset.how; st.values = st.how === 'roll' ? (st.rolls || []) : R.STANDARD_ARRAY.slice(); if (st.how === 'roll') st.rolled = !!st.rolls; draw(box); return; }
+        if (t.dataset.sg === 'up' || t.dataset.sg === 'dn') { const k = t.dataset.k; st.buy[k] = Math.max(8, Math.min(15, st.buy[k] + (t.dataset.sg === 'up' ? 1 : -1))); draw(box); return; }
+        if (t.dataset.sg === 'roll') {
+          t.disabled = true; const got = [];
+          for (let i = 1; i <= 6; i++) {
+            const r = await roll('4d6dl1', `Ability score ${i} of 6`, { charId: ch.id });
+            if (!r || !r.roll) { toast('A roll failed; try again.', true); t.disabled = false; return; }
+            got.push(+r.roll.total);
+          }
+          st.rolls = got.slice().sort((x, y) => y - x); st.values = st.rolls; st.rolled = true; draw(box); return;
+        }
+        if (t.id === 'sgCancel') return closeModal();
+        if (t.id === 'sgOk' && ok()) {
+          const sc = scores(); closeModal();
+          if (done) return done(sc);
+          mutate(c => { c.abilities = Object.assign({}, c.abilities, sc); });
+          toast('Ability scores set');
+        }
+      };
+      box.onchange = e => {   // picking a number another ability holds swaps the two
+        const sel = e.target.closest('[data-sg=pick]'); if (!sel) return;
+        const k = sel.dataset.k, v = +sel.value, other = R.ABILITIES.find(a => a.key !== k && st.pick[a.key] === v);
+        if (other) st.pick[other.key] = st.pick[k];
+        st.pick[k] = v; draw(box);
+      };
+    });
+  }
   function shortRestDialog() {
     const id = S.selected;
     const draw = () => {
@@ -512,6 +579,8 @@
       .map(([k, t]) => `<button data-act="sub" data-sub="${k}" class="${sub === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
 
     if (sub === 'main') {
+      if (!ro) html += `<div class="row" style="justify-content:flex-end;margin:0 0 6px"><button class="btn tiny ghost" data-act="gen-scores"
+        title="Set all six scores: the standard set, rolled 4d6 (in chat), or point buy">🎲 Ability scores…</button></div>`;
       html += `<div class="stats-row">${R.ABILITIES.map(a => {
         const m = R.abilityMod(ch, a.key);
         return `<div class="stat ability"><div class="lbl">${a.name}</div>
@@ -687,6 +756,7 @@
     if (ro && !pub.includes(a)) return;
     switch (a) {
       case 'sub': S.sub = b.dataset.sub; renderSheet($('#sheet')); break;
+      case 'gen-scores': scoresDialog(ch); break;
       case 'dismiss-note': delete S.importNotes[ch.id]; renderSheet($('#sheet')); break;
       case 'del-class': mutate(c => c.classes.splice(i, 1)); break;
       case 'save-prof': mutate(c => { c.saves[b.dataset.ab] = !c.saves[b.dataset.ab]; }); break;
