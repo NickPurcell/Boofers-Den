@@ -321,6 +321,16 @@ test("cybernetic augmentations and droid customizations (audit 6.4): limits, sid
   assert.equal(R.cleanImplants(Array.from({ length: 20 }, (_, i) => ({ name: `M${i}`, kind: "part" }))).length, 12);
 });
 
+test("a power's SW5e duration in rounds (audit 4.10), from the note the sheet writes when it's added", () => {
+  const n = (d) => R.durationRounds(`1 action · Range 60 feet · ${d} · Concentration`);
+  assert.deepEqual(["up to 1 minute", "1 round", "10 minutes", "up to 1 hour", "8 hours", "24 hours", "1 turn", "10 days", "30 days", "Up to 1 hour"].map(n),
+    [10, 1, 100, 600, 4800, 14400, 1, 144000, 432000, 600]);
+  assert.deepEqual(["Instantaneous", "Until dispelled", "or until the end of your next short or long rest; whichever happens first", "until triggered"].map(n), [null, null, null, null]);
+  assert.equal(R.durationRounds("1 minute · Range Self · Instantaneous"), null, "a casting time of a minute is not a duration");
+  assert.deepEqual([R.durationRounds(""), R.durationRounds(undefined), R.durationRounds("up to 1 minute")], [null, null, null], "nothing after the casting time");
+  assert.equal(R.durationRounds("1 action · Range Self · 999 days"), 432000, "at most 30 days");
+});
+
 test("speed (audit 5.11): SW5e's strength and cumbersome armor properties, the encumbrance variant, other movement from traits", () => {
   assert.deepEqual(R.armorFromItem({ accl: "Heavy", ac: "17", props: ["Bulky", "cumbersome", "strength 15"] }), { kind: "heavy", ac: 17, str: 15, cumbersome: true });
   assert.deepEqual(R.armorFromItem({ accl: "Light", ac: "11", props: [] }), { kind: "light", ac: 11 });

@@ -660,10 +660,14 @@
   }
   // the variant rules the GM marks (9.16): the sheet and the table act on these
   const vOn = name => (S.st.variants || []).includes(name);
-  // how long a condition from the sheet's Cast has left in a fight (audit 4.10): " · 2 rounds · Force Push"
+  // how long a condition from the sheet's Cast has left (audit 4.10): " · 2 rounds · Force Push", or " · 9 minutes · ..." on the clock
   function fxNote(ref, c) {
     const x = ((S.st.sheetCast || {}).fx || []).find(y => (ref.char ? y.char === ref.char : y.entry === ref.entry) && y.condition === c);
-    return x ? ` <span class="muted fx-note" title="From the sheet's Cast: the tracker counts it down${x.save ? '; a save at the end of each of its turns can end it sooner' : ''}">· ${n0(x.left)} round${n0(x.left) === 1 ? '' : 's'}${x.save ? ' or a save' : ''} · ${esc(x.power)}</span>` : '';
+    if (!x) return '';
+    const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`, r = n0(x.left);
+    // out of a fight it runs on the in-game clock, ten rounds a minute
+    const left = !x.clock ? plural(r, 'round') : r < 10 ? 'under a minute' : r < 600 ? plural(Math.ceil(r / 10), 'minute') : r < 14400 ? plural(Math.ceil(r / 600), 'hour') : plural(Math.ceil(r / 14400), 'day');
+    return ` <span class="muted fx-note" title="From the sheet's Cast: ${x.clock ? 'it ends when the in-game clock passes its duration' : 'the tracker counts it down'}${x.save ? '; a save at the end of each of its turns can end it sooner' : ''}">· ${left}${x.save ? ' or a save' : ''} · ${esc(x.power)}</span>`;
   }
   function mutate(fn) {
     const ch = clone(selChar()); fn(ch); saveChar(ch); guarded('sheet', renderSheet);

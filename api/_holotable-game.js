@@ -813,12 +813,13 @@ function applyAction(camp, cid, gm, type, p) {
         if (ini.turn < 0) { ini.turn = n - 1; ini.round = Math.max(1, ini.round - 1); }
       } else if (type === "init.start") {
         Object.assign(ini, { active: true, turn: 0, round: 1 });
+        Fight.sheetFight(camp, true);   // the clock's countdowns from the sheet's Cast count rounds now (4.10)
         if (camp.fight) camp.fight.strenuousAt = "";   // a new fight: Strenuous Combat's saves can be made again (#233)
         addChat(camp, { system: true, text: "Combat begins! Roll initiative." });
         combatMoves(camp);
       } else if (type === "init.clear") {
         Object.assign(ini, { entries: [], turn: 0, round: 1, active: false });
-        if (camp.fight) camp.fight.sheetFx = [];   // nothing counts rounds out of a fight: what the sheet's Cast gave stays until taken off
+        Fight.sheetFight(camp, false);   // the sheet's Cast's conditions go back on the in-game clock (4.10)
         addChat(camp, { system: true, text: "Combat has ended." });
       }
       return {};
@@ -1225,6 +1226,7 @@ function applyAction(camp, cid, gm, type, p) {
         const why = str(p.why, 60).trim();
         addChat(camp, { system: true, text: `🕑 ${span} pass${why ? ` (${why})` : ""}. It's now ${clockText(camp.clock)}.` });
       }
+      if (!ini.active) Fight.sheetClock(camp, mins, { shownName, addChat });   // what the sheet's Cast gave runs its SW5e duration (4.10)
       return { clock: camp.clock };
     }
 
