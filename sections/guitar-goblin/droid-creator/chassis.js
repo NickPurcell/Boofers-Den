@@ -9,7 +9,6 @@ import { LAYOUTS, SCHEMES } from './layout.js';
 import { DOMES } from './domes.js';
 import { FITTINGS, addFittings, antennaAt, boltAt } from './fittings.js';
 import { buildPower, posePower, BOX } from './power.js';
-import { buildProtocol, poseProtocol } from './protocol.js';
 
 const named = (o) => Object.entries(o).map(([key, v]) => ({ key, name: v.name }));
 const schemes = named(SCHEMES);
@@ -67,24 +66,5 @@ export const CHASSIS = {
     views: { whole: { target: [0, 0.47, 0], pos: [1.1, 0.86, 2.66] }, head: { target: [0, 0.8, 0.27], pos: [0.44, 0.94, 1.32] } },
     token() { return { pos: [0.36, 0.96, 1.66], target: [0, 0.72, 0] }; },
     describe: () => 'a walking battery',
-  },
-  protocol: {
-    name: 'Protocol', noun: 'Protocol droid', headName: 'Head',
-    options: {
-      form: { label: 'Head', items: [{ key: 'twin', name: 'Twin-eye' }, { key: 'visor', name: 'Visor' }] },
-      scheme: { label: 'Paint scheme', items: schemes },
-      stance: { label: 'Pose', items: [{ key: 'ease', name: 'At ease' }, { key: 'attend', name: 'Attending' }, { key: 'greet', name: 'Greeting' }] },
-      look: { label: 'Looking', items: [{ key: 'left', name: 'Left' }, { key: 'ahead', name: 'Ahead' }, { key: 'right', name: 'Right' }] },
-      kit: { label: 'Attachments', multi: true, items: [{ key: 'bolt', name: 'Restraining bolt' }, { key: 'comm', name: 'Comlink aerial' }, { key: 'limb', name: 'Replacement leg' }] },
-    },
-    defaults: { form: 'twin', scheme: 'solid', stance: 'ease', look: 'ahead', kit: '', primary: 'cream', secondary: 'maroon', finish: 'paint', eye: 'amber' },
-    moves: ['stance', 'look'],
-    anim: { attend: (s) => (s.stance === 'attend' ? 1 : 0), greet: (s) => (s.stance === 'greet' ? 1 : 0), look: (s) => (s.look === 'left' ? -1 : s.look === 'right' ? 1 : 0) },
-    build(state, on) { const kits = buildProtocol(state, on); if (kits.body.bolt) boltAt(kits.body, kits.body.bolt); return kits; },
-    place(g, root) { g.armL.add(g.foreL); g.armR.add(g.foreR); g.body.add(g.head, g.armL, g.armR); root.add(g.body); },
-    pose: (g, a) => poseProtocol(g, a),
-    views: { whole: { target: [0, 0.87, 0], pos: [1.32, 1.2, 3.75] }, head: { target: [0, 1.58, 0.02], pos: [0.38, 1.68, 1.12] } },
-    token() { return { pos: [0.26, 1.63, 1.36], target: [0, 1.54, 0] }; },
-    describe: (n) => `${n('form')} head`,
   },
 };

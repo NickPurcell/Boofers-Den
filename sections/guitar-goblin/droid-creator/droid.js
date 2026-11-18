@@ -1,11 +1,10 @@
 // Droid creator: the page. A droid is built from hard-surface parts made in code (hard.js: bevelled panels laid on
 // curved surfaces, turned and lofted solids), painted by one material that also wears it (paint.js). chassis.js
 // lists the kinds of droid: utility.js is the astromech-style one (domes.js its heads, layout.js its panel layouts
-// and the paint schemes, fittings.js its attachments), power.js the walking battery, protocol.js the plated humanoid. This file builds the scene and
-// the lights, puts the pieces together, runs the panel and saves pictures.
-// three.js is the copy vendored in ../vendor/three (r185), loaded through the page's import map.
+// and the paint schemes, fittings.js its attachments), power.js the walking battery. The scene, lights, studio and picture export are the
+// shared stage (../creator-kit/stage.js); this file puts the pieces together and runs the panel.
 import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { makeStage } from '../creator-kit/stage.js';
 import { noiseTexture, paintMaterial, glassMaterial, clearMaterial, glowMaterial, logicTexture, logicMaterial, halo } from './paint.js';
 import { CHASSIS } from './chassis.js';
 
@@ -55,78 +54,11 @@ function settle(from = {}) {
 { const q = Object.fromEntries(new URLSearchParams(location.hash.slice(1))); for (const k of Object.keys(q)) if (k !== 'chassis') chosen.add(k); settle(q); }
 const writeHash = () => history.replaceState(null, '', '#' + new URLSearchParams(state).toString());
 
-/* ---------------- the renderer and the scene ---------------- */
+/* ---------------- the stage ---------------- */
 const canvas = document.getElementById('scene');
-const phone = Math.min(screen.width, screen.height) < 600 || /Mobi|Android/i.test(navigator.userAgent);
-let renderer;
-try { renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' }); }
-catch (e) { document.getElementById('nogl').hidden = false; throw e; }
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, phone ? 1.75 : 2));
-renderer.setClearColor(0x000000, 0);
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFShadowMap;
-renderer.shadowMap.autoUpdate = false;   // the droid mostly stands still: shadows are drawn again only after a change
-
-const scene = new THREE.Scene();
-// a workshop to reflect: a dark room with light panels, which is what makes bare metal read as metal
-{
-  const env = new THREE.Scene();
-  env.add(new THREE.Mesh(new THREE.SphereGeometry(10, 24, 12), new THREE.MeshBasicMaterial({ color: 0x232a36, side: THREE.BackSide })));
-  const panel = (w, h, col, pos) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: col, side: THREE.DoubleSide })); m.position.set(...pos); m.lookAt(0, 0.5, 0); env.add(m); };
-  panel(4, 5, 0xfff1dc, [5, 4, 6]);       // key softbox
-  panel(6, 3, 0x9fd0ff, [-6, 3, -5]);     // rim
-  panel(8, 8, 0x6a7686, [0, 8, 0]);       // ceiling bounce
-  panel(3, 6, 0xcfe0ff, [-6, 1.5, 4]);    // fill
-  panel(12, 1.2, 0x8e8474, [0, -1.2, 6]); // a strip of floor light, so undersides are not black
-  const floor = new THREE.Mesh(new THREE.CircleGeometry(10, 24), new THREE.MeshBasicMaterial({ color: 0x1a1d22 })); floor.rotation.x = -Math.PI / 2; floor.position.y = -1.5; env.add(floor);
-  const pm = new THREE.PMREMGenerator(renderer);
-  scene.environment = pm.fromScene(env, 0.03).texture;
-  pm.dispose();
-}
-scene.environmentIntensity = 0.75;
-
-// three-point light: a warm key that casts soft shadows, a cool fill, and rims from behind
-const key = new THREE.DirectionalLight(0xffecd6, 2.5);
-key.position.set(1.6, 3.0, 2.3); key.target.position.set(0, 0.75, 0);
-key.castShadow = true;
-key.shadow.mapSize.set(phone ? 1024 : 2048, phone ? 1024 : 2048);
-Object.assign(key.shadow.camera, { left: -1.25, right: 1.25, top: 1.35, bottom: -1.25, near: 1.2, far: 7 });
-key.shadow.bias = -0.0003; key.shadow.normalBias = 0.006; key.shadow.radius = 4; key.shadow.intensity = 0.8;
-scene.add(key, key.target);
-const fill = new THREE.DirectionalLight(0xb9d4ff, 0.5); fill.position.set(-2.2, 1.2, 1.6); fill.target.position.set(0, 0.5, 0); scene.add(fill, fill.target);
-const rim = new THREE.DirectionalLight(0xc4dcff, 1.7); rim.position.set(-1.3, 2.0, -2.4); rim.target.position.set(0, 0.6, 0); scene.add(rim, rim.target);
-const rim2 = new THREE.DirectionalLight(0xffd2b0, 0.8); rim2.position.set(1.8, 1.4, -1.8); rim2.target.position.set(0, 0.6, 0); scene.add(rim2, rim2.target);
-scene.add(new THREE.HemisphereLight(0x8ea7c7, 0x2a241c, 0.4));
-
-// the studio: a floor that fades out and a curved sweep behind
-const fade = (g, f) => { const pos = g.attributes.position, col = new Float32Array(pos.count * 3); for (let i = 0; i < pos.count; i++) col.set(f(pos.getX(i), pos.getY(i), pos.getZ(i)), i * 3); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); return g; };
-const studio = new THREE.Group(); scene.add(studio);
-{
-  // the floor: a pool of light under the droid, dark by the time it meets the wall
-  const fg = fade(new THREE.RingGeometry(0.001, 3.4, 72, 20).rotateX(-Math.PI / 2), (x, y, z) => { const t = Math.exp(-(x * x + z * z) / 1.5); return [0.004 + 0.085 * t, 0.005 + 0.095 * t, 0.007 + 0.11 * t]; });
-  const floor = new THREE.Mesh(fg, new THREE.MeshLambertMaterial({ vertexColors: true })); floor.receiveShadow = true; studio.add(floor);
-  // the wall: all the way round, with a soft band of light at the droid's height
-  const bg = fade(new THREE.CylinderGeometry(3.4, 3.4, 5, 72, 14, true), (x, y) => { const h = y + 2.5, t = Math.exp(-(((h - 1.0) / 0.9) ** 2)) * Math.min(1, h / 0.5); return [0.004 + 0.035 * t, 0.005 + 0.048 * t, 0.008 + 0.068 * t]; });
-  const sweep = new THREE.Mesh(bg, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.BackSide })); sweep.position.set(0, 2.5, 0); studio.add(sweep);
-}
-// a floor that shows only the shadow, for a plain or transparent background
-const catcher = new THREE.Mesh(new THREE.PlaneGeometry(4, 4).rotateX(-Math.PI / 2), new THREE.ShadowMaterial({ opacity: 0.42 }));
-catcher.receiveShadow = true; catcher.visible = false; scene.add(catcher);
-
-let dirty = true;
-const redraw = () => { dirty = true; };
-const changed = () => { renderer.shadowMap.needsUpdate = true; redraw(); };
-const camera = new THREE.PerspectiveCamera(30, 1, 0.05, 30);
-const controls = new OrbitControls(camera, canvas);
-function frameView(which = 'whole') {
-  const v = chassis().views[which] || chassis().views.whole;
-  controls.target.set(...v.target); camera.position.set(...v.pos); controls.update(); redraw();
-}
-controls.enablePan = false; controls.enableDamping = true; controls.dampingFactor = 0.08;
-controls.minDistance = 0.55; controls.maxDistance = 6; controls.minPolarAngle = 0.35; controls.maxPolarAngle = 1.72;
-frameView('whole');
+const stage = makeStage(canvas, { tall: 1.3, minDistance: 0.55, onNoGL: () => { document.getElementById('nogl').hidden = false; } });
+const { scene, camera, controls, redraw, changed } = stage;
+function frameView(which = 'whole') { const v = chassis().views[which] || chassis().views.whole; stage.view(v.target, v.pos); }
 
 /* ---------------- the droid ---------------- */
 const noise = noiseTexture(256);
@@ -248,25 +180,10 @@ document.getElementById('random').addEventListener('click', () => {
 for (const b of document.querySelectorAll('[data-view]')) b.addEventListener('click', () => frameView(b.dataset.view));
 
 /* ---------------- pictures ---------------- */
-// Render the scene square at `size` from a camera, on the studio, a plain colour or nothing, and return a PNG data URL.
-function snapshot(size, bg, cam, ground = true) {
-  const keep = { w: canvas.clientWidth, h: canvas.clientHeight, pr: renderer.getPixelRatio() };
-  renderer.setPixelRatio(1); renderer.setSize(size, size, false);
-  studio.visible = bg === 'studio'; catcher.visible = bg !== 'studio' && ground;
-  renderer.setClearColor(0x161d29, bg === 'plain' ? 1 : 0);
-  faceHalos(cam); renderer.render(scene, cam);
-  const url = canvas.toDataURL('image/png');
-  studio.visible = true; catcher.visible = false; renderer.setClearColor(0x000000, 0);
-  renderer.setPixelRatio(keep.pr); renderer.setSize(keep.w, keep.h, false);
-  redraw();
-  return url;
-}
-function download(url, name) { const a = document.createElement('a'); a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
 const bgChoice = () => (document.querySelector('input[name=bg]:checked') || { value: 'studio' }).value;
 // the portrait: the current view, 1024 px square
 document.getElementById('save').addEventListener('click', () => {
-  const cam = camera.clone(); cam.aspect = 1; cam.fov = fovFor(1); cam.updateProjectionMatrix();
-  download(snapshot(1024, bgChoice(), cam), `${state.chassis}-droid-${state.seed}-${state.primary}-${state.secondary}.png`);
+  stage.download(stage.snapshot(1024, bgChoice(), stage.squareCamera()), `${state.chassis}-droid-${state.seed}-${state.primary}-${state.secondary}.png`);
 });
 // the token: 512 px, the head and shoulders from the front and a little to one side, so the eye still reads at map
 // size; plain by default
@@ -275,36 +192,19 @@ document.getElementById('token').addEventListener('click', () => {
   const t = chassis().token(pieces);
   tokenCam.position.set(...t.pos); tokenCam.lookAt(...t.target); tokenCam.updateProjectionMatrix();
   const bg = bgChoice() === 'studio' ? 'plain' : bgChoice();
-  download(snapshot(512, bg, tokenCam, false), `${state.chassis}-droid-token-${state.seed}.png`);
+  stage.download(stage.snapshot(512, bg, tokenCam, false), `${state.chassis}-droid-token-${state.seed}.png`);
 });
 
 /* ---------------- run ---------------- */
-const fovFor = (aspect) => (aspect < 0.9 ? 30 + (0.9 - aspect) * 26 : 30);
-function resize() {
-  const w = canvas.clientWidth, h = canvas.clientHeight;
-  if (!w || !h) return;
-  const pr = renderer.getPixelRatio();
-  if (canvas.width !== Math.floor(w * pr) || canvas.height !== Math.floor(h * pr)) { renderer.setSize(w, h, false); redraw(); }
-  if (camera.aspect !== w / h) { camera.aspect = w / h; camera.fov = fovFor(w / h); camera.updateProjectionMatrix(); redraw(); }
-}
 const hint = document.getElementById('hint');
 controls.addEventListener('start', () => hint.classList.add('gone'));
-controls.addEventListener('change', redraw);
-let last = performance.now();
-function frame(now) {
-  const dt = Math.min(0.1, (now - last) / 1000); last = now;
-  resize();
-  controls.update();   // damping keeps moving the camera for a moment after a drag; 'change' marks those frames
-  let moving = false;   // lean back onto the third leg, turn the head, take a step
-  for (const k of Object.keys(goal)) if (anim[k] !== goal[k]) { const step = dt / 0.75; anim[k] = goal[k] > anim[k] ? Math.min(goal[k], anim[k] + step) : Math.max(goal[k], anim[k] - step); moving = true; }
-  if (moving && pieces) { chassis().pose(pieces, anim); changed(); }
-  if (!dirty) return;
-  dirty = false;
-  faceHalos(camera);
-  renderer.render(scene, camera);
-}
+stage.beforeRender = faceHalos;
 aim(true); panel(); paint(); frameView('whole');
 rebuild();
-renderer.setAnimationLoop(frame);
-window.__droid = { state, set, frameView, camera, controls, redraw, rebuild, anim, goal,
-  stats: () => ({ tris: renderer.info.render.triangles, calls: renderer.info.render.calls, geometries: renderer.info.memory.geometries, built: info }) };
+stage.start((dt) => {   // lean back onto the third leg, turn the dome, take a step
+  let moving = false;
+  for (const k of Object.keys(goal)) if (anim[k] !== goal[k]) { const step = dt / 0.75; anim[k] = goal[k] > anim[k] ? Math.min(goal[k], anim[k] + step) : Math.max(goal[k], anim[k] - step); moving = true; }
+  if (moving && pieces) chassis().pose(pieces, anim);
+  return moving;
+});
+window.__droid = { state, set, frameView, camera, controls, redraw, rebuild, anim, goal, stats: () => ({ ...stage.stats(), built: info }) };
