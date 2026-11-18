@@ -2356,3 +2356,32 @@ test("renown and lifestyle lines don't name a character whose name the GM hides 
   assert.ok(!chat.includes("Darth Secret"), chat);
   assert.ok(chat.includes("??? earns 1 renown with Sith"));
 });
+
+test("the GM's lock also holds a player's new sheet and current HP (#191 review follow-up)", async () => {
+  const { gm, p1 } = await table();
+  await gm.act("settings.sheetLock", { on: true });
+  const id = (await p1.act("char.save", { char: { name: "Overpowered", classes: [{ name: "Fighter", level: 20 }, { name: "Consular", level: 5 }], xp: 999999, abilities: { con: 14 }, hp: { max: 500, current: 500, temp: 0 } } })).data.id;
+  let c = (await gm.poll()).data.state.characters[id];
+  assert.deepEqual(c.classes.map((k) => [k.name, k.level]), [["Fighter", 1]], "a new sheet starts at 1st level");
+  assert.deepEqual([c.xp, c.hp.max, c.hp.current], [0, 12, 12], "no XP; d10 max + Con 2; current capped");
+  await p1.act("char.save", { char: Object.assign({}, c, { hp: { max: 12, current: 250, temp: 3 } }) });
+  c = (await gm.poll()).data.state.characters[id];
+  assert.deepEqual([c.hp.current, c.hp.temp], [12, 3], "current HP can't pass the max; temp has its own box");
+  const gid = (await gm.act("char.save", { char: { name: "Boss", classes: [{ name: "Fighter", level: 15 }], hp: { max: 150, current: 150 } } })).data.id;
+  assert.equal((await gm.poll()).data.state.characters[gid].classes[0].level, 15, "the GM's own sheets are the GM's");
+  await gm.act("settings.sheetLock", { on: false });
+  const id2 = (await p1.act("char.save", { char: { name: "Import", classes: [{ name: "Fighter", level: 7 }], xp: 23000 } })).data.id;
+  assert.equal((await gm.poll()).data.state.characters[id2].classes[0].level, 7, "off: as before");
+});
+
+test("multiclassing reads only SW5e's own classes (no inherited names); the PHB's extra skill is noted (#194 review)", async () => {
+  require("../sections/jpesus/holotable/rules.js");
+  const R = globalThis.SW5E;
+  assert.deepEqual(R.multiclassUnmet({ classes: [{ name: "constructor", level: 1 }], abilities: {} }, "toString"), []);
+  assert.equal(R.mcProfs("__proto__"), "");
+  assert.match(R.mcProfs("Engineer"), /^Light armor, \+ one skill and one tool/);
+  const { gm, p1 } = await table();
+  const id = (await p1.act("char.save", { char: { name: "Odd", classes: [{ name: "constructor", level: 2 }], abilities: { str: 14 } } })).data.id;
+  await gm.act("levelup.grant", { charIds: [id] });
+  assert.equal((await p1.act("levelup.apply", { charId: id, className: "hasOwnProperty", hpMode: "average", hitDie: 8 })).code, 200, "no 500: an unknown class has no prerequisites");
+});

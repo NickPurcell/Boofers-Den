@@ -470,7 +470,7 @@ function applyLevelUp(camp, cid, gm, p) {
       alignment: ["light", "dark"].includes(pw.alignment) ? pw.alignment : "universal", notes: str(pw.notes, 300), description: str(pw.description, 4000) });
   }
   // a new class gives only its multiclass proficiencies (audit 2.13), noted on the sheet
-  if (multiclass && R.MC_PROFS[k.name] && ch.classes.length > 1) ch.proficiencies = `${str(ch.proficiencies, 1800)}${ch.proficiencies ? "\n" : ""}Multiclass ${k.name}: ${R.MC_PROFS[k.name]}`.slice(0, 2000);
+  if (multiclass && R.mcProfs(k.name) && ch.classes.length > 1) ch.proficiencies = `${str(ch.proficiencies, 1800)}${ch.proficiencies ? "\n" : ""}Multiclass ${k.name}: ${R.mcProfs(k.name)}`.slice(0, 2000);
   ch.updated = now();
   pend.count -= 1;
   if (pend.count < 1) delete camp.levelUps[ch.id];
@@ -545,6 +545,17 @@ function applyAction(camp, cid, gm, type, p) {
         clean.xp = old.xp;
         clean.hp = Object.assign({}, clean.hp, { max: (old.hp || {}).max });
       }
+      // a player's brand-new sheet under the lock starts at 1st level with no XP and its class's 1st-level hit points
+      // (the die's maximum + Con); the GM grants what comes after (follow-up to #191's review)
+      if (!gm && !old && camp.sheetLock) {
+        const k = (clean.classes || [])[0] || { name: "Fighter" };
+        clean.classes = [{ name: k.name, level: 1, archetype: "" }];
+        clean.xp = 0;
+        const hp1 = Math.max(1, hitDieFor(k.name, k.hitDie) + abMod(clean, "con"));
+        clean.hp = Object.assign({}, clean.hp, { max: Math.min(num((clean.hp || {}).max, hp1) || hp1, hp1) });
+      }
+      // and current hit points never above the maximum the GM holds
+      if (!gm && camp.sheetLock && clean.hp) clean.hp.current = Math.min(num(clean.hp.current, 0), num(clean.hp.max, 0));
       if (!gm) {
         const lc = (v) => String(v || "").trim().toLowerCase();
         const newSpecies = !old || lc(old.species) !== lc(clean.species);
