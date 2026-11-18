@@ -464,6 +464,32 @@ test("downtime activities (audit 11.1): the player asks, the GM approves first, 
   await db.del(S.K.sw5e("downtime"));
 });
 
+test("level up: a half-feat's own +1 goes to an ability SW5e's feat list allows (audit 2.5)", async () => {
+  const { gm, p1 } = await table();
+  await db.set(S.K.sw5e("feats"), JSON.stringify([{ n: "Ace Pilot", asi: ["Intelligence"] }, { n: "Athlete", asi: ["Strength", "Dexterity"] }, { n: "Resilient", asi: ["Any"] }, { n: "Lucky", asi: [] }]));
+  const kay = (await p1.act("char.save", { char: { name: "Kay", classes: [{ name: "Fighter", level: 3 }], abilities: { str: 15, dex: 14, con: 12, int: 20 }, hp: { max: 28, current: 28 } } })).data.id;
+  await gm.act("levelup.grant", { charIds: [kay] });
+  const up = (feat) => p1.act("levelup.apply", { charId: kay, className: "Fighter", hpMode: "average", feat });
+  assert.equal((await up({ name: "Athlete", asi: { con: 1 } })).code, 400, "Athlete raises Strength or Dexterity");
+  assert.equal((await up({ name: "Athlete", asi: { str: 2 } })).code, 400, "a feat's increase is 1");
+  assert.equal((await up({ name: "Athlete", asi: { str: 1, dex: 1 } })).code, 400, "one ability");
+  assert.equal((await up({ name: "Lucky", asi: { str: 1 } })).code, 400, "Lucky raises nothing");
+  assert.equal((await up({ name: "Ace Pilot", asi: { int: 1 } })).code, 400, "never above 20");
+  assert.equal((await up({ name: "Athlete", asi: JSON.parse('{"__proto__": 1}') })).code, 400);
+  assert.equal((await up({ name: "Athlete", asi: { constructor: 1 } })).code, 400);
+  assert.equal((await up({ name: "Athlete" })).code, 200, "the feat without its +1 chosen: as before");
+  let st = (await p1.poll()).data.state;
+  assert.deepEqual([st.characters[kay].classes[0].level, st.characters[kay].abilities.str], [4, 15]);
+  await gm.act("levelup.grant", { charIds: [kay] });
+  assert.equal((await up({ name: "Athlete", asi: { dex: 1 } })).code, 200);
+  st = (await p1.poll()).data.state;
+  assert.equal(st.characters[kay].abilities.dex, 15);
+  assert.match(st.chat.at(-1).text, /feat: Athlete \(DEX \+1\)/);
+  await gm.act("levelup.grant", { charIds: [kay] });
+  assert.equal((await up({ name: "Resilient", asi: { wis: 1 } })).code, 200, "'Any' is any of the six");
+  await db.del(S.K.sw5e("feats"));
+});
+
 test("level up: the GM can level an absent player's character, and cancel a grant", async () => {
   const { gm, p1 } = await table();
   const kira = (await p1.act("char.save", { char: { name: "Kira", classes: [{ name: "Consular", level: 1 }], abilities: { con: 10 }, hp: { max: 6, current: 6 } } })).data.id;
