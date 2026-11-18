@@ -884,7 +884,7 @@
             <td class="n eq-wt">${inp(`equipment.${i}.wt`, +e.wt || '', { ro, type: 'number', ph: '0' })}</td>
             <td class="armor-cell">${inp(`equipment.${i}.armor.kind`, (e.armor || {}).kind || '', { ro, type: 'select', options: [{ v: '', t: '—' }, ...R.ARMOR_KINDS] })}${e.armor && e.armor.kind ? inp(`equipment.${i}.armor.ac`, +e.armor.ac || 0, { ro, type: 'number' }) : ''}</td>
             <td>${inp(`equipment.${i}.equipped`, e.equipped, { ro, type: 'checkbox' })}</td>
-            <td>${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Empty.</td></tr>'}
+            <td style="white-space:nowrap">${!ro ? `<button class="btn tiny ghost" data-act="sell" data-i="${i}" title="Sell one${+e.cost > 0 ? ` (half its cost: ${R.sellPrice(e).toLocaleString()} cr)` : ''}">Sell</button><button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Empty.</td></tr>'}
           </tbody></table></div></div>
         ${stashBox(ch, ro)}
         <div class="box"><h4>Features & Traits <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-feature" title="Feats, class features, maneuvers, fighting styles, lightsaber forms, ventures">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-feature" title="Write a feature by hand">custom</button>' : ''}</h4>
@@ -1032,6 +1032,19 @@
       case 'pick-archetype': if (window.HTB) HTB.openArchetypePicker(ch.id, i); break;
       case 'pick-feature': HTB.openFeaturePicker(ch.id); break;
       case 'del': mutate(c => c[b.dataset.list].splice(i, 1)); break;
+      case 'sell': {   // selling (audit 6.8): one of the item, for half its cost by default (PHB, Selling Treasure); the table can agree another price
+        const it = ch.equipment[i]; if (!it) break;
+        const ans = prompt(`Sell one ${it.name} for how many credits?${+it.cost > 0 ? ` (Half its cost is ${R.sellPrice(it).toLocaleString()} cr.)` : ''}`, String(R.sellPrice(it)));
+        if (ans === null) break;
+        const price = String(ans).trim() === '' ? R.sellPrice(it) : Math.max(0, Math.min(1e9, Math.round(+ans) || 0));   // blank: the default
+        mutate(c => {
+          const e = c.equipment[i]; if (!e || e.name !== it.name) return;
+          if ((n0(e.qty) || 1) > 1) e.qty = (n0(e.qty) || 1) - 1; else c.equipment.splice(i, 1);
+          c.credits = n0(c.credits) + price;
+        });
+        act('chat', { text: `*sells ${it.name} for ${price.toLocaleString()} cr.*`, as: ch.name });
+        break;
+      }
       case 'atk': {
         const at = ch.attacks[i], crit = +at.critRange || 20, shots = R.shotsOf(at);
         if (shots === 0) { toast(`${at.name} is out of shots. Reload it first (an action or bonus action).`); break; }
@@ -1196,7 +1209,8 @@
               ${it.src ? `<span class="pp-tag" title="${esc(SRC[it.src] || it.src)}">${esc(it.src)}</span>` : ''}
               <div class="pp-meta">${esc([!enh && it.wc, itemNotes(it, enh) !== it.cat && itemNotes(it, enh), !enh && it.cost != null && `${it.cost.toLocaleString()} cr`, !enh && it.wt && `${it.wt} lb`, enh && it.pre && `Requires ${it.pre}`].filter(Boolean).join(' · '))}</div>
               ${it.desc ? `<details class="pp-desc"><summary>Description</summary><div>${md(it.desc)}</div></details>` : ''}</div>
-            <button class="btn small ${qty ? '' : 'primary'}" data-eq="add" data-i="${i}">${qty ? `Add another (${qty})` : 'Add'}</button></div>`;
+            <div class="eq-btns">${!enh && it.cost > 0 && canEdit(ch()) ? `<button class="btn small" data-eq="buy" data-i="${i}" title="Pay ${it.cost.toLocaleString()} cr from this character's credits">Buy · ${it.cost.toLocaleString()} cr</button>` : ''}
+            <button class="btn small ${qty ? '' : 'primary'}" data-eq="add" data-i="${i}">${qty ? `Add another (${qty})` : 'Add'}</button></div></div>`;
         }).join('') + (rows.length > F.limit ? `<button class="btn small" data-eq="more" style="width:100%">Show ${rows.length - F.limit} more</button>` : '')
           + (!rows.length ? '<p class="muted">Nothing matches these filters.</p>' : '');
         ep.querySelector('.pp-count').textContent = `${rows.length} of ${list.length} ${enh ? 'enhanced items' : 'items'}`;
@@ -1232,17 +1246,21 @@
           ep.querySelectorAll(`[data-eq="check"][data-key="${b.dataset.key}"]`).forEach(cb => { cb.checked = a === 'all'; });
           render(); updateSummaries(); return;
         }
-        if (a === 'add') {
+        if (a === 'add' || a === 'buy') {
           const it = ep._rows[+b.dataset.i]; if (!it) return;
-          const enh = F.set === 'enhanced';
+          const enh = F.set === 'enhanced', buy = a === 'buy' && !enh && it.cost > 0;
+          // buying (audit 6.8): the item's SW5e cost comes off the character's credits; refused when they're short
+          if (buy && (n0(ch().credits) < it.cost)) return toast(`${ch().name} has ${n0(ch().credits).toLocaleString()} cr; ${it.n} costs ${it.cost.toLocaleString()} cr.`, true);
+          if (buy) act('chat', { text: `*buys ${it.n} for ${it.cost.toLocaleString()} cr.*`, as: ch().name });
           mutate(c => {
+            if (buy) c.credits = n0(c.credits) - it.cost;
             const ex = c.equipment.find(x => String(x.name).toLowerCase() === it.n.toLowerCase());
             if (ex) ex.qty = (n0(ex.qty) || 1) + 1;
             else { const armor = !enh && R.armorFromItem(it); c.equipment.push({ name: it.n, qty: 1, equipped: false, notes: itemNotes(it, enh).slice(0, 200), ...(armor ? { armor } : {}),
               ...(!enh && parseFloat(it.wt) > 0 ? { wt: parseFloat(it.wt) } : {}), ...(!enh && it.cost > 0 ? { cost: it.cost } : {}) }); }   // weight (6.5) and cost (6.8)
             if (!enh && it.cat === 'Weapon' && !c.attacks.some(x => String(x.name).toLowerCase() === it.n.toLowerCase())) c.attacks.push(weaponAttack(it));
           });
-          toast(!enh && it.cat === 'Weapon' ? `Added ${it.n} (and its attack)` : `Added ${it.n}`);
+          toast(`${buy ? 'Bought' : 'Added'} ${it.n}${!enh && it.cat === 'Weapon' ? ' (and its attack)' : ''}${buy ? ` for ${it.cost.toLocaleString()} cr` : ''}`);
           setTimeout(render, 50);
         }
       });
