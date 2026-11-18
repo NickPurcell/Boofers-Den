@@ -3126,3 +3126,23 @@ test("maneuvers through the API: the sheet's maneuver and pool, the die from the
   assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0", add: { maneuver: "__proto__" } })).code, 200);
   assert.ok(!("mv" in {}) && !("conditions" in {}));
 });
+
+test("crit range (#165): an attack row's critRange makes the engine crit on that d20 or higher, and such a roll always hits", () => {
+  const ch = { classes: [{ name: "Fighter", level: 3 }], abilities: { str: 16, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
+    attacks: [{ name: "Keen vibroblade", ab: "str", damage: "1d8", type: "kinetic", props: "", critRange: 19 }, { name: "Sword", ab: "str", damage: "1d8", type: "kinetic", props: "" }] };
+  const [keen, plain] = E.attacksOf(ch, R);
+  assert.deepEqual([keen.critFrom, plain.critFrom], [19, undefined]);
+  const ft = unit({ id: "ft", name: "Fenn", side: "pc", x: 0, y: 0 }), r1 = (ac) => unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 90, maxHp: 90, ac });
+  let d = dice({ total: 24, nat: 19 }, { total: 12 });
+  let r = E.apply(world([ft, r1(30)], "ft"), { type: "attack", unit: "ft", target: "r1", attack: keen }, d.roll);
+  assert.equal(d.asked[1], "2d8+3", "a 19 is a critical, even against AC 30");
+  assert.match(r.log[0].text, /a critical hit!/);
+  d = dice({ total: 24, nat: 19 }, { total: 12 });
+  r = E.apply(world([ft, r1(30)], "ft"), { type: "attack", unit: "ft", target: "r1", attack: plain }, d.roll);
+  assert.match(r.log[0].text, /a miss/, "without the range, 24 against AC 30 misses");
+  d = dice({ total: 23, nat: 18 }, { total: 6 });
+  E.apply(world([ft, r1(10)], "ft"), { type: "attack", unit: "ft", target: "r1", attack: keen }, d.roll);
+  assert.equal(d.asked[1], "1d8+3", "an 18 isn't");
+  assert.equal(E.preview(world([ft, r1(30)], "ft"), "ft", "r1", keen).need, 19, "the preview counts it");
+  assert.equal(E.attacksOf(Object.assign({}, ch, { attacks: [{ name: "Odd", ab: "str", damage: "1d8", critRange: 3 }] }), R)[0].critFrom, undefined, "out of range: ignored");
+});
