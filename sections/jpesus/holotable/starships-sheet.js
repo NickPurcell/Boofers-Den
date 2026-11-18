@@ -60,9 +60,12 @@
     return `<div class="row wrap mod-row" style="gap:6px;margin:-2px 0 6px 8px;font-size:12px">${inp(`mods.${i}.type`, x.type || '', { ro, type: 'select', options: ['', ...SR.MOD_TYPES] })}
       <label class="ship-lv">grade ${inp(`mods.${i}.grade`, String(+x.grade || 0), { ro, type: 'select', options: ['0', '1', '2', '3', '4', '5'] })}</label>
       <label class="toggle" title="Given by a tier feature: no slot, no suite count, no cost, no check">${inp(`mods.${i}.free`, !!x.free, { ro, type: 'checkbox' })} tier feature</label>
-      ${x.free ? '' : `<span class="muted">DC ${dc} · ${SR.modCost(s, x).toLocaleString('en-US')} cr</span>${ro ? '' : `<button class="btn tiny ghost" data-sx="install" data-i="${i}" title="The foremost mechanic's Intelligence (mechanic's kit) check">Install check</button>`}`}
+      ${x.free ? '' : `<span class="muted">DC ${dc} · ${SR.modCost(s, x).toLocaleString('en-US')} cr</span>${ro || inFight() ? '' : `<button class="btn tiny ghost" data-sx="install" data-i="${i}" title="The foremost mechanic's Intelligence (mechanic's kit) check">Install check</button>`}`}
       ${preTxt}</div>`;
   }
+  // ship combat is running on the space map: between-fights work (recharge, refit, installing) waits, for players (the
+  // server refuses it; the GM stays free)
+  const inFight = () => !H.isGM() && !!(H.S.st && H.S.st.space && H.S.st.space.active);
   const buildOpen = {};   // per ship, whether the panel below is open (the sheet is redrawn on every change)
   document.addEventListener('toggle', (e) => { const d = e.target; if (d && d.classList && d.classList.contains('ship-build')) buildOpen[d.dataset.sid] = d.open; }, true);
   // what the ship's size, tier and role give it (SotG chapters 1, 3 and 5), next to what the sheet says, with Apply
@@ -117,7 +120,7 @@
         <span class="spacer"></span><label class="ship-lv" title="${esc('Speed -150 / -250 / -300 ft; at 4, speed 0')}">Slowed ${lvSel('slowed', 4, i => (i ? (i >= 4 ? 'Speed 0' : `Speed -${SR.SLOWED_FEET[i]} ft`) : 'None'))}</label>
         <label class="ship-lv" title="${esc(SR.SYSTEM_NOTES.slice(1).map((t, i) => `${i + 1}: ${t}`).join('\n'))}">System damage ${lvSel('system', 6, sysTitle)}</label></div>
       ${powerBlock(s, ro, ctx)}
-      ${ro || SR.isLost(st) && st.zero.destroyed ? '' : betweenBlock(s, st)}
+      ${ro || SR.isLost(st) && st.zero.destroyed || inFight() ? '' : betweenBlock(s, st)}
       ${buildBlock(s, ro)}
     </div>`;
   }
