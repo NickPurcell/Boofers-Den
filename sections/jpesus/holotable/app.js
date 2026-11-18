@@ -556,6 +556,14 @@
     const ch = clone(selChar()); fn(ch); saveChar(ch); guarded('sheet', renderSheet);
   }
 
+  // The way into the archetype picker (audit 2.7): SW5e's classes take their archetype at 3rd level. A class at 3+ with
+  // none (an import, a missed pick) gets a button; one that has it gets a small ◈ to change it. Needs the SW5e books.
+  function archetypeButton(ch, k, i, ro) {
+    const cls = R.CLASSES[k.name];
+    if (ro || !cls || n0(k.level) < 3 || !window.HTB || S.st.sw5eBooks === false) return '';
+    return k.archetype ? `<button class="btn tiny ghost" data-act="pick-archetype" data-i="${i}" title="Change the ${esc(cls.arch)}">◈</button>`
+      : `<button class="btn tiny amber" data-act="pick-archetype" data-i="${i}" title="${esc(k.name)} ${n0(k.level)} has no ${esc(cls.arch)} yet">◈ Choose ${esc(cls.arch)}</button>`;
+  }
   function inp(path, val, opts = {}) {
     const ro = opts.ro ? 'disabled' : '';
     const type = opts.type || (typeof val === 'number' ? 'number' : 'text');
@@ -610,6 +618,7 @@
           <span class="row">${inp(`classes.${i}.name`, k.name, { ro, list: 'dlClasses', w: '110px' })}
           ${inp(`classes.${i}.level`, +k.level || 1, { ro, type: 'number', w: '58px' })}
           ${k.archetype ? `<span class="muted class-arch" title="${esc((R.CLASSES[k.name] || {}).arch || 'Archetype')}">${esc(k.archetype)}</span>` : ''}
+          ${archetypeButton(ch, k, i, ro)}
           ${!ro && ch.classes.length > 1 ? `<button class="btn tiny ghost" data-act="del-class" data-i="${i}">✕</button>` : ''}</span>`).join('')}
         </div>
       </div>
@@ -629,14 +638,17 @@
       <div class="stat rollable" data-roll="${d20(R.initiative(ch))}" data-label="Initiative" data-d20="1"><div class="lbl">Initiative</div><div class="val">${R.fmt(R.initiative(ch))}</div></div>
       <div class="stat"><div class="lbl">Speed</div>${inp('speed', +ch.speed || 30, { ro, type: 'number' })}</div>
       <div class="stat"><div class="lbl">Proficiency</div><div class="val">${R.fmt(pb)}</div></div>
-      <div class="stat"><div class="lbl">Passive Perc.</div><div class="val">${R.passive(ch, 'perception')}</div></div>
+      <div class="stat" title="Passive scores: 10 + the skill's bonus (audit 5.13)"><div class="lbl">Passive Perc.</div><div class="val">${R.passive(ch, 'perception')}</div>
+        <div class="muted" style="font-size:11px">Insight ${R.passive(ch, 'insight')} · Invest. ${R.passive(ch, 'investigation')}</div></div>
       <div class="stat"><div class="lbl">Hit Dice</div><div class="val" style="font-size:15px;padding-top:6px">${esc(R.hitDiceSummary(ch))}</div>
         <div class="muted" style="font-size:11px" title="${esc(R.hitDice(ch).map(d => `d${d.die}: ${d.used} of ${d.total} used`).join(' · '))}">used ${inp('hitDiceUsed', R.hitDiceUsedTotal(ch), { ro, type: 'number', w: '58px' })}</div></div>
       <div class="stat"><div class="lbl">Inspiration</div><div style="padding-top:6px">${inp('inspiration', ch.inspiration, { ro, type: 'checkbox' })}</div></div>
     </div>
     <div class="senses-row" title="What this character perceives in the dark or unseen. Choosing a species sets them; only the GM changes them by hand.">
       <span class="lbl">Senses</span> <span>${esc(R.sensesText(ch.senses)) || '<span class="muted">none (normal sight)</span>'}</span>
-      ${isGM() ? '<button class="btn tiny ghost" data-act="senses" title="Set the senses of this character (GM)">✎</button>' : ''}</div>
+      ${isGM() ? '<button class="btn tiny ghost" data-act="senses" title="Set the senses of this character (GM)">✎</button>' : ''}
+      <span class="lbl" style="margin-left:14px" title="Choosing a species sets it; the GM can change it. A token placed for this character takes its size.">Size</span>
+      ${isGM() ? inp('size', ch.size || 'Medium', { type: 'select', w: '120px', options: R.SIZES }) : `<span>${esc(ch.size || 'Medium')}</span>`}</div>
     <div class="subtabs">${[['main', 'Abilities & Skills'], ['actions', 'Attacks & Powers'], ['gear', 'Features & Gear'], ['bio', 'Bio & Notes']]
       .map(([k, t]) => `<button data-act="sub" data-sub="${k}" class="${sub === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
 
@@ -674,7 +686,7 @@
             <span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${d20(b)}" data-label="${a.name} save" data-d20="1">${a.name}</span>
             ${miscBox('saveMisc.' + a.key, (ch.saveMisc || {})[a.key], ro)}</div>`;
         }).join('')}</div></div>
-        <div class="box" style="grid-row: span 2"><h4>Skills <span class="muted" style="text-transform:none;letter-spacing:0">click dot: none → proficient → expertise</span></h4><div class="list-rows">${R.SKILLS.map(s => {
+        <div class="box" style="grid-row: span 2"><h4>Skills <span class="muted" style="text-transform:none;letter-spacing:0">click dot: none → proficient → expertise → half</span></h4><div class="list-rows">${R.SKILLS.map(s => {
           const b = R.skillBonus(ch, s.key), lv = +(ch.skills[s.key] || 0);
           return `<div class="lr"><button class="prof ${lv === 2 ? 'p2' : lv === 1 ? 'p1' : lv === 0.5 ? 'p05' : ''}" data-act="skill-prof" data-sk="${s.key}" ${ro ? 'disabled' : ''}></button>
             ${(sr => `<span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${esc(sr.expr)}" data-label="${s.name}${sr.reliable ? ' (Reliable Talent)' : ''}" data-d20="1"${sr.reliable ? ' title="Reliable Talent: the d20 counts as at least 8"' : ''}>${s.name}</span>`)(R.skillRollExpr(ch, s.key))}<span class="ab">${s.ab}</span>
@@ -697,6 +709,10 @@
           <span class="bonus">${r.max - r.used}/${r.max}</span>
           ${!ro ? `<button class="btn tiny" data-act="res-use" data-i="${r.i}" ${r.used >= r.max ? 'disabled' : ''} title="Spend one">Use</button><button class="btn tiny ghost" data-act="res-back" data-i="${r.i}" ${r.used <= 0 ? 'disabled' : ''} title="Get one back">+1</button>` : ''}
           <span class="muted res-refill">${refill[r.refill] || ''}</span></div>`).join('')}</div>` : '<p class="muted">Nothing to track yet.</p>'}
+        ${R.infuseBonus(ch) ? `<div class="lr res-row" title="Infuse Item (Engineer): one armor, shield or weapon until your next long rest. +${R.infuseBonus(ch)} to AC, or to attack and damage rolls.">
+          <span class="nm">Infuse Item <span class="muted">+${R.infuseBonus(ch)}</span></span>
+          ${ro ? `<span>${esc(String(ch.infused || '').replace(/^(attack|equipment):/, '') || '—')}</span>` : `<select data-act-change="infuse"><option value="">— nothing infused —</option>${(ch.attacks || []).map(a => `<option value="attack:${esc(a.name)}" ${ch.infused === 'attack:' + a.name ? 'selected' : ''}>⚔ ${esc(a.name)}</option>`).join('')}${(ch.equipment || []).filter(e => e.armor && e.armor.kind).map(e => `<option value="equipment:${esc(e.name)}" ${ch.infused === 'equipment:' + e.name ? 'selected' : ''}>🛡 ${esc(e.name)}</option>`).join('')}</select>`}
+          <span class="muted res-refill">until long rest</span></div>` : ''}
         ${tbl.filter(t => t.cols.length).map(t => `<div class="class-tbl"><b>${esc(t.cls)} ${t.level}</b> ${t.cols.map(([h, v]) => `<span><span class="muted">${esc(h)}</span> ${esc(v)}</span>`).join(' · ')}</div>`).join('')}
       </div>`;
     }
@@ -704,10 +720,11 @@
       const fMax = ch.force.max !== '' && ch.force.max != null ? +ch.force.max : ci.forceMax;
       const tMax = ch.tech.max !== '' && ch.tech.max != null ? +ch.tech.max : ci.techMax;
       const pts = (k, max, used, cls, label, extra) => `<div class="box"><h4>${label}</h4>
-        <div class="points"><b>${Math.max(0, max - used)}</b><span class="muted">/ ${max}</span>
+        <div class="points"><b>${Math.max(0, max - used) + (+ch[k].temp || 0)}</b><span class="muted">/ ${max}${+ch[k].temp ? ` (+${n0(ch[k].temp)} temp)` : ''}</span>
           <div class="meter ${cls}"><div style="width:${max ? 100 * Math.max(0, max - used) / max : 0}%"></div></div>
           <span class="muted">used</span>${inp(k + '.used', +used || 0, { ro, type: 'number' })}
-          <span class="muted">max override</span>${inp(k + '.max', ch[k].max ?? '', { ro, type: 'number', ph: String(k === 'force' ? ci.forceMax : ci.techMax) })}</div>
+          <span class="muted">max override</span>${inp(k + '.max', ch[k].max ?? '', { ro, type: 'number', ph: String(k === 'force' ? ci.forceMax : ci.techMax) })}
+          <span class="muted" title="Temporary points: spent first, gone after a long rest. A new source replaces them; they don't add up.">temp</span>${inp(k + '.temp', +ch[k].temp || 0, { ro, type: 'number', w: '56px' })}</div>
         <div class="muted" style="margin-top:6px;font-size:12px">${extra}</div></div>`;
       html += `<div class="box"><h4>Attacks <span class="spacer"></span>${!ro ? `<button class="btn tiny" data-act="pick-weapon">＋ weapon from SW5e</button><button class="btn tiny ghost" data-act="add-attack">custom</button>` : ''}</h4>
         <table class="t"><thead><tr><th>Name</th><th>Ability</th><th title="Tick if proficient with this weapon">Prof.</th><th>Hit</th><th title="The d20 this attack crits on (19 = 19-20)">Crit</th><th>Damage die</th><th>Type</th><th>Properties</th><th></th></tr></thead><tbody>
@@ -803,10 +820,12 @@
     else setTimeout(() => guarded('sheet', renderSheet), 0);
   });
   function sheetChangeAction(kind, val, t) {
+    if (kind === 'infuse' && !val) return mutate(c => { c.infused = ''; });   // nothing infused
     if (!val) return;
     if (kind === 'add-cond') mutate(c => { c.conditions = [...new Set([...(c.conditions || []), val])]; });
     if (kind === 'add-weapon') { const w = R.WEAPONS[+val]; mutate(c => c.attacks.push({ name: w.name, ab: w.ab, damage: w.damage, type: w.type, props: w.props, proficient: true })); }
     if (kind === 'assign') act('char.assign', { id: S.selected, owner: val });
+    if (kind === 'infuse') return mutate(c => { c.infused = val; });
     t.value = '';
   }
   $('#sheet').addEventListener('click', async e => {
@@ -823,7 +842,8 @@
       case 'dismiss-note': delete S.importNotes[ch.id]; renderSheet($('#sheet')); break;
       case 'del-class': mutate(c => c.classes.splice(i, 1)); break;
       case 'save-prof': mutate(c => { c.saves[b.dataset.ab] = !c.saves[b.dataset.ab]; }); break;
-      case 'skill-prof': mutate(c => { const v = +(c.skills[b.dataset.sk] || 0); c.skills[b.dataset.sk] = v === 0 ? 1 : v === 1 ? 2 : 0; }); break;
+      // none → proficient → expertise → half (a feature that adds half your proficiency, audit 5.6) → none
+      case 'skill-prof': mutate(c => { const v = +(c.skills[b.dataset.sk] || 0); c.skills[b.dataset.sk] = v === 0 ? 1 : v === 1 ? 2 : v === 2 ? 0.5 : 0; }); break;
       case 'hp': {
         const raw = $('#hpDelta').value.trim(); const n = Math.abs(parseInt(raw, 10)); if (!n) return;
         const sign = raw.startsWith('-') ? -1 : raw.startsWith('+') ? 1 : +b.dataset.sign;
@@ -834,7 +854,7 @@
       case 'short-rest': case 'short-rest-done': shortRestDialog(); break;   // hit dice by size, then the rest itself (#71)
       case 'long-rest':
         mutate(c => {
-          c.hp.current = +c.hp.max; c.hp.temp = 0; c.force.used = 0; c.tech.used = 0; c.deathSaves = { s: 0, f: 0 };
+          c.hp.current = +c.hp.max; c.hp.temp = 0; c.force.used = 0; c.tech.used = 0; c.force.temp = 0; c.tech.temp = 0; c.deathSaves = { s: 0, f: 0 }; c.infused = '';   // Infuse Item ends; infuse again
           delete c.force.high; delete c.tech.high;   // high-level powers can be cast again (#160)
           // half the total hit dice back (at least one), the largest first (audit 7.5)
           const dice = R.hitDice(c); let back = Math.max(1, Math.floor(dice.reduce((n, d) => n + d.total, 0) / 2));
@@ -882,6 +902,7 @@
       case 'pick-weapon': openEquipPicker(ch.id, { weapons: true }); break;
       case 'pick-species': HTB.openSpeciesPicker(ch.id); break;
       case 'pick-background': HTB.openBackgroundPicker(ch.id); break;
+      case 'pick-archetype': if (window.HTB) HTB.openArchetypePicker(ch.id, i); break;
       case 'pick-feature': HTB.openFeaturePicker(ch.id); break;
       case 'del': mutate(c => c[b.dataset.list].splice(i, 1)); break;
       case 'atk': {
@@ -1171,10 +1192,11 @@
     if (ov && !isGM()) return toast(ov.text, true);
     if (ov && !ovAsked && !confirm(`${ov.text}\n\nCast anyway?`)) return;
     const max = ch[k].max !== '' && ch[k].max != null ? +ch[k].max : (k === 'force' ? ci.forceMax : ci.techMax);
-    if (cost && (+ch[k].used || 0) + cost > max) return toast(`Not enough ${k} points (${cost} needed).`, true);
+    const spend = R.pointsSpend(ch[k], cost, max);   // temporary points first (audit 4.9)
+    if (cost && !spend) return toast(`Not enough ${k} points (${cost} needed).`, true);
     const from = R.highCastFrom(ch, k);   // a level that goes once per long rest is noted (#160)
     if (cost || (from && L >= from)) mutate(c => {
-      c[k].used = (+c[k].used || 0) + cost;
+      if (cost) { c[k].used = spend.used; c[k].temp = spend.temp; }
       if (from && L >= from) c[k].high = [...new Set(R.highCastUsed(c, k).concat(L))].sort((a, b) => a - b);
     });
     const dc = k === 'tech' ? `DC ${ci.techDC}, atk ${R.fmt(ci.techAtk)}` : p.alignment === 'dark' ? `DC ${ci.darkDC}, atk ${R.fmt(ci.darkAtk)}` : p.alignment === 'light' ? `DC ${ci.lightDC}, atk ${R.fmt(ci.lightAtk)}` : `DC ${Math.max(ci.lightDC, ci.darkDC)}, atk ${R.fmt(Math.max(ci.lightAtk, ci.darkAtk))}`;
@@ -1317,12 +1339,14 @@
       <label>Name<input id="npcName" placeholder="Stormtrooper"></label><label>Init bonus<input id="npcBonus" type="number" value="1"></label>
       <label>HP<input id="npcHp" type="number" value="13"></label><label>AC<input id="npcAc" type="number" value="14"></label>
       <label>Count<input id="npcCount" type="number" value="1" min="1" max="20"></label>
+      <label title="Your saved NPCs: pick one to fill this form">My NPCs<select id="npcTpl"><option value="">—</option>${(S.st.npcs || []).map(t => `<option value="${esc(t.id)}" ${S.npcTpl === t.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>
       <label class="toggle"><input type="checkbox" id="npcHidden"> hidden</label>
       <button class="btn primary" data-cact="add-npc">Add</button></div>
       <div class="row wrap" style="margin-top:6px"><label class="toggle"><input type="checkbox" id="npcToken" checked> also place map tokens</label>
         <label class="toggle" title="Players see these tokens as ??? until you reveal them"><input type="checkbox" id="npcNameHidden"> hide their names</label>
         <label class="toggle" title="For SW5e creatures: roll each one's hit dice instead of taking the average"><input type="checkbox" id="npcRollHp"> roll creature HP</label>
-        <span class="spacer"></span><button class="btn small amber" data-cact="add-creature">☠ Add an SW5e creature…</button></div></div>
+        <span class="spacer"></span><button class="btn small" data-cact="npc-tpl" title="Save this NPC with its attacks and notes, to add again any time">💾 ${S.npcTpl ? 'Edit NPC…' : 'Save as NPC…'}</button>
+        <button class="btn small amber" data-cact="add-creature">☠ Add an SW5e creature…</button></div></div>
       <div class="enc-diff row wrap" id="encDiff" title="The creatures' XP, multiplied for their numbers, against the party's thresholds (SW5e's encounter-building rules)"></div>`;
     html += `<div class="init-list">${ini.entries.map((en, i) => {
       const ch = en.charId && S.st.characters[en.charId];
@@ -1335,7 +1359,7 @@
           ${gm || canHp ? `<select data-cf="add-cond" style="font-size:12px;padding:1px 4px"><option value="">+ condition</option>${Object.keys(R.CONDITIONS).map(c => `<option>${c}</option>`).join('')}</select>` : ''}</div></div>
         <div class="hp">${hp !== '' ? (canHp ? `HP <input data-cf="hp" value="${esc(hp)}" title="Type a number, or -7 / +5">` : `HP ${esc(hp)}`) + (en.maxHp != null ? ` <span class="muted">/ ${n0(en.maxHp)}</span>` : '') + (temp > 0 ? ` <span class="hp-temp" title="${temp} temporary hit point${temp === 1 ? '' : 's'}">+${temp}</span>` : '') : ''}</div>
         <div class="muted">${en.ac != null ? 'AC ' + esc(en.ac) : ''}</div>
-        <div>${gm && en.sb ? `<button class="btn tiny" data-cact="statblock" title="${esc(en.sb)} stat block">📜</button> <select class="sb-save" data-cf="save" title="Roll this creature's saving throw (GM-only). Shift: advantage, Ctrl: disadvantage" aria-label="Roll a saving throw for ${esc(en.name)}"><option value="">Save…</option>${['str', 'dex', 'con', 'int', 'wis', 'cha'].map(k => `<option value="${k}">${k.toUpperCase()}</option>`).join('')}</select> ` : ''}${gm ? `<button class="btn tiny" data-cact="hide" title="Toggle hidden">${en.hidden ? '👁' : '◌'}</button> <button class="btn tiny ghost" data-cact="remove">✕</button>` : ''}</div></div>`;
+        <div>${gm && en.tpl ? `<button class="btn tiny" data-cact="npccard" title="Your NPC: attacks and notes">📜</button> ` : ''}${gm && en.sb ? `<button class="btn tiny" data-cact="statblock" title="${esc(en.sb)} stat block">📜</button> <select class="sb-save" data-cf="save" title="Roll this creature's saving throw (GM-only). Shift: advantage, Ctrl: disadvantage" aria-label="Roll a saving throw for ${esc(en.name)}"><option value="">Save…</option>${['str', 'dex', 'con', 'int', 'wis', 'cha'].map(k => `<option value="${k}">${k.toUpperCase()}</option>`).join('')}</select> ` : ''}${gm ? `<button class="btn tiny" data-cact="hide" title="Toggle hidden">${en.hidden ? '👁' : '◌'}</button> <button class="btn tiny ghost" data-cact="remove">✕</button>` : ''}</div></div>`;
     }).join('') || '<p class="muted">No combatants yet. Players: click “Roll initiative” on your sheet. GM: add enemies above.</p>'}</div>`;
     el.innerHTML = html;
     if (gm && window.HTB) HTB.renderEncounter($('#encDiff'), ini.entries, S.st.characters, clientId);
@@ -1351,6 +1375,8 @@
     if (a === 'remove') act('init.remove', { id });
     if (a === 'add-creature') HTB.openMonsterPicker();
     if (a === 'statblock' && en && en.sb) HTB.openStatBlock(en.sb);
+    if (a === 'npccard' && en && en.tpl) openNpcCard(en.tpl, en.name);
+    if (a === 'npc-tpl') openNpcEditor((S.st.npcs || []).find(t => t.id === S.npcTpl) || { name: $('#npcName').value.trim(), bonus: +$('#npcBonus').value || 0, hp: +$('#npcHp').value || 1, ac: +$('#npcAc').value || 10, attacks: [], notes: '' });
     if (a === 'hide') act('init.update', { id, fields: { hidden: !en.hidden } });
     if (a === 'init-up' || a === 'init-down') { // GM's fixed ▲/▼ beside the number: step by 1 from what the field shows
       const box = row.querySelector('[data-cf="init"]'), v = n0(box.value) + (a === 'init-up' ? 1 : -1);
@@ -1367,12 +1393,19 @@
       const name = $('#npcName').value.trim() || 'Enemy', count = Math.max(1, Math.min(20, +$('#npcCount').value || 1));
       for (let k = 1; k <= count; k++) {
         const nm = count > 1 ? `${name} ${k}` : name;
-        await act('init.add', { name: nm, bonus: +$('#npcBonus').value || 0, hp: +$('#npcHp').value || null, ac: +$('#npcAc').value || null, hidden: $('#npcHidden').checked });
+        await act('init.add', { name: nm, bonus: +$('#npcBonus').value || 0, hp: +$('#npcHp').value || null, ac: +$('#npcAc').value || null, hidden: $('#npcHidden').checked, tpl: S.npcTpl || undefined });
         if ($('#npcToken').checked) await act('token.add', { name: nm, color: '#ef5350', x: 2 * k, y: 2, hidden: $('#npcHidden').checked, nameHidden: $('#npcNameHidden').checked });
       }
     }
   });
   $('#combat').addEventListener('change', e => {
+    if (e.target.id === 'npcTpl') {   // one of the GM's NPCs fills the form (9.9)
+      const tp = (S.st.npcs || []).find(x => x.id === e.target.value);
+      S.npcTpl = tp ? tp.id : null;
+      if (tp) { $('#npcName').value = tp.name; $('#npcBonus').value = tp.bonus; $('#npcHp').value = tp.hp; $('#npcAc').value = tp.ac; }
+      const b = $('[data-cact="npc-tpl"]'); if (b) b.textContent = tp ? '💾 Edit NPC…' : '💾 Save as NPC…';
+      return;
+    }
     const t = e.target, cf = t.dataset.cf; if (!cf) return;
     const id = t.closest('.init-row').dataset.id, en = S.st.initiative.entries.find(x => x.id === id);
     if (cf === 'save') { if (t.value && en && en.sb) HTB.rollCreatureSave(en.sb, t.value, en.name, e); t.value = ''; return; }
@@ -2330,6 +2363,70 @@
   $('#rules').addEventListener('input', e => { if (e.target.id === 'rulesSearch') renderRules(e.target.value); });
 
   // --------------------------------------------------------------------------- GM
+  // XP after an encounter (audit 9.8): an amount (the meter fills in the creatures' XP), split among the characters
+  // ticked. The server adds it and tells the GM who has reached the next level; levelling stays the GM's grant.
+  function openAwardXp(amount) {
+    const gmIds = new Set(Object.entries(S.st.players).filter(([, p]) => p.role === 'gm').map(([id]) => id));
+    const ini = S.st.initiative || {}, inIni = new Set((ini.entries || []).map(e => e.charId).filter(Boolean));
+    const list = chars().map(c => ({ c, on: !gmIds.has(c.owner) && (!inIni.size || inIni.has(c.id)) }));
+    modal(`<h3>★ Award XP</h3>
+      <div class="row wrap"><label>XP<input id="xpAmt" type="number" min="1" value="${n0(amount) || ''}" style="width:110px"></label>
+        <label style="flex:1">For <input id="xpWhy" maxlength="80" placeholder="e.g. The cantina fight"></label></div>
+      <h4 style="margin-top:10px">Split among</h4>
+      <div class="ask-who">${list.map(({ c, on }) => `<label class="toggle"><input type="checkbox" class="xpChar" value="${esc(c.id)}" ${on ? 'checked' : ''}> ${esc(c.name)} <span class="muted">${n0(c.xp).toLocaleString()} XP</span></label>`).join('') || '<p class="muted">No characters yet.</p>'}</div>
+      <p class="muted" id="xpEach" style="font-size:12px"></p>
+      <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn ghost" id="xpCancel">Cancel</button><button class="btn primary" id="xpGo">Award</button></div>`, box => {
+      const each = () => { const n = box.querySelectorAll('.xpChar:checked').length, a = n0($('#xpAmt').value); $('#xpEach').textContent = n && a ? `${Math.floor(a / n).toLocaleString()} XP each for ${n}.` : ''; };
+      each(); box.oninput = box.onchange = each;
+      box.onclick = e => {
+        if (e.target.id === 'xpCancel') closeModal();
+        if (e.target.id === 'xpGo') {
+          const ids = [...box.querySelectorAll('.xpChar:checked')].map(x => x.value);
+          act('xp.award', { amount: n0($('#xpAmt').value), chars: ids, reason: $('#xpWhy').value }).then(r => { if (r) { closeModal(); toast(`Awarded ${n0(r.each).toLocaleString()} XP each`); } });
+        }
+      };
+    });
+  }
+  document.addEventListener('click', e => { const b = e.target.closest('#encAwardXp'); if (b && isGM()) openAwardXp(+b.dataset.xp || 0); });
+  // ---- the GM's own NPCs (audit 9.9): a template with attacks ("Name | +5 | 1d8+3 energy" a line) and notes
+  function openNpcEditor(t) {
+    const lines = (t.attacks || []).map(a => `${a.n} | ${a.hit >= 0 ? '+' : ''}${a.hit} | ${a.dmg}`).join('\n');
+    modal(`<h3>💾 ${t.id ? 'Edit' : 'Save'} NPC</h3>
+      <div class="npc-form"><label>Name<input id="tpName" value="${esc(t.name || '')}" maxlength="60"></label><label>Init bonus<input id="tpBonus" type="number" value="${n0(t.bonus)}"></label>
+        <label>HP<input id="tpHp" type="number" value="${n0(t.hp) || 1}"></label><label>AC<input id="tpAc" type="number" value="${n0(t.ac) || 10}"></label></div>
+      <label style="margin-top:8px">Attacks <span class="muted">one a line: name | attack bonus | damage</span><textarea id="tpAtk" rows="4" placeholder="Blaster rifle | +5 | 1d8+3 energy">${esc(lines)}</textarea></label>
+      <label style="margin-top:8px">Notes <span class="muted">(only you see them)</span><textarea id="tpNotes" rows="4">${esc(t.notes || '')}</textarea></label>
+      <div class="row" style="margin-top:12px">${t.id ? '<button class="btn danger small" id="tpDel">Delete</button>' : ''}<span class="spacer"></span><button class="btn ghost" id="tpCancel">Cancel</button><button class="btn primary" id="tpSave">Save</button></div>`, box => {
+      box.onclick = async e => {
+        if (e.target.id === 'tpCancel') closeModal();
+        if (e.target.id === 'tpDel' && confirm(`Delete ${t.name}? NPCs already in a fight stay.`)) { await act('npc.remove', { id: t.id }); S.npcTpl = null; closeModal(); }
+        if (e.target.id === 'tpSave') {
+          const attacks = $('#tpAtk').value.split('\n').map(l => l.split('|').map(x => x.trim())).filter(p => p[0]).map(([n, hit, dmg]) => ({ n, hit: parseInt(hit, 10) || 0, dmg: dmg || '' }));
+          const r = await act('npc.save', { npc: { id: t.id, name: $('#tpName').value, bonus: +$('#tpBonus').value || 0, hp: +$('#tpHp').value || 1, ac: +$('#tpAc').value || 10, attacks, notes: $('#tpNotes').value } });
+          if (r) { S.npcTpl = r.id; closeModal(); toast('NPC saved'); }
+        }
+      };
+    });
+  }
+  function openNpcCard(id, who) {   // the tracker's 📜 for an NPC of the GM's: attacks and damage roll GM-only
+    const t = (S.st.npcs || []).find(x => x.id === id);
+    if (!t) return toast('That NPC was deleted.', true);
+    modal(`<h3>📜 ${esc(who || t.name)}</h3><p class="muted" style="margin-top:0">AC ${n0(t.ac)} · HP ${n0(t.hp)} · initiative ${t.bonus >= 0 ? '+' : ''}${n0(t.bonus)}</p>
+      ${(t.attacks || []).map((a, i) => `<div class="row" style="margin:4px 0"><b style="flex:1">${esc(a.n)}</b>
+        <button class="btn small amber" data-npcroll="atk" data-i="${i}" title="Shift: advantage · Ctrl: disadvantage">${a.hit >= 0 ? '+' : ''}${n0(a.hit)} to hit</button>
+        ${a.dmg ? `<button class="btn small" data-npcroll="dmg" data-i="${i}">${esc(a.dmg)}</button>` : ''}</div>`).join('') || '<p class="muted">No attacks saved.</p>'}
+      ${t.notes ? `<div class="box" style="margin-top:8px;white-space:pre-wrap">${esc(t.notes)}</div>` : ''}
+      <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn ghost" id="npcClose">Close</button></div>`, box => {
+      box.onclick = e => {
+        if (e.target.id === 'npcClose') return closeModal();
+        const b = e.target.closest('[data-npcroll]'); if (!b) return;
+        const a = t.attacks[+b.dataset.i]; if (!a) return;
+        const mode = rollModeFromEvent(e);
+        if (b.dataset.npcroll === 'atk') act('roll', { expr: `${mode === 'adv' ? '2d20kh1' : mode === 'dis' ? '2d20kl1' : '1d20'}${a.hit >= 0 ? '+' : ''}${a.hit}`, label: `${who || t.name}: ${a.n}${mode === 'adv' ? ' (adv)' : mode === 'dis' ? ' (dis)' : ''}`, private: true, kind: 'attack' });
+        else { const m = /^[\dd+\-\s]+/i.exec(a.dmg); if (m && m[0].trim()) act('roll', { expr: m[0].replace(/\s+/g, ''), label: `${who || t.name}: ${a.n} damage ${a.dmg.slice(m[0].length).trim()}`.trim(), private: true, kind: 'damage' }); else toast('That damage isn\'t a dice expression.', true); }
+      };
+    });
+  }
   function renderGM(el) {
     if (!isGM()) { el.innerHTML = ''; return; }
     const link = location.origin + location.pathname;
@@ -2350,6 +2447,7 @@
         <p style="margin-top:0" class="muted">After a big fight or a hard-won conversation, give the party a level. Each player gets a pop-up and picks how to level.
           Someone missed the session? Grant just their character, and you can level it for them.</p>
         <button class="btn small amber" id="gmGrant">⬆ Grant a level…</button>
+        <button class="btn small" id="gmXp" title="Give the party XP and split it; you're told who has enough to level">★ Award XP…</button>
         <button class="btn small" id="gmAsk" title="Everyone roll Perception, a group check, a secret Insight roll for a player…">🎲 Ask for a roll…</button>
         <label class="toggle" style="margin-top:8px" title="A table rule: whether players may take the hit die's maximum instead of the average or a roll">
           <input type="checkbox" id="gmHpMax" ${S.st.hpMax !== false ? 'checked' : ''}> Players may take maximum hit points when levelling</label>
@@ -2425,6 +2523,7 @@
     if (id === 'doRename') act('campaign.rename', { name: $('#campRename').value });
     if (id === 'clearChat' && confirm('Clear the chat log for everyone?')) act('chat.clear');
     if (id === 'gmGrant') openGrant();
+    if (id === 'gmXp') openAwardXp(0);
     if (id === 'gmAsk') openAskRoll();
     if (id === 'restoreBtn') $('#restoreFile').click();
     if (id === 'showBackups') {
