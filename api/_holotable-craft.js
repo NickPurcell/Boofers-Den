@@ -28,8 +28,9 @@ function cleanItem(it) {
   if (!name) return null;
   return Object.assign({ name, qty: 1, equipped: false, notes: str(it.notes, 200) },
     +it.wt > 0 ? { wt: Math.min(10000, Math.round(+it.wt * 100) / 100) } : {}, +it.cost > 0 ? { cost: Math.min(1e9, Math.round(+it.cost)) } : {},
-    R.cleanArmor && R.cleanArmor(it.armor) ? { armor: R.cleanArmor(it.armor) } : {},
-    (R.RARITIES || []).includes(it.rar) ? { rar: it.rar } : {}, it.att ? { att: true } : {});
+    R.cleanArmor(it.armor) ? { armor: R.cleanArmor(it.armor) } : {},
+    R.RARITIES.includes(it.rar) ? { rar: it.rar } : {}, it.att ? { att: true } : {},
+    it.use && R.cleanUse(it.use) ? { use: R.cleanUse(it.use) } : {}, R.cleanBonus(it.bonus) ? { bonus: R.cleanBonus(it.bonus) } : {});   // as the sheet keeps them (6.7, 6.2)
 }
 function clean(c) {
   if (!c || typeof c !== "object") return undefined;

@@ -698,9 +698,7 @@
         if (e.target.id === 'craftNo') return closeModal();
         if (e.target.id !== 'craftAsk') return;
         const x = info(); if (!x) return toast('Pick an item from the list.', true);
-        const it = x.it, armor = !x.enh && R.armorFromItem(it);
-        const item = Object.assign({ name: it.n, notes: itemNotes(it, x.enh).slice(0, 200) }, !x.enh && parseFloat(it.wt) > 0 ? { wt: parseFloat(it.wt) } : {},
-          !x.enh && it.cost > 0 ? { cost: it.cost } : {}, armor ? { armor } : {}, x.enh && R.RARITIES && R.RARITIES.includes(it.rar) ? { rar: it.rar } : {}, x.enh && it.att ? { att: true } : {});
+        const it = x.it, item = sheetItem(it, x.enh);   // what "+ from SW5e" would add: a medpac keeps its Use, an enhanced item its +N
         if (await act('craft.request', { charId: ch.id, item, value: x.v, tool: R.craftTool(it, x.enh), note: $('#craftNote', box).value.trim() })) { closeModal(); toast('Asked the GM.'); }
       };
     });
@@ -1354,6 +1352,15 @@
     const crit = R.critFrom(props);   // Keen N: the crit range grows by N
     return { name: it.n, ab, damage: it.dmg || '1', type: it.dt || 'kinetic', props: props.slice(0, 200), proficient: true, ...(crit < 20 ? { critRange: crit } : {}) };
   }
+  // a sheet item from an SW5e gear or enhanced item: one builder for "+ from SW5e" and for crafting (11.2)
+  function sheetItem(it, enh) {
+    const armor = !enh && R.armorFromItem(it);
+    return Object.assign({ name: it.n, qty: 1, equipped: false, notes: itemNotes(it, enh).slice(0, 200) }, armor ? { armor } : {},
+      !enh && parseFloat(it.wt) > 0 ? { wt: parseFloat(it.wt) } : {}, !enh && it.cost > 0 ? { cost: it.cost } : {},   // weight (6.5) and cost (6.8)
+      enh && R.RARITIES.includes(it.rar) ? { rar: it.rar } : {}, enh && it.att ? { att: true } : {},   // rarity and attunement (6.3)
+      (enh ? it.cat === 'Consumable' : ['Medical', 'Explosive'].includes(it.cat)) ? { use: R.consumableUse(it.desc) || {} } : {},   // a consumable (6.7)
+      enh && R.enhancedBonus(it.desc) ? { bonus: R.enhancedBonus(it.desc) } : {});   // an enhanced item's +N (6.2)
+  }
   function itemNotes(it, enhanced) {
     if (enhanced) return [it.rar && `${it.rar} ${it.cat.toLowerCase()}`, it.sub, it.att && 'requires attunement'].filter(Boolean).join(' · ');
     if (it.cat === 'Weapon') return [it.dmg && `${it.dmg} ${it.dt}`, (it.props || []).join(', ')].filter(Boolean).join(' · ');
@@ -1446,11 +1453,7 @@
             if (buy) c.credits = n0(c.credits) - it.cost;
             const ex = c.equipment.find(x => String(x.name).toLowerCase() === it.n.toLowerCase());
             if (ex) ex.qty = (n0(ex.qty) || 1) + 1;
-            else { const armor = !enh && R.armorFromItem(it); c.equipment.push({ name: it.n, qty: 1, equipped: false, notes: itemNotes(it, enh).slice(0, 200), ...(armor ? { armor } : {}),
-              ...(!enh && parseFloat(it.wt) > 0 ? { wt: parseFloat(it.wt) } : {}), ...(!enh && it.cost > 0 ? { cost: it.cost } : {}),   // weight (6.5) and cost (6.8)
-              ...(enh && R.RARITIES.includes(it.rar) ? { rar: it.rar } : {}), ...(enh && it.att ? { att: true } : {}),   // rarity and attunement (6.3)
-              ...((enh ? it.cat === 'Consumable' : ['Medical', 'Explosive'].includes(it.cat)) ? { use: R.consumableUse(it.desc) || {} } : {}),   // a consumable (6.7)
-              ...(enh && R.enhancedBonus(it.desc) ? { bonus: R.enhancedBonus(it.desc) } : {}) });   // an enhanced item's +N (6.2)
+            else { c.equipment.push(sheetItem(it, enh));
               // an enhanced weapon of a known kind ("Vibroblade (Fine)", or its subtype) also gets that weapon's attack, with its +N
               const plus = enh && it.cat === 'Weapon' ? R.enhancedBonus(it.desc) : null, base = plus && plus.hit ? enhancedBase(it) : null;
               if (base && !c.attacks.some(x => String(x.name).toLowerCase() === it.n.toLowerCase())) c.attacks.push(Object.assign(weaponAttack(base), { name: it.n }, plus.dmg === plus.hit ? { magic: plus.hit } : {})); }   // the attack box adds to both
