@@ -120,6 +120,22 @@ test("high-level casting (#160): from which level each level goes once per long 
   assert.deepEqual(R.highCastUsed({ force: { high: [9, "6", 12, 0] } }, "force"), [9, 6]);
 });
 
+test("carrying (audit 6.5): weight times quantity against Str x 15; the encumbrance variant at 5x and 10x Str", () => {
+  const c = (str, items) => ({ abilities: { str }, equipment: items.map(([qty, wt]) => ({ name: "x", qty, wt })) });
+  assert.deepEqual(R.carrying(c(10, [[1, 12], [2, 3.5], [3, 0], [1, undefined]])), { weight: 19, capacity: 150, variant: false, state: "", slow: 0, text: "" });
+  // without the variant, only the capacity matters
+  assert.equal(R.carrying(c(10, [[1, 140]])).state, "");
+  assert.equal(R.carrying(c(10, [[1, 151]])).state, "over");
+  // with it: over 50 lb encumbered, over 100 heavily
+  const v = [R.ENCUMBRANCE];
+  assert.deepEqual([R.carrying(c(10, [[1, 50]]), v).state, R.carrying(c(10, [[1, 51]]), v).slow], ["", 10]);
+  assert.deepEqual([R.carrying(c(10, [[1, 101]]), v).state, R.carrying(c(10, [[1, 101]]), v).slow], ["heavy", 20]);
+  assert.match(R.carrying(c(10, [[1, 101]]), v).text, /disadvantage on Str, Dex and Con/);
+  assert.equal(R.carrying(c(10, [[2, 80]]), v).state, "over");
+  // a negative quantity or weight counts as nothing
+  assert.equal(R.carrying(c(10, [[-3, 10], [1, -5]])).weight, 0);
+});
+
 test("Engineers and Scouts get tech points back on a short rest; others don't", () => {
   assert.equal(R.techOnShortRest(char([["Engineer", 1]])), true);
   assert.equal(R.techOnShortRest(char([["Scout", 2]])), true);

@@ -294,6 +294,23 @@
     }
     return { total: best.v + misc, text: [...best.parts, misc ? `misc ${fmt(misc)}` : ''].filter(Boolean).join(' · ') };
   }
+  // Carrying (audit 6.5). Each item's weight (wt, in pounds each, from SW5e's gear) times its quantity, against the carrying
+  // capacity (PHB, "Lifting and Carrying": Strength score x 15). With the table's "Encumbrance" variant (PHB, the same
+  // section): over 5 x Strength encumbered (speed -10 ft), over 10 x Strength heavily encumbered (speed -20 ft, and
+  // disadvantage on Strength, Dexterity and Constitution checks, attacks and saves). Size isn't on the sheet yet (#92),
+  // so every character carries as Medium.
+  const ENCUMBRANCE = 'Encumbrance';
+  function carrying(c, variants) {
+    const str = Math.max(0, +((c && c.abilities) || {}).str || 0);
+    const weight = Math.round(((c && c.equipment) || []).reduce((n, e) => n + Math.max(0, +(e && e.qty) || 0) * Math.max(0, +(e && e.wt) || 0), 0) * 100) / 100;
+    const capacity = str * 15, variant = (variants || []).includes(ENCUMBRANCE);
+    const state = weight > capacity ? 'over' : variant && weight > 10 * str ? 'heavy' : variant && weight > 5 * str ? 'encumbered' : '';
+    const slow = state === 'heavy' || (variant && state === 'over') ? 20 : state === 'encumbered' ? 10 : 0;
+    const text = state === 'over' ? `over the carrying capacity (${capacity} lb)` : state === 'heavy' ? 'heavily encumbered: speed -20 ft; disadvantage on Str, Dex and Con checks, attacks and saves'
+      : state === 'encumbered' ? 'encumbered: speed -10 ft' : '';
+    return { weight, capacity, variant, state, slow, text };
+  }
+
   // the d20 a weapon crits on: 20, or lower for an attack's own crit range or a "Keen N" weapon (SW5e: the range grows by N)
   function critFrom(props) { const k = /\bkeen\s*(\d)/i.exec(String(props || '')); return k ? Math.max(15, 20 - +k[1]) : 20; }
 
@@ -435,7 +452,7 @@
   root.SW5E = { ABILITIES, SKILLS, CLASSES, SPECIES, BACKGROUNDS, DAMAGE_TYPES, WEAPONS, CONDITIONS, REFERENCE,
     mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo, techOnShortRest, overMaxPowerLevel, highCastFrom, highCastUsed, highCastBlocked,
     ARCHETYPE_CASTERS, casterArchetype, castingSources,
-    attackBonus, damageExpr, critExpr, armorClass, armorFromItem, critFrom, ARMOR_KINDS, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
+    attackBonus, damageExpr, critExpr, armorClass, armorFromItem, critFrom, ARMOR_KINDS, carrying, ENCUMBRANCE, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
     CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt,
     SENSES, cleanSenses, sensesFromTraits, sensesText, parseSenses };
 })(typeof window !== 'undefined' ? window : globalThis);

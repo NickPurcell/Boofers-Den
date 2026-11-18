@@ -749,3 +749,12 @@ table.t td.n { width: 56px; }
 .eq-table .armor-cell { white-space: nowrap; width: 1%; }
 .eq-table .armor-cell select { width: 70px; }
 .eq-table .armor-cell input { width: 44px; margin-left: 3px; }
+/* carrying (audit 6.5): the weight against the capacity, and the encumbrance it causes */
+.eq-table .eq-wt { width: 1%; }
+.eq-table .eq-wt input { width: 48px; }
+.eq-wrap { overflow-x: auto; }
+.carry-var { display: inline-flex; flex-direction: row; align-items: center; gap: 4px; font-size: 12px; margin-left: auto; text-transform: none; letter-spacing: 0; }
+.carry-var input { width: auto; margin: 0; }
+.carry { align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.carry .carry-state { color: var(--amber); font-size: 12px; }
+.carry.carry-heavy .carry-state, .carry.carry-over .carry-state { color: var(--red); }
