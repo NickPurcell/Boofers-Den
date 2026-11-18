@@ -726,3 +726,17 @@ body.no-sw5e-books [data-sa="deploy-info"], body.no-sw5e-books .lib-bar { displa
 .res-row .dot.on { background: var(--holo); border-color: var(--holo); }
 .senses-row { display: flex; align-items: center; gap: 8px; margin: 8px 0 2px; font-size: 13px; }
 .senses-row .lbl { font-family: var(--display); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+/* sheet: AC worked out from armor (audit 5.3), misc bonus boxes on saves and skills (5.5) */
+.ac-stat .ac-opts { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 4px; font-size: 11px; }
+.ac-stat .ac-opts label { display: inline-flex; align-items: center; gap: 3px; margin: 0; }
+.ac-stat .ac-opts input[type="number"] { padding: 1px 4px; font-size: 11px; }
+.misc-box { margin-left: auto; }
+.misc-box input { padding: 1px 4px; font-size: 11px; text-align: center; }
+/* the equipment table: Qty stays narrow and Item gets the room (the armor column, audit 5.3) */
+table.t td.n input { min-width: 0; }
+table.t td.n { width: 56px; }
+.eq-table td:nth-child(2) input { min-width: 120px; }
+.eq-table .armor-cell { white-space: nowrap; width: 1%; }
+.eq-table .armor-cell select { width: 70px; }
+.eq-table .armor-cell input { width: 44px; margin-left: 3px; }

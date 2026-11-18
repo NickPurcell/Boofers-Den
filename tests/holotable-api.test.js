@@ -1880,3 +1880,44 @@ test("Second Wind by a character whose name the GM hides names nobody in players
   const gmRoll = (await gm.poll()).data.state.chat.find((m) => m.roll && m.roll.label === "Second Wind (healing)");
   assert.ok(gmRoll && gmRoll.roll.expr === "1d10+5");
 });
+
+test("AC from armor, Unarmored Defense and misc (audit 5.3), crit range, misc boxes (#74)", async () => {
+  require("../sections/jpesus/holotable/rules.js");
+  const R = globalThis.SW5E;
+  const ch = (o) => Object.assign({ classes: [{ name: "Fighter", level: 1 }], abilities: { str: 10, dex: 14, con: 16, int: 10, wis: 16, cha: 10 }, equipment: [] }, o);
+  const arm = (name, kind, ac, equipped = true) => ({ name, equipped, armor: { kind, ac } });
+  assert.equal(R.armorClass(ch()).total, 12, "unarmored 10 + Dex");
+  assert.equal(R.armorClass(ch({ equipment: [arm("Combat suit", "light", 11)] })).total, 13, "light: ac + Dex");
+  assert.equal(R.armorClass(ch({ abilities: { dex: 18 }, equipment: [arm("Composite armor", "medium", 15)] })).total, 17, "medium: Dex at most +2");
+  assert.equal(R.armorClass(ch({ abilities: { dex: 18 }, equipment: [arm("Assault armor", "heavy", 17)] })).total, 17, "heavy: no Dex");
+  assert.equal(R.armorClass(ch({ equipment: [arm("Combat suit", "light", 11), arm("Medium shield", "shield", 2)] })).total, 15, "a shield adds");
+  assert.equal(R.armorClass(ch({ equipment: [arm("Assault armor", "heavy", 17, false)] })).total, 12, "armor not equipped doesn't count");
+  assert.equal(R.armorClass(ch({ classes: [{ name: "Berserker", level: 1 }] })).total, 15, "Berserker: 10 + Dex + Con");
+  assert.equal(R.armorClass(ch({ classes: [{ name: "Berserker", level: 1 }], equipment: [arm("Light shield", "shield", 1)] })).total, 16, "and keeps a shield");
+  assert.equal(R.armorClass(ch({ classes: [{ name: "Monk", level: 1 }] })).total, 15, "Monk: 10 + Dex + Wis");
+  assert.equal(R.armorClass(ch({ classes: [{ name: "Monk", level: 1 }], equipment: [arm("Light shield", "shield", 1)] })).total, 13, "not with a shield");
+  assert.equal(R.armorClass(ch({ classes: [{ name: "Berserker", level: 1 }], equipment: [arm("Combat suit", "light", 11)] })).total, 13, "armor ends Unarmored Defense");
+  assert.equal(R.armorClass(ch({ acMisc: 1 })).total, 13, "misc adds");
+  assert.deepEqual(R.armorFromItem({ ac: "14 + Dex modifier (max 2)", accl: "Medium" }), { kind: "medium", ac: 14 });
+  assert.deepEqual(R.armorFromItem({ ac: "+2", accl: "Shield" }), { kind: "shield", ac: 2 });
+  assert.equal(R.armorFromItem({ ac: "", accl: "" }), null);
+  assert.equal(R.critFrom("Keen 1, Finesse"), 19);
+  assert.equal(R.critFrom("finesse"), 20);
+
+  const { gm, p1 } = await table();
+  const id = (await p1.act("char.save", { char: Object.assign(ch({ ac: 99, acAuto: true, acMisc: 1 }), { name: "Kira",
+    equipment: [arm("Combat suit", "light", 11), arm("Medium shield", "shield", 2), { name: "Junk", equipped: true, armor: { kind: "__proto__", ac: 5 } }],
+    attacks: [{ name: "Keen blade", critRange: 19 }, { name: "Plain", critRange: 20 }, { name: "Silly", critRange: 3 }],
+    saveMisc: { dex: 2 }, skillMisc: { stealth: 1 } }) })).data.id;
+  let c = (await gm.poll()).data.state.characters[id];
+  assert.equal(c.ac, 16, "the server works out AC when auto is on (11 + 2 + 2 + misc 1), ignoring the typed 99");
+  assert.equal(c.equipment[2].armor, undefined, "an unknown armor kind is dropped");
+  assert.equal(c.attacks[0].critRange, 19);
+  assert.equal(c.attacks[1].critRange, undefined, "20 is the default, not stored");
+  assert.equal(c.attacks[2].critRange, 15, "clamped to 15-20");
+  assert.equal(R.saveBonus(c, "dex"), 2 + 2, "save misc adds");
+  const id2 = (await p1.act("char.save", { char: Object.assign(ch({ ac: 18 }), { name: "Typed", equipment: [arm("Combat suit", "light", 11)] }) })).data.id;
+  c = (await gm.poll()).data.state.characters[id2];
+  assert.equal(c.ac, 18, "without auto, the typed AC stands as before");
+  assert.equal(c.acAuto, undefined);
+});

@@ -246,6 +246,38 @@
       : `${who} can't cast leveled ${kind} powers yet (no max ${kind} power level).` };
   }
 
+  // Armor Class from what's worn (audit 5.3, #74). An item marked as armor ({ kind, ac }) and equipped counts: light is
+  // ac + Dex, medium ac + Dex (at most +2), heavy ac; a shield adds its bonus. With no armor, the best of 10 + Dex and
+  // SW5e's Unarmored Defense: Berserker 10 + Dex + Con (a shield still counts), Monk 10 + Dex + Wis or Cha and
+  // Blademaster Specialist 10 + Dex + Str (both with no shield). The sheet's misc AC is added last. Used only when the
+  // sheet's "auto" is on (acAuto); otherwise the typed AC stands, as before.
+  const ARMOR_KINDS = ['light', 'medium', 'heavy', 'shield'];
+  function armorFromItem(it) {   // a SW5e gear entry (the picker's row) -> { kind, ac } or null
+    const kind = String((it && it.accl) || '').toLowerCase(), ac = parseInt(String((it && it.ac) || '').replace(/^\+/, ''), 10);
+    return ARMOR_KINDS.includes(kind) && Number.isFinite(ac) ? { kind, ac } : null;
+  }
+  function armorClass(c) {
+    const m = (k) => abilityMod(c, k), dex = m('dex'), lv = (n) => (c.classes || []).some((k) => String(k.name).toLowerCase() === n);
+    const worn = (c.equipment || []).filter((e) => e && e.equipped && e.armor && ARMOR_KINDS.includes(e.armor.kind));
+    const shields = worn.filter((e) => e.armor.kind === 'shield'), shield = shields.reduce((b, e) => Math.max(b, +e.armor.ac || 0), 0);
+    const bodyAc = (e) => { const a = +e.armor.ac || 0; return e.armor.kind === 'light' ? a + dex : e.armor.kind === 'medium' ? a + Math.min(2, dex) : a; };
+    const body = worn.filter((e) => e.armor.kind !== 'shield').sort((x, y) => bodyAc(y) - bodyAc(x))[0];
+    const misc = +c.acMisc || 0, sh = shields.length ? [`${shields.find((e) => +e.armor.ac === shield).name} +${shield}`] : [];
+    let best;
+    if (body) best = { v: bodyAc(body) + shield, parts: [`${body.name} (${body.armor.kind}) ${bodyAc(body)}`, ...sh] };
+    else {
+      const opts = [{ v: 10 + dex + shield, parts: [`unarmored 10 + Dex ${fmt(dex)}`, ...sh] }];
+      if (lv('berserker')) opts.push({ v: 10 + dex + m('con') + shield, parts: [`Unarmored Defense (Berserker) 10 + Dex + Con`, ...sh] });
+      if (!shields.length && lv('monk')) opts.push({ v: 10 + dex + Math.max(m('wis'), m('cha')), parts: ['Unarmored Defense (Monk) 10 + Dex + Wis or Cha'] });
+      if (!shields.length && (c.classes || []).some((k) => /blademaster/i.test(String(k.archetype || '')) && +k.level >= 3))
+        opts.push({ v: 10 + dex + m('str'), parts: ['Unarmored Defense (Blademaster) 10 + Dex + Str'] });
+      best = opts.sort((x, y) => y.v - x.v)[0];
+    }
+    return { total: best.v + misc, text: [...best.parts, misc ? `misc ${fmt(misc)}` : ''].filter(Boolean).join(' · ') };
+  }
+  // the d20 a weapon crits on: 20, or lower for an attack's own crit range or a "Keen N" weapon (SW5e: the range grows by N)
+  function critFrom(props) { const k = /\bkeen\s*(\d)/i.exec(String(props || '')); return k ? Math.max(15, 20 - +k[1]) : 20; }
+
   function attackBonus(c, a) {
     if (a.bonus !== undefined && a.bonus !== '' && a.bonus !== null && !isNaN(+a.bonus)) return +a.bonus;
     let ab = a.ab || 'str';
@@ -309,7 +341,7 @@
       classes: [{ name: 'Fighter', level: 1, archetype: '' }], xp: 0,
       abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
       saves: {}, skills: {}, skillMisc: {}, saveMisc: {},
-      ac: 10, speed: 30, hp: { max: 10, current: 10, temp: 0 }, hitDiceUsed: 0,
+      ac: 10, acAuto: true, speed: 30, hp: { max: 10, current: 10, temp: 0 }, hitDiceUsed: 0,
       deathSaves: { s: 0, f: 0 }, initMisc: 0, profOverride: '',
       force: { max: '', used: 0 }, tech: { max: '', used: 0 },
       attacks: [], powers: [], features: [], equipment: [], credits: 0,
@@ -384,7 +416,7 @@
   root.SW5E = { ABILITIES, SKILLS, CLASSES, SPECIES, BACKGROUNDS, DAMAGE_TYPES, WEAPONS, CONDITIONS, REFERENCE,
     mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo, techOnShortRest, overMaxPowerLevel,
     ARCHETYPE_CASTERS, casterArchetype, castingSources,
-    attackBonus, damageExpr, critExpr, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
+    attackBonus, damageExpr, critExpr, armorClass, armorFromItem, critFrom, ARMOR_KINDS, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
     CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt,
     SENSES, cleanSenses, sensesFromTraits, sensesText, parseSenses };
 })(typeof window !== 'undefined' ? window : globalThis);
