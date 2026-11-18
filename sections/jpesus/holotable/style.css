@@ -809,3 +809,5 @@ canvas.drawing { cursor: crosshair; }
 .eq-table .attune { display: inline-flex; align-items: center; gap: 2px; }
 .eq-table .eq-name { white-space: nowrap; }
 .eq-table .eq-name .eq-info { margin-left: 3px; padding: 0 4px; }
+/* the ⓘ stays clickable on a read-only sheet, above the disabled notes field beside it (#234's review) */
+.eq-table .eq-name .eq-info { position: relative; z-index: 1; }
