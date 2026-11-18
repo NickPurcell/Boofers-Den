@@ -859,6 +859,14 @@ test("weapon properties: dire, piercing and melt trade accuracy for damage; vici
   const blast = gmNew.find((m) => /The blast shakes Black Lance: anyone aboard keeping concentration makes a Constitution save, DC \d+/.test(m.text || ""));
   assert.ok(blast && blast.to && blast.to[0] === "@gm" && !blast.fromId, "the enemy's concentration line is the GM's");
   assert.ok(!pl.some((m) => /keeping concentration/.test(m.text || "")), "the player doesn't see it");
+  // a shot between two GM ships on hidden tokens: every line the GM's, naming both ships (not "???")
+  const g2 = (await gm.act("ship.save", { ship: { name: "Grey Wake", hidden: true, size: "Small", weapons: [{ name: "Gun", dmg: "1d4", type: "energy", range: "600/2400", cat: "primary" }] } })).data.id;
+  await gm.act("space.token", { id: enemy, hidden: true });
+  await gm.act("space.place", { id: g2, x: 4, y: 5, f: 2, hidden: true });
+  await gm.act("space.fire", { id: g2, target: enemy, weapon: 0 });
+  const shot = (await gm.state()).chat.filter((m) => /Grey Wake (misses|hits) Black Lance/.test(m.text || ""));
+  assert.ok(shot.length === 1 && shot[0].to[0] === "@gm", "named for the GM, and the GM's only");
+  assert.ok(!JSON.stringify((await p1.state()).chat).includes("Grey Wake"));
 });
 
 test("zone: on with an action, off for free; difficult terrain in its arc and normal range; advantage against tertiary from outside", async () => {

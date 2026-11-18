@@ -225,7 +225,10 @@ function apply(camp, cid, gm, type, p, h) {
       const s = JSON.parse(JSON.stringify(s0)), sw = s.weapons[wi];
       if (typeof sw.ammo === "number") sw.ammo -= cost;
       if (cap !== null) sw.heat = int(sw.heat) + cost;
-      const pb = Ships.crewPb(camp, s0, p.crew), A = shownOf(s0, a), T = shownOf(t0, ta);
+      // a shot with either token hidden is the GM's alone (only the GM can fire from or at a hidden token): its lines name
+      // both ships for the GM; otherwise, by the names players may read
+      const pb = Ships.crewPb(camp, s0, p.crew), unseenShot = !!a.hidden || !!ta.hidden;
+      const A = unseenShot ? s0.name : shownOf(s0, a), T = unseenShot ? t0.name : shownOf(t0, ta);
       // dire, piercing and melt: accuracy traded for damage, chosen with the shot; capped by the weapon (SotG ch. 5)
       // and the firing crew member's gunning styles, and their mastery when asked (SotG ch. 6)
       const tr = SR.weaponTrade(w, { dire: p.dire, piercing: p.piercing, melt: p.melt === true, mastery: p.mastery === true }, pb, chk.kind === "attack" && fm === "single" ? "attack" : "save", gunRow);
