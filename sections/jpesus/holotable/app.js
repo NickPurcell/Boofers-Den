@@ -672,7 +672,7 @@
         <div class="box" style="grid-row: span 2"><h4>Skills <span class="muted" style="text-transform:none;letter-spacing:0">click dot: none → proficient → expertise</span></h4><div class="list-rows">${R.SKILLS.map(s => {
           const b = R.skillBonus(ch, s.key), lv = +(ch.skills[s.key] || 0);
           return `<div class="lr"><button class="prof ${lv === 2 ? 'p2' : lv === 1 ? 'p1' : lv === 0.5 ? 'p05' : ''}" data-act="skill-prof" data-sk="${s.key}" ${ro ? 'disabled' : ''}></button>
-            <span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${d20(b)}" data-label="${s.name}" data-d20="1">${s.name}</span><span class="ab">${s.ab}</span>
+            ${(sr => `<span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${esc(sr.expr)}" data-label="${s.name}${sr.reliable ? ' (Reliable Talent)' : ''}" data-d20="1"${sr.reliable ? ' title="Reliable Talent: the d20 counts as at least 8"' : ''}>${s.name}</span>`)(R.skillRollExpr(ch, s.key))}<span class="ab">${s.ab}</span>
             ${miscBox('skillMisc.' + s.key, (ch.skillMisc || {})[s.key], ro)}</div>`;
         }).join('')}</div></div>
       </div>`;
@@ -711,14 +711,15 @@
           return `<tr><td>${inp(`attacks.${i}.name`, a.name, { ro })}</td>
             <td style="width:96px">${inp(`attacks.${i}.ab`, a.ab || 'str', { ro, type: 'select', options: [{ v: 'str', t: 'Str' }, { v: 'dex', t: 'Dex' }, { v: 'finesse', t: 'Finesse' }, { v: 'con', t: 'Con' }, { v: 'int', t: 'Int' }, { v: 'wis', t: 'Wis' }, { v: 'cha', t: 'Cha' }] })}</td>
             <td style="width:40px;text-align:center">${inp(`attacks.${i}.proficient`, a.proficient !== false, { ro, type: 'checkbox' })}</td>
-            <td style="width:120px"><button class="btn small amber" data-act="atk" data-i="${i}">${R.fmt(hit)}</button> ${inp(`attacks.${i}.magic`, a.magic || '', { ro, type: 'number', w: '58px', ph: '+0' })}</td>
+            <td style="width:120px"><button class="btn small amber" data-act="atk" data-i="${i}">${R.fmt(hit)}</button> ${inp(`attacks.${i}.magic`, a.magic || '', { ro, type: 'number', w: '58px', ph: '+0' })}
+              ${R.reloadOf(a) ? `<div class="shots" title="Shots left before a reload (Reload ${R.reloadOf(a)}). Reloading uses one ${esc(R.ammoOf(a).toLowerCase())}.">${R.shotsOf(a)}/${R.reloadOf(a)} ${!ro ? `<button class="btn tiny ghost" data-act="reload" data-i="${i}">⟳ Reload</button>` : ''}</div>` : ''}</td>
             <td style="width:56px">${inp(`attacks.${i}.critRange`, +a.critRange || 20, { ro, type: 'number', w: '48px' })}</td>
             <td style="width:160px"><div class="row">${inp(`attacks.${i}.damage`, a.damage || '', { ro, w: '64px' })}<button class="btn small" data-act="dmg" data-i="${i}" title="${esc(dmg)}">Dmg</button><button class="btn tiny" data-act="crit" data-i="${i}" title="Critical: dice doubled">Crit</button></div></td>
             <td style="width:100px">${inp(`attacks.${i}.type`, a.type || '', { ro, list: 'dlTypes' })}</td>
             <td>${inp(`attacks.${i}.props`, a.props || '', { ro })}</td>
             <td>${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="attacks" data-i="${i}">✕</button>` : ''}</td></tr>`;
         }).join('') || '<tr><td colspan="9" class="muted">No attacks yet.</td></tr>'}</tbody></table>
-        <p class="muted" style="font-size:12px;margin:6px 0 0">Hit = ability mod + proficiency if ticked (+ the small box for enhancements). Damage adds the ability mod automatically. Crit is the lowest d20 that crits (20 by default; a Keen weapon from SW5e starts lower).</p></div>
+        <p class="muted" style="font-size:12px;margin:6px 0 0">Hit = ability mod + proficiency if ticked (+ the small box for enhancements). Damage adds the ability mod automatically. Crit is the lowest d20 that crits (20 by default; a Keen weapon from SW5e starts lower). A Reload weapon counts its shots; ⟳ Reload uses a power cell or slug cartridge from your gear.</p></div>
       <div class="grid g2" style="margin-top:12px">
         ${pts('force', fMax, +ch.force.used || 0, '', 'Force Points', `Light DC ${ci.lightDC} / atk ${R.fmt(ci.lightAtk)} · Dark DC ${ci.darkDC} / atk ${R.fmt(ci.darkAtk)}${ci.forceMaxLevel ? ' · max power level ' + ci.forceMaxLevel : ''}${highNote(ch, 'force', ci.forceMaxLevel)}`)}
         ${pts('tech', tMax, +ch.tech.used || 0, 'tech', 'Tech Points', `Tech DC ${ci.techDC} / atk ${R.fmt(ci.techAtk)}${ci.techMaxLevel ? ' · max power level ' + ci.techMaxLevel : ''}${highNote(ch, 'tech', ci.techMaxLevel)}`)}
@@ -879,14 +880,24 @@
       case 'pick-feature': HTB.openFeaturePicker(ch.id); break;
       case 'del': mutate(c => c[b.dataset.list].splice(i, 1)); break;
       case 'atk': {
-        const at = ch.attacks[i], crit = +at.critRange || 20;
+        const at = ch.attacks[i], crit = +at.critRange || 20, shots = R.shotsOf(at);
+        if (shots === 0) { toast(`${at.name} is out of shots. Reload it first (an action or bonus action).`); break; }
         const r = await roll(d20(R.attackBonus(ch, at)), `${at.name} — attack${crit < 20 ? ` (crits on ${crit}–20)` : ''}`, { d20: true, mode: rollModeFromEvent(e), charId: ch.id, kind: 'attack' });
         const nat = r && r.roll && r.roll.nat;
         if (crit < 20 && nat >= crit && nat < 20) toast(`${nat}: a critical hit for ${at.name} (crits on ${crit}–20). Roll Crit for damage.`);
+        if (r && shots != null && canEdit(ch)) mutate(c => { c.attacks[i].shots = Math.max(0, shots - 1); });   // one shot used (audit 6.6)
+        break;
+      }
+      case 'reload': {   // a fresh power cell or slug cartridge from the gear; with none, the GM may reload anyway
+        const at = ch.attacks[i], full = R.reloadOf(at), kind = R.ammoOf(at); if (!full) break;
+        const k = (ch.equipment || []).findIndex(x => String(x.name).toLowerCase().startsWith(kind.toLowerCase()) && n0(x.qty) > 0);
+        if (k < 0 && !(isGM() && confirm(`No ${kind.toLowerCase()}s in ${ch.name}'s gear. Reload anyway?`))) { if (!isGM()) toast(`No ${kind.toLowerCase()}s in your gear. Add some in Features & Gear (or ask the GM).`); break; }
+        mutate(c => { c.attacks[i].shots = full; if (k >= 0) c.equipment[k].qty = n0(c.equipment[k].qty) - 1; });
+        toast(`${at.name} reloaded: ${full} shots${k >= 0 ? `, ${n0(ch.equipment[k].qty) - 1} ${kind.toLowerCase()}${n0(ch.equipment[k].qty) - 1 === 1 ? '' : 's'} left` : ''}.`);
         break;
       }
       case 'dmg': { const at = ch.attacks[i]; roll(R.damageExpr(ch, at), `${at.name} — ${at.type || ''} damage`, { charId: ch.id, kind: 'damage' }); break; }
-      case 'crit': { const at = ch.attacks[i]; roll(R.critExpr(R.damageExpr(ch, at)), `${at.name} — CRITICAL ${at.type || ''} damage`, { charId: ch.id, kind: 'damage' }); break; }
+      case 'crit': { const at = ch.attacks[i], cd = R.critDamage(ch, at); roll(cd.expr, `${at.name} — CRITICAL ${at.type || ''} damage${cd.brutal ? ` (Brutal Critical +${cd.brutal})` : ''}`, { charId: ch.id, kind: 'damage' }); break; }
       case 'add-class-res': mutate(c => { c.resources = R.withClassResources(c); }); break;
       case 'res-use': case 'res-back': {
         const res0 = (ch.resources || [])[i];
@@ -1438,9 +1449,10 @@
         <label class="mini">cols <input type="number" value="${n0(mp.cols)}" data-mset="cols"></label>
         <label class="mini">rows <input type="number" value="${n0(mp.rows)}" data-mset="rows"></label>
         <label class="toggle"><input type="checkbox" data-mset="showGrid" ${mp.showGrid ? 'checked' : ''}> grid</label>
+        <button class="btn small ${M.drawMode ? 'primary' : ''}" data-mact="draw" title="Draw on the map for everyone to see (drag). Double-click anywhere to ping.">✎ Draw</button>${M.drawMode ? `<span class="draw-colors">${['#ffd27a', '#4fc3f7', '#ef5350', '#66bb6a', '#ffffff'].map(c => `<button class="draw-col ${M.drawColor === c ? 'on' : ''}" data-mact="dcol" data-c="${c}" style="background:${c}" aria-label="Colour ${c}"></button>`).join('')}</span>` : ''}${(mp.drawings || []).length ? `<button class="btn small ghost" data-mact="draw-clear">clear drawings</button>` : ''}
         <button class="btn small" data-mact="npc">＋ Token</button>${window.HTC && HTC.wallsButton ? HTC.wallsButton() : ''}
         ${mp.tokens.some(t => t.moves) || (mp.props || []).some(x => x.moves) ? '<button class="btn small amber" data-mact="play-moves" title="Play the scene movements on this board now, for everyone">▶ Play movements</button>' : ''}
-        <input type="file" id="bgFile" accept="image/*" hidden>` : '<span class="muted">Drag your token to move it · drag empty space to pan · scroll to zoom</span>'}`;
+        <input type="file" id="bgFile" accept="image/*" hidden>` : '<span class="muted">Drag your token to move it · drag empty space to pan · scroll to zoom · double-click to ping</span>'}`;
   }
   $('#mapTools').addEventListener('click', async e => {
     const b = e.target.closest('[data-mact]'); if (!b) return;
@@ -1449,6 +1461,9 @@
     if (a === 'zout') zoomAt(w / 2, h / 2, 0.8);
     if (a === 'z100') zoomAt(w / 2, h / 2, 1 / CAM.z);
     if (a === 'zfit') fitBoard();
+    if (a === 'draw') { M.drawMode = !M.drawMode; M.drawColor = M.drawColor || '#ffd27a'; canvas.classList.toggle('drawing', M.drawMode); renderMapTools(); }
+    if (a === 'dcol') { M.drawColor = b.dataset.c; renderMapTools(); }
+    if (a === 'draw-clear' && confirm('Clear every drawing on this map?')) act('map.drawClear', {});
     if (a === 'place') {   // drop the token in the middle of what you're looking at
       const g = S.st.map.gridSize;
       await act('token.add', { charId: S.selected, x: Math.floor((w / 2 - CAM.x) / CAM.z / g), y: Math.floor((h / 2 - CAM.y) / CAM.z / g) });
@@ -1796,6 +1811,7 @@
       const st = A.stamp, im = img(st.src);
       if (im) { ctx.globalAlpha = 0.6; const w = st.w * g, h = st.h * g; ctx.drawImage(im, A.hover.x - w / 2, A.hover.y - h / 2, w, h); ctx.globalAlpha = 1; }
     }
+    drawDrawings(g, z);   // the GM's drawings (8.13)
     if (isGM()) drawScripts(g, z);
     if (window.HTC) HTC.under(ctx, g, z);   // combat view (reachable squares)
     // tokens
@@ -1803,7 +1819,7 @@
     for (const t of mp.tokens) {
       const drag = M.drag && M.drag.id === t.id;
       const ap = ANIM.pos[t.id];   // mid scene-movement
-      const px = drag ? M.drag.px : (ap ? ap.x : t.x) * g, py = drag ? M.drag.py : (ap ? ap.y : t.y) * g, sz = (t.size || 1) * g, r = sz / 2 - 3;
+      const px = drag ? M.drag.px : (ap ? ap.x : t.x) * g, py = drag ? M.drag.py : (ap ? ap.y : t.y) * g, sz = (t.size || 1) * g, r = t.tiny ? sz / 4 - 1 : sz / 2 - 3;   // Tiny: half size, in its square (8.15)
       const cx = px + sz / 2, cy = py + sz / 2;
       ctx.globalAlpha = t.hidden ? 0.45 : 1;
       const isCur = cur && (cur.tok ? cur.tok === t.id : (cur.charId && cur.charId === t.charId) || (!cur.charId && cur.name !== '???' && cur.name === t.name));
@@ -1828,6 +1844,13 @@
         ctx.fillStyle = '#300'; ctx.fillRect(px + 4, py + sz - 6, sz - 8, 4);
         ctx.fillStyle = pct < .3 ? themeHex('red', '#ef5350') : pct < .6 ? themeHex('amber', '#ffb74d') : themeHex('green', '#66bb6a'); ctx.fillRect(px + 4, py + sz - 6, (sz - 8) * pct, 4);
       }
+      if (t.elev) {   // elevation or flying height (audit 8.14): a badge at the token's top right, ↑ up, ↓ down
+        const txt = `${t.elev > 0 ? '↑' : '↓'}${Math.abs(t.elev)}`;
+        ctx.font = `700 ${Math.max(10 / z, g * 0.18)}px ${UI_FONT}`; ctx.textAlign = 'right'; ctx.textBaseline = 'top';
+        const w = ctx.measureText(txt).width + 6 / z, h = Math.max(13 / z, g * 0.24), bx = px + sz, by = py;
+        ctx.fillStyle = 'rgba(4,18,27,.85)'; ctx.fillRect(bx - w, by, w, h);
+        ctx.fillStyle = themeHex('holo', '#4fc3f7'); ctx.fillText(txt, bx - 3 / z, by + 1 / z);
+      }
       // a short label that fits under the token (so neighbours don't overlap); hover shows the full name
       ctx.font = `600 ${Math.max(11 / z, g * 0.2)}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
       const lab = shortLabel(t.name, sz - 4);
@@ -1836,7 +1859,42 @@
       ctx.globalAlpha = 1;
     }
     if (window.HTC) HTC.over(ctx, g, z);    // combat view (targets, results)
+    drawPings(g, z);
   }
+  // ---- "look here" and the GM's quick drawings (audit 8.13)
+  const PINGS = {};   // ping id -> when this screen first saw it, so each pulses once, for 2.5 s
+  function drawPings(g, z) {
+    const t = performance.now(); let live = false;
+    for (const p of S.st.pings || []) {
+      if (!PINGS[p.id]) PINGS[p.id] = t;
+      const k = (t - PINGS[p.id]) / 2500; if (k >= 1) continue; live = true;
+      const cx = p.x * g, cy = p.y * g, col = p.gm ? themeHex('amber', '#ffb74d') : themeHex('holo', '#4fc3f7');
+      for (const off of [0, 0.33]) {
+        const kk = (k + off) % 1;
+        ctx.beginPath(); ctx.arc(cx, cy, g * (0.3 + 1.4 * kk), 0, Math.PI * 2);
+        ctx.strokeStyle = rgba(col, 1 - kk); ctx.lineWidth = 4 / z; ctx.stroke();
+      }
+      ctx.font = `700 ${Math.max(11 / z, g * 0.2)}px ${UI_FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.lineWidth = 3 / z; ctx.strokeStyle = 'rgba(0,0,0,.8)'; ctx.strokeText(p.name || '', cx, cy - g * 0.35); ctx.fillStyle = col; ctx.fillText(p.name || '', cx, cy - g * 0.35);
+    }
+    if (live && !drawPings.raf) drawPings.raf = requestAnimationFrame(() => { drawPings.raf = 0; drawMap(); });
+  }
+  function drawDrawings(g, z) {
+    const strokes = [...(S.st.map.drawings || []), ...(M.drag && M.drag.draw ? [{ c: M.drawColor, pts: M.drag.pts }] : [])];
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    for (const d of strokes) {
+      if (!d.pts || d.pts.length < 4) continue;
+      ctx.beginPath(); ctx.moveTo(d.pts[0] * g, d.pts[1] * g);
+      for (let i = 2; i < d.pts.length; i += 2) ctx.lineTo(d.pts[i] * g, d.pts[i + 1] * g);
+      ctx.strokeStyle = 'rgba(0,0,0,.55)'; ctx.lineWidth = 6 / z; ctx.stroke();
+      ctx.strokeStyle = d.c || '#ffd27a'; ctx.lineWidth = 3 / z; ctx.stroke();
+    }
+  }
+  canvas.addEventListener('dblclick', e => {   // a double-click (or double-tap) on the map pings it for everyone
+    if (M.drawMode || A.stamp || M.script) return;
+    const { x, y } = mapXY(e), g = S.st.map.gridSize;
+    act('map.ping', { x: Math.round(x / g * 100) / 100, y: Math.round(y / g * 100) / 100 });
+  });
   // the longest of: full name, first word, first word cut short, initials — that fits the token's width
   function shortLabel(name, w) {
     name = String(name || '').trim(); if (!name) return '';
@@ -1887,6 +1945,7 @@
     if (e.button === 1) { e.preventDefault(); M.drag = { pan: true, sx: e.clientX, sy: e.clientY, cx: CAM.x, cy: CAM.y, moved: false }; capture(e); return; }
     if (e.button !== 0) return;
     const { x, y } = mapXY(e), g = S.st.map.gridSize;
+    if (M.drawMode && isGM()) { M.drag = { draw: true, pts: [x / g, y / g] }; capture(e); return; }   // the GM draws (8.13)
     if (!M.script && !A.stamp && window.HTC && HTC.down(x / g, y / g, e)) { drawMap(); return; }   // combat view
     if (M.script) {          // recording a scene movement: each click is the next waypoint
       if (M.script.path.length >= 12) return toast('That\'s the most waypoints for one piece (12).', true);
@@ -1936,6 +1995,11 @@
       return;
     }
     mapTip(null);
+    if (M.drag.draw) {
+      const { x, y } = mapXY(e), g = S.st.map.gridSize, pts = M.drag.pts;
+      if (pts.length < 600 && Math.hypot(x / g - pts[pts.length - 2], y / g - pts[pts.length - 1]) > 0.08) { pts.push(x / g, y / g); drawMap(); }
+      return;
+    }
     if (M.drag.pan) {
       const dx = e.clientX - M.drag.sx, dy = e.clientY - M.drag.sy;
       if (Math.abs(dx) + Math.abs(dy) > 3) M.drag.moved = true;
@@ -1952,6 +2016,10 @@
     if (!M.drag) return;
     const d = M.drag, g = S.st.map.gridSize;
     M.drag = null;
+    if (d.draw) {
+      if (d.pts.length >= 4) { const pts = d.pts.map(v => Math.round(v * 100) / 100); S.st.map.drawings = [...(S.st.map.drawings || []), { id: 'tmp', c: M.drawColor, pts }]; act('map.draw', { pts, c: M.drawColor }); }
+      drawMap(); return;
+    }
     if (d.pan) {
       if (d.moved) saveCam();
       else { const { x, y } = mapXY(e); if (!(window.HTC && HTC.tap(x / g, y / g, e))) { M.sel = null; M.selProp = null; } drawMap(); }   // combat view
@@ -2017,7 +2085,8 @@
     const ch = t.charId && S.st.characters[t.charId];
     pop.innerHTML = `<b>${esc(t.name)}</b>${ch ? `<span class="muted">HP ${n0(ch.hp.current)}/${n0(ch.hp.max)} · AC ${n0(ch.ac)}</span><button class="btn small" data-tp="sheet">Open sheet</button>` : ''}
       ${canEditTok ? `<label>Colour<input type="color" value="${color(t.color)}" data-tp="color"></label>
-      <label>Size<select data-tp="size">${[1, 2, 3, 4].map(n => `<option ${n === (t.size || 1) ? 'selected' : ''} value="${n}">${['Medium/Small', 'Large', 'Huge', 'Gargantuan'][n - 1]}</option>`).join('')}</select></label>
+      <label>Size<select data-tp="size"><option value="tiny" ${t.tiny ? 'selected' : ''}>Tiny</option>${[1, 2, 3, 4].map(n => `<option ${!t.tiny && n === (t.size || 1) ? 'selected' : ''} value="${n}">${['Medium/Small', 'Large', 'Huge', 'Gargantuan'][n - 1]}</option>`).join('')}</select></label>
+      <label title="Height above the ground in feet: flying, a balcony, a ledge (negative: below, e.g. a pit)">Elevation (ft)<input type="number" step="5" value="${n0(t.elev)}" data-tp="elev" style="width:80px"></label>
       ${isGM() && A.sel ? `<button class="btn small" data-tp="img">Use selected asset as image</button>` : ''}
       ${t.img ? '<button class="btn small ghost" data-tp="noimg">Remove image</button>' : ''}
       ${isGM() ? `<button class="btn small" data-tp="hide">${t.hidden ? 'Reveal to players' : 'Hide from players'}</button>
@@ -2038,7 +2107,9 @@
     });
     pop.addEventListener('change', ev => {
       const a = ev.target.dataset.tp;
-      if (a === 'color' || a === 'size') act('token.update', { id: t.id, fields: { [a]: a === 'size' ? +ev.target.value : ev.target.value } });
+      if (a === 'color') act('token.update', { id: t.id, fields: { color: ev.target.value } });
+      if (a === 'size') act('token.update', { id: t.id, fields: ev.target.value === 'tiny' ? { size: 1, tiny: true } : { size: +ev.target.value, tiny: false } });
+      if (a === 'elev') act('token.update', { id: t.id, fields: { elev: +ev.target.value || 0 } });
     });
   }
 
