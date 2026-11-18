@@ -2,6 +2,8 @@
  * Text is summarised for table use; for full wording see the SW5e Player's Handbook (sw5e.com).
  * Values marked "default" are starting points — every number is editable on the character sheet. */
 (function (root) {
+  // each feature adds its names with Object.assign(SW5E, { ... }) right after its own code, so pull requests don't all edit one line
+  const SW5E = root.SW5E = {};
   const ABILITIES = [
     { key: 'str', name: 'Strength' }, { key: 'dex', name: 'Dexterity' }, { key: 'con', name: 'Constitution' },
     { key: 'int', name: 'Intelligence' }, { key: 'wis', name: 'Wisdom' }, { key: 'cha', name: 'Charisma' },
@@ -172,12 +174,21 @@
     'Archaeologist Pursuit': { cls: 'Scholar', caster: 'force', int: true },
     'Shield Specialist': { cls: 'Fighter', caster: 'tech' }, 'Industrial Approach': { cls: 'Berserker', caster: 'tech' },
     'Saboteur Practice': { cls: 'Operative', caster: 'tech' }, 'Slicer Pursuit': { cls: 'Scholar', caster: 'tech' },
+    // in SW5e's data with no casterType, but with a Techcasting table of the same shape (#160's review): may cast with Int,
+    // Wis or Cha
+    'Rakatan Order': { cls: 'Monk', caster: 'tech', anyMental: true },
   };
+  // Mechanist Technique (Scout, from 3rd level; also no casterType in the data) improves the Scout's own techcasting rather
+  // than adding a second: 1.5 tech points per Scout level, rounded up; the max power level of the Sentinel's table (2nd at
+  // 3rd, up to 7th at 17th); and 5th to 7th level once per long rest instead of 4th and 5th
+  const MECHANIST = 'Mechanist Technique';
   const ARCHETYPE_AT = [3, 7, 13, 17];
   // High-level casting (#160), from each class's own text in SW5e's data: from this power level up, each level can be cast
   // only once per long rest (full casters 6th-9th, Sentinel 5th-7th, half casters 4th-5th, casting archetypes 4th)
   const HIGH_FROM = { full: 6, threeQuarter: 5, half: 4, archetype: 4 };
   const lc = s => String(s || '').trim().toLowerCase();
+  // a class entry's archetype is this one, by its full name or without its last word ("Marauder", "Aing-Tii", "Mechanist")
+  const archetypeIs = (k, name) => { const a = lc(k && k.archetype); return !!a && (lc(name) === a || lc(name.replace(/\s+\S+$/, '')) === a); };
   // the casting archetype a class entry has, by its full name or without its last word ("Marauder", "Aing-Tii")
   function casterArchetype(k) {
     const a = lc(k && k.archetype);
@@ -192,15 +203,16 @@
     for (const k of c.classes || []) {
       const def = CLASSES[k.name], L = Math.min(20, +k.level || 0);
       if (def && def.caster && L >= (def.from || 1)) {
-        const maxLevel = def.prog === 'full' ? Math.min(9, Math.ceil(L / 2))
-          : def.prog === 'threeQuarter' ? THREE_QUARTER_AT.filter(t => L >= t).length : Math.min(5, Math.ceil(L / 4));
-        out.push({ of: k.name, caster: def.caster, level: L, points: def.pp * L, maxLevel,
-          potential: def.prog === 'full' ? 9 : def.prog === 'threeQuarter' ? 7 : 5, shortRest: !!def.shortRest, highFrom: HIGH_FROM[def.prog] });
+        const mech = k.name === 'Scout' && L >= 3 && archetypeIs(k, MECHANIST), prog = mech ? 'threeQuarter' : def.prog;
+        const maxLevel = prog === 'full' ? Math.min(9, Math.ceil(L / 2))
+          : prog === 'threeQuarter' ? THREE_QUARTER_AT.filter(t => L >= t).length : Math.min(5, Math.ceil(L / 4));
+        out.push({ of: mech ? `${k.name} (${MECHANIST})` : k.name, caster: def.caster, level: L, points: mech ? Math.ceil(1.5 * L) : def.pp * L, maxLevel,
+          potential: prog === 'full' ? 9 : prog === 'threeQuarter' ? 7 : 5, shortRest: !!def.shortRest, highFrom: HIGH_FROM[prog] });
       }
       const arch = casterArchetype(k);
       if (arch && L >= 3) {
         out.push({ of: arch.name, caster: arch.caster, level: L, points: arch.caster === 'force' ? L : Math.ceil(L / 2),
-          maxLevel: ARCHETYPE_AT.filter(t => L >= t).length, potential: 4, shortRest: arch.caster === 'tech', int: !!arch.int, highFrom: HIGH_FROM.archetype });
+          maxLevel: ARCHETYPE_AT.filter(t => L >= t).length, potential: 4, shortRest: arch.caster === 'tech', int: !!arch.int, anyMental: !!arch.anyMental, highFrom: HIGH_FROM.archetype });
       }
     }
     return out;
@@ -243,13 +255,15 @@
     // an Archaeologist may use Intelligence instead of Wisdom (light side) or Charisma (dark side)
     const int = force.some(s => s.int) ? abilityMod(c, 'int') : -99;
     const light = Math.max(abilityMod(c, 'wis'), int), dark = Math.max(abilityMod(c, 'cha'), int);
+    // a Rakatan may use Intelligence, Wisdom or Charisma for its tech powers
+    const tAb = tech.some(s => s.anyMental) ? Math.max(abilityMod(c, 'int'), abilityMod(c, 'wis'), abilityMod(c, 'cha')) : abilityMod(c, 'int');
     return {
-      forceMax: sum(force) ? sum(force) + Math.max(light, dark) : 0, techMax: sum(tech) ? sum(tech) + abilityMod(c, 'int') : 0,
+      forceMax: sum(force) ? sum(force) + Math.max(light, dark) : 0, techMax: sum(tech) ? sum(tech) + tAb : 0,
       forceMaxLevel: maxPowerLevel(force), techMaxLevel: maxPowerLevel(tech),
       lightDC: 8 + profBonus(c) + light, darkDC: 8 + profBonus(c) + dark,
-      techDC: 8 + profBonus(c) + abilityMod(c, 'int'),
+      techDC: 8 + profBonus(c) + tAb,
       lightAtk: profBonus(c) + light, darkAtk: profBonus(c) + dark,
-      techAtk: profBonus(c) + abilityMod(c, 'int'),
+      techAtk: profBonus(c) + tAb,
       sources: src.map(s => ({ of: s.of, caster: s.caster, level: s.level, maxLevel: s.maxLevel })),
     };
   }
@@ -275,6 +289,14 @@
     const kind = String((it && it.accl) || '').toLowerCase(), ac = parseInt(String((it && it.ac) || '').replace(/^\+/, ''), 10);
     return ARMOR_KINDS.includes(kind) && Number.isFinite(ac) ? { kind, ac } : null;
   }
+  // Infuse Item (Engineer 2nd, SW5e): one armor, shield or weapon until the next long rest, +1 to AC or to attack
+  // and damage, +2 from 10th and +3 from 15th. The sheet keeps which: infused = "attack:<name>" or "equipment:<name>".
+  function infuseBonus(c) {
+    const l = (c.classes || []).filter((k) => String(k.name).toLowerCase() === 'engineer').reduce((a, k) => a + (+k.level || 0), 0);
+    return l >= 15 ? 3 : l >= 10 ? 2 : l >= 2 ? 1 : 0;
+  }
+  const infuseBonusFor = (c, a) => (c && a && c.infused && c.infused === 'attack:' + a.name ? infuseBonus(c) : 0);
+  Object.assign(SW5E, { infuseBonus, infuseBonusFor });
   function armorClass(c) {
     const m = (k) => abilityMod(c, k), dex = m('dex'), lv = (n) => (c.classes || []).some((k) => String(k.name).toLowerCase() === n);
     const worn = (c.equipment || []).filter((e) => e && e.equipped && e.armor && ARMOR_KINDS.includes(e.armor.kind));
@@ -283,6 +305,7 @@
     const body = worn.filter((e) => e.armor.kind !== 'shield').sort((x, y) => bodyAc(y) - bodyAc(x))[0];
     const misc = +c.acMisc || 0, sh = shields.length ? [`${shields.find((e) => +e.armor.ac === shield).name} +${shield}`] : [];
     let best;
+    const inf = c.infused && infuseBonus(c) ? worn.find((e) => c.infused === 'equipment:' + e.name) : null;   // Infuse Item
     if (body) best = { v: bodyAc(body) + shield, parts: [`${body.name} (${body.armor.kind}) ${bodyAc(body)}`, ...sh] };
     else {
       const opts = [{ v: 10 + dex + shield, parts: [`unarmored 10 + Dex ${fmt(dex)}`, ...sh] }];
@@ -292,7 +315,8 @@
         opts.push({ v: 10 + dex + m('str'), parts: ['Unarmored Defense (Blademaster) 10 + Dex + Str'] });
       best = opts.sort((x, y) => y.v - x.v)[0];
     }
-    return { total: best.v + misc, text: [...best.parts, misc ? `misc ${fmt(misc)}` : ''].filter(Boolean).join(' · ') };
+    const infB = inf && (inf === body || inf.armor.kind === 'shield') ? infuseBonus(c) : 0;
+    return { total: best.v + misc + infB, text: [...best.parts, infB ? `infused ${inf.name} +${infB}` : '', misc ? `misc ${fmt(misc)}` : ''].filter(Boolean).join(' · ') };
   }
   // the d20 a weapon crits on: 20, or lower for an attack's own crit range or a "Keen N" weapon (SW5e: the range grows by N)
   // Reliable Talent (Operative 11, SW5e): ability checks that add the proficiency bonus get the d20's minimum roll
@@ -314,20 +338,57 @@
   const reloadOf = (a) => { const m = /\breload\s*(\d+)/i.exec(String(a.props || '')); return m ? Math.min(999, +m[1]) : 0; };
   const ammoOf = (a) => /slug/i.test(String(a.props || '')) ? 'Slug cartridge' : /power\s*cell/i.test(String(a.props || '')) || reloadOf(a) ? 'Power cell' : null;
   const shotsOf = (a) => { const n = reloadOf(a); return n ? Math.max(0, Math.min(n, a.shots == null || a.shots === '' ? n : +a.shots || 0)) : null; };
+  Object.assign(SW5E, { reliableTalent, skillRollExpr, brutalDice, critDamage, isMelee, reloadOf, ammoOf, shotsOf });
 
   function critFrom(props) { const k = /\bkeen\s*(\d)/i.exec(String(props || '')); return k ? Math.max(15, 20 - +k[1]) : 20; }
+
+  // Size (audit 5.12): SW5e's sizes, and the squares a token takes (Tiny shares a square, drawn small)
+  const SIZES = ['Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan'];
+  const tokenSquares = (size) => ({ Large: 2, Huge: 3, Gargantuan: 4 }[size] || 1);
+  // Temporary force or tech points (audit 4.9): spent before the character's own, one source at a time, gone after a
+  // long rest. pointsSpend gives the new { temp, used } for a cost, or null when there aren't enough.
+  function pointsSpend(pool, cost, max) {
+    const temp = Math.max(0, +(pool || {}).temp || 0), used = Math.max(0, +(pool || {}).used || 0);
+    if (cost > temp + Math.max(0, max - used)) return null;
+    const fromTemp = Math.min(temp, cost);
+    return { temp: temp - fromTemp, used: used + cost - fromTemp, fromTemp };
+  }
+  Object.assign(SW5E, { SIZES, tokenSquares, pointsSpend });
+
+  // Multiclassing (audit 2.12, 2.13; SW5e PHB, Customization Options). Prerequisites: each group needs one of its
+  // abilities at 13+, for every class the character has and the new one. Proficiencies: the new class's smaller set.
+  const MC_PREREQ = { Berserker: [['str']], Consular: [['wis', 'cha']], Engineer: [['int']], Fighter: [['str', 'dex']],
+    Guardian: [['con'], ['wis', 'cha']], Monk: [['dex'], ['wis', 'cha']], Operative: [['dex']], Scholar: [['int']],
+    Scout: [['str', 'dex'], ['int']], Sentinel: [['dex'], ['wis', 'cha']] };
+  const MC_PROFS = { Berserker: 'Light armor, all vibroweapons', Consular: 'Simple lightweapons', Engineer: 'Light armor',
+    Fighter: 'Light armor, medium armor, all blasters, all vibroweapons', Guardian: 'Light armor, medium armor, all lightweapons, all vibroweapons',
+    Monk: 'Simple vibroweapons, techblades', Operative: 'Light armor', Scholar: 'Light armor',
+    Scout: 'Light armor, medium armor, all blasters, all vibroweapons', Sentinel: 'Light armor, simple lightweapons, simple vibroweapons' };
+  // the multiclass proficiencies a class gives (own keys only), with the PHB's extra skill (and tool) the data leaves out
+  const MC_EXTRA = { Engineer: "one skill and one tool from the class's lists", Operative: "one skill and one tool from the class's lists",
+    Scout: "one skill from the class's list", Scholar: "one skill from the class's list", Sentinel: "one skill from the class's list" };
+  const mcProfs = (n) => Object.prototype.hasOwnProperty.call(MC_PROFS, n) ? MC_PROFS[n] + (Object.prototype.hasOwnProperty.call(MC_EXTRA, n) ? `, + ${MC_EXTRA[n]}` : '') : '';
+  const AB_NAME = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
+  // what's not met to add newClass: [] when it's fine (or the class isn't one of SW5e's ten)
+  function multiclassUnmet(c, newClass) {
+    const score = (k) => +((c.abilities || {})[k]) || 10, out = [];
+    const names = [...new Set([...(c.classes || []).map((k) => k.name), newClass])];
+    for (const n of names) for (const g of (Object.prototype.hasOwnProperty.call(MC_PREREQ, n) ? MC_PREREQ[n] : [])) if (!g.some((k) => score(k) >= 13)) out.push(`${n} needs ${g.map((k) => AB_NAME[k]).join(' or ')} 13`);
+    return out;
+  }
+  Object.assign(SW5E, { MC_PREREQ, MC_PROFS, mcProfs, multiclassUnmet });
 
   function attackBonus(c, a) {
     if (a.bonus !== undefined && a.bonus !== '' && a.bonus !== null && !isNaN(+a.bonus)) return +a.bonus;
     let ab = a.ab || 'str';
     if (ab === 'finesse') ab = abilityMod(c, 'dex') > abilityMod(c, 'str') ? 'dex' : 'str';
-    return abilityMod(c, ab) + (a.proficient === false ? 0 : profBonus(c)) + (+a.magic || 0);
+    return abilityMod(c, ab) + (a.proficient === false ? 0 : profBonus(c)) + (+a.magic || 0) + infuseBonusFor(c, a);
   }
   function damageExpr(c, a) {
     if (a.damageFull) return a.damageFull;
     let ab = a.ab || 'str';
     if (ab === 'finesse') ab = abilityMod(c, 'dex') > abilityMod(c, 'str') ? 'dex' : 'str';
-    const m = a.noModDamage ? 0 : abilityMod(c, ab) + (+a.magic || 0);
+    const m = (a.noModDamage ? 0 : abilityMod(c, ab) + (+a.magic || 0)) + infuseBonusFor(c, a);
     const base = a.damage || '1';
     return m ? base + (m > 0 ? '+' : '') + m : base;
   }
@@ -387,6 +448,7 @@
     const got = ABILITIES.map(a => +scores[a.key]).sort((x, y) => x - y), want = (values || []).map(Number).sort((x, y) => x - y);
     return want.length === 6 && got.every((v, i) => v === want[i]);
   };
+  Object.assign(SW5E, { STANDARD_ARRAY, POINT_COST, POINT_BUDGET, pointBuyCost, usesEachOnce });
 
   function blankCharacter() {
     return {
@@ -465,12 +527,11 @@
   const sensesText = list => cleanSenses(list).map(x => `${x.kind[0].toUpperCase()}${x.kind.slice(1)} ${x.range} ft`).join(' · ');
   // "darkvision 60, blindsight 30" (the GM's typing) to the list
   const parseSenses = text => cleanSenses(String(text || '').split(/[,;·\n]+/).map(p => { const m = /([a-z]+)\D*(\d+)/i.exec(p); return m && { kind: m[1], range: +m[2] }; }).filter(Boolean));
+  Object.assign(SW5E, { SENSES, cleanSenses, sensesFromTraits, sensesText, parseSenses });
 
-  root.SW5E = { ABILITIES, SKILLS, CLASSES, SPECIES, BACKGROUNDS, DAMAGE_TYPES, WEAPONS, CONDITIONS, REFERENCE,
+  Object.assign(SW5E, { ABILITIES, SKILLS, CLASSES, SPECIES, BACKGROUNDS, DAMAGE_TYPES, WEAPONS, CONDITIONS, REFERENCE,
     mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo, techOnShortRest, overMaxPowerLevel, highCastFrom, highCastUsed, highCastBlocked,
     ARCHETYPE_CASTERS, casterArchetype, castingSources,
-    attackBonus, damageExpr, critExpr, armorClass, armorFromItem, critFrom, ARMOR_KINDS, reliableTalent, skillRollExpr, brutalDice, critDamage, isMelee, reloadOf, ammoOf, shotsOf, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
-    STANDARD_ARRAY, POINT_COST, POINT_BUDGET, pointBuyCost, usesEachOnce,
-    CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt,
-    SENSES, cleanSenses, sensesFromTraits, sensesText, parseSenses };
+    attackBonus, damageExpr, critExpr, armorClass, armorFromItem, critFrom, ARMOR_KINDS, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
+    CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt });
 })(typeof window !== 'undefined' ? window : globalThis);

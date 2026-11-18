@@ -18,13 +18,15 @@ const byName = (a, b) => a.n.localeCompare(b.n);
 const unlink = (s) => String(s || "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
 
 const ABIL = { Strength: "str", Dexterity: "dex", Constitution: "con", Intelligence: "int", Wisdom: "wis", Charisma: "cha" };
+// an ability's key from SW5e's full name, only for the six: never something every object inherits ("constructor")
+const abil = (name) => (typeof name === "string" && Object.prototype.hasOwnProperty.call(ABIL, name) ? ABIL[name] : null);
 // A species' ability score increase, when it's one fixed choice (e.g. +2 Int, +1 Dex); null when the
 // player chooses ("Any one", or several options), so the sheet doesn't guess.
 function fixedAsi(opts) {
   if (!Array.isArray(opts) || opts.length !== 1 || !Array.isArray(opts[0])) return null;
   const out = {};
   for (const o of opts[0]) {
-    const ab = o && Array.isArray(o.abilities) && o.abilities.length === 1 ? ABIL[o.abilities[0]] : null;
+    const ab = o && Array.isArray(o.abilities) && o.abilities.length === 1 ? abil(o.abilities[0]) : null;
     if (!ab) return null;
     out[ab] = (out[ab] || 0) + int(o.amount, -5, 5);
   }
@@ -50,6 +52,19 @@ function backgrounds(d) {
     n: t(e.name, 60), src: t(e.contentSource, 10), skills: t(e.skillProficiencies, 200), tools: t(e.toolProficiencies, 200),
     langs: t(e.languages, 200), equip: t(e.equipment, 600), feature: t(e.featureName, 80), featureText: t(unlink(e.featureText), 3000),
     feats: arr(e.featOptions, 12, (x) => t(x && x.name, 60)).filter(Boolean),
+  })).sort(byName);
+}
+// A class's 1st-level build data (audit 1.3, 1.7): hit die and 1st-level hit points, the two saving throws, how many
+// skills and from which list ("Any" means every skill), proficiencies, and the starting equipment lines.
+function classes(d) {
+  const none = (v) => !/^none$/i.test(String(v || "").trim());
+  return named(d).map((e) => ({
+    n: t(e.name, 40), src: t(e.contentSource, 10), sum: t(e.summary, 200), primary: t(e.primaryAbility, 60),
+    hd: int(e.hitDiceDieType, 4, 12), hp1: int(e.hitPointsAtFirstLevelNumber, 1, 20),
+    saves: arr(e.savingThrows, 2, (x) => abil(x) || "").filter(Boolean),
+    nSkills: int(e.numSkillChoices, 0, 6), skills: strs(e.skillChoicesList, 20, 40),
+    armor: strs(e.armorProficiencies, 10, 80).filter(none), weapons: strs(e.weaponProficiencies, 10, 80).filter(none),
+    tools: strs(e.toolProficiencies, 10, 120).filter(none), equip: strs(e.equipmentLines, 12, 300), wealth: t(e.startingWealthVariant, 40),
   })).sort(byName);
 }
 function feats(d) {
@@ -139,6 +154,7 @@ const LISTS = {
   species: { path: "species", build: species, maxBytes: 4 * MB, maxItems: 600 },                  // 0.97 MB, 141
   archetypes: { path: "archetype", build: archetypes, maxBytes: 4 * MB, maxItems: 600 },           // 0.81 MB, 137
   backgrounds: { path: "background", build: backgrounds, maxBytes: 3 * MB, maxItems: 400 },        // 0.59 MB, 61
+  classes: { path: "class", build: classes, maxBytes: 2 * MB, maxItems: 40 },                       // 0.24 MB, 10
   feats: { path: "feat", build: feats, maxBytes: 2 * MB, maxItems: 1000 },                         // 0.11 MB, 119
   maneuvers: { path: "maneuvers", build: maneuvers, maxBytes: 2 * MB, maxItems: 1000 },            // 0.07 MB, 119
   styles: { path: "fightingStyle", build: simple("description"), maxBytes: 1 * MB, maxItems: 400 }, // 32

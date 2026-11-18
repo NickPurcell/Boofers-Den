@@ -130,8 +130,8 @@ function cleanSnap(x) {
       .map(([id, ec, cc]) => [id, (Array.isArray(ec) ? ec : []).slice(0, 20).map((c) => str(c, 30)), Array.isArray(cc) ? cc.slice(0, 20).map((c) => str(c, 30)) : null]),
     chars: (Array.isArray(x.chars) ? x.chars : []).slice(0, 60).filter((c) => Array.isArray(c) && typeof c[0] === "string" && c[1] && typeof c[1] === "object")
       .map(([id, r]) => [id, { resources: E.cleanResources(r.resources),
-        force: Object.assign({ max: plainObj(r.force).max == null || plainObj(r.force).max === "" ? "" : num(plainObj(r.force).max, 0, 999), used: num(plainObj(r.force).used, 0, 999) }, cleanHigh(plainObj(r.force).high)),
-        tech: Object.assign({ max: plainObj(r.tech).max == null || plainObj(r.tech).max === "" ? "" : num(plainObj(r.tech).max, 0, 999), used: num(plainObj(r.tech).used, 0, 999) }, cleanHigh(plainObj(r.tech).high)),
+        force: Object.assign({ max: plainObj(r.force).max == null || plainObj(r.force).max === "" ? "" : num(plainObj(r.force).max, 0, 999), used: num(plainObj(r.force).used, 0, 999) }, num(plainObj(r.force).temp, 0, 999) ? { temp: num(plainObj(r.force).temp, 0, 999) } : {}, cleanHigh(plainObj(r.force).high)),
+        tech: Object.assign({ max: plainObj(r.tech).max == null || plainObj(r.tech).max === "" ? "" : num(plainObj(r.tech).max, 0, 999), used: num(plainObj(r.tech).used, 0, 999) }, num(plainObj(r.tech).temp, 0, 999) ? { temp: num(plainObj(r.tech).temp, 0, 999) } : {}, cleanHigh(plainObj(r.tech).high)),
         hitDiceUsed: R.cleanHitDiceUsed(r.hitDiceUsed),   // the sheet's own cleaner: per die size or an old number
         deathSaves: { s: num(plainObj(r.deathSaves).s, 0, 3), f: num(plainObj(r.deathSaves).f, 0, 3) } }]),
   };
@@ -279,8 +279,14 @@ function writeBack(camp, cid, before, after, G) {
     // points spent by an ability go back where the sheet keeps them
     if (a.charId && camp.characters[a.charId]) {
       for (const [key, pool] of Object.entries(a.pools || {})) {
-        if (!b.pools[key] || b.pools[key].used === pool.used) continue;
-        const ch = camp.characters[a.charId], next = E.setPoolUsed(ch, key, pool.used, R);
+        if (!b.pools[key] || (b.pools[key].used === pool.used && (b.pools[key].temp || 0) === (pool.temp || 0))) continue;
+        // force and tech take their temporary points too (#190): spent before the pool's own
+        const ch = camp.characters[a.charId];
+        let next = E.setPoolUsed(ch, key, pool.used, R, pool.temp);
+        if (next === ch && R.withClassResources) {   // a class pool the sheet hasn't stored yet (the world fills them in): store it, then spend
+          ch.resources = E.cleanResources(R.withClassResources(ch));
+          next = E.setPoolUsed(ch, key, pool.used, R, pool.temp);
+        }
         Object.assign(ch, { resources: next.resources, force: next.force, tech: next.tech, hitDiceUsed: next.hitDiceUsed });
       }
     }
@@ -1006,7 +1012,8 @@ function apply(camp, cid, gm, type, p, G) {
       const tgt = type === "fight.attack" && entry(idOr(p.target)), tch = tgt && tgt.charId && charOf(camp, tgt.charId);
       if (tch && (tch.features || []).some((x) => x && /^(riposte|return fire)$/i.test(String(x.name || "").trim()))) seedSup(tch);
       // Rage and Action Surge count their uses: a sheet from before #108 gets its class's resource from the class table first
-      const poolKey = type === "fight.common" ? { rage: "rage", surge: "action-surge" }[String(p.key || "")] : type === "fight.attack" && p.martial ? "focus" : null;   // ...and Flurry of Blows, focus
+      const POOL_KEYS = new Map([["rage", "rage"], ["surge", "action-surge"]]);   // a Map, so a key named like Object's own is no pool (#164 review)
+      const poolKey = type === "fight.common" ? POOL_KEYS.get(String(p.key || "")) || null : type === "fight.attack" && p.martial ? "focus" : null;   // ...and Flurry of Blows, focus
       const rager = poolKey && cur.charId && charOf(camp, cur.charId);
       if (rager && R.withClassResources && !(rager.resources || []).some((r) => r && r.key === poolKey)) {
         const withRage = E.cleanResources(R.withClassResources(rager));
