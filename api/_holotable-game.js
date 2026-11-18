@@ -147,7 +147,7 @@ function cleanShip(sh, chars) {
     crew: list(sh.crew, 20, (c) => ({ charId: chars[c.charId] ? c.charId : null, name: s(c.name, 60), deployment: DEPLOYMENTS.includes(c.deployment) ? c.deployment : "",
       rank: clamp(int(c.rank), 0, 5), pb: clamp(int(c.pb, 2), 0, 10) })),
     weapons: list(sh.weapons, 30, (w) => ({ name: s(w.name, 80), atkMisc: clamp(int(w.atkMisc), -20, 20), dmg: s(w.dmg, 40), type: s(w.type, 30),
-      range: s(w.range, 40), props: s(w.props, 300) })),
+      range: s(w.range, 40), props: s(w.props, 300), ...Ships.cleanWeapon(w) })),
     equipment: list(sh.equipment, 60, (e) => ({ name: s(e.name, 80), notes: s(e.notes, 300) })),
     mods: list(sh.mods, 80, (e) => ({ name: s(e.name, 80), notes: s(e.notes, 300) })),
     notes: s(sh.notes, 10000), ...Ships.cleanFields(sh), updated: now(),
@@ -288,6 +288,7 @@ function viewFor(camp, cid, gm, online) {
     ships: (camp.ships || []).filter((x) => gm || !x.hidden),
     ...(camp.space ? { space: Space.view(camp, gm) } : {}),   // the space map (#146)
     sceneFx: fxView,
+    ...((pg) => (pg.length ? { pings: pg } : {}))((camp.pings || []).filter((q) => q && now() - q.ts < 10).map((q) => ({ id: q.id, x: q.x, y: q.y, gm: q.gm, name: playerName(camp, q.by) }))),
     ...(camp.fight && camp.fight.on ? { fight: Fight.view(camp, cid, gm, shownName) } : {}),
     // the sheet's Cast (#73), combat view on or off: which powers the table has data for, and who concentrates on what
     ...((sc) => (sc ? { sheetCast: sc } : {}))(Fight.sheetView(camp, gm ? camp.characters : sheetsFor(camp, cid))),
@@ -759,6 +760,11 @@ function applyAction(camp, cid, gm, type, p) {
       if ("name" in f) t.name = str(f.name, 40);
       if ("color" in f) t.color = validColor(f.color);
       if ("size" in f) t.size = clamp(int(f.size, 1), 1, 4);
+      // a Tiny creature (audit 8.15) still takes its square for walls, fog and the combat view; it's drawn smaller
+      if ("tiny" in f) { if (f.tiny && (t.size || 1) === 1) t.tiny = true; else delete t.tiny; }
+      if ((t.size || 1) > 1) delete t.tiny;
+      // elevation or flying height in feet (audit 8.14), in 5-ft steps; 0 is the ground and isn't kept
+      if ("elev" in f) { const e = Math.round(clamp(int(f.elev), -9995, 99995) / 5) * 5; if (e) t.elev = e; else delete t.elev; }
       if ("hidden" in f && gm) t.hidden = !!f.hidden;
       if ("nameHidden" in f && gm) t.nameHidden = !!f.nameHidden;
       if ("img" in f) t.img = validImg(f.img);
@@ -822,6 +828,24 @@ function applyAction(camp, cid, gm, type, p) {
       // the deleted scene's own images go too, unless something else still shows them (checked by the caller)
       return { dropImages: [sc.map.bgUrl, sc.map.floor] };
     }
+    // "Look here" (audit 8.13): anyone's ping pulses on every map for a few seconds; one a second each
+    case "map.ping": {
+      const t = now(), x = Number(p.x), y = Number(p.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) throw new Invalid("Where?");
+      camp.pings = (Array.isArray(camp.pings) ? camp.pings : []).filter((q) => q && t - q.ts < 15);
+      if (camp.pings.some((q) => q.by === cid && t - q.ts < 1)) return {};
+      camp.pings.push({ id: rid(), x: clamp(x, -50, 300), y: clamp(y, -50, 300), by: cid, gm: !!gm, ts: t });
+      camp.pings = camp.pings.slice(-8);
+      return {};
+    }
+    case "map.draw": {   // the GM's freehand stroke
+      need(gm);
+      const [d] = cleanDrawings([{ pts: p.pts, c: p.c }]);
+      if (!d) throw new Invalid("Nothing to draw.");
+      mp.drawings = cleanDrawings([...(mp.drawings || []), d]);   // (a clear leaves none; cleanMap drops the empty list)
+      return { id: d.id };
+    }
+    case "map.drawClear": { need(gm); const left = p.id ? (mp.drawings || []).filter((d) => d.id !== String(p.id)) : []; if (left.length) mp.drawings = left; else delete mp.drawings; return {}; }
     case "map.settings":
       need(gm);
       for (const k of ["gridSize", "cols", "rows"]) if (k in p) mp[k] = clamp(int(p[k], mp[k]), 5, 200);
@@ -1009,15 +1033,26 @@ function propSightSegments(map) {
   return out;
 }
 
+// The GM's quick drawings on the map (audit 8.13): freehand strokes in grid units, everyone sees them
+const DRAW_COLORS = ["#ffd27a", "#4fc3f7", "#ef5350", "#66bb6a", "#ffffff"];
+function cleanDrawings(list) {
+  return (Array.isArray(list) ? list : []).slice(-60).filter((d) => d && typeof d === "object" && Array.isArray(d.pts)).map((d) => ({
+    id: /^[a-z0-9]{4,20}$/.test(String(d.id || "")) ? String(d.id) : rid(),
+    c: DRAW_COLORS.includes(d.c) ? d.c : DRAW_COLORS[0],
+    pts: d.pts.slice(0, 600).map((v) => Math.round(clamp(Number.isFinite(+v) ? +v : 0, -50, 300) * 100) / 100).slice(0, d.pts.length - (d.pts.length % 2)),
+  })).filter((d) => d.pts.length >= 4);
+}
 function cleanMap(g, raw) {
   const m = raw && typeof raw === "object" ? raw : {};
   const n = (v, d) => (Number.isFinite(+v) ? +v : d);
   return {
     bgVersion: int(m.bgVersion) + 1, bgUrl: validImg(m.bgUrl), floor: validImg(m.floor), floorScale: clamp(n(m.floorScale, 1), 0.1, 8),
+    ...((dr) => (dr.length ? { drawings: dr } : {}))(cleanDrawings(m.drawings)),   // kept only when there are some
     gridSize: clamp(int(m.gridSize, 70), 5, 200), gridV2: true, cols: clamp(int(m.cols, 24), 5, 200), rows: clamp(int(m.rows, 16), 5, 200), showGrid: m.showGrid !== false,
     tokens: (Array.isArray(m.tokens) ? m.tokens : []).slice(0, 300).filter((t) => t && typeof t === "object").map((t) => ({
       id: /^[a-z0-9]{6,20}$/.test(t.id || "") ? t.id : rid(), name: str(t.name, 40), color: validColor(t.color), x: clamp(int(t.x), -500, 1000), y: clamp(int(t.y), -500, 1000),
-      size: clamp(int(t.size, 1), 1, 4), charId: charById(g, t.charId) ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, nameHidden: !!t.nameHidden, img: validImg(t.img), moves: cleanMoves(t.moves) })),
+      size: clamp(int(t.size, 1), 1, 4), ...(t.tiny && clamp(int(t.size, 1), 1, 4) === 1 ? { tiny: true } : {}),
+      ...((e) => (e ? { elev: e } : {}))(Math.round(clamp(int(t.elev), -9995, 99995) / 5) * 5), charId: charById(g, t.charId) ? t.charId : null, owner: str(t.owner, 40), hidden: !!t.hidden, nameHidden: !!t.nameHidden, img: validImg(t.img), moves: cleanMoves(t.moves) })),
     ...(Array.isArray(m.walls) && m.walls.length ? { walls: Fight.cleanWalls(m.walls) } : {}),   // the combat view's walls (issue #93), only on a map that has some
     ...(m.fog && typeof m.fog === "object" ? { fog: Fight.cleanFog(m.fog) } : {}),   // fog of war (issue #93), only on a map the GM switched it on for
     ...(m.light && typeof m.light === "object" ? { light: Fight.cleanLight(m.light) } : {}),   // its light (#93 step 5), only on a map the GM dimmed or lit
