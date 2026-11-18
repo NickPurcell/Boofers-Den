@@ -287,6 +287,13 @@
     const kind = String((it && it.accl) || '').toLowerCase(), ac = parseInt(String((it && it.ac) || '').replace(/^\+/, ''), 10);
     return ARMOR_KINDS.includes(kind) && Number.isFinite(ac) ? { kind, ac } : null;
   }
+  // Infuse Item (Engineer 2nd, SW5e): one armor, shield or weapon until the next long rest, +1 to AC or to attack
+  // and damage, +2 from 10th and +3 from 15th. The sheet keeps which: infused = "attack:<name>" or "equipment:<name>".
+  function infuseBonus(c) {
+    const l = (c.classes || []).filter((k) => String(k.name).toLowerCase() === 'engineer').reduce((a, k) => a + (+k.level || 0), 0);
+    return l >= 15 ? 3 : l >= 10 ? 2 : l >= 2 ? 1 : 0;
+  }
+  const infuseBonusFor = (c, a) => (c && a && c.infused && c.infused === 'attack:' + a.name ? infuseBonus(c) : 0);
   function armorClass(c) {
     const m = (k) => abilityMod(c, k), dex = m('dex'), lv = (n) => (c.classes || []).some((k) => String(k.name).toLowerCase() === n);
     const worn = (c.equipment || []).filter((e) => e && e.equipped && e.armor && ARMOR_KINDS.includes(e.armor.kind));
@@ -295,6 +302,7 @@
     const body = worn.filter((e) => e.armor.kind !== 'shield').sort((x, y) => bodyAc(y) - bodyAc(x))[0];
     const misc = +c.acMisc || 0, sh = shields.length ? [`${shields.find((e) => +e.armor.ac === shield).name} +${shield}`] : [];
     let best;
+    const inf = c.infused && infuseBonus(c) ? worn.find((e) => c.infused === 'equipment:' + e.name) : null;   // Infuse Item
     if (body) best = { v: bodyAc(body) + shield, parts: [`${body.name} (${body.armor.kind}) ${bodyAc(body)}`, ...sh] };
     else {
       const opts = [{ v: 10 + dex + shield, parts: [`unarmored 10 + Dex ${fmt(dex)}`, ...sh] }];
@@ -304,7 +312,8 @@
         opts.push({ v: 10 + dex + m('str'), parts: ['Unarmored Defense (Blademaster) 10 + Dex + Str'] });
       best = opts.sort((x, y) => y.v - x.v)[0];
     }
-    return { total: best.v + misc, text: [...best.parts, misc ? `misc ${fmt(misc)}` : ''].filter(Boolean).join(' · ') };
+    const infB = inf && (inf === body || inf.armor.kind === 'shield') ? infuseBonus(c) : 0;
+    return { total: best.v + misc + infB, text: [...best.parts, infB ? `infused ${inf.name} +${infB}` : '', misc ? `misc ${fmt(misc)}` : ''].filter(Boolean).join(' · ') };
   }
   // the d20 a weapon crits on: 20, or lower for an attack's own crit range or a "Keen N" weapon (SW5e: the range grows by N)
   // Reliable Talent (Operative 11, SW5e): ability checks that add the proficiency bonus get the d20's minimum roll
@@ -329,17 +338,29 @@
 
   function critFrom(props) { const k = /\bkeen\s*(\d)/i.exec(String(props || '')); return k ? Math.max(15, 20 - +k[1]) : 20; }
 
+  // Size (audit 5.12): SW5e's sizes, and the squares a token takes (Tiny shares a square, drawn small)
+  const SIZES = ['Tiny', 'Small', 'Medium', 'Large', 'Huge', 'Gargantuan'];
+  const tokenSquares = (size) => ({ Large: 2, Huge: 3, Gargantuan: 4 }[size] || 1);
+  // Temporary force or tech points (audit 4.9): spent before the character's own, one source at a time, gone after a
+  // long rest. pointsSpend gives the new { temp, used } for a cost, or null when there aren't enough.
+  function pointsSpend(pool, cost, max) {
+    const temp = Math.max(0, +(pool || {}).temp || 0), used = Math.max(0, +(pool || {}).used || 0);
+    if (cost > temp + Math.max(0, max - used)) return null;
+    const fromTemp = Math.min(temp, cost);
+    return { temp: temp - fromTemp, used: used + cost - fromTemp, fromTemp };
+  }
+
   function attackBonus(c, a) {
     if (a.bonus !== undefined && a.bonus !== '' && a.bonus !== null && !isNaN(+a.bonus)) return +a.bonus;
     let ab = a.ab || 'str';
     if (ab === 'finesse') ab = abilityMod(c, 'dex') > abilityMod(c, 'str') ? 'dex' : 'str';
-    return abilityMod(c, ab) + (a.proficient === false ? 0 : profBonus(c)) + (+a.magic || 0);
+    return abilityMod(c, ab) + (a.proficient === false ? 0 : profBonus(c)) + (+a.magic || 0) + infuseBonusFor(c, a);
   }
   function damageExpr(c, a) {
     if (a.damageFull) return a.damageFull;
     let ab = a.ab || 'str';
     if (ab === 'finesse') ab = abilityMod(c, 'dex') > abilityMod(c, 'str') ? 'dex' : 'str';
-    const m = a.noModDamage ? 0 : abilityMod(c, ab) + (+a.magic || 0);
+    const m = (a.noModDamage ? 0 : abilityMod(c, ab) + (+a.magic || 0)) + infuseBonusFor(c, a);
     const base = a.damage || '1';
     return m ? base + (m > 0 ? '+' : '') + m : base;
   }
@@ -497,7 +518,8 @@
   root.SW5E = { ABILITIES, SKILLS, CLASSES, SPECIES, BACKGROUNDS, DAMAGE_TYPES, WEAPONS, CONDITIONS, REFERENCE,
     mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo, techOnShortRest, overMaxPowerLevel, highCastFrom, highCastUsed, highCastBlocked,
     ARCHETYPE_CASTERS, casterArchetype, castingSources,
-    attackBonus, damageExpr, critExpr, armorClass, armorFromItem, critFrom, ARMOR_KINDS, reliableTalent, skillRollExpr, brutalDice, critDamage, isMelee, reloadOf, ammoOf, shotsOf, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
+    SIZES, tokenSquares, pointsSpend,
+    infuseBonus, infuseBonusFor, attackBonus, damageExpr, critExpr, armorClass, armorFromItem, critFrom, ARMOR_KINDS, reliableTalent, skillRollExpr, brutalDice, critDamage, isMelee, reloadOf, ammoOf, shotsOf, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
     STANDARD_ARRAY, POINT_COST, POINT_BUDGET, pointBuyCost, usesEachOnce,
     CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt, CHOICE_COLS, choiceCounts,
     SENSES, cleanSenses, sensesFromTraits, sensesText, parseSenses };
