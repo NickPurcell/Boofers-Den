@@ -171,7 +171,7 @@ function cleanChar(ch) {
     classes: list(ch.classes, 6, (k) => ({ name: s(k.name, 40) || "Fighter", level: clamp(int(k.level, 1), 0, 20), archetype: s(k.archetype, 60) })),
     abilities: nums(ch.abilities, ABILS, 10),
     saves: Object.fromEntries(ABILS.map((a) => [a, !!(ch.saves || {})[a]])),
-    skills: Object.fromEntries(Object.entries(ch.skills || {}).slice(0, 40).filter(([k]) => /^[a-zA-Z]{1,30}$/.test(k)).map(([k, v]) => [k, [0, 0.5, 1, 2].includes(+v) ? +v : 0])),
+    skills: Object.fromEntries(Object.entries(ch.skills || {}).slice(0, 40).filter(([k]) => /^[a-zA-Z]{1,30}$/.test(k)).map(([k, v]) => [k, [0, 0.5, 1, 2, 3, 4, 5].includes(+v) ? +v : 0])),
     skillMisc: Object.fromEntries(Object.entries(ch.skillMisc || {}).slice(0, 40).filter(([k]) => /^[a-zA-Z]{1,30}$/.test(k)).map(([k, v]) => [k, numOr(v, 0)])),
     saveMisc: nums(ch.saveMisc, ABILS, 0),
     ac: numOr(ch.ac, 10), speed: numOr(ch.speed, 30),

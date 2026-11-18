@@ -139,6 +139,10 @@ body.is-gm .gm-only { display: revert !important; }
 .prof { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--muted); cursor: pointer; flex: none; padding: 0; background: transparent; }
 .prof.p1 { background: var(--holo); border-color: var(--holo); }
 .prof.p2 { background: var(--amber); border-color: var(--amber); box-shadow: 0 0 0 2px color-mix(in srgb, var(--amber) 33%, transparent); }
+/* Wretched Hives' masteries (audit 5.7): expertise's dot with one, two or three rings */
+.prof.p3 { box-shadow: 0 0 0 2px var(--panel, #0d1520), 0 0 0 3px var(--holo); }
+.prof.p4 { box-shadow: 0 0 0 2px var(--panel, #0d1520), 0 0 0 3px var(--holo), 0 0 0 5px var(--panel, #0d1520), 0 0 0 6px var(--holo); }
+.prof.p5 { box-shadow: 0 0 0 2px var(--panel, #0d1520), 0 0 0 3px var(--holo), 0 0 0 5px var(--panel, #0d1520), 0 0 0 6px var(--amber); }
 .prof.p05 { background: linear-gradient(90deg, var(--holo) 50%, transparent 50%); border-color: var(--holo); }
 .prof:disabled { cursor: default; }
 .hp-box .big { font-size: 30px; font-weight: 700; }
