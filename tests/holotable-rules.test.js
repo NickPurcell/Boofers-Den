@@ -190,6 +190,22 @@ test("consumables (audit 6.7): what using one rolls, read from its text; checked
   assert.equal(R.commonHitDie({ classes: [{ name: "Fighter", level: 2 }, { name: "Scholar", level: 2 }] }), 10, "a tie: the larger");
 });
 
+test("enhanced items (audit 6.2): a +N to attack and damage, or to AC, read from the text; the AC counts it when worn", () => {
+  assert.deepEqual(R.enhancedBonus("You have a +2 bonus to attack and damage rolls with this enhanced weapon."), { hit: 2, dmg: 2 });
+  assert.deepEqual(R.enhancedBonus("You have a +1 bonus to attack rolls made with it."), { hit: 1 });
+  assert.deepEqual(R.enhancedBonus("You have a +3 bonus to AC while wearing this armor."), { ac: 3 });
+  assert.equal(R.enhancedBonus("Resistance to one type of damage."), null);
+  assert.equal(R.cleanBonus({ hit: 9, ac: "x", dmg: 0 }), null);
+  const c = { abilities: { dex: 14 }, classes: [{ name: "Fighter", level: 1 }], equipment: [
+    { name: "Combat suit", equipped: true, armor: { kind: "light", ac: 11 } },
+    { name: "Armor (Fine)", equipped: true, bonus: { ac: 1 } },
+    { name: "Shield (Fine)", equipped: true, att: true, bonus: { ac: 2 } },      // needs attunement, not attuned: no bonus
+    { name: "Armor (Superior)", equipped: false, bonus: { ac: 3 } } ] };        // not worn
+  assert.deepEqual(R.armorClass(c), { total: 14, text: "Combat suit (light) 13 · Armor (Fine) +1" });
+  c.equipment[2].attuned = true;
+  assert.equal(R.armorClass(c).total, 16);
+});
+
 test("Engineers and Scouts get tech points back on a short rest; others don't", () => {
   assert.equal(R.techOnShortRest(char([["Engineer", 1]])), true);
   assert.equal(R.techOnShortRest(char([["Scout", 2]])), true);

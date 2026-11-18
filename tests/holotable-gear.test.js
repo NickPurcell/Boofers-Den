@@ -85,3 +85,14 @@ test("consumables (6.7): an item keeps its checked `use`; anything else in it is
   const eq = (await sheet(gm, avery)).equipment;
   assert.deepEqual(eq.map((e) => e.use), [{ save: { ab: "dex", dc: 14 }, dmg: [["2d10", "kinetic"]], half: true }, { hd: 1 }, {}, undefined]);
 });
+
+test("enhanced items (6.2): an item keeps its checked +N, and the server's own AC counts a worn one", async () => {
+  const { gm, sam, avery } = await table();
+  const av = await sheet(sam, avery);
+  await sam.act("char.save", { char: Object.assign({}, av, { acAuto: true, abilities: Object.assign({}, av.abilities, { dex: 12 }), equipment: [
+    { name: "Armor (Improved)", qty: 1, equipped: true, bonus: { ac: 2, hit: 99, extra: 1 } }, { name: "Odd", qty: 1, bonus: "lots" },
+  ] }) });
+  const c = await sheet(gm, avery);
+  assert.deepEqual(c.equipment.map((e) => e.bonus), [{ ac: 2 }, undefined]);
+  assert.equal(c.ac, 10 + 1 + 2, "unarmored 10 + Dex, +2 from the worn item");
+});
