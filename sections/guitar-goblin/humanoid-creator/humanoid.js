@@ -16,6 +16,7 @@ import { STYLES } from './hair.js';
 import { OUTFITS, HOODS } from './outfits.js';
 import { SPECIES, CLOTH, FRAMES, BUILDS, AGES, MARKS, LINERS } from './species.js';
 import { tattooMarks } from './tattoos.js';
+import { GEAR, makeGear, gearMaterial } from './gear.js';
 
 /* ---------------- the options ---------------- */
 const named = (o) => Object.entries(o).map(([key, v]) => ({ key, name: v.name }));
@@ -32,6 +33,7 @@ function options() {
   if (state.species !== 'pureblood') o.marks = { label: 'Face detail', items: MARKS };
   o.liner = { label: 'Lined eyes', items: LINERS };
   o.outfit = { label: 'Outfit', items: named(OUTFITS) }; o.hood = { label: 'Hood', items: named(HOODS) };
+  o.gear = { label: 'Carries', items: named(GEAR) };
   o.main = { label: 'Main colour', swatch: true, items: CLOTH }; o.second = { label: 'Second colour', swatch: true, items: CLOTH };
   return o;
 }
@@ -67,7 +69,7 @@ const lidMat = new THREE.MeshPhysicalMaterial({ roughness: 0.5, sheen: 0.3, shee
 const eyeMat = new THREE.MeshPhysicalMaterial({ roughness: 0.16, clearcoat: 1, clearcoatRoughness: 0.04 }), lashMat = new THREE.MeshStandardMaterial({ color: 0x120d0a, roughness: 0.8 });
 const ringMat = metalMaterial('#c9a24a');
 const CLOTHS = { cloth: clothMaterial, leather: leatherMaterial, metal: metalMaterial, plastic: (hex) => { const m = plasticMaterial(hex); m.roughness = 0.46; m.clearcoat = 0.25; return m; } };
-const KEEP = new Set([skin, bodySkin, hairMat, lidMat, eyeMat, lashMat, ringMat]);
+const KEEP = new Set([skin, bodySkin, hairMat, lidMat, eyeMat, lashMat, ringMat, gearMaterial()]);
 let built = null, cloth = [], info = {}, ticket = 0, current = Promise.resolve(), eyeKey = '';
 
 function args() {
@@ -110,6 +112,7 @@ async function rebuild() {
     add(merge(rings), ringMat, hg);
   }
   for (const p of outfit.pieces) { const m = add(skinGeometry(copy(p.mesh), { cloth: true }), (CLOTHS[p.material] || clothMaterial)('#777777')); m.name = p.name; cloth.push({ mesh: m, role: p.role }); }
+  const gear = makeGear(state.gear, A.body, state.outfit); if (gear) figure.add(gear);
   built = { head, fresh: true };
   let tris = 0; figure.traverse((o) => { if (o.isMesh) tris += o.geometry.index.count / 3; });
   info = { tris, ms: Math.round(performance.now() - t0) };
@@ -134,16 +137,17 @@ function recolour() {
   const cols = { main: pick('main').c, second: pick('second').c, dark: '#25272d', leather: '#46321f', metal: '#a4a9b0', trim: '#c9a24a' };
   for (const p of cloth) p.mesh.material.color.set(cols[p.role] || '#777777');
   ringMat.color.set(state.jewel === 'silver' ? '#c3c7cd' : '#c9a24a');
+  gearMaterial().userData.u.uPrimary.value.set('#3a2c20'); gearMaterial().userData.u.uSecondary.value.set(cols.second);   // a staff's wood, and its grip in the wearer's second colour
   stage.redraw();
 }
 const go = () => { current = rebuild(); return current; };
 
 /* ---------------- the panel ---------------- */
-const GEOMETRY = new Set(['frame', 'build', 'face', 'age', 'style', 'spurs', 'tendrils', 'ridges', 'jewel', 'outfit', 'hood']);
+const GEOMETRY = new Set(['frame', 'build', 'face', 'age', 'style', 'spurs', 'tendrils', 'ridges', 'jewel', 'outfit', 'hood', 'gear']);
 function summary() {
   const n = (k) => pick(k).name.toLowerCase(), S = sp();
   document.getElementById('title').textContent = S.name; document.getElementById('blurb').textContent = S.blurb;
-  document.getElementById('summary').textContent = `${S.name}: ${n('frame')} frame, ${n('build')} build, ${n('face')} face, ${n('age')}; ${n('skin')} skin, ${n('eyes')} eyes, ${n('hair')} hair worn ${n('style')}; in ${pick('outfit').name.toLowerCase()}, ${n('main')} and ${n('second')}${state.hood !== 'none' ? ', hood ' + n('hood') : ''}.`;
+  document.getElementById('summary').textContent = `${S.name}: ${n('frame')} frame, ${n('build')} build, ${n('face')} face, ${n('age')}; ${n('skin')} skin, ${n('eyes')} eyes, ${n('hair')} hair worn ${n('style')}; in ${pick('outfit').name.toLowerCase()}, ${n('main')} and ${n('second')}${state.hood !== 'none' ? ', hood ' + n('hood') : ''}${state.gear !== 'none' ? ', carrying a ' + n('gear') : ''}.`;
 }
 function paintPanel() {
   const opts = options();

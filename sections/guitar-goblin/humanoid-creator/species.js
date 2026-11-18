@@ -15,7 +15,7 @@ export const SPECIES = {
     eyes: sw(['silver', 'Silver', '#b9c2cc'], ['ice', 'Ice', '#a4c2d8'], ['blue', 'Pale blue', '#86a9cc'], ['violet', 'Pale violet', '#ada4d0'], ['grey', 'Grey', '#8a929b']),
     hairs: sw(['white', 'White', '#e4e4e8'], ['silver', 'Silver', '#bfc4cb'], ['ash', 'Ash', '#a6a6a2'], ['gold', 'Pale gold', '#d6cdaa'], ['steel', 'Steel', '#8b939c']),
     look: { white: '#ebe8e4', flush: '#b65a54' },
-    defaults: { frame: 'masc', build: 'strong', face: 'oval', age: 'adult', skin: 'ivory', eyes: 'silver', style: 'swept', hair: 'white', marks: 'none', liner: 'none', outfit: 'armour', hood: 'none', main: 'ash', second: 'slate' },
+    defaults: { frame: 'masc', build: 'strong', face: 'oval', age: 'adult', skin: 'ivory', eyes: 'silver', style: 'swept', hair: 'white', marks: 'none', liner: 'none', outfit: 'armour', hood: 'none', gear: 'double', main: 'ash', second: 'slate' },
     groups: {},
   },
   pureblood: {
@@ -24,7 +24,7 @@ export const SPECIES = {
     eyes: sw(['amber', 'Amber', '#f09a1a'], ['yellow', 'Yellow', '#efc222'], ['gold', 'Gold', '#d6a636'], ['orange', 'Orange', '#e8641a'], ['red', 'Red', '#d32a1a']),
     hairs: sw(BLACK, DKBROWN, ['redbrown', 'Red-brown', '#4a1a14'], ['grey', 'Iron grey', '#8a8684'], ['white', 'White', '#d8d4d0']),
     look: { white: '#dcc7a6', flush: '#5a1216', lips: '#2c0b10', shade: 0.35 },
-    defaults: { frame: 'masc', build: 'strong', face: 'square', age: 'adult', skin: 'crimson', eyes: 'amber', style: 'knot', hair: 'black', liner: 'none', spurs: 'large', tendrils: 'jaw', ridges: 'light', jewel: 'gold', outfit: 'plate', hood: 'none', main: 'charcoal', second: 'wine' },
+    defaults: { frame: 'masc', build: 'strong', face: 'square', age: 'adult', skin: 'crimson', eyes: 'amber', style: 'knot', hair: 'black', liner: 'none', spurs: 'large', tendrils: 'jaw', ridges: 'light', jewel: 'gold', outfit: 'plate', hood: 'none', gear: 'hilt', main: 'charcoal', second: 'wine' },
     groups: {
       spurs: { label: 'Bone spurs', items: named(SPURS) }, tendrils: { label: 'Tendrils', items: named(TENDRILS) }, ridges: { label: 'Ridges', items: named(RIDGES) },
       jewel: { label: 'Tendril rings', items: [{ key: 'none', name: 'None' }, { key: 'gold', name: 'Gold' }, { key: 'silver', name: 'Silver' }] },
@@ -36,7 +36,7 @@ export const SPECIES = {
     eyes: sw(['blue', 'Blue', '#4f78a8'], ['green', 'Green', '#4f8a56'], ['grey', 'Grey', '#7f8a94'], ['yellow', 'Yellow', '#c6ae30'], ['hazel', 'Hazel', '#7a6a3a'], ['violet', 'Violet', '#7e60ae']),
     hairs: sw(BLACK, ['blueblack', 'Blue-black', '#131928'], DKBROWN, ['redbrown', 'Red-brown', '#5a2a1a'], ['grey', 'Grey', '#8c8c8c']),
     look: { white: '#e8e4da', flush: '#7a6a2a' },
-    defaults: { frame: 'fem', build: 'average', face: 'heart', age: 'adult', skin: 'olive', eyes: 'blue', style: 'tail', hair: 'black', marks: 'none', liner: 'soft', tattoo: 'brow.eyes', shape: 'triangle', ink: 'black', outfit: 'jacket', hood: 'down', main: 'navy', second: 'sand' },
+    defaults: { frame: 'fem', build: 'average', face: 'heart', age: 'adult', skin: 'olive', eyes: 'blue', style: 'tail', hair: 'black', marks: 'none', liner: 'soft', tattoo: 'brow.eyes', shape: 'triangle', ink: 'black', outfit: 'jacket', hood: 'down', gear: 'none', main: 'navy', second: 'sand' },
     groups: { tattoo: { label: 'Tattoos', multi: true, items: named(PLACES) }, shape: { label: 'Tattoo shape', items: named(SHAPES) }, ink: { label: 'Tattoo ink', swatch: true, items: INKS } },
   },
   human: {
@@ -45,7 +45,7 @@ export const SPECIES = {
     eyes: sw(['brown', 'Brown', '#5a3a22'], ['dark', 'Dark', '#2a1c14'], ['hazel', 'Hazel', '#7a6a3a'], ['green', 'Green', '#4f7a52'], ['blue', 'Blue', '#4f78a8'], ['grey', 'Grey', '#7f8a94']),
     hairs: sw(BLACK, DKBROWN, ['brown', 'Brown', '#4a3020'], ['auburn', 'Auburn', '#6a2e1a'], ['blond', 'Blond', '#b89858'], ['grey', 'Grey', '#8c8c8c'], ['white', 'White', '#dcdcdc']),
     look: { white: '#e9e4de', flush: '#b0453c' },
-    defaults: { frame: 'andro', build: 'average', face: 'oval', age: 'adult', skin: 's4', eyes: 'brown', style: 'crop', hair: 'dkbrown', marks: 'none', liner: 'none', outfit: 'coat', hood: 'none', main: 'umber', second: 'sand' },
+    defaults: { frame: 'andro', build: 'average', face: 'oval', age: 'adult', skin: 's4', eyes: 'brown', style: 'crop', hair: 'dkbrown', marks: 'none', liner: 'none', outfit: 'coat', hood: 'none', gear: 'none', main: 'umber', second: 'sand' },
     groups: {},
   },
 };
