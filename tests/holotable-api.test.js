@@ -2041,3 +2041,49 @@ test("Reliable Talent, Brutal Critical, and shots for Reload weapons (#67, audit
   assert.equal(c.attacks[1].shots, 0, "clamped at 0");
   assert.equal(c.attacks[2].shots, undefined, "not stored when unset");
 });
+
+test("tokens: Tiny creatures and elevation (audit 8.14, 8.15)", async () => {
+  const { gm, p1 } = await table();
+  await gm.act("token.add", { name: "Mynock", x: 2, y: 2 });
+  const tok = () => gm.poll().then((r) => r.data.state.map.tokens.find((t) => t.name === "Mynock"));
+  const id = (await tok()).id;
+  await gm.act("token.update", { id, fields: { tiny: true, elev: 32 } });
+  let t = await tok();
+  assert.equal(t.tiny, true);
+  assert.equal(t.size, 1, "still one square for walls, fog and the combat view");
+  assert.equal(t.elev, 30, "in 5-ft steps");
+  await gm.act("token.update", { id, fields: { size: 2 } });
+  t = await tok();
+  assert.equal(t.tiny, undefined, "a bigger size isn't Tiny");
+  await gm.act("token.update", { id, fields: { size: 1, tiny: true, elev: -999999 } });
+  t = await tok();
+  assert.equal(t.elev, -9995, "clamped");
+  await gm.act("token.update", { id, fields: { elev: 0 } });
+  t = await tok();
+  assert.equal(t.elev, undefined, "the ground isn't kept");
+  assert.equal(t.tiny, true);
+  assert.equal((await p1.act("token.update", { id, fields: { elev: 10 } })).code, 403, "only the GM or the token's owner");
+  assert.equal((await p1.poll()).data.state.map.tokens.find((x) => x.id === id).tiny, true, "players see it Tiny too");
+});
+
+test("map: anyone pings (once a second each); the GM draws and clears (audit 8.13)", async () => {
+  const { gm, p1 } = await table();
+  assert.equal((await p1.act("map.ping", { x: 3.5, y: 2.25 })).code, 200);
+  await p1.act("map.ping", { x: 9, y: 9 });   // too soon: dropped
+  let pings = (await gm.poll()).data.state.pings;
+  assert.equal(pings.length, 1);
+  assert.deepEqual([pings[0].x, pings[0].y, pings[0].name, pings[0].gm], [3.5, 2.25, "Sam", false]);
+  assert.equal((await p1.act("map.ping", { x: "nope" })).code, 400);
+  assert.equal((await p1.act("map.draw", { pts: [0, 0, 1, 1] })).code, 403, "drawing is the GM's");
+  assert.equal((await gm.act("map.draw", { pts: [0, 0, 1, 1.5, 2, 9999], c: "#ef5350" })).code, 200);
+  assert.equal((await gm.act("map.draw", { pts: [1] })).code, 400, "a stroke needs two points");
+  await gm.act("map.draw", { pts: [5, 5, 6, 6], c: "javascript:alert(1)" });
+  let d = (await p1.poll()).data.state.map.drawings;
+  assert.equal(d.length, 2, "players see the drawings");
+  assert.deepEqual(d[0].pts, [0, 0, 1, 1.5, 2, 300], "clamped to the board's reach");
+  assert.equal(d[1].c, "#ffd27a", "only the palette's colours");
+  await gm.act("map.drawClear", { id: d[0].id });
+  assert.equal((await gm.poll()).data.state.map.drawings.length, 1);
+  await gm.act("map.drawClear", {});
+  assert.equal((await gm.poll()).data.state.map.drawings, undefined, "none left");
+});
