@@ -756,6 +756,8 @@ table.t td.n { width: 56px; }
 .eq-table .armor-cell select { width: 70px; }
 .eq-table .armor-cell input { width: 44px; margin-left: 3px; }
 
+/* a Reload weapon's shots on the attack row (audit 6.6) */
+.shots { font-size: 11px; color: var(--muted); margin-top: 3px; white-space: nowrap; }
 /* the GM's drawing tool and colours (audit 8.13) */
 .draw-colors { display: inline-flex; gap: 3px; vertical-align: middle; }
 .draw-col { width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(0,0,0,.5); padding: 0; cursor: pointer; }
