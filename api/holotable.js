@@ -253,6 +253,32 @@ async function speciesSenses(r, name) {
   }
   return SPECIES_SENSES_MAP.get(String(name || "").trim().toLowerCase()) || [];
 }
+// Wretched Hives' downtime activities by key (11.1), from the cached list; rebuilt at most every 10 minutes
+let DOWNTIME_MAP = null, DOWNTIME_AT = 0;
+async function downtimeTables(r) {
+  if (!DOWNTIME_MAP || Date.now() - DOWNTIME_AT > 10 * 60 * 1000) {
+    DOWNTIME_MAP = null; DOWNTIME_AT = Date.now();
+    const raw = await sw5eList(r, "downtime").catch(() => null);
+    if (!raw) return null;
+    let list = []; try { list = JSON.parse(raw); } catch { return null; }
+    DOWNTIME_MAP = Object.fromEntries(list.filter((a) => a && typeof a.key === "string" && /^[a-z-]{1,30}$/.test(a.key)).map((a) => [a.key, a]));
+  }
+  return DOWNTIME_MAP;
+}
+// feat name (lower case) -> the ability keys its own +1 may go to ("Any": all six), from the cached feat list (audit 2.5)
+let FEAT_ASI_MAP = null, FEAT_ASI_AT = 0;
+const FEAT_ABIL = { Strength: "str", Dexterity: "dex", Constitution: "con", Intelligence: "int", Wisdom: "wis", Charisma: "cha" };
+async function featAsiOptions(r, name) {
+  if (!FEAT_ASI_MAP || Date.now() - FEAT_ASI_AT > 10 * 60 * 1000) {
+    FEAT_ASI_MAP = null; FEAT_ASI_AT = Date.now();
+    const raw = await sw5eList(r, "feats").catch(() => null);
+    if (!raw) return null;
+    let list = []; try { list = JSON.parse(raw); } catch { return null; }
+    FEAT_ASI_MAP = new Map(list.map((f) => [String(f.n || "").toLowerCase(), [...new Set((Array.isArray(f.asi) ? f.asi : []).flatMap((a) =>
+      a === "Any" ? Object.values(FEAT_ABIL) : Object.prototype.hasOwnProperty.call(FEAT_ABIL, a) ? [FEAT_ABIL[a]] : []))]]));
+  }
+  return FEAT_ASI_MAP.get(String(name || "").trim().toLowerCase()) || [];
+}
 // Sheets made before senses were on the sheet (#129) get their species' senses, once (#92): only where a sheet has a
 // species and no senses, never over senses already set (the GM's or a species fill). SW5e's species list is read
 // before the game is locked (warmSpeciesFill), never inside the lock: a slow SW5e must not hold the table (review of
@@ -530,6 +556,16 @@ async function handlePost(req, res, q, b, ses) {
     if (!gm && String(b.type || "") === "char.save" && b.payload && b.payload.char && b.payload.char.species) {
       const ss = await speciesSenses(r, b.payload.char.species);
       if (ss) b.payload = Object.assign({}, b.payload, { [G.SPECIES_SENSES]: ss });
+    }
+    // rolling a downtime activity (11.1): its tables, from SW5e's Wretched Hives, read here, before the lock
+    if (String(b.type || "") === "downtime.roll" && b.payload) {
+      const acts = await downtimeTables(r);
+      if (acts) b.payload = Object.assign({}, b.payload, { [G.DOWNTIME_ACTS]: acts });
+    }
+    // a half-feat's +1 on levelling (audit 2.5): which abilities that feat allows, looked up here, before the lock
+    if (String(b.type || "") === "levelup.apply" && b.payload && b.payload.feat && b.payload.feat.asi) {
+      const fa = await featAsiOptions(r, b.payload.feat.name);
+      if (fa) b.payload = Object.assign({}, b.payload, { [G.FEAT_ASI]: fa });
     }
     await warmSpeciesFill(r, GAME);   // before the lock: SW5e's species list, for the one-time fill below
     const err = await S.withLock(GAME, async () => {

@@ -3337,6 +3337,84 @@ test("Riposte through the API: the creature's miss raises the prompt, the player
   assert.deepEqual(st.fight.pending, []);
 });
 
+/* ---------------------------------------------------------------- the combat view's half of #179: shots, reload, Reliable Talent, Brutal Critical */
+test("#179 in the combat view: a Reload weapon's shots, Burst and Rapid's shot counts, and the Reload action", () => {
+  const ch = { classes: [{ name: "Fighter", level: 5 }], abilities: { str: 10, dex: 16, con: 10, int: 10, wis: 10, cha: 10 },
+    attacks: [{ name: "Blaster rifle", ab: "dex", damage: "1d8", type: "energy", props: "Ammunition (range 100/400), burst 4, reload 12, two-handed", shots: 5 }] };
+  const [rifleA] = E.attacksOf(ch, R);
+  assert.deepEqual([rifleA.reload, rifleA.ammo], [12, "Power cell"]);
+  const me = (shots) => unit({ id: "ft", name: "Fenn", side: "pc", x: 0, y: 0, attacks: 2, shots: { 0: shots }, reloads: { 0: 12 } });
+  const r1 = () => unit({ id: "r1", name: "Raider", side: "npc", x: 6, y: 0, hp: 90, maxHp: 90 });
+  const hit = () => dice({ total: 15, nat: 12 }, { total: 5 }).roll;
+  let r = E.apply(world([me(2), r1()], "ft"), { type: "attack", unit: "ft", target: "r1", attack: rifleA }, hit());
+  assert.equal(r.world.units.ft.shots[0], 1, "one shot an attack");
+  r = E.apply(r.world, { type: "attack", unit: "ft", target: "r1", attack: rifleA }, dice({ total: 2, nat: 2 }).roll);
+  assert.equal(r.world.units.ft.shots[0], 0, "a miss spends one too");
+  assert.equal(E.apply(world([me(0), r1()], "ft"), { type: "attack", unit: "ft", target: "r1", attack: rifleA }, hit()).why, "Blaster rifle is out of shots: reload first.");
+  // Burst needs its number of shots
+  const burst = E.abilitiesOf(ch, R, {}).find((a) => a.key === "burst:0");
+  assert.equal(burst.shots, 4);
+  assert.equal(E.apply(world([me(3), r1()], "ft"), { type: "use", unit: "ft", ability: burst, point: { x: 6, y: 0 } }, dice().roll).why, "Blaster rifle has 3 shots left; this needs 4. Reload first.");
+  r = E.apply(world([me(5), r1()], "ft"), { type: "use", unit: "ft", ability: burst, point: { x: 6, y: 0 } }, dice({ total: 5 }, { total: 6 }).roll);
+  assert.equal(r.ok, true, r.why);
+  assert.equal(r.world.units.ft.shots[0], 1, "four shots");
+  // Reload: an action, or a bonus action; full again
+  r = E.apply(world([me(0), r1()], "ft"), { type: "common", unit: "ft", key: "reload", weapon: "0", asBonus: true, weaponName: "Blaster rifle" }, dice().roll);
+  assert.deepEqual([r.ok, r.world.units.ft.shots[0], E.budget(r.world).bonus, E.budget(r.world).action], [true, 12, false, true]);
+  assert.match(r.log[0].text, /Fenn reloads Blaster rifle: 12 shots \(a bonus action\)/);
+  assert.equal(E.apply(world([me(0), r1()], "ft"), { type: "common", unit: "ft", key: "reload", weapon: "__proto__" }, dice().roll).why, "That weapon has no Reload number.");
+  // a weapon without Reload counts nothing
+  assert.equal(E.noShots(me(0), blade), "");
+});
+
+test("#179 in the combat view: Reliable Talent's minimum 8 in a grapple or shove contest; Brutal Critical's extra dice on a melee crit", () => {
+  const op = unit({ id: "op", name: "Oda", side: "pc", x: 0, y: 0, skills: { athletics: 6 }, reliable: { athletics: true, acrobatics: false } });
+  const r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, mods: { str: 0, dex: 0 } });
+  let d = dice({ total: 15 }, { total: 9 });
+  E.apply(world([op, r1], "op"), { type: "grapple", unit: "op", target: "r1" }, d.roll);
+  assert.equal(d.asked[0], "1d20min8+6");
+  // Berserker 9 (one die), 17 (three); melee only
+  const ch = (level) => ({ classes: [{ name: "Berserker", level }], abilities: { str: 18, dex: 10, con: 14, int: 10, wis: 10, cha: 10 },
+    attacks: [{ name: "Vibroaxe", ab: "str", damage: "1d12", type: "kinetic", props: "" }, { name: "Blaster", ab: "dex", damage: "1d8", type: "energy", props: "Range (40/160)" }] });
+  assert.deepEqual(E.attacksOf(ch(9), R).map((a) => a.brutal), [1, undefined]);
+  assert.deepEqual(E.attacksOf(ch(17), R).map((a) => a.brutal), [3, undefined]);
+  assert.deepEqual(E.attacksOf(ch(8), R).map((a) => a.brutal), [undefined, undefined]);
+  const [axe] = E.attacksOf(ch(9), R);
+  const bz = unit({ id: "bz", name: "Brak", side: "pc", x: 0, y: 0 });
+  d = dice({ total: 25, nat: 20 }, { total: 20 });
+  const r = E.apply(world([bz, unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 90, maxHp: 90 })], "bz"), { type: "attack", unit: "bz", target: "r1", attack: axe }, d.roll);
+  assert.equal(d.asked[1], "2d12+4+1d12");
+  assert.match(r.log[1].text, /Brutal Critical 1d12/);
+  d = dice({ total: 15, nat: 12 }, { total: 9 });
+  E.apply(world([bz, unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 90, maxHp: 90 })], "bz"), { type: "attack", unit: "bz", target: "r1", attack: axe }, d.roll);
+  assert.equal(d.asked[1], "1d12+4", "only on a critical");
+});
+
+test("#179 through the API: shots go back to the sheet; Reload takes a power cell from the gear; a player with none is refused, the GM may reload anyway", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], {
+    attacks: [{ name: "Blaster pistol", ab: "dex", damage: "1d6", type: "energy", props: "Ammunition (range 40/160), reload 2", shots: 1 }],
+    equipment: [{ name: "Power cell", qty: 1 }] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 3, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0" })).code, 200);
+  st = await sam.state();
+  assert.equal(st.characters[avery].attacks[0].shots, 0, "back on the sheet");
+  assert.equal((await sam.act("fight.common", { key: "reload", weapon: "0", asBonus: true })).code, 200);
+  st = await sam.state();
+  assert.deepEqual([st.characters[avery].attacks[0].shots, st.characters[avery].equipment[0].qty], [2, 0], "full, and the cell is used");
+  // spend them and try again with no cells: a player is refused, nothing changes
+  await sam.act("fight.end", {}); await gm.act("fight.end", {}); await gm.act("init.next", {}); await gm.act("init.next", {});
+  st = await gm.state();
+  assert.equal(st.fight.turn, ids.avery, "round 2: Avery again");
+  await sam.act("fight.attack", { target: ids.raider, attack: "0" });
+  const res = await sam.act("fight.common", { key: "reload", weapon: "0" });
+  assert.equal(res.code, 400);
+  assert.match(res.data.error, /No power cells in your gear/);
+  assert.equal((await gm.act("fight.common", { key: "reload", weapon: "0", asBonus: true, anyway: true })).code, 200, "the GM may (as the bonus action: the attack took the action)");
+});
+
 test("Parry (#67): a melee hit on one who knows it waits; parried, a die plus the best physical modifier comes off; let go, it lands in full", () => {
   const sup = (used) => ({ superiority: { key: "superiority", name: "Superiority dice", max: 3, die: "d6", used, refill: "short" } });
   const ft = (o) => unit(Object.assign({ id: "ft", name: "Fenn", side: "pc", x: 1, y: 0, ac: 10, hp: 30, maxHp: 30, mods: { str: 1, dex: 3, con: 2 }, pools: sup(0), maneuvers: { known: ["parry"], dc: { physical: 14, mental: 12, general: 14 } } }, o));
@@ -3531,4 +3609,28 @@ test("Riposte and Return Fire off a power: a power's attack roll that misses one
   const rr = E.react(r.world, { kind: "riposte", reactor: "ft", against: "cass", attack: wpn }, dice({ total: 20, nat: 15 }, { total: 9 }).roll);
   assert.ok(rr.ok, rr.why);
   assert.match(rr.log[0].text, /Fenn makes a riposte against Cass/);
+});
+
+test("#212 review: an undo gives back a shot, and a reload's power cell, as they were", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], {
+    attacks: [{ name: "Blaster pistol", ab: "dex", damage: "1d6", type: "energy", props: "Ammunition (range 40/160), reload 2" }],
+    equipment: [{ name: "Power cell", qty: 2 }] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 3, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  // an attack, then the GM's undo: the pistol is as it was (never fired, so loaded: no shots stored)
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0" })).code, 200);
+  assert.equal((await gm.state()).characters[avery].attacks[0].shots, 1);
+  assert.equal((await gm.act("fight.undo", {})).code, 200);
+  st = await gm.state();
+  assert.equal(st.characters[avery].attacks[0].shots, undefined, "back to loaded");
+  // two shots, a reload (a cell from the gear), then undo: empty again, and the cell back
+  await sam.act("fight.attack", { target: ids.raider, attack: "0" });
+  assert.equal((await sam.act("fight.common", { key: "reload", weapon: "0", asBonus: true })).code, 200);
+  st = await gm.state();
+  assert.deepEqual([st.characters[avery].attacks[0].shots, st.characters[avery].equipment[0].qty], [2, 1]);
+  assert.equal((await gm.act("fight.undo", {})).code, 200);
+  st = await gm.state();
+  assert.deepEqual([st.characters[avery].attacks[0].shots, st.characters[avery].equipment[0].qty], [1, 2], "one shot left and both cells, as before the reload");
 });

@@ -37,7 +37,8 @@ function boostBonus(camp, ship, crewIndex) {
 // During ship combat on the space map, a player's ship takes its actions on its own turn (SotG ch. 9: one Helm action
 // a turn; Boost once a turn; Patch, Interfere and Direct on the ship's turn). The GM stays free, to run enemies and fix
 // things. Outside ship combat (the sheet between fights) nothing is turn-bound.
-const TURN_ACTIONS = new Set(["ship.helm", "ship.direct", "ship.patch", "ship.boost", "ship.regen", "ship.cool", "ship.reload"]);   // Cool is an action too
+const TURN_ACTIONS = new Set(["ship.helm", "ship.direct", "ship.patch", "ship.boost", "ship.regen", "ship.cool", "ship.reload",
+  "ship.astro", "ship.startup", "ship.jump"]);   // astrogation and an emergency start-up are actions under duress   // Cool is an action too
 function onTurn(camp, gm, ship) {
   const sp = camp.space;
   if (gm || !sp || !sp.active || !Array.isArray(sp.order)) return true;
@@ -47,7 +48,8 @@ function onTurn(camp, gm, ship) {
 
 const TYPES = new Set(["ship.damage", "ship.restore", "ship.points", "ship.dsave", "ship.stabilize", "ship.condition", "ship.reset",
   "ship.turn", "ship.power", "ship.poweruse", "ship.dice", "ship.boost", "ship.regen", "ship.helm", "ship.patch", "ship.direct", "ship.cool", "ship.reload",
-  "ship.recharge", "ship.hulldie", "ship.refit", "ship.install"]);
+  "ship.recharge", "ship.hulldie", "ship.refit", "ship.install",
+  "ship.astro", "ship.plot", "ship.jump", "ship.startup"]);
 const handles = (type) => TYPES.has(type);
 
 // On a sheet save: the fight state and the current hull and shield points stay as stored (they change only through
@@ -71,7 +73,7 @@ function apply(camp, cid, gm, type, p, h) {
   if (!(gm || !ship.hidden)) throw new Forbidden("That ship is the GM's.");
   if (TURN_ACTIONS.has(type) && !onTurn(camp, gm, ship)) throw new Invalid(`Not ${ship.name}'s turn.`);
   // recharging (an hour) and refitting (docked) happen between fights: a player can't start them during ship combat
-  if (["ship.recharge", "ship.hulldie", "ship.refit", "ship.install"].includes(type) && !gm && camp.space && camp.space.active) throw new Invalid("Not during ship combat.");   // installing a modification takes days too
+  if (["ship.recharge", "ship.hulldie", "ship.refit", "ship.install", "ship.plot"].includes(type) && !gm && camp.space && camp.space.active) throw new Invalid("Not during ship combat.");   // plotting with care: 10 minutes   // installing a modification takes days too
   const say = (lines) => {
     for (const text of lines.filter(Boolean)) {
       const msg = { system: true, text: str(text, 400) };
@@ -254,6 +256,83 @@ function apply(camp, cid, gm, type, p, h) {
       addChat(camp, msg);
       say([ok ? `${m.name} is installed on ${ship.name}.` : `${m.name} isn't installed: half the time and cost are spent (${Math.round(SR.modCost(ship, m, mi) / 2).toLocaleString("en-US")} cr).`]);
       return { ok, dc };
+    }
+    case "ship.astro": case "ship.startup": {
+      // under duress, one check a turn: astrogation (Intelligence (Astrogation), the ship's skill) completes equations,
+      // an emergency start-up (the crew leader's Intelligence (Piloting)) completes initiation procedures; 10 of either
+      // and it's done. Astrogation: -5 a rush (a day off the trip), +5 careful (twice as long), advantage with data
+      // under a day old, disadvantage over a week. Start-up: advantage at full hull and shields, disadvantage under
+      // full hull; -5 to do it with half the crew, +5 with half again as many.
+      const astro = type === "ship.astro", st = SR.statusOf(ship);
+      if (SR.isLost(st)) throw new Invalid(`${ship.name} is lost.`);
+      const crew = Array.isArray(ship.crew) ? ship.crew : [], c = crew[clamp(int(p.crew), 0, Math.max(0, crew.length - 1))];
+      const chars = camp.characters || {}, ch = c && typeof c.charId === "string" && Object.prototype.hasOwnProperty.call(chars, c.charId) ? chars[c.charId] : null;
+      let bonus, adv = [], dis = [], claim = "";
+      // the course choice holds from the first check to the jump: a different one restarts the calculations (SotG ch. 8)
+      const course = { rush: clamp(int(p.rush), 0, 10), careful: !!p.careful }, restart = astro && st.astro > 0 && (st.course.rush !== course.rush || st.course.careful !== course.careful);
+      if (astro) {
+        bonus = SR.skillBonus(ship, "astrogation", crewPb(camp, ship, p.crew)) - 5 * course.rush + (course.careful ? 5 : 0);
+        claim = [course.rush && `rushed ${course.rush} (-${5 * course.rush})`, course.careful && "careful (+5)"].filter(Boolean).join(", ");
+        if (p.age === "fresh") adv.push("data under a day old"); if (p.age === "old") dis.push("data over a week old");
+      } else {
+        bonus = (ch && R ? R.skillBonus(ch, "piloting") : 0) + (p.crewSize === "half" ? -5 : p.crewSize === "extra" ? 5 : 0);
+        claim = p.crewSize === "half" ? "half the crew (-5)" : p.crewSize === "extra" ? "half again the crew (+5)" : "";   // the GM sees the claim
+        const full = int((ship.hull || {}).current) >= SR.hullMax(ship) && int((ship.shield || {}).current) >= SR.shieldMax(ship);
+        if (full) adv.push("full hull and shields"); else if (int((ship.hull || {}).current) < SR.hullMax(ship)) dis.push("hull below its maximum");
+      }
+      const fx = SR.rollEffects(ship, "check", "int"), mode = SR.rollMode({ adv: [...adv, ...fx.adv], dis: [...dis, ...fx.dis] }, "normal");
+      const expr = (mode === "adv" ? "2d20kh1" : mode === "dis" ? "2d20kl1" : "1d20") + (bonus >= 0 ? "+" : "") + bonus, roll = rollDice(expr);
+      const steps = SR.stepsFor(roll.total), key = astro ? "astro" : "startup";
+      const s = JSON.parse(JSON.stringify(ship)); s.status = SR.statusOf(s);
+      if (restart) s.status.astro = 0;
+      if (astro) s.status.course = course;
+      s.status[key] = Math.min(10, s.status[key] + steps); s.status.fx.interfered = false;
+      const tags = [...(claim ? [claim] : []), ...adv, ...dis];
+      const msg = { from: ship.hidden ? "Ship combat (GM only)" : playerName(camp, cid), roll: Object.assign({}, roll, { expr, label: str(`${ship.name}: ${astro ? "astrogation" : "emergency start-up"}${tags.length ? ` [${tags.join(", ")}]` : ""}`, 120), kind: "check" }) };
+      Object.assign(msg, ship.hidden ? { to: ["@gm"], private: true } : { fromId: cid });
+      put(s); addChat(camp, msg);
+      say([...(restart ? [`${ship.name} changed its course choice: the calculations start over.`] : []),
+        `${ship.name}: ${steps} ${astro ? "equation" : "procedure"}${steps === 1 ? "" : "s"} completed, ${s.status[key]} of 10.${s.status[key] >= 10 ? (astro ? " The course is plotted." : " It's started up.") : ""}`]);
+      return { steps, done: s.status[key] };
+    }
+    case "ship.plot": {     // plotting the course with care (10 minutes, not under duress): all ten equations
+      const s = JSON.parse(JSON.stringify(ship)); s.status = SR.statusOf(s); s.status.astro = 10; s.status.course = { rush: 0, careful: false };   // a normal course
+      put(s); say([`${ship.name}'s course is plotted (10 minutes, with care).`]);
+      return {};
+    }
+    case "ship.jump": {     // the jump to hyperspace: the time, the fuel, and a mishap if the course was rushed
+      const from = str(p.from, 30), to = str(p.to, 30), st0 = SR.statusOf(ship);
+      // with calculations done, the jump keeps the course choice they were worked for; with none, the request's
+      const course = st0.astro > 0 ? st0.course : { rush: clamp(int(p.rush), 0, 10), careful: !!p.careful }, rush = course.rush, careful = course.careful;
+      if (!SR.REGIONS.includes(from) || !SR.REGIONS.includes(to)) throw new Invalid("Pick the regions it travels from and to.");
+      if (!SR.hyperClass(ship)) throw new Invalid(`${ship.name} has no hyperdrive class on its sheet.`);
+      if (SR.isDisabled(SR.statusOf(ship)) || SR.isLost(SR.statusOf(ship))) throw new Invalid(`${ship.name} can't jump.`);
+      const hours = SR.jumpHours(ship, from, to, rush, careful), fuel = SR.jumpFuel(ship, hours), have = SR.fuelOf(ship);
+      if (have !== null && have < fuel) throw new Invalid(`${ship.name} needs ${fuel} units of fuel and has ${have}.`);
+      let s = JSON.parse(JSON.stringify(ship)); s.status = SR.statusOf(s);
+      const eq = s.status.astro;
+      if (have !== null) s.fuel = String(Math.round((have - fuel) * 10) / 10);
+      s.status.astro = 0; s.status.course = { rush: 0, careful: false };
+      const days = Math.round(hours / 24 * 10) / 10;
+      const lines = [`${ship.name} jumps to hyperspace: ${from} to ${to}, ${hours < 24 ? `${hours} hour${hours === 1 ? "" : "s"}` : `${days} day${days === 1 ? "" : "s"}`} (class ${SR.hyperClass(ship)}${rush ? `, rushed ${rush}` : ""}${careful ? ", careful" : ""}), ${fuel} units of fuel${have !== null ? `, ${s.fuel} left` : ""}.`];
+      if (eq < 10) {
+        // rushed: a mishap roll with the equations it had; a natural 1 means a second roll too
+        let again = true, guard = 0;
+        while (again && guard++ < 3) {
+          const m = rollDice("1d20"), total = m.nat + eq;
+          // with no calculations at all, a 20 comes out unscathed but somewhere unknown (SotG ch. 8)
+          lines.push(`Rushed with ${eq} of 10 equations: mishap roll ${m.nat} + ${eq} = ${total}: ${eq === 0 && m.nat === 20 ? "no harm done, but it comes out of hyperspace in a completely unknown location" : SR.mishapFor(total)}.`);
+          if (total >= 3 && total <= 5) { const r = SR.takeDamage(s, Math.floor(SR.hullMax(s) / 10), "kinetic", {}); s = r.ship; lines.push(...r.log); }
+          if (total >= 18 && total <= 19) {
+            const cb = Math.floor((int((s.abilities || {}).con, 10) - 10) / 2), sv = rollDice("1d20" + (cb >= 0 ? "+" : "") + cb), dmg = rollDice(`3d${SR.diceOf(s, "hull").die}`).total;
+            const r = SR.takeDamage(s, sv.total >= 15 ? Math.floor(dmg / 2) : dmg, "kinetic", {}); s = r.ship;
+            lines.push(`Constitution save ${sv.total} against DC 15: ${sv.total >= 15 ? "half damage" : "full damage"}.`, ...r.log);
+          }
+          again = m.nat === 1;
+        }
+      }
+      put(s); say(lines);
+      return { hours, fuel };
     }
     case "ship.reset": {    // the GM undoes a destruction (a mistake, or a story reason): saves cleared, not destroyed
       if (!gm) throw new Forbidden("GM only");
