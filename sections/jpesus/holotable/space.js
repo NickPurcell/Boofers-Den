@@ -88,7 +88,7 @@
       ${modeSel(weapons[V.weapon])}${tradeSel(weapons[V.weapon])}
       <label class="ship-lv">Target <select id="spTarget">${targets.map((x) => `<option value="${esc(x.id)}" ${x.id === V.target ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
       <p class="muted" id="spPreview" style="font-size:12px;margin:6px 0"></p>
-      <button class="btn small amber" data-spx="fire">Fire</button>${coolReload(weapons[V.weapon])}${helmRow}</div>`;
+      <button class="btn small amber" data-spx="fire">Fire</button>${coolReload(weapons[V.weapon])}${zoneBtn(ship, weapons[V.weapon])}${helmRow}</div>`;
   }
   // rapid and burst modes, for weapons that have them (auto weapons fire only in those)
   function modeSel(w) {
@@ -107,6 +107,12 @@
     return out.join('');
   }
   const tradeAsk = () => ({ dire: +V.dire || 0, piercing: +V.piercing || 0, melt: !!V.melt });
+  // a zone weapon: switch its zone on (an action) or off (free)
+  function zoneBtn(ship, w) {
+    if (!w || !SR.weaponProp(w, 'zone')) return '';
+    const on = SR.statusOf(ship).zones.includes(V.weapon);
+    return ` <button class="btn tiny ${on ? 'primary' : ''}" data-spx="zone" data-on="${on ? 0 : 1}" title="${on ? 'Switch the zone off (no action)' : 'An action: difficult terrain in its arc and normal range until switched off; advantage on Dexterity saves against tertiary weapons from outside that range'}">${on ? 'Zone on: switch off' : 'Switch on its zone'}</button>`;
+  }
   function coolReload(w) {
     if (!w) return '';
     const cap = SR.heatCap(w), rl = SR.reloadOf(w);
@@ -149,6 +155,11 @@
     for (let y = 0; y <= rows; y++) { g.moveTo(0, y * cell + 0.5); g.lineTo(cols * cell, y * cell + 0.5); }
     g.stroke(); g.globalAlpha = 1;
     if (!s) return;
+    // zones that are on: difficult terrain in the weapon's arc and normal range, shaded square by square
+    for (const t of s.tok) for (const z of t.zones || []) {
+      g.fillStyle = 'rgba(79, 195, 247, 0.13)';
+      for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) if (SR.inZone(z, t, sizeOfTok(t), { x, y }, 1)) g.fillRect(x * cell + 1, y * cell + 1, cell - 1, cell - 1);
+    }
     for (const t of s.tok) {
       const n = sizeOfTok(t), px = t.x * cell, py = t.y * cell, w = n * cell, cx = px + w / 2, cy = py + w / 2;
       const sel = t.id === V.sel, cur = t.id === s.turnId;
@@ -204,6 +215,7 @@
     if (a === 'turn') return H.act('space.place', { id: t.id, x: t.x, y: t.y, f: (t.f + (+b.dataset.d) + 8) % 8 });
     if (a === 'fire') return H.act('space.fire', Object.assign({ id: t.id, target: V.target, weapon: V.weapon, crew: V.crew, fireMode: V.mode, mode: H.rollModeFromEvent(e) }, tradeAsk()));
     if (a === 'cool' || a === 'reload') return H.act('ship.' + a, { id: t.id, weapon: V.weapon });
+    if (a === 'zone') return H.act('space.zone', { id: t.id, weapon: V.weapon, on: b.dataset.on === '1' });
     if (a === 'helm') return H.act('ship.helm', { id: t.id, what: b.dataset.what });
     if (a === 'ram' || a === 'interfere' || a === 'dogfight' || a === 'run') return H.act('space.' + a, { id: t.id, target: V.target, crew: V.crew });
     if (a === 'harass') return H.act('space.harass', { id: t.id, target: V.target, weapon: V.weapon, crew: V.crew });

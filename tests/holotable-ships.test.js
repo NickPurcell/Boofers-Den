@@ -107,7 +107,7 @@ test("ship conditions: slowed levels, system damage levels, and what they do to 
     { cond: ["Ionized"], slowed: 4, system: 0, zero: { s: 0, f: 0, stable: false, destroyed: false }, power: { central: 0, engines: 0, shields: 0, weapons: 0, sensors: 0, comms: 0 },
       sdUsed: 0, hdUsed: 0, tempShield: 0, boost: { tries: 0, engines: 0, weapons: false, shields: false, regen: false },
       fx: { evade: 0, fly: 0, hardTurn: false, helm: false, interfered: false, directed: false, interferedBy: "", dogfightVs: "", dogfightDis: false, dogfightAdv: false,
-        runVs: "", runFeet: 0, concealed: false, harassWeapon: -1, harassedBy: "", harassedWeapon: -1 }, recharged: false, astro: 0, startup: 0,
+        runVs: "", runFeet: 0, concealed: false, harassWeapon: -1, harassedBy: "", harassedWeapon: -1 }, zones: [], recharged: false, astro: 0, startup: 0,
       course: { rush: 0, careful: false }, pace: "normal" }, "anything else is cleaned away");
   assert.deepEqual(SR.capPoints({ hull: { current: 30, max: 0 }, shield: { current: 5, max: 4 } }).hull.current, 30, "no maximum typed yet: current stays");
 });
@@ -859,6 +859,61 @@ test("weapon properties: dire, piercing and melt trade accuracy for damage; vici
   const blast = gmNew.find((m) => /The blast shakes Black Lance: anyone aboard keeping concentration makes a Constitution save, DC \d+/.test(m.text || ""));
   assert.ok(blast && blast.to && blast.to[0] === "@gm" && !blast.fromId, "the enemy's concentration line is the GM's");
   assert.ok(!pl.some((m) => /keeping concentration/.test(m.text || "")), "the player doesn't see it");
+});
+
+test("zone: on with an action, off for free; difficult terrain in its arc and normal range; advantage against tertiary from outside", async () => {
+  const pd = { name: "Laser point-defense", dmg: "3d6", type: "energy", range: "300/1200", props: "Power (range 300/1200), saturate, zone", cat: "primary", arc: "forward" };
+  const me = { weapons: [{ name: "Gun", dmg: "1d8" }, pd], status: { zones: [1, 0, 1, "__proto__", 99] } };
+  assert.deepEqual(SR.statusOf(me).zones, [1, 0], "weapon indices, once each");
+  assert.deepEqual(SR.zonesOf(me), [{ wi: 1, name: "Laser point-defense", arc: "forward", range: 300 }], "only weapons with zone");
+  const zt = { x: 10, y: 10, f: 2 }, z = SR.zonesOf(me)[0];   // facing east
+  assert.equal(SR.inZone(z, zt, 1, { x: 14, y: 10 }, 1), true, "ahead, 150 ft");
+  assert.equal(SR.inZone(z, zt, 1, { x: 18, y: 10 }, 1), false, "ahead, past 300 ft");
+  assert.equal(SR.inZone(z, zt, 1, { x: 6, y: 10 }, 1), false, "behind it");
+  assert.equal(SR.zoneExtra(1, { x: 15, y: 1 }, { x: 15, y: 4 }, [{ z, tok: zt, sq: 1 }]), 0, "a path that stays outside");
+  assert.ok(SR.zoneExtra(1, { x: 13, y: 6 }, { x: 13, y: 14 }, [{ z, tok: zt, sq: 1 }]) > 0, "a path through it costs more");
+  assert.equal(SR.zoneExtra(1, { x: 12, y: 10 }, { x: 14, y: 10 }, [{ z, tok: zt, sq: 1 }]), 100, "all inside: each foot twice");
+  // on the server
+  const { gm, p1, p2, party, enemy } = await table();
+  await gm.act("ship.save", { ship: Object.assign({}, shipIn(await gm.state(), enemy), { weapons: [pd] }) });
+  await p1.act("ship.save", { ship: Object.assign({}, shipIn(await p1.state(), party), { speed: 1000, weapons: [
+    { name: "Torpedoes", dmg: "2d10", type: "explosive", range: "1000/4000", props: "Ammunition", cat: "tertiary", ammo: 9, arc: "forward" }] }) });
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 10, f: 2 });
+  await gm.act("space.place", { id: enemy, x: 12, y: 10, f: 6 });   // facing west, at the party
+  await gm.act("space.init", {});
+  if ((await gm.state()).space.turnId === party) await gm.act("space.next", {});
+  assert.equal((await gm.act("space.zone", { id: enemy, weapon: 0, on: "yes" })).code, 200, "not a real true: nothing switched on");
+  assert.deepEqual(shipIn(await gm.state(), enemy).status.zones, []);
+  assert.equal((await gm.act("space.zone", { id: enemy, weapon: 0, on: true })).code, 200);
+  assert.equal((await p1.act("space.zone", { id: enemy, weapon: 0, on: false })).code, 403, "the GM's ship");
+  assert.equal((await p1.act("space.zone", { id: party, weapon: 0, on: true })).code, 400, "no zone on torpedoes");
+  let st = await p1.state();
+  assert.deepEqual(st.space.tok.find((t) => t.id === enemy).zones, [{ arc: "forward", range: 300 }], "the player's map shows where the zone is");
+  assert.ok(!JSON.stringify(st).includes("Black Lance"), "and still not whose");
+  await gm.act("space.next", {});
+  assert.equal((await gm.state()).space.turnId, party);
+  // the party flies 300 ft east: its last three squares are within 300 ft ahead of the enemy, so they cost twice
+  await p1.act("space.place", { id: party, x: 8, y: 10, f: 2 });
+  assert.equal((await p1.state()).space.moved[party], 300 + 150, "300 ft, 150 of them through difficult terrain");
+  // torpedoes from inside the zone's range: no advantage; from outside: the enemy saves with advantage
+  await p1.act("space.fire", { id: party, target: enemy, weapon: 0 });
+  assert.ok(!(await gm.state()).chat.some((m) => /launched outside its zone/.test(m.text || "")), "inside its range");
+  await p1.act("space.place", { id: party, x: 2, y: 10, f: 2 });
+  await p1.act("space.fire", { id: party, target: enemy, weapon: 0 });
+  const save = (await gm.state()).chat.filter((m) => m.roll && /Dexterity save/.test(m.roll.label)).pop();
+  assert.ok((await p1.state()).chat.some((m) => /a Dexterity save, DC \d+ \[launched outside its zone\]/.test(m.text || "")));
+  assert.ok(!JSON.stringify((await p1.state()).chat).includes("Laser point-defense"), "nor which weapon the enemy has");
+  assert.match(save.roll.expr, /^2d20kh1/, "advantage");
+  // a hidden token's zone isn't difficult terrain for anyone; switching off is free, on anyone's turn
+  await gm.act("space.token", { id: enemy, hidden: true });
+  const m0 = (await p1.state()).space.moved[party];
+  await p1.act("space.place", { id: party, x: 8, y: 10, f: 2 });
+  assert.equal((await p1.state()).space.moved[party] - m0, 300);
+  assert.equal((await gm.act("space.zone", { id: enemy, weapon: 0, on: false })).code, 200);
+  assert.deepEqual(shipIn(await gm.state(), enemy).status.zones, []);
+  assert.ok(!(await p2.state()).chat.some((m) => /switches (on|off)/.test(m.text || "")), "the GM ship's zone lines are the GM's");
+  assert.ok((await gm.state()).chat.some((m) => /Black Lance switches off Laser point-defense's zone/.test(m.text || "") && m.to[0] === "@gm"));
 });
 
 test("space.fire modes on the server: rapid, a burst over three ships, heat and Cool, ammunition and Reload", async () => {
