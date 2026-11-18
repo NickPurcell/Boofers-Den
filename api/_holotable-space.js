@@ -185,13 +185,17 @@ function apply(camp, cid, gm, type, p, h) {
       const s = JSON.parse(JSON.stringify(s0)), sw = s.weapons[wi];
       if (typeof sw.ammo === "number") sw.ammo -= 1;
       const pb = Ships.crewPb(camp, s0, p.crew), A = shownOf(s0, a), T = shownOf(t0, ta);
+      // jpesus (#65, 17 Nov): while a GM ship's token is off the players' map, its lines go to the GM only; a hit
+      // still shows its damage on the party's own ship sheet. Here: every line and roll of this shot, including the
+      // party ship's save and its damage lines, when either token is hidden.
+      const secret = !!a.hidden || !!ta.hidden;
       // A roll in the chat. One about an enemy ship (the GM's) goes to the GM only, and carries no sender id: a message's
       // sender always receives it, and the player who fired must not read the enemy's name. The result lines below are
       // everyone's, with the names players may read.
-      const roll2 = (roll, expr, label, kind, gmOnly) => addChat(camp, Object.assign({ from: gmOnly ? "Ship combat (GM only)" : playerName(camp, cid),
-        roll: Object.assign({}, roll, { expr, label: str(label, 120), kind }) }, gmOnly ? { to: ["@gm"], private: true } : { fromId: cid }));
+      const roll2 = (roll, expr, label, kind, gmOnly0) => { const gmOnly = gmOnly0 || secret; return addChat(camp, Object.assign({ from: gmOnly ? "Ship combat (GM only)" : playerName(camp, cid),
+        roll: Object.assign({}, roll, { expr, label: str(label, 120), kind }) }, gmOnly ? { to: ["@gm"], private: true } : { fromId: cid })); };
       const rollMsg = (roll, expr, label, kind) => roll2(roll, expr, label, kind, !!s0.hidden);
-      const line = (text, gmOnly) => addChat(camp, Object.assign({ system: true, text: str(text, 400) }, gmOnly ? { to: ["@gm"], private: true } : {}));
+      const line = (text, gmOnly) => addChat(camp, Object.assign({ system: true, text: str(text, 400) }, gmOnly || secret ? { to: ["@gm"], private: true } : {}));
       const d20 = (mode, bonus) => (mode === "adv" ? "2d20kh1" : mode === "dis" ? "2d20kl1" : "1d20") + (bonus >= 0 ? "+" : "") + bonus;
       const why = (x) => (x.length ? ` [${x.join(", ")}]` : "");
       // the damage roll: advantage after Boost Weapons (two rolls, the higher kept), which it then uses up
@@ -277,13 +281,14 @@ function apply(camp, cid, gm, type, p, h) {
       if (ram && feet > 50) throw new Invalid(`${feet} ft away: ramming takes flying into it (within 50 ft).`);
       if (!ram && feet > 1000) throw new Invalid(`${feet} ft away: Interfere reaches 1,000 ft.`);
       const A = shownOf(s0, a), T = shownOf(t0, ta);
+      const secret = !!a.hidden || !!ta.hidden;   // a token off the players' map: every line and roll is the GM's (jpesus, #65)
       const [mySkill, theirSkill] = ram ? ["ram", "maneuvering"] : ["interfere", "scan"];
       const check = (ship, skill, crew, hidden, label) => {
         const ab = SR.SKILL_ABILITY[skill], fx = SR.rollEffects(ship, "check", ab), mode = SR.rollMode(fx, "normal");
         const bonus = SR.skillBonus(ship, skill, Ships.crewPb(camp, ship, crew));
         const expr = (mode === "adv" ? "2d20kh1" : mode === "dis" ? "2d20kl1" : "1d20") + (bonus >= 0 ? "+" : "") + bonus, r = rollDice(expr);
-        addChat(camp, Object.assign({ from: hidden ? "Ship combat (GM only)" : playerName(camp, cid), roll: Object.assign({}, r, { expr, label: str(label, 120), kind: "check" }) },
-          hidden ? { to: ["@gm"], private: true } : { fromId: cid }));
+        addChat(camp, Object.assign({ from: hidden || secret ? "Ship combat (GM only)" : playerName(camp, cid), roll: Object.assign({}, r, { expr, label: str(label, 120), kind: "check" }) },
+          hidden || secret ? { to: ["@gm"], private: true } : { fromId: cid }));
         return r.total;
       };
       const mine = check(s0, mySkill, p.crew, !!s0.hidden, `${s0.hidden ? s0.name : A}: ${ram ? "Strength (Ram)" : "Charisma (Interfere)"} against ${s0.hidden ? t0.name : T}`);
@@ -293,7 +298,7 @@ function apply(camp, cid, gm, type, p, h) {
       s1.status.fx.interfered = false;   // its own check used up an Interfere on it
       if (ram) s1.status.fx.helm = true;
       putShip(s1);
-      const line = (text, gmOnly) => addChat(camp, Object.assign({ system: true, text: str(text, 400) }, gmOnly ? { to: ["@gm"], private: true } : {}));
+      const line = (text, gmOnly) => addChat(camp, Object.assign({ system: true, text: str(text, 400) }, gmOnly || secret ? { to: ["@gm"], private: true } : {}));
       if (!won) { line(`${A} ${ram ? "tries to ram" : "tries to interfere with"} ${T}, and fails (${mine} against ${theirs}).`); return { ok: false }; }
       if (!ram) {
         const t1 = JSON.parse(JSON.stringify(shipOf(t0.id))); t1.status = SR.statusOf(t1);

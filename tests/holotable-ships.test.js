@@ -770,3 +770,38 @@ test("space.fire: a hit from an attack roll is reduced by the target's armor; th
     if (r.data.hit) { assert.equal(r.data.damage, r.data.crit ? r.data.damage : 1, "1d4 against reinforced armor's 6: 1"); assert.ok(r.data.damage >= 1 && r.data.damage <= 2, "even a critical's 2d4"); break; }
   }
 });
+
+test("a GM ship whose token is off the players' map: its Fire, Ram and Interfere reach the GM only (jpesus, #65)", async () => {
+  const { gm, p1, p2, party, enemy } = await table();
+  const third = (await gm.act("ship.save", { ship: { name: "Grey Wake", hidden: true, hull: { current: 20, max: 20 } } })).data.id;
+  let en = shipIn(await gm.state(), enemy);
+  await gm.act("ship.save", { ship: Object.assign({}, en, { hull: { current: 20, max: 500 }, abilities: Object.assign({}, en.abilities, { str: 30, cha: 30 }),
+    weapons: [{ name: "Turbolaser", dmg: "1d6", type: "energy", range: "800/3200", cat: "primary", atkMisc: 20 }, { name: "Torpedo", dmg: "1d6", type: "kinetic", range: "1000/4000", cat: "tertiary" }] }) });
+  await gm.act("ship.points", { id: enemy, what: "hull", current: 500 });   // its own Ram can't knock it out mid-test
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 2, f: 2 });
+  await gm.act("space.place", { id: enemy, x: 3, y: 2, f: 6, hidden: true });   // off the players' map: an ambush
+  await gm.act("space.place", { id: third, x: 3, y: 4, f: 0 });
+  const before = { p1: (await p1.state()).chat.length, p2: (await p2.state()).chat.length };
+  const hull0 = shipIn(await p1.state(), party).hull.current;
+  for (const [type, payload] of [["space.fire", { target: party, weapon: 0 }], ["space.fire", { target: party, weapon: 1 }], ["space.interfere", { target: party }],
+    ["space.ram", { target: party }], ["space.fire", { target: third, weapon: 0 }], ["space.interfere", { target: third }]]) {
+    const r = await gm.act(type, Object.assign({ id: enemy }, payload));
+    assert.equal(r.code, 200, type);
+    if (type === "space.ram") await gm.act("space.place", { id: enemy, x: 3, y: 2, f: 6 });
+  }
+  // the GM ships also act on each other with the hidden one as the target
+  await gm.act("space.fire", { id: third, target: enemy, weapon: 0 }).catch(() => {});
+  const st1 = await p1.state(), st2 = await p2.state();
+  assert.deepEqual(st1.chat.slice(before.p1).map((m) => m.text || (m.roll || {}).label), [], "not one line or roll reaches the first player");
+  assert.deepEqual(st2.chat.slice(before.p2).map((m) => m.text || (m.roll || {}).label), [], "nor the other");
+  const gmChat = (await gm.state()).chat;
+  assert.ok(gmChat.some((m) => /Black Lance: Strength \(Ram\)/.test((m.roll || {}).label || "") && m.from === "Ship combat (GM only)" && !m.fromId));
+  assert.ok(gmChat.some((m) => /Dawn Skiff: (Dexterity \(Maneuvering\)|Wisdom \(Scan\))/.test((m.roll || {}).label || "") && m.to && m.to.join() === "@gm"), "the party ship's own opposed roll is the GM's too");
+  // the hits still land on the party's own sheet
+  assert.ok(shipIn(st1, party).hull.current <= hull0);
+  // once the GM shows the token, the lines are the table's again (with "???" until it's named)
+  await gm.act("space.token", { id: enemy, hidden: false });
+  await gm.act("space.fire", { id: enemy, target: party, weapon: 0 });
+  assert.ok((await p1.state()).chat.some((m) => /^\?\?\? (hits|misses) Dawn Skiff with Turbolaser/.test(m.text || "")));
+});
