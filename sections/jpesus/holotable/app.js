@@ -210,8 +210,65 @@
     }
     renderMapTools(); loadMapBg(); drawMap();
     if (window.HTC) HTC.render();   // combat view
+    renderAsk();
     renderChat();
   }
+
+  // --------------------------------------------------------------------------- the GM asks for a roll (audit 9.12)
+  // The GM picks a skill, save or ability check, who rolls, a DC (shown to players or not) and whether it's secret,
+  // then rolls for them at once or asks the players, who each get a Roll button here. The server rolls from the sheet.
+  function askCheckOptions() {
+    return `<optgroup label="Skills">${R.SKILLS.map(s => `<option value="skill:${s.key}" ${s.key === 'perception' ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</optgroup>
+      <optgroup label="Saving throws">${R.ABILITIES.map(a => `<option value="save:${a.key}">${esc(a.name)} save</option>`).join('')}</optgroup>
+      <optgroup label="Ability checks">${R.ABILITIES.map(a => `<option value="ability:${a.key}">${esc(a.name)} check</option>`).join('')}</optgroup>`;
+  }
+  function openAskRoll() {
+    const gmIds = new Set(Object.entries(S.st.players).filter(([, p]) => p.role === 'gm').map(([id]) => id));
+    const list = chars().map(c => ({ c, pc: !gmIds.has(c.owner) }));
+    modal(`<h3>🎲 Ask for a roll</h3>
+      <label>Roll<select id="askWhat">${askCheckOptions()}</select></label>
+      <h4 style="margin-top:10px">Who</h4>
+      <div class="ask-who">${list.map(({ c, pc }) => `<label class="toggle"><input type="checkbox" class="askChar" value="${esc(c.id)}" ${pc ? 'checked' : ''}> ${esc(c.name)}${pc ? '' : ' <span class="muted">(yours)</span>'}</label>`).join('') || '<p class="muted">No characters yet.</p>'}</div>
+      <div class="row wrap" style="margin-top:10px"><label>DC <input id="askDc" type="number" min="1" max="40" placeholder="none" style="width:80px"></label>
+        <label class="toggle"><input type="checkbox" id="askShowDc"> players see the DC</label>
+        <label class="toggle" title="A group check succeeds if at least half the group succeeds"><input type="checkbox" id="askGroup"> group check</label>
+        <label class="toggle" title="Only you see the numbers; players see only that they rolled"><input type="checkbox" id="askSecret"> secret</label></div>
+      <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn" id="askNow" title="Roll for each of them now, from their sheets">Roll for them now</button>
+        <button class="btn primary" id="askOpen" title="Each player gets a Roll button for their character">Ask the players</button></div>`, box => {
+      const send = type => {
+        const [what, key] = $('#askWhat').value.split(':');
+        const ids = [...box.querySelectorAll('.askChar:checked')].map(x => x.value);
+        if (!ids.length) return toast('Pick at least one character');
+        act(type, { what, key, chars: ids, dc: $('#askDc').value, showDc: $('#askShowDc').checked, group: $('#askGroup').checked, secret: $('#askSecret').checked })
+          .then(r => { if (r) closeModal(); });
+      };
+      box.onclick = e => { if (e.target.id === 'askNow') send('ask.roll'); if (e.target.id === 'askOpen') send('ask.open'); };
+    });
+  }
+  function renderAsk() {
+    const card = $('#askCard'), a = S.st.ask;
+    if (!a) { card.classList.add('hidden'); card.innerHTML = ''; return; }
+    const ch = id => S.st.characters[id], name = id => (ch(id) || {}).name || '?';
+    const dc = a.dc != null && (isGM() || a.showDc) ? ` · DC ${n0(a.dc)}${isGM() && !a.showDc ? ' (hidden)' : ''}` : '';
+    const ids = isGM() ? a.chars : (a.mine || []);
+    const row = id => {
+      const r = (a.results || {})[id];
+      const res = r ? (r.done ? '✓' : `${n0(r.total)}${r.ok === true ? ' ✓' : r.ok === false ? ' ✗' : ''}`) : '';
+      const canRoll = !r && (isGM() || (ch(id) && ch(id).owner === clientId));
+      return `<div class="ask-row"><span>${esc(name(id))}</span><span class="spacer"></span>${res ? `<b>${esc(res)}</b>` : canRoll ? `<button class="btn tiny amber" data-ask-roll="${esc(id)}" title="Shift: advantage · Ctrl: disadvantage">Roll</button>` : '<span class="muted">waiting</span>'}</div>`;
+    };
+    const left = a.chars.filter(id => !(a.results || {})[id]).length;
+    card.classList.remove('hidden');
+    card.innerHTML = `<div class="ask-head">🎲 <b>${esc(a.check.name)}</b>${a.group ? ' <span class="muted">group</span>' : ''}${a.secret ? ' <span class="muted">secret</span>' : ''}<span class="muted">${esc(dc)}</span>
+      <span class="spacer"></span>${isGM() ? `<button class="btn tiny ghost" data-ask-close title="End this request">${left ? 'Cancel' : 'Done'}</button>` : ''}</div>
+      ${ids.map(row).join('')}${isGM() ? '' : `<div class="muted" style="font-size:11px">The GM asked for this roll.</div>`}`;
+  }
+  $('#askCard').addEventListener('click', e => {
+    const a = S.st.ask; if (!a) return;
+    const b = e.target.closest('[data-ask-roll]');
+    if (b) { b.disabled = true; act('ask.answer', { id: a.id, charId: b.dataset.askRoll, mode: rollModeFromEvent(e) }); }
+    if (e.target.closest('[data-ask-close]')) act('ask.close');
+  });
 
   // --------------------------------------------------------------------------- top bar
   function renderTop() {
@@ -371,6 +428,73 @@
   // A short rest (audit 7.2, 7.4; issue #71): spend hit dice by size, each healing its roll + Con (at least 0), then
   // finish it: resources that come back on a short rest, an Engineer's or a Scout's tech points, and a Consular's
   // Force Recovery (once per long rest, kept as a tracked resource that the long rest gives back).
+  // ---- ability scores (audit 1.4), as SW5e's "Step-By-Step Characters" has it: roll 4d6 keeping the highest three,
+  // six times (rolled by the server, in chat for the table), or the standard set; then place each number. Point buy
+  // is SW5e's variant (the GM's option): 27 points on scores from 8 to 15. Species increases come after.
+  function scoresDialog(ch, done) {
+    const st = { how: 'array', values: R.STANDARD_ARRAY.slice(), pick: {}, buy: {} };
+    R.ABILITIES.forEach((a, i) => { st.pick[a.key] = i; st.buy[a.key] = 8; });
+    const scores = () => st.how === 'buy' ? Object.assign({}, st.buy)
+      : Object.fromEntries(R.ABILITIES.map(a => [a.key, st.values[st.pick[a.key]]]));
+    const body = () => {
+      if (st.how === 'buy') {
+        const cost = R.pointBuyCost(st.buy);
+        return `<p class="muted" style="margin:0 0 8px">SW5e's variant, at the GM's option: ${R.POINT_BUDGET} points, every score from 8 to 15.</p>
+          ${R.ABILITIES.map(a => `<div class="row" style="margin:4px 0"><span style="flex:1">${a.name}</span>
+            <button class="btn tiny" data-sg="dn" data-k="${a.key}" ${st.buy[a.key] <= 8 ? 'disabled' : ''}>−</button>
+            <b style="width:28px;text-align:center">${st.buy[a.key]}</b>
+            <button class="btn tiny" data-sg="up" data-k="${a.key}" ${st.buy[a.key] >= 15 ? 'disabled' : ''}>+</button>
+            <span class="muted" style="width:64px;text-align:right">${R.POINT_COST[st.buy[a.key]]} pts</span></div>`).join('')}
+          <p style="margin:8px 0 0"><b style="color:${cost > R.POINT_BUDGET ? 'var(--red)' : 'var(--green)'}">${cost} of ${R.POINT_BUDGET} points</b></p>`;
+      }
+      if (st.how === 'roll' && !st.rolled) return `<p class="muted" style="margin:0 0 8px">Six rolls of 4d6, each keeping the highest three. They're rolled by the table and show in chat.</p>
+        <button class="btn primary" data-sg="roll">🎲 Roll six scores</button>`;
+      return `<p class="muted" style="margin:0 0 8px">${st.how === 'roll' ? 'Your rolls' : 'The standard set'}: <b>${st.values.join(', ')}</b>. Put each number on one ability.</p>
+        ${R.ABILITIES.map(a => `<div class="row" style="margin:4px 0"><span style="flex:1">${a.name}</span>
+          <select data-sg="pick" data-k="${a.key}">${st.values.map((v, i) => `<option value="${i}" ${st.pick[a.key] === i ? 'selected' : ''}>${v}</option>`).join('')}</select></div>`).join('')}`;
+    };
+    const ok = () => st.how === 'buy' ? R.pointBuyCost(st.buy) <= R.POINT_BUDGET : (st.how === 'array' || st.rolled) && R.usesEachOnce(scores(), st.values);
+    const draw = box => {
+      box.querySelector('#sgBody').innerHTML = body();
+      box.querySelectorAll('[data-how]').forEach(b => b.classList.toggle('on', b.dataset.how === st.how));
+      box.querySelector('#sgOk').disabled = !ok();
+    };
+    modal(`<h3>Ability scores: ${esc(ch.name)}</h3>
+      <div class="rollmode" style="display:inline-flex;margin-bottom:10px"><button data-how="array">Standard set</button>
+        <button data-how="roll">Roll 4d6</button><button data-how="buy">Point buy</button></div>
+      <div id="sgBody"></div>
+      <p class="muted" style="font-size:12px">These replace all six scores. Add your species' increase after (◈ on Species).</p>
+      <div class="row"><span class="spacer"></span><button class="btn" id="sgCancel">Cancel</button><button class="btn primary" id="sgOk">Use these scores</button></div>`, box => {
+      draw(box);
+      box.onclick = async e => {
+        const t = e.target.closest('button'); if (!t) return;
+        if (t.dataset.how) { st.how = t.dataset.how; st.values = st.how === 'roll' ? (st.rolls || []) : R.STANDARD_ARRAY.slice(); if (st.how === 'roll') st.rolled = !!st.rolls; draw(box); return; }
+        if (t.dataset.sg === 'up' || t.dataset.sg === 'dn') { const k = t.dataset.k; st.buy[k] = Math.max(8, Math.min(15, st.buy[k] + (t.dataset.sg === 'up' ? 1 : -1))); draw(box); return; }
+        if (t.dataset.sg === 'roll') {
+          t.disabled = true; const got = [];
+          for (let i = 1; i <= 6; i++) {
+            const r = await roll('4d6dl1', `Ability score ${i} of 6`, { charId: ch.id });
+            if (!r || !r.roll) { toast('A roll failed; try again.', true); t.disabled = false; return; }
+            got.push(+r.roll.total);
+          }
+          st.rolls = got.slice().sort((x, y) => y - x); st.values = st.rolls; st.rolled = true; draw(box); return;
+        }
+        if (t.id === 'sgCancel') return closeModal();
+        if (t.id === 'sgOk' && ok()) {
+          const sc = scores(); closeModal();
+          if (done) return done(sc);
+          mutate(c => { c.abilities = Object.assign({}, c.abilities, sc); });
+          toast('Ability scores set');
+        }
+      };
+      box.onchange = e => {   // picking a number another ability holds swaps the two
+        const sel = e.target.closest('[data-sg=pick]'); if (!sel) return;
+        const k = sel.dataset.k, v = +sel.value, other = R.ABILITIES.find(a => a.key !== k && st.pick[a.key] === v);
+        if (other) st.pick[other.key] = st.pick[k];
+        st.pick[k] = v; draw(box);
+      };
+    });
+  }
   function shortRestDialog() {
     const id = S.selected;
     const draw = () => {
@@ -512,6 +636,8 @@
       .map(([k, t]) => `<button data-act="sub" data-sub="${k}" class="${sub === k ? 'on' : ''}">${t}</button>`).join('')}</div>`;
 
     if (sub === 'main') {
+      if (!ro) html += `<div class="row" style="justify-content:flex-end;margin:0 0 6px"><button class="btn tiny ghost" data-act="gen-scores"
+        title="Set all six scores: the standard set, rolled 4d6 (in chat), or point buy">🎲 Ability scores…</button></div>`;
       html += `<div class="stats-row">${R.ABILITIES.map(a => {
         const m = R.abilityMod(ch, a.key);
         return `<div class="stat ability"><div class="lbl">${a.name}</div>
@@ -688,6 +814,7 @@
     if (ro && !pub.includes(a)) return;
     switch (a) {
       case 'sub': S.sub = b.dataset.sub; renderSheet($('#sheet')); break;
+      case 'gen-scores': scoresDialog(ch); break;
       case 'dismiss-note': delete S.importNotes[ch.id]; renderSheet($('#sheet')); break;
       case 'del-class': mutate(c => c.classes.splice(i, 1)); break;
       case 'save-prof': mutate(c => { c.saves[b.dataset.ab] = !c.saves[b.dataset.ab]; }); break;
@@ -2158,6 +2285,7 @@
         <p style="margin-top:0" class="muted">After a big fight or a hard-won conversation, give the party a level. Each player gets a pop-up and picks how to level.
           Someone missed the session? Grant just their character, and you can level it for them.</p>
         <button class="btn small amber" id="gmGrant">⬆ Grant a level…</button>
+        <button class="btn small" id="gmAsk" title="Everyone roll Perception, a group check, a secret Insight roll for a player…">🎲 Ask for a roll…</button>
         <label class="toggle" style="margin-top:8px" title="A table rule: whether players may take the hit die's maximum instead of the average or a roll">
           <input type="checkbox" id="gmHpMax" ${S.st.hpMax !== false ? 'checked' : ''}> Players may take maximum hit points when levelling</label>
         ${pendingNames.length ? `<p class="muted" style="font-size:12px">Waiting to level: ${pendingNames.join(', ')}</p>` : ''}
@@ -2232,6 +2360,7 @@
     if (id === 'doRename') act('campaign.rename', { name: $('#campRename').value });
     if (id === 'clearChat' && confirm('Clear the chat log for everyone?')) act('chat.clear');
     if (id === 'gmGrant') openGrant();
+    if (id === 'gmAsk') openAskRoll();
     if (id === 'restoreBtn') $('#restoreFile').click();
     if (id === 'showBackups') {
       post('backups', {}).then(r => {
