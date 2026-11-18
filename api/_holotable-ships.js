@@ -11,10 +11,24 @@
 // Helpers from _holotable-game.js are passed in (no circular require).
 
 const SR = require("../sections/jpesus/holotable/starships.js");
+require("../sections/jpesus/holotable/rules.js");   // the sheet's rules (proficiency bonus by level), as globalThis.SW5E
+const R = globalThis.SW5E;
 
 const str = (v, n) => String(v == null ? "" : v).slice(0, n);
 const int = (v, d = 0) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : d; };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+// A ship's Strength (Boost) bonus, worked out here from the ship sheet: the ship's Strength modifier, plus the
+// proficiency bonus of the crew member making the check (their character's, else the number on the crew row) times the
+// ship's Boost equipment (0, 1 proficiently, 2 expertly). The request only says which crew row is rolling.
+function boostBonus(camp, ship, crewIndex) {
+  const crew = Array.isArray(ship.crew) ? ship.crew : [], c = crew[clamp(int(crewIndex), 0, Math.max(0, crew.length - 1))];
+  const chars = camp.characters || {};
+  const ch = c && typeof c.charId === "string" && Object.prototype.hasOwnProperty.call(chars, c.charId) ? chars[c.charId] : null;
+  const pb = ch && R ? R.profBonus(ch) : (c && int(c.pb)) || 2;
+  const str = Math.floor((int((ship.abilities || {}).str, 10) - 10) / 2), lv = clamp(int((ship.skills || {}).boost), 0, 2);
+  return str + lv * pb;
+}
 
 const TYPES = new Set(["ship.damage", "ship.restore", "ship.points", "ship.dsave", "ship.stabilize", "ship.condition", "ship.reset",
   "ship.turn", "ship.power", "ship.poweruse", "ship.dice", "ship.boost", "ship.regen"]);
@@ -130,8 +144,8 @@ function apply(camp, cid, gm, type, p, h) {
       const what = type === "ship.regen" ? "regen" : str(p.what, 10);
       if (what !== "regen" && !["engines", "shields", "weapons"].includes(what)) throw new Invalid("Boost engines, shields or weapons.");
       if (SR.isDisabled(SR.statusOf(ship)) || SR.isLost(SR.statusOf(ship))) throw new Invalid(`${ship.name} can't take actions.`);
-      // the crew member's Boost bonus comes from the sheet (ship Strength + their proficiency); the ship's conditions set the mode
-      const bonus = clamp(int(p.bonus), -10, 30), fx = SR.rollEffects(ship, "check", "str"), mode = SR.rollMode(fx, ["adv", "dis"].includes(p.mode) ? p.mode : "normal");
+      // the Boost bonus comes from the ship sheet, worked out here; the ship's conditions set the mode
+      const bonus = boostBonus(camp, ship, p.crew), fx = SR.rollEffects(ship, "check", "str"), mode = SR.rollMode(fx, ["adv", "dis"].includes(p.mode) ? p.mode : "normal");
       const expr = (mode === "adv" ? "2d20kh1" : mode === "dis" ? "2d20kl1" : "1d20") + (bonus >= 0 ? "+" : "") + bonus;
       const roll = rollDice(expr);
       const label = what === "regen" ? `${ship.name}: Regenerate Shields (DC ${SR.regenDC(ship)})` : `${ship.name}: Boost ${what} (DC ${SR.boostDC(ship)})`;
@@ -160,4 +174,4 @@ function apply(camp, cid, gm, type, p, h) {
 const pick = (v, table) => (Object.prototype.hasOwnProperty.call(table, v) ? v : "");
 const cleanFields = (sh) => ({ status: SR.cleanStatus(sh.status), reactor: pick(sh.reactor, SR.REACTORS), coupling: pick(sh.coupling, SR.COUPLINGS), shieldType: pick(sh.shieldType, SR.SHIELD_TYPES) });
 
-module.exports = { handles, apply, keepStatus, cleanStatus: SR.cleanStatus, cleanFields };
+module.exports = { handles, apply, keepStatus, cleanStatus: SR.cleanStatus, cleanFields, boostBonus };

@@ -9,8 +9,10 @@
   const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
 
   // the box: the ship's state at 0 hull, damage by type, repairs, conditions and what they do right now
-  // power dice, shield dice and the Boost actions; ctx.pb: the proficiency bonus of the crew member the sheet is rolling as
+  // power dice, shield dice and the Boost actions; ctx: { pb, as }, the crew row the sheet is rolling as and its proficiency bonus
+  const ctxOf = {};   // per ship, the crew row the sheet is rolling as (the server works the bonus out from it)
   function powerBlock(s, ro, ctx) {
+    ctxOf[s.id] = ctx || {};
     const st = SR.statusOf(s), caps = SR.powerCaps(s), dis = ro || SR.isDisabled(st) || SR.isLost(st);
     const auto = (field, fn, table) => { const v = s[field] || '', a = fn(Object.assign({}, s, { [field]: '' }));
       return `<select data-sp="${field}" ${ro ? 'disabled' : ''}><option value="" ${v ? '' : 'selected'}>${a ? `${esc(a)} (role or equipment)` : '(none)'}</option>${Object.keys(table).map(k => `<option ${k === v ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select>`; };
@@ -30,8 +32,8 @@
       <div class="row wrap" style="gap:8px;margin-top:6px;font-size:12px"><span>Shield dice <b>${sdLeft}</b> of ${sd.n} left (d${sd.die})${ro ? '' : ` <button class="btn tiny ghost" data-sx="sdset" data-n="${used + 1}" ${sdLeft ? '' : 'disabled'} title="Spend one">−</button><button class="btn tiny ghost" data-sx="sdset" data-n="${used - 1}" ${used ? '' : 'disabled'} title="Get one back">+</button>`}</span>
         <span>Regeneration <b>${rate}</b> a round</span>${st.tempShield ? `<span>Temporary shields <b>${st.tempShield}</b></span>` : ''}</div>
       ${dis ? '' : `<div class="row wrap" style="gap:6px;margin-top:6px"><span class="muted" style="font-size:12px" title="Strength (Boost): the ship's Strength plus the crew member's proficiency if the ship is proficiently equipped in Boost">Boost ${sign(boostBonus)} vs DC ${SR.boostDC(s)}</span>
-        ${['engines', 'shields', 'weapons'].map(w => `<button class="btn tiny" data-sx="boost" data-what="${w}" data-bonus="${boostBonus}" ${(w === 'engines' ? b.engines >= 2 : b[w]) ? 'disabled' : ''}>Boost ${w}</button>`).join('')}
-        <button class="btn tiny" data-sx="regen" data-bonus="${boostBonus}" ${b.regen || !sdLeft ? 'disabled' : ''} title="The action: spend a shield die and roll it (twice, keeping the lower, on a failed check). Works when the shields are down.">Regenerate shields (DC ${SR.regenDC(s)})</button>
+        ${['engines', 'shields', 'weapons'].map(w => `<button class="btn tiny" data-sx="boost" data-what="${w}" ${(w === 'engines' ? b.engines >= 2 : b[w]) ? 'disabled' : ''}>Boost ${w}</button>`).join('')}
+        <button class="btn tiny" data-sx="regen" ${b.regen || !sdLeft ? 'disabled' : ''} title="The action: spend a shield die and roll it (twice, keeping the lower, on a failed check). Works when the shields are down.">Regenerate shields (DC ${SR.regenDC(s)})</button>
         ${done.length ? `<span class="muted" style="font-size:12px">This turn: ${esc(done.join(', '))}</span>` : ''}</div>`}
     </div>`;
   }
@@ -116,7 +118,7 @@
     if (a === 'puse') { await H.act('ship.poweruse', { id, pool: b.dataset.pool }); return true; }
     if (a === 'pset') { await H.act('ship.power', { id, pool: b.dataset.pool, n: +b.dataset.n }); return true; }
     if (a === 'sdset') { await H.act('ship.dice', { id, kind: 'shield', used: +b.dataset.n }); return true; }
-    if (a === 'boost' || a === 'regen') { await H.act(a === 'boost' ? 'ship.boost' : 'ship.regen', { id, what: b.dataset.what, bonus: +b.dataset.bonus || 0, mode: H.rollModeFromEvent(e) }); return true; }
+    if (a === 'boost' || a === 'regen') { await H.act(a === 'boost' ? 'ship.boost' : 'ship.regen', { id, what: b.dataset.what, crew: (ctxOf[id] || {}).as || 0, mode: H.rollModeFromEvent(e) }); return true; }
     if (a === 'stabilize') { await H.act('ship.stabilize', { id }); return true; }
     if (a === 'cond') { const c = b.dataset.c; await H.act('ship.condition', { id, name: c, on: !SR.statusOf(s).cond.includes(c) }); return true; }
     if (a === 'reset') { if (confirm(`Undo ${s.name}'s destruction?`)) await H.act('ship.reset', Object.assign({ id }, b.dataset.system ? { system: +b.dataset.system } : {})); return true; }

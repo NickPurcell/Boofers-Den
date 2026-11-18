@@ -362,21 +362,26 @@ test("ship actions: start of turn, power dice, Boost and Regenerate Shields on t
   await p2.act("ship.power", { id: party, pool: "central", n: 99 });
   assert.equal(shipIn(await p2.state(), party).status.power.central, 4, "within the coupling's capacity");
   res = await p1.act("ship.boost", { id: party, what: "engines", bonus: 30 });
-  assert.equal(res.code, 200); assert.ok(res.data.ok, "1d20+30 always beats DC 10");
-  assert.equal((await p1.act("ship.boost", { id: party, what: "engines", bonus: 30 })).code, 400, "once a turn");
+  assert.equal(res.code, 200);
+  if (res.data.ok) assert.equal((await p1.act("ship.boost", { id: party, what: "engines" })).code, 400, "once a turn");
   assert.equal((await p1.act("ship.boost", { id: party, what: "hyperdrive" })).code, 400);
-  res = await p1.act("ship.regen", { id: party, bonus: 30 });
+  res = await p1.act("ship.regen", { id: party });
   assert.equal(res.code, 200);
   sh = shipIn(await p1.state(), party);
   assert.ok(sh.shield.current > 9 && sh.status.sdUsed === 2 && sh.status.boost.regen);
-  assert.equal((await p1.act("ship.regen", { id: party, bonus: 30 })).code, 400, "once a ship turn");
+  assert.equal((await p1.act("ship.regen", { id: party })).code, 400, "once a ship turn");
   const chat = (await p2.state()).chat;
-  assert.ok(chat.some((m) => m.roll && /^Dawn Skiff: Boost engines \(DC 10\)/.test(m.roll.label) && m.roll.expr === "1d20+30"));
+  assert.ok(chat.some((m) => m.roll && /^Dawn Skiff: Boost engines \(DC 10\)/.test(m.roll.label) && m.roll.expr === "1d20+0"), "the bonus is the sheet's (Strength 10, no Boost proficiency), not the request's +30");
   assert.ok(chat.some((m) => /spends a central power die on Dawn Skiff: 1/.test(m.text || "")));
-  // the bonus is capped; a hidden ship is the GM's
+  // the bonus: ship Strength + the rolling crew member's proficiency times the Boost equipment; the request only picks the row
+  sh = shipIn(await p1.state(), party);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { abilities: Object.assign({}, sh.abilities, { str: 16 }), skills: Object.assign({}, sh.skills, { boost: 2 }),
+    crew: [{ name: "Ione", pb: 4 }, { name: "Tam", pb: 3 }] }) });
   await p1.act("ship.turn", { id: party });
-  res = await p1.act("ship.boost", { id: party, what: "shields", bonus: 900 });
-  assert.ok((await p2.state()).chat.some((m) => m.roll && m.roll.expr === "1d20+30" && /Boost shields/.test(m.roll.label)), "a bonus above +30 is cut to +30");
+  await p1.act("ship.boost", { id: party, what: "shields", crew: 1, bonus: 900 });
+  await p1.act("ship.boost", { id: party, what: "weapons", crew: "__proto__" });
+  const exprs = (await p2.state()).chat.filter((m) => m.roll && m.roll.kind === "boost").map((m) => m.roll.expr);
+  assert.deepEqual(exprs.slice(-2), ["1d20+9", "1d20+11"], "+3 Str + 2 x 3 for Tam; a bad row reads as the first (+3 + 2 x 4)");
   assert.equal((await p1.act("ship.turn", { id: enemy })).code, 403);
   assert.equal((await p1.act("ship.boost", { id: enemy, what: "engines" })).code, 403);
   // a disabled ship can't act; its turn rolls its destruction save
