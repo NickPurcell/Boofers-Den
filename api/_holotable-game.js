@@ -287,6 +287,7 @@ function viewFor(camp, cid, gm, online) {
     levelUps: camp.levelUps || {},
     variants: camp.variants || [],
     hpMax: camp.hpMax !== false,
+    ...(camp.clock ? { clock: camp.clock } : {}),   // in-game time (9.18)
     audio: camp.audio ? Object.assign({}, camp.audio, { now: now() }) : null,   // "now" lets each screen line its clock up
     ships: (camp.ships || []).filter((x) => gm || !x.hidden),
     ...(camp.space ? { space: Space.view(camp, gm) } : {}),   // the space map (#146)
@@ -1004,6 +1005,26 @@ function applyAction(camp, cid, gm, type, p) {
     }
     case "chat.clear": need(gm); camp.chat = []; return {};
 
+    // ---- in-game time (audit 9.18): a day count and the time of day, the GM's to set and move on; everyone sees it
+    case "clock.set": {
+      need(gm);
+      if (p.off) { delete camp.clock; return {}; }
+      camp.clock = cleanClock({ day: p.day, min: p.min });
+      return { clock: camp.clock };
+    }
+    case "clock.advance": {
+      need(gm);
+      const mins = clamp(int(p.mins), 1, 365 * 1440);
+      const c = cleanClock(camp.clock || { day: 1, min: 8 * 60 }), total = c.min + mins;
+      camp.clock = cleanClock({ day: c.day + Math.floor(total / 1440), min: total % 1440 });
+      if (p.announce !== false) {
+        const span = mins % 1440 === 0 ? `${mins / 1440} day${mins === 1440 ? "" : "s"}` : mins % 60 === 0 ? `${mins / 60} hour${mins === 60 ? "" : "s"}` : `${mins} minutes`;
+        const why = str(p.why, 60).trim();
+        addChat(camp, { system: true, text: `🕑 ${span} pass${why ? ` (${why})` : ""}. It's now ${clockText(camp.clock)}.` });
+      }
+      return { clock: camp.clock };
+    }
+
     // ---- which SW5e variant rules this table uses (the GM decides; everyone sees the list)
     case "variants.set": need(gm); camp.variants = cleanVariants(p.variants); return {};
 
@@ -1100,6 +1121,12 @@ function cleanDrawings(list) {
     pts: d.pts.slice(0, 600).map((v) => Math.round(clamp(Number.isFinite(+v) ? +v : 0, -50, 300) * 100) / 100).slice(0, d.pts.length - (d.pts.length % 2)),
   })).filter((d) => d.pts.length >= 4);
 }
+// in-game time (9.18): day 1 and up, minutes into the day 0-1439
+function cleanClock(c) {
+  if (!c || typeof c !== "object") return null;
+  return { day: clamp(int(c.day, 1), 1, 999999), min: clamp(int(c.min), 0, 1439) };
+}
+const clockText = (c) => `Day ${c.day}, ${String(Math.floor(c.min / 60)).padStart(2, "0")}:${String(c.min % 60).padStart(2, "0")}`;
 function cleanMap(g, raw) {
   const m = raw && typeof raw === "object" ? raw : {};
   const n = (v, d) => (Number.isFinite(+v) ? +v : d);
@@ -1140,6 +1167,7 @@ function cleanGame(g) {
   g.audio = au && /^au[a-f0-9]{12}$/.test(String(au.track || "")) ? { track: au.track, name: str(au.name, 80) || "Track", playing: !!au.playing,
     pos: clamp(num(au.pos), 0, 86400), at: num(au.at, now()), loop: !!au.loop, vol: clamp(num(au.vol, 1), 0, 1) } : null;
   g.hpMax = g.hpMax !== false;
+  if (g.clock) g.clock = cleanClock(g.clock); if (!g.clock) delete g.clock;
   if (Array.isArray(g.npcs) && g.npcs.length) g.npcs = cleanNpcs(g.npcs); else delete g.npcs;
   g.ask = Ask.clean(g.ask, g.characters);
   g.ships = (Array.isArray(g.ships) ? g.ships : []).slice(0, MAX_SHIPS).filter((x) => x && typeof x === "object").map((x) => cleanShip(x, g.characters));

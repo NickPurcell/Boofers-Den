@@ -279,8 +279,35 @@
          <button class="btn small amber-fill" id="restoreLatest">Restore latest backup</button> <span class="muted">or pick one in the GM tab</span>`
       : `⚠ The table's save is missing. The GM needs to restore a backup before play can continue.`;
     $('#campName').textContent = S.st.name;
+    const ck = S.st.clock, clk = $('#clock');   // in-game time (9.18): everyone sees it, the GM sets it
+    clk.classList.toggle('hidden', !ck && !isGM());
+    clk.textContent = ck ? `🕑 Day ${n0(ck.day)} · ${String(Math.floor(n0(ck.min) / 60)).padStart(2, '0')}:${String(n0(ck.min) % 60).padStart(2, '0')}` : '🕑 Set the time';
+    clk.disabled = !isGM(); clk.classList.toggle('ghost', !ck);
     const gmTag = n => (/^\s*gm\s*$/i.test(n || '') ? '' : ' (GM)');
     $('#online').innerHTML = S.st.online.map(o => `<span class="pill ${o.gm ? 'gm' : ''}">${esc(o.name)}${o.gm ? gmTag(o.name) : ''}</span>`).join('');
+  }
+  $('#clock').addEventListener('click', () => { if (isGM()) openClock(); });
+  function openClock() {
+    const ck = S.st.clock || { day: 1, min: 8 * 60 };
+    const hhmm = `${String(Math.floor(ck.min / 60)).padStart(2, '0')}:${String(ck.min % 60).padStart(2, '0')}`;
+    modal(`<h3>🕑 The time in the story</h3>
+      <div class="row wrap"><label>Day<input id="ckDay" type="number" min="1" value="${n0(ck.day)}" style="width:90px"></label><label>Time<input id="ckTime" type="time" value="${hhmm}"></label>
+        <button class="btn small" id="ckSet">Set</button>${S.st.clock ? '<button class="btn small ghost" id="ckOff" title="Hide the clock">Hide clock</button>' : ''}</div>
+      <h4 style="margin-top:12px">Move time on</h4>
+      <div class="row wrap">${[['+10 min', 10, ''], ['+1 hour', 60, ''], ['Short rest', 60, 'short rest'], ['Long rest', 480, 'long rest'], ['+1 day', 1440, '']].map(([t, m, w]) => `<button class="btn small" data-ck="${m}" data-why="${w}">${t}</button>`).join('')}</div>
+      <div class="row wrap" style="margin-top:8px"><label>Or<input id="ckMins" type="number" min="1" placeholder="minutes" style="width:90px"></label><input id="ckWhy" maxlength="60" placeholder="why, e.g. the trip to Mos Shuuta" style="flex:1">
+        <button class="btn small" id="ckGo">Advance</button></div>
+      <label class="toggle" style="margin-top:8px"><input type="checkbox" id="ckSay" checked> say it in chat</label>
+      <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn ghost" id="ckClose">Close</button></div>`, box => {
+      box.onclick = async e => {
+        const t = e.target, say = $('#ckSay').checked;
+        if (t.id === 'ckClose') closeModal();
+        if (t.id === 'ckOff') { await act('clock.set', { off: true }); closeModal(); }
+        if (t.id === 'ckSet') { const [h, m] = ($('#ckTime').value || '08:00').split(':').map(Number); if (await act('clock.set', { day: +$('#ckDay').value || 1, min: (h || 0) * 60 + (m || 0) })) closeModal(); }
+        if (t.dataset.ck) { if (await act('clock.advance', { mins: +t.dataset.ck, why: t.dataset.why, announce: say })) closeModal(); }
+        if (t.id === 'ckGo' && +$('#ckMins').value > 0) { if (await act('clock.advance', { mins: +$('#ckMins').value, why: $('#ckWhy').value, announce: say })) closeModal(); }
+      };
+    });
   }
   $('#missingBar').addEventListener('click', async e => {
     if (e.target.id !== 'restoreLatest') return;
@@ -2441,7 +2468,7 @@
         <h4 style="margin-top:12px">Who's here</h4>
         ${Object.entries(S.st.players).map(([id, p]) => `<div>${esc(p.name)} ${p.role === 'gm' && !/^\s*gm\s*$/i.test(p.name || '') ? '<span class="muted">(GM)</span>' : ''} ${S.st.online.some(o => o.clientId === id) ? '<span style="color:var(--green)">● online</span>' : '<span class="muted">offline</span>'}
           <span class="muted">— ${chars().filter(c => c.owner === id).map(c => esc(c.name)).join(', ') || 'no characters'}</span>${id !== clientId && !S.st.online.some(o => o.clientId === id) && !chars().some(c => c.owner === id) ? ` <button class="btn tiny ghost" data-rmplayer="${esc(id)}" title="Remove this old entry from the list (offline, no characters)" aria-label="Remove ${esc(p.name)} from the player list">✕</button>` : ''}</div>`).join('')}
-        <div class="row" style="margin-top:12px"><button class="btn small danger" id="clearChat">Clear chat log</button></div>
+        <div class="row" style="margin-top:12px"><a class="btn small" href="${API}?op=chatlog" download title="The whole chat the table keeps (the last 400 messages), as a text file">⇩ Download chat log</a><button class="btn small danger" id="clearChat">Clear chat log</button></div>
       </div>
       <div class="box"><h4>Level ups</h4>
         <p style="margin-top:0" class="muted">After a big fight or a hard-won conversation, give the party a level. Each player gets a pop-up and picks how to level.
@@ -2521,7 +2548,7 @@
     const id = e.target.id;
     if (id === 'copyLink') navigator.clipboard?.writeText(location.origin + location.pathname).then(() => toast('Link copied'));
     if (id === 'doRename') act('campaign.rename', { name: $('#campRename').value });
-    if (id === 'clearChat' && confirm('Clear the chat log for everyone?')) act('chat.clear');
+    if (id === 'clearChat' && confirm('Clear the chat log for everyone?\n\nTip: "Download chat log" keeps a copy first.')) act('chat.clear');
     if (id === 'gmGrant') openGrant();
     if (id === 'gmXp') openAwardXp(0);
     if (id === 'gmAsk') openAskRoll();

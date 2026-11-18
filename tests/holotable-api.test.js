@@ -2191,3 +2191,29 @@ test("Infuse Item (Engineer): +1/+2/+3 to the infused weapon's attack and damage
   const id2 = (await p1.act("char.save", { char: eng(10, { name: "Odd", infused: "javascript:alert(1)" }) })).data.id;
   assert.equal((await gm.poll()).data.state.characters[id2].infused, undefined);
 });
+
+test("in-game time (9.18) and a log of play the GM can download (12.4)", async () => {
+  const { gm, p1 } = await table();
+  assert.equal((await p1.act("clock.set", { day: 2, min: 600 })).code, 403);
+  await gm.act("clock.set", { day: 3, min: 22 * 60 + 30 });
+  assert.deepEqual((await p1.poll()).data.state.clock, { day: 3, min: 1350 });
+  await gm.act("clock.advance", { mins: 480, why: "long rest" });
+  assert.deepEqual((await p1.poll()).data.state.clock, { day: 4, min: 390 }, "past midnight: the next day");
+  assert.ok((await p1.poll()).data.state.chat.some((m) => m.text === "🕑 8 hours pass (long rest). It's now Day 4, 06:30."));
+  await gm.act("clock.advance", { mins: 2880, announce: false });
+  assert.deepEqual((await gm.poll()).data.state.clock, { day: 6, min: 390 });
+  assert.equal((await gm.poll()).data.state.chat.filter((m) => /pass/.test(m.text || "")).length, 1, "a quiet advance says nothing");
+  await gm.act("clock.set", { day: -4, min: 99999 });
+  assert.deepEqual((await gm.poll()).data.state.clock, { day: 1, min: 1439 }, "clamped");
+  await gm.act("clock.set", { off: true });
+  assert.equal((await p1.poll()).data.state.clock, undefined);
+
+  await p1.act("chat", { text: "Hello\nthere" });
+  await p1.act("roll", { expr: "1d20+3", label: "Stealth" });
+  assert.equal((await p1.call("GET", { op: "chatlog" })).code, 403, "the GM's");
+  const log = await gm.call("GET", { op: "chatlog" });
+  assert.equal(log.code, 200);
+  assert.match(log.headers["content-disposition"], /attachment; filename="holotable-chat-\d{4}-\d\d-\d\d\.txt"/);
+  assert.match(log.data, /Sam: Hello \/ there/);
+  assert.match(log.data, /Stealth = \d+ \[1d20\+3/);
+});
