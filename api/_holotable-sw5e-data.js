@@ -116,6 +116,7 @@ function feats(d) {
     asi: strs(e.attributesIncreased, 6, 20),
   })).sort(byName);
 }
+const improvements = (d) => named(d).map((e) => ({ n: t(e.name, 40), pre: t(e.prerequisite, 120), text: t(unlink(e.description), 3000) })).sort(byName);
 function maneuvers(d) {
   return named(d).map((e) => ({ n: t(e.name, 80), src: t(e.contentSource, 10), type: t(e.type, 20), pre: t(e.prerequisite, 160), text: t(unlink(e.description), 3000) })).sort(byName);
 }
@@ -242,6 +243,10 @@ const LISTS = {
   backgrounds: { path: "background", build: backgrounds, maxBytes: 3 * MB, maxItems: 400 },        // 0.59 MB, 61
   classes: { path: "class", build: classes, maxBytes: 2 * MB, maxItems: 40, cacheAs: "classes-2" },   // 0.24 MB, 10; classes-2: lv and opts (2.9, #188)
   feats: { path: "feat", build: feats, maxBytes: 2 * MB, maxItems: 1000 },                         // 0.11 MB, 119
+  // the options the Class, Multiclass and Splashclass Improvement feats open (audit 2.17), one per class
+  "improvements-class": { path: "classImprovement", build: improvements, maxBytes: 1 * MB, maxItems: 40 },
+  "improvements-multi": { path: "multiclassImprovement", build: improvements, maxBytes: 1 * MB, maxItems: 40 },
+  "improvements-splash": { path: "splashclassImprovement", build: improvements, maxBytes: 1 * MB, maxItems: 40 },
   maneuvers: { path: "maneuvers", build: maneuvers, maxBytes: 2 * MB, maxItems: 1000 },            // 0.07 MB, 119
   styles: { path: "fightingStyle", build: simple("description"), maxBytes: 1 * MB, maxItems: 400 }, // 32
   masteries: { path: "fightingMastery", build: simple("text"), maxBytes: 1 * MB, maxItems: 400 },  // 32

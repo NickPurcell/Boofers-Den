@@ -840,6 +840,12 @@
     if (size) { if (!ch.size) unknown.push(`size ${size[1]}`); else if (String(ch.size).toLowerCase() !== size[1].toLowerCase()) unmet.push(`size ${size[1]}`); }
     const type = /\bType ([a-z]+(?: or [a-z]+)*)/i.exec(text);
     if (type) unknown.push(`type ${type[1]}`);
+    // class levels (the improvement feats' options, 2.17): "At least 3 levels in berserker", "No levels in consular"
+    const clsLv = name => ((ch && ch.classes) || []).filter(k => String(k.name || '').toLowerCase() === name.toLowerCase()).reduce((a, k) => a + (+k.level || 0), 0);
+    const least = /at least (\d+) levels? in ([a-z][a-z ]*?)(?=,|;|$)/i.exec(text);
+    if (least && clsLv(least[2].trim()) < +least[1]) unmet.push(`${least[1]} levels in ${least[2].trim()}`);
+    const none = /no levels in ([a-z][a-z ]*?)(?=,|;|$)/i.exec(text);
+    if (none && clsLv(none[1].trim()) > 0) unmet.push(`no levels in ${none[1].trim()}`);
     return { ok: unmet.length ? false : unknown.length ? null : true, unmet, unknown };
   }
   Object.assign(SW5E, { featPrereq });
