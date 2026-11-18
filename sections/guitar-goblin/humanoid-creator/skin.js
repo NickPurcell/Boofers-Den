@@ -14,7 +14,7 @@ export function skinGeometry(m, o = {}) {
   for (let i = 0; i < n; i++) {
     if (o.cloth) { const v = 0.32 + 0.68 * Math.pow(m.ao[i], 1.4); col[i * 3] = v; col[i * 3 + 1] = v; col[i * 3 + 2] = v; continue; }
     if (o.hair) { const v = 0.3 + 0.7 * Math.pow(m.ao[i], 2); col[i * 3] = v; col[i * 3 + 1] = v; col[i * 3 + 2] = v; continue; }   // hair: darker between the locks
-    const a = Math.pow(m.ao[i], 1.5), v = 0.5 + 0.5 * a;
+    const a = Math.pow(m.ao[i], 1.5), v = 0.36 + 0.64 * a;   // creases and hollows are properly dark
     col[i * 3] = v * (1 + (1 - a) * 0.2); col[i * 3 + 1] = v * (1 - (1 - a) * 0.1); col[i * 3 + 2] = v * (1 - (1 - a) * 0.06);
   }
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
@@ -38,7 +38,7 @@ export function skinMaterial(map) {
 export function eyeTexture(irisHex, o = {}) {
   const W = 512, H = 256, c = document.createElement('canvas'); c.width = W; c.height = H;
   const g = c.getContext('2d'), img = g.createImageData(W, H), iris = new THREE.Color(irisHex), white = new THREE.Color(o.white || '#e9e4de').multiplyScalar(0.8), col = new THREE.Color();   // an eye sits in the brow's shadow: its white is a grey
-  const dark = iris.clone().multiplyScalar(0.28), light = iris.clone().lerp(new THREE.Color(1, 0.95, 0.8), 0.28), IR = o.iris ?? 28.5, PU = o.pupil ?? 10;
+  const dark = iris.clone().multiplyScalar(0.28), light = iris.clone().lerp(new THREE.Color(1, 0.95, 0.8), 0.28), IR = o.iris ?? 31, PU = o.pupil ?? 10.5;
   const hash = (i) => { const s = Math.sin(i * 127.1) * 43758.5453; return s - Math.floor(s); };
   for (let y = 0; y < H; y++) {
     const th = (y / H) * 180;
@@ -68,20 +68,23 @@ export function eyeTexture(irisHex, o = {}) {
 // Both eyes and their lids as three geometries (balls, lids, lash lines), in the head's frame. eye: { x, y, z, r };
 // lid: { upper, lower, tilt } (how far each lid comes round the ball from its pole, in radians).
 export function eyeGeometries(eye, lid) {
-  const balls = [], lids = [], lashes = [], rl = eye.r + 0.0012;
+  const balls = [], lids = [], lashes = [], glints = [], rl = eye.r + 0.0012;
+  // where a light up and to one side shows in an eye seen from the front: a catchlight is what makes an eye look wet and alive
+  const hl = new THREE.Vector3(0.3, 0.2, 0.93).normalize(), turn = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), hl);
   for (const sx of [-1, 1]) {
     const at = new THREE.Matrix4().makeTranslation(sx * eye.x, eye.y, eye.z), place = at.clone().multiply(new THREE.Matrix4().makeRotationY(sx * 0.07)).multiply(new THREE.Matrix4().makeRotationZ(sx * (lid.tilt || 0)));
     const put = (g, rx) => { if (rx) g.rotateX(rx); g.applyMatrix4(place); return g; };
     // both eyes look the same way, a little to one side and down: a dead-ahead stare is what makes a face stiff
     const ball = new THREE.SphereGeometry(eye.r, 36, 24); ball.rotateX(Math.PI / 2 + 0.05); ball.rotateY(0.1); ball.applyMatrix4(at);
     balls.push(ball);
+    const glint = new THREE.CircleGeometry(eye.r * 0.105, 12); glint.applyQuaternion(turn); glint.translate(sx * eye.x + hl.x * (eye.r + 0.0003), eye.y + hl.y * (eye.r + 0.0003), eye.z + hl.z * (eye.r + 0.0003)); glints.push(glint);
     const up0 = lid.upper + (sx > 0 ? 0.035 : 0);   // one lid a hair lower than the other
     lids.push(put(new THREE.SphereGeometry(rl, 36, 12, 0, Math.PI * 2, 0, up0), -0.15));
     lids.push(put(new THREE.SphereGeometry(rl, 36, 10, 0, Math.PI * 2, Math.PI - lid.lower, lid.lower), 0.1));
     const lo = new THREE.TorusGeometry(rl * Math.sin(lid.lower), 0.0007, 5, 36); lo.rotateX(Math.PI / 2); lo.translate(0, -rl * Math.cos(lid.lower), 0); lids.push(put(lo, 0.1));
     const up = new THREE.TorusGeometry(rl * Math.sin(up0), 0.0011, 5, 36); up.rotateX(Math.PI / 2); up.translate(0, rl * Math.cos(up0), 0); lashes.push(put(up, -0.15));
   }
-  return { balls: merge(balls), lids: merge(lids), lashes: merge(lashes) };
+  return { balls: merge(balls), lids: merge(lids), lashes: merge(lashes), glints: merge(glints) };
 }
 // indexed geometries with position, normal and uv, as one
 export function merge(geos) {

@@ -147,7 +147,7 @@ export function headField(o = {}) {
     field: h, eye, P,
     // the lids: how far each comes over the eye, in radians from the top and from the bottom; older lids hang lower
     // the upper lid comes down over the top of the iris and the lower touches its bottom: white shows only at the sides
-    lid: { upper: 1.43 + 0.07 * old - 0.05 * (1 - m), lower: 1.27, tilt: 0.09 },
+    lid: { upper: 1.35 + 0.08 * old - 0.05 * (1 - m), lower: 1.27, tilt: 0.09 },
     bounds: [[-0.105, -0.23, -0.115], [0.105, 0.13, 0.125]],
   };
 }

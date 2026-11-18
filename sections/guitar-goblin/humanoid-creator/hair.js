@@ -53,7 +53,7 @@ export function hairField(style, head) {
   const cap = (t, groove, depth, edge = line) => (x, y, z) => {
     const d = head(x, y, z);
     if (d > 0.07) return d - 0.05;
-    const e = edge(x, y, z), th = t(x, y, z) * (0.07 + 0.93 * sstep(0, 0.03, -e));   // hair rises out of the scalp at the hairline; it does not stand there like the rim of a helmet
+    const e = edge(x, y, z), th = t(x, y, z) * (0.16 + 0.84 * sstep(0, 0.022, -e));   // hair rises out of the scalp at the hairline; it does not stand there like the rim of a helmet
     return Math.max(d - th + depth * groove(x, y, z) * Math.min(1, th / 0.008), e * 0.7);
   };
   let f, bounds = [[-0.12, -0.1, -0.14], [0.12, 0.16, 0.12]];

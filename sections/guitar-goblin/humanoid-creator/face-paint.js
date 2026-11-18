@@ -56,12 +56,12 @@ export function facePainter(size = 2048) {
     // Skin is never one colour. Light where the face turns up to it: the forehead, down the nose, the top of each
     // cheek. Shade where it turns away: under the cheekbones, at the temples, beside the nose, under the lower lip.
     const lightC = css(mix(skin, '#ffffff', 0.3)), darkC = css(skin.clone().multiplyScalar(0.48));
-    soft(14, lightC, () => { g.globalAlpha = 0.2; path([[-0.03, 0.03], [0.03, 0.03], [0.034, 0.055], [-0.034, 0.055]]); g.fill(); });
-    soft(4, lightC, () => { g.globalAlpha = 0.22; path([[-0.0035, 0.004], [0.0035, 0.004], [0.004, Y(-0.032)], [-0.004, Y(-0.032)]]); g.fill(); });
-    both((s) => soft(7, lightC, () => { g.globalAlpha = 0.16; path([[s * 0.026, Y(-0.014)], [s * 0.05, Y(-0.014)], [s * 0.047, Y(-0.026)], [s * 0.028, Y(-0.026)]]); g.fill(); }));
-    both((s) => soft(9, darkC, () => { g.globalAlpha = 0.17; path([[s * 0.04, Y(-0.04)], [s * 0.062, Y(-0.034)], [s * 0.058, Y(-0.07)], [s * 0.04, Y(-0.075)]]); g.fill(); }));
-    both((s) => soft(8, darkC, () => { g.globalAlpha = 0.14; path([[s * 0.052, 0.02], [s * 0.066, 0.02], [s * 0.066, 0.05], [s * 0.055, 0.05]]); g.fill(); }));
-    both((s) => soft(3, darkC, () => { g.globalAlpha = 0.16; path([[s * 0.009, Y(-0.012)], [s * 0.014, Y(-0.012)], [s * 0.017, Y(-0.04)], [s * 0.012, Y(-0.04)]]); g.fill(); }));
+    soft(14, lightC, () => { g.globalAlpha = 0.27; path([[-0.03, 0.03], [0.03, 0.03], [0.034, 0.055], [-0.034, 0.055]]); g.fill(); });
+    soft(4, lightC, () => { g.globalAlpha = 0.3; path([[-0.0035, 0.004], [0.0035, 0.004], [0.004, Y(-0.032)], [-0.004, Y(-0.032)]]); g.fill(); });
+    both((s) => soft(7, lightC, () => { g.globalAlpha = 0.24; path([[s * 0.026, Y(-0.014)], [s * 0.05, Y(-0.014)], [s * 0.047, Y(-0.026)], [s * 0.028, Y(-0.026)]]); g.fill(); }));
+    both((s) => soft(9, darkC, () => { g.globalAlpha = 0.27; path([[s * 0.04, Y(-0.04)], [s * 0.062, Y(-0.034)], [s * 0.058, Y(-0.07)], [s * 0.04, Y(-0.075)]]); g.fill(); }));
+    both((s) => soft(8, darkC, () => { g.globalAlpha = 0.22; path([[s * 0.052, 0.02], [s * 0.066, 0.02], [s * 0.066, 0.05], [s * 0.055, 0.05]]); g.fill(); }));
+    both((s) => soft(3, darkC, () => { g.globalAlpha = 0.24; path([[s * 0.009, Y(-0.012)], [s * 0.014, Y(-0.012)], [s * 0.017, Y(-0.04)], [s * 0.012, Y(-0.04)]]); g.fill(); }));
     soft(4, darkC, () => { g.globalAlpha = 0.2; path([[-0.014, Y(-0.083)], [0.014, Y(-0.083)], [0.012, Y(-0.089)], [-0.012, Y(-0.089)]]); g.fill(); });
     soft(2.5, darkC, () => { g.globalAlpha = 0.34; path([[-0.0125, Y(-0.0445)], [0.0125, Y(-0.0445)], [0.0105, Y(-0.0515)], [-0.0105, Y(-0.0515)]]); g.fill(); });   // the underside of the nose is in shadow
     for (let k = 0; k < 70; k++) {   // and a faint unevenness all over
@@ -123,7 +123,8 @@ export function facePainter(size = 2048) {
     if (o.scalp) {
       const line = o.hairline || hairline;
       // (the roots fade out just past the hair itself)
-      soft(3.2, css(mix(skin, hair, 0.82)), () => { g.globalAlpha = o.scalp; g.beginPath(); for (let i = 0; i <= 256; i++) { const a = -Math.PI + (i / 256) * 2 * Math.PI, p = round(a, line(a) - 0.0025); if (i) g.lineTo(p[0], p[1]); else g.moveTo(p[0], p[1]); } g.lineTo(W, -40); g.lineTo(0, -40); g.closePath(); g.fill(); });
+      // under pale hair the roots are painted darker than the hair, or a white-haired head reads as thinning
+      soft(3.2, css(pale ? hair.clone().multiplyScalar(0.55) : mix(skin, hair, 0.82)), () => { g.globalAlpha = o.scalp; g.beginPath(); for (let i = 0; i <= 256; i++) { const a = -Math.PI + (i / 256) * 2 * Math.PI, p = round(a, line(a) - 0.0025); if (i) g.lineTo(p[0], p[1]); else g.moveTo(p[0], p[1]); } g.lineTo(W, -40); g.lineTo(0, -40); g.closePath(); g.fill(); });
     }
     g.globalAlpha = 1; texture.needsUpdate = true;
   }

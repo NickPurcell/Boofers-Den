@@ -68,9 +68,10 @@ const skin = skinMaterial(face.texture), bodySkin = skinMaterial(null), hairMat 
 const lidMat = new THREE.MeshPhysicalMaterial({ roughness: 0.5, sheen: 0.3, sheenRoughness: 0.5 });
 const tendrilMat = skinMaterial(null);   // a Mikkian's head-tendrils: skin, painted per vertex
 const eyeMat = new THREE.MeshPhysicalMaterial({ roughness: 0.16, clearcoat: 1, clearcoatRoughness: 0.04 }), lashMat = new THREE.MeshStandardMaterial({ color: 0x120d0a, roughness: 0.8 });
+const glintMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false, transparent: true, opacity: 0.85 });
 const ringMat = new THREE.MeshStandardMaterial({ color: 0xc9a24a, metalness: 1, roughness: 0.28, emissive: 0xc9a24a, emissiveIntensity: 0.22 });   // a little glow of its own, or polished metal goes black in a dark room
 const CLOTHS = { cloth: clothMaterial, leather: leatherMaterial, metal: metalMaterial, plastic: (hex) => { const m = plasticMaterial(hex); m.roughness = 0.46; m.clearcoat = 0.25; return m; } };
-const KEEP = new Set([skin, bodySkin, hairMat, lidMat, eyeMat, lashMat, ringMat, tendrilMat, gearMaterial()]);
+const KEEP = new Set([skin, bodySkin, hairMat, lidMat, eyeMat, lashMat, glintMat, ringMat, tendrilMat, gearMaterial()]);
 let built = null, cloth = [], info = {}, ticket = 0, current = Promise.resolve(), eyeKey = '';
 
 function args() {
@@ -104,6 +105,7 @@ async function rebuild() {
   const hg = new THREE.Group(); hg.position.set(...HEAD_AT); figure.add(hg);
   const eg = eyeGeometries(head.eye, head.lid);
   add(eg.balls, eyeMat, hg).receiveShadow = false; add(eg.lids, lidMat, hg); add(eg.lashes, lashMat, hg);
+  { const gl = new THREE.Mesh(eg.glints, glintMat); gl.renderOrder = 2; hg.add(gl); }   // the catchlights cast no shadow
   let mane = null;
   if (hair.mesh && state.hood !== 'up') {   // a raised hood covers the hair
     if (hair.t) mane = { mesh: add(skinGeometry(copy(hair.mesh)), tendrilMat, hg), t: hair.t, ao: hair.mesh.ao };
