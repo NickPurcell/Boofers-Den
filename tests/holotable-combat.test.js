@@ -3227,3 +3227,17 @@ test("Riposte through the API: the creature's miss raises the prompt, the player
   assert.equal((st.characters[avery].resources || []).find((r) => r.key === "superiority").used, 1);
   assert.deepEqual(st.fight.pending, []);
 });
+
+test("class pools in the world (#164): a sheet that hasn't added its class's resources still has them in a fight, so maneuvers and Action Surge show", () => {
+  const ch = { id: "c1", name: "Fenn", classes: [{ name: "Fighter", level: 5 }], abilities: { str: 16, dex: 12, con: 14, int: 8, wis: 10, cha: 8 }, hp: { max: 30, current: 30 }, ac: 15,
+    attacks: [{ name: "Sword", ab: "str", damage: "1d8", props: "" }], features: [{ name: "Trip Attack" }] };
+  const w = E.buildWorld({ characters: { c1: ch }, entries: [{ id: "e1", name: "Fenn", charId: "c1" }, { id: "e2", name: "Raider", hp: 20, ac: 5 }], active: true, turn: 0,
+    tokens: [{ id: "t1", x: 0, y: 0 }, { id: "t2", x: 1, y: 0 }], unitTokens: { e1: "t1", e2: "t2" } }, R);
+  assert.deepEqual(Object.keys(w.units.e1.pools).sort(), ["action-surge", "hitdice", "second-wind", "superiority"]);
+  assert.deepEqual([w.units.e1.pools.superiority.max, w.units.e1.pools.superiority.die, w.units.e1.pools["action-surge"].max], [3, "d6", 1]);
+  assert.ok((E.preview(w, "e1", "e2", E.attacksOf(ch, R)[0]).riders || []).some((x) => x.key === "maneuver"), "Trip Attack is offered");
+  assert.equal(ch.resources, undefined, "the sheet itself is untouched until something is spent");
+  const kept = Object.assign({}, ch, { resources: [{ key: "superiority", name: "Superiority dice", max: 3, die: "d6", used: 2, refill: "short" }] });
+  const w2 = E.buildWorld({ characters: { c1: kept }, entries: [{ id: "e1", name: "Fenn", charId: "c1" }], active: true, turn: 0, tokens: [{ id: "t1", x: 0, y: 0 }], unitTokens: { e1: "t1" } }, R);
+  assert.equal(w2.units.e1.pools.superiority.used, 2, "a stored pool keeps its count");
+});
