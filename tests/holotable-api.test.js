@@ -1054,6 +1054,14 @@ test("restore round trip: a fully populated table comes back the same, from the 
   await p1.act("chat", { text: "hello table" });
   await gm.act("chat", { text: "/w Sam a secret for you" });
   await p1.act("player.prefs", { theme: "jedi-temple", custom: { holo: "#00ffaa" } });
+  // and the parts that came later: the stash, the clock, the GM's switches and NPCs, factions and rivals
+  await gm.act("stash.add", { items: [{ name: "Vibroknife", rar: "Premium" }], credits: 120, quiet: true });
+  await gm.act("clock.set", { day: 4, min: 600 });
+  await gm.act("settings.sheetLock", { on: true });
+  await gm.act("settings.statBlocks", { hidden: true });
+  await gm.act("npc.save", { npc: { name: "Swoop Ganger", hp: 22, ac: 13, attacks: [{ n: "Knife", hit: 4, dmg: "1d4+2" }] } });
+  await gm.act("faction.save", { item: { name: "Hutt Cartel", tier: 3, shown: true, members: { [kira]: { rank: 1, renown: 4 } } } });
+  await gm.act("rival.save", { item: { name: "Bossk", known: true, chars: [kira] } });
 
   // what must survive, as the GM sees it (ids, grant tokens and timestamps aside)
   const snapshot = (st) => ({
@@ -1070,6 +1078,8 @@ test("restore round trip: a fully populated table comes back the same, from the 
     levelUps: Object.fromEntries(Object.entries(st.levelUps).map(([id, v]) => [id, v.count])),
     chat: st.chat.filter((m) => m.text !== "The table was restored from a backup.").map((m) => ({ from: m.from, text: m.text, to: m.to, private: m.private })),
     players: Object.values(st.players).map((p) => ({ name: p.name, prefs: p.prefs })).sort((a, b) => a.name.localeCompare(b.name)),
+    later: { stash: st.stash && { credits: st.stash.credits, items: st.stash.items.map((i) => [i.name, i.rar]) }, clock: st.clock, sheetLock: st.sheetLock, statBlocksHidden: st.statBlocksHidden,
+      npcs: (st.npcs || []).map((t) => [t.name, t.hp, t.attacks.length]), factions: (st.factions || []).map((f) => [f.name, f.tier, JSON.stringify(f.members)]), rivals: (st.rivals || []).map((r) => [r.name, r.known, r.chars.length]) },
   });
   const before = snapshot((await gm.poll()).data.state);
   // the populated table really is populated
