@@ -411,6 +411,7 @@ function stashScene(camp) {
   return true;
 }
 
+const SKILL_KEYS = new Set(R.SKILLS.map((x) => x.key));   // the sheet's skills, for Expertise (audit 2.9)
 function applyLevelUp(camp, cid, gm, p) {
   const ch = charById(camp, p.charId);
   if (!ch) throw new Invalid("No such character.");
@@ -445,10 +446,11 @@ function applyLevelUp(camp, cid, gm, p) {
   }
   const feat = p.feat && str(p.feat.name, 80).trim();
   // Expertise (audit 2.9): at most two skills at a time, each one the character is already proficient in
-  const expertise = Array.isArray(p.expertise) ? [...new Set(p.expertise.slice(0, 4).map((x) => str(x, 30)))] : [];
+  if (Array.isArray(p.expertise) && p.expertise.length > 4) throw new Invalid("Expertise is two proficiencies at a time.");
+  const expertise = Array.isArray(p.expertise) ? [...new Set(p.expertise.map((x) => str(x, 30)))] : [];
   if (expertise.length > 2) throw new Invalid("Expertise is two proficiencies at a time.");
-  for (const sk of expertise) {
-    if (!/^[a-zA-Z]{1,30}$/.test(sk) || !ch.skills || !Object.prototype.hasOwnProperty.call(ch.skills, sk) || +ch.skills[sk] !== 1) throw new Invalid("Expertise goes on a skill you're proficient in.");
+  for (const sk of expertise) {   // one of the sheet's skills (SW5e's list), held at proficiency 1
+    if (!SKILL_KEYS.has(sk) || !ch.skills || !Object.prototype.hasOwnProperty.call(ch.skills, sk) || +ch.skills[sk] !== 1) throw new Invalid("Expertise goes on a skill you're proficient in.");
   }
   if (p.hpMode === "max" && camp.hpMax === false) throw new Invalid("The GM has turned off taking maximum hit points.");
 
