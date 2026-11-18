@@ -6,21 +6,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#f6f1e7" />
   <title>HoloTable against SW5e: what's done, what's missing</title>
-  <meta name="description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules at commit 4427cbe: 115 done, 31 partial, 15 missing, and the ten gaps that matter most." />
+  <meta name="description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules (first at commit 4427cbe, kept up to date since): 114 done, 32 partial, 15 missing, and the ten gaps that matter most." />
   <meta property="og:title" content="HoloTable against SW5e: what's done, what's missing" />
-  <meta property="og:description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules at commit 4427cbe: 115 done, 31 partial, 15 missing, and the ten gaps that matter most." />
+  <meta property="og:description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules (first at commit 4427cbe, kept up to date since): 114 done, 32 partial, 15 missing, and the ten gaps that matter most." />
   <link rel="stylesheet" href="audit.css" />
 </head>
 <body>
   <nav class="top"><a class="back" href="../">&larr; Guitar Goblin</a><a class="back" href="https://boofers-den.vercel.app/sections/jpesus/holotable/">Open HoloTable &rarr;</a></nav>
   <div class="wrap">
     <header class="hero">
-      <p class="kicker">An audit &middot; 161 lines &middot; at commit 4427cbe</p>
+      <p class="kicker">An audit &middot; 161 lines &middot; first at commit 4427cbe, kept up to date</p>
       <h1>HoloTable against SW5e <span>what a table needs to play the whole system, and what is there</span></h1>
-      <p class="lead">This is a line-by-line check of <a href="https://boofers-den.vercel.app/sections/jpesus/holotable/">HoloTable</a>, the Star Wars 5e tabletop jpesus built on the Den, against what the SW5e rules ask of a table: making and levelling characters, class resources, powers, the sheet's arithmetic, gear, rests and conditions, combat on the map, the GM's side, starships, downtime, and the table itself. It describes HoloTable's code at commit <code>4427cbe</code> (17 Nov 2026, 08:01 PST), so anything changed since then is not counted. It is meant as a to-do list for the group, not a verdict.</p>
+      <p class="lead">This is a line-by-line check of <a href="https://boofers-den.vercel.app/sections/jpesus/holotable/">HoloTable</a>, the Star Wars 5e tabletop jpesus built on the Den, against what the SW5e rules ask of a table: making and levelling characters, class resources, powers, the sheet's arithmetic, gear, rests and conditions, combat on the map, the GM's side, starships, downtime, and the table itself. It was first checked at commit <code>4427cbe</code> (17 Nov 2026, 08:01 PST), and each line marked "Since 17 Nov" says what has landed on main since and which pull request did it, so the counts are today's. It is meant as a to-do list for the group, not a verdict.</p>
       <ul class="counts" aria-label="The 161 lines">
-        <li class="done"><b>115</b> <span aria-hidden="true">✓</span> done</li>
-        <li class="partial"><b>31</b> <span aria-hidden="true">◐</span> partial</li>
+        <li class="done"><b>114</b> <span aria-hidden="true">✓</span> done</li>
+        <li class="partial"><b>32</b> <span aria-hidden="true">◐</span> partial</li>
         <li class="missing"><b>15</b> <span aria-hidden="true">✗</span> missing</li>
       </ul>
     </header>
@@ -67,8 +67,8 @@
       </dl>
       <div class="filters" id="filters" hidden>
         <div class="fgroup" role="group" aria-label="Show by state">
-          <button type="button" data-f="state" data-v="done" aria-pressed="true">✓ Done 115</button>
-          <button type="button" data-f="state" data-v="partial" aria-pressed="true">◐ Partial 31</button>
+          <button type="button" data-f="state" data-v="done" aria-pressed="true">✓ Done 114</button>
+          <button type="button" data-f="state" data-v="partial" aria-pressed="true">◐ Partial 32</button>
           <button type="button" data-f="state" data-v="missing" aria-pressed="true">✗ Missing 15</button>
         </div>
         <div class="fgroup" role="group" aria-label="Show by how much it matters">
@@ -761,7 +761,7 @@
 <p class="nomatch" hidden>Nothing in this section matches the filters.</p>
 </details>
 <details class="sec" id="s-10">
-<summary><span class="sn">10.</span> <span class="st">Starships and space combat (Starships of the Galaxy)</span> <span class="sc"><span class="tally">10 done · 7 partial · 2 missing</span><span class="shown" hidden></span></span></summary>
+<summary><span class="sn">10.</span> <span class="st">Starships and space combat (Starships of the Galaxy)</span> <span class="sc"><span class="tally">9 done · 8 partial · 2 missing</span><span class="shown" hidden></span></span></summary>
 
 <ul class="items">
 <li class="item done" id="l-10-1" data-state="done" data-matters="some">
@@ -784,10 +784,10 @@
 <p class="text">Damage hits shields first, then hull.</p>
 <p class="ev">Evidence: books.js:590–596. Since 17 Nov, damage also follows SotG's damage types: shields take half from acid, cold, fire and necrotic, hull half from ion, lightning and necrotic, and poison, psychic and (in space) sonic do nothing (#151).</p>
 </li>
-<li class="item done" id="l-10-5" data-state="done" data-matters="some">
-<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">10.5</span> <span class="meta">computes · sometimes</span></p>
+<li class="item partial" id="l-10-5" data-state="partial" data-matters="some">
+<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">10.5</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">What size and tier give a ship: hull and shield dice, hull points per hull die, modification capacity, maximum suites, stock modifications, base ability scores, minimum crew. Every number is typed; changing size or tier changes nothing. (SW5e's <code>starshipBaseSize</code> reply carries these as zeros, so they would come from the SotG chapter tables.)</p>
-<p class="ev">Evidence: <code>blankShip</code> (books.js:469); no code. <strong>Since 17 Nov:</strong> a &quot;From size, tier and role&quot; panel sets hull and shield dice and points, AC (armor and tier), the role's speed and turning, suites, modification slots and the size's saves, checked against SotG's worked example (#154, #183). Ability adjustments are shown as guidance; the scores are typed.</p>
+<p class="ev">Evidence: <code>blankShip</code> (books.js:469); no code. <strong>Since 17 Nov:</strong> a &quot;From size, tier and role&quot; panel sets hull and shield dice and points, AC (armor and tier), the role's speed and turning, suites, modification slots and the size's saves, checked against SotG's worked example (#154, #183). Ability adjustments are shown as guidance; the scores are typed. Still missing: stock modifications and minimum crew.</p>
 </li>
 <li class="item done" id="l-10-6" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">10.6</span> <span class="meta">computes · sometimes</span></p>
