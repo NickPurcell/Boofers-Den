@@ -432,6 +432,46 @@
     return { ship: s, done: true, ok, dc, gain, log: [`${name} regenerates its shields: ${check} against DC ${dc}, ${ok ? 'a success' : 'a failure (the lower of two rolls)'}, +${gain} shield point${gain === 1 ? '' : 's'}.`] };
   }
 
+
+  // ---- the space map (SotG chapter 9, "Variant: Playing on a Grid" and "Variant: Sizes on a Grid"; jpesus's call on
+  // #146: ship fights on their own map at 50 ft a square, ship tokens at ship scale)
+  const SQUARE_FT = 50;
+  const SQUARES = { Tiny: 1, Small: 1, Medium: 2, Large: 4, Huge: 8, Gargantuan: 16 };   // squares a side
+  const squaresOf = (ship) => own(SQUARES, ship && ship.size) || 1;
+  // eight facings, clockwise from up the map: 0 up, 2 right, 4 down, 6 left
+  const FACING_NAMES = ['north', 'north-east', 'east', 'south-east', 'south', 'south-west', 'west', 'north-west'];
+  const DIRS = [[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]];
+  // distance on the grid: straight squares are 50 ft; diagonals alternate 50 ft and 100 ft (SotG's grid variant)
+  function gridFeet(dx, dy) {
+    const a = Math.abs(int(dx)), b = Math.abs(int(dy)), diag = Math.min(a, b), straight = Math.max(a, b) - diag;
+    return SQUARE_FT * (straight + diag + Math.floor(diag / 2));
+  }
+  // turning: 90 degrees costs the turning speed, so each 45-degree step half of it
+  const turnSteps = (f1, f2) => { const d = (((int(f2) - int(f1)) % 8) + 8) % 8; return Math.min(d, 8 - d); };
+  const turnCost = (ship, f1, f2) => Math.ceil(turnSteps(f1, f2) * Math.max(0, int(ship && ship.turn)) / 2);
+  // what a move from token a to token b costs in feet: the squares, then the turn
+  const moveCost = (ship, a, b) => gridFeet(int(b.x) - int(a.x), int(b.y) - int(a.y)) + turnCost(ship, a.f, b.f);
+  // a token's top-left square inside the map for its size (the board's edge stops it)
+  function inBounds(tok, size, cols, rows) {
+    return { x: clamp(int(tok.x), 0, Math.max(0, cols - size)), y: clamp(int(tok.y), 0, Math.max(0, rows - size)), f: ((int(tok.f) % 8) + 8) % 8 };
+  }
+  // the gap between two ships in feet: from the nearest square of one to the nearest of the other
+  function shipGap(a, sa, b, sb) {
+    const gap = (p, ps, q, qs) => (q >= p + ps ? q - (p + ps) + 1 : p >= q + qs ? p - (q + qs) + 1 : 0);
+    return gridFeet(gap(a.x, sa, b.x, sb), gap(a.y, sa, b.y, sb));
+  }
+  // which firing arc of ship a (at its facing) ship b's centre is in: forward, starboard, aft or port (each 90 degrees)
+  function arcOf(a, sa, b, sb) {
+    const dx = (b.x + sb / 2) - (a.x + sa / 2), dy = (b.y + sb / 2) - (a.y + sa / 2);
+    if (!dx && !dy) return 'forward';
+    const ang = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360, rel = (ang - int(a.f) * 45 + 360 + 45) % 360;
+    return ['forward', 'starboard', 'aft', 'port'][Math.floor(rel / 90)];
+  }
+  // initiative: an NPC ship rolls a Dexterity check with its size's modifier (SotG chapter 10); a party ship goes at the
+  // lowest of its crew's initiative rolls (chapter 9)
+  const INIT_SIZE_MOD = { Tiny: 0, Small: -3, Medium: -7, Large: -9, Huge: -10, Gargantuan: -11 };
+  const npcInitBonus = (ship) => Math.floor((int((ship && ship.abilities || {}).dex, 10) - 10) / 2) + (own(INIT_SIZE_MOD, ship && ship.size) || 0);
+
   // what the sheet shows of a ship's state, in short phrases
   function summary(ship) {
     const st = statusOf(ship), hullNow = int(ship && ship.hull && ship.hull.current), out = [];
@@ -445,5 +485,6 @@
     slowedLevel, speedOf, hullMax, shieldMax, capPoints, rollEffects, rollMode, takeDamage, restore, revive, dying, destructionSave, stabilize,
     setCondition, summary, SIZE_DATA, SHIELD_TYPES, REACTORS, COUPLINGS, SYSTEMS, POOLS, SYSTEM_NAMES, POWER_DIE, sizeOf, roleOf, reactorOf, couplingOf,
     shieldTypeOf, powerDie, powerDieText, powerCaps, diceOf, diceLeft, regenRate, boostDC, regenDC, boostedSpeed, startTurn, usePower, setPower,
-    setDiceUsed, boost, regenerateShields };
+    setDiceUsed, boost, regenerateShields, SQUARE_FT, SQUARES, squaresOf, FACING_NAMES, DIRS, gridFeet, turnSteps, turnCost, moveCost, inBounds, shipGap,
+    arcOf, INIT_SIZE_MOD, npcInitBonus };
 });

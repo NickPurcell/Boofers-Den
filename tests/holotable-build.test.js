@@ -65,6 +65,7 @@ test("buildLevel1: species, class, scores and background make one level-1 charac
   assert.deepEqual(Object.keys(c.skills).sort(), ["athletics", "deception", "perception", "stealth"], "class and background skills, nothing else");
   assert.ok(!Object.prototype.hasOwnProperty.call(c.skills, "__proto__"), "a key outside the sheet's skills is dropped");
   assert.equal(c.ac, 11, "10 + Dex +1, unarmored");
+  assert.equal(c.acAuto, true, "brand-new: the sheet works its AC out from worn armor (#165)");
   assert.equal(c.speed, 30);
   const names = c.features.map((f) => f.name);
   assert.ok(names.includes("Iron Constitution") && !names.includes("Speed") && !names.includes("Ability Score Increase"), "traits, not the bookkeeping ones");

@@ -283,6 +283,7 @@
     }
     for (const k of [...(D.classSkills || []), ...(D.bgSkills || [])]) if (R.SKILLS.some(s => s.key === k)) c.skills[k] = 1;
     c.ac = 10 + mod(c.abilities.dex);   // unarmored; armor goes on with the equipment
+    c.acAuto = true;                    // brand-new: the sheet works its AC out from worn armor (#165), as ＋ New's blank sheet does
     const b = D.bg;
     if (b) {
       c.background = b.n;
@@ -810,7 +811,8 @@
       </div></div>`;
     el.innerHTML = html;
   }
-  function renderShipsSafe() { const el = $('#ships'); if (!el) return; const a = document.activeElement; if (a && el.contains(a) && a.matches('input:not([type=checkbox]), textarea, select')) return; renderShips(el); }
+  // the space map (space.js) redraws with the ships
+  function renderShipsSafe() { if (window.HTSpace) HTSpace.render(); const el = $('#ships'); if (!el) return; const a = document.activeElement; if (a && el.contains(a) && a.matches('input:not([type=checkbox]), textarea, select')) return; renderShips(el); }
   const shipsEl = () => $('#ships');
   if (shipsEl()) {
     shipsEl().addEventListener('change', e => {
