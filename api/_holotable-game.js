@@ -271,6 +271,8 @@ function viewFor(camp, cid, gm, online) {
     ships: (camp.ships || []).filter((x) => gm || !x.hidden),
     sceneFx: fxView,
     ...(camp.fight && camp.fight.on ? { fight: Fight.view(camp, cid, gm, shownName) } : {}),
+    // the sheet's Cast (#73), combat view on or off: which powers the table has data for, and who concentrates on what
+    ...((sc) => (sc ? { sheetCast: sc } : {}))(Fight.sheetView(camp, gm ? camp.characters : sheetsFor(camp, cid))),
     ...(fogState ? { fog: fogState } : {}),   // the map's fog of war (#93), combat view or not: only while the GM has it on   // the combat view, only while it is on
     scene: (camp.scenes || []).filter((x) => x.id === camp.activeScene).map((x) => ({ id: x.id, name: x.name }))[0] || null,
     scenes: gm ? (camp.scenes || []).map((x) => ({ id: x.id, name: x.name, savedAt: x.savedAt })) : null,
