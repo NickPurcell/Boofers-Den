@@ -220,6 +220,7 @@
   }
   const overlaps = (ax, ay, as, b) => ax < b.x + (b.size || 1) && b.x < ax + as && ay < b.y + (b.size || 1) && b.y < ay + as;
   const hostile = (a, b) => a.side !== b.side;
+  const ABILS_ALL = ['str', 'dex', 'con', 'int', 'wis', 'cha'];
   // a unit by id, from the world's own units only: an id like "__proto__" or "constructor" is no unit (#147 review)
   const unitAt = (w, id) => (w && w.units && typeof id === 'string' && Object.prototype.hasOwnProperty.call(w.units, id) ? w.units[id] : null);
 
@@ -417,7 +418,7 @@
   const REASONS = [
     { id: 'long', dis: true, text: 'long range', when: (c) => c.ranged && c.feet > c.attack.range[0] },
     { id: 'close', dis: true, text: 'an enemy within 5 ft', when: (c) => c.ranged && c.enemyClose },
-    { id: 'help', adv: true, text: 'helped', each: (c) => [{ adv: true, text: `helped by ${c.world.units[helpOn(c.world, c.actor, c.target).source].name}` }], when: (c) => !!helpOn(c.world, c.actor, c.target) },   // #144
+    { id: 'help', adv: true, text: 'helped', each: (c) => { const ef = helpOn(c.world, c.actor, c.target); return [{ adv: true, text: `${ef.condition === 'Distracted' ? 'distracted by' : 'helped by'} ${unitAt(c.world, ef.source).name}` }]; }, when: (c) => !!helpOn(c.world, c.actor, c.target) },   // #144
   ];
   /* ---------------- conditions that take effect (issue #72) ---------------- */
   // What each condition does to the arithmetic, following HoloTable's own descriptions in rules.js (CONDITIONS).
@@ -621,6 +622,34 @@
     if (n <= 1) n = Math.max(1, (t.match(/\bone\b[^,.;:]*?\battacks?\b/gi) || []).length);
     return clampN(n, 1, 6);
   }
+  /* ---------------- maneuvers: superiority dice spent on an attack (#67, the combat view's half) ---------------- */
+  // SW5e's chapter 13, in our own words. One maneuver per attack, each once a turn, a die from the superiority pool
+  // (Fighter or Scholar); the die is spent on the hit (Precision Attack: when it's used). Large or smaller only, where
+  // the maneuver says so. Its save DC: 8 + proficiency + the best of the type's abilities (physical Str/Dex/Con, mental
+  // Int/Wis/Cha, general any).
+  const MANEUVERS = {
+    'trip-attack': { name: 'Trip Attack', type: 'physical', save: 'str', large: true, then: 'prone' },
+    'pushing-attack': { name: 'Pushing Attack', type: 'physical', save: 'str', large: true, then: 'push' },
+    'menacing-attack': { name: 'Menacing Attack', type: 'mental', save: 'wis', then: 'frightened' },
+    'distracting-blow': { name: 'Distracting Blow', type: 'mental', then: 'distract' },
+    'crippling-blow': { name: 'Crippling Blow', type: 'physical', then: 'slowed' },
+    'weak-point-strike': { name: 'Weak Point Strike', type: 'physical', save: 'con', then: 'stunned' },
+    'exploit-weakness': { name: 'Exploit Weakness', type: 'physical', trueDmg: true },
+    'precision-attack': { name: 'Precision Attack', type: 'general', onRoll: true },
+  };
+  const MANEUVER_KEYS = Object.keys(MANEUVERS);
+  const MANEUVER_ABILS = { physical: ['str', 'dex', 'con'], mental: ['int', 'wis', 'cha'], general: ABILS_ALL };
+  // the maneuvers a sheet knows (its features named as SW5e's), and its save DC for each type
+  function maneuversOf(ch, rules) {
+    const names = new Set(((ch && ch.features) || []).map((f) => String((f && f.name) || '').trim().toLowerCase()));
+    const known = MANEUVER_KEYS.filter((k) => names.has(MANEUVERS[k].name.toLowerCase()));
+    if (!known.length || !rules) return null;
+    const dc = Object.fromEntries(Object.entries(MANEUVER_ABILS).map(([type, abs]) => [type, 8 + rules.profBonus(ch) + Math.max(...abs.map((ab) => rules.abilityMod(ch, ab)))]));
+    return { known, dc };
+  }
+  // the superiority pool with a die left (a Fighter's, or a Scholar's)
+  const superiorityOf = (u) => ['superiority', 'superiority-scholar'].map((k) => ((u && u.pools) || {})[k]).find((p) => p && p.used < p.max && /^d\d+$/.test(String(p.die || ''))) || null;
+  const maneuverUsed = (w, id, key) => !!((+spentOf(w, id).mv || 0) & (1 << MANEUVER_KEYS.indexOf(key)));
   /* ---------------- bonus damage from class features (audit 5.9) ---------------- */
   // What a character's classes add to a weapon hit, from HoloTable's class table (#108) at its levels: Sneak Attack dice
   // (Operative) and Rage Damage (Berserker). Worked out here from the sheet, never taken from a request.
@@ -650,6 +679,12 @@
     const fp = (a.pools || {}).force, left = fp ? fp.max - fp.used : 0;
     if (r.fes && attack.weapon && !ranged && left > 0) out.push({ key: 'fes', name: 'Force-Empowered Strikes', perPoint: '1d8', max: Math.min(r.fes, left), optIn: true });
     if (r.kinetic && attack.weapon && left > 0 && !spentOf(world, a.id).double) out.push({ key: 'double', name: 'Double Strike', dice: '1' + r.kinetic, cost: 1, optIn: true });
+    // a maneuver (#67): the ones it knows and hasn't used this turn, while a superiority die is left
+    const sup = superiorityOf(a), mk = a.maneuvers;
+    if (sup && mk && attack.weapon) {
+      const options = mk.known.filter((k) => !maneuverUsed(world, a.id, k)).map((k) => { const m = MANEUVERS[k]; return { key: k, name: m.name, save: m.save || null, dc: m.save ? mk.dc[m.type] : null }; });
+      if (options.length) out.push({ key: 'maneuver', name: 'Maneuver', optIn: true, die: sup.die, options });
+    }
     return out;
   }
   function preview(world, actorId, targetId, attack, opts = {}) {
@@ -944,7 +979,7 @@
   /* ---------------- turns: the turn budget is resources too, refilled at the start of the unit's own turn ---------------- */
   const turnKey = (world) => `${world.round}:${world.turnId}`;
   const TURN = ['move', 'action', 'bonus', 'reaction'];
-  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0 });
+  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0 });
   function spentOf(world, id) {
     const s = (world.spent || {})[id];
     return s && (id !== world.turnId || s.key === turnKey(world)) ? Object.assign(blank(s.key), s) : blank(id === world.turnId ? turnKey(world) : '');
@@ -1013,7 +1048,9 @@
     return '';
   }
   // the help a unit is getting: an effect on the target, used up by the first attack an ally of the helper makes on it
-  const helpOn = (w, a, t) => (w.effects || []).find((ef) => ef.unit === t.id && ef.condition === 'Helped' && ef.source && ef.source !== a.id && unitAt(w, ef.source) && unitAt(w, ef.source).side === a.side);
+  // ...and Distracting Blow's opening (#67): the next attack on it by anyone but the one who made it
+  const helpOn = (w, a, t) => (w.effects || []).find((ef) => ef.unit === t.id && ef.source && ef.source !== a.id && unitAt(w, ef.source)
+    && ((ef.condition === 'Helped' && unitAt(w, ef.source).side === a.side) || ef.condition === 'Distracted'));
   // one attack of the Attack action (#139): the first takes the action. Returns why not, or what to record once it's made
   function attackSlot(w, me, b, act) {
     const more = b.attacks > 0;
@@ -1096,15 +1133,9 @@
         } else if (won && !act.push) {
           t.conditions = Array.from(new Set((t.conditions || []).concat('Prone')));
           log.push({ unit: t.id, text: `${t.name} is knocked prone.` });
-        } else if (won) {
-          // 5 ft straight away from the shover, if the square is free and no wall is in the way
-          const c = (u) => [u.x + (u.size || 1) / 2, u.y + (u.size || 1) / 2], [mx, my] = c(me), [tx, ty] = c(t);
-          const dx = Math.sign(Math.round(tx - mx)), dy = Math.sign(Math.round(ty - my)), nx = t.x + dx, ny = t.y + dy, ts = t.size || 1;
-          const taken = Object.values(w.units).some((o) => o.id !== t.id && !o.down && overlaps(nx, ny, ts, o))
-            || nx < 0 || ny < 0 || (w.board && (nx + ts > w.board.cols || ny + ts > w.board.rows));   // the board's edge is a wall
-          const walled = !clear((w.walls || []).filter(blocksMove), [tx, ty], [tx + dx, ty + dy], () => true);
-          if ((!dx && !dy) || taken || walled) log.push({ unit: t.id, text: `There's no room to push ${t.name}: it stays where it is.` });
-          else { t.x = nx; t.y = ny; log.push({ unit: t.id, text: `${t.name} is pushed 5 ft.` }); }
+        } else if (won) {   // 5 ft straight away from the shover, if the square is free and no wall is in the way
+          if (pushAway(w, me, t, 1)) log.push({ unit: t.id, text: `${t.name} is pushed 5 ft.` });
+          else log.push({ unit: t.id, text: `There's no room to push ${t.name}: it stays where it is.` });
         }
         return { ok: true, world: w, log, events: won && act.push ? [{ kind: 'move', unit: t.id, feet: FT }] : [] };
       }
@@ -1332,7 +1363,14 @@
     const t = unitAt(w, targetId);
     const pv = preview(w, me.id, targetId, attack, opts);
     if (!pv.legal) return no(pv.why);
-    const r = roll(pv.expr);
+    // a maneuver the attacker chose (#67), if it's on offer: Precision Attack adds its die to this roll and is spent now
+    const mvOpt = (pv.riders || []).find((x) => x.key === 'maneuver'), want = (opts.add || {}).maneuver;
+    const mvKey = mvOpt && typeof want === 'string' && mvOpt.options.some((o) => o.key === want) ? want : null;
+    const mv = mvKey ? MANEUVERS[mvKey] : null, sup = mv ? superiorityOf(me) : null;
+    const spendMv = () => { sup.used += 1; w.spent[me.id] = Object.assign(spentOf(w, me.id), { mv: (+spentOf(w, me.id).mv || 0) | (1 << MANEUVER_KEYS.indexOf(mvKey)) }); };
+    const rexpr = mv && mv.onRoll ? `${pv.expr}+1${sup.die}` : pv.expr;
+    const r = roll(rexpr);
+    if (mv && mv.onRoll) spendMv();
     const helped = helpOn(w, me, t);   // Help (#144) is used up by this attack, hit or miss
     if (helped) w.effects = w.effects.filter((ef) => ef !== helped);
     const nat = r.nat, fumble = nat === 1;
@@ -1340,7 +1378,7 @@
     const hit = crit || (!fumble && r.total >= pv.ac);
     if (hit && pv.feet <= FT && has(t, 'closeCrit')) crit = true;   // any hit from within 5 ft on the paralyzed or unconscious
     const tilt = pv.mode === 'normal' ? '' : ` with ${modeName(pv)} (${pv.tilts.map((x) => x.text).join(', ')})`;
-    const log = [{ unit: me.id, kind: 'attack', roll: r, expr: pv.expr, text: `${me.name} ${how ? `makes ${how} against` : 'attacks'} ${t.name} with ${attack.name}${tilt}${pv.notes.length ? ` (${pv.notes.join('; ')})` : ''}${pv.weak ? ` (weakened, −${pv.weak})` : ''}: ${r.total} against AC ${pv.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}` }];
+    const log = [{ unit: me.id, kind: 'attack', roll: r, expr: rexpr, text: `${me.name} ${how ? `makes ${how} against` : 'attacks'} ${t.name} with ${attack.name}${tilt}${mv && mv.onRoll ? ` (${mv.name}, +1${sup.die})` : ''}${pv.notes.length ? ` (${pv.notes.join('; ')})` : ''}${pv.weak ? ` (weakened, −${pv.weak})` : ''}: ${r.total} against AC ${pv.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}` }];
     const events = [];
     if (!hit) { events.push({ kind: 'miss', unit: t.id }); return { ok: true, log, events }; }
     // versatile in two hands (5.8): its larger die for a melee attack, in place of the weapon's own
@@ -1356,8 +1394,10 @@
       if (!x.optIn) return x;
       if (x.key === 'fes') { const n = Math.max(0, Math.min(x.max, left - dbl, Math.round(+add.fes || 0))); return n ? Object.assign({}, x, { dice: `${n}d8`, points: n }) : null; }
       if (x.key === 'double') return add.double ? Object.assign({}, x, { points: 1 }) : null;
+      if (x.key === 'maneuver') return mv && !mv.onRoll && !mv.trueDmg ? { key: 'maneuver', name: mv.name, dice: '1' + sup.die } : null;
       return null;
     }).filter(Boolean);
+    if (mv && !mv.onRoll) spendMv();   // a superiority die goes on the hit
     const paid = riders.reduce((n, x) => n + (x.points || 0), 0);
     if (paid && fp) fp.used = Math.min(fp.max, fp.used + paid);   // the force points go on the hit
     if (riders.some((x) => x.key === 'double')) w.spent[me.id] = Object.assign(spentOf(w, me.id), { double: 1 });   // once a turn
@@ -1366,13 +1406,60 @@
     const d = roll(expr);
     const corr = levelOf(w, t, 'Corroded');   // corroded: 1 more damage from weapons for each level
     const df = defended(t, Math.max(0, d.total) + corr, String(attack.type || '').toLowerCase(), attack.enhanced ? 'enhanced' : 'weapon');
-    const amount = df.amount;
+    const tr = mv && mv.trueDmg ? roll('1' + sup.die) : null;   // Exploit Weakness: true damage, past any resistance
+    const amount = df.amount + (tr ? Math.max(0, tr.total) : 0);
     const took = takeDamage(t, amount);
-    log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${twoHands ? ' (two-handed)' : ''}${attack.heavy ? ` (heavy +${attack.heavy})` : ''}${riders.length ? ` (with ${riders.map((x) => `${x.name} ${x.dice ? (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat}${x.points ? `, ${x.points} force point${x.points === 1 ? '' : 's'}` : ''}`).join('; ')})` : ''}${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
+    log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${twoHands ? ' (two-handed)' : ''}${attack.heavy ? ` (heavy +${attack.heavy})` : ''}${riders.length ? ` (with ${riders.map((x) => `${x.name} ${x.dice ? (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat}${x.points ? `, ${x.points} force point${x.points === 1 ? '' : 's'}` : ''}`).join('; ')})` : ''}${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${tr ? ` (${mv.name}: ${tr.total} true damage)` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
     fallen(t, took, crit, log, w);
     events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
     concentrationCheck(w, t, amount, roll, log);
+    if (mv && mv.then) maneuverThen(w, me, t, mv, me.maneuvers.dc[mv.type], roll, log, events);
     return { ok: true, log, events };
+  }
+  // a save against something the engine itself asks for (a maneuver): the target's bonus, automatic failures, and
+  // advantage or disadvantage from its conditions and from dodging (Dex)
+  function saveVs(w, t, ab, dc, roll, log, what) {
+    const fail = effectsOf(t).find(([, e]) => (e.autoFail || []).includes(ab));
+    const sdis = effectsOf(t).some(([, e]) => (e.saveDis || []).includes(ab));
+    const sadv = (ab === 'dex' && dodging(w, t)) || effectsOf(t).some(([, e]) => (e.saveAdv || []).includes(ab));
+    const m = d20(w, sadv ? 1 : 0, sdis ? 1 : 0), bonus = (+((t.saves || {})[ab]) || 0) - weakPenalty(t, ab), expr = d20expr(m) + sgn(bonus);
+    const r = roll(expr), ok = !fail && r.total >= dc;
+    log.push({ unit: t.id, kind: 'save', roll: r, expr, text: `${t.name} makes a ${ab.toUpperCase()} save against ${what} (DC ${dc}): ${r.total}, ${fail ? `an automatic failure (${fail[0].toLowerCase()})` : ok ? 'a success' : 'a failure'}.` });
+    return ok;
+  }
+  // what a maneuver does to a creature it hit, once its damage is in
+  function maneuverThen(w, me, t, mv, dc, roll, log, events) {
+    if (isDead(t)) return;
+    if (mv.large && sizeCat(t) > 3) { log.push({ unit: t.id, text: `${t.name} is too big for ${mv.name}.` }); return; }
+    if (mv.save && saveVs(w, t, mv.save, dc, roll, log, mv.name)) return;
+    const mine = w.turnId === me.id, theirs = w.turnId === t.id;   // "until the end of your (its) next turn"
+    const put = (condition, ends, of, rounds, level) => {
+      if (immuneTo(t, condition)) { log.push({ unit: t.id, text: `${t.name} can't be ${condition.toLowerCase()}.` }); return false; }
+      t.conditions = Array.from(new Set((t.conditions || []).concat(condition)));
+      w.effects.push({ id: `mv-${me.id}-${t.id}-${w.effects.length}`, unit: t.id, condition, ends, of, rounds, save: null, source: me.id, conc: false, level: level || 0, amount: '' });
+      return true;
+    };
+    if (mv.then === 'prone') { if (immuneTo(t, 'Prone')) log.push({ unit: t.id, text: `${t.name} can't be knocked prone.` }); else { t.conditions = Array.from(new Set((t.conditions || []).concat('Prone'))); log.push({ unit: t.id, text: `${t.name} is knocked prone.` }); } }
+    else if (mv.then === 'push') { const ft = pushAway(w, me, t, 3); log.push({ unit: t.id, text: ft ? `${t.name} is pushed ${ft} ft.` : `There's no room to push ${t.name}: it stays where it is.` }); if (ft) events.push({ kind: 'move', unit: t.id, feet: ft }); }
+    else if (mv.then === 'frightened') { if (put('Frightened', 'end', me.id, mine ? 2 : 1)) log.push({ unit: t.id, about: me.id, text: `${t.name} is frightened of ${me.name} until the end of ${me.name}'s next turn.` }); }
+    else if (mv.then === 'distract') { w.effects.push({ id: `mv-${me.id}-${t.id}-${w.effects.length}`, unit: t.id, condition: 'Distracted', ends: 'start', of: me.id, rounds: 1, save: null, source: me.id, conc: false, level: 0, amount: '' }); log.push({ unit: t.id, text: `${t.name} is distracted: the next attack on it by someone other than ${me.name} has advantage.` }); }
+    else if (mv.then === 'slowed') { if (put('Slowed', 'end', t.id, theirs ? 2 : 1, 1)) log.push({ unit: t.id, text: `${t.name} is slowed (1 level) until the end of its next turn.` }); }
+    else if (mv.then === 'stunned') { if (put('Stunned', 'end', t.id, theirs ? 2 : 1)) log.push({ unit: t.id, text: `${t.name} is stunned until the end of its next turn.` }); }
+  }
+  // moves `t` straight away from `me`, a square at a time, up to `squares`, stopping at a creature, a wall or the board's
+  // edge; returns the feet it moved
+  function pushAway(w, me, t, squares) {
+    const c = (u) => [u.x + (u.size || 1) / 2, u.y + (u.size || 1) / 2], [mx, my] = c(me), [tx0, ty0] = c(t);
+    const dx = Math.sign(Math.round(tx0 - mx)), dy = Math.sign(Math.round(ty0 - my)), ts = t.size || 1, stops = (w.walls || []).filter(blocksMove);
+    let moved = 0;
+    for (let i = 0; i < squares && (dx || dy); i++) {
+      const nx = t.x + dx, ny = t.y + dy, [tx, ty] = c(t);
+      const taken = Object.values(w.units).some((o) => o.id !== t.id && !o.down && overlaps(nx, ny, ts, o))
+        || nx < 0 || ny < 0 || (w.board && (nx + ts > w.board.cols || ny + ts > w.board.rows));   // the board's edge is a wall
+      if (taken || !clear(stops, [tx, ty], [tx + dx, ty + dy], () => true)) break;
+      t.x = nx; t.y = ny; moved += FT;
+    }
+    return moved;
   }
   // Who may make an opportunity attack on a move along `path`: a hostile unit that can see the mover, can react, and
   // whose melee reach the mover leaves. `at` is the last square still in that reach, where the attack happens.
@@ -1503,7 +1590,7 @@
         ef.rounds = (ef.rounds || 1) - 1;
         if (ef.rounds <= 0) ends = true;
       }
-      if (ends) { const u = w.units[ef.unit]; if (ef.condition !== 'Helped') log.push({ unit: ef.unit, text: `${u ? u.name : 'Someone'} is no longer ${ef.condition.toLowerCase()}.` }); w.endedEffects = (w.endedEffects || []).concat(ef); }
+      if (ends) { const u = w.units[ef.unit]; if (ef.condition !== 'Helped' && ef.condition !== 'Distracted') log.push({ unit: ef.unit, text: `${u ? u.name : 'Someone'} is no longer ${ef.condition.toLowerCase()}.` }); w.endedEffects = (w.endedEffects || []).concat(ef); }
       else keep.push(ef);
     }
     const ended = w.effects.filter((ef) => !keep.includes(ef));
@@ -1628,7 +1715,7 @@
         speed: ch ? +ch.speed || 30 : +((table.npcSpeed || {})[e.id]) || 30,
         pools: ch ? Object.fromEntries(resourcesOf(ch, rules).map((r) => [r.key, r])) : {},
         riders: ch ? ridersOf(ch, rules) : {},
-        attacks: ch ? attacksPerAction(ch) : 1, offhands: ch ? bonusAttacksOf(ch) : 0,   // per Attack action (#139); a creature's Multiattack comes with its attack
+        attacks: ch ? attacksPerAction(ch) : 1, offhands: ch ? bonusAttacksOf(ch) : 0, maneuvers: ch ? maneuversOf(ch, rules) : null,   // per Attack action (#139); a creature's Multiattack comes with its attack
         // Raging is a rage in progress: without its live effect (the fight ended, a new one began) it's dropped here
         conditions: Array.from(new Set([].concat(e.conditions || [], ch ? ch.conditions || [] : [])))
           .filter((c) => c !== 'Raging' || (table.effects || []).some((ef) => ef.unit === e.id && ef.condition === 'Raging')),
@@ -1656,5 +1743,5 @@
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
     SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf, d20, flankOf, fixedTotal, cruel, modeName,
-    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, ridersOf, ridersFor, attacksPerAction, multiattackOf, offhandOf, stylesOf, contestBonus, helpOn, maneuverCheck, unitAt, weaponProps, volleysOf };
+    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, ridersOf, ridersFor, attacksPerAction, multiattackOf, offhandOf, stylesOf, contestBonus, helpOn, maneuverCheck, unitAt, MANEUVERS, maneuversOf, superiorityOf, saveVs, pushAway, weaponProps, volleysOf };
 });
