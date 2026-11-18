@@ -99,7 +99,7 @@ const sandBase = (() => {
     const x = pos.getX(i), z = pos.getZ(i), r = Math.hypot(x, z), a = Math.atan2(z, x);
     const edge = 0.6 + 0.03 * Math.sin(a * 3 + 1) + 0.015 * Math.sin(a * 7), al = Math.max(0, Math.min(1, (edge - r) / 0.34)), k = al * al * (3 - 2 * al);
     pos.setY(i, 0.0035 + h(x, z) * k);
-    const sh = 0.86 + 0.14 * Math.sin(x * 52 + Math.sin(z * 11 + x * 3) * 1.6 + 0.9) + 0.06 * Math.sin(x * 131 + z * 97);
+    const sh = 0.86 + 0.14 * Math.sin(x * 52 + Math.sin(z * 11 + x * 3) * 1.6 + 0.9) + 0.05 * Math.sin(x * 23 - z * 31 + 2 * Math.sin(z * 17));
     col.set([0.25 * sh, 0.185 * sh, 0.11 * sh, k], i * 4);
   }
   g.setAttribute('color', new THREE.BufferAttribute(col, 4)); g.computeVertexNormals();

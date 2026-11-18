@@ -1,1 +1,4 @@
 /* Jawa creator: what the shared creator stylesheet (../droid-creator/droid.css) doesn't have. */
+/* three buttons in a narrow panel: Randomise takes its own row so no label wraps */
+.actions #random { flex: 1 1 100%; }
+.actions .btn { white-space: nowrap; }
