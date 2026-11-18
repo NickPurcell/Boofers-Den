@@ -187,6 +187,7 @@ function cleanChar(ch) {
     attacks: list(ch.attacks, 40, (a) => ({ name: s(a.name, 80), ab: ["str", "dex", "con", "int", "wis", "cha", "finesse"].includes(a.ab) ? a.ab : "str",
       damage: s(a.damage, 40), damageFull: a.damageFull ? s(a.damageFull, 60) : undefined, type: s(a.type, 30), props: s(a.props, 200),
       proficient: a.proficient !== false, magic: optNum(a.magic), bonus: optNum(a.bonus), noModDamage: !!a.noModDamage,
+      ...(a.shots != null && a.shots !== "" && Number.isFinite(+a.shots) ? { shots: clamp(int(a.shots), 0, 999) } : {}),   // shots left in a Reload weapon (audit 6.6)
       ...(int(a.critRange, 20) < 20 ? { critRange: clamp(int(a.critRange, 20), 15, 20) } : {}) })),   // crits on this d20 or higher (19 = 19-20)
     powers: list(ch.powers, 150, (pw) => ({ name: s(pw.name, 80), level: clamp(int(pw.level), 0, 9), type: pw.type === "tech" ? "tech" : "force",
       alignment: ["light", "dark"].includes(pw.alignment) ? pw.alignment : "universal", notes: s(pw.notes, 300), description: s(pw.description, 4000) })),
