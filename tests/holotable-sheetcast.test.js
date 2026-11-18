@@ -441,3 +441,56 @@ test("ongoing effects (4.10): the stored record keeps only its shape", () => {
   assert.match(first.id, /^[a-f0-9]{10}$/);
   assert.deepEqual(Object.assign({}, first, { id: "x" }), { id: "x", char: "abcdef12", condition: "Restrained", power: "Hold", ends: "end", of: null, left: 100, save: null });
 });
+
+// 4.10's second part: out of a fight, the in-game clock (9.18) ends what the sheet's Cast gave, after its SW5e duration
+async function clockTable(duration) {
+  const t = await fightTable({ ends: "end", of: "target", rounds: 3 });
+  const a = await sheet(t.gm, t.avery);
+  a.powers = a.powers.map((pw) => (pw.name === "Hold" ? Object.assign({}, pw, { notes: duration == null ? "" : `1 action · Range 60 feet · ${duration}` }) : pw));
+  assert.equal((await t.sam.act("char.save", { char: a })).code, 200);
+  return t;
+}
+
+test("ongoing effects (4.10, the clock): out of a fight, a condition ends when the clock passes its SW5e duration", async () => {
+  const { gm, sam, rae, avery, bolt, tok } = await clockTable("up to 1 hour");
+  assert.equal((await gm.act("fight.cast", { charId: avery, power: "Hold", level: 1, targets: [tok.bolt] })).code, 200);
+  assert.deepEqual((await rae.state()).sheetCast.fx, [{ char: bolt, condition: "Restrained", power: "Hold", left: 600, save: false, clock: true }]);
+  assert.equal((await sam.act("clock.advance", { mins: 60 })).code, 403, "the clock is the GM's");
+  await gm.act("clock.advance", { mins: 30 });
+  let gv = await gm.state();
+  assert.deepEqual([gv.characters[bolt].conditions, gv.sheetCast.fx[0].left], [["Restrained"], 300]);
+  await gm.act("clock.advance", { mins: 30 });
+  gv = await gm.state();
+  assert.deepEqual(gv.characters[bolt].conditions, []);
+  const i = gv.chat.findIndex((m) => m.text === "Bolt is no longer restrained (Hold).");
+  assert.ok(i > 0 && /^🕑 30 minutes pass/.test(gv.chat[i - 1].text), "after the clock's own line");
+});
+
+test("ongoing effects (4.10, the clock): no duration, nothing counts; a fight turns minutes into rounds and back", async () => {
+  // instantaneous (or a power typed by hand): it stays until taken off, as before
+  let t = await clockTable("Instantaneous");
+  assert.equal((await t.gm.act("fight.cast", { charId: t.avery, power: "Hold", level: 1, targets: [t.tok.bolt] })).code, 200);
+  assert.equal(((await t.gm.state()).sheetCast || {}).fx, undefined);
+  await t.gm.act("clock.advance", { mins: 1440 });
+  assert.deepEqual((await sheet(t.gm, t.bolt)).conditions, ["Restrained"]);
+  // a minute (ten rounds), then a fight: it counts each new round, and ends after ten
+  t = await clockTable("1 minute");
+  assert.equal((await t.gm.act("fight.cast", { charId: t.avery, power: "Hold", level: 1, targets: [t.tok.bolt] })).code, 200);
+  await t.rae.act("init.add", { charId: t.bolt, name: "Bolt", init: 10 });
+  await t.gm.act("init.add", { name: "Raider", init: 5, hp: 30, ac: 13 });
+  await t.gm.act("init.start", {});
+  let gv = await t.gm.state();
+  assert.deepEqual(gv.sheetCast.fx.map((x) => [x.left, !!x.clock]), [[10, false]]);
+  for (let n = 0; n < 2 * 9; n++) await t.gm.act("init.next", {});   // nine new rounds
+  assert.deepEqual((await t.gm.state()).sheetCast.fx.map((x) => x.left), [1]);
+  await t.gm.act("init.next", {}); await t.gm.act("init.next", {});   // the tenth
+  assert.deepEqual((await sheet(t.gm, t.bolt)).conditions, []);
+  // cast in a fight (3 rounds), then the fight is cleared: what's left goes on the clock, and a minute ends it
+  assert.equal((await t.gm.act("fight.cast", { charId: t.avery, power: "Hold", level: 1, targets: [t.tok.bolt] })).code, 200);
+  assert.deepEqual((await t.gm.state()).sheetCast.fx.map((x) => [x.left, !!x.clock]), [[3, false]]);
+  await t.gm.act("init.clear", {});
+  gv = await t.gm.state();
+  assert.deepEqual(gv.sheetCast.fx.map((x) => [x.left, !!x.clock]), [[3, true]]);
+  await t.gm.act("clock.advance", { mins: 1 });
+  assert.deepEqual((await sheet(t.gm, t.bolt)).conditions, []);
+});

@@ -534,6 +534,17 @@
   }
   Object.assign(SW5E, { nextRarity, upgradeChassis });
 
+  // A power's SW5e duration in rounds (audit 4.10: ten a minute), from the note the sheet writes when a power is added
+  // from SW5e ("1 action · Range 60 feet · up to 1 minute · Concentration"), or null: instantaneous, until dispelled,
+  // until a rest, or no duration written. A round or a turn is one; a day 14,400; at most 30 days.
+  const DUR_ROUNDS = { round: 1, turn: 1, minute: 10, hour: 600, day: 14400 };
+  function durationRounds(notes) {
+    const parts = String(notes || '').split(' · '), d = parts.find((x, i) => i > 0 && !/^Range\b/i.test(x) && !/^Concentration$/i.test(x) && !/^Requires\b/i.test(x));
+    const m = /^(?:up to )?(\d{1,3}) (round|turn|minute|hour|day)s?$/i.exec(String(d || '').trim());
+    return m ? Math.min(432000, +m[1] * DUR_ROUNDS[m[2].toLowerCase()]) || null : null;
+  }
+  Object.assign(SW5E, { durationRounds });
+
   // Cybernetic augmentations and droid customizations (audit 6.4's second part; Wretched Hives, chapter 7). In the
   // inventory such an item carries `implant: { kind }`: enhancement or replacement (cybernetics), part or protocol (droids).
   // Installed, it moves into the character's own `implants` list, as a modification moves into its chassis.
