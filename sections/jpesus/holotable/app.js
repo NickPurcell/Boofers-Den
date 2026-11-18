@@ -532,6 +532,30 @@
       };
     });
   }
+  // a tool or kit check (audit 6.10): the tool, the ability the GM calls for, and the proficiency tier in it
+  function toolCheckDialog(ch) {
+    const tools = R.toolNames(ch), tiers = [[0, 'not proficient'], ...Object.entries(R.PROF_TIERS).map(([k, v]) => [+k, v])];
+    modal(`<h3>🧰 Tool check: ${esc(ch.name)}</h3>
+      <label>Tool or kit<input id="tcName" list="tcList" value="${esc(tools[0] || '')}" maxlength="80" placeholder="e.g. Slicer's kit"><datalist id="tcList">${tools.map(t => `<option value="${esc(t)}">`).join('')}</datalist></label>
+      <div class="row wrap"><label>Ability<select id="tcAb">${R.ABILITIES.map(a => `<option value="${a.key}" ${a.key === 'int' ? 'selected' : ''}>${a.name}</option>`).join('')}</select></label>
+        <label>Proficiency<select id="tcTier">${tiers.map(([k, v]) => `<option value="${k}">${esc(v)}</option>`).join('')}</select></label>
+        <label>Misc<input id="tcMisc" type="number" value="0" style="width:60px"></label></div>
+      <p class="muted" id="tcSum" style="margin:6px 0"></p>
+      <div class="row" style="justify-content:flex-end"><button class="btn ghost" id="tcClose">Cancel</button><button class="btn primary" id="tcRoll">Roll</button></div>`, box => {
+      const sum = () => { const b = R.toolBonus(ch, $('#tcAb').value, +$('#tcTier').value, +$('#tcMisc').value), x = R.checkRollExpr(ch, +$('#tcTier').value, b); $('#tcSum').textContent = `${x.expr}${x.tier ? ` · ${x.tier}: always advantage` : ''}`; return x; };
+      const auto = () => { $('#tcTier').value = String(R.toolTierFromText(ch, $('#tcName').value)); sum(); };
+      auto();
+      box.oninput = e => { if (e.target.id === 'tcName') auto(); else sum(); };
+      box.onchange = sum;
+      box.onclick = async e => {
+        if (e.target.id === 'tcClose') return closeModal();
+        if (e.target.id !== 'tcRoll') return;
+        const x = sum(), name = $('#tcName').value.trim() || 'Tool', ab = $('#tcAb').value;
+        closeModal();
+        roll(x.expr, `${name} check (${ab.toUpperCase()})${x.tier ? ` (${x.tier})` : ''}${x.reliable ? ' (Reliable Talent)' : ''}`, { d20: true, charId: ch.id, kind: 'check' });
+      };
+    });
+  }
   function shortRestDialog() {
     const id = S.selected;
     const draw = () => {
@@ -571,7 +595,7 @@
           const tech = R.techOnShortRest(ch) && (+ch.tech.used || 0) > 0;
           mutate(c => {
             if (R.techOnShortRest(c)) c.tech.used = 0;
-            c.resources = (c.resources || []).map(r => r.refill === 'short' && r.used ? Object.assign({}, r, { used: 0 }) : r);
+            c.resources = (c.resources || []).map(r => R.refillOf(c, r) === 'short' && r.used ? Object.assign({}, r, { used: 0 }) : r);
             if (useFR) {
               c.force.used = Math.max(0, (+c.force.used || 0) - fr);
               const k = (c.resources || []).find(r => r.key === 'force-recovery');
@@ -795,10 +819,10 @@
             <span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${d20(b)}" data-label="${a.name} save" data-d20="1">${a.name}</span>
             ${miscBox('saveMisc.' + a.key, (ch.saveMisc || {})[a.key], ro)}</div>`;
         }).join('')}</div></div>
-        <div class="box" style="grid-row: span 2"><h4>Skills <span class="muted" style="text-transform:none;letter-spacing:0">click dot: none → proficient → expertise → half · Alt-click a skill: careful check</span></h4><div class="list-rows">${R.SKILLS.map(s => {
+        <div class="box" style="grid-row: span 2"><h4>Skills <span class="muted" style="text-transform:none;letter-spacing:0">click dot: none → proficient → expertise → half · long-press or right-click a dot: mastery tiers · Alt-click a skill: careful check</span></h4><div class="list-rows">${R.SKILLS.map(s => {
           const b = R.skillBonus(ch, s.key), lv = +(ch.skills[s.key] || 0);
-          return `<div class="lr"><button class="prof ${lv === 2 ? 'p2' : lv === 1 ? 'p1' : lv === 0.5 ? 'p05' : ''}" data-act="skill-prof" data-sk="${s.key}" ${ro ? 'disabled' : ''}></button>
-            ${(sr => `<span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${esc(sr.expr)}" data-label="${s.name}${sr.reliable ? ' (Reliable Talent)' : ''}" data-d20="1" data-check="${b}" title="${sr.reliable ? 'Reliable Talent: the d20 counts as at least 8. ' : ''}Alt-click: a careful check (take 10)">${s.name}</span>`)(R.skillRollExpr(ch, s.key))}<span class="ab">${s.ab}</span>
+          return `<div class="lr"><button class="prof ${lv >= 3 ? 'p2 p' + lv : lv === 2 ? 'p2' : lv === 1 ? 'p1' : lv === 0.5 ? 'p05' : ''}" data-act="skill-prof" data-sk="${s.key}" ${ro ? 'disabled' : ''} title="${lv ? esc(R.PROF_TIERS[lv]) : 'not proficient'}"></button>
+            ${(sr => `<span class="bonus">${R.fmt(b)}</span><span class="nm rollable" data-roll="${esc(sr.expr)}" data-label="${s.name}${sr.tier ? ` (${sr.tier}${lv >= 5 ? ': may reroll the other die once too' : ''})` : ''}${sr.reliable ? ' (Reliable Talent)' : ''}" data-d20="1" data-check="${b}" title="${sr.tier ? `${sr.tier[0].toUpperCase() + sr.tier.slice(1)}: twice the bonus and always advantage. ` : ''}${sr.reliable ? 'Reliable Talent: the d20 counts as at least 8. ' : ''}Alt-click: a careful check (take 10)">${s.name}</span>`)(R.skillRollExpr(ch, s.key))}<span class="ab">${s.ab}</span>
             ${miscBox('skillMisc.' + s.key, (ch.skillMisc || {})[s.key], ro)}</div>`;
         }).join('')}</div></div>
       </div>`;
@@ -855,6 +879,7 @@
         ${pts('force', fMax, +ch.force.used || 0, '', 'Force Points', `Light DC ${ci.lightDC} / atk ${R.fmt(ci.lightAtk)} · Dark DC ${ci.darkDC} / atk ${R.fmt(ci.darkAtk)}${ci.forceMaxLevel ? ' · max power level ' + ci.forceMaxLevel : ''}${highNote(ch, 'force', ci.forceMaxLevel)}`)}
         ${pts('tech', tMax, +ch.tech.used || 0, 'tech', 'Tech Points', `Tech DC ${ci.techDC} / atk ${R.fmt(ci.techAtk)}${ci.techMaxLevel ? ' · max power level ' + ci.techMaxLevel : ''}${highNote(ch, 'tech', ci.techMaxLevel)}`)}
       </div>
+      ${tMax > 0 && !R.hasTechFocus(ch) ? '<p class="muted" style="font-size:12px;margin:6px 0 0" title="SW5e: tech powers are cast through a tech focus. The GM decides how strictly the table holds to it.">⚠ No wristpad or chassis in the gear. SW5e casts tech powers through a tech focus (add one under Equipment).</p>' : ''}
       ${classResourcesBox(ch, ro)}
       <div class="box" style="margin-top:12px"><h4>Powers <span class="spacer"></span>${!ro ? `<button class="btn tiny" data-act="pick-power" data-kind="force">＋ force power</button>
           <button class="btn tiny" data-act="pick-power" data-kind="tech">＋ tech power</button>
@@ -891,7 +916,7 @@
             ${!ro ? `<button class="btn tiny ghost" data-act="del" data-list="features" data-i="${i}" title="Remove">✕</button>` : ''}</div>`).join('') || '<p class="muted">None.</p>'}</div>
           ${(ch.features || []).length ? '<p class="muted" style="font-size:12px;margin:6px 0 0">Hover (or tap) a feature for its description.</p>' : ''}
         </div>
-        <div class="box"><h4>Proficiencies</h4>${inp('proficiencies', ch.proficiencies || '', { ro, type: 'textarea', rows: 3, ph: 'Armor, weapons, tools…' })}
+        <div class="box"><h4>Proficiencies <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="tool-check" title="Roll a check with a tool or kit">🧰 Tool check</button>' : ''}</h4>${inp('proficiencies', ch.proficiencies || '', { ro, type: 'textarea', rows: 3, ph: 'Armor, weapons, tools…' })}
           <h4 style="margin-top:10px">Languages</h4>${inp('languages', ch.languages || '', { ro, type: 'textarea', rows: 2 })}</div>
       </div>`;
     }
@@ -939,6 +964,13 @@
     if (kind === 'infuse') return mutate(c => { c.infused = val; });
     t.value = '';
   }
+  // the mastery tiers (Wretched Hives, audit 5.7): a long press or right-click on a skill's dot steps through them
+  $('#sheet').addEventListener('contextmenu', e => {
+    const b = e.target.closest('[data-act="skill-prof"]'), ch = selChar();
+    if (!b || !ch || b.disabled || !canEdit(ch)) return;
+    e.preventDefault();
+    mutate(c => { const v = +(c.skills[b.dataset.sk] || 0); c.skills[b.dataset.sk] = v < 2 ? 3 : v >= 5 ? 2 : v + 1; });
+  });
   $('#sheet').addEventListener('click', async e => {
     const ch = selChar();
     const r = e.target.closest('[data-roll]');
@@ -958,6 +990,7 @@
     switch (a) {
       case 'sub': S.sub = b.dataset.sub; renderSheet($('#sheet')); break;
       case 'gen-scores': scoresDialog(ch); break;
+      case 'tool-check': toolCheckDialog(ch); break;
       case 'dismiss-note': delete S.importNotes[ch.id]; renderSheet($('#sheet')); break;
       case 'del-class': mutate(c => c.classes.splice(i, 1)); break;
       case 'save-prof': mutate(c => { c.saves[b.dataset.ab] = !c.saves[b.dataset.ab]; }); break;
@@ -980,7 +1013,7 @@
           for (const d of dice) { const k = Math.min(d.used, back); d.used -= k; back -= k; }
           c.hitDiceUsed = R.hitDiceUsedOf(dice);
           // tracked resources that come back on a short or long rest (the combat view's tracker, 3.1), Force Recovery among them
-          c.resources = (c.resources || []).map(r => (r.refill === 'short' || r.refill === 'long') && r.used ? Object.assign({}, r, { used: 0 }) : r);
+          c.resources = (c.resources || []).map(r => ['short', 'long'].includes(R.refillOf(c, r)) && r.used ? Object.assign({}, r, { used: 0 }) : r);
           c.exhaustion = Math.max(0, (+c.exhaustion || 0) - 1);
         });
         act('chat', { text: `*${ch.name} takes a long rest. HP, force & tech points restored.*`, as: ch.name });

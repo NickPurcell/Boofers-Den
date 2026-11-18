@@ -154,8 +154,8 @@
   }
   function skillBonus(c, sk) {
     const def = SKILLS.find(s => s.key === sk);
-    const lvl = +((c.skills || {})[sk]) || 0; // 0 none, 0.5 half, 1 prof, 2 expertise
-    return abilityMod(c, def.ab) + Math.floor(profBonus(c) * lvl) + (+((c.skillMisc || {})[sk]) || 0);
+    const lvl = +((c.skills || {})[sk]) || 0; // 0 none, 0.5 half, 1 prof, 2 expertise, 3-5 Wretched Hives' masteries
+    return abilityMod(c, def.ab) + Math.floor(profBonus(c) * Math.min(2, lvl)) + (+((c.skillMisc || {})[sk]) || 0);
   }
   const initiative = c => abilityMod(c, 'dex') + (+c.initMisc || 0);
   const passive = (c, sk) => 10 + skillBonus(c, sk);
@@ -323,10 +323,30 @@
   // threshold, 8 (PHB chapter 7). Skill rolls with proficiency or expertise use 1d20min8.
   const classLevelOf = (c, name) => (c.classes || []).filter((k) => String(k.name).toLowerCase() === name).reduce((a, k) => a + (+k.level || 0), 0);
   const reliableTalent = (c) => classLevelOf(c, 'operative') >= 11;
-  function skillRollExpr(c, sk) {
-    const b = skillBonus(c, sk), rt = reliableTalent(c) && +((c.skills || {})[sk] || 0) >= 1;
-    return { expr: `1d20${rt ? 'min8' : ''}${b >= 0 ? '+' : ''}${b}`, reliable: rt };
+  // Wretched Hives' tiers of proficiency (audit 5.7): trained (half), proficient, expertise (twice), and three masteries,
+  // each twice the bonus and always with advantage. High mastery may reroll one of the two dice once, and must keep the
+  // new roll: rerolling the lower die and keeping the higher is exactly the best of three d20s. Grand mastery may
+  // reroll each die; it rolls the same three dice and says so, and the table settles the rare second reroll.
+  const PROF_TIERS = { 0.5: 'trained', 1: 'proficient', 2: 'expertise', 3: 'mastery', 4: 'high mastery', 5: 'grand mastery' };
+  const tierDice = lvl => (lvl >= 4 ? '3d20kh1' : lvl >= 3 ? '2d20kh1' : '1d20');
+  function checkRollExpr(c, lvl, b) {
+    const rt = reliableTalent(c) && lvl >= 1;
+    return Object.assign({ expr: `${tierDice(lvl)}${rt ? 'min8' : ''}${b >= 0 ? '+' : ''}${b}`, reliable: rt }, lvl >= 3 ? { tier: PROF_TIERS[lvl] } : {});
   }
+  function skillRollExpr(c, sk) {
+    return checkRollExpr(c, +((c.skills || {})[sk] || 0), skillBonus(c, sk));
+  }
+  // a tool or kit check (audit 6.10): the ability the GM calls for, plus the proficiency tier in that tool
+  const toolBonus = (c, ab, lvl, misc) => abilityMod(c, ab) + Math.floor(profBonus(c) * Math.min(2, +lvl || 0)) + (+misc || 0);
+  const TOOLISH = /\b(kit|kits|tools?|set|instrument|implements|supplies|utensils)\b/i;
+  // the tools a character may name: kits and tools in the gear, and those written in Proficiencies
+  const toolNames = c => [...new Set([...(c.equipment || []).map(e => String(e.name || '').trim()),
+    ...String(c.proficiencies || '').split(/[,;\n]+/).map(s => s.trim())].filter(s => s && s.length <= 80 && TOOLISH.test(s)))];
+  // the tier the Proficiencies text gives a tool: proficient when it's named there
+  const toolTierFromText = (c, name) => { const n = String(name || '').trim().toLowerCase(); return n && String(c.proficiencies || '').toLowerCase().includes(n) ? 1 : 0; };
+  // a tech focus (audit 4.8): SW5e casts tech powers through a wristpad or a chassis
+  const hasTechFocus = c => (c.equipment || []).some(e => /wristpad|chassis|tech focus/i.test(String(e.name || '')));
+  Object.assign(SW5E, { PROF_TIERS, checkRollExpr, toolBonus, toolNames, toolTierFromText, hasTechFocus });
   // Brutal Critical (Berserker 9 / 13 / 17): one, two or three more weapon damage dice on a melee critical hit
   const brutalDice = (c) => { const l = classLevelOf(c, 'berserker'); return l >= 17 ? 3 : l >= 13 ? 2 : l >= 9 ? 1 : 0; };
   const isMelee = (a) => !/\b(range|reload|power cell|slug|ammunition)\b/i.test(String(a.props || ''));
@@ -478,7 +498,13 @@
     const L = Math.min(20, levelIn(c, v.class));
     return L >= 1 && Array.isArray(v.levels) ? v.levels[L - 1] : null;
   };
+  // Sage Advice (Scholar 2nd level, audit 3.9): once, back on a long rest, and on a short rest from 13th level. Its
+  // refill changes with the level, so it's looked up from here rather than stored on the sheet.
+  CLASS_RESOURCES.Scholar.push({ key: 'sage-advice', name: 'Sage Advice', max: { class: 'Scholar', levels: [0, ...Array(19).fill(1)] },
+    refill: { class: 'Scholar', levels: [...Array(12).fill('long'), ...Array(8).fill('short')] } });
   const classPresets = c => (c.classes || []).flatMap(k => CLASS_RESOURCES[classOf(k.name)] || []);
+  // what refills a resource now: a class one by its table at this level, any other by what's stored
+  const refillOf = (c, r) => { const p = classPresets(c).find(x => x.key === (r && r.key)); return p ? resAt(c, p.refill) || r.refill : r && r.refill; };
   // the class uses this character has at its level but hasn't added yet
   const missingClassResources = c => {
     const have = new Set((c.resources || []).map(r => r.key));
@@ -488,14 +514,14 @@
   // the current table (so a fix to the data reaches old sheets)
   function withClassResources(c) {
     const by = new Map(classPresets(c).map(p => [p.key, p]));
-    const kept = (c.resources || []).map(r => (by.has(r.key) ? Object.assign({}, by.get(r.key), { used: +r.used || 0 }) : r));
+    const kept = (c.resources || []).map(r => (by.has(r.key) ? Object.assign({}, by.get(r.key), { used: +r.used || 0, refill: refillOf(c, r) }) : r));
     const have = new Set(kept.map(r => r.key));
-    return kept.concat(missingClassResources(c).filter(p => !have.has(p.key)).map(p => Object.assign({}, p, { used: 0 })));
+    return kept.concat(missingClassResources(c).filter(p => !have.has(p.key)).map(p => Object.assign({}, p, { used: 0, refill: refillOf(c, p) })));
   }
   // the resources as numbers for the sheet: index in c.resources, max and die at this level, used (kept within max)
   const resourceRows = c => (c.resources || []).map((r, i) => {
     const max = +resAt(c, r.max) || 0;
-    return { i, key: r.key, name: r.name || r.key, max, die: resAt(c, r.die) || '', used: Math.max(0, Math.min(max, +r.used || 0)), refill: r.refill };
+    return { i, key: r.key, name: r.name || r.key, max, die: resAt(c, r.die) || '', used: Math.max(0, Math.min(max, +r.used || 0)), refill: refillOf(c, r) };
   }).filter(r => r.max > 0);
   // each class's table values at its level (Rage Damage +2, Sneak Attack 3d6, Martial Arts d6...), blanks left out
   const classTableAt = c => (c.classes || []).map(k => {
@@ -550,5 +576,5 @@
     mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo, techOnShortRest, overMaxPowerLevel, highCastFrom, highCastUsed, highCastBlocked,
     ARCHETYPE_CASTERS, casterArchetype, castingSources,
     attackBonus, damageExpr, critExpr, armorClass, armorFromItem, critFrom, ARMOR_KINDS, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
-    CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt });
+    CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt, refillOf });
 })(typeof window !== 'undefined' ? window : globalThis);

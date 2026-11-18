@@ -231,3 +231,37 @@ test("level-up choice counts come from the class table (audit 2.9)", () => {
   assert.deepEqual(R.choiceCounts("Jedi", 3), []);
   assert.deepEqual(R.choiceCounts("Fighter", 0), []);
 });
+
+test("Sage Advice (3.9): once from Scholar 2, back on a long rest, and on a short rest from 13th level", () => {
+  const c = char([["Scholar", 1]]);
+  assert.ok(!R.missingClassResources(c).some((p) => p.key === "sage-advice"), "not at 1st level");
+  c.classes[0].level = 2;
+  c.resources = R.withClassResources(c);
+  let row = R.resourceRows(c).find((r) => r.key === "sage-advice");
+  assert.deepEqual([row.max, row.refill], [1, "long"]);
+  assert.equal(c.resources.find((r) => r.key === "sage-advice").refill, "long", "stored as a word the server keeps");
+  c.classes[0].level = 13;   // no re-adding needed: the refill follows the level
+  row = R.resourceRows(c).find((r) => r.key === "sage-advice");
+  assert.equal(row.refill, "short");
+  assert.equal(R.refillOf(c, { key: "lucky", refill: "manual" }), "manual", "a player's own resource keeps its own");
+});
+
+test("Wretched Hives' proficiency tiers (5.7), tool checks (6.10) and the tech focus (4.8)", () => {
+  const c = char([["Operative", 5]]);   // proficiency +3
+  c.abilities = { dex: 16, int: 14 };
+  const tiers = [0.5, 1, 2, 3, 4, 5].map((lv) => { c.skills = { stealth: lv }; return [R.skillBonus(c, "stealth"), R.skillRollExpr(c, "stealth").expr, R.skillRollExpr(c, "stealth").tier]; });
+  assert.deepEqual(tiers, [[4, "1d20+4", undefined], [6, "1d20+6", undefined], [9, "1d20+9", undefined],
+    [9, "2d20kh1+9", "mastery"], [9, "3d20kh1+9", "high mastery"], [9, "3d20kh1+9", "grand mastery"]]);
+  c.classes[0].level = 11;   // Reliable Talent keeps its floor at every tier
+  assert.equal(R.skillRollExpr(c, "stealth").expr, "3d20kh1min8+11");
+  c.equipment = [{ name: "Slicer's kit" }, { name: "Blaster pistol" }];
+  c.proficiencies = "Light armor, Security kit; Slicer's kit";
+  assert.deepEqual(R.toolNames(c), ["Slicer's kit", "Security kit"]);
+  assert.equal(R.toolTierFromText(c, "slicer's KIT"), 1);
+  assert.equal(R.toolTierFromText(c, "Demolitions kit"), 0);
+  assert.equal(R.toolBonus(c, "int", 2, 1), 2 + 8 + 1);
+  assert.equal(R.checkRollExpr(c, 0, 2).expr, "1d20+2", "no Reliable Talent without proficiency");
+  assert.equal(R.hasTechFocus(c), false);
+  c.equipment.push({ name: "Wristpad" });
+  assert.equal(R.hasTechFocus(c), true);
+});

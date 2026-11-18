@@ -2508,3 +2508,10 @@ test("campaign image sets: a campaign saved before the sets existed is still cou
   assert.equal((await gm.call("GET", { img: shared.split("=")[1] })).code, 200, "main still uses it, so it stays");
   assert.ok((await db.smembers(S.K.refs("main"))).includes(shared), "and main's set was rebuilt once");
 });
+
+test("a sheet keeps Wretched Hives' mastery tiers on skills (5.7)", async () => {
+  const { p1 } = await table();
+  const id = (await p1.act("char.save", { char: { name: "Ace", skills: { stealth: 3, insight: 5, athletics: 6, perception: 0.5 } } })).data.id;
+  const sk = (await p1.poll()).data.state.characters[id].skills;
+  assert.deepEqual([sk.stealth, sk.insight, sk.athletics, sk.perception], [3, 5, 0, 0.5]);
+});
