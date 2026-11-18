@@ -5,7 +5,7 @@ import { headField, bodyField, handField, HEAD_AT } from './anatomy.js';
 import { headBField } from './head-b-field.js';   // head B (head-sculpt.js), on the same toolkit
 import { outfitPieces } from './outfits.js';
 
-export const RES = { headB: 0.0039, head: 0.0034, body: 0.008, hand: 0.003, cloth: 0.005, gear: 0.0028 };
+export const RES = { headB: 0.0041, head: 0.0034, body: 0.008, hand: 0.003, cloth: 0.005, gear: 0.0028 };
 
 export function run(job, a) {
   if (job === 'head') {
@@ -20,7 +20,7 @@ export function run(job, a) {
     const m = mesh(h.field, h.bounds, RES.headB, { aoStep: 0.004, uvScale: 0.04 });
     // the mouth line: each point cast straight in from in front of the face, so it lands on the floor of the shallow
     // cut (or the face beside it) and never starts inside it; then pushed in a hair
-    const mouth = h.mouthLine.map((p) => { const r = cast(h.field, [p[0], p[1], 0.2], [0, 0, -1], 0.3) || project(h.field, p, 10); return [r.p[0] - r.n[0] * 0.0003, r.p[1] - r.n[1] * 0.0003, r.p[2] - r.n[2] * 0.0003]; });
+    const mouth = h.mouthLine.map((p) => { const r = cast(h.field, [p[0], p[1], 0.2], [0, 0, -1], 0.3) || project(h.field, p, 10); return [r.p[0] - r.n[0] * 0.001, r.p[1] - r.n[1] * 0.001, r.p[2] - r.n[2] * 0.001]; });   // seated a millimetre in: the tube is 0.8 mm thick
     return { mesh: m, eye: h.eye, lid: h.lid, earAt: h.earAt, at: HEAD_AT, mouth };
   }
   if (job === 'body') {
