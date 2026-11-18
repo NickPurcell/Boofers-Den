@@ -181,11 +181,11 @@ function downtimeActs(d) {
   const md = String((ch && ch.contentMarkdown) || "").split(CR).join("");
   return md.split(/\n## /).slice(1).map((part) => {
     const n = part.split("\n")[0].trim(), up = part.search(/\n### Uptime/), body = up > 0 ? part.slice(0, up) : part;
-    if (!n || /^rivals$/i.test(n) || /^crafting$/i.test(n)) return null;
+    if (!n || /^rivals$/i.test(n)) return null;   // crafting is read too, for 11.2's own flow (it isn't one of 11.1's requests)
     const titles = [...body.matchAll(/^#####\s+(.+?)\s*$/gm)].map((m) => m[1]);
     const find = (re) => titles.find((x) => re.test(x));
     const modT = mdTable(body, find(/roll modifier$/i) || "\u0000"), resT = mdTable(body, find(/results$|^(buying|selling) an /i) || "\u0000");
-    const compT = mdTable(body, find(/complications$/i) || "\u0000"), rarT = mdTable(body, find(/^(purchasable|salable) /i) || "\u0000");
+    const compT = mdTable(body, find(/complications$/i) || "\u0000"), rarT = mdTable(body, find(/^(purchasable|salable) |item ingredients$/i) || "\u0000");
     // the check's DC met gives the d100 modifier; for buying, the rarity table's "DC to Find Seller" does (with its rarity)
     const dcRarity = rarT && /dc/i.test(String(rarT.head[1] || ""));
     const mods = modT ? modT.rows.map((r) => ({ dc: int(r[0], 0, 99), mod: int(String(r[1]).replace("+", ""), -99, 99) })).filter((r) => r.dc > 0)
@@ -250,7 +250,7 @@ const LISTS = {
   monsters: { path: "monster", build: monsters, maxBytes: 8 * MB, maxItems: 2000, cacheAs: "monsters-2" },   // 2.59 MB, 271; cacheAs: a new shape (r) is a new cache
   "rules-phb": { path: "playerHandbookRule", build: chapters, maxBytes: 3 * MB, maxItems: 60 },    // 0.47 MB
   "rules-wh": { path: "wretchedHivesRule", build: chapters, maxBytes: 3 * MB, maxItems: 60 },      // 0.41 MB
-  downtime: { path: "wretchedHivesRule", build: downtimeActs, maxBytes: 3 * MB, maxItems: 40 },    // 13 activities (11.1)
+  downtime: { path: "wretchedHivesRule", build: downtimeActs, maxBytes: 3 * MB, maxItems: 40, cacheAs: "downtime-2" },    // 13 activities (11.1), and crafting (11.2)
   "rules-sotg": { path: "starshipRule", build: chapters, maxBytes: 3 * MB, maxItems: 60 },         // 0.27 MB
   "rules-ec": { path: "expandedContent", build: chapters, maxBytes: 6 * MB, maxItems: 60 },        // 1.79 MB
   "rules-variant": { path: "variantRule", build: chapters, maxBytes: 2 * MB, maxItems: 300 },      // 0.15 MB, 40

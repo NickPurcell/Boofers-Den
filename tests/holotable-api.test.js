@@ -424,7 +424,7 @@ test("level up: Expertise goes on up to two skills the character is proficient i
 
 test("downtime activities (audit 11.1): the player asks, the GM approves first, the character rolls", async () => {
   const { gm, p1, p2 } = await table();
-  await db.set(S.K.sw5e("downtime"), JSON.stringify([{ key: "work", n: "Work", mods: [{ dc: 10, mod: 5 }, { dc: 15, mod: 10 }],
+  await db.set(S.K.sw5e("downtime-2"), JSON.stringify([{ key: "work", n: "Work", mods: [{ dc: 10, mod: 5 }, { dc: 15, mod: 10 }],
     results: [{ lo: -999, hi: 40, text: "Poor." }, { lo: 41, hi: 999, text: "Modest." }], complPct: 0, dieN: 0, compls: [], rarity: [] }]));
   const kira = (await p1.act("char.save", { char: { name: "Kira", credits: 200, abilities: { str: 14 }, skills: { athletics: 1 } } })).data.id;
   await gm.act("downtime.grant", { days: 10, chars: [kira] });
@@ -461,7 +461,7 @@ test("downtime activities (audit 11.1): the player asks, the GM approves first, 
   assert.equal((await gm.act("downtime.decide", { charId: kira, id: b.data.id, ok: false })).code, 200);
   st = (await p1.poll()).data.state;
   assert.deepEqual([st.characters[kira].downtime.days, st.characters[kira].downtime.pending], [5, undefined]);
-  await db.del(S.K.sw5e("downtime"));
+  await db.del(S.K.sw5e("downtime-2"));
 });
 
 test("a power keeps its prerequisite on the sheet (audit 2.11)", async () => {

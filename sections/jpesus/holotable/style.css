@@ -809,3 +809,6 @@ canvas.drawing { cursor: crosshair; }
 .eq-table .attune { display: inline-flex; align-items: center; gap: 2px; }
 .eq-table .eq-name { white-space: nowrap; }
 .eq-table .eq-name .eq-info { margin-left: 3px; padding: 0 4px; }
+/* crafting (audit 11.2): the requests under the inventory */
+.craft-list { margin-top: 8px; display: flex; flex-direction: column; gap: 4px; }
+.craft-row { gap: 6px; font-size: 13px; }

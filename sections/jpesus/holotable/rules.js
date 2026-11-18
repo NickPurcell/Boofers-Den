@@ -423,6 +423,33 @@
     return Object.keys(out).length ? out : null;
   }
   Object.assign(SW5E, { enhancedBonus, cleanBonus });
+  // Crafting (audit 11.2; Wretched Hives, "Crafting"): the tool an item is made with (its Item Specific Tools table), and
+  // the value the sheet suggests (standard gear: its cost; an enhanced item: the top of its rarity's range in the
+  // Enhanced Item Value by Rarity table, halved for consumables and modifications, as the book says). The GM sets both.
+  function craftTool(it, enh) {
+    const cat = String((it && it.cat) || '').toLowerCase(), sub = String((it && (it.sub || it.wc)) || '').toLowerCase(), n = String((it && it.n) || '').toLowerCase();
+    if (/armor|shield/.test(cat)) return "Armormech's implements";
+    if (/lightweapon|lightsaber/.test(sub + ' ' + n) || /focus generator/.test(sub + ' ' + n)) return "Artificer's implements";
+    if (cat === 'weapon' || /blaster|vibro/.test(sub)) return "Armstech's implements";
+    if (/wristpad/.test(sub + ' ' + n)) return "Cybertech's implements";
+    if (/explosive|grenade|mine|detonator/.test(cat + ' ' + n)) return 'Demolitions kit';
+    if (/ammunition/.test(cat)) return 'Munitions kit';
+    if (/poison/.test(n + ' ' + sub)) return "Poisoner's kit";
+    if (/medical|medpac|stim|adrenal/.test(cat + ' ' + n + ' ' + sub)) return "Biochemist's kit";
+    if (/clothing/.test(cat + ' ' + sub)) return "Synthweaver's implements";
+    if (/cybernetic/.test(cat)) return "Biotech's implements";
+    if (/droid/.test(cat)) return "Astrotech's implements";
+    if (/augment/.test(sub) || /modification/.test(cat)) return "Tinker's implements";
+    return enh ? "Gadgeteer's implements" : "Tinker's implements";
+  }
+  const RARITY_TOP = { Standard: 1000, Premium: 5000, Prototype: 25000, Advanced: 100000, Legendary: 500000, Artifact: 1000000 };
+  function craftValue(it, enh) {
+    if (!enh) return Math.max(0, Math.round(+(it && it.cost) || 0));
+    const top = RARITY_TOP[it && it.rar] || 1000;
+    return /consumable|modification/i.test(String((it && it.cat) || '')) ? Math.round(top / 2) : top;
+  }
+  const craftDays = value => Math.max(1, Math.ceil((+value || 0) / 250));
+  Object.assign(SW5E, { craftTool, craftValue, craftDays });
 
   // Selling (audit 6.8): equipment fetches half its cost (PHB, "Selling Treasure"), whole credits, rounded down
   const sellPrice = e => Math.floor(Math.max(0, +(e && e.cost) || 0) / 2);
