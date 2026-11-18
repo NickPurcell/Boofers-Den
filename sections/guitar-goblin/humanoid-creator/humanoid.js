@@ -32,7 +32,7 @@ function options() {
   };
   if (state.species !== 'pureblood') o.marks = { label: 'Face detail', items: MARKS };
   o.liner = { label: 'Lined eyes', items: LINERS };
-  o.outfit = { label: 'Outfit', items: named(OUTFITS) }; o.hood = { label: 'Hood', items: named(HOODS) };
+  o.outfit = { label: 'Outfit', items: S.outfits.map((key) => ({ key, name: OUTFITS[key].name })) }; o.hood = { label: 'Hood', items: named(HOODS) };
   o.gear = { label: 'Carries', items: named(GEAR) };
   o.main = { label: 'Main colour', swatch: true, items: CLOTH }; o.second = { label: 'Second colour', swatch: true, items: CLOTH };
   return o;
