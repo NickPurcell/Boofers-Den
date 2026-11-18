@@ -11,6 +11,7 @@ const Fight = require("./_holotable-fight.js");   // the combat view (fight.*), 
 const Ships = require("./_holotable-ships.js");   // a ship in a fight (ship.damage, destruction saves, ship conditions): Starships of the Galaxy
 const Space = require("./_holotable-space.js");   // the space map (space.*): ship fights on their own map, jpesus's call on #146
 const Ask = require("./_holotable-ask.js");   // the GM asking for a roll (audit 9.12)
+const Downtime = require("./_holotable-downtime.js");   // downtime days and their log (audit 11.1, #202)
 const Story = require("./_holotable-story.js");   // factions, rivals and lifestyle between fights (audit section 11)
 const R = globalThis.SW5E;   // rules.js, loaded by the fight module (senses)
 
@@ -168,6 +169,7 @@ function cleanChar(ch) {
   const out = {
     _format: "holotable-sw5e", id: ch.id, name: s(ch.name, 80) || "Unnamed", species: s(ch.species, 60), background: s(ch.background, 60),
     alignment: s(ch.alignment, 60), xp: numOr(ch.xp, 0), credits: numOr(ch.credits, 0),
+    ...((d) => (d ? { downtime: d } : {}))(Downtime.clean(ch.downtime)),   // downtime days and log (11.1): the server's to write
     classes: list(ch.classes, 6, (k) => ({ name: s(k.name, 40) || "Fighter", level: clamp(int(k.level, 1), 0, 20), archetype: s(k.archetype, 60) })),
     abilities: nums(ch.abilities, ABILS, 10),
     saves: Object.fromEntries(ABILS.map((a) => [a, !!(ch.saves || {})[a]])),
@@ -199,7 +201,9 @@ function cleanChar(ch) {
     equipment: list(ch.equipment, 200, (e) => ({ name: s(e.name, 80), qty: numOr(e.qty, 1), equipped: !!e.equipped, notes: s(e.notes, 200),
       ...(e.armor && R.ARMOR_KINDS.includes(e.armor.kind) ? { armor: { kind: e.armor.kind, ac: clamp(int(e.armor.ac), 0, 30) } } : {}),
       // weight in pounds each (audit 6.5) and cost in credits each (6.8), from SW5e's gear or typed; kept only when set
-      ...(+e.wt > 0 ? { wt: Math.min(10000, Math.round(+e.wt * 100) / 100) } : {}), ...(+e.cost > 0 ? { cost: Math.min(1e9, Math.round(+e.cost)) } : {}) })),
+      ...(+e.wt > 0 ? { wt: Math.min(10000, Math.round(+e.wt * 100) / 100) } : {}), ...(+e.cost > 0 ? { cost: Math.min(1e9, Math.round(+e.cost)) } : {}),
+      // an enhanced item's rarity, whether it requires attunement, and whether it's attuned (audit 6.3), kept only when set
+      ...(R.RARITIES.includes(e.rar) ? { rar: e.rar } : {}), ...(e.att ? { att: true } : {}), ...(e.att && e.attuned ? { attuned: true } : {}) })),
     conditions: (Array.isArray(ch.conditions) ? ch.conditions : []).slice(0, 20).map((c) => s(c, 30)),
     exhaustion: clamp(int(ch.exhaustion), 0, 6), inspiration: !!ch.inspiration,
     // variant rules on the sheet (9.16): Simplified Forcecasting's one ability, and Hunted's disturbance points
@@ -536,6 +540,7 @@ function applyAction(camp, cid, gm, type, p) {
   if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, fightHelpers());
   if (Ships.handles(type)) return Ships.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
   if (Space.handles(type)) return Space.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, applyAction, rid, Forbidden, Invalid });
+  if (Downtime.handles(type)) return Downtime.apply(camp, cid, gm, type, p, { addChat, shownName, applyAction, rollDice, Forbidden, Invalid });
 
   switch (type) {
     // ---- characters
@@ -579,6 +584,7 @@ function applyAction(camp, cid, gm, type, p) {
       }
       clean.image = old ? old.image || "" : "";
       clean.tokenImage = old ? old.tokenImage || "" : "";
+      if (old && old.downtime) clean.downtime = old.downtime; else delete clean.downtime;   // only downtime actions change it (11.1)
       clean.updated = now();
       if (!(camp.variants || []).includes("Simplified Forcecasting")) delete clean.forceAbility;   // only while the GM uses it
       chars[id] = clean;
@@ -1386,7 +1392,7 @@ function cleanGame(g) {
 
 module.exports = {
   cleanGame,
-  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, propSightSegments, SPECIES_SENSES, validImg, validColor, cleanChar, cleanShip, rid, charById,
+  rollDice, blankCampaign, playerName, addChat, viewFor, shownName, propSightSegments, SPECIES_SENSES, DOWNTIME_ACTS: Downtime.ACT_TABLES, validImg, validColor, cleanChar, cleanShip, rid, charById,
   applyAction: (camp, ...a) => { const out = applyAction(camp, ...a); Fight.noteSeen(camp); return out; },   // fog of war: what players see now joins what they've explored
   Forbidden, Invalid, IMG_PREFIX,
 };

@@ -106,7 +106,8 @@ test("ship conditions: slowed levels, system damage levels, and what they do to 
   assert.deepEqual(SR.cleanStatus({ cond: ["Hungry", "Ionized", "Ionized"], slowed: 9, system: -2, zero: "x" }),
     { cond: ["Ionized"], slowed: 4, system: 0, zero: { s: 0, f: 0, stable: false, destroyed: false }, power: { central: 0, engines: 0, shields: 0, weapons: 0, sensors: 0, comms: 0 },
       sdUsed: 0, hdUsed: 0, tempShield: 0, boost: { tries: 0, engines: 0, weapons: false, shields: false, regen: false },
-      fx: { evade: 0, fly: 0, hardTurn: false, helm: false, interfered: false, directed: false, interferedBy: "" }, recharged: false }, "anything else is cleaned away");
+      fx: { evade: 0, fly: 0, hardTurn: false, helm: false, interfered: false, directed: false, interferedBy: "" }, recharged: false, astro: 0, startup: 0,
+      course: { rush: 0, careful: false } }, "anything else is cleaned away");
   assert.deepEqual(SR.capPoints({ hull: { current: 30, max: 0 }, shield: { current: 5, max: 4 } }).hull.current, 30, "no maximum typed yet: current stays");
 });
 
@@ -960,4 +961,86 @@ test("modifications: slots against capacity, suites, the installation DC by grad
   await p1.act("space.place", { id: party, x: 2, y: 2, f: 2 });
   await gm.act("space.init", {});
   assert.match((await p1.act("ship.install", { id: party, mod: 0 })).data.error || "", /Not during ship combat/, "days of work: not mid-fight");
+});
+
+// ---------------------------------------------------------------- travel (10.16)
+test("travel: hyperspace times by region and class, rushing and care, fuel by reactor, equations, mishaps", async () => {
+  const c2 = { hyper: "Class 2", reactor: "Power Core" };
+  assert.deepEqual([SR.hyperClass(c2), SR.hyperClass({ hyper: ".5" }), SR.hyperClass({ hyper: "" })], [2, 0.5, null]);
+  assert.equal(SR.hyperClass({ hyper: "", equipment: [{ name: "Class 3 Hyperdrive", notes: "Hyperdrive · class 3" }] }), 3, "from a hyperdrive picked from SotG's equipment");
+  assert.equal(SR.jumpHours(c2, "Core", "Outer Rim", 0, false), 192, "96 hours with a class 1 drive, twice that with class 2");
+  assert.equal(SR.jumpHours(c2, "Core", "Outer Rim", 2, false), 144, "each rush takes a day off");
+  assert.equal(SR.jumpHours({ hyper: "1" }, "Core", "Core", 1, false), 3, "under a day: half of what's left");
+  assert.equal(SR.jumpHours({ hyper: "1" }, "Core", "Core", 0, true), 12, "careful: twice as long");
+  assert.equal(SR.jumpHours({ hyper: "1" }, "Core", "Atlantis", 0, false), null);
+  assert.equal(SR.jumpFuel(c2, 192), 14, "1 for the jump + 8 days, x1.5 for a power core");
+  assert.equal(SR.jumpFuel({ reactor: "Ionization" }, 30), 2, "1 + 2 days, x0.5");
+  assert.deepEqual([9, 10, 16, 21, 26, 30].map(SR.stepsFor), [0, 1, 2, 3, 4, 5]);
+  assert.match(SR.mishapFor(20), /no adverse/); assert.match(SR.mishapFor(4), /debris/); assert.match(SR.mishapFor(1), /hyperdrive failure/);
+  // on the server
+  const { gm, p1, party, enemy } = await table();
+  let sh = shipIn(await p1.state(), party);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { hyper: "1", fuel: "20", reactor: "Fuel Cell" }) });
+  assert.equal((await p1.act("ship.jump", { id: party, from: "Core", to: "Narnia" })).code, 400);
+  let r = await p1.act("ship.astro", { id: party, age: "fresh", bonus: 99 });
+  assert.equal(r.code, 200);
+  let st = await p1.state();
+  assert.ok(st.chat.some((m) => m.roll && /astrogation \[data under a day old\]/.test(m.roll.label) && m.roll.expr === "2d20kh1+0"), "the sheet's bonus (Int 10, no proficiency), advantage for fresh data");
+  assert.equal(shipIn(st, party).status.astro, r.data.done);
+  await p1.act("ship.plot", { id: party });
+  assert.equal(shipIn(await p1.state(), party).status.astro, 10);
+  r = await p1.act("ship.jump", { id: party, from: "Core", to: "Mid Rim" });
+  assert.deepEqual([r.code, r.data.hours, r.data.fuel], [200, 84, 5], "84 hours: 1 + 4 days of fuel");
+  sh = shipIn(await p1.state(), party);
+  assert.deepEqual([sh.fuel, sh.status.astro], ["15", 0], "the fuel is spent and the course used");
+  r = await p1.act("ship.jump", { id: party, from: "Mid Rim", to: "Outer Rim", rush: 1 });
+  assert.equal(r.code, 200);
+  assert.ok((await p1.state()).chat.some((m) => /Rushed with 0 of 10 equations: mishap roll/.test(m.text || "")), "a rushed jump rolls a mishap");
+  await p1.act("ship.save", { ship: Object.assign({}, shipIn(await p1.state(), party), { fuel: "1" }) });
+  assert.equal((await p1.act("ship.jump", { id: party, from: "Core", to: "Wild Space" })).code, 400, "not enough fuel");
+  // the course choice holds from the first check to the jump: careful checks, then a jump asking for a rush, keep careful
+  await p1.act("ship.save", { ship: Object.assign({}, shipIn(await p1.state(), party), { fuel: "100" }) });
+  r = await p1.act("ship.astro", { id: party, careful: true });
+  let cst = shipIn(await p1.state(), party).status;
+  assert.deepEqual(cst.course, { rush: 0, careful: true });
+  assert.ok((await p1.state()).chat.some((m) => m.roll && /astrogation \[careful \(\+5\)\]/.test(m.roll.label)), "the claim is in the label");
+  if (cst.astro > 0) {
+    r = await p1.act("ship.astro", { id: party, rush: 3 });   // a different choice: the calculations start over
+    assert.ok((await p1.state()).chat.some((m) => /changed its course choice: the calculations start over/.test(m.text || "")));
+    cst = shipIn(await p1.state(), party).status;
+    assert.deepEqual(cst.course, { rush: 3, careful: false }); assert.equal(cst.astro, r.data.steps, "only this check's equations count");
+  }
+  if (shipIn(await p1.state(), party).status.astro > 0) {
+    r = await p1.act("ship.jump", { id: party, from: "Core", to: "Outer Rim", rush: 0, careful: true });
+    assert.equal(r.data.hours, 24, "the jump keeps the rush 3 the equations were worked for (96 - 72), not the request's careful");
+  }
+  await p1.act("ship.plot", { id: party });
+  r = await p1.act("ship.jump", { id: party, from: "Core", to: "Outer Rim", rush: 3 });
+  assert.equal(r.data.hours, 96, "a course plotted with care is a normal one: the request's rush doesn't apply");
+  r = await p1.act("ship.startup", { id: party, crewSize: "half" });
+  assert.equal(r.code, 200);
+  assert.ok((await p1.state()).chat.some((m) => m.roll && /emergency start-up \[half the crew \(-5\)/.test(m.roll.label) && /-5$/.test(m.roll.expr)), "half the crew: -5, and the label says so");
+  assert.equal((await p1.act("ship.astro", { id: enemy })).code, 403);
+  // in ship combat: astrogation, start-up and the jump on the ship's own turn; no careful plotting mid-fight
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 2, f: 2 });
+  await gm.act("space.place", { id: enemy, x: 9, y: 2, f: 6 });
+  await gm.act("space.init", {});
+  if ((await gm.state()).space.turnId === party) await gm.act("space.next", {});
+  for (const t of ["ship.astro", "ship.startup", "ship.jump"]) assert.match((await p1.act(t, { id: party, from: "Core", to: "Core" })).data.error || "", /Not Dawn Skiff's turn/, t);
+  assert.match((await p1.act("ship.plot", { id: party })).data.error || "", /Not during ship combat/);
+  await gm.act("space.next", {});
+  assert.equal((await p1.act("ship.astro", { id: party })).code, 200, "on its own turn");
+});
+
+// ---------------------------------------------------------------- buying, building, upgrading, docking, crew (10.17)
+test("costs: SotG's own figures for buying, building, upgrading, docking and the minimum crew", () => {
+  let c = SR.costs({ size: "Small", tier: 0 });
+  assert.deepEqual([c.stock, c.bankDown, c.bankMonthly, c.build, c.buildDays[0], c.nextTier], [25000, 5000, 500, 12500, 10, 3900], "SotG: a Small ship is 25,000 cr; tier 1 costs 3,900");
+  c = SR.costs({ size: "Huge", tier: 2 });
+  assert.deepEqual([c.nextTier, c.upgradeDays, c.buildDays[0]], [29700000, 118.8, 200], "SotG's own example: Huge, tier 2 to 3: 29,700,000 cr, 118.8 days with 500");
+  assert.equal(SR.costs({ size: "Gargantuan", tier: 5 }).nextTier, null);
+  assert.deepEqual([SR.costs({ size: "Small" }).docking, SR.costs({ size: "Medium" }).docking, SR.costs({ size: "Huge" }).docking], [20, 40, 1000]);
+  assert.deepEqual([SR.minCrew({ size: "Tiny" }), SR.minCrew({ size: "Small" }), SR.minCrew({ size: "Medium", abilities: { int: 10 } }), SR.minCrew({ size: "Large", abilities: { int: 14 } }),
+    SR.minCrew({ size: "Gargantuan", abilities: { int: 30 } }), SR.minCrew({ size: "Huge", abilities: { int: 30 } })], [0, 1, 4, 120, 10000, 1000]);
 });

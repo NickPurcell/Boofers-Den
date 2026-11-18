@@ -957,7 +957,7 @@
     shipsEl().addEventListener('change', e => {
       const t = e.target;
       if (t.dataset.saChange === 'as') { SH.as = +t.value || 0; return renderShips(shipsEl()); }
-      if (t.dataset.sxc && window.HTShipSheet) return HTShipSheet.change(e, ships().find(x => x.id === SH.sel));
+      if ((t.dataset.sxc || t.dataset.tv) && window.HTShipSheet) return HTShipSheet.change(e, ships().find(x => x.id === SH.sel));
       const path = t.dataset.sp; if (!path) return;
       const s = ships().find(x => x.id === SH.sel); if (!canEditShip(s)) return;
       if (path === 'hull.current' || path === 'shield.current') return H.act('ship.points', { id: s.id, what: path.split('.')[0], current: +t.value || 0 });   // the server's, like damage

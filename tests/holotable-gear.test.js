@@ -78,3 +78,15 @@ test("buying and selling (6.8): a line spoken as a character whose token name th
   await gm.act("chat", { text: "*buys Backpack for 50 cr.*", as: "Grand Inquisitor" });
   assert.equal((await sam.state()).chat.filter((m) => /buys Backpack/.test(m.text || "")).at(-1).as, "Grand Inquisitor");
 });
+
+test("attunement (6.3): an item keeps its rarity and attunement; attuned only when it requires it; bad values dropped", async () => {
+  const { gm, sam, avery } = await table();
+  const av = await sheet(sam, avery);
+  await sam.act("char.save", { char: Object.assign({}, av, { equipment: [
+    { name: "Focus crystal", qty: 1, rar: "Prototype", att: true, attuned: true },
+    { name: "Plain thing", qty: 1, rar: "Shiny", attuned: true },
+    { name: "Proto", qty: 1, rar: "__proto__", att: "yes" },
+  ] }) });
+  const eq = (await sheet(gm, avery)).equipment;
+  assert.deepEqual(eq.map((e) => [e.rar, e.att, e.attuned]), [["Prototype", true, true], [undefined, undefined, undefined], [undefined, true, undefined]]);
+});

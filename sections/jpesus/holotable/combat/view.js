@@ -402,11 +402,23 @@
         const slotSpent = marked || (bud && slot !== 'free' && !bud[slot] && !a.offhand && !a.martialBonus && !(slot === 'action' && !a.power && a.maneuver !== 'help' && bud.attacks)) || (lim && lim.used >= lim.max);   // a weapon attack: also the rest of an Attack action (#139)
         const pool = a.power && Object.entries(a.power.cost || {})[0];
         const poorly = pool && (!u.pools[pool[0]] || E.poolLeft(u.pools[pool[0]]) < pool[1]);   // temporary points count (#190)
-        const off = slotSpent || !n || poorly;
-        const why = marked ? 'A quarry is already marked this turn' : slotSpent ? `Your ${slot === 'bonus' ? 'bonus action' : slot} is used this turn` : poorly ? `Not enough ${pool[0] === 'force' ? 'force' : pool[0] === 'tech' ? 'tech' : pool[0]} points` : !n ? 'Nothing in reach or range' : a.power && a.power.targets === 'self' ? 'Use it on yourself' : 'Pick a target on the map';
+        // a Reload weapon's shots (6.6, #179): a volley needs its burst or rapid number of them
+        const gunKey = a.power && a.power.kind === 'volley' ? String(a.power.weapon) : a.reload ? String(a.base || a.key) : null;
+        const shots = gunKey != null && u.shots && u.shots[gunKey] != null ? +u.shots[gunKey] : null, needs = a.power && a.power.shots ? +a.power.shots : 1;
+        const dry = shots != null && shots < needs;
+        const off = slotSpent || !n || poorly || dry;
+        const why = marked ? 'A quarry is already marked this turn' : dry ? (shots ? `${shots} shot${shots === 1 ? '' : 's'} left; this needs ${needs}. Reload first.` : 'Out of shots: reload first') : slotSpent ? `Your ${slot === 'bonus' ? 'bonus action' : slot} is used this turn` : poorly ? `Not enough ${pool[0] === 'force' ? 'force' : pool[0] === 'tech' ? 'tech' : pool[0]} points` : !n ? 'Nothing in reach or range' : a.power && a.power.targets === 'self' ? 'Use it on yourself' : 'Pick a target on the map';
         const tag = a.maneuver ? (a.maneuver === 'help' || a.maneuver === 'quarry' ? '' : sgn(E.contestBonus(u, 'athletics'))) : a.power ? (a.power.attack ? sgn(a.power.attack.bonus) : a.power.save ? `DC ${a.power.save.dc}` : '') : sgn(a.bonus);
         html += `<button class="btn small ct-atk ${a.power ? 'ct-power' : ''} ${UI.armed === a.key ? 'primary' : ''}" data-ct="arm" data-key="${esc(a.key)}" ${off ? 'disabled' : ''} aria-pressed="${UI.armed === a.key}"
-          title="${esc(why)}">${esc(a.name)} <b>${esc(tag)}</b> <span class="muted">${esc(a.damage)}${a.type ? ' ' + esc(a.type) : ''} · ${a.power && a.power.targets === 'self' ? 'self' : a.range ? `${a.range[0]}${a.range[1] !== a.range[0] ? '/' + a.range[1] : ''} ft` : `${a.melee} ft`}${pool ? ` · ${pool[1]} ${pool[0] === 'force' ? 'FP' : pool[0] === 'tech' ? 'TP' : pool[0]}` : ''}${slot !== 'action' ? ` · ${slot === 'bonus' ? 'bonus' : slot}` : ''}</span></button>`;
+          title="${esc(why)}">${esc(a.name)} <b>${esc(tag)}</b> <span class="muted">${esc(a.damage)}${a.type ? ' ' + esc(a.type) : ''} · ${a.power && a.power.targets === 'self' ? 'self' : a.range ? `${a.range[0]}${a.range[1] !== a.range[0] ? '/' + a.range[1] : ''} ft` : `${a.melee} ft`}${pool ? ` · ${pool[1]} ${pool[0] === 'force' ? 'FP' : pool[0] === 'tech' ? 'TP' : pool[0]}` : ''}${shots != null && gunKey === String(a.key) ? ` · ${shots}/${(u.reloads || {})[gunKey]} shots` : ''}${slot !== 'action' ? ` · ${slot === 'bonus' ? 'bonus' : slot}` : ''}</span></button>`;
+      }
+      // Reload (6.6, #179): an action or a bonus action, a power cell or slug cartridge from the gear
+      for (const [key, full] of Object.entries(u.reloads || {})) {
+        const left = +((u.shots || {})[key] || 0);
+        if (left >= full) continue;
+        const wpn = (st().characters[u.charId] || { attacks: [] }).attacks[+key] || {};
+        html += `<button class="btn small ghost ct-common" data-ct="reload" data-key="${esc(key)}" ${bud && !bud.action ? 'disabled' : ''} title="An action: ${esc(wpn.name || 'the weapon')} back to ${full} shots">⟳ Reload ${esc(wpn.name || '')} (${left}/${full})</button>`
+          + `<button class="btn small ghost ct-common" data-ct="reload" data-key="${esc(key)}" data-bonus="1" ${bud && !bud.bonus ? 'disabled' : ''} title="The same, as a bonus action">⟳ (bonus)</button>`;
       }
       for (const c of E.COMMON) {
         const used = bud && !bud[c.use];
@@ -493,6 +505,13 @@
     if (k === 'douse') return send('fight.douse', { target: el.dataset.id });
     if (k === 'escape') { const u = cur(); return send('fight.escape', { skill: u && E.contestBonus(u, 'athletics') > E.contestBonus(u, 'acrobatics') ? 'athletics' : 'acrobatics' }); }
     if (k === 'release') return send('fight.release', { target: el.dataset.id });
+    if (k === 'reload') {   // the GM may reload with no cell or cartridge in the gear, after asking
+      const u = cur(), ch = u && st().characters[u.charId], row = ch && ch.attacks[+el.dataset.key], kind = row && R.ammoOf ? R.ammoOf(row) : null;
+      const have = !kind || (ch.equipment || []).some((x) => String(x.name || '').toLowerCase().startsWith(kind.toLowerCase()) && +x.qty > 0);
+      const anyway = !have && gm() && confirm(`No ${kind.toLowerCase()}s in ${ch.name}'s gear. Reload anyway?`);
+      if (!have && gm() && !anyway) return;
+      return send('fight.common', Object.assign({ key: 'reload', weapon: el.dataset.key }, el.dataset.bonus ? { asBonus: true } : {}, anyway ? { anyway: true } : {}));
+    }
     if (k === 'common') return send('fight.common', Object.assign({ key: el.dataset.key }, el.dataset.bonus ? { asBonus: true } : {}));
     if (k === 'deathsave') return send('fight.deathsave', {});
     if (k === 'legend') return send('fight.npcres', { id: el.dataset.unit, op: 'use', key: 'legendary', n: +el.dataset.n || 1 });

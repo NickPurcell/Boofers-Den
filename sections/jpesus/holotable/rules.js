@@ -339,6 +339,25 @@
   }
   Object.assign(SW5E, { carrying, ENCUMBRANCE });
 
+  // Attunement (audit 6.3; Wretched Hives, "Attunement"): an enhanced item that requires it (att) works fully only while
+  // attuned. A creature has as many slots as its proficiency bonus; standard, premium and prototype items take one,
+  // advanced, legendary and artifact items two. The table's "Simpler Attunement" variant: three slots, one each.
+  const RARITIES = ['Standard', 'Premium', 'Prototype', 'Advanced', 'Legendary', 'Artifact'];
+  const SIMPLE_ATTUNEMENT = 'Simpler Attunement';
+  function attunement(c, variants) {
+    const simple = (variants || []).includes(SIMPLE_ATTUNEMENT);
+    const cost = e => (simple ? 1 : ['Advanced', 'Legendary', 'Artifact'].includes(e && e.rar) ? 2 : 1);
+    const used = ((c && c.equipment) || []).filter(e => e && e.att && e.attuned).reduce((n, e) => n + cost(e), 0);
+    return { max: simple ? 3 : profBonus(c), used, simple, cost };
+  }
+  // attuning to item i would go past the slots: the reason, or null
+  function attuneBlocked(c, i, variants) {
+    const e = ((c && c.equipment) || [])[i], a = attunement(c, variants);
+    if (!e || !e.att || e.attuned || a.used + a.cost(e) <= a.max) return null;
+    return { text: `${(c && c.name) || 'This character'} has ${a.max - a.used} of ${a.max} attunement slots free; ${e.name}${a.cost(e) > 1 && !String(e.name).includes(e.rar) ? ` (${e.rar})` : ''} takes ${a.cost(e)}.` };
+  }
+  Object.assign(SW5E, { RARITIES, SIMPLE_ATTUNEMENT, attunement, attuneBlocked });
+
   // Selling (audit 6.8): equipment fetches half its cost (PHB, "Selling Treasure"), whole credits, rounded down
   const sellPrice = e => Math.floor(Math.max(0, +(e && e.cost) || 0) / 2);
   Object.assign(SW5E, { sellPrice });
@@ -571,6 +590,13 @@
       .filter(x => x.total > 0);
   }
   Object.assign(SW5E, { CHOICE_COLS, choiceCounts });
+
+  // ---- downtime activities (audit 11.1): Wretched Hives' chapter 2, keyed as SW5e's 'downtime' list builds them from the
+  // headings, and "other" for anything else the GM allows (no tables: the GM writes the result). Crafting is 11.2's.
+  const DOWNTIME_ACTS = { 'bounty-hunting': 'Bounty hunting', 'buying-enhanced-items': 'Buying enhanced items', carousing: 'Carousing', crime: 'Crime',
+    espionage: 'Espionage', gambling: 'Gambling', 'mercenary-contracting': 'Mercenary contracting', 'pit-fighting': 'Pit fighting', racing: 'Racing',
+    research: 'Research', 'selling-enhanced-items': 'Selling enhanced items', training: 'Training', work: 'Work', other: 'Something else' };
+  Object.assign(SW5E, { DOWNTIME_ACTS });
 
   // ---- senses (audit 5.12): [{ kind, range }] on the sheet. The four kinds SW5e's creatures and species use; feet 1-9999.
   const SENSES = ['darkvision', 'blindsight', 'tremorsense', 'truesight'];
