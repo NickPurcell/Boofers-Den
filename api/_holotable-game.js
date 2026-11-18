@@ -288,6 +288,8 @@ function viewFor(camp, cid, gm, online) {
     variants: camp.variants || [],
     hpMax: camp.hpMax !== false,
     ...(camp.stash ? { stash: camp.stash } : {}),   // the party stash (6.9): everyone sees it
+    ...(camp.clock ? { clock: camp.clock } : {}),   // in-game time (9.18)
+    ...(camp.sheetLock ? { sheetLock: true } : {}), ...(camp.statBlocksHidden ? { statBlocksHidden: true } : {}),   // the GM's table rules (12.6, 9.17)
     audio: camp.audio ? Object.assign({}, camp.audio, { now: now() }) : null,   // "now" lets each screen line its clock up
     ships: (camp.ships || []).filter((x) => gm || !x.hidden),
     ...(camp.space ? { space: Space.view(camp, gm) } : {}),   // the space map (#146)
@@ -524,6 +526,13 @@ function applyAction(camp, cid, gm, type, p) {
       // senses shape what a player is shown under fog and lighting, so they're the GM's (jpesus's ruling on #92).
       // A player's save keeps the sheet's senses; choosing a different species takes that species' own senses,
       // which the server looks up itself (p[SPECIES_SENSES], set by holotable.js from SW5e's list, never by a client).
+      // the GM's lock (audit 12.6): with it on, a player's save keeps the class levels, XP and hit point maximum the
+      // sheet had. Those move by the GM's grant (levelup.apply) and the GM's own edits; an archetype pick still goes through.
+      if (!gm && old && camp.sheetLock) {
+        clean.classes = (old.classes || []).map((k, i) => Object.assign({}, k, { archetype: ((clean.classes || [])[i] || {}).archetype || k.archetype || "" }));
+        clean.xp = old.xp;
+        clean.hp = Object.assign({}, clean.hp, { max: (old.hp || {}).max });
+      }
       if (!gm) {
         const lc = (v) => String(v || "").trim().toLowerCase();
         const newSpecies = !old || lc(old.species) !== lc(clean.species);
@@ -1054,6 +1063,26 @@ function applyAction(camp, cid, gm, type, p) {
       return {};
     }
 
+    // ---- in-game time (audit 9.18): a day count and the time of day, the GM's to set and move on; everyone sees it
+    case "clock.set": {
+      need(gm);
+      if (p.off) { delete camp.clock; return {}; }
+      camp.clock = cleanClock({ day: p.day, min: p.min });
+      return { clock: camp.clock };
+    }
+    case "clock.advance": {
+      need(gm);
+      const mins = clamp(int(p.mins), 1, 365 * 1440);
+      const c = cleanClock(camp.clock || { day: 1, min: 8 * 60 }), total = c.min + mins;
+      camp.clock = cleanClock({ day: c.day + Math.floor(total / 1440), min: total % 1440 });
+      if (p.announce !== false) {
+        const span = mins % 1440 === 0 ? `${mins / 1440} day${mins === 1440 ? "" : "s"}` : mins % 60 === 0 ? `${mins / 60} hour${mins === 60 ? "" : "s"}` : `${mins} minutes`;
+        const why = str(p.why, 60).trim();
+        addChat(camp, { system: true, text: `🕑 ${span} pass${why ? ` (${why})` : ""}. It's now ${clockText(camp.clock)}.` });
+      }
+      return { clock: camp.clock };
+    }
+
     // ---- which SW5e variant rules this table uses (the GM decides; everyone sees the list)
     case "variants.set": need(gm); camp.variants = cleanVariants(p.variants); return {};
 
@@ -1082,6 +1111,8 @@ function applyAction(camp, cid, gm, type, p) {
     case "audio.stop": need(gm); camp.audio = null; return {};
     // whether players may take the hit die's maximum when levelling (the GM's table rule)
     case "settings.hpMax": need(gm); camp.hpMax = !!p.on; return {};
+    case "settings.sheetLock": need(gm); if (p.on) camp.sheetLock = true; else delete camp.sheetLock; return {};   // 12.6
+    case "settings.statBlocks": need(gm); if (p.hidden) camp.statBlocksHidden = true; else delete camp.statBlocksHidden; return {};   // 9.17
 
     // ---- starships: the party's ships can be edited by anyone at the table; hidden (enemy) ships only by the GM
     case "ship.save": {
@@ -1172,6 +1203,12 @@ function cleanStash(st) {
   return items.length || credits ? { credits, items } : null;
 }
 const itemLabel = (it) => `${it.qty > 1 ? it.qty + "× " : ""}${it.name}${it.rar ? ` (${it.rar})` : ""}`;
+// in-game time (9.18): day 1 and up, minutes into the day 0-1439
+function cleanClock(c) {
+  if (!c || typeof c !== "object") return null;
+  return { day: clamp(int(c.day, 1), 1, 999999), min: clamp(int(c.min), 0, 1439) };
+}
+const clockText = (c) => `Day ${c.day}, ${String(Math.floor(c.min / 60)).padStart(2, "0")}:${String(c.min % 60).padStart(2, "0")}`;
 function cleanMap(g, raw) {
   const m = raw && typeof raw === "object" ? raw : {};
   const n = (v, d) => (Number.isFinite(+v) ? +v : d);
@@ -1213,6 +1250,9 @@ function cleanGame(g) {
     pos: clamp(num(au.pos), 0, 86400), at: num(au.at, now()), loop: !!au.loop, vol: clamp(num(au.vol, 1), 0, 1) } : null;
   g.hpMax = g.hpMax !== false;
   if (g.stash) g.stash = cleanStash(g.stash); if (!g.stash) delete g.stash;
+  if (g.clock) g.clock = cleanClock(g.clock); if (!g.clock) delete g.clock;
+  if (g.sheetLock !== true) delete g.sheetLock;
+  if (g.statBlocksHidden !== true) delete g.statBlocksHidden;
   if (Array.isArray(g.npcs) && g.npcs.length) g.npcs = cleanNpcs(g.npcs); else delete g.npcs;
   g.ask = Ask.clean(g.ask, g.characters);
   g.ships = (Array.isArray(g.ships) ? g.ships : []).slice(0, MAX_SHIPS).filter((x) => x && typeof x === "object").map((x) => cleanShip(x, g.characters));
