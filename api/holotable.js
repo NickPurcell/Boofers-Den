@@ -449,6 +449,22 @@ async function handleGet(req, res, q, ses) {
     return res.status(200).json(await storageReport());
   }
 
+  if (op === "chatlog") {   // a log of play (audit 12.4): the whole chat the table keeps, as text, for the GM
+    if (!gm) return fail(res, 403, "GM only");
+    const camp = await loadGame();
+    const t = (ts) => new Date((+ts || 0) * 1000).toISOString().replace("T", " ").slice(0, 16);
+    const line = (m) => {
+      const who = m.system ? "" : `${m.charName ? m.charName + " (" + (m.from || "") + ")" : m.from || ""}${m.to ? " → " + (m.private ? "GM/private" : "whisper") : ""}: `;
+      const body = m.roll ? `${m.roll.label || "roll"} = ${m.roll.total} [${m.roll.expr || ""} → ${m.roll.detail || ""}]` : String(m.text || "");
+      return `[${t(m.ts)}] ${who}${body}`.replace(/\r?\n/g, " / ");
+    };
+    const text = `${camp.name || "HoloTable"} — chat log, ${camp.chat.length} messages, downloaded ${t(Date.now() / 1000)} UTC\n\n` + camp.chat.map(line).join("\n") + "\n";
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="holotable-chat-${new Date().toISOString().slice(0, 10)}.txt"`);
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(200).send(text);
+  }
+
   if (op === "export") {
     if (!gm) return fail(res, 403, "GM only");
     let camp = await loadGame();
