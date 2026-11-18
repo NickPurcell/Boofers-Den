@@ -144,6 +144,8 @@ test("power: die size by tier, stores by coupling, recovery by reactor; reactor,
   assert.deepEqual(SR.powerCaps(eqs("Directional Shield", "Distributed Power Coupling")).central, 0, "so its stores are the distributed coupling's");
   assert.equal(SR.shieldTypeOf(eqs("Directional Shield", "Direct Power Coupling")), "Directional", "and the shield still reads as directional");
   assert.equal(SR.couplingOf(eqs("Direct Power Coupling")), "Direct");
+  assert.deepEqual([SR.shieldTypeOf(eqs("Fortress Shields")), SR.couplingOf(eqs("Hub & Spoke power couplings")), SR.reactorOf(eqs("Power core reactors"))], ["Fortress", "Hub & Spoke", "Power Core"], "a plural typed by hand");
+  assert.equal(SR.couplingOf(eqs("Directional Shields")), "", "and still not a coupling");
   for (const k of ["constructor", "__proto__", "toString"]) {   // names typed on a sheet never reach an inherited entry (#111)
     assert.equal(SR.damageType(k), "energy");
     assert.equal(SR.reactorOf(ship({ role: k, reactor: k, coupling: k })), "");
