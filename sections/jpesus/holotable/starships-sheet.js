@@ -60,7 +60,7 @@
     return `<div class="row wrap mod-row" style="gap:6px;margin:-2px 0 6px 8px;font-size:12px">${inp(`mods.${i}.type`, x.type || '', { ro, type: 'select', options: ['', ...SR.MOD_TYPES] })}
       <label class="ship-lv">grade ${inp(`mods.${i}.grade`, String(+x.grade || 0), { ro, type: 'select', options: ['0', '1', '2', '3', '4', '5'] })}</label>
       <label class="toggle" title="Given by a tier feature: no slot, no suite count, no cost, no check">${inp(`mods.${i}.free`, !!x.free, { ro, type: 'checkbox' })} tier feature</label>
-      ${x.free ? '' : `<span class="muted">DC ${dc} · ${SR.modCost(s, x).toLocaleString('en-US')} cr</span>${ro || inFight() ? '' : `<button class="btn tiny ghost" data-sx="install" data-i="${i}" title="The foremost mechanic's Intelligence (mechanic's kit) check">Install check</button>`}`}
+      ${x.free ? '' : `<span class="muted">DC ${dc} · ${SR.modCost(s, x, i).toLocaleString('en-US')} cr${SR.pastCapacity(s, i) ? ' <span class="warn">(past capacity)</span>' : ''}</span>${ro || inFight() ? '' : `<button class="btn tiny ghost" data-sx="install" data-i="${i}" title="The foremost mechanic's Intelligence (mechanic's kit) check">Install check</button>`}`}
       ${preTxt}</div>`;
   }
   // ship combat is running on the space map: between-fights work (recharge, refit, installing) waits, for players (the

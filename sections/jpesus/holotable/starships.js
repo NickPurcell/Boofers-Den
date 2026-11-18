@@ -729,13 +729,23 @@
     const suites = slotted(ship).filter((m) => m.type === 'Suite').length, suiteMax = size === 'Tiny' ? 0 : derive(ship).suites;
     return { used, cap, over: Math.max(0, used - cap), suites, suiteMax };
   }
-  const modCost = (ship, m) => Math.round((own(MOD_COST, m && m.type) || 4000) * own(MOD_SIZE_COST, sizeKey(ship)) * Math.max(1, modGrade(m)));
-  // the DC for installing modification i: the grade and tier table, and 2 more for each modification past capacity
+  // how far past capacity modification i is: 0 within it, 1 for the first past it, 2 for the second, and so on
+  function pastCapacity(ship, i) {
+    const m = ((ship && ship.mods) || [])[i]; if (!m || m.free) return 0;
+    const before = ((ship.mods || []).slice(0, i + 1)).filter((x) => x && !x.free).length;
+    return Math.max(0, before - (own(SLOTS, sizeKey(ship)) || 0));
+  }
+  // its cost: the category's base cost (50% more when it needs a slot added past capacity) x the size's modification
+  // cost x the grade (grade 0 and 1 cost the same)
+  function modCost(ship, m, i) {
+    const base = (own(MOD_COST, m && m.type) || 4000) * (i != null && pastCapacity(ship, i) > 0 ? 1.5 : 1);
+    return Math.round(base * own(MOD_SIZE_COST, sizeKey(ship)) * Math.max(1, modGrade(m)));
+  }
+  // the DC for installing modification i: the grade and tier table, plus a cumulative 2 for each modification past
+  // capacity on a Tiny to Medium ship, 1 on a Large to Gargantuan one
   function installDC(ship, i) {
     const m = ((ship && ship.mods) || [])[i]; if (!m) return null;
-    const before = ((ship.mods || []).slice(0, i + 1)).filter((x) => x && !x.free).length, cap = own(SLOTS, sizeKey(ship)) || 0;
-    const past = m.free ? 0 : Math.max(0, before - cap);
-    return INSTALL_DC[modGrade(m)][tierOf(ship)] + 2 * past;
+    return INSTALL_DC[modGrade(m)][tierOf(ship)] + (sizeRank(ship) <= 2 ? 2 : 1) * pastCapacity(ship, i);
   }
   // its prerequisites: true (met), false (not met) or null (for the GM to judge), each with a reason
   function prereqs(ship, m) {
@@ -768,5 +778,5 @@
     setCondition, summary, SIZE_DATA, SHIELD_TYPES, REACTORS, COUPLINGS, SYSTEMS, POOLS, SYSTEM_NAMES, POWER_DIE, sizeOf, roleOf, reactorOf, couplingOf,
     shieldTypeOf, powerDie, powerDieText, powerCaps, diceOf, diceLeft, regenRate, boostDC, regenDC, boostedSpeed, startTurn, usePower, setPower,
     setDiceUsed, boost, regenerateShields, SQUARE_FT, SQUARES, squaresOf, FACING_NAMES, DIRS, gridFeet, turnSteps, turnCost, moveCost, inBounds, shipGap,
-    arcOf, INIT_SIZE_MOD, npcInitBonus, MOD_TYPES, modsSummary, modCost, installDC, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck };
+    arcOf, INIT_SIZE_MOD, npcInitBonus, MOD_TYPES, modsSummary, modCost, installDC, pastCapacity, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck };
 });

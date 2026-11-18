@@ -940,7 +940,11 @@ test("modifications: slots against capacity, suites, the installation DC by grad
   assert.deepEqual(mods.slice(2, 6).map((m) => SR.prereqs(s, m)[0].ok), [true, false, false, null]);
   const tiny = { size: "Tiny", tier: 0, mods: Array.from({ length: 12 }, (_, i) => ({ name: "M" + i, type: "Universal" })) };
   assert.deepEqual(SR.modsSummary(tiny), { used: 12, cap: 10, over: 2, suites: 0, suiteMax: 0 });
-  assert.deepEqual([SR.installDC(tiny, 9), SR.installDC(tiny, 10), SR.installDC(tiny, 11)], [10, 12, 14], "each one past capacity: 2 more, cumulative");
+  assert.deepEqual([SR.installDC(tiny, 9), SR.installDC(tiny, 10), SR.installDC(tiny, 11)], [10, 12, 14], "each one past capacity: 2 more, cumulative (Tiny to Medium)");
+  const large = { size: "Large", tier: 0, mods: Array.from({ length: 52 }, (_, i) => ({ name: "M" + i, type: "Universal" })) };
+  assert.deepEqual([SR.installDC(large, 49), SR.installDC(large, 50), SR.installDC(large, 51)], [10, 11, 12], "Large to Gargantuan: 1 more, cumulative");
+  assert.deepEqual([SR.modCost(tiny, tiny.mods[9], 9), SR.modCost(tiny, tiny.mods[10], 10), SR.modCost(large, large.mods[51], 51)], [2000, 3000, 30000],
+    "a slot added past capacity: 50% more on the category's base (Universal 4,000 x Tiny's 0.5; x Large's 5)");
   // on the server: the fields are kept, cleaned; the check comes from the sheet
   const { gm, p1, party, enemy } = await table();
   const sh = shipIn(await p1.state(), party);

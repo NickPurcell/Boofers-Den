@@ -252,7 +252,7 @@ function apply(camp, cid, gm, type, p, h) {
       const msg = { from: ship.hidden ? "Ship combat (GM only)" : playerName(camp, cid), roll: Object.assign({}, roll, { expr, label: str(`${ship.name}: installing ${m.name} (DC ${dc})`, 120), kind: "check" }) };
       Object.assign(msg, ship.hidden ? { to: ["@gm"], private: true } : { fromId: cid });
       addChat(camp, msg);
-      say([ok ? `${m.name} is installed on ${ship.name}.` : `${m.name} isn't installed: half the time and cost are spent (${Math.round(SR.modCost(ship, m) / 2).toLocaleString("en-US")} cr).`]);
+      say([ok ? `${m.name} is installed on ${ship.name}.` : `${m.name} isn't installed: half the time and cost are spent (${Math.round(SR.modCost(ship, m, mi) / 2).toLocaleString("en-US")} cr).`]);
       return { ok, dc };
     }
     case "ship.reset": {    // the GM undoes a destruction (a mistake, or a story reason): saves cleared, not destroyed
