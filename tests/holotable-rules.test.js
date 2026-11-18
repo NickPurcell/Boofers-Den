@@ -441,3 +441,12 @@ test("feat prerequisites (audit 2.5), read from SW5e's own wording", () => {
   assert.equal(pr(ch, "4th level, the ability to cast force or tech powers").unmet.length, 2);
   assert.deepEqual(pr(ch, "12th level, Dexterity 20").unmet, ["12th level", "Dexterity 20"]);
 });
+
+test("class levels in a prerequisite (audit 2.17): the improvement feats' options", () => {
+  const ch = { classes: [{ name: "Berserker", level: 3 }, { name: "Consular", level: 2 }], abilities: { wis: 14 } };
+  assert.equal(R.featPrereq(ch, "At least 3 levels in berserker").ok, true);
+  assert.deepEqual(R.featPrereq(ch, "At least 3 levels in consular").unmet, ["3 levels in consular"]);
+  assert.deepEqual(R.featPrereq(ch, "No levels in consular, the ability to cast force powers").unmet, ["no levels in consular"]);
+  assert.equal(R.featPrereq(ch, "No levels in sentinel, the ability to cast force powers").ok, true, "a Consular 2 casts force powers");
+  assert.equal(R.featPrereq({ classes: [{ name: "Fighter", level: 4 }] }, "No levels in sentinel, the ability to cast force powers").ok, false);
+});

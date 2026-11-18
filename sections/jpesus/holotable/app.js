@@ -3476,7 +3476,7 @@
     if (!ch0) return;
     if (!pendingFor(charId)) return toast('The GM hasn\'t granted this character a level yet.', true);
     const W = resume || { cls: ch0.classes[0].name, newCls: '', archetype: '', hpMode: 'average', asiMode: 'two', a1: 'str', a2: 'dex', featName: '', featText: '', powers: [],
-      auto: [], autoKey: '', autoState: '', archList: [], archFor: '', archMenu: false, featList: [], picks: {}, expTools: '', lists: null, listsErr: '', feats: null, featAsi: '' };
+      auto: [], autoKey: '', autoState: '', archList: [], archFor: '', archMenu: false, featList: [], picks: {}, expTools: '', lists: null, listsErr: '', feats: null, featAsi: '' , improvements: null };
     modal('<div id="wiz"></div>', box => {
       const wiz = $('#wiz', box);
       // SW5e's class/archetype features for the level being gained (fetched once per class/level/archetype)
@@ -3497,6 +3497,8 @@
           HTB.list('archetypes').then(all => { if (W.archFor !== P.cls) return; W.archList = all.filter(a => a.cls.toLowerCase() === P.cls.toLowerCase()); draw(); }).catch(() => {});
         }
       };
+      if (window.HTB && S.st.sw5eBooks !== false && !W.improvements) Promise.all(['improvements-class', 'improvements-multi', 'improvements-splash'].map(k => HTB.list(k)))   // 2.17
+        .then(([cl, multi, splash]) => { W.improvements = { class: cl, multi, splash }; draw(); }).catch(() => { W.improvements = { class: [], multi: [], splash: [] }; });
       if (window.HTB && S.st.sw5eBooks !== false) HTB.list('feats').then(l => { W.feats = l; W.featList = l.map(f => f.n); draw(); }).catch(() => {});
       // the lists this level's choices come from (audit 2.9): class options, maneuvers, fighting styles
       if (window.HTB && HTB.levelChoices && S.st.sw5eBooks !== false && !W.lists) {
@@ -3520,7 +3522,7 @@
         }
         if (t.type === 'text' || t.tagName === 'TEXTAREA') W[f] = t.value;
         if (f === 'featName') {   // as you type (2.5): a feat from SW5e's list brings its own text, prerequisite and +1
-          W.featAsi = '';
+          W.featAsi = ''; W.picks.improvement = [];
           const fd = (W.feats || []).find(x => x.n.toLowerCase() === W.featName.trim().toLowerCase());
           if (fd) { W.featText = fd.text; const ta = wiz.querySelector('[data-w=featText]'); if (ta) ta.value = fd.text; }
           const el = wiz.querySelector('#wizFeatInfo'); if (el) el.innerHTML = featInfoHtml(charId, W);
@@ -3615,6 +3617,14 @@
       else if (n0(ch.abilities[W.featAsi]) + 1 > 20) error = error || `${ABN[W.featAsi]} can't go above 20.`;
       else { feat.asi = { [W.featAsi]: 1 }; after.abilities[W.featAsi] = n0(after.abilities[W.featAsi]) + 1; }
     }
+    // the Class, Multiclass and Splashclass Improvement feats (audit 2.17): their options, from SW5e's lists, at the new level
+    const impKind = fd ? ({ 'class improvement': 'class', 'multiclass improvement': 'multi', 'splashclass improvement': 'splash' })[fd.n.toLowerCase()] : null;
+    const impNeed = impKind === 'multi' ? 2 : impKind ? 1 : 0;
+    const impOpts = impKind && W.improvements ? (W.improvements[impKind] || []).map(x => Object.assign({}, x, { q: R.featPrereq(after, x.pre) })) : [];
+    const impPicked = (W.picks.improvement || []).filter(n => impOpts.some(x => x.n === n && x.q.ok !== false));
+    if (impKind && !W.improvements && window.HTB && S.st.sw5eBooks !== false) error = error || 'Still looking up the improvement options…';
+    else if (impKind && impOpts.length && impPicked.length !== impNeed) error = error || `${fd.n}: choose ${impNeed} option${impNeed > 1 ? 's' : ''} (${impPicked.length} chosen).`;
+    const impFeatures = impPicked.map(n => { const x = impOpts.find(y => y.n === n); return { name: `${fd.n}: ${x.n}`.slice(0, 80), text: `${fd.n} (${x.n})\n${x.text}`.slice(0, 4000) }; });
     const hd = (R.CLASSES[cls] || {}).hd || 8;
     const oldCon = R.abilityMod(ch, 'con'), newCon = R.abilityMod(after, 'con');
     const retro = (newCon - oldCon) * before;
@@ -3649,8 +3659,8 @@
     if (unmet.length && !isGM()) error = error || `Multiclassing into ${cls}: ${unmet.join('; ')}. Ask your GM.`;
     const payload = { charId, className: cls, hpMode: W.hpMode, archetype: archDue && W.archetype ? W.archetype : undefined, hitDie: hd, override: unmet.length && isGM() ? true : undefined,
       asi: asi || undefined, feat: feat || undefined, expertise: expertise.length ? expertise : undefined,
-      features: choiceFeatures.concat((W.auto || []).filter(f => !f.have).map(f => ({ name: f.name, text: f.text }))).slice(0, 20), powers: W.powers.filter(p => p.name.trim()).slice(0, 20) };
-    return { ch, after, cls, k, newClassLevel, before, due, asiOn, archDue, archTerm, hd, oldCon, newCon, retro, avgGain, maxGain, payload, error, groups, picked, chosen, tools, powerRoom, fd, prereq, featAsiOpts };
+      features: choiceFeatures.concat(impFeatures, (W.auto || []).filter(f => !f.have).map(f => ({ name: f.name, text: f.text }))).slice(0, 20), powers: W.powers.filter(p => p.name.trim()).slice(0, 20) };
+    return { ch, after, cls, k, newClassLevel, before, due, asiOn, archDue, archTerm, hd, oldCon, newCon, retro, avgGain, maxGain, payload, error, groups, picked, chosen, tools, powerRoom, fd, prereq, featAsiOpts, impKind, impNeed, impOpts };
   }
 
   // the chosen feat's prerequisite and, for a half-feat, which ability its +1 goes to (audit 2.5)
@@ -3661,7 +3671,10 @@
       : `Requires ${esc(P.fd.pre)}: ${q.ok === true ? '<span class="up">✓ met</span>' : q.ok === false ? `<span class="error">✗ needs ${esc(q.unmet.join(', '))}</span>` : `<span class="muted">${esc(q.unknown.join(', '))} is your GM's call</span>`}`;
     return `<p style="margin:4px 0 0;font-size:12px">${req}</p>
       ${P.featAsiOpts.length ? `<div class="row" style="margin-top:4px;font-size:13px">${esc(P.fd.n)} raises one ability by 1:
-        <select data-w="featAsi"><option value="">choose…</option>${P.featAsiOpts.map(k => `<option value="${k}" ${W.featAsi === k ? 'selected' : ''} ${n0(P.ch.abilities[k]) >= 20 ? 'disabled' : ''}>${ABN[k]} (${n0(P.ch.abilities[k])})</option>`).join('')}</select></div>` : ''}`;
+        <select data-w="featAsi"><option value="">choose…</option>${P.featAsiOpts.map(k => `<option value="${k}" ${W.featAsi === k ? 'selected' : ''} ${n0(P.ch.abilities[k]) >= 20 ? 'disabled' : ''}>${ABN[k]} (${n0(P.ch.abilities[k])})</option>`).join('')}</select></div>` : ''}
+      ${P.impKind && P.impOpts.length ? `<div style="margin-top:6px;font-size:13px">${esc(P.fd.n)}: choose ${P.impNeed} option${P.impNeed > 1 ? 's' : ''}
+        <div class="wiz-opts" data-scroll="improvement">${P.impOpts.map(x => `<label class="wiz-opt" title="${esc(x.text.slice(0, 600))}"><input type="checkbox" data-w="pick.improvement" value="${esc(x.n)}"
+          ${(W.picks.improvement || []).includes(x.n) ? 'checked' : ''} ${x.q.ok === false ? 'disabled' : ''}><span>${esc(x.n)}${x.q.ok === false ? ` <span class="muted">(needs ${esc(x.q.unmet.join(', '))})</span>` : ''}</span></label>`).join('')}</div></div>` : ''}`;
   }
   function wizardHtml(charId, W) {
     const P = wizardPlan(charId, W), ch = P.ch;
