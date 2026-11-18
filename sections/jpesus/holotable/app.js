@@ -606,6 +606,27 @@
     if (ro && !+val) return '';
     return `<span class="misc-box" title="Misc bonus (feats, items, features)">${inp(path, +val || '', { ro, type: 'number', w: '40px', ph: '±' })}</span>`;
   }
+  // the record of sheet changes (audit 12.5), newest first; the GM can put any change's numbers back
+  function openHistory(id) {
+    const draw = async () => {
+      const j = await fetch(`${API}?op=history&char=${encodeURIComponent(id)}`, { cache: 'no-store' }).then(r => r.json()).catch(() => ({ log: [] }));
+      const log = (j.log || []).slice().reverse(), ch = S.st.characters[id] || {};
+      const v = x => x === null || x === '' ? '—' : x === true ? 'yes' : x === false ? 'no' : String(x);
+      $('#modalBox').innerHTML = `<h3>🕘 ${esc(ch.name || '')}: changes</h3><p class="muted" style="margin-top:0">The last 30 saves that changed a number. ↶ puts that change's numbers back (lists such as gear are shown, not undone).</p>
+        <div class="hist">${log.map(e => `<div class="box" style="margin:6px 0;padding:8px"><div class="row"><b>${esc(e.by)}</b><span class="muted">${esc(new Date(e.ts * 1000).toLocaleString())}</span><span class="spacer"></span>
+          ${e.changes.some(c => !c.view) ? `<button class="btn tiny" data-hundo="${esc(e.id)}">↶ Undo</button>` : ''}</div>
+          ${e.changes.map(c => `<div style="font-size:13px"><span class="muted">${esc(c.k)}</span> ${esc(v(c.from))} → <b>${esc(v(c.to))}</b></div>`).join('')}</div>`).join('') || '<p class="muted">No changes recorded.</p>'}</div>
+        <div class="row" style="margin-top:10px;justify-content:flex-end"><button class="btn ghost" id="histClose">Close</button></div>`;
+    };
+    modal('', box => {
+      draw();
+      box.onclick = async e => {
+        if (e.target.id === 'histClose') return closeModal();
+        const u = e.target.closest('[data-hundo]');
+        if (u && confirm('Put these numbers back to what they were before this change?')) { await act('sheet.revert', { charId: id, entry: u.dataset.hundo }); setTimeout(draw, 300); }
+      };
+    });
+  }
   // the party stash (6.9): what the party found and hasn't split yet. Anyone takes an item onto their own character;
   // the GM puts things in (🎁 Loot in the GM tab), shares out the credits and removes things.
   function stashBox(ch, ro) {
@@ -707,6 +728,7 @@
         <button class="btn small amber" data-act="init">⚔ Initiative</button>
         ${pendingFor(ch.id) && !ro ? `<button class="btn small lvl-go" data-act="levelup">⬆ Level up${n0(pendingFor(ch.id).count) > 1 ? ' ×' + n0(pendingFor(ch.id).count) : ''}</button>` : ''}
         ${isGM() && !pendingFor(ch.id) ? '<button class="btn small ghost" data-act="grant" title="Give this character a new level">⬆ Grant level</button>' : ''}
+        ${isGM() ? '<button class="btn small ghost" data-act="history" title="Who changed what on this sheet, and an undo for each">🕘 History</button>' : ''}
         ${isGM() && (S.st.levelUndo || {})[ch.id] ? `<button class="btn small ghost" data-act="undo-level" title="Put the sheet back to just before its last level, and grant the level again">↶ Undo level ${n0(S.st.levelUndo[ch.id])}</button>` : ''}
         <button class="btn small" data-act="token">◉ Token</button>
         <button class="btn small" data-act="export">⇩ Export</button>
@@ -1017,6 +1039,7 @@
       case 'dmg': { const at = ch.attacks[i]; roll(R.damageExpr(ch, at), `${at.name} — ${at.type || ''} damage`, { charId: ch.id, kind: 'damage' }); break; }
       case 'crit': { const at = ch.attacks[i], cd = R.critDamage(ch, at); roll(cd.expr, `${at.name} — CRITICAL ${at.type || ''} damage${cd.brutal ? ` (Brutal Critical +${cd.brutal})` : ''}`, { charId: ch.id, kind: 'damage' }); break; }
       case 'add-class-res': mutate(c => { c.resources = R.withClassResources(c); }); break;
+      case 'history': if (isGM()) openHistory(ch.id); break;
       case 'stash-take': act('stash.take', { id: b.dataset.sid, charId: ch.id }); break;
       case 'stash-rm': if (isGM()) act('stash.remove', { id: b.dataset.sid }); break;
       case 'stash-loot': if (isGM()) openLoot(); break;
