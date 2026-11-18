@@ -83,18 +83,18 @@ export function headField(shapeKey = 'round', exprKey = 'neutral', age = 0) {
 // the body below the head, in the figure's frame: shoulders, chest, arms down to the wrists, hips to mid-thigh
 export function bodyField(build = 1) {
   const b = build, H = HEAD_AT[1];
-  const chest = ellipsoid(0, 1.365, 0.0, 0.15 * b, 0.145, 0.1 + (b - 1) * 0.04);
-  const pecs = mirrorX(ellipsoid(0.062 * b, 1.4, 0.048, 0.068 * b, 0.042, 0.036));
-  const belly = ellipsoid(0, 1.19, 0.005, 0.128 * b, 0.15, 0.092 + (b - 1) * 0.03);
+  const chest = ellipsoid(0, 1.365, 0.0, 0.15 * b, 0.145, 0.092 + (b - 1) * 0.04);
+  const pecs = mirrorX(ellipsoid(0.058 * b, 1.405, 0.04, 0.066 * b, 0.04, 0.028));   // a spacer's flat chest, not a strongman's
+  const belly = ellipsoid(0, 1.19, 0.004, 0.126 * b, 0.15, 0.086 + (b - 1) * 0.03);
   const pelvis = ellipsoid(0, 1.0, -0.005, 0.145 * b, 0.11, 0.1);
   const traps = mirrorX(capsule([0.034, 1.53, -0.035], [0.165 * b, 1.49, -0.012], 0.028));
-  const delt = mirrorX(sphere(0.19 * b, 1.462, -0.006, 0.05 + (b - 1) * 0.025));
+  const delt = mirrorX(sphere(0.188 * b, 1.462, -0.006, 0.044 + (b - 1) * 0.025));
   const clav = mirrorX(capsule([0.02, 1.505, 0.055], [0.15 * b, 1.495, 0.026], 0.0085));
   const neckBase = roundCone([0, 1.47, -0.02], [0, 1.53, -0.026], 0.06, 0.05);
   // relaxed arms, a little out from the sides, elbows soft
   const sh = [0.198 * b, 1.452, -0.008], el = [0.238 * b, 1.18, -0.022], wr = [0.262 * b, 0.94, 0.02];
-  const upperArm = mirrorX(roundCone(sh, el, 0.046 + (b - 1) * 0.02, 0.034 + (b - 1) * 0.01));
-  const biceps = mirrorX(ellipsoid(0.216 * b, 1.33, 0.012, 0.03, 0.07, 0.03));
+  const upperArm = mirrorX(roundCone(sh, el, 0.043 + (b - 1) * 0.02, 0.033 + (b - 1) * 0.01));
+  const biceps = mirrorX(ellipsoid(0.214 * b, 1.33, 0.01, 0.026, 0.07, 0.026));
   const forearm = mirrorX(roundCone(el, wr, 0.033 + (b - 1) * 0.01, 0.022));
   const forearmMass = mirrorX(ellipsoid(0.246 * b, 1.11, -0.004, 0.03, 0.07, 0.028));
   const thigh = mirrorX(roundCone([0.085 * b, 0.95, 0.0], [0.1 * b, 0.6, 0.012], 0.078, 0.06));

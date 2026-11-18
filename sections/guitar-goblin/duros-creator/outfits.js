@@ -46,16 +46,20 @@ function scout(k) {
     snaps.push(k.on([px * b, py + h - 0.002, 0.2], T + 0.012).p);
   }
   P.push({ name: 'pockets', material: 'cloth', parts: pocketParts, res: 0.0026 });
-  // the scarf: a thick wrap round the neck, a knot to one side and two ends hanging down the chest
-  // two loose turns round the neck (tori tilted a little forward), a soft knot, and two ends down the chest
-  const turn = (y, R, r, tilt) => { const c = Math.cos(tilt), sn = Math.sin(tilt); return (x, yy, z) => {
-    const py = yy - y, pz = z + 0.022, ry = py * c - pz * sn, rz = py * sn + pz * c;   // tilt about x
+  // the cowl: a soft roll round the neck over a drape that falls in a V on the chest and lies on the shoulders, in folds
+  // (the references' spacers wear cowls and neck wraps more than tied scarves)
+  const roll = (y, R, r, tilt) => { const c = Math.cos(tilt), sn = Math.sin(tilt); return (x, yy, z) => {
+    const py = yy - y, pz = z + 0.022, ry = py * c - pz * sn, rz = py * sn + pz * c;   // tilted about x, lower in front
     const q = Math.hypot(x, rz * 1.08) - R; return Math.hypot(q, ry) - r; }; };
-  const wrap = k.smin(0.012, turn(1.566, 0.06, 0.0165, 0.2), turn(1.541, 0.069, 0.0185, 0.28));
-  const knot = k.boxOn([0.028, 1.52, 0.2], [0.02, 0.017, 0.014], 0.013, [0, 1, 0], 0.034);
-  const end1 = k.band(k.path([[0.03, 1.505, 0.12], [0.042, 1.43, 0.15], [0.05, 1.34, 0.15]], 0.024, 0.012), 0.056, 0.008);
-  const end2 = k.band(k.path([[0.016, 1.505, 0.12], [0.008, 1.44, 0.15], [0.002, 1.38, 0.15]], 0.03, 0.012), 0.05, 0.008);
-  P.push({ name: 'scarf', material: 'cloth', field: k.smin(0.01, wrap, knot, end1, end2), bounds: [[-0.12, 1.3, -0.13], [0.12, 1.6, 0.17]], res: 0.0036 });
+  const drape = (x, y, z) => {
+    const f = Math.min(1, Math.max(0, (z + 0.02) / 0.07));                         // 0 behind, 1 in front
+    const low = 1.502 - f * Math.max(0, 0.118 - Math.abs(x) * 0.95);              // the hem: a V in front, level behind
+    // folds that fan out from the neck, deeper toward the hem; thick enough to lie over the strap and the collar
+    const fan = Math.atan2(x, 1.6 - y), depth = Math.min(1, Math.max(0, (1.57 - y) / 0.07));
+    const folds = (0.0055 * Math.sin(fan * 26) + 0.0025 * Math.sin(fan * 61 + 1.3)) * depth;
+    return Math.max(k.skin(x, y, z) - (0.027 + folds), low - y, y - 1.578);
+  };
+  P.push({ name: 'scarf', material: 'cloth', field: k.smin(0.008, drape, roll(1.562, 0.066, 0.0195, 0.24)), bounds: [[-0.18, 1.36, -0.14], [0.18, 1.61, 0.18]], res: 0.0036 });
   // leather: a bandolier from the right shoulder to the left hip (front and back), a belt, a satchel, a holster
   const front = k.path([[-0.12 * b, 1.53, 0.0], [-0.08 * b, 1.46, 0.12], [0.02, 1.3, 0.14], [0.12 * b, 1.1, 0.12], [0.16 * b, 0.98, 0.05]], T + 0.004, 0.022);
   const back = k.path([[-0.12 * b, 1.53, 0.0], [-0.08 * b, 1.45, -0.12], [0.03, 1.28, -0.13], [0.15 * b, 1.04, -0.08]], T + 0.004, 0.022);
@@ -205,7 +209,7 @@ function trader(k) {
 }
 
 export const OUTFITS = [
-  { key: 'scout', name: "Scout's jacket & scarf", build: scout,
+  { key: 'scout', name: "Scout's jacket & cowl", build: scout,
     colours: { shirt: '#2e3833', trousers: '#3a3934', jacket: '#7a6446', collar: '#6c583c', pockets: '#755f42', scarf: '#9a4630', leather: '#4b3323', blaster: '#2b2d31', metal: '#b19a6e' } },
   { key: 'pilot', name: 'Flight suit', build: pilot,
     colours: { suit: '#5b634d', padding: '#41473a', harness: '#2c2e2f', unit: '#2a2d31', lampA: '#ffb347', lampB: '#55e08a', pockets: '#545c47', patch: '#c4672e', metal: '#9da3a8', gloves: '#3f4246' } },

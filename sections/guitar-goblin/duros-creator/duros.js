@@ -20,19 +20,21 @@ catch (e) { /* only head A */ }
 /* ---------------- the options ---------------- */
 export const OPTIONS = {
   ...(HEADS.b ? { hv: { label: 'Sculpt (comparing two heads)', type: 'seg', items: Object.entries(HEADS).map(([key, h]) => ({ key, name: h.name })) } } : {}),
+  // skin and eye colours as the references show the species: muted blues, teals, greens and greys; red to orange eyes
   skin: { label: 'Skin', type: 'swatch', items: [
-    { key: 'duro', name: 'Duro blue', c: '#4f86b6' }, { key: 'sky', name: 'Pale blue', c: '#6d9cc4' },
-    { key: 'deep', name: 'Deep blue', c: '#2f5c92' }, { key: 'slate', name: 'Slate blue', c: '#4d6a8e' },
-    { key: 'teal', name: 'Blue-green', c: '#3b8584' }, { key: 'sea', name: 'Sea green', c: '#4b8a72' },
-    { key: 'green', name: 'Green', c: '#5a8558' }, { key: 'grey', name: 'Grey-blue', c: '#6e8092' },
+    { key: 'duro', name: 'Duro blue', c: '#4f7397' }, { key: 'slate', name: 'Slate grey-blue', c: '#5d7186' },
+    { key: 'deep', name: 'Deep blue', c: '#34567f' }, { key: 'sky', name: 'Pale blue', c: '#6c8dab' },
+    { key: 'teal', name: 'Blue-green', c: '#3f7b79' }, { key: 'sea', name: 'Sea green', c: '#55917a' },
+    { key: 'green', name: 'Green', c: '#5e8756' }, { key: 'grey', name: 'Grey-green', c: '#74897c' },
   ] },
   eyes: { label: 'Eyes', type: 'swatch', items: [
-    { key: 'red', name: 'Red', c: '#cf1f2a' }, { key: 'crimson', name: 'Crimson', c: '#a8162a' },
-    { key: 'dark', name: 'Dark red', c: '#701019' }, { key: 'ember', name: 'Orange-red', c: '#df4424' },
-    { key: 'orange', name: 'Orange', c: '#ec7a1f' }, { key: 'amber', name: 'Amber', c: '#e9a13a' },
+    { key: 'red', name: 'Red', c: '#d2261c' }, { key: 'ember', name: 'Orange-red', c: '#e6481a' },
+    { key: 'orange', name: 'Orange', c: '#ee7a1c' }, { key: 'amber', name: 'Amber', c: '#eaa238' },
+    { key: 'crimson', name: 'Crimson', c: '#ac1826' }, { key: 'dark', name: 'Dark red', c: '#78121a' },
   ] },
   head: { label: 'Head', type: 'seg', items: [{ key: 'round', name: 'Rounded' }, { key: 'tall', name: 'High dome' }, { key: 'narrow', name: 'Narrow' }] },
-  build: { label: 'Build', type: 'seg', items: [{ key: 'slim', name: 'Slim', s: 0.9 }, { key: 'average', name: 'Average', s: 1 }, { key: 'broad', name: 'Broad', s: 1.12 }] },
+  // slender by nature: 'average' is narrower in the shoulder than a human hero
+  build: { label: 'Build', type: 'seg', items: [{ key: 'slim', name: 'Slim', s: 0.88 }, { key: 'average', name: 'Average', s: 0.95 }, { key: 'broad', name: 'Broad', s: 1.06 }] },
   age: { label: 'Age', type: 'seg', items: [{ key: 'young', name: 'Young', a: 0 }, { key: 'adult', name: 'Adult', a: 0.3 }, { key: 'elder', name: 'Elder', a: 0.8 }] },
   expr: { label: 'Expression', type: 'seg', items: [{ key: 'neutral', name: 'Calm' }, { key: 'smile', name: 'Smile' }, { key: 'stern', name: 'Stern' }, { key: 'wary', name: 'Wary' }] },
   marks: { label: 'Markings', type: 'seg', items: [{ key: 'none', name: 'None' }, { key: 'freckles', name: 'Freckles' }, { key: 'cheeks', name: 'Cheek bars' }, { key: 'scar', name: 'Scar' }] },

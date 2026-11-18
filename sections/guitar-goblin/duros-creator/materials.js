@@ -43,11 +43,11 @@ function normalMap(size, height, strength) {
 
 export const textures = {};
 export function makeTextures() {
-  // skin: fine pores and a soft unevenness
+  // skin: leathery. Fine pores, a faint net of creases between them, and a soft unevenness
   textures.skin = normalMap(256, (u, v) => {
-    const [d1] = worley(u * 40, v * 40, 40, 3);
-    return 0.55 * fbm(u * 8, v * 8, 8, 4, 11) - 0.35 * Math.max(0, 0.32 - d1) * 3;
-  }, 2.2);
+    const [d1, d2] = worley(u * 36, v * 36, 36, 3);
+    return 0.5 * fbm(u * 8, v * 8, 8, 4, 11) - 0.3 * Math.max(0, 0.3 - d1) * 3 - 0.22 * Math.max(0, 0.12 - (d2 - d1)) * 6;
+  }, 2.4);
   // cloth: a plain weave with a little slub
   textures.weave = normalMap(256, (u, v) => {
     const N = 32, cu = u * N, cv = v * N, iu = Math.floor(cu), iv = Math.floor(cv), fu = cu - iu, fv = cv - iv, over = (iu + iv) & 1;
@@ -64,21 +64,19 @@ export function makeTextures() {
 }
 
 /* ---------------- the eye ---------------- */
-// An equirectangular texture whose pole is the front of the eye: a deep red that is brighter in a ring, darker at
-// its very centre and toward its edges, with fine radial fibres. The colour comes from `hex`.
+// An equirectangular texture whose pole is the front of the eye. Duros eyes are one solid colour with no white and no
+// pupil: brightest in the middle, darkening to the rim, with a faint lighter band across. The colour comes from `hex`.
 export function eyeTexture(hex) {
-  const W = 512, Hh = 256, c = document.createElement('canvas'); c.width = W; c.height = Hh;
+  const W = 256, Hh = 128, c = document.createElement('canvas'); c.width = W; c.height = Hh;
   const g = c.getContext('2d'), img = g.createImageData(W, Hh), base = new THREE.Color(hex);
-  const hi = base.clone().lerp(new THREE.Color(1, 0.8, 0.55), 0.16), lo = base.clone().multiplyScalar(0.22);
+  const hi = base.clone().lerp(new THREE.Color(1, 0.75, 0.45), 0.14), lo = base.clone().multiplyScalar(0.1), col = new THREE.Color();
   for (let y = 0; y < Hh; y++) {
     const th = (y / Hh) * 180;   // degrees from the front
     for (let x = 0; x < W; x++) {
-      const fib = 0.86 + 0.28 * fbm((x / W) * 96, th / 30, 96, 3, 4);
-      let col;
-      if (th < 9) col = lo.clone().lerp(base, th / 9 * 0.7);                       // a dark centre
-      else if (th < 46) col = base.clone().lerp(hi, Math.sin(((th - 9) / 37) * Math.PI) * 0.55).multiplyScalar(fib);
-      else if (th < 60) col = base.clone().lerp(lo, (th - 46) / 14 * 0.85).multiplyScalar(fib);   // the darker rim
-      else col = lo.clone().multiplyScalar(0.6);
+      const t = Math.min(1, th / 80), grain = 0.94 + 0.12 * fbm((x / W) * 48, th / 24, 48, 2, 4);
+      if (t < 0.3) col.copy(hi).lerp(base, t / 0.3); else col.copy(base).lerp(lo, Math.min(1, (t - 0.3) / 0.6) ** 1.2);
+      col.multiplyScalar(0.82);
+      col.multiplyScalar(grain);
       // THREE.Color works in linear values; the canvas holds sRGB (the texture is flagged so), so convert on the way in
       col.convertLinearToSRGB();
       const o = (x + y * W) * 4;
@@ -93,10 +91,11 @@ export function eyeTexture(hex) {
 /* ---------------- materials ---------------- */
 export function skinMaterial() {
   return new THREE.MeshPhysicalMaterial({
-    color: 0xffffff, vertexColors: true, roughness: 0.46, metalness: 0,
-    normalMap: textures.skin, normalScale: new THREE.Vector2(0.28, 0.28),
-    sheen: 0.45, sheenRoughness: 0.5, sheenColor: new THREE.Color(0x9ec8ff),
-    clearcoat: 0.18, clearcoatRoughness: 0.45,
+    // satin, not glossy: the references' skin is matte and leathery, with only a soft sheen at grazing angles
+    color: 0xffffff, vertexColors: true, roughness: 0.62, metalness: 0,
+    normalMap: textures.skin, normalScale: new THREE.Vector2(0.42, 0.42),
+    sheen: 0.3, sheenRoughness: 0.55, sheenColor: new THREE.Color(0x9ec8ff),
+    clearcoat: 0.05, clearcoatRoughness: 0.6,
   });
 }
 export function clothMaterial(hex, opts = {}) {

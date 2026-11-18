@@ -29,9 +29,15 @@ export function paintSkin(geo, opts = {}) {
     const o = Math.pow(ao[i], 1.25), m = 0.94 + 0.12 * smoothNoise(x * 60, y * 60, z * 60) + 0.04 * smoothNoise(x * 260, y * 260, z * 260);
     let r = (0.42 + 0.58 * o) * (1 + (1 - o) * 0.22), g = (0.42 + 0.58 * o) * (1 - (1 - o) * 0.1), b = 0.42 + 0.58 * o;
     r *= m; g *= m; b *= m;
+    // mottling: soft darker patches, as on the references' skin (stronger on the cranium, see below)
+    const patch = Math.min(1, Math.max(0, smoothNoise(x * 21 + 3.1, y * 21 + 1.7, z * 21) * 0.65 + smoothNoise(x * 47, y * 47 + 5.3, z * 47) * 0.35 - 0.47) * 3.2);
+    let dark = patch * 0.14;
     if (head) {
-      const lip = Math.exp(-((x / 0.022) ** 2) - (((y + 0.0792) / 0.0072) ** 2)) * (z > 0.068 ? 1 : 0);
-      const k = 1 - lip * 0.18 - Math.max(0, y - 0.07) * 0.6;
+      // the cranium carries the darker patches; the middle of the face is a shade lighter; the skin round the eyes darker
+      dark = patch * (0.12 + 0.2 * Math.min(1, Math.max(0, (y - 0.02) / 0.05)));
+      const centre = Math.exp(-((x / 0.026) ** 2)) * (y < 0.01 && y > -0.1 && z > 0.04 ? 1 : 0);
+      const ex = eye ? eye.x : 0.04, ey = eye ? eye.y : 0, round = Math.exp(-(((Math.abs(x) - ex) / 0.03) ** 2 + ((y - ey) / 0.022) ** 2)) * (z > 0.02 ? 1 : 0);
+      const k = (1 + centre * 0.07) * (1 - round * 0.2) * (1 - Math.max(0, y - 0.09) * 0.5);
       r *= k; g *= k; b *= k;
       const dull = 1 - age * 0.07; r = r * dull + age * 0.02; g = g * dull + age * 0.02; b = b * dull + age * 0.02;
       if (marks === 'freckles' && y > -0.03 && Math.abs(x) > 0.035) {
@@ -57,6 +63,7 @@ export function paintSkin(geo, opts = {}) {
         if (z > 0.02 && !(Math.hypot(x + (eye ? eye.x : 0.0385), y) < 0.028)) { const s = Math.exp(-((d / 0.0016) ** 2)) * Math.sin(t * Math.PI) ** 0.3; r += s * 0.32; g += s * 0.26; b += s * 0.2; }
       }
     }
+    r *= 1 - dark; g *= 1 - dark * 0.92; b *= 1 - dark * 0.85;
     col.setXYZ(i, r, g, b);
   }
   col.needsUpdate = true;
