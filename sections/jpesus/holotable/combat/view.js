@@ -313,6 +313,13 @@
       if (!re || !ag) continue;
       const what = pr.kind === 'riposte' ? `a riposte against <b>${esc(ag.name)}</b>, who missed it (a superiority die, added on a hit)`
         : pr.kind === 'return-fire' ? `return fire at <b>${esc(ag.name)}</b>, who missed it (a superiority die, added on a hit)` : `an opportunity attack on <b>${esc(ag.name)}</b>, who is leaving its reach`;
+      if (pr.kind === 'parry') {   // #67: the hit waits; parry it (a die off) or take it
+        const h = pr.hit || {};
+        html += pr.mine ? `<div class="ct-row ct-react" role="alert"><span>⚡ <b>${esc(ag.name)}</b> hits <b>${esc(re.name)}</b> for ${esc(String(h.amount))}${h.type ? ' ' + esc(h.type) : ''} damage. Parry it? A superiority die plus your best of Str, Dex and Con comes off.</span>
+            <button class="btn small primary" data-ct="parry" data-id="${esc(pr.id)}">🛡 Parry</button><button class="btn small ghost" data-ct="letgo" data-id="${esc(pr.id)}">Take the hit</button></div>`
+          : `<div class="ct-row ct-react muted">Waiting for ${esc(re.name)}: parry ${esc(ag.name)}'s hit, or take it.</div>`;
+        continue;
+      }
       if (pr.mine) {
         const opts = reactOptions(re, pr.kind);
         html += `<div class="ct-row ct-react" role="alert"><span>⚡ <b>${esc(re.name)}</b> can make ${what}.</span>
@@ -482,6 +489,7 @@
     if (k === 'log') { UI.log = !UI.log; return render(); }
 
     if (k === 'letgo') return send('fight.react', { id: el.dataset.id, take: false });
+    if (k === 'parry') return send('fight.react', { id: el.dataset.id, take: true });
     if (k === 'react') {
       const re = world().units[el.dataset.unit], a = re && reactOptions(re, el.dataset.kind).find((x) => x.key === el.dataset.key);
       if (!a) return;
