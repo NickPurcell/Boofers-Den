@@ -942,6 +942,13 @@
     }
 
     if (sub === 'bio') {
+      const dt = ch.downtime || { days: 0, log: [] };   // downtime (audit 11.1): the GM grants days; the server keeps the log
+      html += `<div class="box" style="margin-bottom:10px"><h4>Downtime <span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">${n0(dt.days)} day${n0(dt.days) === 1 ? '' : 's'} to spend</span>${!ro && n0(dt.days) ? '<span class="spacer"></span><button class="btn tiny" data-act="dt-ask">＋ Ask for an activity…</button>' : ''}</h4>
+        ${(dt.log || []).length ? `<table class="t"><tbody>${dt.log.slice(-12).reverse().map(e => `<tr><td class="muted" style="white-space:nowrap">${esc(new Date(n0(e.at) * 1000).toLocaleDateString())}</td>
+          <td>${e.act === 'grant' ? '🕰 granted' : esc(R.DOWNTIME_ACTS[e.act] || e.act)}</td><td class="n">${e.act === 'grant' ? '+' : '−'}${n0(e.days)} d</td><td class="n">${n0(e.cr) ? `${n0(e.cr) > 0 ? '+' : ''}${n0(e.cr).toLocaleString()} cr` : ''}</td><td>${esc(e.text || '')}</td></tr>`).join('')}</tbody></table>`
+          : '<p class="muted" style="margin:0">No downtime yet. Between adventures the GM grants days to spend on activities.</p>'}
+        ${(dt.pending || []).map(q => `<div class="row" style="margin-top:6px;gap:8px"><b>${esc(R.DOWNTIME_ACTS[q.act] || q.act)}</b><span class="muted">${n0(q.days)} days${q.note ? ' · ' + esc(q.note) : ''}</span><span class="spacer"></span>
+          ${q.ok ? (!ro ? `<button class="btn tiny amber" data-act="dt-roll" data-id="${esc(q.id)}">🎲 Roll ${esc((q.check || {}).name || 'the check')}</button>` : '<span class="muted">approved: waiting for the roll</span>') : '<span class="muted">waiting for the GM</span>'}</div>`).join('')}</div>`;
       html += `<div class="grid g2">
         <div class="box"><h4>Appearance</h4>
           ${!ro ? `<div class="row wrap" style="margin-bottom:8px"><button class="btn small" data-act="photo" data-kind="profile">📷 Upload profile photo</button>
@@ -1015,6 +1022,8 @@
     switch (a) {
       case 'sub': S.sub = b.dataset.sub; renderSheet($('#sheet')); break;
       case 'gen-scores': scoresDialog(ch); break;
+      case 'dt-ask': askDowntime(ch); break;
+      case 'dt-roll': act('downtime.roll', { charId: ch.id, id: b.dataset.id }); break;
       case 'tool-check': toolCheckDialog(ch); break;
       case 'dismiss-note': delete S.importNotes[ch.id]; renderSheet($('#sheet')); break;
       case 'del-class': mutate(c => c.classes.splice(i, 1)); break;
@@ -2673,6 +2682,71 @@
   $('#rules').addEventListener('input', e => { if (e.target.id === 'rulesSearch') renderRules(e.target.value); });
 
   // --------------------------------------------------------------------------- GM
+  // A player asks for a downtime activity (audit 11.1): which, how many days, a note. jpesus: the GM approves first, so
+  // nothing is spent or rolled until then. Each activity's Resources and Resolution text comes from SW5e's list.
+  function askDowntime(ch) {
+    const dt = ch.downtime || { days: 0 }, left = n0(dt.days) - (dt.pending || []).reduce((n, q) => n + n0(q.days), 0);
+    let acts = [];
+    const info = key => { const a = acts.find(x => x.key === key); return a ? `<p style="margin:4px 0"><b>Resources.</b> ${esc(a.resources)}</p><p class="muted" style="margin:4px 0;font-size:12px"><b>Resolution.</b> ${esc(a.resolution.slice(0, 600))}${a.resolution.length > 600 ? '…' : ''}</p>` : key === 'other' ? '<p class="muted">Describe it in the note; the GM decides how it goes.</p>' : ''; };
+    modal(`<h3>🕰 Ask for a downtime activity</h3>
+      <p class="muted" style="margin-top:0;font-size:12px">${esc(ch.name)} has ${left} day${left === 1 ? '' : 's'} to ask for. The GM approves first; then you roll the check.</p>
+      <div class="row wrap"><label style="flex:1">Activity<select id="daAct">${Object.entries(R.DOWNTIME_ACTS).map(([k, n]) => `<option value="${k}" ${k === 'work' ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
+        <label>Days<input id="daDays" type="number" min="1" max="${left}" value="${Math.min(5, left)}" style="width:80px"></label></div>
+      <label style="margin-top:6px">Note for the GM<input id="daNote" maxlength="200" placeholder="e.g. Dock work at the spaceport"></label>
+      <div id="daInfo" style="margin-top:6px"></div>
+      <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn ghost" id="daCancel">Cancel</button><button class="btn primary" id="daGo">Ask the GM</button></div>`, box => {
+      const show = () => { $('#daInfo').innerHTML = info($('#daAct').value); };
+      if (window.HTB && S.st.sw5eBooks !== false) HTB.list('downtime').then(l => { acts = l; show(); }).catch(() => {});
+      show(); box.onchange = show;
+      box.onclick = e => {
+        if (e.target.id === 'daCancel') closeModal();
+        if (e.target.id === 'daGo') act('downtime.request', { charId: ch.id, act: $('#daAct').value, days: n0($('#daDays').value), note: $('#daNote').value })
+          .then(r => { if (r) { closeModal(); toast('Sent to the GM'); } });
+      };
+    });
+  }
+  // the GM's side: each request waiting, with the check to roll, the cost and any modifiers; then approve or turn down
+  function downtimeRequestsHtml() {
+    const rows = chars().flatMap(c => ((c.downtime || {}).pending || []).map(q => ({ c, q })));
+    if (!rows.length) return '<p class="muted" style="margin:0">No requests. Players ask from their sheet\'s Bio tab once you grant days.</p>';
+    const checks = [...R.SKILLS.map(k => [`skill:${k.key}`, `${k.name} (${({ str: 'Str', dex: 'Dex', con: 'Con', int: 'Int', wis: 'Wis', cha: 'Cha' })[k.ab]})`]), ...R.ABILITIES.map(a => [`ability:${a.key}`, `${a.name} check`])];
+    return rows.map(({ c, q }) => `<div class="dt-req" data-char="${esc(c.id)}" data-id="${esc(q.id)}" style="border-top:1px solid var(--line);padding:6px 0">
+      <div><b>${esc(c.name)}</b>: ${esc(R.DOWNTIME_ACTS[q.act] || q.act)}, ${n0(q.days)} days${q.note ? ` · <span class="muted">${esc(q.note)}</span>` : ''}</div>
+      ${q.ok ? `<div class="row"><span class="muted">Approved: ${esc(c.name)} rolls ${esc((q.check || {}).name || '')}.</span><span class="spacer"></span><button class="btn tiny" data-dt="roll">🎲 Roll for them</button></div>`
+        : `<div class="row wrap" style="gap:6px;margin-top:4px">${q.act === 'other' ? '<input class="dtText" maxlength="200" placeholder="What came of it" style="flex:1">'
+          : `<select class="dtCheck">${checks.map(([v, t]) => `<option value="${v}">${esc(t)}</option>`).join('')}</select>
+            <label class="toggle" title="An Intelligence check with a set of tools the character is proficient with"><input type="checkbox" class="dtProf"> + proficiency (tools)</label>
+            <label>Check ±<input class="dtBonus" type="number" min="-10" max="10" value="0" style="width:60px"></label>
+            <label title="Added to the d100 roll, e.g. a scarce or rich setting">d100 ±<input class="dtExtra" type="number" min="-50" max="50" value="0" style="width:60px"></label>
+            ${q.act === 'selling-enhanced-items' ? '<label>Rarity<select class="dtRarity"><option value="0">Standard</option><option value="1">Premium</option><option value="2">Prototype</option><option value="3">Advanced</option><option value="4">Legendary</option></select></label>' : ''}`}
+          <label>Cost (cr)<input class="dtCost" type="number" min="0" value="0" style="width:90px"></label>
+          <span class="spacer"></span><button class="btn tiny ghost" data-dt="no">Turn down</button><button class="btn tiny primary" data-dt="yes">Approve</button></div>`}</div>`).join('');
+  }
+
+  // Downtime between adventures (audit 11.1, #202): the GM gives the characters they tick N days to spend
+  function openGrantDowntime() {
+    const gmIds = new Set(Object.entries(S.st.players).filter(([, p]) => p.role === 'gm').map(([id]) => id));
+    const list = chars().map(c => ({ c, on: !gmIds.has(c.owner) }));
+    modal(`<h3>🕰 Grant downtime</h3>
+      <p class="muted" style="margin-top:0;font-size:12px">Days between adventures that each character can spend on downtime activities (Wretched Hives, chapter 2). They show on the sheet's Bio tab.</p>
+      <div class="row wrap"><label>Days<input id="dtDays" type="number" min="1" max="3650" value="7" style="width:90px"></label>
+        <label style="flex:1">Why <input id="dtWhy" maxlength="80" placeholder="e.g. A week in port at Nar Shaddaa"></label></div>
+      <label class="toggle" style="margin-top:6px" title="Each character's lifestyle (on their sheet) is charged for these days, from their credits"><input type="checkbox" id="dtLiving" checked> Charge each one's lifestyle for these days</label>
+      <h4 style="margin-top:10px">Who gets them</h4>
+      <div class="ask-who">${list.map(({ c, on }) => `<label class="toggle"><input type="checkbox" class="dtChar" value="${esc(c.id)}" ${on ? 'checked' : ''}> ${esc(c.name)}
+        <span class="muted">${n0((c.downtime || {}).days)} days now</span></label>`).join('') || '<p class="muted">No characters yet.</p>'}</div>
+      <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn ghost" id="dtCancel">Cancel</button><button class="btn primary" id="dtGo">Grant</button></div>`, box => {
+      box.onclick = e => {
+        if (e.target.id === 'dtCancel') closeModal();
+        if (e.target.id === 'dtGo') {
+          const ids = [...box.querySelectorAll('.dtChar:checked')].map(x => x.value);
+          act('downtime.grant', { days: n0($('#dtDays').value), chars: ids, reason: $('#dtWhy').value, living: $('#dtLiving').checked })
+            .then(r => { if (r) { closeModal(); toast(`Downtime granted to ${r.granted}${r.living ? `; living costs charged for ${r.living}` : ''}`); } });
+        }
+      };
+    });
+  }
+
   // XP after an encounter (audit 9.8): an amount (the meter fills in the creatures' XP), split among the characters
   // ticked. The server adds it and tells the GM who has reached the next level; levelling stays the GM's grant.
   function openAwardXp(amount) {
@@ -2786,6 +2860,8 @@
           Someone missed the session? Grant just their character, and you can level it for them.</p>
         <button class="btn small amber" id="gmGrant">⬆ Grant a level…</button>
         <button class="btn small" id="gmXp" title="Give the party XP and split it; you're told who has enough to level">★ Award XP…</button>
+        <button class="btn small" id="gmDowntime" title="Between adventures: give characters days of downtime to spend on activities">🕰 Grant downtime…</button>
+        <h4 style="margin-top:12px">Downtime requests</h4><div id="dtReqs">${downtimeRequestsHtml()}</div>
         <button class="btn small" id="gmLoot" title="Roll SW5e enhanced items by rarity, plus credits, into the party stash">🎁 Loot…</button>
         <button class="btn small" id="gmAsk" title="Everyone roll Perception, a group check, a secret Insight roll for a player…">🎲 Ask for a roll…</button>
         <label class="toggle" style="margin-top:8px" title="A table rule: whether players may take the hit die's maximum instead of the average or a roll">
@@ -2857,6 +2933,16 @@
     F.busy = ''; await loadFiles();
   }
   $('#gm').addEventListener('click', e => {
+    const dtb = e.target.closest('[data-dt]');   // a downtime request: approve, turn down, or roll for a character (11.1)
+    if (dtb) {
+      const row = dtb.closest('.dt-req'), v = sel => row.querySelector(sel), charId = row.dataset.char, id = row.dataset.id;
+      if (dtb.dataset.dt === 'roll') return act('downtime.roll', { charId, id });
+      if (dtb.dataset.dt === 'no') return act('downtime.decide', { charId, id, ok: false });
+      const [what, key] = v('.dtCheck') ? v('.dtCheck').value.split(':') : [];
+      return act('downtime.decide', { charId, id, ok: true, cr: n0(v('.dtCost').value), text: v('.dtText') ? v('.dtText').value : undefined,
+        check: what ? { what, key } : undefined, prof: v('.dtProf') ? v('.dtProf').checked : false, bonus: v('.dtBonus') ? n0(v('.dtBonus').value) : 0,
+        extra: v('.dtExtra') ? n0(v('.dtExtra').value) : 0, rarity: v('.dtRarity') ? n0(v('.dtRarity').value) : -1 });
+    }
     if (e.target.id === 'moveFiles') return moveFiles();
     if (e.target.id === 'filesRefresh') return loadFiles();
     const rm = e.target.closest('[data-rmplayer]');
@@ -2868,6 +2954,7 @@
     if (id === 'gmGrant') openGrant();
     if (id === 'gmCampaigns') openCampaigns();
     if (id === 'gmXp') openAwardXp(0);
+    if (id === 'gmDowntime') openGrantDowntime();
     if (id === 'gmAsk') openAskRoll();
     if (id === 'gmLoot') openLoot();
     if (id === 'restoreBtn') $('#restoreFile').click();

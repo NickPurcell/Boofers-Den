@@ -568,6 +568,13 @@
   }
   Object.assign(SW5E, { CHOICE_COLS, choiceCounts });
 
+  // ---- downtime activities (audit 11.1): Wretched Hives' chapter 2, keyed as SW5e's 'downtime' list builds them from the
+  // headings, and "other" for anything else the GM allows (no tables: the GM writes the result). Crafting is 11.2's.
+  const DOWNTIME_ACTS = { 'bounty-hunting': 'Bounty hunting', 'buying-enhanced-items': 'Buying enhanced items', carousing: 'Carousing', crime: 'Crime',
+    espionage: 'Espionage', gambling: 'Gambling', 'mercenary-contracting': 'Mercenary contracting', 'pit-fighting': 'Pit fighting', racing: 'Racing',
+    research: 'Research', 'selling-enhanced-items': 'Selling enhanced items', training: 'Training', work: 'Work', other: 'Something else' };
+  Object.assign(SW5E, { DOWNTIME_ACTS });
+
   // ---- senses (audit 5.12): [{ kind, range }] on the sheet. The four kinds SW5e's creatures and species use; feet 1-9999.
   const SENSES = ['darkvision', 'blindsight', 'tremorsense', 'truesight'];
   function cleanSenses(list) {
