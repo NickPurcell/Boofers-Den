@@ -3352,6 +3352,45 @@ test("Parry, lapsed by hiding: the GM hides the attacker while the prompt is up;
 
 
 
+/* ---------------------------------------------------------------- temporary force and tech points in the combat view (#190, after #185) */
+test("#190: the combat view spends temporary points first, a pool with none of its own left still casts, and an undo keeps them", async () => {
+  const { gm, sam, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  let st = await sam.state();
+  const av = Object.values(st.characters).find((c) => c.name === "Avery");
+  await sam.act("char.save", { char: Object.assign({}, av, { classes: [{ name: "Consular", level: 3 }], abilities: Object.assign({}, av.abilities, { wis: 16 }),
+    force: { max: 4, used: 4, temp: 3 }, powers: [{ name: "Mind Shove", level: 1, type: "force", alignment: "universal" }] }) });
+  await gm.act("fight.ability", { name: "Mind Shove", data: SHOVE });
+  st = await gm.state();
+  assert.deepEqual([st.characters[av.id].force.used, st.characters[av.id].force.temp], [4, 3], "none of its own left, 3 temporary");
+  const r = await sam.act("fight.use", { ability: "pw:mind shove", target: ids.raider });
+  assert.equal(r.code, 200, JSON.stringify(r.data));
+  st = await gm.state();
+  assert.deepEqual([st.characters[av.id].force.used, st.characters[av.id].force.temp], [4, 1], "the 2 points came from the temporary ones");
+  // an undo gives them back, and keeps the temporary points (the snapshot's cleaner kept temp)
+  assert.equal((await gm.act("fight.undo", {})).code, 200);
+  st = await gm.state();
+  assert.deepEqual([st.characters[av.id].force.used, st.characters[av.id].force.temp], [4, 3]);
+});
+
+test("#190 in the engine: poolLeft and payPool, spend(), and Force-Empowered Strikes from temporary points", () => {
+  const ch = { classes: [{ name: "Consular", level: 3 }], abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 16, cha: 10 }, force: { max: 4, used: 3, temp: 2 } };
+  const fp = E.resourcesOf(ch, R).find((r) => r.key === "force");
+  assert.deepEqual([fp.used, fp.temp, E.poolLeft(fp)], [3, 2, 3]);
+  let s = E.spend(ch, "force", 3, R);
+  assert.deepEqual([s.ok, s.ch.force.used, s.ch.force.temp], [true, 4, 0], "2 temporary, then 1 of its own");
+  assert.match(E.spend(ch, "force", 4, R).why, /Not enough Force points: 1 of 4 left, and 2 temporary/);
+  assert.deepEqual(E.payPool({ max: 5, used: 5, temp: 1 }, 1), { max: 5, used: 5, temp: 0 });
+  // Force-Empowered Strikes: the riders offered count the temporary points, and the hit pays them first
+  const sword = Object.assign({}, blade, { name: "Lightsaber", abil: "str", weapon: true });
+  const gd = unit({ id: "gd", name: "Gale", side: "pc", x: 0, y: 0, riders: { fes: 3 }, pools: { force: { key: "force", name: "Force points", max: 10, used: 10, temp: 2, refill: "long" } } });
+  const r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 60, maxHp: 60 });
+  const offer = E.preview(world([gd, r1], "gd"), "gd", "r1", sword).riders.find((x) => x.key === "fes");
+  assert.equal(offer.max, 2, "two temporary points: up to 2d8");
+  const r = E.apply(world([gd, r1], "gd"), { type: "attack", unit: "gd", target: "r1", attack: sword, add: { fes: 2 } }, dice({ total: 15, nat: 12 }, { total: 12 }).roll);
+  assert.deepEqual([r.world.units.gd.pools.force.used, r.world.units.gd.pools.force.temp], [10, 0]);
+});
+
 test("class pools in the world (#164): a sheet that hasn't added its class's resources still has them in a fight, so maneuvers and Action Surge show", () => {
   const ch = { id: "c1", name: "Fenn", classes: [{ name: "Fighter", level: 5 }], abilities: { str: 16, dex: 12, con: 14, int: 8, wis: 10, cha: 8 }, hp: { max: 30, current: 30 }, ac: 15,
     attacks: [{ name: "Sword", ab: "str", damage: "1d8", props: "" }], features: [{ name: "Trip Attack" }] };
