@@ -3503,3 +3503,23 @@ test("class pools in the world (#164): a sheet that hasn't added its class's res
   const w2 = E.buildWorld({ characters: { c1: kept }, entries: [{ id: "e1", name: "Fenn", charId: "c1" }], active: true, turn: 0, tokens: [{ id: "t1", x: 0, y: 0 }], unitTokens: { e1: "t1" } }, R);
   assert.equal(w2.units.e1.pools.superiority.used, 2, "a stored pool keeps its count");
 });
+
+/* ---------------------------------------------------------------- the Monk's Unarmored Movement (#67) */
+test("Unarmored Movement: a Monk's column adds to the sheet's speed out of armor; armor or a shield takes it and Martial Arts away", () => {
+  const monk = (level, equipment, o) => Object.assign({ classes: [{ name: "Monk", level }], abilities: { str: 10, dex: 16, con: 12, int: 10, wis: 14, cha: 8 },
+    speed: 30, hp: { max: 30, current: 30 }, ac: 15, attacks: [], equipment }, o);
+  const at = (ch, variants) => E.buildWorld({ characters: { c1: ch }, entries: [{ id: "e1", name: "Mira", charId: "c1" }], active: true, turn: 0, variants,
+    tokens: [{ id: "t1", x: 0, y: 0 }], unitTokens: { e1: "t1" } }, R).units.e1;
+  assert.deepEqual([2, 3, 9, 20].map((l) => E.unarmoredMoveOf(monk(l, []), R)), [0, 10, 20, 30], "the Monk table's column at its level");
+  assert.equal(at(monk(5, [])).speed, 45);
+  assert.equal(E.budget(Object.assign(E.buildWorld({ characters: { c1: monk(5, []) }, entries: [{ id: "e1", name: "Mira", charId: "c1" }], active: true, turn: 0,
+    tokens: [{ id: "t1", x: 0, y: 0 }], unitTokens: { e1: "t1" } }, R), { turnId: "e1", round: 1 })).moveLeft, 45, "the turn's movement");
+  const vest = { name: "Combat suit", equipped: true, armor: { kind: "light", ac: 11 } }, shield = { name: "Light shield", equipped: true, armor: { kind: "shield", ac: 1 } };
+  assert.equal(at(monk(5, [vest])).speed, 30, "in armor");
+  assert.equal(at(monk(5, [shield])).speed, 30, "with a shield");
+  assert.equal(at(monk(5, [Object.assign({}, vest, { equipped: false })])).speed, 45, "armor in the pack doesn't count");
+  assert.equal(E.martialDieOf(monk(5, [vest]), R), null, "no Martial Arts in armor");
+  assert.equal(E.attacksOf(monk(5, [vest]), R).some((a) => a.unarmed), false, "nor its unarmed strike");
+  assert.equal(at(monk(5, [], { classes: [{ name: "Fighter", level: 5 }] })).speed, 30, "not a monk");
+  assert.equal(at(monk(5, [], { speed: 25 })).speed, 40, "on the sheet's own speed");
+});

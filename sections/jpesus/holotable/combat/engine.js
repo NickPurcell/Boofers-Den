@@ -362,13 +362,22 @@
   // SW5e's Monk, in our own words: unarmed strikes and monk weapons (vibroweapons without the dexterity, heavy, special
   // or two-handed property) get finesse and may roll the Martial Arts die in place of their own damage; after the Attack
   // action with one, an unarmed strike as a bonus action (Flurry of Blows: one more for a focus point); Dash and
-  // Disengage as a bonus action; Dex for the Athletics of a grapple or shove. Armor and shields aren't known to the
-  // sheet yet, so they aren't checked.
-  function martialDieOf(ch, rules) {
-    if (!rules || !rules.classTableAt) return null;
+  // Disengage as a bonus action; Dex for the Athletics of a grapple or shove. All of it only while the sheet has no
+  // armor or shield equipped (its gear's armor rows, as rules.js armorClass reads them).
+  const wearsArmor = (ch) => ((ch && ch.equipment) || []).some((e) => e && e.equipped && e.armor && ['light', 'medium', 'heavy', 'shield'].includes(e.armor.kind));
+  const monkColumn = (ch, rules, h) => {
+    if (!rules || !rules.classTableAt || wearsArmor(ch)) return '';
     const row = rules.classTableAt(ch).find((x) => x.cls === 'Monk');
-    const v = row && (row.cols.find(([h]) => h === 'Martial Arts') || [])[1];
-    return /^d\d+$/.test(String(v || '')) ? String(v) : null;
+    return String((row && (row.cols.find(([k]) => k === h) || [])[1]) || '');
+  };
+  function martialDieOf(ch, rules) {
+    const v = monkColumn(ch, rules, 'Martial Arts');
+    return /^d\d+$/.test(v) ? v : null;
+  }
+  // Unarmored Movement: the feet in its column of the Monk table, added to the sheet's speed (the sheet keeps the base)
+  function unarmoredMoveOf(ch, rules) {
+    const m = /^\+?(\d+)\s*ft/i.exec(monkColumn(ch, rules, 'Unarmored Movement'));
+    return m ? +m[1] : 0;
   }
   const isUnarmed = (a) => /\bunarmed\b/i.test(String((a && a.name) || ''));
   const monkWeapon = (a) => isUnarmed(a) || (!/\b(dexterity|heavy|special|two-handed|range|ammunition|power cell|reload)\b/i.test(String(a.props || '')));
@@ -1871,9 +1880,10 @@
         ac: ch ? +ch.ac : e.ac == null || e.ac === '' ? null : +e.ac,
         hp: ch ? +hp.current : e.hp == null || e.hp === '' ? null : +e.hp, maxHp: ch ? +hp.max : e.maxHp == null ? null : +e.maxHp,
         temp: ch ? +hp.temp || 0 : 0,
-        // the table's encumbrance variant (audit 6.5, rules.js carrying): a character's load slows it, and a heavy one tilts its rolls
+        // the table's encumbrance variant (audit 6.5, rules.js carrying): a character's load slows it, and a heavy one tilts its rolls;
+        // a Monk out of armor adds its Unarmored Movement (#67)
         ...(() => { const cw = ch && rules && rules.carrying ? rules.carrying(ch, table.variants) : null;
-          return { speed: ch ? Math.max(0, (+ch.speed || 30) - (cw ? cw.slow : 0)) : +((table.npcSpeed || {})[e.id]) || 30,
+          return { speed: ch ? Math.max(0, (+ch.speed || 30) + unarmoredMoveOf(ch, rules) - (cw ? cw.slow : 0)) : +((table.npcSpeed || {})[e.id]) || 30,
             encumbered: cw && cw.slow >= 20 ? 'heavy' : cw && cw.slow ? 'encumbered' : '' }; })(),
         // its classes' own pools (#108's presets) are there even before the sheet has added them; the server stores one on
         // the sheet the first time it's spent (writeBack), so Action Surge, maneuvers and the rest work on any sheet
@@ -1909,5 +1919,5 @@
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
     SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf, d20, flankOf, fixedTotal, cruel, modeName,
-    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, poolLeft, payPool, ridersOf, ridersFor, attacksPerAction, multiattackOf, offhandOf, stylesOf, withThreshold, thresholdFor, MIN_THRESHOLD, contestBonus, helpOn, maneuverCheck, unitAt, weaponProps, volleysOf, MANEUVERS, maneuversOf, superiorityOf, saveVs, pushAway, landHit, martialOf, martialDieOf };
+    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, poolLeft, payPool, ridersOf, unarmoredMoveOf, wearsArmor, ridersFor, attacksPerAction, multiattackOf, offhandOf, stylesOf, withThreshold, thresholdFor, MIN_THRESHOLD, contestBonus, helpOn, maneuverCheck, unitAt, weaponProps, volleysOf, MANEUVERS, maneuversOf, superiorityOf, saveVs, pushAway, landHit, martialOf, martialDieOf };
 });
