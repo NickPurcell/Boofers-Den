@@ -289,8 +289,15 @@
   const ARMOR_KINDS = ['light', 'medium', 'heavy', 'shield'];
   function armorFromItem(it) {   // a SW5e gear entry (the picker's row) -> { kind, ac } or null
     const kind = String((it && it.accl) || '').toLowerCase(), ac = parseInt(String((it && it.ac) || '').replace(/^\+/, ''), 10);
-    return ARMOR_KINDS.includes(kind) && Number.isFinite(ac) ? { kind, ac } : null;
+    if (!(ARMOR_KINDS.includes(kind) && Number.isFinite(ac))) return null;
+    // its speed properties (audit 5.11; SW5e's armor properties): "strength N" slows a weaker wearer, "cumbersome" everyone
+    const props = ((it && it.props) || []).map(p => String(p).toLowerCase()), str = props.map(p => /^strength (\d+)/.exec(p)).find(Boolean);
+    return Object.assign({ kind, ac }, str ? { str: +str[1] } : {}, props.includes('cumbersome') ? { cumbersome: true } : {});
   }
+  // an item's armor, checked (the sheet and the party stash keep only this): kind, AC, and its speed properties
+  const cleanArmor = a => (a && ARMOR_KINDS.includes(a.kind) ? Object.assign({ kind: a.kind, ac: Math.max(0, Math.min(30, parseInt(a.ac, 10) || 0)) },
+    +a.str >= 1 && +a.str <= 30 ? { str: Math.round(+a.str) } : {}, a.cumbersome ? { cumbersome: true } : {}) : null);
+  Object.assign(SW5E, { cleanArmor });
   // Infuse Item (Engineer 2nd, SW5e): one armor, shield or weapon until the next long rest, +1 to AC or to attack
   // and damage, +2 from 10th and +3 from 15th. The sheet keeps which: infused = "attack:<name>" or "equipment:<name>".
   function infuseBonus(c) {
@@ -420,6 +427,26 @@
   // Selling (audit 6.8): equipment fetches half its cost (PHB, "Selling Treasure"), whole credits, rounded down
   const sellPrice = e => Math.floor(Math.max(0, +(e && e.cost) || 0) / 2);
   Object.assign(SW5E, { sellPrice });
+  // Speed (audit 5.11): the sheet's walking speed, less what slows it. Armor or a shield with SW5e's "strength N" property,
+  // worn by someone with less Strength, -10 ft (not under the encumbrance variant, which the PHB says replaces that rule);
+  // "cumbersome" -5 ft each; and the encumbrance variant's load. Other movement (swim, climb, fly, burrow) is read from the
+  // species traits on the sheet ("You have a swimming speed of 30 feet"), so it needs no field of its own.
+  function speedOf(c, variants) {
+    const base = Math.max(0, +(c && c.speed) || 30), parts = [], str = +((c && c.abilities) || {}).str || 10;
+    const worn = ((c && c.equipment) || []).filter(e => e && e.equipped && e.armor && ARMOR_KINDS.includes(e.armor.kind));
+    const cw = carrying(c, variants);
+    let slow = 0;
+    if (!cw.variant) for (const e of worn) if (+e.armor.str > str) { slow += 10; parts.push(`${e.name} needs Str ${e.armor.str}: -10 ft`); break; }
+    for (const e of worn) if (e.armor.cumbersome) { slow += 5; parts.push(`${e.name} is cumbersome: -5 ft`); }
+    if (cw.slow) { slow += cw.slow; parts.push(`carrying ${cw.weight} lb: -${cw.slow} ft`); }
+    const other = {};
+    for (const f of (c && c.features) || []) for (const m of String((f && f.text) || '').matchAll(/(flying|swimming|climbing|burrowing) speed of (\d+)/gi)) {
+      const k = { flying: 'fly', swimming: 'swim', climbing: 'climb', burrowing: 'burrow' }[m[1].toLowerCase()];
+      other[k] = Math.max(other[k] || 0, +m[2]);
+    }
+    return { base, speed: Math.max(0, base - slow), slow, parts, other };
+  }
+  Object.assign(SW5E, { speedOf });
 
   // the d20 a weapon crits on: 20, or lower for an attack's own crit range or a "Keen N" weapon (SW5e: the range grows by N)
   // Reliable Talent (Operative 11, SW5e): ability checks that add the proficiency bonus get the d20's minimum roll

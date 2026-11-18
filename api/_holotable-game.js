@@ -202,7 +202,7 @@ function cleanChar(ch) {
       alignment: ["light", "dark"].includes(pw.alignment) ? pw.alignment : "universal", notes: s(pw.notes, 300), description: s(pw.description, 4000) })),
     features: list(ch.features, 150, (f) => ({ name: s(f.name, 80), text: s(f.text, 4000) })),
     equipment: list(ch.equipment, 200, (e) => ({ name: s(e.name, 80), qty: numOr(e.qty, 1), equipped: !!e.equipped, notes: s(e.notes, 200),
-      ...(e.armor && R.ARMOR_KINDS.includes(e.armor.kind) ? { armor: { kind: e.armor.kind, ac: clamp(int(e.armor.ac), 0, 30) } } : {}),
+      ...(R.cleanArmor(e.armor) ? { armor: R.cleanArmor(e.armor) } : {}),   // with its speed properties (audit 5.11)
       // weight in pounds each (audit 6.5) and cost in credits each (6.8), from SW5e's gear or typed; kept only when set
       ...(+e.wt > 0 ? { wt: Math.min(10000, Math.round(+e.wt * 100) / 100) } : {}), ...(+e.cost > 0 ? { cost: Math.min(1e9, Math.round(+e.cost)) } : {}),
       // an enhanced item's rarity, whether it requires attunement, and whether it's attuned (audit 6.3), kept only when set
@@ -1305,7 +1305,7 @@ function cleanStashItem(e) {
     id: /^[a-z0-9]{4,20}$/.test(String(e.id || "")) ? String(e.id) : rid(),
     name, qty: clamp(int(e.qty, 1), 1, 999), notes: str(e.notes, 200),
     ...(RARITIES.includes(e.rar) ? { rar: e.rar } : {}), ...(e.att ? { att: true } : {}),
-    ...(e.armor && R.ARMOR_KINDS.includes(e.armor.kind) ? { armor: { kind: e.armor.kind, ac: clamp(int(e.armor.ac), 0, 30) } } : {}),
+    ...(R.cleanArmor(e.armor) ? { armor: R.cleanArmor(e.armor) } : {}),
   };
 }
 function cleanStash(st) {

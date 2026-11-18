@@ -206,6 +206,21 @@ test("enhanced items (audit 6.2): a +N to attack and damage, or to AC, read from
   assert.equal(R.armorClass(c).total, 16);
 });
 
+test("speed (audit 5.11): SW5e's strength and cumbersome armor properties, the encumbrance variant, other movement from traits", () => {
+  assert.deepEqual(R.armorFromItem({ accl: "Heavy", ac: "17", props: ["Bulky", "cumbersome", "strength 15"] }), { kind: "heavy", ac: 17, str: 15, cumbersome: true });
+  assert.deepEqual(R.armorFromItem({ accl: "Light", ac: "11", props: [] }), { kind: "light", ac: 11 });
+  assert.deepEqual(R.cleanArmor({ kind: "heavy", ac: "17", str: 99, cumbersome: "yes" }), { kind: "heavy", ac: 17, cumbersome: true });
+  assert.equal(R.cleanArmor({ kind: "__proto__" }), null);
+  const c = (str, worn, extra = {}) => Object.assign({ speed: 30, abilities: { str }, equipment: [{ name: "Assault armor", equipped: worn, armor: { kind: "heavy", ac: 17, str: 15, cumbersome: true } }] }, extra);
+  assert.deepEqual([R.speedOf(c(12, true)).speed, R.speedOf(c(15, true)).speed, R.speedOf(c(12, false)).speed], [15, 25, 30], "-10 below Str 15, -5 cumbersome; carried, nothing");
+  assert.deepEqual(R.speedOf(c(12, true)).parts, ["Assault armor needs Str 15: -10 ft", "Assault armor is cumbersome: -5 ft"]);
+  assert.equal(R.speedOf(c(12, true), [R.ENCUMBRANCE]).speed, 25, "the encumbrance variant replaces the Strength rule");
+  const heavy = c(10, false); heavy.equipment.push({ name: "Crate", qty: 1, wt: 60 });
+  assert.equal(R.speedOf(heavy, [R.ENCUMBRANCE]).speed, 20, "the load, under the variant");
+  const tr = c(10, false, { features: [{ name: "Swim", text: "You have a swimming speed of 30 feet." }, { name: "Climb", text: "You have a climbing speed of 25 feet." }] });
+  assert.deepEqual(R.speedOf(tr).other, { swim: 30, climb: 25 });
+});
+
 test("Engineers and Scouts get tech points back on a short rest; others don't", () => {
   assert.equal(R.techOnShortRest(char([["Engineer", 1]])), true);
   assert.equal(R.techOnShortRest(char([["Scout", 2]])), true);
