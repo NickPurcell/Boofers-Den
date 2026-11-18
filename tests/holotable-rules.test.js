@@ -60,6 +60,24 @@ test("archetypes that cast (audit 3.13): points and max power level from each on
   assert.equal(bg.lightDC, 8 + 3 + 1, "other force archetypes use Wisdom for light side");
 });
 
+test("Mechanist Technique and Rakatan Order (#160's review): their Techcasting tables in SW5e's feature data", () => {
+  const ci = (cls, L, archetype, abilities = {}) => R.casterInfo({ classes: [{ name: cls, level: L, archetype }], abilities });
+  const series = (cls, a, key) => Array.from({ length: 20 }, (_, i) => ci(cls, i + 1, a)[key]);
+  // Mechanist Technique improves the Scout's own casting from 3rd: 1.5 points per level (rounded up), 2nd at 3 ... 7th at 17
+  assert.deepEqual(series("Scout", "Mechanist Technique", "techMax"), [0, 2, 5, 6, 8, 9, 11, 12, 14, 15, 17, 18, 20, 21, 23, 24, 26, 27, 29, 30]);
+  assert.deepEqual(series("Scout", "Mechanist Technique", "techMaxLevel"), [0, 1, 2, 2, 2, 3, 3, 3, 4, 4, 5, 5, 5, 6, 6, 6, 7, 7, 7, 7]);
+  assert.equal(R.highCastFrom({ classes: [{ name: "Scout", level: 17, archetype: "Mechanist Technique" }] }, "tech"), 5, "5th to 7th once per long rest");
+  assert.equal(R.highCastFrom({ classes: [{ name: "Scout", level: 17, archetype: "" }] }, "tech"), 4);
+  assert.equal(ci("Scout", 9, "Mechanist").techMaxLevel, 4, "without its last word");
+  // Rakatan Order (Monk): a tech archetype like the others, casting with Int, Wis or Cha
+  assert.deepEqual(series("Monk", "Rakatan Order", "techMax"), [0, 0, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10]);
+  assert.deepEqual(series("Monk", "Rakatan Order", "techMaxLevel"), [0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 4]);
+  const rk = ci("Monk", 5, "Rakatan Order", { int: 10, wis: 16, cha: 8 });
+  assert.deepEqual([rk.techDC, rk.techAtk, rk.techMax], [8 + 3 + 3, 3 + 3, 3 + 3]);
+  assert.equal(R.techOnShortRest({ classes: [{ name: "Monk", level: 3, archetype: "Rakatan Order" }] }), true);
+  assert.equal(R.highCastFrom({ classes: [{ name: "Monk", level: 17, archetype: "Rakatan Order" }] }, "tech"), 4);
+});
+
 test("multiclass max power level (audit 3.14): the PHB's weighted caster level and its table", () => {
   const mc = (...classes) => R.casterInfo({ classes: classes.map(([name, level, archetype]) => ({ name, level, archetype: archetype || "" })), abilities: {} });
   // the PHB's own example: Marauder Approach berserker 4 (4/9 x 4 = 1.77) + guardian 3 (5/9 x 3 = 1.67) = 3rd: 2nd-level powers
