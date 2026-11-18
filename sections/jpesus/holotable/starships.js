@@ -90,6 +90,8 @@
         concealed: f.concealed === true,   // Conceal succeeded: unseen until it attacks
         harassWeapon: clamp(int(f.harassWeapon, -1), -1, 29),   // the weapon this ship harassed with: it can't fire this turn
         harassedBy: typeof f.harassedBy === 'string' && /^[a-z0-9]{6,20}$/.test(f.harassedBy) ? f.harassedBy : '', harassedWeapon: clamp(int(f.harassedWeapon, -1), -1, 29) },   // leaving its square costs a critical hit
+      // the weapons (by index) whose zone is switched on: it lasts until switched off (SotG ch. 5, zone)
+      zones: [...new Set((Array.isArray(st.zones) ? st.zones : []).map((x) => int(x, -1)).filter((x) => x >= 0 && x <= 29))].slice(0, 10),
       recharged: st.recharged === true,   // a recharge just finished: the crew may spend hull dice
       astro: clamp(int(st.astro), 0, 10), startup: clamp(int(st.startup), 0, 10),   // astrogation equations, start-up procedures done
       // the course choice the equations were worked for (rushes, careful): changing it restarts them (SotG ch. 8)
@@ -586,6 +588,28 @@
     }
     return out;
   }
+  // Zone (SotG ch. 5): a weapon with the property, switched on with an action, makes difficult terrain within its firing
+  // arc and normal range until switched off; and its ship has advantage on Dexterity saves against tertiary weapons
+  // launched from outside that range. zonesOf: the ship's zones that are on, as { wi, name, arc ('' for any), range }.
+  function zonesOf(ship) {
+    const ws = Array.isArray(ship && ship.weapons) ? ship.weapons : [];
+    return statusOf(ship).zones.map((wi) => [wi, ws[wi]]).filter(([, w]) => w && weaponProp(w, 'zone') && weaponRange(w))
+      .map(([wi, w]) => ({ wi, name: String(w.name || 'Weapon'), arc: MOUNTS.includes(w.arc) && w.arc !== 'turret' ? w.arc : '', range: weaponRange(w).a }));
+  }
+  // is a ship of psq squares at p inside zone z of the ship of zsq squares at token zt?
+  const inZone = (z, zt, zsq, p, psq) => shipGap(zt, zsq, p, psq) <= z.range && (!z.arc || arcOf(zt, zsq, p, psq) === z.arc);
+  // the extra feet a move costs through zones (difficult terrain: each foot in one costs two): the straight path's
+  // share of squares inside any zone, of the move's feet. zones: [{ z, tok, sq }]; psq: the moving ship's squares.
+  function zoneExtra(psq, from, to, zones) {
+    const dx = int(to.x) - int(from.x), dy = int(to.y) - int(from.y), n = Math.max(Math.abs(dx), Math.abs(dy));
+    if (!n || !zones || !zones.length) return 0;
+    let inside = 0;
+    for (let k = 1; k <= n; k++) {
+      const p = { x: Math.round(int(from.x) + dx * k / n), y: Math.round(int(from.y) + dy * k / n) };
+      if (zones.some((q) => inZone(q.z, q.tok, q.sq, p, psq))) inside++;
+    }
+    return Math.round(gridFeet(dx, dy) * inside / n);
+  }
   // vicious N: a damage roll with a weapon die at its maximum gains N (once per roll). detail: the roller's
   // "2d10[10,3]+4" text, struck dice "~3~" not counting
   function viciousBonus(w, detail) {
@@ -940,5 +964,5 @@
     setCondition, summary, SIZE_DATA, SHIELD_TYPES, REACTORS, COUPLINGS, SYSTEMS, POOLS, SYSTEM_NAMES, POWER_DIE, sizeOf, roleOf, reactorOf, couplingOf,
     shieldTypeOf, powerDie, powerDieText, powerCaps, diceOf, diceLeft, regenRate, boostDC, regenDC, boostedSpeed, startTurn, usePower, setPower,
     setDiceUsed, boost, regenerateShields, SQUARE_FT, SQUARES, squaresOf, FACING_NAMES, DIRS, gridFeet, turnSteps, turnCost, moveCost, inBounds, shipGap,
-    arcOf, INIT_SIZE_MOD, npcInitBonus, deploymentInfo, techniquesKnown, techDie, STOCK_COST, TIER_COST, minCrew, costs, REGIONS, HYPER_HOURS, START_UP, hyperClass, stepsFor, jumpHours, jumpFuel, fuelOf, mishapFor, MOD_TYPES, modsSummary, modCost, installDC, pastCapacity, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck, PACES, flyFuel, travelSpeed, REALSPACE_TIMES, realspaceTime, weaponTrade, viciousBonus };
+    arcOf, INIT_SIZE_MOD, npcInitBonus, deploymentInfo, techniquesKnown, techDie, STOCK_COST, TIER_COST, minCrew, costs, REGIONS, HYPER_HOURS, START_UP, hyperClass, stepsFor, jumpHours, jumpFuel, fuelOf, mishapFor, MOD_TYPES, modsSummary, modCost, installDC, pastCapacity, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck, PACES, flyFuel, travelSpeed, REALSPACE_TIMES, realspaceTime, weaponTrade, viciousBonus, zonesOf, inZone, zoneExtra };
 });

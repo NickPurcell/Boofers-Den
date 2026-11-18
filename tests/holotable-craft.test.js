@@ -79,6 +79,7 @@ test("crafting (11.2): only the owner or the GM; ids and items checked; the fact
     { name: "Blaster Chassis (Premium)", qty: 1, equipped: false, notes: "", rar: "Premium", chassis: { kind: "blaster", mods: [] } });
   assert.deepEqual(Craft.cleanItem({ name: "Barrel Mod", mod: { kind: "blaster" } }).mod, { kind: "blaster" });
   assert.equal("mod" in Craft.cleanItem({ name: "X", mod: { kind: "toaster" } }), false);
+  assert.deepEqual([Craft.cleanItem({ name: "Optical Implant", implant: { kind: "enhancement" } }).implant, "implant" in Craft.cleanItem({ name: "X", implant: { kind: "valueOf" } })], [{ kind: "enhancement" }, false]);
   assert.deepEqual(["expending twice", "one and a half times", "no significant issue", "using only half", "one-quarter"].map(Craft.materialsFactor), [2, 1.5, 1, 0.5, 0.25]);
   assert.equal(Craft.clean({ pending: [{ item: { name: "" } }, "x"] }), undefined);
   // the sheet's suggestions

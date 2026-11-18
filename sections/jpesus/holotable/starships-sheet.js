@@ -235,6 +235,7 @@
     if (st.fx.dogfightVs) out.push('Dogfighting');
     if (st.fx.runVs) out.push(`Attack run (${st.fx.runFeet} ft)`);
     if (st.fx.harassedBy) out.push('Harassed (leaving its square costs a critical hit)');
+    for (const z of SR.zonesOf(s)) out.push(`Zone on: ${z.name} (${z.arc ? `${z.arc} arc` : 'all around'}, ${z.range} ft)`);
     if (SR.isDisabled(st)) out.push('No actions or reactions');
     else if (st.cond.includes('Shocked')) out.push('No reactions; action or bonus action');
     return out;

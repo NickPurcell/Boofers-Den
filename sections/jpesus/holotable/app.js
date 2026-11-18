@@ -1039,6 +1039,7 @@
             <td style="white-space:nowrap">${!ro ? `${e.chassis ? `<button class="btn tiny" data-act="mods" data-i="${i}" title="Modifications: install and remove (Wretched Hives)">Mods ${(e.chassis.mods || []).length}/${R.modSlots(e.rar).base + R.modSlots(e.rar).aug}</button>` : ''}${e.use ? `<button class="btn tiny" data-act="use-item" data-i="${i}" title="Use one: ${esc(useText(e.use) || 'lowers the count')}">Use</button>` : ''}<button class="btn tiny ghost" data-act="sell" data-i="${i}" title="Sell one${+e.cost > 0 ? ` (half its cost: ${R.sellPrice(e).toLocaleString()} cr)` : ''}">Sell</button><button class="btn tiny ghost" data-act="del" data-list="equipment" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">Empty.</td></tr>'}
           </tbody></table></div>${craftRows(ch, ro)}</div>
         ${stashBox(ch, ro)}
+        ${implantBox(ch, ro)}
         <div class="box"><h4>Features & Traits <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="pick-feature" title="Feats, class features, maneuvers, fighting styles, lightsaber forms, ventures">＋ from SW5e</button><button class="btn tiny ghost" data-act="add-feature" title="Write a feature by hand">custom</button>' : ''}</h4>
           <div class="feature-list">${(ch.features || []).map((f, i) => `<div class="feature-row">
             <span class="feature-name" data-feature-tip="${i}" tabindex="0">${esc(f.name || 'Feature')}</span>
@@ -1068,7 +1069,8 @@
             ${ch.tokenImage ? '<button class="btn small ghost" data-act="clear-token-photo">Token: use profile photo</button>' : ''}</div>` : ''}
           <p class="muted" style="font-size:12px;margin:0 0 6px">The token uses the profile photo unless you upload a separate one.</p>
           <label style="margin-top:8px">Token colour${inp('color', ch.color || '#4fc3f7', { ro, type: 'color' })}</label>
-          <label style="margin-top:8px">Experience points${vOn('Milestone Leveling') ? ' <span class="muted">(Milestone Leveling: the GM decides when you level)</span>' : ''}${inp('xp', +ch.xp || 0, { ro: lock, type: 'number' })}</label>
+          <label style="margin-top:8px">Experience points${vOn('Milestone Leveling') ? ' <span class="muted">(Milestone Leveling: the GM decides when you level)</span>' : ''}${inp('xp', +ch.xp || 0, { ro: lock, type: 'number' })}
+            ${(x => !x || vOn('Milestone Leveling') ? '' : `<span class="${x.ready ? 'up' : 'muted'}" style="text-transform:none;letter-spacing:0;font-size:12px" title="SW5e's XP for each level (audit 2.14)">${x.ready ? `Enough for level ${x.level} (${x.need.toLocaleString()} XP): the GM grants it` : `Level ${x.level} at ${x.need.toLocaleString()} XP, ${x.left.toLocaleString()} to go`}</span>`)(R.xpNext(ch))}</label>
           <label style="margin-top:8px">Proficiency bonus override${inp('profOverride', ch.profOverride ?? '', { ro, type: 'number', ph: String(2 + Math.floor((lvl - 1) / 4)) })}</label>
           <label style="margin-top:8px" title="Your quality of life between adventures (SW5e, PHB): the GM charges it by the day">Lifestyle${inp('lifestyle', ch.lifestyle || '', { ro, type: 'select', options: [{ v: '', t: '—' }, ...Object.entries(LIFESTYLES).map(([k, v]) => ({ v: k, t: `${k} (${v ? (k === 'Aristocratic' ? '100+' : v) + ' cr' : 'free'}/day)` }))] })}</label>
           <label style="margin-top:8px">Initiative bonus (misc)${inp('initMisc', +ch.initMisc || 0, { ro, type: 'number' })}</label>
@@ -1240,7 +1242,7 @@
       case 'use-item': useItem(ch, i); break;
       case 'mods': modsDialog(ch, i); break;
       case 'item-info': {   // the item's SW5e text (audit 6.2), looked up by name, never stored on the sheet
-        const e0 = ch.equipment[i]; if (!e0) break;
+        const e0 = b.dataset.list === 'implants' ? (ch.implants || [])[i] : ch.equipment[i]; if (!e0) break;   // or an installed implant (6.4)
         const found = await itemInfo(e0.name);
         const b0 = e0.bonus ? [e0.bonus.hit && `+${e0.bonus.hit} to attack rolls`, e0.bonus.dmg && `+${e0.bonus.dmg} to damage rolls`, e0.bonus.ac && `+${e0.bonus.ac} to AC while worn${e0.att ? ' and attuned' : ''}`].filter(Boolean).join(', ') : '';
         modal(`<h3>${esc(e0.name)}</h3>${found ? `<p class="muted">${esc(itemNotes(found.it, found.enh))}${found.it.src ? ` · ${esc(SRC[found.it.src] || found.it.src)}` : ''}</p>` : ''}
@@ -1250,6 +1252,9 @@
         break;
       }
       case 'craft': openCraft(ch); break;
+      case 'implants': implantDialog(ch); break;
+      case 'implant-rm': implantDialog(ch, i); break;
+      case 'motor-up': motorUp(ch); break;
       case 'craft-cancel': act('craft.cancel', { charId: ch.id, id: b.dataset.id }); break;
       case 'craft-roll': act('craft.roll', { charId: ch.id, id: b.dataset.id }); break;
       case 'craft-no': if (confirm('Turn this request down?')) act('craft.decide', { charId: ch.id, id: b.dataset.id, ok: false }); break;
@@ -1410,7 +1415,8 @@
       enh && R.enhancedBonus(it.desc) ? { bonus: R.enhancedBonus(it.desc) } : {},   // an enhanced item's +N (6.2)
       // a chassis, with its kind and no modifications yet; a modification, with the kind of chassis it fits (6.4)
       enh && R.chassisKind(it.n) ? { chassis: { kind: R.chassisKind(it.n), mods: [] } } : {},
-      enh && it.cat === 'Item Modification' && R.cleanMod({ kind: String(it.sub || '').toLowerCase() }) ? { mod: { kind: String(it.sub).toLowerCase() } } : {});
+      enh && it.cat === 'Item Modification' && R.cleanMod({ kind: String(it.sub || '').toLowerCase() }) ? { mod: { kind: String(it.sub).toLowerCase() } } : {},
+      enh && R.implantOf(it) ? { implant: R.implantOf(it) } : {});   // a cybernetic augmentation or droid customization (6.4)
   }
   function itemNotes(it, enhanced) {
     if (enhanced) return [it.rar && `${it.rar} ${it.cat.toLowerCase()}`, it.sub, it.att && 'requires attunement'].filter(Boolean).join(' · ');
@@ -1610,6 +1616,90 @@
         }
       };
     });
+  }
+
+  // --------------------------------------------------------------------------- cybernetics and droid customizations (audit 6.4)
+  // Installed in the character from its inventory, each with a check with biotech's implements (cybernetics) or astrotech's
+  // (droids) against the DC its rarity sets, rolled with the installer's numbers: a character the user plays, or no check
+  // for the GM (an NPC does the work). A failed install leaves it in the pack, and a failed enhancement costs a level of
+  // exhaustion; a failed removal destroys it. A player is held to the limits (proficiency bonus, motor slots, parts and
+  // protocols, droids only); the GM may go past them. The cybernetic side effects show by count.
+  function implantBox(ch, ro) {
+    const list = ch.implants || [], droid = R.isDroid(ch);
+    if (!list.length && !droid && !(ch.equipment || []).some(e => e.implant)) return '';
+    const k = R.implantCounts(ch), side = R.cyberSideEffects(ch);
+    return `<div class="box implants"><h4>${droid ? '🔩 Droid customizations' : '🦾 Cybernetics'} <span class="spacer"></span>${!ro ? '<button class="btn tiny" data-act="implants">Install…</button>' : ''}</h4>
+      <p class="muted" style="margin:0 0 6px">${droid ? `Motor: ${n0(k.droid)} of ${n0(k.motor)} slots · parts ${n0(k.parts)} of ${n0(k.partsMax)} · protocols ${n0(k.protocols)} of ${n0(k.protocolsMax)}`
+        : `${n0(k.cyber)} of ${n0(k.cyberMax)} augmentations (the proficiency bonus)`}</p>
+      ${list.length ? `<div class="list-rows">${list.map((m, i) => `<div class="lr"><span class="nm">${esc(m.name)} <span class="muted">${esc(m.kind)}${m.rar ? ` · ${esc(m.rar)}` : ''}</span></span><span class="spacer"></span>
+        <button class="btn tiny ghost" data-act="item-info" data-list="implants" data-i="${i}" title="What it does (SW5e's text)">ⓘ</button>${!ro ? `<button class="btn tiny ghost" data-act="implant-rm" data-i="${i}" title="A check against DC ${R.modDC(m.rar)}: salvaged on a success, destroyed on a failure">Remove</button>` : ''}</div>`).join('')}</div>`
+        : '<p class="muted">Nothing installed.</p>'}
+      ${side.length ? `<p class="muted" style="font-size:12px;margin:6px 0 0" title="Wretched Hives: Cybernetic Augmentation Side Effects">${side.map(esc).join(' ')}</p>` : ''}
+      ${droid && !ro && k.motor < 6 ? `<button class="btn tiny ghost" data-act="motor-up" style="margin-top:6px" title="Wretched Hives: Total Slots Upgrade Cost, times the size's modifier">Upgrade the motor to ${k.motor + 1} slots (${n0(R.motorCost(ch, k.motor + 1)).toLocaleString()} cr)</button>` : ''}
+    </div>`;
+  }
+  // install from the inventory (k undefined) or remove installed implant k
+  function implantDialog(ch, k) {
+    const removing = k != null, im = removing ? (ch.implants || [])[k] : null;
+    if (removing && !im) return;
+    const fits = removing ? [] : (ch.equipment || []).map((e, j) => ({ e, j })).filter(({ e }) => e.implant && R.groupOf(e.implant.kind));
+    if (!removing && !fits.length) return toast("Nothing in the inventory to install: add a cybernetic augmentation or droid customization from SW5e's enhanced items.", true);
+    const who = chars().filter(c => canEdit(c));   // the installer, whose check it is
+    modal(`<h3>${removing ? `Remove ${esc(im.name)}` : `Install in ${esc(ch.name)}`}</h3>
+      ${removing ? '' : `<div class="row"><select id="imPick" style="flex:1">${fits.map(({ e, j }) => `<option value="${j}">${esc(e.name)} (${esc(e.implant.kind)}, ${esc(e.rar || 'Standard')}, DC ${R.modDC(e.rar)})</option>`).join('')}</select></div>`}
+      <div class="row" style="margin-top:8px"><span class="muted">The work is done by</span><select id="imBy" style="flex:1">${who.map(c => `<option value="${esc(c.id)}"${c.id === ch.id ? ' selected' : ''}>${esc(c.name)}</option>`).join('')}</select></div>
+      <p class="muted" id="imWhy" style="font-size:12px"></p>
+      ${isGM() ? '<label class="muted carry-var"><input type="checkbox" id="imNoCheck"> GM: no check (an NPC does the work)</label>' : ''}
+      <div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn" id="imClose">Cancel</button><button class="btn primary" id="imGo">${removing ? 'Remove' : 'Install'}</button></div>`, box => {
+      const pick = () => (removing ? Object.assign({ implant: { kind: im.kind } }, im) : ch.equipment[+$('#imPick', box).value]);
+      const info = () => {
+        const e = pick(), g = e && R.groupOf(e.implant.kind); if (!g) return;
+        const why = removing ? null : R.implantBlocked(ch, e), hrs = R.implantHours(ch) / (removing ? 2 : 1);
+        $('#imWhy', box).textContent = `${hrs} hours of work and a check with ${R.IMPLANT_TOOL[g]} (Int) against DC ${R.modDC(e.rar)}.` + (why ? ` ${why}${isGM() ? ' The GM may go ahead.' : ''}` : '');
+      };
+      info(); box.onchange = info;
+      box.onclick = async ev => {
+        if (ev.target.id === 'imClose') return closeModal();
+        if (ev.target.id !== 'imGo') return;
+        const e = pick(); if (!e) return;
+        const kind = e.implant.kind, g = R.groupOf(kind), tool = R.IMPLANT_TOOL[g], j = removing ? -1 : +$('#imPick', box).value;
+        const why = removing ? null : R.implantBlocked(ch, e);
+        if (why && !isGM()) return toast(why, true);
+        if (why && !confirm(`${why} Install it anyway?`)) return;
+        const skip = isGM() && $('#imNoCheck', box) && $('#imNoCheck', box).checked;
+        const by = Object.prototype.hasOwnProperty.call(S.st.characters, $('#imBy', box).value) ? S.st.characters[$('#imBy', box).value] : ch;
+        closeModal();
+        let ok = true;
+        if (!skip) {   // #218's tool check with the installer's tier and dice; no character named on the roll (#187's review)
+          const t = R.toolTierFromText ? R.toolTierFromText(by, tool) : 0, b = R.toolBonus ? R.toolBonus(by, 'int', t) : R.abilityMod(by, 'int');
+          const expr = R.checkRollExpr ? R.checkRollExpr(by, t, b).expr : d20(b), dc = R.modDC(e.rar);
+          const res = await roll(expr, `${removing ? 'Remove' : 'Install'} ${e.name}: ${tool} (Int) against DC ${dc}`, { d20: true });
+          if (!res || !res.roll) return;
+          ok = res.roll.total >= dc;
+        }
+        const hrs = R.implantHours(ch) / (removing ? 2 : 1);
+        if (removing) {
+          mutate(c => { const x = (c.implants || [])[k]; if (x && x.name === im.name) R.removeImplant(c, k, ok); });
+          return act('chat', { text: `*removes ${im.name} (${hrs} hours of work)${ok ? ' and salvages it' : ", but it's destroyed"}${kind === 'replacement' ? '; the part it replaced is missing until another replacement goes in' : ''}.*` });
+        }
+        if (!ok) {
+          if (kind === 'enhancement') mutate(c => { c.exhaustion = Math.min(6, n0(c.exhaustion) + 1); });
+          return act('chat', { text: `*fails to install ${e.name} after ${hrs} hours: it stays in the pack; try again after 24 hours${kind === 'enhancement' ? '. The recipient gains a level of exhaustion' : kind === 'replacement' ? `. The recipient can't use that part for ${hrs} hours` : ''}.*` });
+        }
+        mutate(c => { const x = c.equipment[j]; if (x && x.name === e.name) R.installImplant(c, j); });
+        act('chat', { text: `*installs ${e.name} (${hrs} hours of work).*` });
+      };
+    });
+  }
+  // a droid's motor, one slot up: the book's price times the size's modifier, from the droid's credits (the GM may waive it)
+  function motorUp(ch) {
+    const n = R.motorSlots(ch) + 1, cost = R.motorCost(ch, n); if (!cost) return;
+    const short = n0(ch.credits) < cost;
+    if (short && !isGM()) return toast(`${ch.name} has ${n0(ch.credits).toLocaleString()} cr; the upgrade costs ${cost.toLocaleString()} cr.`, true);
+    if (!confirm(short ? `${ch.name} has ${n0(ch.credits).toLocaleString()} cr, short of ${cost.toLocaleString()}. Upgrade the motor to ${n} slots without charging it?`
+      : `Upgrade ${ch.name}'s motor to ${n} slots for ${cost.toLocaleString()} cr (${R.implantHours(ch)} hours of work)?`)) return;
+    mutate(c => { c.motor = n; if (!short) c.credits = n0(c.credits) - cost; });
+    act('chat', { text: `*upgrades a droid motor to ${n} slots${short ? '' : ` for ${cost.toLocaleString()} cr`}.*` });
   }
 
   // --------------------------------------------------------------------------- consumables (audit 6.7)
