@@ -47,7 +47,7 @@
     h += '</div>';
     const t = tokById(V.sel), ship = t && shipById(t.id);
     if (t) {
-      const speed = ship ? SR.boostedSpeed(ship) : null, moved = (s.moved || {})[t.id], mine = s.active && cur === t.id;
+      const speed = ship ? SR.moveBudget(ship) : null, moved = (s.moved || {})[t.id], mine = s.active && cur === t.id;
       h += `<div class="box" style="margin-top:8px"><h4>${esc(t.name)}</h4>
         <p style="font-size:12px;margin:0 0 6px">Facing ${SR.FACING_NAMES[t.f]} · ${sizeOfTok(t)}×${sizeOfTok(t)} squares${ship ? ` · speed ${speed} ft (${Math.floor(speed / 50)} squares), a 90° turn ${ship.turn || 0} ft` : ''}${mine ? `<br>Moved ${moved || 0}${speed != null ? ` of ${speed}` : ''} ft this turn${speed != null && moved > speed ? ' <b>(over its speed)</b>' : ''}` : ''}</p>
         ${mayMove(t) ? `<div class="row wrap" style="gap:4px"><button class="btn tiny" data-spx="turn" data-d="-1" title="Turn 45° to port">⟲</button><button class="btn tiny" data-spx="turn" data-d="1" title="Turn 45° to starboard">⟳</button>
@@ -63,18 +63,27 @@
   // server checks the arc and range again and rolls
   function fireBox(s, t, ship) {
     const weapons = ship.weapons || [], targets = s.tok.filter((x) => x.id !== t.id), crew = ship.crew || [];
-    if (!weapons.length) return '<div class="box" style="margin-top:8px"><h4>Fire</h4><p class="muted" style="font-size:12px">No weapons on its sheet.</p></div>';
-    if (!targets.length) return '';
+    const st = SR.statusOf(ship), helmUsed = st.fx.helm, gone = SR.isDisabled(st) || SR.isLost(st);
+    const helmRow = gone ? '<p class="muted" style="font-size:12px">It can\'t take actions.</p>' : `<div class="row wrap" style="gap:4px;margin-top:6px"><span class="muted" style="font-size:12px">Helm${helmUsed ? ' (taken this turn)' : ''}</span>
+      <button class="btn tiny" data-spx="helm" data-what="evade" ${helmUsed ? 'disabled' : ''} title="Attacks against it have disadvantage and its Dexterity saves advantage until its next turn; its own checks and attacks have disadvantage through that turn">Evade</button>
+      <button class="btn tiny" data-spx="helm" data-what="fly" ${helmUsed ? 'disabled' : ''} title="Twice its speed this turn; disadvantage on its checks and attacks through its next turn">Fly</button>
+      <button class="btn tiny" data-spx="helm" data-what="hardturn" ${helmUsed ? 'disabled' : ''} title="Its next turn of up to 90° this turn costs no movement">Hard turn</button>
+      ${targets.length ? `<button class="btn tiny" data-spx="ram" ${helmUsed ? 'disabled' : ''} title="Within 50 ft: Strength (Ram) against the target's Dexterity (Maneuvering); both take two hull dice + Strength in kinetic damage, the rammer half while its shields hold">Ram the target</button>` : ''}</div>
+      <div class="row wrap" style="gap:4px;margin-top:4px"><span class="muted" style="font-size:12px">Crew</span>
+      ${targets.length ? '<button class="btn tiny" data-spx="interfere" title="Within 1,000 ft: Charisma (Interfere) against the target\'s Wisdom (Scan); its next check or attack roll has disadvantage">Interfere with the target</button>' : ''}
+      <button class="btn tiny" data-spx="direct" ${st.fx.directed ? 'disabled' : ''} title="Its next attack roll has advantage">Direct${st.fx.directed ? 'ed' : ''}</button></div>`;
+    if (!targets.length) return `<div class="box" style="margin-top:8px"><h4>Actions</h4>${helmRow}</div>`;
+    if (!weapons.length) return `<div class="box" style="margin-top:8px"><h4>Actions</h4><label class="ship-lv">Target <select id="spTarget">${targets.map((x) => `<option value="${esc(x.id)}" ${x.id === V.target ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>${helmRow}<p class="muted" style="font-size:12px">No weapons on its sheet.</p></div>`;
     if (!targets.some((x) => x.id === V.target)) V.target = targets[0].id;
     if (V.weapon >= weapons.length) V.weapon = 0;
     if (V.crew >= Math.max(1, crew.length)) V.crew = 0;
     const crewName = (c) => (c.charId && H.S.st.characters[c.charId] ? H.S.st.characters[c.charId].name : c.name) || 'Crew member';
-    return `<div class="box" style="margin-top:8px"><h4>Fire</h4>
-      <label class="ship-lv">Gunner <select id="spCrew">${crew.length ? crew.map((c, i) => `<option value="${i}" ${i === V.crew ? 'selected' : ''}>${esc(crewName(c))}</option>`).join('') : '<option value="0">no crew (+2)</option>'}</select></label>
+    return `<div class="box" style="margin-top:8px"><h4>Actions</h4>
+      <label class="ship-lv">Crew member <select id="spCrew">${crew.length ? crew.map((c, i) => `<option value="${i}" ${i === V.crew ? 'selected' : ''}>${esc(crewName(c))}</option>`).join('') : '<option value="0">no crew (+2)</option>'}</select></label>
       <label class="ship-lv">Weapon <select id="spWeapon">${weapons.map((w, i) => `<option value="${i}" ${i === V.weapon ? 'selected' : ''}>${esc(w.name)}${w.arc ? ' · ' + esc(w.arc) : ''}${typeof w.ammo === 'number' ? ` · ${w.ammo} left` : ''}</option>`).join('')}</select></label>
       <label class="ship-lv">Target <select id="spTarget">${targets.map((x) => `<option value="${esc(x.id)}" ${x.id === V.target ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
       <p class="muted" id="spPreview" style="font-size:12px;margin:6px 0"></p>
-      <button class="btn small amber" data-spx="fire">Fire</button></div>`;
+      <button class="btn small amber" data-spx="fire">Fire</button>${helmRow}</div>`;
   }
   function preview() {
     const el = $('#spPreview'); if (!el) return;
@@ -158,6 +167,9 @@
     if (!t) return;
     if (a === 'turn') return H.act('space.place', { id: t.id, x: t.x, y: t.y, f: (t.f + (+b.dataset.d) + 8) % 8 });
     if (a === 'fire') return H.act('space.fire', { id: t.id, target: V.target, weapon: V.weapon, crew: V.crew, mode: H.rollModeFromEvent(e) });
+    if (a === 'helm') return H.act('ship.helm', { id: t.id, what: b.dataset.what });
+    if (a === 'ram' || a === 'interfere') return H.act('space.' + a, { id: t.id, target: V.target, crew: V.crew });
+    if (a === 'direct') return H.act('ship.direct', { id: t.id });
     if (a === 'remove') { if (confirm(`Take ${t.name} off the space map?`)) { await H.act('space.remove', { id: t.id }); V.sel = null; } return; }
     if (a === 'sheet') { H.setTab('ships'); const sel = document.querySelector(`#ships [data-sa="sel"][data-id="${t.id}"]`); if (sel) sel.click(); return; }
   });

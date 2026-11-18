@@ -11,6 +11,7 @@ const Fight = require("./_holotable-fight.js");   // the combat view (fight.*), 
 const Ships = require("./_holotable-ships.js");   // a ship in a fight (ship.damage, destruction saves, ship conditions): Starships of the Galaxy
 const Space = require("./_holotable-space.js");   // the space map (space.*): ship fights on their own map, jpesus's call on #146
 const Ask = require("./_holotable-ask.js");   // the GM asking for a roll (audit 9.12)
+const Story = require("./_holotable-story.js");   // factions, rivals and lifestyle between fights (audit section 11)
 const R = globalThis.SW5E;   // rules.js, loaded by the fight module (senses)
 
 const CHAT_LIMIT = 400;
@@ -200,6 +201,7 @@ function cleanChar(ch) {
     conditions: (Array.isArray(ch.conditions) ? ch.conditions : []).slice(0, 20).map((c) => s(c, 30)),
     exhaustion: clamp(int(ch.exhaustion), 0, 6), inspiration: !!ch.inspiration,
     proficiencies: s(ch.proficiencies, 2000), languages: s(ch.languages, 500), notes: s(ch.notes, 20000),
+    ...(Object.prototype.hasOwnProperty.call(Story.LIFESTYLES, ch.lifestyle) ? { lifestyle: ch.lifestyle } : {}),   // 11.5
     image: validImg(ch.image) || "", tokenImage: validImg(ch.tokenImage) || "", color: validColor(ch.color),
   };
   if (!out.classes.length) out.classes = [{ name: "Fighter", level: 1, archetype: "" }];
@@ -285,8 +287,12 @@ function viewFor(camp, cid, gm, online) {
     notes: gm ? camp.notes : null,
     handouts: (camp.handouts || []).filter((h) => gm || h.shared),
     levelUps: camp.levelUps || {},
+    ...(gm && camp.levelUndo && Object.keys(camp.levelUndo).length ? { levelUndo: Object.fromEntries(Object.entries(camp.levelUndo).map(([id, u]) => [id, u.level])) } : {}),   // 2.15
     variants: camp.variants || [],
     hpMax: camp.hpMax !== false,
+    ...(camp.stash ? { stash: camp.stash } : {}),   // the party stash (6.9): everyone sees it
+    ...(camp.clock ? { clock: camp.clock } : {}),   // in-game time (9.18)
+    ...(camp.sheetLock ? { sheetLock: true } : {}), ...(camp.statBlocksHidden ? { statBlocksHidden: true } : {}),   // the GM's table rules (12.6, 9.17)
     audio: camp.audio ? Object.assign({}, camp.audio, { now: now() }) : null,   // "now" lets each screen line its clock up
     ships: (camp.ships || []).filter((x) => gm || !x.hidden),
     ...(camp.space ? { space: Space.view(camp, gm) } : {}),   // the space map (#146)
@@ -296,7 +302,8 @@ function viewFor(camp, cid, gm, online) {
     ...(camp.fight && camp.fight.on ? { fight: Fight.view(camp, cid, gm, shownName) } : {}),
     // the sheet's Cast (#73), combat view on or off: which powers the table has data for, and who concentrates on what
     ...((sc) => (sc ? { sheetCast: sc } : {}))(Fight.sheetView(camp, gm ? camp.characters : sheetsFor(camp, cid))),
-    ...((a) => (a ? { ask: a } : {}))(Ask.view(camp, cid, gm)),   // an open roll request (9.12), for whom it names
+    ...((a) => (a ? { ask: a } : {}))(Ask.view(camp, cid, gm)),
+    ...Story.view(camp, gm),   // factions and rivals the GM shows (11.3, 11.4)   // an open roll request (9.12), for whom it names
     ...(fogState ? { fog: fogState } : {}),   // the map's fog of war (#93), combat view or not: only while the GM has it on   // the combat view, only while it is on
     scene: (camp.scenes || []).filter((x) => x.id === camp.activeScene).map((x) => ({ id: x.id, name: x.name }))[0] || null,
     scenes: gm ? (camp.scenes || []).map((x) => ({ id: x.id, name: x.name, savedAt: x.savedAt })) : null,
@@ -412,6 +419,10 @@ function applyLevelUp(camp, cid, gm, p) {
   if (!clsName) throw new Invalid("Pick a class to level up.");
   let k = ch.classes.find((x) => String(x.name || "").toLowerCase() === clsName.toLowerCase());
   const multiclass = !k;
+  // multiclassing prerequisites (audit 2.12): a player is held to them; the GM may let a character through (override)
+  const unmet = multiclass ? R.multiclassUnmet(ch, clsName) : [];
+  if (unmet.length && !(gm && p.override)) throw new Invalid(`Multiclassing into ${clsName}: ${unmet.join("; ")}. The GM can allow it.`);
+  const snapshot = JSON.parse(JSON.stringify(ch));   // for the GM's undo of this level (audit 2.15)
   if (!k) { k = { name: clsName, level: 0, archetype: "" }; ch.classes.push(k); }
   if (!ch.abilities) ch.abilities = {};
   const oldCon = abMod(ch, "con");
@@ -465,9 +476,12 @@ function applyLevelUp(camp, cid, gm, p) {
       alignment: ["light", "dark"].includes(pw.alignment) ? pw.alignment : "universal", notes: str(pw.notes, 300), description: str(pw.description, 4000) });
   }
   for (const sk of expertise) ch.skills[sk] = 2;
+  // a new class gives only its multiclass proficiencies (audit 2.13), noted on the sheet
+  if (multiclass && R.mcProfs(k.name) && ch.classes.length > 1) ch.proficiencies = `${str(ch.proficiencies, 1800)}${ch.proficiencies ? "\n" : ""}Multiclass ${k.name}: ${R.mcProfs(k.name)}`.slice(0, 2000);
   ch.updated = now();
   pend.count -= 1;
   if (pend.count < 1) delete camp.levelUps[ch.id];
+  camp.levelUndo = Object.assign({}, camp.levelUndo, { [ch.id]: { level: before + 1, at: now(), sheet: snapshot } });
   for (const e of camp.initiative.entries) if (e.charId === ch.id) { e.hp = ch.hp.current; e.maxHp = ch.hp.max; }
 
   const bits = [`HP +${gain}`];
@@ -510,6 +524,7 @@ function applyAction(camp, cid, gm, type, p) {
   const chars = camp.characters, ini = camp.initiative, mp = camp.map;
   mp.props = mp.props || [];
   const need = (ok, why = "GM only") => { if (!ok) throw new Forbidden(why); };
+  if (Story.handles(type)) return Story.apply(camp, cid, gm, type, p, { addChat, shownName, Forbidden, Invalid });
   if (type.startsWith("ask.")) return Ask.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
   if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, fightHelpers());
   if (Ships.handles(type)) return Ships.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
@@ -531,6 +546,24 @@ function applyAction(camp, cid, gm, type, p) {
       // senses shape what a player is shown under fog and lighting, so they're the GM's (jpesus's ruling on #92).
       // A player's save keeps the sheet's senses; choosing a different species takes that species' own senses,
       // which the server looks up itself (p[SPECIES_SENSES], set by holotable.js from SW5e's list, never by a client).
+      // the GM's lock (audit 12.6): with it on, a player's save keeps the class levels, XP and hit point maximum the
+      // sheet had. Those move by the GM's grant (levelup.apply) and the GM's own edits; an archetype pick still goes through.
+      if (!gm && old && camp.sheetLock) {
+        clean.classes = (old.classes || []).map((k, i) => Object.assign({}, k, { archetype: ((clean.classes || [])[i] || {}).archetype || k.archetype || "" }));
+        clean.xp = old.xp;
+        clean.hp = Object.assign({}, clean.hp, { max: (old.hp || {}).max });
+      }
+      // a player's brand-new sheet under the lock starts at 1st level with no XP and its class's 1st-level hit points
+      // (the die's maximum + Con); the GM grants what comes after (follow-up to #191's review)
+      if (!gm && !old && camp.sheetLock) {
+        const k = (clean.classes || [])[0] || { name: "Fighter" };
+        clean.classes = [{ name: k.name, level: 1, archetype: "" }];
+        clean.xp = 0;
+        const hp1 = Math.max(1, hitDieFor(k.name, k.hitDie) + abMod(clean, "con"));
+        clean.hp = Object.assign({}, clean.hp, { max: Math.min(num((clean.hp || {}).max, hp1) || hp1, hp1) });
+      }
+      // and current hit points never above the maximum the GM holds
+      if (!gm && camp.sheetLock && clean.hp) clean.hp.current = Math.min(num(clean.hp.current, 0), num(clean.hp.max, 0));
       if (!gm) {
         const lc = (v) => String(v || "").trim().toLowerCase();
         const newSpecies = !old || lc(old.species) !== lc(clean.species);
@@ -973,6 +1006,24 @@ function applyAction(camp, cid, gm, type, p) {
       addChat(camp, { levelup: true, text: `⬆ Level up! ${names.join(", ")} ${names.length > 1 ? "have" : "has"} earned a new level${reason ? ": " + reason : ""}.` });
       return { granted: names.length };
     }
+    // the GM takes back a character's last level (audit 2.15): the sheet goes back to just before it, and the level
+    // is granted again so it can be taken properly. Anything changed on the sheet since is lost (the GM is asked first).
+    case "levelup.undo": {
+      need(gm);
+      const id = String(p.charId || ""), u = Object.prototype.hasOwnProperty.call(camp.levelUndo || {}, id) && camp.levelUndo[id];
+      const cur = charById(camp, id);
+      if (!u || !cur) throw new Invalid("There's no level to undo for that character.");
+      const back = cleanChar(Object.assign({}, u.sheet, { id }));
+      back.owner = cur.owner; back.image = cur.image || ""; back.tokenImage = cur.tokenImage || ""; back.updated = now();
+      chars[id] = back;
+      for (const e of camp.initiative.entries) if (e.charId === id) { e.hp = (back.hp || {}).current; e.maxHp = (back.hp || {}).max; }
+      camp.levelUps = camp.levelUps || {};
+      const pend = camp.levelUps[id] || { count: 0 };
+      pend.count += 1; pend.grantId = rid(); pend.at = now(); camp.levelUps[id] = pend;
+      delete camp.levelUndo[id];
+      addChat(camp, { levelup: true, text: `↶ The GM took back ${back.name}'s level ${u.level}. It's ready to take again.` });
+      return { level: totalLevel(back) };
+    }
     case "levelup.cancel": {
       need(gm);
       if (camp.levelUps && camp.levelUps[p.charId]) delete camp.levelUps[p.charId];
@@ -1012,6 +1063,75 @@ function applyAction(camp, cid, gm, type, p) {
     }
     case "chat.clear": need(gm); camp.chat = []; return {};
 
+    // ---- the party stash (6.9) and loot (9.10)
+    case "stash.add": {   // the GM puts items and/or credits in: loot rolled from SW5e's list, or anything by hand
+      need(gm);
+      const st = cleanStash(camp.stash) || { credits: 0, items: [] };
+      const add = (Array.isArray(p.items) ? p.items : []).slice(0, 50).map((x) => cleanStashItem(Object.assign({}, x, { id: undefined }))).filter(Boolean);
+      const cr = clamp(int(p.credits), 0, 1e9);
+      if (!add.length && !cr) throw new Invalid("Nothing to put in.");
+      if (st.items.length + add.length > 200) throw new Invalid("The stash holds 200 items at most.");
+      st.items.push(...add); st.credits = clamp(st.credits + cr, 0, 1e9);
+      camp.stash = st;
+      if (!p.quiet) addChat(camp, { system: true, text: `🎒 Into the party stash: ${[...add.map(itemLabel), ...(cr ? [`${cr.toLocaleString("en-US")} credits`] : [])].join(", ")}.` });
+      return { added: add.length };
+    }
+    case "stash.take": {   // an item onto a character's sheet: a player onto their own, the GM onto anyone
+      const st = cleanStash(camp.stash), ch = charById(camp, p.charId);
+      const at = st ? st.items.findIndex((x) => x.id === String(p.id || "")) : -1;
+      if (at < 0) throw new Invalid("That's no longer in the stash.");
+      if (!ch) throw new Invalid("No such character.");
+      need(gm || ch.owner === cid, "not your character");
+      const [it] = st.items.splice(at, 1);
+      const notes = [it.rar && `${it.rar}${it.att ? ", requires attunement" : ""}`, it.notes].filter(Boolean).join(" · ").slice(0, 200);
+      chars[ch.id] = cleanChar(Object.assign({}, ch, { equipment: [...(ch.equipment || []), Object.assign({}, it, { id: undefined, equipped: false, notes })] }));
+      Object.assign(chars[ch.id], { owner: ch.owner, image: ch.image || "", tokenImage: ch.tokenImage || "", updated: now() });
+      camp.stash = cleanStash(st); if (!camp.stash) delete camp.stash;
+      addChat(camp, { system: true, text: `🎒 ${shownName(camp, { charId: ch.id, name: ch.name })} takes ${itemLabel(it)} from the party stash.` });
+      return {};
+    }
+    case "stash.split": {   // the GM shares the stash's credits evenly among the characters picked; what's left stays
+      need(gm);
+      const st = cleanStash(camp.stash);
+      const ids = [...new Set((Array.isArray(p.chars) ? p.chars : []).map(String))].filter((id) => /^[a-z0-9]{6,20}$/.test(id) && charById(camp, id)).slice(0, 30);
+      if (!st || !st.credits) throw new Invalid("No credits in the stash.");
+      if (!ids.length) throw new Invalid("Pick who gets a share.");
+      const each = Math.floor(st.credits / ids.length);
+      if (!each) throw new Invalid("Not enough credits for a share each.");
+      for (const id of ids) { const c = charById(camp, id); c.credits = clamp(num(c.credits, 0) + each, 0, 1e9); }
+      st.credits -= each * ids.length;
+      camp.stash = cleanStash(st); if (!camp.stash) delete camp.stash;
+      addChat(camp, { system: true, text: `🎒 The stash's credits are shared out: ${each.toLocaleString("en-US")} each.` });
+      return { each };
+    }
+    case "stash.remove": {
+      need(gm);
+      const st = cleanStash(camp.stash);
+      if (st) { st.items = st.items.filter((x) => x.id !== String(p.id || "")); if (p.credits) st.credits = 0; }
+      camp.stash = cleanStash(st); if (!camp.stash) delete camp.stash;
+      return {};
+    }
+
+    // ---- in-game time (audit 9.18): a day count and the time of day, the GM's to set and move on; everyone sees it
+    case "clock.set": {
+      need(gm);
+      if (p.off) { delete camp.clock; return {}; }
+      camp.clock = cleanClock({ day: p.day, min: p.min });
+      return { clock: camp.clock };
+    }
+    case "clock.advance": {
+      need(gm);
+      const mins = clamp(int(p.mins), 1, 365 * 1440);
+      const c = cleanClock(camp.clock || { day: 1, min: 8 * 60 }), total = c.min + mins;
+      camp.clock = cleanClock({ day: c.day + Math.floor(total / 1440), min: total % 1440 });
+      if (p.announce !== false) {
+        const span = mins % 1440 === 0 ? `${mins / 1440} day${mins === 1440 ? "" : "s"}` : mins % 60 === 0 ? `${mins / 60} hour${mins === 60 ? "" : "s"}` : `${mins} minutes`;
+        const why = str(p.why, 60).trim();
+        addChat(camp, { system: true, text: `🕑 ${span} pass${why ? ` (${why})` : ""}. It's now ${clockText(camp.clock)}.` });
+      }
+      return { clock: camp.clock };
+    }
+
     // ---- which SW5e variant rules this table uses (the GM decides; everyone sees the list)
     case "variants.set": need(gm); camp.variants = cleanVariants(p.variants); return {};
 
@@ -1040,6 +1160,8 @@ function applyAction(camp, cid, gm, type, p) {
     case "audio.stop": need(gm); camp.audio = null; return {};
     // whether players may take the hit die's maximum when levelling (the GM's table rule)
     case "settings.hpMax": need(gm); camp.hpMax = !!p.on; return {};
+    case "settings.sheetLock": need(gm); if (p.on) camp.sheetLock = true; else delete camp.sheetLock; return {};   // 12.6
+    case "settings.statBlocks": need(gm); if (p.hidden) camp.statBlocksHidden = true; else delete camp.statBlocksHidden; return {};   // 9.17
 
     // ---- starships: the party's ships can be edited by anyone at the table; hidden (enemy) ships only by the GM
     case "ship.save": {
@@ -1108,6 +1230,34 @@ function cleanDrawings(list) {
     pts: d.pts.slice(0, 600).map((v) => Math.round(clamp(Number.isFinite(+v) ? +v : 0, -50, 300) * 100) / 100).slice(0, d.pts.length - (d.pts.length % 2)),
   })).filter((d) => d.pts.length >= 4);
 }
+// The party stash (audit 6.9) and loot (9.10): items in the sheet's own shape (#167) plus the rarity and attunement
+// SW5e gives an enhanced item, each with an id so two people moving things at once can't take the wrong one.
+const RARITIES = ["Standard", "Premium", "Prototype", "Advanced", "Legendary", "Artifact"];
+function cleanStashItem(e) {
+  if (!e || typeof e !== "object") return null;
+  const name = str(e.name, 80).trim();
+  if (!name) return null;
+  return {
+    id: /^[a-z0-9]{4,20}$/.test(String(e.id || "")) ? String(e.id) : rid(),
+    name, qty: clamp(int(e.qty, 1), 1, 999), notes: str(e.notes, 200),
+    ...(RARITIES.includes(e.rar) ? { rar: e.rar } : {}), ...(e.att ? { att: true } : {}),
+    ...(e.armor && R.ARMOR_KINDS.includes(e.armor.kind) ? { armor: { kind: e.armor.kind, ac: clamp(int(e.armor.ac), 0, 30) } } : {}),
+  };
+}
+function cleanStash(st) {
+  if (!st || typeof st !== "object") return null;
+  const items = (Array.isArray(st.items) ? st.items : []).slice(0, 200).map(cleanStashItem).filter(Boolean)
+    .filter((t, i, a) => a.findIndex((x) => x.id === t.id) === i);
+  const credits = clamp(int(st.credits), 0, 1e9);
+  return items.length || credits ? { credits, items } : null;
+}
+const itemLabel = (it) => `${it.qty > 1 ? it.qty + "× " : ""}${it.name}${it.rar ? ` (${it.rar})` : ""}`;
+// in-game time (9.18): day 1 and up, minutes into the day 0-1439
+function cleanClock(c) {
+  if (!c || typeof c !== "object") return null;
+  return { day: clamp(int(c.day, 1), 1, 999999), min: clamp(int(c.min), 0, 1439) };
+}
+const clockText = (c) => `Day ${c.day}, ${String(Math.floor(c.min / 60)).padStart(2, "0")}:${String(c.min % 60).padStart(2, "0")}`;
 function cleanMap(g, raw) {
   const m = raw && typeof raw === "object" ? raw : {};
   const n = (v, d) => (Number.isFinite(+v) ? +v : d);
@@ -1148,8 +1298,13 @@ function cleanGame(g) {
   g.audio = au && /^au[a-f0-9]{12}$/.test(String(au.track || "")) ? { track: au.track, name: str(au.name, 80) || "Track", playing: !!au.playing,
     pos: clamp(num(au.pos), 0, 86400), at: num(au.at, now()), loop: !!au.loop, vol: clamp(num(au.vol, 1), 0, 1) } : null;
   g.hpMax = g.hpMax !== false;
+  if (g.stash) g.stash = cleanStash(g.stash); if (!g.stash) delete g.stash;
+  if (g.clock) g.clock = cleanClock(g.clock); if (!g.clock) delete g.clock;
+  if (g.sheetLock !== true) delete g.sheetLock;
+  if (g.statBlocksHidden !== true) delete g.statBlocksHidden;
   if (Array.isArray(g.npcs) && g.npcs.length) g.npcs = cleanNpcs(g.npcs); else delete g.npcs;
   g.ask = Ask.clean(g.ask, g.characters);
+  Story.clean(g);
   g.ships = (Array.isArray(g.ships) ? g.ships : []).slice(0, MAX_SHIPS).filter((x) => x && typeof x === "object").map((x) => cleanShip(x, g.characters));
   if (g.space) g.space = Space.clean(g.space, g.ships);
   g.scenes = (Array.isArray(g.scenes) ? g.scenes : []).slice(0, 30).filter((x) => x && typeof x === "object")
@@ -1158,6 +1313,10 @@ function cleanGame(g) {
   const fx = g.sceneFx && typeof g.sceneFx === "object" ? g.sceneFx : null;
   g.sceneFx = fx && /^[a-f0-9]{6,20}$/.test(fx.n || "") ? { n: fx.n, k: clamp(int(fx.k), -1, SCENE_WIPES - 1) } : null;
   if (g.fight !== undefined) Fight.restored(g);   // the combat view's own record, checked like a live one (absent: stays absent)
+  // the GM's undo of a last level (2.15): one per character, the sheet cleaned like any other
+  const lu = Object.entries(g.levelUndo && typeof g.levelUndo === "object" ? g.levelUndo : {}).filter(([id, u]) => charById(g, id) && u && u.sheet && typeof u.sheet === "object")
+    .map(([id, u]) => [id, { level: clamp(int(u.level, 1), 1, 20), at: num(u.at), sheet: cleanChar(Object.assign({}, u.sheet, { id })) }]);
+  if (lu.length) g.levelUndo = Object.fromEntries(lu); else delete g.levelUndo;
   g.levelUps = Object.fromEntries(Object.entries(g.levelUps || {}).filter(([id]) => charById(g, id))
     .map(([id, v]) => [id, { count: clamp(int((v || {}).count), 0, 20), grantId: rid(), at: now() }]).filter(([, v]) => v.count > 0));
   return g;

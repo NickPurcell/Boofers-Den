@@ -18,13 +18,15 @@ const byName = (a, b) => a.n.localeCompare(b.n);
 const unlink = (s) => String(s || "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1");
 
 const ABIL = { Strength: "str", Dexterity: "dex", Constitution: "con", Intelligence: "int", Wisdom: "wis", Charisma: "cha" };
+// an ability's key from SW5e's full name, only for the six: never something every object inherits ("constructor")
+const abil = (name) => (typeof name === "string" && Object.prototype.hasOwnProperty.call(ABIL, name) ? ABIL[name] : null);
 // A species' ability score increase, when it's one fixed choice (e.g. +2 Int, +1 Dex); null when the
 // player chooses ("Any one", or several options), so the sheet doesn't guess.
 function fixedAsi(opts) {
   if (!Array.isArray(opts) || opts.length !== 1 || !Array.isArray(opts[0])) return null;
   const out = {};
   for (const o of opts[0]) {
-    const ab = o && Array.isArray(o.abilities) && o.abilities.length === 1 ? ABIL[o.abilities[0]] : null;
+    const ab = o && Array.isArray(o.abilities) && o.abilities.length === 1 ? abil(o.abilities[0]) : null;
     if (!ab) return null;
     out[ab] = (out[ab] || 0) + int(o.amount, -5, 5);
   }
@@ -59,7 +61,7 @@ function classes(d) {
   return named(d).map((e) => ({
     n: t(e.name, 40), src: t(e.contentSource, 10), sum: t(e.summary, 200), primary: t(e.primaryAbility, 60),
     hd: int(e.hitDiceDieType, 4, 12), hp1: int(e.hitPointsAtFirstLevelNumber, 1, 20),
-    saves: arr(e.savingThrows, 2, (x) => ABIL[x] || "").filter(Boolean),
+    saves: arr(e.savingThrows, 2, (x) => abil(x) || "").filter(Boolean),
     nSkills: int(e.numSkillChoices, 0, 6), skills: strs(e.skillChoicesList, 20, 40),
     armor: strs(e.armorProficiencies, 10, 80).filter(none), weapons: strs(e.weaponProficiencies, 10, 80).filter(none),
     tools: strs(e.toolProficiencies, 10, 120).filter(none), equip: strs(e.equipmentLines, 12, 300), wealth: t(e.startingWealthVariant, 40),

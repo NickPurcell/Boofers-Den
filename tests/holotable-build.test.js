@@ -126,3 +126,62 @@ test("the level-up wizard's choices: counted against the class table, what the s
   // a class with no data (books off, or a homebrew name) asks for nothing
   assert.deepEqual(plain(B.levelChoices({ features: [] }, "Jedi", 3, lists)), []);
 });
+
+test("the ◈ background on a sheet (audit 1.8): chosen skills become ticked dots, the chosen feat is added, re-choosing replaces both", () => {
+  const B = loadBooks();
+  const agent = { n: "Agent", skills: "Choose two from Deception, Insight, Persuasion, and Stealth", tools: "Gaming set", langs: "One of your choice", equip: "A disguise kit",
+    feature: "Second Identity", featureText: "You have a second identity.", feats: ["Silver-Tongued"] };
+  const c = R.blankCharacter(); c.skills = { athletics: 1, stealth: 2 };
+  let x = JSON.parse(JSON.stringify(B.applyBackground(c, agent, ["deception", "stealth", "__proto__"], { n: "Silver-Tongued", text: "Deception and Persuasion." })));
+  assert.deepEqual(x.skills, { athletics: 1, stealth: 2, deception: 1 }, "ticked; expertise kept; an unknown key dropped");
+  assert.equal(x.background, "Agent");
+  assert.deepEqual(x.features.map((f) => f.name), ["Second Identity", "Silver-Tongued"]);
+  assert.match(x.proficiencies, /^Background \(Agent\): Skills: Deception, Stealth\. Tools: Gaming set$/m);
+  assert.match(x.notes, /disguise kit/);
+  // choose another background: its feature and feat replace the old ones; the equipment isn't added twice
+  const soldier = { n: "Soldier", skills: "Choose two from Athletics, Intimidation, Piloting, and Survival", tools: "", langs: "", equip: "",
+    feature: "Military Rank", featureText: "Rank.", feats: ["Brawny"] };
+  x = JSON.parse(JSON.stringify(B.applyBackground(x, soldier, ["piloting", "survival"], { n: "Brawny", text: "" })));
+  assert.deepEqual(x.features.map((f) => f.name), ["Military Rank", "Brawny"]);
+  assert.equal((x.proficiencies.match(/^Background \(/gm) || []).length, 1, "one background line");
+  assert.equal(x.skills.piloting, 1); assert.equal(x.skills.deception, 1, "dots already ticked stay");
+  assert.equal(JSON.parse(JSON.stringify(B.applyBackground(x, agent, [], null))).notes.match(/disguise kit/g).length, 1, "the same equipment isn't noted twice");
+});
+
+test("SW5e ability names map only to the six: an inherited name like 'constructor' is dropped", () => {
+  assert.deepEqual(D.LISTS.classes.build([{ name: "X", savingThrows: ["constructor", "Strength"] }])[0].saves, ["str"]);
+  assert.equal(D.LISTS.species.build([{ name: "Y", abilitiesIncreased: [[{ abilities: ["__proto__"], amount: 2 }]] }])[0].asi, null);
+  assert.deepEqual(D.LISTS.species.build([{ name: "Z", abilitiesIncreased: [[{ abilities: ["Wisdom"], amount: 2 }]] }])[0].asi, { wis: 2 });
+});
+
+test("a background skill already held can be traded for any other skill, one trade per held skill (SW5e, Backgrounds)", () => {
+  const B = loadBooks(), plain = (x) => JSON.parse(JSON.stringify(x));
+  const agent = { skills: "Choose two from Deception, Investigation, Lore, and Persuasion" };
+  // an Operative who took Deception: one of the other three listed, plus at most one of any other skill
+  let o = plain(B.backgroundSkillOptions(agent, ["deception", "stealth"]));
+  assert.deepEqual([o.n, o.swaps, o.from], [2, 1, ["investigation", "lore", "persuasion"]]);
+  assert.ok(o.other.includes("athletics") && !o.other.includes("stealth") && !o.other.includes("deception") && !o.other.includes("lore"));
+  // nothing held from the list: no trades, no other skills offered
+  o = plain(B.backgroundSkillOptions(agent, ["athletics"]));
+  assert.deepEqual([o.n, o.swaps, o.other.length], [2, 0, 0]);
+  // three of the four held: one listed left, two trades allowed but only two picks in all
+  o = plain(B.backgroundSkillOptions(agent, ["deception", "investigation", "lore"]));
+  assert.deepEqual([o.n, o.swaps, o.from], [2, 2, ["persuasion"]]);
+  // a half step (0.5) isn't the proficiency, so it isn't held; 1 and 2 (expertise) are
+  assert.deepEqual(plain(B.heldSkills({ deception: 0.5, lore: 1, insight: 2, stealth: 0 })), ["lore", "insight"]);
+  assert.deepEqual(plain(B.heldSkills(undefined)), []);
+});
+
+test("changing an archetype takes the old one's added features off the sheet, and nothing typed by hand", () => {
+  const B = loadBooks();
+  const c = { features: [
+    { name: "Forcecasting", text: "Archetype feature (Adept Specialist, level 3)\nYou learn..." },
+    { name: "Growing Momentum", text: "Archetype feature (Adept Specialist, level 3)\n..." },
+    { name: "Second Wind", text: "Class feature (Fighter, level 1)\n..." },
+    { name: "My note", text: "Archetype feature (Adept Specialist is cool)" },
+    { name: "Other", text: "Archetype feature (Adept Specialist Two, level 3)" },
+  ] };
+  assert.equal(B.dropArchetypeFeatures(c, "Adept Specialist"), 2);
+  assert.deepEqual(c.features.map((f) => f.name), ["Second Wind", "My note", "Other"]);
+  assert.equal(B.dropArchetypeFeatures({}, "X"), 0);
+});
