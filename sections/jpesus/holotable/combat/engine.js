@@ -1406,7 +1406,8 @@
       events.push({ kind: 'miss', unit: t.id });
       // a miss against one who knows Riposte (melee) or Return Fire (ranged) and can use it: a prompt, like an opportunity attack
       const rk = pv.ranged ? 'return-fire' : 'riposte';
-      const can = !how && t.maneuvers && t.maneuvers.known.includes(rk) && superiorityOf(t) && !INCAPACITATING(t) && budget(w, t.id).reaction && !maneuverUsed(w, t.id, rk);
+      const can = !how && t.maneuvers && t.maneuvers.known.includes(rk) && superiorityOf(t) && !INCAPACITATING(t) && budget(w, t.id).reaction && !maneuverUsed(w, t.id, rk)
+        && (rk !== 'riposte' || feetBetween(t, me) <= Math.max(FT, +t.reach || FT));   // a riposte needs the attacker in its reach (#163 review)
       return { ok: true, log, events, reactions: can ? [{ reactor: t.id, against: me.id, kind: rk }] : [] };
     }
     // versatile in two hands (5.8): its larger die for a melee attack, in place of the weapon's own

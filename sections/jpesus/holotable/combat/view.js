@@ -206,6 +206,7 @@
   const specOut = (spec) => ({ name: spec.name, bonus: spec.bonus, damage: spec.damage, type: spec.type, melee: spec.melee, range: spec.range, res: spec.res || undefined });
   // what a reaction can be made with: Return Fire takes a ranged weapon from the sheet; the rest, a melee attack (#67)
   function reactOptions(re, kind) {
+    if (kind === 'riposte') return meleeOf(re).filter((a) => a.weapon);   // a riposte is a melee weapon attack
     if (kind !== 'return-fire') return meleeOf(re);
     const ch = re.charId && st().characters[re.charId];
     return ch ? E.attacksOf(ch, R).filter((a) => a.range) : [];
@@ -324,7 +325,7 @@
         const opts = reactOptions(re, pr.kind);
         html += `<div class="ct-row ct-react" role="alert"><span>⚡ <b>${esc(re.name)}</b> can make ${what}.</span>
           ${opts.map((a) => `<button class="btn small primary" data-ct="react" data-id="${esc(pr.id)}" data-key="${esc(a.key)}" data-unit="${esc(re.id)}" data-kind="${esc(pr.kind || 'opportunity')}">${esc(a.name)} <b>${esc(sgn(a.bonus))}</b></button>`).join('')}
-          ${opts.length ? '' : `<span class="muted">${UI.npc[re.id] && UI.npc[re.id].loading ? 'Reading the stat block…' : 'No melee attack known.'}</span>`}
+          ${opts.length ? '' : `<span class="muted">${UI.npc[re.id] && UI.npc[re.id].loading ? 'Reading the stat block…' : pr.kind === 'return-fire' ? 'No ranged weapon known.' : pr.kind === 'riposte' ? 'No melee weapon known.' : 'No melee attack known.'}</span>`}
           ${gm() && !re.charId ? `<button class="btn small ghost" data-ct="custom" data-unit="${esc(re.id)}">＋ Custom attack</button>` : ''}
           <button class="btn small ghost" data-ct="letgo" data-id="${esc(pr.id)}">Let it go</button></div>`;
       } else html += `<div class="ct-row ct-react muted">Waiting for ${esc(re.name)}: ${pr.kind === 'riposte' ? 'a riposte' : pr.kind === 'return-fire' ? 'return fire' : 'an opportunity attack'} against ${esc(ag.name)}, to take or let go.</div>`;

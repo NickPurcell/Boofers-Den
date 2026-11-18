@@ -3160,6 +3160,12 @@ test("Riposte and Return Fire (#67): a miss against one who knows them gives a r
   const miss = E.react(r.world, { kind: "riposte", reactor: "ft", against: "r1", attack: wpn }, dice({ total: 2, nat: 2 }).roll);
   assert.equal(miss.world.units.ft.pools.superiority.used, 1);
   assert.equal(E.react(r.world, { kind: "riposte", reactor: "__proto__", against: "r1", attack: wpn }, dice().roll).ok, false);
+  // a reach-10 attacker 10 ft away: Fenn's 5 ft reach can't answer, so no prompt (#163 review)
+  const pike = { name: "Pike", bonus: 2, damage: "1d10", type: "kinetic", melee: 10, range: null };
+  const far = E.apply(world([ft({ x: 2, reach: 5 }), r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: pike }, dice({ total: 8, nat: 6 }).roll);
+  assert.deepEqual(far.reactions, []);
+  const near = E.apply(world([ft({ x: 2, reach: 10 }), r1()], "r1"), { type: "attack", unit: "r1", target: "ft", attack: pike }, dice({ total: 8, nat: 6 }).roll);
+  assert.deepEqual(near.reactions.map((x) => x.kind), ["riposte"], "with reach 10 it can");
 });
 
 test("Riposte through the API: the creature's miss raises the prompt, the player takes it from the sheet", async () => {
@@ -3169,10 +3175,14 @@ test("Riposte through the API: the creature's miss raises the prompt, the player
   await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
   await gm.act("fight.toggle", { on: true });
   assert.equal((await sam.act("fight.end", {})).code, 200);
-  assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 0, damage: "1d4", type: "kinetic", melee: 5 } })).code, 200);
+  // the creature's d20 is loaded to a 2 (a natural 20 would hit even AC 25), so the miss and its prompt always happen
+  const crypto = require("crypto"), real = crypto.randomInt;
+  crypto.randomInt = (a, b) => (b === 21 ? 2 : real(a, b));   // every d20 in this request: a 2
+  try { assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 0, damage: "1d4", type: "kinetic", melee: 5 } })).code, 200); }
+  finally { crypto.randomInt = real; }
   st = await sam.state();
   const pend = (st.fight.pending || []).find((x) => x.kind === "riposte");
-  if (!pend) return;   // a natural 20 hits even AC 25: no prompt this time
+  assert.ok(pend, "a riposte prompt for Avery");
   assert.equal((await gm.act("fight.end", {})).code, 400, "the turn waits for the answer");
   assert.equal((await sam.act("fight.react", { id: pend.id, take: true, attack: "0" })).code, 200);
   st = await gm.state();
