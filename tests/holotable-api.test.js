@@ -2340,3 +2340,45 @@ test("multiclassing reads only SW5e's own classes (no inherited names); the PHB'
   await gm.act("levelup.grant", { charIds: [id] });
   assert.equal((await p1.act("levelup.apply", { charId: id, className: "hasOwnProperty", hpMode: "average", hitDie: 8 })).code, 200, "no 500: an unknown class has no prerequisites");
 });
+
+test("more than one campaign (12.9): the GM keeps several, the table is on one, and no campaign loses another's images", async () => {
+  const { gm, p1 } = await table();
+  await p1.act("char.save", { char: { name: "Kira" } });
+  const up = await gm.post("upload", { purpose: "bg", dataUrl: PNG_URL });
+  const shared = up.data.url, sharedId = shared.split("=")[1];
+  await gm.act("map.bg", { url: shared });
+  assert.equal((await p1.post("campaign", { do: "create", name: "One-shot" })).code, 403, "the GM's");
+  assert.equal((await p1.call("GET", { op: "campaigns" })).code, 403);
+  const code = (await gm.post("campaign", { do: "create", name: "One-shot" })).data.code;
+  let list = (await gm.call("GET", { op: "campaigns" })).data;
+  assert.deepEqual(list.list.map((c) => [c.name, c.live]), [["HoloTable", true], ["One-shot", false]]);
+  assert.equal((await p1.poll()).data.state.name, "HoloTable", "the table stays on the live one");
+  await gm.post("campaign", { do: "switch", code });
+  let ps = (await p1.poll()).data.state;
+  assert.equal(ps.name, "One-shot", "everyone moves with the switch");
+  assert.equal(Object.keys(ps.characters).length, 0, "the other campaign's characters aren't here");
+  assert.ok(ps.chat.some((m) => /put the table on "One-shot"/.test(m.text || "")));
+  // the one-shot uses the main campaign's image, then replaces it: main still needs it, so it stays
+  await gm.act("map.bg", { url: shared });
+  const up2 = await gm.post("upload", { purpose: "bg", dataUrl: PNG_URL.replace(/A=*$/, "B") });
+  assert.equal(up2.code, 200, JSON.stringify(up2.data));
+  const own = up2.data.url;
+  assert.ok(own && own !== shared, "a second, different image");
+  await gm.act("map.bg", { url: own });
+  assert.equal((await gm.poll()).data.state.map.bgUrl, own);
+  assert.equal((await gm.call("GET", { img: sharedId })).code, 200, "an image another campaign uses is kept");
+  assert.equal((await gm.post("campaign", { do: "delete", code })).code, 400, "not the live one");
+  await gm.post("campaign", { do: "switch", code: "main" });
+  ps = (await p1.poll()).data.state;
+  assert.equal(ps.name, "HoloTable");
+  assert.equal(Object.values(ps.characters)[0].name, "Kira", "back, untouched");
+  assert.equal((await gm.post("campaign", { do: "delete", code: "main" })).code, 400, "the first campaign stays");
+  assert.equal((await gm.post("campaign", { do: "delete", code })).code, 200);
+  assert.equal((await gm.call("GET", { img: sharedId })).code, 200, "main's image survives the delete");
+  assert.equal((await gm.call("GET", { img: own.split("=")[1] })).code, 404, "an image only the deleted campaign used goes with it");
+  list = (await gm.call("GET", { op: "campaigns" })).data;
+  assert.deepEqual(list.list.map((c) => c.name), ["HoloTable"]);
+  assert.equal((await gm.post("campaign", { do: "switch", code: "__proto__" })).code, 400);
+  for (let i = 0; i < 4; i++) assert.equal((await gm.post("campaign", { do: "create", name: "c" + i })).code, 200);
+  assert.equal((await gm.post("campaign", { do: "create", name: "too many" })).code, 400, "five at most");
+});
