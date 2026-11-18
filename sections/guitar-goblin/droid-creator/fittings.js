@@ -29,18 +29,19 @@ function along(p, q) {
 const rod = (b, p, q, r, role, n = 12) => { const [m, len] = along(p, q); b.at(m, (k) => k.cyl(r, 0, len, { role, n, bevel: Math.min(0.0015, r * 0.3) })); };
 const up = (p) => M.mul(M.t(p[0], p[1], p[2]), M.rx(-PI / 2));   // local z is up, standing at p
 
-function antenna(kits, state) {
-  const K = kits.dome, p = (MOUNTS[state.dome] || MOUNTS.round).antenna;
+// an antenna standing at p in piece K
+export function antennaAt(K, p, tall = 0.24) {
   K.main.at(up(p), (b) => {
     b.cyl(0.013, -0.02, 0.01, { role: ROLE.steel, n: 16, bevel: 0.002 });
     b.cyl(0.0075, 0.01, 0.03, { role: ROLE.metal, n: 12, bevel: 0.001 });
-    b.loft([{ o: ngon(0.0034, 8), z: 0.03 }, { o: ngon(0.0018, 8), z: 0.24 }], { role: ROLE.metal, wear: false });
-    b.at(M.t(0, 0, 0.095), (q) => q.ball(0.0058, { role: ROLE.brass, n: 6, segs: 10 }));
+    b.loft([{ o: ngon(0.0034, 8), z: 0.03 }, { o: ngon(0.0018, 8), z: tall }], { role: ROLE.metal, wear: false });
+    b.at(M.t(0, 0, tall * 0.4), (q) => q.ball(0.0058, { role: ROLE.brass, n: 6, segs: 10 }));
   });
   K.glow.color = [1, 0.25, 0.12];
-  K.glow.at(M.t(p[0], p[1] + 0.243, p[2]), (b) => b.ball(0.0042, { n: 6, segs: 10 }));
-  K.halo([p[0], p[1] + 0.243, p[2]], [0, 0, 0], [1, 0.25, 0.12], 0.045);
+  K.glow.at(M.t(p[0], p[1] + tall + 0.003, p[2]), (b) => b.ball(0.0042, { n: 6, segs: 10 }));
+  K.halo([p[0], p[1] + tall + 0.003, p[2]], [0, 0, 0], [1, 0.25, 0.12], 0.045);
 }
+function antenna(kits, state) { antennaAt(kits.dome, (MOUNTS[state.dome] || MOUNTS.round).antenna); }
 function scope(kits, state) {
   const K = kits.dome, p = (MOUNTS[state.dome] || MOUNTS.round).scope, hgt = 0.13;
   K.main.at(up(p), (b) => {
@@ -71,19 +72,19 @@ function arm(kits, state) {
     });
   });
 }
-function bolt(kits, state) {
-  const K = kits.body, R = DIM.R, u = rad(-33), y = 0.04;
-  const m = M.mul(M.ry(u), M.t(0, y, R));   // local z out of the barrel
+// a restraining bolt seated at m (local z out of the surface) in piece K
+export function boltAt(K, m) {
   K.main.at(m, (b) => {
     b.cyl(0.019, -0.002, 0.007, { role: ROLE.steel, n: 18, bevel: 0.002 });
     b.cyl(0.0145, 0.007, 0.019, { role: ROLE.dark, n: 16, bevel: 0.002 });
     b.cyl(0.0165, 0.01, 0.0135, { role: ROLE.brass, n: 16, bevel: 0.001 });
     b.cyl(0.008, 0.019, 0.022, { role: ROLE.steel, n: 10, bevel: 0.001 });
   });
-  const p = new THREE.Vector3(0.0, 0.0, 0.0226).applyMatrix4(m), nn = new THREE.Vector3(0, 0, 1).transformDirection(m);
+  const p = new THREE.Vector3(0, 0, 0.0226).applyMatrix4(m), nn = new THREE.Vector3(0, 0, 1).transformDirection(m);
   K.glow.color = [1, 0.15, 0.08];
   K.glow.at(M.mul(m, M.t(0, 0, 0.0222)), (b) => b.cyl(0.0034, 0, 0.0012, { n: 8, bevel: 0 }));
   K.halo([p.x, p.y, p.z], [nn.x, nn.y, nn.z], [1, 0.15, 0.08], 0.05);
 }
+function bolt(kits, state) { boltAt(kits.body, M.mul(M.ry(rad(-33)), M.t(0, 0.04, DIM.R))); }
 const MAKE = { arm, antenna, scope, bolt };
 export function addFittings(kits, state, on) { for (const k of Object.keys(MAKE)) if (on.has(k)) MAKE[k](kits, state); }

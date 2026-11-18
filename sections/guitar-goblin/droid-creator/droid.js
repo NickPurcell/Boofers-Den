@@ -1,15 +1,13 @@
-// Droid creator: the page. The droid is built from hard-surface parts made in code (hard.js: bevelled panels laid on
-// curved surfaces, turned and lofted solids), painted by one material that also wears it (paint.js). utility.js is
-// the astromech-style chassis, domes.js its heads, layout.js its panel layouts and paint schemes, fittings.js the
-// attachments. This file builds the scene and the lights, puts the pieces together, runs the panel and saves pictures.
+// Droid creator: the page. A droid is built from hard-surface parts made in code (hard.js: bevelled panels laid on
+// curved surfaces, turned and lofted solids), painted by one material that also wears it (paint.js). chassis.js
+// lists the kinds of droid: utility.js is the astromech-style one (domes.js its heads, layout.js its panel layouts
+// and the paint schemes, fittings.js its attachments), power.js the walking battery. This file builds the scene and
+// the lights, puts the pieces together, runs the panel and saves pictures.
 // three.js is the copy vendored in ../vendor/three (r185), loaded through the page's import map.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { noiseTexture, paintMaterial, glassMaterial, clearMaterial, glowMaterial, logicTexture, logicMaterial, halo } from './paint.js';
-import { buildUtility, poseUtility } from './utility.js';
-import { LAYOUTS, SCHEMES } from './layout.js';
-import { DOMES } from './domes.js';
-import { FITTINGS, addFittings } from './fittings.js';
+import { CHASSIS } from './chassis.js';
 
 /* ---------------- the options ---------------- */
 const PAINTS = [
@@ -20,34 +18,40 @@ const PAINTS = [
   { key: 'orange', name: 'Orange', c: '#cf5d1d' }, { key: 'red', name: 'Oxide red', c: '#a22d24' }, { key: 'maroon', name: 'Maroon', c: '#5c1e23' },
   { key: 'violet', name: 'Violet', c: '#573d86' },
 ];
-const named = (o) => Object.entries(o).map(([key, v]) => ({ key, name: v.name }));
-export const OPTIONS = {
-  dome: { label: 'Dome', type: 'seg', items: named(DOMES) },
-  layout: { label: 'Panel layout', type: 'seg', items: named(LAYOUTS) },
-  scheme: { label: 'Paint scheme', type: 'seg', items: named(SCHEMES) },
-  primary: { label: 'Main colour', type: 'swatch', items: PAINTS },
-  secondary: { label: 'Second colour', type: 'swatch', items: PAINTS },
-  eye: { label: 'Photoreceptor', type: 'swatch', items: [
-    { key: 'red', name: 'Red', c: '#ff3a26' }, { key: 'blue', name: 'Blue', c: '#3d8bff' }, { key: 'amber', name: 'Amber', c: '#ffa51f' },
-    { key: 'green', name: 'Green', c: '#35f58a' }, { key: 'white', name: 'White', c: '#e6f2ff' }, { key: 'violet', name: 'Violet', c: '#b25cff' },
-  ] },
-  wear: { label: 'Weathering', type: 'seg', items: [{ key: 'fresh', name: 'Factory fresh', w: 0.0 }, { key: 'worn', name: 'In service', w: 0.36 }, { key: 'battered', name: 'Battered', w: 0.68 }, { key: 'scavenged', name: 'Scavenged', w: 1.0 }] },
-  stance: { label: 'Stance', type: 'seg', items: [{ key: 'two', name: 'Two legs' }, { key: 'three', name: 'Three legs' }] },
-  kit: { label: 'Attachments', type: 'multi', items: named(FITTINGS) },
+const EYES = [
+  { key: 'red', name: 'Red', c: '#ff3a26' }, { key: 'blue', name: 'Blue', c: '#3d8bff' }, { key: 'amber', name: 'Amber', c: '#ffa51f' },
+  { key: 'green', name: 'Green', c: '#35f58a' }, { key: 'white', name: 'White', c: '#e6f2ff' }, { key: 'violet', name: 'Violet', c: '#b25cff' },
+];
+// what every chassis shares; a chassis adds its own between `chassis` and the colours (chassis.js)
+const SHARED_FIRST = { chassis: { label: 'Chassis', items: Object.entries(CHASSIS).map(([key, c]) => ({ key, name: c.name })) } };
+const SHARED_LAST = {
+  primary: { label: 'Main colour', swatch: true, items: PAINTS },
+  secondary: { label: 'Second colour', swatch: true, items: PAINTS },
+  finish: { label: 'Finish', items: [{ key: 'paint', name: 'Painted' }, { key: 'metal', name: 'Metallic' }] },
+  eye: { label: 'Photoreceptor', swatch: true, items: EYES },
+  wear: { label: 'Weathering', items: [{ key: 'fresh', name: 'Factory fresh', w: 0.0 }, { key: 'worn', name: 'In service', w: 0.45 }, { key: 'battered', name: 'Battered', w: 0.72 }, { key: 'scavenged', name: 'Scavenged', w: 1.0 }] },
 };
-const DEFAULT = { dome: 'round', layout: 'standard', scheme: 'service', primary: 'white', secondary: 'teal', eye: 'red', wear: 'worn', stance: 'three', kit: '', seed: '7' };
-const pick = (opt, key) => OPTIONS[opt].items.find((o) => o.key === key) || OPTIONS[opt].items[0];
-const kitSet = (s) => new Set(String(s || '').split('.').filter((k) => FITTINGS[k]));
-function readHash() {
-  const st = Object.assign({}, DEFAULT), q = new URLSearchParams(location.hash.slice(1));
-  for (const k of Object.keys(OPTIONS)) {
-    if (OPTIONS[k].type === 'multi') { if (q.has(k)) st[k] = [...kitSet(q.get(k))].join('.'); }
-    else if (OPTIONS[k].items.some((o) => o.key === q.get(k))) st[k] = q.get(k);
+const SHARED_DEFAULT = { chassis: 'utility', primary: 'white', secondary: 'teal', finish: 'paint', eye: 'red', wear: 'worn', seed: '7' };
+const state = {};
+const chassis = () => CHASSIS[state.chassis] || CHASSIS.utility;
+const options = () => ({ ...SHARED_FIRST, ...chassis().options, ...SHARED_LAST });
+const pick = (opt, key) => { const it = options()[opt].items; return it.find((o) => o.key === key) || it[0]; };
+const kitSet = (s) => { const ok = (options().kit || { items: [] }).items.map((o) => o.key); return new Set(String(s || '').split('.').filter((k) => ok.includes(k))); };
+// make the state whole for its chassis: anything missing or not on offer takes the default
+function settle(from = {}) {
+  const ch = from.chassis ?? state.chassis;
+  state.chassis = CHASSIS[ch] ? ch : SHARED_DEFAULT.chassis;
+  const defs = { ...SHARED_DEFAULT, ...chassis().defaults }, opts = options();
+  for (const k of Object.keys(state)) if (k !== 'chassis' && k !== 'seed' && !opts[k]) delete state[k];
+  for (const [k, def] of Object.entries(opts)) {
+    if (k === 'chassis') continue;
+    const v = from[k] ?? state[k];
+    if (def.multi) state[k] = [...kitSet(v ?? defs[k])].join('.');
+    else state[k] = def.items.some((o) => o.key === v) ? v : defs[k];
   }
-  if (/^\d{1,4}$/.test(q.get('seed') || '')) st.seed = q.get('seed');
-  return st;
+  state.seed = /^\d{1,4}$/.test(from.seed ?? state.seed ?? '') ? String(from.seed ?? state.seed) : SHARED_DEFAULT.seed;
 }
-const state = readHash();
+settle(Object.fromEntries(new URLSearchParams(location.hash.slice(1))));
 const writeHash = () => history.replaceState(null, '', '#' + new URLSearchParams(state).toString());
 
 /* ---------------- the renderer and the scene ---------------- */
@@ -115,9 +119,8 @@ const redraw = () => { dirty = true; };
 const changed = () => { renderer.shadowMap.needsUpdate = true; redraw(); };
 const camera = new THREE.PerspectiveCamera(30, 1, 0.05, 30);
 const controls = new OrbitControls(camera, canvas);
-const VIEWS = { whole: { target: [0, 0.54, 0], pos: [1.0, 0.86, 2.55] }, dome: { target: [0, 0.9, 0.02], pos: [0.5, 1.06, 1.22] } };
 function frameView(which = 'whole') {
-  const v = VIEWS[which] || VIEWS.whole;
+  const v = chassis().views[which] || chassis().views.whole;
   controls.target.set(...v.target); camera.position.set(...v.pos); controls.update(); redraw();
 }
 controls.enablePan = false; controls.enableDamping = true; controls.dampingFactor = 0.08;
@@ -129,7 +132,10 @@ const noise = noiseTexture(256);
 const MAT = { main: paintMaterial(noise), glass: glassMaterial(), glow: glowMaterial(), logic: logicMaterial(logicTexture(7)), clear: clearMaterial() };
 const paintU = MAT.main.userData.u;
 const droid = new THREE.Group(); scene.add(droid);
-let pieces = null, halos = [], stanceT = state.stance === 'three' ? 1 : 0, stanceGoal = stanceT, info = { tris: 0 };
+let pieces = null, halos = [], info = { tris: 0 };
+// what moves smoothly (the stance, a turn of the head): where each is, and where it is heading
+const anim = {}, goal = {};
+function aim(jump) { const A = chassis().anim || {}; for (const k of Object.keys(anim)) if (!A[k]) { delete anim[k]; delete goal[k]; } for (const [k, f] of Object.entries(A)) { goal[k] = f(state[k]); if (jump || anim[k] === undefined) anim[k] = goal[k]; } }
 
 function assemble(kits) {
   const g = {}; halos = [];
@@ -151,17 +157,12 @@ function assemble(kits) {
   }
   return g;
 }
-function place(g) {   // which piece hangs on which
-  g.body.add(g.dome, g.midLeg); g.midLeg.add(g.midFoot);
-  droid.add(g.body, g.legL, g.legR, g.footL, g.footR);
-}
 function rebuild() {
-  const t0 = performance.now();
-  const kits = buildUtility({ ...state, eyeColor: pick('eye', state.eye).c });
-  addFittings(kits, state, kitSet(state.kit));
+  const t0 = performance.now(), c = new THREE.Color(pick('eye', state.eye).c);
+  const kits = chassis().build({ ...state, eyeColor: pick('eye', state.eye).c, eyeRGB: [c.r, c.g, c.b] }, kitSet(state.kit));
   if (pieces) { droid.clear(); for (const g of Object.values(pieces)) g.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.isSprite) o.material.dispose(); }); }
-  pieces = assemble(kits); place(pieces);
-  poseUtility(pieces, stanceT);
+  pieces = assemble(kits); chassis().place(pieces, droid);
+  chassis().pose(pieces, anim);
   let tris = 0; droid.traverse((o) => { if (o.isMesh) tris += o.geometry.index.count / 3; });
   info = { tris, ms: Math.round(performance.now() - t0) };
   colours(); changed();
@@ -173,6 +174,7 @@ function colours() {
   const others = PAINTS.filter((p) => p.key !== state.primary && p.key !== state.secondary);
   paintU.uOdd.value.set(others[(Number(state.seed) * 7 + 3) % others.length].c);
   paintU.uWear.value = pick('wear', state.wear).w;
+  paintU.uFinish.value = state.finish === 'metal' ? 1 : 0;
   redraw();
 }
 // halos fade as their light turns away from the camera
@@ -188,49 +190,56 @@ function faceHalos(cam) {
 
 /* ---------------- the panel ---------------- */
 function summary() {
-  const s = (k) => pick(k, state[k]).name.toLowerCase(), kit = [...kitSet(state.kit)].map((k) => FITTINGS[k].name.toLowerCase());
-  document.getElementById('summary').textContent = `Utility droid No. ${state.seed}: ${s('dome')} dome, ${s('layout')} panels, ${s('scheme')} scheme in ${s('primary')} and ${s('secondary')}, ${s('eye')} photoreceptor, ${s('wear')}${kit.length ? ', with ' + kit.join(', ') : ''}.`;
+  const n = (k) => pick(k, state[k]).name.toLowerCase(), kit = [...kitSet(state.kit)].map((k) => pick('kit', k).name.toLowerCase());
+  document.getElementById('summary').textContent = `${chassis().noun} No. ${state.seed}: ${chassis().describe(n)}, ${n('scheme')} scheme in ${state.finish === 'metal' ? 'metallic ' : ''}${n('primary')} and ${n('secondary')}, ${n('eye')} photoreceptor, ${n('wear')}${kit.length ? ', with ' + kit.join(', ') : ''}.`;
 }
 function paint() {
   for (const el of document.querySelectorAll('[data-opt]')) {
-    const multi = OPTIONS[el.dataset.opt].type === 'multi', on = multi ? kitSet(state[el.dataset.opt]) : null;
+    const multi = options()[el.dataset.opt].multi, on = multi ? kitSet(state[el.dataset.opt]) : null;
     for (const b of el.querySelectorAll('button')) b.setAttribute('aria-pressed', String(multi ? on.has(b.dataset.key) : b.dataset.key === state[el.dataset.opt]));
   }
   summary();
 }
 function set(opt, k) {
-  if (OPTIONS[opt].type === 'multi') { const on = kitSet(state[opt]); if (on.has(k)) on.delete(k); else on.add(k); state[opt] = [...on].join('.'); rebuild(); }
+  const def = options()[opt];
+  if (def.multi) { const on = kitSet(state[opt]); if (on.has(k)) on.delete(k); else on.add(k); state[opt] = [...on].join('.'); rebuild(); }
   else {
     if (state[opt] === k) return;
     state[opt] = k;
-    if (opt === 'primary' || opt === 'secondary' || opt === 'wear') colours();
-    else if (opt === 'stance') stanceGoal = k === 'three' ? 1 : 0;
+    if (opt === 'chassis') { settle(); aim(true); panel(); rebuild(); frameView('whole'); }
+    else if (opt === 'primary' || opt === 'secondary' || opt === 'wear' || opt === 'finish') colours();
+    else if (chassis().anim && chassis().anim[opt]) aim(false);
     else rebuild();
   }
   paint(); writeHash(); redraw();
 }
 const panelEl = document.getElementById('options');
-for (const [opt, def] of Object.entries(OPTIONS)) {
-  const fs = document.createElement('fieldset'); fs.className = 'opt';
-  fs.innerHTML = `<legend>${def.label}</legend>`;
-  const box = document.createElement('div'); box.className = def.type === 'swatch' ? 'swatches' : 'seg wrap'; box.dataset.opt = opt;
-  for (const o of def.items) {
-    const b = document.createElement('button'); b.type = 'button'; b.dataset.key = o.key;
-    if (def.type === 'swatch') { b.className = 'sw'; b.style.setProperty('--c', o.c); b.setAttribute('aria-label', o.name); b.title = o.name; }
-    else b.textContent = o.name;
-    b.addEventListener('click', () => set(opt, o.key));
-    box.appendChild(b);
+function panel() {   // the choices on offer change with the chassis
+  panelEl.textContent = '';
+  for (const [opt, def] of Object.entries(options())) {
+    const fs = document.createElement('fieldset'); fs.className = 'opt';
+    const lg = document.createElement('legend'); lg.textContent = def.label; fs.appendChild(lg);
+    const box = document.createElement('div'); box.className = def.swatch ? 'swatches' : 'seg wrap'; box.dataset.opt = opt;
+    for (const o of def.items) {
+      const b = document.createElement('button'); b.type = 'button'; b.dataset.key = o.key;
+      if (def.swatch) { b.className = 'sw'; b.style.setProperty('--c', o.c); b.setAttribute('aria-label', o.name); b.title = o.name; }
+      else b.textContent = o.name;
+      b.addEventListener('click', () => set(opt, o.key));
+      box.appendChild(b);
+    }
+    fs.appendChild(box); panelEl.appendChild(fs);
   }
-  fs.appendChild(box); panelEl.appendChild(fs);
+  const hv = document.querySelector('[data-view="head"]'); if (hv) hv.textContent = chassis().headName;
 }
 document.getElementById('random').addEventListener('click', () => {
-  const any = (k) => { const it = OPTIONS[k].items; return it[Math.floor(Math.random() * it.length)].key; };
-  for (const k of ['dome', 'layout', 'scheme', 'primary', 'eye', 'wear', 'stance']) state[k] = any(k);
+  const opts = options(), any = (k) => { const it = opts[k].items; return it[Math.floor(Math.random() * it.length)].key; };
+  for (const [k, def] of Object.entries(opts)) {
+    if (k === 'chassis' || k === 'secondary') continue;
+    state[k] = def.multi ? def.items.map((o) => o.key).filter(() => Math.random() < 0.35).join('.') : any(k);
+  }
   do state.secondary = any('secondary'); while (state.secondary === state.primary);
-  state.kit = Object.keys(FITTINGS).filter(() => Math.random() < 0.35).join('.');
   state.seed = String(1 + Math.floor(Math.random() * 999));
-  stanceGoal = state.stance === 'three' ? 1 : 0;
-  rebuild(); paint(); writeHash();
+  aim(false); rebuild(); paint(); writeHash();
 });
 for (const b of document.querySelectorAll('[data-view]')) b.addEventListener('click', () => frameView(b.dataset.view));
 
@@ -253,16 +262,16 @@ const bgChoice = () => (document.querySelector('input[name=bg]:checked') || { va
 // the portrait: the current view, 1024 px square
 document.getElementById('save').addEventListener('click', () => {
   const cam = camera.clone(); cam.aspect = 1; cam.fov = fovFor(1); cam.updateProjectionMatrix();
-  download(snapshot(1024, bgChoice(), cam), `droid-${state.seed}-${state.primary}-${state.secondary}.png`);
+  download(snapshot(1024, bgChoice(), cam), `${state.chassis}-droid-${state.seed}-${state.primary}-${state.secondary}.png`);
 });
-// the token: 512 px, the dome and shoulders from the front and a little to one side, so the eye still reads at map
+// the token: 512 px, the head and shoulders from the front and a little to one side, so the eye still reads at map
 // size; plain by default
 const tokenCam = new THREE.PerspectiveCamera(30, 1, 0.05, 30);
 document.getElementById('token').addEventListener('click', () => {
-  const y = pieces.body.position.y + 0.2;
-  tokenCam.position.set(0.3, y + 0.16, 1.5); tokenCam.lookAt(0, y, -0.04); tokenCam.updateProjectionMatrix();
+  const t = chassis().token(pieces);
+  tokenCam.position.set(...t.pos); tokenCam.lookAt(...t.target); tokenCam.updateProjectionMatrix();
   const bg = bgChoice() === 'studio' ? 'plain' : bgChoice();
-  download(snapshot(512, bg, tokenCam, false), `droid-token-${state.seed}.png`);
+  download(snapshot(512, bg, tokenCam, false), `${state.chassis}-droid-token-${state.seed}.png`);
 });
 
 /* ---------------- run ---------------- */
@@ -279,20 +288,19 @@ controls.addEventListener('start', () => hint.classList.add('gone'));
 controls.addEventListener('change', redraw);
 let last = performance.now();
 function frame(now) {
-  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
   resize();
   controls.update();   // damping keeps moving the camera for a moment after a drag; 'change' marks those frames
-  if (stanceT !== stanceGoal && pieces) {   // lean back onto the third leg, or stand up again
-    const step = dt / 0.75; stanceT = stanceGoal > stanceT ? Math.min(stanceGoal, stanceT + step) : Math.max(stanceGoal, stanceT - step);
-    poseUtility(pieces, stanceT); changed();
-  }
+  let moving = false;   // lean back onto the third leg, turn the head, take a step
+  for (const k of Object.keys(goal)) if (anim[k] !== goal[k]) { const step = dt / 0.75; anim[k] = goal[k] > anim[k] ? Math.min(goal[k], anim[k] + step) : Math.max(goal[k], anim[k] - step); moving = true; }
+  if (moving && pieces) { chassis().pose(pieces, anim); changed(); }
   if (!dirty) return;
   dirty = false;
   faceHalos(camera);
   renderer.render(scene, camera);
 }
-paint();
+aim(true); panel(); paint(); frameView('whole');
 rebuild();
 renderer.setAnimationLoop(frame);
-window.__droid = { state, set, frameView, camera, controls, redraw, rebuild, pose: (t) => { stanceT = stanceGoal = t; poseUtility(pieces, t); changed(); },
+window.__droid = { state, set, frameView, camera, controls, redraw, rebuild, anim, goal,
   stats: () => ({ tris: renderer.info.render.triangles, calls: renderer.info.render.calls, geometries: renderer.info.memory.geometries, built: info }) };

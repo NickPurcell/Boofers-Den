@@ -1,7 +1,7 @@
 // The droid's finish. One material paints nearly the whole unit: each vertex says what it is (painted in the first or
 // second colour, bright metal, dark metal, brass, rubber, steel) and how near it is to a panel's edge, and the shader
-// does the rest: paint that chips to bare metal along edges, scuffs, grime in the seams, streaks, dust thrown up from
-// the ground, tarnish. How worn is one number, so the slider moves without rebuilding anything. The noise it uses is
+// does the rest: paint (or plating, for a metallic finish) that chips along edges, scuffs, grime in the seams,
+// streaks, dust thrown up from the ground, tarnish. How worn is one number, so it changes without rebuilding anything. The noise it uses is
 // made here in code; nothing is downloaded.
 import * as THREE from 'three';
 
@@ -45,7 +45,7 @@ export function noiseTexture(size = 256) {
 
 const DECL = /* glsl */ `
 uniform vec3 uPrimary; uniform vec3 uSecondary; uniform vec3 uOdd; uniform vec3 uDirt;
-uniform float uWear; uniform sampler2D uNoise;
+uniform float uWear; uniform float uFinish; uniform sampler2D uNoise;
 varying vec4 vData; varying vec2 vWuv; varying vec3 vWPos;
 float pRough; float pMetal; float pHeight;
 `;
@@ -55,7 +55,7 @@ const PAINT = /* glsl */ `
   float edge = vData.y, seed = vData.z, corner = step(0.5, vData.w);
   bool fOdd = mod(flag, 2.0) > 0.5, fDrop = mod(floor(flag / 2.0), 2.0) > 0.5;
   float wear = uWear;
-  if (fDrop && wear > 0.86) discard;
+  if (fDrop && wear > 0.9) discard;
   vec2 puv = vWuv + vec2(seed * 3.7, seed * 9.1);
   vec4 nA = texture2D(uNoise, puv * 1.7);
   vec4 nB = texture2D(uNoise, puv * 6.1 + 0.31);
@@ -68,19 +68,21 @@ const PAINT = /* glsl */ `
   float e = 1.0 - smoothstep(0.0, 0.007, edge);
   if (painted) {
     col = role < 0.5 ? uPrimary : uSecondary;
-    if (fOdd && wear > 0.7) col = uOdd;
+    if (fOdd && wear > 0.85) col = uOdd;
     // years in the sun: the paint goes chalky and uneven, each panel a little differently
     float fade = wear * (0.25 + 0.5 * nD.r + 0.25 * seed);
     float lum = dot(col, vec3(0.3, 0.59, 0.11));
     col = mix(col, mix(col, vec3(lum), 0.45) * 1.08 + 0.015, fade * 0.7);
     rough = mix(0.30, 0.62, wear) + (nB.b - 0.5) * 0.2 * wear;
+    // a metallic finish: the same colour, plated rather than painted
+    metal = uFinish; rough = mix(rough, 0.24 + 0.22 * wear + (brush - 0.5) * 0.12, uFinish);
     // chips, thickest along the edges
     float n = nA.g * 0.62 + nB.g * 0.30 + (nA.b - 0.5) * 0.25;
-    float th = mix(1.25, 0.56, wear) - e * mix(0.08, 0.36, wear) * (1.0 + 0.5 * corner);
+    float th = mix(1.25, 0.56, wear) - e * mix(0.06, 0.44, wear) * (1.0 + 0.25 * corner);
     float chip = smoothstep(th, th + 0.025, n);
     float rim = smoothstep(th - 0.06, th - 0.035, n) * (1.0 - chip);
     col = mix(col, col * 0.5 + vec3(0.05, 0.045, 0.04), rim * 0.8);
-    col = mix(col, bare, chip); metal = chip; rough = mix(rough, 0.40, chip);
+    col = mix(col, mix(bare, vec3(0.11, 0.10, 0.095), uFinish), chip); metal = mix(metal, mix(1.0, 0.35, uFinish), chip); rough = mix(rough, mix(0.40, 0.6, uFinish), chip);
     h -= chip * 0.00012;
     // scuffs: long thin pale marks
     float sc = smoothstep(0.82, 0.88, texture2D(uNoise, vec2(puv.x * 0.9 + puv.y * 0.35, puv.y * 13.0)).a) * smoothstep(0.25, 0.9, wear) * (1.0 - chip) * smoothstep(0.45, 0.6, nA.r);
@@ -100,7 +102,7 @@ const PAINT = /* glsl */ `
   float soil = wear * wear * smoothstep(0.42, 0.75, nD.r) * 0.3;
   float grime = clamp(wear * (0.8 * cav + 0.5 * streak * smoothstep(0.15, 0.7, wear)) + soil, 0.0, 1.0);
   float dust = clamp(wear * 1.15 * smoothstep(0.50, 0.03, vWPos.y) * (0.3 + 0.9 * nD.g + 0.3 * nB.b), 0.0, 1.0);
-  col = mix(col, uDirt * 0.22, grime); metal *= 1.0 - grime; rough = mix(rough, 0.85, grime);
+  col = mix(col, uDirt * mix(0.4, 0.2, cav), grime); metal *= 1.0 - grime; rough = mix(rough, 0.85, grime);
   col = mix(col, uDirt, dust * 0.85); metal *= 1.0 - dust; rough = mix(rough, 0.95, dust);
   // a little shade in every seam, even on a unit fresh from the works
   col *= mix(1.0, mix(0.6, 1.0, smoothstep(0.0, 0.0022, edge)), 1.0 - corner);
@@ -122,7 +124,7 @@ export function paintMaterial(noise) {
   const m = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5, metalness: 0 });
   const u = {
     uPrimary: { value: new THREE.Color(0xe9e6dc) }, uSecondary: { value: new THREE.Color(0x1f6f78) }, uOdd: { value: new THREE.Color(0x8a5a2c) },
-    uDirt: { value: new THREE.Color(0x6b5a45) }, uWear: { value: 0.3 }, uNoise: { value: noise },
+    uDirt: { value: new THREE.Color(0x6b5a45) }, uWear: { value: 0.3 }, uFinish: { value: 0 }, uNoise: { value: noise },
   };
   m.userData.u = u;
   m.onBeforeCompile = (sh) => {
@@ -145,7 +147,7 @@ export function paintMaterial(noise) {
 // a dark lens
 export const glassMaterial = () => new THREE.MeshPhysicalMaterial({ color: 0x030406, roughness: 0.05, metalness: 0, clearcoat: 1, clearcoatRoughness: 0.03, envMapIntensity: 1.7 });
 // a clear dome you can see the works through
-export const clearMaterial = () => new THREE.MeshPhysicalMaterial({ color: 0xcfe3ea, transparent: true, opacity: 0.2, roughness: 0.03, metalness: 0, envMapIntensity: 2.2, depthWrite: false });
+export const clearMaterial = () => new THREE.MeshPhysicalMaterial({ color: 0xd8ecf2, transparent: true, opacity: 0.26, roughness: 0.02, metalness: 0, envMapIntensity: 3.0, depthWrite: false });
 // anything lit from inside; its colour is the vertex colour
 export const glowMaterial = () => new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
 

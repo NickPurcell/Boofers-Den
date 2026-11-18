@@ -11,7 +11,7 @@ import * as THREE from 'three';
 const { sin, cos, PI, hypot, abs, max, min, sign, ceil } = Math;
 export const rad = (deg) => (deg * PI) / 180;
 export const ROLE = { primary: 0, secondary: 1, metal: 2, dark: 3, brass: 4, rubber: 5, steel: 6 };
-export const FLAG = { odd: 1, drop: 2 };   // odd: may be a panel from another unit; drop: may be missing
+export const FLAG = { odd: 1, drop: 2 };   // on a scavenged unit, odd: a panel from another unit; drop: a panel gone missing
 const EDGE = 0.008;   // how far in from a hard edge the "near an edge" value runs, in metres
 const FAR = 1;        // "nowhere near an edge"
 
@@ -408,10 +408,18 @@ function avg(a, b) { const x = a[0] + b[0], y = a[1] + b[1], z = a[2] + b[2], l 
 
 // the builders for one moving piece of a droid: the painted mesh, dark lenses, lit parts, logic displays, clear
 // parts, and where its lights' halos go
+const _h = new THREE.Vector3();
 export class Kit {
   constructor() { this.main = new Builder(); this.glass = new Builder(); this.glow = new Builder(); this.logic = new Builder(); this.clear = new Builder(); this.halos = []; }
-  // a halo at a point (in this piece's own frame), facing along n
-  halo(p, n, color, size) { this.halos.push({ p, n, color, size }); }
+  get all() { return [this.main, this.glass, this.glow, this.logic, this.clear]; }
+  // place everything made inside fn, whichever builder makes it
+  at(m, fn) { for (const b of this.all) b.push(m); try { fn(this); } finally { for (const b of this.all) b.pop(); } return this; }
+  // a halo at point p facing along n (a zero n shines every way), given in the frame things are being made in
+  halo(p, n, color, size) {
+    _h.set(p[0], p[1], p[2]).applyMatrix4(this.main.mat); const q = [_h.x, _h.y, _h.z];
+    _h.set(n[0], n[1], n[2]); if (_h.lengthSq() > 0) _h.transformDirection(this.main.mat);
+    this.halos.push({ p: q, n: [_h.x, _h.y, _h.z], color, size });
+  }
 }
 
 // a random number source that gives the same run for the same seed, so a link rebuilds the same unit

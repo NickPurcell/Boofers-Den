@@ -21,7 +21,7 @@ export const DIM = {
 };
 
 /* ---------------- the barrel's fittings, one maker per kind of leaf in a layout ---------------- */
-const KINDS = {
+export const KINDS = {
   skin(c, r, leaf, at) {
     const flag = c.flag ? c.flag(leaf) : 0;
     c.K.main.panel(c.map, r[0], r[1], r[2], r[3], { role: c.role(leaf.tag || 'skin', at), seed: c.rnd(), flag, rad: 0.005 });
@@ -241,12 +241,13 @@ export function buildUtility(state) {
   return kits;
 }
 
-// Place the pieces. t runs from 0 (upright on two legs) to 1 (leaning back on three). g maps names to objects.
-export function poseUtility(g, t) {
+// Place the pieces. t runs from 0 (upright on two legs) to 1 (leaning back on three); a2 turns the dome (-1 to 1).
+// g maps names to objects.
+export function poseUtility(g, t, a2) {
   const { R, legGap, leg: L, ankleY, midAnkleY, top, ring, bottom, skirt, lean } = DIM, e = t * t * (3 - 2 * t), a = lean * e;
   const sy = ankleY + L * Math.cos(a), x = R + legGap;
   g.body.position.set(0, sy, 0); g.body.rotation.set(-a, 0, 0);
-  g.dome.position.set(0, top + ring, 0);
+  g.dome.position.set(0, top + ring, 0); g.dome.rotation.set(0, (a2 || 0) * rad(32), 0);
   g.legL.position.set(x, sy, 0); g.legL.rotation.set(a, 0, 0);
   g.legR.position.set(-x, sy, 0); g.legR.rotation.set(a, 0, 0);
   g.footL.position.set(x, ankleY, -L * Math.sin(a)); g.footR.position.set(-x, ankleY, -L * Math.sin(a));
@@ -254,5 +255,5 @@ export function poseUtility(g, t) {
   g.midLeg.position.set(0, bottom - skirt - (tuck + (reach - tuck) * e), 0);
   g.midFoot.rotation.set(a, 0, 0);
   g.midLeg.visible = e > 0.03;
-  return { height: sy + (top + ring + 0.26) * Math.cos(a), eye: [0, sy + (top + ring + 0.11) * Math.cos(a), 0.2] };
+  return { shoulder: sy };
 }
