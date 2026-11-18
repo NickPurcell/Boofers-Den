@@ -49,7 +49,7 @@ function onTurn(camp, gm, ship) {
 const TYPES = new Set(["ship.damage", "ship.restore", "ship.points", "ship.dsave", "ship.stabilize", "ship.condition", "ship.reset",
   "ship.turn", "ship.power", "ship.poweruse", "ship.dice", "ship.boost", "ship.regen", "ship.helm", "ship.patch", "ship.direct", "ship.cool", "ship.reload",
   "ship.recharge", "ship.hulldie", "ship.refit", "ship.install",
-  "ship.astro", "ship.plot", "ship.jump", "ship.startup"]);
+  "ship.astro", "ship.plot", "ship.jump", "ship.startup", "ship.technique"]);
 const handles = (type) => TYPES.has(type);
 
 // On a sheet save: the fight state and the current hull and shield points stay as stored (they change only through
@@ -334,6 +334,29 @@ function apply(camp, cid, gm, type, p, h) {
       put(s); say(lines);
       return { hours, fuel };
     }
+    case "ship.technique": {   // a crew member uses a technique they know: a power die from a store (central or the
+      // technique's system), or a mechanic's tech die, which isn't spent; rolled here
+      const crew = Array.isArray(ship.crew) ? ship.crew : [], ci = int(p.crew, -1);
+      if (!(ci >= 0 && ci < crew.length)) throw new Invalid("No such crew member.");
+      const c = crew[ci], name = str(p.name, 60), known = Array.isArray(c.known) ? c.known : [];
+      if (!known.includes(name)) throw new Invalid("They don't know that technique.");
+      if (SR.isDisabled(SR.statusOf(ship)) || SR.isLost(SR.statusOf(ship))) throw new Invalid(`${ship.name} can't take actions.`);
+      const chars = camp.characters || {}, ch = typeof c.charId === "string" && Object.prototype.hasOwnProperty.call(chars, c.charId) ? chars[c.charId] : null;
+      const who = str((ch && ch.name) || c.name || "A crew member", 60);
+      if (c.deployment === "Mechanic") {
+        const d = SR.techDie(c.rank); if (!d) throw new Invalid("A technique needs 1st rank.");
+        const r = rollDice("1d" + d);
+        say([`${who} (Mechanic) uses ${name}: tech die d${d}, ${r.total}.`]);
+        return { value: r.total };
+      }
+      const pool = str(p.pool, 20);
+      if (!SR.POOLS.includes(pool)) throw new Invalid("No such power store.");
+      const r = SR.usePower(ship, pool, (e) => rollDice(e));
+      if (r.value === null) throw new Invalid(`No power dice in ${SR.SYSTEM_NAMES[pool].toLowerCase()}.`);
+      put(r.ship);
+      say([`${who}${c.deployment ? ` (${c.deployment})` : ""} uses ${name}: a ${SR.SYSTEM_NAMES[pool].toLowerCase()} power die, ${r.value}.`]);
+      return { value: r.value };
+    }
     case "ship.reset": {    // the GM undoes a destruction (a mistake, or a story reason): saves cleared, not destroyed
       if (!gm) throw new Forbidden("GM only");
       const s = JSON.parse(JSON.stringify(ship));
@@ -355,10 +378,12 @@ const cleanFields = (sh) => ({ status: SR.cleanStatus(sh.status), reactor: pick(
 // a modification row's fields this subsystem owns: its category, grade, prerequisites (from SotG's data when picked),
 // and whether a tier feature gave it (no slot, no suite count, no check)
 const cleanMod = (m) => ({ type: SR.MOD_TYPES.includes(m.type) ? m.type : "", grade: clamp(int(m.grade), 0, 5), pre: str(m.pre, 200), free: m.free === true });
+// a crew row's fields this subsystem owns: the techniques they know (names from the deployment's list, at most six)
+const cleanCrew = (c) => ({ known: [...new Set((Array.isArray(c.known) ? c.known : []).map((x) => str(x, 60).trim()).filter(Boolean))].slice(0, 6) });
 // a weapon row's fields this subsystem owns: its category (primary to quaternary), its mount (a fixed arc, or a turret;
 // "" means not set, and fires in any arc), and its ammunition ("" means not counted)
 const cleanWeapon = (w) => ({ cat: SR.WEAPON_CATS.includes(w.cat) ? w.cat : "", arc: SR.MOUNTS.includes(w.arc) ? w.arc : "",
   ammo: w.ammo === "" || w.ammo === null || w.ammo === undefined || !Number.isFinite(parseInt(w.ammo, 10)) ? "" : clamp(int(w.ammo), 0, 999),
   heat: clamp(int(w.heat), 0, 99) });   // shots since it was last cooled (overheat N)
 
-module.exports = { handles, apply, onTurn, keepStatus, cleanStatus: SR.cleanStatus, cleanFields, cleanWeapon, cleanMod, boostBonus, crewPb };
+module.exports = { handles, apply, onTurn, keepStatus, cleanStatus: SR.cleanStatus, cleanFields, cleanWeapon, cleanMod, cleanCrew, boostBonus, crewPb };

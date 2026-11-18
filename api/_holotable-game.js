@@ -147,7 +147,7 @@ function cleanShip(sh, chars) {
     saves: Object.fromEntries(ABILS.map((a) => [a, !!(sh.saves || {})[a]])),
     skills: Object.fromEntries(SHIP_SKILLS.map((k) => [k, [0, 1, 2].includes(+(sh.skills || {})[k]) ? +(sh.skills || {})[k] : 0])),
     crew: list(sh.crew, 20, (c) => ({ charId: chars[c.charId] ? c.charId : null, name: s(c.name, 60), deployment: DEPLOYMENTS.includes(c.deployment) ? c.deployment : "",
-      rank: clamp(int(c.rank), 0, 5), pb: clamp(int(c.pb, 2), 0, 10) })),
+      rank: clamp(int(c.rank), 0, 5), pb: clamp(int(c.pb, 2), 0, 10), ...Ships.cleanCrew(c) })),
     weapons: list(sh.weapons, 30, (w) => ({ name: s(w.name, 80), atkMisc: clamp(int(w.atkMisc), -20, 20), dmg: s(w.dmg, 40), type: s(w.type, 30),
       range: s(w.range, 40), props: s(w.props, 300), ...Ships.cleanWeapon(w) })),
     equipment: list(sh.equipment, 60, (e) => ({ name: s(e.name, 80), notes: s(e.notes, 300) })),
