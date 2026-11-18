@@ -231,9 +231,9 @@
       return;
     }
     const r = spec.power ? await send('fight.use', Object.assign({ ability: spec.key, upcast: UI.upcast || 0, adv: UI.adv, dis: UI.dis }, spec.power.area ? { point: UI.aim } : { target: targetId }))
-      : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.base || spec.key : specOut(spec), offhand: !!spec.offhand, martial: !!spec.martialBonus, no: UI.noRiders || [], add: UI.addRiders || {}, twoHands: !!UI.twoHands,
+      : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.base || spec.key : specOut(spec), offhand: !!spec.offhand, martial: !!spec.martialBonus, no: UI.noRiders || [], add: UI.addRiders || {}, twoHands: !!UI.twoHands, called: UI.called && (E.preview(world(), u.id, targetId, spec, { adv: UI.adv, dis: UI.dis }) || {}).calledOk ? UI.called : undefined,
         multi: u.charId ? undefined : (UI.npc[u.id] || {}).multi || 1 });
-    if (r) { UI.armed = null; UI.target = null; UI.aim = null; UI.adv = UI.dis = false; UI.upcast = 0; UI.noRiders = []; UI.addRiders = {}; render(); }
+    if (r) { UI.armed = null; UI.target = null; UI.aim = null; UI.adv = UI.dis = false; UI.upcast = 0; UI.noRiders = []; UI.addRiders = {}; UI.called = ''; render(); }
   }
 
   /* ---------------- the bar under the map ---------------- */
@@ -304,7 +304,7 @@
         const down = e.hp != null && +e.hp <= 0, cur = e.id === f.turn, n = (e.conditions || []).length;
         return `<span class="ct-ord ${cur ? 'cur' : ''} ${down ? 'down' : ''}" title="${esc(e.name)}${n ? ': ' + esc(e.conditions.join(', ')) : ''}">${esc(e.name)}${n ? ` <b>${n}</b>` : ''}</span>`;
       }).join('<span class="ct-sep" aria-hidden="true">›</span>')}<span class="spacer"></span>
-        ${(() => { const on = ['Flanking', 'Compound Advantage', 'Crueler Criticals', 'Critical Saving Throws'].filter((v) => (s.variants || []).includes(v)); return on.length ? `<span class="muted ct-variants" title="SW5e variant rules this table uses that change the combat view's arithmetic">${esc(on.join(' · '))}</span>` : ''; })()}
+        ${(() => { const on = ['Flanking', 'Compound Advantage', 'Crueler Criticals', 'Critical Saving Throws', 'Called Shots', 'Encumbrance'].filter((v) => (s.variants || []).includes(v)); return on.length ? `<span class="muted ct-variants" title="SW5e variant rules this table uses that change the combat view's arithmetic">${esc(on.join(' · '))}</span>` : ''; })()}
         <button class="btn tiny ghost ${UI.log ? 'primary' : ''}" data-ct="log" aria-pressed="${!!UI.log}" title="The last combat lines">📜 Log</button></div>`;
       if (UI.log) {
         const lines = (s.chat || []).filter((m) => m.fight).slice(-8);
@@ -464,10 +464,11 @@
           : `<span><b>${esc(t.name)}</b>, ${E.feetBetween(u, t)} ft: your Athletics ${sgn(E.contestBonus(u, 'athletics'))} against ${esc(theirs)}. If you win, ${wins}; a tie changes nothing.</span><button class="btn small primary" data-ct="go">${esc(spec.maneuver === 'grapple' ? 'Grapple' : 'Shove')}</button>`}</div>`;
       } else if (spec) {
         const t = UI.target && w.units[UI.target];
-        const pv = t && E.preview(w, u.id, t.id, spec, { adv: UI.adv, dis: UI.dis });
+        const pv = t && E.preview(w, u.id, t.id, spec, { adv: UI.adv, dis: UI.dis, called: UI.called || undefined });
         html += `<div class="ct-row ct-preview" aria-live="polite">${!t ? `<span>${esc(spec.name)}: pick a target on the map (lit in red).</span><button class="btn tiny ghost" data-ct="disarm">Cancel</button>`
           : !pv.legal ? `<span>${esc(pv.why)}</span>`
           : `<span><b>${esc(t.name)}</b>, ${pv.feet} ft: you need <b>${pv.need}+</b> on the d20 (${Math.round(pv.chance * 100)}%)${pv.mode !== 'normal' ? ` · ${E.modeName(pv)}: ${esc(pv.tilts.map((x) => x.text).join(', '))}` : ''}${pv.weak ? ` · weakened: −${pv.weak}` : ''}${(pv.notes || []).length ? ` · ${esc(pv.notes.join('; '))}` : ''}. Hit: ${esc((UI.twoHands && spec.versatile && !pv.ranged ? String(spec.damage).replace(/\d*d\d+/i, spec.versatile) : spec.damage) + (spec.heavy ? '+' + spec.heavy : ''))}${spec.type ? ' ' + esc(spec.type) : ''}${spec.heavy ? ' (heavy)' : ''}.</span>
+             ${pv.calledOk ? `<label class="ct-tog ct-rider" title="Called Shots: give up advantage; on a hit, roll d100 for the effect, or pick it and roll the damage twice, taking the lower">🎯 Called shot <select data-ct="called">${[['', 'no'], ['random', 'random effect (d100)'], ['leg', 'leg (damage twice, lower)'], ['arm', 'arm (damage twice, lower)'], ['scatter', 'scatter (damage twice, lower)'], ['head', 'head (damage twice, lower)']].map(([k, n]) => `<option value="${k}" ${(UI.called || '') === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>` : ''}
              ${spec.versatile && !pv.ranged ? `<label class="ct-tog ct-rider" title="Versatile: the weapon in both hands uses the larger die"><input type="checkbox" data-ct="twohands" ${UI.twoHands ? 'checked' : ''}> Two hands (${esc(spec.versatile)})</label>` : ''}
              ${(pv.riders || []).map((x) => x.key === 'fes'
                ? `<label class="ct-tog ct-rider" title="On a melee weapon hit: 1d8 for each force point spent (paid only if it hits)">+ ${esc(x.name)} <select data-ct="fes">${Array.from({ length: x.max + 1 }, (_, i) => `<option value="${i}" ${+((UI.addRiders || {}).fes || 0) === i ? 'selected' : ''}>${i ? `${i}d8 (${i} FP)` : 'none'}</option>`).join('')}</select></label>`
@@ -486,6 +487,8 @@
     if (el) { UI.upcast = +el.value || 0; render(); }
     const fes = e.target.closest('[data-ct=fes]');   // Force-Empowered Strikes: how many force points to spend on a hit
     if (fes) { UI.addRiders = Object.assign({}, UI.addRiders, { fes: +fes.value || 0 }); render(); }
+    const cs = e.target.closest('[data-ct=called]');   // Called Shots (9.16): which, or none
+    if (cs) { UI.called = E.CALLED.includes(cs.value) ? cs.value : ''; render(); }
     const mvSel = e.target.closest('[data-ct=maneuver]');   // a maneuver for this attack (#67)
     if (mvSel) { UI.addRiders = Object.assign({}, UI.addRiders, { maneuver: mvSel.value || '' }); render(); }
   }
@@ -532,7 +535,7 @@
     if (k === 'addres') return resourceModal();
     if (k === 'defs') return defencesModal();
     if (k === 'senses') return sensesTable();
-    if (k === 'arm') { UI.armed = UI.armed === el.dataset.key ? null : el.dataset.key; UI.target = null; UI.upcast = 0; render(); return H.drawMap(); }
+    if (k === 'arm') { UI.armed = UI.armed === el.dataset.key ? null : el.dataset.key; UI.target = null; UI.upcast = 0; UI.called = ''; render(); return H.drawMap(); }
     if (k === 'disarm') { UI.armed = UI.target = UI.aim = null; render(); return H.drawMap(); }
     if (k === 'adv' || k === 'dis') { UI[k] = el.checked; return render(); }
     if (k === 'twohands') { UI.twoHands = el.checked; return render(); }

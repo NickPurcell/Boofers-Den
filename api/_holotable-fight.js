@@ -100,7 +100,8 @@ function cleanPending(x) {
   const at = plainObj(x.at);
   const kind = ["opportunity", "riposte", "return-fire", "parry"].includes(x.kind) ? x.kind : "opportunity";   // Riposte, Return Fire, Parry: #67
   const h = plainObj(x.hit);   // Parry: the hit waiting for the answer, made by the server
-  const hit = kind === "parry" ? { amount: clamp(int(h.amount), 0, 9999), crit: !!h.crit, type: str(h.type, 20), mv: typeof h.mv === "string" && /^[a-z-]{3,30}$/.test(h.mv) ? h.mv : null, dc: clamp(int(h.dc), 0, 40) } : undefined;
+  const hit = kind === "parry" ? { amount: clamp(int(h.amount), 0, 9999), crit: !!h.crit, type: str(h.type, 20), mv: typeof h.mv === "string" && /^[a-z-]{3,30}$/.test(h.mv) ? h.mv : null, dc: clamp(int(h.dc), 0, 40),
+    ...(typeof h.called === "string" && E.CALLED.includes(h.called) && h.called !== "random" ? { called: h.called, c100: h.c100 == null ? null : clamp(int(h.c100), 1, 100) } : {}) } : undefined;   // a called shot's effect lands with the hit (9.16)
   return { id: str(x.id, 30), kind, ...(hit ? { hit } : {}), reactor: x.reactor, against: x.against, at: { x: clamp(int(at.x), -500, 1000), y: clamp(int(at.y), -500, 1000) }, turn: str(x.turn, 60) };
 }
 // damage defences as the engine reads them: [{ type, only }], for resist / immune / vuln, plus condition immunities
@@ -1075,6 +1076,7 @@ function apply(camp, cid, gm, type, p, G) {
         act = { type: "attack", unit: cur.id, target: idOr(p.target), attack: spec, adv: !!p.adv, dis: !!p.dis, no: Array.isArray(p.no) ? p.no.slice(0, 4).map((x) => str(x, 20)) : [],
           add: { fes: clamp(int(p.add && p.add.fes), 0, 20), double: !!(p.add && p.add.double),
             maneuver: p.add && typeof p.add.maneuver === "string" && /^[a-z-]{3,30}$/.test(p.add.maneuver) ? p.add.maneuver : "" }, twoHands: !!p.twoHands,   // a maneuver by name; the engine checks the sheet knows it   // only how many, never the dice: the engine works those out
+          called: E.CALLED.includes(p.called) ? p.called : null,   // Called Shots (9.16): one of five names; the engine checks the variant and the advantage
           multi: gm && !cur.charId ? clamp(int(p.multi, 1), 1, 6) : 1,
           offhand: !!cur.charId && !!p.offhand, martial: !!cur.charId && !!p.martial };   // Two- or Double-Weapon Fighting (5.8): the engine checks it may   // a creature's Multiattack (#139): the GM's screen reads it from the stat block
       }

@@ -3605,3 +3605,89 @@ test("#212 review: an undo gives back a shot, and a reload's power cell, as they
   st = await gm.state();
   assert.deepEqual([st.characters[avery].attacks[0].shots, st.characters[avery].equipment[0].qty], [1, 2], "one shot left and both cells, as before the reload");
 });
+
+/* ---------------------------------------------------------------- the Called Shots variant (9.16, the combat view) */
+test("Called Shots (variant): give up advantage; on a hit, d100 for the effect, or the damage twice (the lower) and the effect picked", () => {
+  const ava = (o) => unit(Object.assign({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0 }, o));
+  const r1 = (o) => unit(Object.assign({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, ac: 13, hp: 60, maxHp: 60, conditions: ["Prone"] }, o));   // prone, within 5 ft: advantage
+  const V = { variants: ["Called Shots"] };
+  const go = (called, rolls, o = {}, extra = V) => { const d = dice(...rolls); const r = E.apply(world([ava(), r1(o)], "ava", extra), { type: "attack", unit: "ava", target: "r1", attack: blade, called }, d.roll); return { r, d }; };
+  // the preview offers it only with advantage, and a called shot rolls one d20
+  assert.equal(E.preview(world([ava(), r1()], "ava", V), "ava", "r1", blade).calledOk, true);
+  assert.equal(E.preview(world([ava(), r1({ conditions: [] })], "ava", V), "ava", "r1", blade).calledOk, false, "no advantage");
+  assert.equal(E.preview(world([ava(), r1()], "ava"), "ava", "r1", blade).calledOk, false, "no variant");
+  const pv = E.preview(world([ava(), r1()], "ava", V), "ava", "r1", blade, { called: "leg" });
+  assert.deepEqual([pv.mode, pv.expr, pv.called], ["normal", "1d20+5", "leg"]);
+  // random: normal damage, then d100 (37: a leg shot, 1 slowed level until the end of its next turn)
+  let { r, d } = go("random", [{ total: 18, nat: 13 }, { total: 7 }, { total: 37 }]);
+  assert.ok(r.ok, r.why);
+  assert.deepEqual(d.asked, ["1d20+5", "1d8+3", "1d100"]);
+  assert.match(r.log.map((x) => x.text).join(" | "), /Avery's called shot, d100: 37\. \| Leg Shot: Raider gains a slowed level/);
+  assert.deepEqual([r.world.units.r1.conditions.includes("Slowed"), E.levelOf(r.world, r.world.units.r1, "Slowed")], [true, 1]);
+  assert.deepEqual(r.world.effects.filter((ef) => ef.condition === "Slowed").map((ef) => [ef.ends, ef.of, ef.rounds]), [["end", "r1", 1]]);
+  // picked: damage twice, the lower; a head shot blinds until the start of its next turn
+  ({ r, d } = go("head", [{ total: 18, nat: 13 }, { total: 9 }, { total: 5 }]));
+  assert.deepEqual(d.asked, ["1d20+5", "1d8+3", "1d8+3"]);
+  assert.equal(r.world.units.r1.hp, 55);
+  assert.match(r.log.map((x) => x.text).join(" | "), /takes 5 kinetic damage \(a called shot: the lower of 9 and 5\)/);
+  assert.deepEqual(r.world.effects.filter((ef) => ef.condition === "Blinded").map((ef) => [ef.ends, ef.of]), [["start", "r1"]]);
+  // arm and scatter are said for the table; a miss has no effect
+  ({ r } = go("arm", [{ total: 18, nat: 13 }, { total: 9 }, { total: 5 }]));
+  assert.match(r.log.map((x) => x.text).join(" | "), /Arm Shot: Raider can't use an arm/);
+  ({ r, d } = go("leg", [{ total: 6, nat: 1 }]));
+  assert.deepEqual([d.asked.length, r.world.effects.length], [1, 0]);
+  // refused without advantage, or without the variant; a name off the list is no called shot
+  assert.match(go("leg", [], { conditions: [] }).r.why, /gives up advantage, and this attack has none/);
+  assert.match(go("leg", [], {}, {}).r.why, /isn't on for this table/);
+  assert.equal(E.preview(world([ava(), r1()], "ava", V), "ava", "r1", blade, { called: "__proto__" }).called, null);
+  assert.equal(E.calledFrom(45), "leg"); assert.equal(E.calledFrom(46), "arm"); assert.equal(E.calledFrom(91), "scatter"); assert.equal(E.calledFrom(96), "head");
+});
+
+test("Called Shots and Parry: a parried called shot's effect lands with what's left of the hit", () => {
+  const sup = { superiority: { key: "superiority", name: "Superiority dice", max: 3, die: "d6", used: 0, refill: "short" } };
+  const ft = unit({ id: "ft", name: "Fenn", side: "pc", x: 1, y: 0, ac: 12, hp: 40, maxHp: 40, conditions: ["Prone"], pools: sup, maneuvers: { known: ["parry"], dc: { physical: 14, mental: 12, general: 14 } }, mods: { dex: 2 } });
+  const r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 0, y: 0 });
+  const claw = { name: "Claw", bonus: 5, damage: "1d8+3", type: "kinetic", melee: 5, range: null };
+  const r = E.apply(world([ft, r1], "r1", { variants: ["Called Shots"] }), { type: "attack", unit: "r1", target: "ft", attack: claw, called: "head" }, dice({ total: 18, nat: 13 }, { total: 9 }, { total: 7 }).roll);
+  assert.ok(r.ok, r.why);
+  assert.deepEqual([r.reactions[0].kind, r.reactions[0].hit.called, r.reactions[0].hit.amount], ["parry", "head", 7]);
+  const rr = E.react(r.world, { kind: "parry", reactor: "ft", against: "r1", take: true, hit: r.reactions[0].hit }, dice({ total: 4 }).roll);
+  assert.ok(rr.ok, rr.why);
+  assert.ok(rr.world.units.ft.conditions.includes("Blinded"), "the head shot lands");
+  assert.match(rr.log.map((x) => x.text).join(" | "), /Fenn parries: 4 less damage\. \| Fenn takes 3 kinetic damage.* \| Head Shot: Fenn is blinded/);
+});
+
+test("Called Shots through the API: only the five names pass, and the engine's checks decide", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await gm.act("variants.set", { variants: ["Called Shots"] });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  // no advantage on the Raider: refused
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0", called: "leg" })).code, 400);
+  // a name off the list is dropped: an ordinary attack
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0", called: "constructor" })).code, 200);
+  assert.equal(Object.prototype.leg, undefined);
+});
+
+test("Called Shots through the API: a called head shot that Avery parries still blinds her when it lands", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { ac: 10, hp: { max: 40, current: 40, temp: 0 }, classes: [{ name: "Fighter", level: 5 }], features: [{ name: "Parry", text: "" }] }) });
+  await gm.act("variants.set", { variants: ["Called Shots"] });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await gm.act("fight.condition", { unit: ids.avery, condition: "Prone" })).code, 200);
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  const crypto = require("crypto"), real = crypto.randomInt;
+  crypto.randomInt = (a, b) => (b === 21 ? 15 : real(a, b));   // the Raider's d20 a 15: a hit on AC 10
+  try { assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 2, damage: "1d4+20", type: "kinetic", melee: 5 }, called: "head" })).code, 200); }
+  finally { crypto.randomInt = real; }
+  st = await sam.state();
+  const pend = (st.fight.pending || []).find((x) => x.kind === "parry");
+  assert.ok(pend, "a parry prompt for Avery");
+  assert.equal((await sam.act("fight.react", { id: pend.id, take: true })).code, 200);
+  st = await gm.state();
+  assert.ok((st.characters[avery].conditions || []).includes("Blinded") || st.initiative.entries.find((e) => e.charId === avery).conditions.includes("Blinded"), "blinded by the head shot");
+  assert.ok(st.chat.some((m) => /Head Shot: Avery is blinded/.test(m.text || "")));
+});

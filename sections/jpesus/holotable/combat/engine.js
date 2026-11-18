@@ -747,6 +747,25 @@
     }
     return out;
   }
+  /* ---------------- the Called Shots variant (9.16) ---------------- */
+  // 'random' rolls d100 on the effects table after normal damage; naming an effect rolls the damage twice and takes the
+  // lower. Leg: 1 slowed level until the end of its next turn. Head: blinded until the start of its next turn. Arm and
+  // scatter shots are said in the log for the table to play (the engine tracks no arms, and creatures don't cast here).
+  const CALLED = ['random', 'leg', 'arm', 'scatter', 'head'];
+  const CALLED_NAMES = { leg: 'Leg Shot', arm: 'Arm Shot', scatter: 'Scatter Shot', head: 'Head Shot' };
+  const calledFrom = (n) => (n <= 45 ? 'leg' : n <= 90 ? 'arm' : n <= 95 ? 'scatter' : 'head');
+  function calledEffect(w, me, t, key, log, c100) {
+    if (c100 != null) log.push({ unit: me.id, text: `${me.name}'s called shot, d100: ${c100}.` });
+    const add = (condition, ends, level) => {
+      if (immuneTo(t, condition)) { log.push({ unit: t.id, text: `${t.name} can't be ${condition.toLowerCase()}.` }); return; }
+      t.conditions = Array.from(new Set((t.conditions || []).concat(condition)));
+      w.effects.push({ id: `called-${me.id}-${t.id}-${w.effects.length}`, unit: t.id, condition, ends, of: t.id, rounds: 1, save: null, source: me.id, conc: false, level, amount: '' });
+    };
+    if (key === 'leg') { add('Slowed', 'end', 1); log.push({ unit: t.id, text: `Leg Shot: ${t.name} gains a slowed level until the end of its next turn.` }); }
+    else if (key === 'head') { add('Blinded', 'start', 0); log.push({ unit: t.id, text: `Head Shot: ${t.name} is blinded until the start of its next turn.` }); }
+    else if (key === 'arm') log.push({ unit: t.id, text: `Arm Shot: ${t.name} can't use an arm until the end of its next turn.` });
+    else if (key === 'scatter') log.push({ unit: t.id, text: `Scatter Shot: before the end of its next turn, ${t.name} must pass a concentration check (DC 10 + the power's level) to cast a power, or the power fails and what it cost is spent.` });
+  }
   function preview(world, actorId, targetId, attack, opts = {}) {
     const a = unitAt(world, actorId), t = unitAt(world, targetId);
     if (!a || !t) return { legal: false, why: 'No such target.' };
@@ -762,7 +781,11 @@
     const tilts = all.filter((x) => !x.note), notes = all.filter((x) => x.note).map((x) => x.text);
     if (opts.adv) tilts.push({ adv: true, text: 'chosen' });
     if (opts.dis) tilts.push({ dis: true, text: 'chosen' });
-    const m = d20(world, tilts.filter((x) => x.adv).length, tilts.filter((x) => x.dis).length), mode = m.mode;
+    const m0 = d20(world, tilts.filter((x) => x.adv).length, tilts.filter((x) => x.dis).length);
+    // the Called Shots variant (9.16): an attack with advantage may give it up to be a called shot
+    const calledOk = variant(world, 'Called Shots') && m0.mode === 'adv', called = calledOk && CALLED.includes(opts.called);
+    const m = called ? { mode: 'normal', k: 1 } : m0, mode = m.mode;
+    if (called) notes.push('a called shot: advantage given up');
     const weak = weakPenalty(a, attack.abil), bonus = attack.bonus - weak;
     // Snapshot Style (within 30 ft) and Sharpshooter Style (beyond it) step partial cover down one for ranged weapon attacks (#157)
     const cover0 = coverOf(world, a, t), st = a.styles || {};
@@ -777,7 +800,7 @@
     const need = Math.min(+attack.critFrom >= 15 ? +attack.critFrom : 20, Math.max(2, ac - bonus));   // the d20 needed; a 20 (or the crit range) always hits, a 1 always misses
     const chance = d20chance(m, (21 - need) / 20);
     const riders = ridersFor(world, a, t, attack, ranged, mode);
-    return { legal: true, feet, ranged, mode, k: m.k, tilts, notes, need, chance, weak, bonus, ac, cover, riders, expr: d20expr(m) + sgn(bonus) };
+    return { legal: true, feet, ranged, mode, k: m.k, tilts, notes, need, chance, weak, bonus, ac, cover, riders, expr: d20expr(m) + sgn(bonus), calledOk, called: called ? opts.called : null };
   }
 
   /* ---------------- resources (audit 3.1) ---------------- */
@@ -1181,7 +1204,7 @@
         if (act.martial) {   // Martial Arts' bonus-action unarmed strike, then Flurry of Blows' second for a focus point (#67)
           const o = martialOf(w, me, act.attack);
           if (!o.spec) return no(o.why);
-          const s = strike(w, me, act.target, o.spec, { adv: !!act.adv, dis: !!act.dis, no: act.no || [], add: act.add || {} }, roll, '');
+          const s = strike(w, me, act.target, o.spec, { adv: !!act.adv, dis: !!act.dis, no: act.no || [], add: act.add || {}, called: act.called }, roll, '');
           if (!s.ok) return s;
           const sp = w.spent[me.id];
           if (o.flurry) { me.pools.focus.used += 1; sp.mab = 2; s.log[0].text += ' (Flurry of Blows, 1 focus point)'; } else Object.assign(sp, { bonus: sp.bonus + 1, mab: 1 });
@@ -1192,7 +1215,7 @@
           if (!o.spec) return no(o.why);
           const dry = noShots(me, act.attack);
           if (dry) return no(dry);
-          const s = strike(w, me, act.target, o.spec, { adv: !!act.adv, dis: !!act.dis, no: act.no || [], add: act.add || {} }, roll, '');
+          const s = strike(w, me, act.target, o.spec, { adv: !!act.adv, dis: !!act.dis, no: act.no || [], add: act.add || {}, called: act.called }, roll, '');
           if (!s.ok) return s;
           spendShots(me, act.attack);
           const sp = w.spent[me.id];
@@ -1205,7 +1228,7 @@
         if (!slot.take) return no(slot.why);
         const dry = noShots(me, act.attack);
         if (dry) return no(dry);
-        const s = strike(w, me, act.target, act.attack, { adv: !!act.adv, dis: !!act.dis, no: act.no || [], add: act.add || {}, twoHands: !!act.twoHands }, roll, '');
+        const s = strike(w, me, act.target, act.attack, { adv: !!act.adv, dis: !!act.dis, no: act.no || [], add: act.add || {}, twoHands: !!act.twoHands, called: act.called }, roll, '');
         if (!s.ok) return s;
         spendShots(me, act.attack);
         const sp = slot.take();
@@ -1492,6 +1515,7 @@
     const t = unitAt(w, targetId);
     const pv = preview(w, me.id, targetId, attack, opts);
     if (!pv.legal) return no(pv.why);
+    if (opts.called && !pv.called) return no(variant(w, 'Called Shots') ? 'A called shot gives up advantage, and this attack has none.' : "The Called Shots variant isn't on for this table.");
     // a maneuver the attacker chose (#67), if it's on offer: Precision Attack adds its die to this roll and is spent now
     const mvOpt = (pv.riders || []).find((x) => x.key === 'maneuver'), want = (opts.add || {}).maneuver;
     const mvKey = mvOpt && typeof want === 'string' && mvOpt.options.some((o) => o.key === want) ? want : null;
@@ -1543,13 +1567,15 @@
     if (riders.some((x) => x.key === 'double')) w.spent[me.id] = Object.assign(spentOf(w, me.id), { double: 1 });   // once a turn
     const expr = base + riders.map((x) => (x.dice ? '+' + (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat)).join('');
     if (riders.some((x) => x.key === 'sneak')) w.spent[me.id] = Object.assign(spentOf(w, me.id), { sneak: 1 });   // once per turn
-    const d = roll(expr);
+    const d1 = roll(expr), d2 = pv.called && pv.called !== 'random' ? roll(expr) : null;   // a called shot's chosen effect: damage twice, the lower
+    const d = d2 && d2.total < d1.total ? d2 : d1;
     const corr = levelOf(w, t, 'Corroded');   // corroded: 1 more damage from weapons for each level
     const df = defended(t, Math.max(0, d.total) + corr, String(attack.type || '').toLowerCase(), attack.enhanced ? 'enhanced' : 'weapon');
     const tr = mv && mv.trueDmg ? roll('1' + sup.die) : null;   // Exploit Weakness: true damage, past any resistance
     const amount = df.amount + (tr ? Math.max(0, tr.total) : 0);
-    const what = `${amount}${attack.type ? ' ' + attack.type : ''} damage${twoHands ? ' (two-handed)' : ''}${attack.heavy ? ` (heavy +${attack.heavy})` : ''}${thr ? ` (${thr}: no die under its threshold)` : ''}${brutal ? ` (Brutal Critical ${brutal.slice(1)})` : ''}${riders.length ? ` (with ${riders.map((x) => `${x.name} ${x.dice ? (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat}${x.points ? `, ${x.points} force point${x.points === 1 ? '' : 's'}` : ''}`).join('; ')})` : ''}${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${tr ? ` (${mv.name}: ${tr.total} true damage)` : ''}`;
-    const landing = { amount, crit, type: attack.type || '', mv: mv && mv.then ? mvKey : null, dc: mv && mv.then ? me.maneuvers.dc[mv.type] : 0 };
+    const what = `${amount}${attack.type ? ' ' + attack.type : ''} damage${d2 ? ` (a called shot: the lower of ${d1.total} and ${d2.total})` : ''}${twoHands ? ' (two-handed)' : ''}${attack.heavy ? ` (heavy +${attack.heavy})` : ''}${thr ? ` (${thr}: no die under its threshold)` : ''}${brutal ? ` (Brutal Critical ${brutal.slice(1)})` : ''}${riders.length ? ` (with ${riders.map((x) => `${x.name} ${x.dice ? (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat}${x.points ? `, ${x.points} force point${x.points === 1 ? '' : 's'}` : ''}`).join('; ')})` : ''}${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${tr ? ` (${mv.name}: ${tr.total} true damage)` : ''}`;
+    const c100 = pv.called === 'random' ? roll('1d100') : null, calledKey = !pv.called ? null : c100 ? calledFrom(c100.total) : pv.called;
+    const landing = { amount, crit, type: attack.type || '', mv: mv && mv.then ? mvKey : null, dc: mv && mv.then ? me.maneuvers.dc[mv.type] : 0, ...(calledKey ? { called: calledKey, c100: c100 ? c100.total : null } : {}) };
     // Parry (#67): a melee hit on one who knows it, with its reaction and a die, waits for its answer before it lands
     if (!how && !pv.ranged && amount > 0 && t.maneuvers && t.maneuvers.known.includes('parry') && superiorityOf(t) && !INCAPACITATING(t)
       && budget(w, t.id).reaction && !maneuverUsed(w, t.id, 'parry') && !me.hidden && !t.hidden) {
@@ -1568,6 +1594,7 @@
     concentrationCheck(w, t, landing.amount, roll, log);
     const mv = landing.mv && Object.prototype.hasOwnProperty.call(MANEUVERS, landing.mv) ? MANEUVERS[landing.mv] : null;
     if (mv && mv.then && me) maneuverThen(w, me, t, mv, landing.dc, roll, log, events);
+    if (landing.called && me && Object.prototype.hasOwnProperty.call(CALLED_NAMES, landing.called) && !isDead(t)) calledEffect(w, me, t, landing.called, log, landing.c100);   // Called Shots (9.16)
   }
   // a hit that waited (Parry): it lands now, less what a parry took off
   function landHit(w, me, t, landing, roll, log, events) {
@@ -1646,7 +1673,8 @@
     const me = unitAt(w, re.reactor), t = unitAt(w, re.against);
     if (!me || !t) return no('That combatant is not on the map.');
     if (re.kind === 'parry') {   // #67: the hit that waited lands, less a superiority die + the maneuver ability, if parried
-      const h = re.hit || {}, landing = { amount: clampN(Math.round(+h.amount || 0), 0, 9999), crit: !!h.crit, type: String(h.type || '').slice(0, 20), mv: typeof h.mv === 'string' ? h.mv : null, dc: clampN(Math.round(+h.dc || 0), 0, 40) };
+      const h = re.hit || {}, landing = { amount: clampN(Math.round(+h.amount || 0), 0, 9999), crit: !!h.crit, type: String(h.type || '').slice(0, 20), mv: typeof h.mv === 'string' ? h.mv : null, dc: clampN(Math.round(+h.dc || 0), 0, 40),
+        ...(typeof h.called === 'string' && Object.prototype.hasOwnProperty.call(CALLED_NAMES, h.called) ? { called: h.called, c100: h.c100 == null ? null : clampN(Math.round(+h.c100) || 1, 1, 100) } : {}) };   // a called shot's effect (9.16)
       const log = [], events = [];
       if (re.take) {
         const sup = superiorityOf(me);
@@ -1951,5 +1979,5 @@
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
     SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf, d20, flankOf, fixedTotal, cruel, modeName,
-    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, poolLeft, payPool, ridersOf, ridersFor, attacksPerAction, multiattackOf, offhandOf, stylesOf, withThreshold, thresholdFor, MIN_THRESHOLD, contestBonus, helpOn, maneuverCheck, unitAt, weaponProps, volleysOf, MANEUVERS, maneuversOf, superiorityOf, saveVs, pushAway, landHit, martialOf, martialDieOf, noShots };
+    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, poolLeft, payPool, CALLED, calledFrom, ridersOf, ridersFor, attacksPerAction, multiattackOf, offhandOf, stylesOf, withThreshold, thresholdFor, MIN_THRESHOLD, contestBonus, helpOn, maneuverCheck, unitAt, weaponProps, volleysOf, MANEUVERS, maneuversOf, superiorityOf, saveVs, pushAway, landHit, martialOf, martialDieOf, noShots };
 });
