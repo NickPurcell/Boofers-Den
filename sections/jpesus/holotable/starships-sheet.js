@@ -70,7 +70,9 @@
   const TV = {};   // per ship: the regions, rush, careful, data age and crew size picked here
   function travelBlock(s, ro) {
     const st = SR.statusOf(s), t = TV[s.id] = Object.assign({ from: 'Core', to: 'Core', rush: 0, careful: false, age: 'normal', crew: 'normal' }, TV[s.id]);
-    const cls = SR.hyperClass(s), hours = SR.jumpHours(s, t.from, t.to, t.rush, t.careful), fuel = hours != null ? SR.jumpFuel(s, hours) : null, have = SR.fuelOf(s);
+    // once equations are done, the trip keeps the course choice they were worked for (changing it restarts them)
+    const crs = st.astro > 0 ? st.course : { rush: t.rush, careful: t.careful };
+    const cls = SR.hyperClass(s), hours = SR.jumpHours(s, t.from, t.to, crs.rush, crs.careful), fuel = hours != null ? SR.jumpFuel(s, hours) : null, have = SR.fuelOf(s);
     const sel = (k, opts) => `<select data-tv="${k}" ${ro ? 'disabled' : ''}>${opts.map(([v, l]) => `<option value="${esc(String(v))}" ${String(t[k]) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>`;
     const regions = SR.REGIONS.map((r) => [r, r]);
     const when = hours == null ? (cls ? '' : 'No hyperdrive class on the sheet (Hyperdrive, above).') : `${hours < 24 ? `${hours} hours` : `${Math.round(hours / 24 * 10) / 10} days`} with a class ${cls} hyperdrive; ${fuel} units of fuel${have != null ? ` (it has ${have})` : ''}.`;
@@ -78,7 +80,7 @@
       <div class="row wrap" style="gap:6px;margin:6px 0;font-size:12px"><label class="ship-lv">From ${sel('from', regions)}</label><label class="ship-lv">to ${sel('to', regions)}</label>
         <label class="ship-lv" title="Each rush: -5 on the astrogation checks, a day off the trip (or half of what's left under a day)">Rush ${sel('rush', [[0, 'none'], [1, '1 day'], [2, '2 days'], [3, '3 days']])}</label>
         <label class="toggle" title="+5 on the astrogation checks, and the trip takes twice as long"><input type="checkbox" data-tv="careful" ${t.careful ? 'checked' : ''} ${ro ? 'disabled' : ''}> careful</label></div>
-      <p style="font-size:12px;margin:0 0 6px">${esc(when)}</p>
+      <p style="font-size:12px;margin:0 0 6px">${esc(when)}${st.astro > 0 ? ` <span class="muted">Course worked for: ${crs.rush ? `rushed ${crs.rush}` : 'no rush'}${crs.careful ? ', careful' : ''}; a different choice restarts the equations.</span>` : ''}</p>
       <div class="row wrap" style="gap:6px;font-size:12px"><span>Astrogation: <b>${st.astro}</b> of 10 equations</span>
         ${ro ? '' : `<button class="btn tiny" data-sx="plot" title="Not under duress: 10 minutes of careful work, all ten equations">Plot with care</button>
         <label class="ship-lv">data ${sel('age', [['fresh', 'under a day old'], ['normal', 'this week'], ['old', 'over a week old']])}</label>

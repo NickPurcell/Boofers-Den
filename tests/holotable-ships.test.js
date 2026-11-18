@@ -106,7 +106,8 @@ test("ship conditions: slowed levels, system damage levels, and what they do to 
   assert.deepEqual(SR.cleanStatus({ cond: ["Hungry", "Ionized", "Ionized"], slowed: 9, system: -2, zero: "x" }),
     { cond: ["Ionized"], slowed: 4, system: 0, zero: { s: 0, f: 0, stable: false, destroyed: false }, power: { central: 0, engines: 0, shields: 0, weapons: 0, sensors: 0, comms: 0 },
       sdUsed: 0, hdUsed: 0, tempShield: 0, boost: { tries: 0, engines: 0, weapons: false, shields: false, regen: false },
-      fx: { evade: 0, fly: 0, hardTurn: false, helm: false, interfered: false, directed: false, interferedBy: "" }, recharged: false, astro: 0, startup: 0 }, "anything else is cleaned away");
+      fx: { evade: 0, fly: 0, hardTurn: false, helm: false, interfered: false, directed: false, interferedBy: "" }, recharged: false, astro: 0, startup: 0,
+      course: { rush: 0, careful: false } }, "anything else is cleaned away");
   assert.deepEqual(SR.capPoints({ hull: { current: 30, max: 0 }, shield: { current: 5, max: 4 } }).hull.current, 30, "no maximum typed yet: current stays");
 });
 
@@ -997,9 +998,28 @@ test("travel: hyperspace times by region and class, rushing and care, fuel by re
   assert.ok((await p1.state()).chat.some((m) => /Rushed with 0 of 10 equations: mishap roll/.test(m.text || "")), "a rushed jump rolls a mishap");
   await p1.act("ship.save", { ship: Object.assign({}, shipIn(await p1.state(), party), { fuel: "1" }) });
   assert.equal((await p1.act("ship.jump", { id: party, from: "Core", to: "Wild Space" })).code, 400, "not enough fuel");
+  // the course choice holds from the first check to the jump: careful checks, then a jump asking for a rush, keep careful
+  await p1.act("ship.save", { ship: Object.assign({}, shipIn(await p1.state(), party), { fuel: "100" }) });
+  r = await p1.act("ship.astro", { id: party, careful: true });
+  let cst = shipIn(await p1.state(), party).status;
+  assert.deepEqual(cst.course, { rush: 0, careful: true });
+  assert.ok((await p1.state()).chat.some((m) => m.roll && /astrogation \[careful \(\+5\)\]/.test(m.roll.label)), "the claim is in the label");
+  if (cst.astro > 0) {
+    r = await p1.act("ship.astro", { id: party, rush: 3 });   // a different choice: the calculations start over
+    assert.ok((await p1.state()).chat.some((m) => /changed its course choice: the calculations start over/.test(m.text || "")));
+    cst = shipIn(await p1.state(), party).status;
+    assert.deepEqual(cst.course, { rush: 3, careful: false }); assert.equal(cst.astro, r.data.steps, "only this check's equations count");
+  }
+  if (shipIn(await p1.state(), party).status.astro > 0) {
+    r = await p1.act("ship.jump", { id: party, from: "Core", to: "Outer Rim", rush: 0, careful: true });
+    assert.equal(r.data.hours, 24, "the jump keeps the rush 3 the equations were worked for (96 - 72), not the request's careful");
+  }
+  await p1.act("ship.plot", { id: party });
+  r = await p1.act("ship.jump", { id: party, from: "Core", to: "Outer Rim", rush: 3 });
+  assert.equal(r.data.hours, 96, "a course plotted with care is a normal one: the request's rush doesn't apply");
   r = await p1.act("ship.startup", { id: party, crewSize: "half" });
   assert.equal(r.code, 200);
-  assert.ok((await p1.state()).chat.some((m) => m.roll && /emergency start-up/.test(m.roll.label) && /-5$/.test(m.roll.expr)), "half the crew: -5");
+  assert.ok((await p1.state()).chat.some((m) => m.roll && /emergency start-up \[half the crew \(-5\)/.test(m.roll.label) && /-5$/.test(m.roll.expr)), "half the crew: -5, and the label says so");
   assert.equal((await p1.act("ship.astro", { id: enemy })).code, 403);
   // in ship combat: astrogation, start-up and the jump on the ship's own turn; no careful plotting mid-fight
   await gm.act("space.on", { on: true });

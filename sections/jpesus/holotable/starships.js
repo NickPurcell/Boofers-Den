@@ -83,6 +83,8 @@
         interferedBy: typeof f.interferedBy === 'string' && /^[a-z0-9]{6,20}$/.test(f.interferedBy) ? f.interferedBy : '' },   // the ship whose next turn ends it
       recharged: st.recharged === true,   // a recharge just finished: the crew may spend hull dice
       astro: clamp(int(st.astro), 0, 10), startup: clamp(int(st.startup), 0, 10),   // astrogation equations, start-up procedures done
+      // the course choice the equations were worked for (rushes, careful): changing it restarts them (SotG ch. 8)
+      course: { rush: clamp(int((st.course || {}).rush), 0, 10), careful: (st.course || {}).careful === true },
     };
     if (out.system >= 5 && !out.cond.includes('Used')) out.cond.push('Used');   // system damage 5 makes it used for good
     return out;
