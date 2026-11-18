@@ -133,7 +133,9 @@ function cleanSnap(x) {
         force: Object.assign({ max: plainObj(r.force).max == null || plainObj(r.force).max === "" ? "" : num(plainObj(r.force).max, 0, 999), used: num(plainObj(r.force).used, 0, 999) }, num(plainObj(r.force).temp, 0, 999) ? { temp: num(plainObj(r.force).temp, 0, 999) } : {}, cleanHigh(plainObj(r.force).high)),
         tech: Object.assign({ max: plainObj(r.tech).max == null || plainObj(r.tech).max === "" ? "" : num(plainObj(r.tech).max, 0, 999), used: num(plainObj(r.tech).used, 0, 999) }, num(plainObj(r.tech).temp, 0, 999) ? { temp: num(plainObj(r.tech).temp, 0, 999) } : {}, cleanHigh(plainObj(r.tech).high)),
         hitDiceUsed: R.cleanHitDiceUsed(r.hitDiceUsed),   // the sheet's own cleaner: per die size or an old number
-        deathSaves: { s: num(plainObj(r.deathSaves).s, 0, 3), f: num(plainObj(r.deathSaves).f, 0, 3) } }]),
+        deathSaves: { s: num(plainObj(r.deathSaves).s, 0, 3), f: num(plainObj(r.deathSaves).f, 0, 3) },
+        shots: (Array.isArray(r.shots) ? r.shots : []).slice(0, 40).filter((x) => Array.isArray(x)).map(([i, n]) => [clamp(int(i), 0, 39), n == null ? null : num(n, 0, 999)]),
+        ammo: (Array.isArray(r.ammo) ? r.ammo : []).slice(0, 40).filter((x) => Array.isArray(x)).map(([i, name, q]) => [clamp(int(i), 0, 199), str(name, 80), num(q, 0, 9999)]) }]),
   };
 }
 
@@ -231,7 +233,10 @@ function snapshot(camp, label) {
     effects: JSON.parse(JSON.stringify(f.effects || [])), conc: Object.assign({}, f.conc), lastTurn: f.lastTurn || "", pending: JSON.parse(JSON.stringify(f.pending || [])),
     npcres: JSON.parse(JSON.stringify(f.npcres || {})),
     conds: ini.entries.map((e) => [e.id, (e.conditions || []).slice(), e.charId && camp.characters[e.charId] ? (camp.characters[e.charId].conditions || []).slice() : null]),
-    chars: Object.values(camp.characters).map((c) => [c.id, JSON.parse(JSON.stringify({ resources: c.resources || [], force: c.force, tech: c.tech, hitDiceUsed: c.hitDiceUsed, deathSaves: c.deathSaves }))]),
+    chars: Object.values(camp.characters).map((c) => [c.id, JSON.parse(JSON.stringify({ resources: c.resources || [], force: c.force, tech: c.tech, hitDiceUsed: c.hitDiceUsed, deathSaves: c.deathSaves,
+      // shots in each Reload weapon and the power cells or slug cartridges in the gear (6.6, #212 review), so Undo gives them back
+      shots: (c.attacks || []).map((a, i) => [i, a]).filter(([, a]) => a && R.reloadOf && R.reloadOf(a)).map(([i, a]) => [i, a.shots == null || a.shots === "" ? null : a.shots]),
+      ammo: (c.equipment || []).map((x, i) => [i, x]).filter(([, x]) => x && /^(power cell|slug cartridge)/i.test(String(x.name || ""))).map(([i, x]) => [i, x.name, x.qty]) }))]),
     tokens: (camp.map.tokens || []).filter((t) => tok.has(t.id)).map((t) => [t.id, t.x, t.y]),
     hp: ini.entries.map((e) => [e.id, e.hp, e.charId && camp.characters[e.charId] ? [camp.characters[e.charId].hp.current, camp.characters[e.charId].hp.temp] : null]),
   });
@@ -250,7 +255,14 @@ function restore(camp, s) {
   if (i >= 0) ini.turn = i;
   ini.round = s.ini.round; ini.active = s.ini.active;
   f.spent = s.spent || {};
-  for (const [id, r] of s.chars || []) if (charOf(camp, id)) Object.assign(charOf(camp, id), r);
+  for (const [id, r] of s.chars || []) {
+    const ch = charOf(camp, id);
+    if (!ch) continue;
+    const { shots, ammo, ...rest } = r;
+    Object.assign(ch, rest);
+    for (const [i, n] of shots || []) { const a = (ch.attacks || [])[i]; if (a) { if (n == null) delete a.shots; else a.shots = n; } }
+    for (const [i, name, q] of ammo || []) { const x = (ch.equipment || [])[i]; if (x && x.name === name) x.qty = q; }   // the same item, by name too
+  }
   if (Array.isArray(s.effects)) f.effects = s.effects;
   if (s.conc) f.conc = s.conc;
   if (typeof s.lastTurn === "string") f.lastTurn = s.lastTurn;
@@ -278,6 +290,11 @@ function writeBack(camp, cid, before, after, G) {
       camp.characters[a.charId].deathSaves = { s: clamp(int(a.deathSaves.s), 0, 3), f: clamp(int(a.deathSaves.f), 0, 3) };
     // points spent by an ability go back where the sheet keeps them
     if (a.charId && camp.characters[a.charId]) {
+      // shots left in a Reload weapon (6.6, #179) go back to its attack row
+      for (const [key, n] of Object.entries(a.shots || {})) {
+        const row = /^\d{1,2}$/.test(key) && (camp.characters[a.charId].attacks || [])[+key];
+        if (row && (b.shots || {})[key] !== n) row.shots = clamp(int(n), 0, 999);
+      }
       for (const [key, pool] of Object.entries(a.pools || {})) {
         if (!b.pools[key] || (b.pools[key].used === pool.used && (b.pools[key].temp || 0) === (pool.temp || 0))) continue;
         // force and tech take their temporary points too (#190): spent before the pool's own
@@ -1031,7 +1048,8 @@ function apply(camp, cid, gm, type, p, G) {
       else if (type === "fight.end") act = { type: "end", unit: cur.id };
       else if (type === "fight.stand") act = { type: "stand", unit: cur.id };
       else if (type === "fight.douse") act = { type: "douse", unit: cur.id, target: idOr(p.target) };
-      else if (type === "fight.common") act = { type: "common", unit: cur.id, key: String(p.key || ""), target: idOr(p.target), asBonus: !!p.asBonus };   // a monk's bonus Dash or Disengage   // Help names its target (#144)
+      else if (type === "fight.common") act = { type: "common", unit: cur.id, key: String(p.key || ""), target: idOr(p.target), asBonus: !!p.asBonus,   // Help names its target (#144); a monk's bonus Dash or Disengage, or a bonus-action Reload
+        ...(String(p.key || "") === "reload" ? { weapon: /^\d{1,2}$/.test(String(p.weapon)) ? String(p.weapon) : "" } : {}) };   // Reload (6.6, #179) names its weapon by attack index
       else if (type === "fight.grapple" || type === "fight.shove") act = { type: type.slice(6), unit: cur.id, target: idOr(p.target), push: !!p.push, multi: gm && !cur.charId ? clamp(int(p.multi, 1), 1, 6) : 1 };
       else if (type === "fight.escape") act = { type: "escape", unit: cur.id, skill: p.skill === "athletics" ? "athletics" : "acrobatics" };
       else if (type === "fight.release") act = { type: "release", unit: cur.id, target: idOr(p.target) };
@@ -1062,11 +1080,22 @@ function apply(camp, cid, gm, type, p, G) {
       }
       const limited = act.type === "attack" && !cur.charId && p.attack && p.attack.res && ((f.npcres || {})[cur.id] || []).find((x) => x.key === String(p.attack.res));
       if (limited && limited.used >= limited.max) throw new G.Invalid(`${limited.name} is spent${limited.recharge ? ` until it recharges (${limited.recharge}-6 at the start of ${cur.name}'s turn)` : ""}.`);
+      let ammo = null;   // Reload's power cell or slug cartridge, from the sheet's gear (as #179's sheet does)
+      if (act.type === "common" && act.key === "reload" && cur.charId) {
+        const ch = charOf(camp, cur.charId), row = ch && act.weapon !== "" && (ch.attacks || [])[+act.weapon];
+        const kind = row && R.ammoOf ? R.ammoOf(row) : null;
+        if (kind) {
+          ammo = (ch.equipment || []).find((x) => x && String(x.name || "").toLowerCase().startsWith(kind.toLowerCase()) && +x.qty > 0) || null;
+          if (!ammo && !(gm && p.anyway)) throw new G.Invalid(gm ? `No ${kind.toLowerCase()}s in ${ch.name}'s gear. Reload anyway?` : `No ${kind.toLowerCase()}s in your gear. Add some in Features & Gear (or ask the GM).`);
+          act.weaponName = row.name;
+        }
+      }
       const r = E.apply(world, act, (expr) => G.rollDice(expr));
       if (!r.ok) throw new G.Invalid(r.why);
       const label = type === "fight.deathsave" ? `${G.shownName(camp, cur)}'s death save` : type === "fight.common" ? `${G.shownName(camp, cur)} took ${String(p.key || "an action")}` : type === "fight.douse" ? `${G.shownName(camp, cur)} put out flames` : type === "fight.grapple" || type === "fight.shove" || type === "fight.escape" || type === "fight.release" ? `${G.shownName(camp, cur)}: ${type.slice(6)}` : type === "fight.stand" ? `${G.shownName(camp, cur)} stood up` : type === "fight.move" ? `${G.shownName(camp, cur)} moved` : type === "fight.end" ? `${G.shownName(camp, cur)} ended the turn` : type === "fight.use" ? `${G.shownName(camp, cur)} used ${act.ability.name}` : `${G.shownName(camp, cur)}'s attack`;
       snapshot(camp, label);
       if (limited) limited.used += 1;   // after the snapshot, so Undo gives it back
+      if (ammo) ammo.qty = Math.max(0, +ammo.qty - 1);   // the cell or cartridge, likewise
       writeBack(camp, cid, world, r.world, G);
       if (act.type === "use" && act.ability.kind === "power" && cur.charId) noteHighCast(charOf(camp, cur.charId), act.ability, act.ability.level + act.upcast);   // after the snapshot too
       report(camp, cid, gm, G, cur, world, r, type === "fight.move" || type === "fight.end");

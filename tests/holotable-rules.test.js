@@ -161,6 +161,35 @@ test("selling (audit 6.8): half the cost, rounded down; no cost, nothing", () =>
   assert.deepEqual([R.sellPrice({ cost: 50 }), R.sellPrice({ cost: 75 }), R.sellPrice({ cost: 1 }), R.sellPrice({}), R.sellPrice({ cost: -10 })], [25, 37, 0, 0, 0]);
 });
 
+test("attunement (audit 6.3): slots as the proficiency bonus; advanced and up take two; the simpler variant three of one", () => {
+  const c = (level, items) => ({ name: "Vee", classes: [{ name: "Operative", level }], equipment: items.map(([rar, attuned, att = true]) => ({ name: rar + " item", rar, att, attuned })) });
+  assert.deepEqual([R.attunement(c(1, [])).max, R.attunement(c(5, [])).max, R.attunement(c(17, [])).max], [2, 3, 6]);
+  const vee = c(1, [["Premium", true], ["Advanced", false], ["Standard", false], ["Legendary", true, false]]);
+  assert.equal(R.attunement(vee).used, 1, "an item that doesn't need attunement doesn't count");
+  assert.equal(R.attuneBlocked(vee, 2), null, "a second one-slot item fits in two");
+  assert.equal(R.attuneBlocked(vee, 1).text, "Vee has 1 of 2 attunement slots free; Advanced item takes 2.");
+  assert.equal(R.attuneBlocked(vee, 1, [R.SIMPLE_ATTUNEMENT]), null, "the simpler variant: three slots, one each");
+  vee.equipment[1].name = "Focus Lens";
+  assert.equal(R.attuneBlocked(vee, 1).text, "Vee has 1 of 2 attunement slots free; Focus Lens (Advanced) takes 2.");
+  assert.equal(R.attunement(vee, [R.SIMPLE_ATTUNEMENT]).max, 3);
+});
+
+test("consumables (audit 6.7): what using one rolls, read from its text; checked; a medpac's Hit Die", () => {
+  // the shapes of SW5e's own consumable text, in our words
+  assert.deepEqual(R.consumableUse("Each creature nearby must make a DC 14 Dexterity saving throw. A creature takes 2d6 fire and 2d10 kinetic damage on a failed save, or half as much on a success."),
+    { save: { ab: "dex", dc: 14 }, dmg: [["2d6", "fire"], ["2d10", "kinetic"]], half: true });
+  assert.deepEqual(R.consumableUse("must make a DC 13 Constitution saving throw, taking 2d4 poison damage on a failed save"), { save: { ab: "con", dc: 13 }, dmg: [["2d4", "poison"]] });
+  assert.deepEqual(R.consumableUse("The creature rolls two dice equal to the size of their Hit Die and regains hit points"), { hd: 2 });
+  assert.deepEqual(R.consumableUse("You regain 2d4 + 2 hit points."), { heal: "2d4+2" });
+  assert.deepEqual(R.consumableUse("A kit has five charges."), {});
+  // only this shape survives
+  assert.deepEqual(R.cleanUse({ hd: "x", heal: "2d4; drop", save: { ab: "__proto__", dc: 9 }, dmg: [["1d6", "fire"], ["lots", "fire"], ["1d4", "<b>"]], half: true }), { dmg: [["1d6", "fire"]] });
+  assert.equal(R.cleanUse("nope"), null);
+  // the Hit Die a creature has most of
+  assert.equal(R.commonHitDie({ classes: [{ name: "Fighter", level: 3 }, { name: "Consular", level: 5 }] }), 6);
+  assert.equal(R.commonHitDie({ classes: [{ name: "Fighter", level: 2 }, { name: "Scholar", level: 2 }] }), 10, "a tie: the larger");
+});
+
 test("Engineers and Scouts get tech points back on a short rest; others don't", () => {
   assert.equal(R.techOnShortRest(char([["Engineer", 1]])), true);
   assert.equal(R.techOnShortRest(char([["Scout", 2]])), true);
@@ -241,6 +270,23 @@ test("ability scores (audit 1.4): SW5e's standard set, and point buy's 27 points
   assert.ok(!R.usesEachOnce(sc(9, 17, 12, 12, 6, 14), [17, 14, 12, 9, 6]), "five numbers for six abilities");
 });
 
+test("downtime spend (audit 11.1): days from the balance, credits never below zero, a log entry", () => {
+  const D = require("../api/_holotable-downtime.js");
+  class Invalid extends Error {}
+  const h = { Invalid };
+  const ch = { name: "Kira", credits: 100, downtime: { days: 7, log: [] } };
+  const e = D.spend(ch, { act: "work", days: 5, cr: 55, text: "Earned 55 cr" }, h, 1000);
+  assert.deepEqual([ch.downtime.days, ch.credits, e.act, e.days, e.cr, e.at], [2, 155, "work", 5, 55, 1000]);
+  assert.equal(ch.downtime.log.length, 1);
+  assert.throws(() => D.spend(ch, { act: "crafting", days: 3 }, h), Invalid, "only 2 days left");
+  assert.throws(() => D.spend(ch, { act: "carousing", days: 1, cr: -200 }, h), Invalid, "155 cr, not 200");
+  assert.throws(() => D.spend(ch, { act: "__proto__", days: 1 }, h), Invalid);
+  D.spend(ch, { act: "crafting", days: 2, cr: -150, text: "Vibroblade, 2 of 4 days" }, h);
+  assert.deepEqual([ch.downtime.days, ch.credits, ch.downtime.log.map((x) => x.act)], [0, 5, ["work", "crafting"]]);
+  assert.equal(D.clean({ days: -5, log: [{ act: "x y" }, null, { act: "work", days: 99999 }] }).log.length, 1);
+  assert.equal(D.clean({ days: 0, log: [] }), undefined);
+});
+
 test("level-up choice counts come from the class table (audit 2.9)", () => {
   const at = (c, L) => Object.fromEntries(R.choiceCounts(c, L).map((x) => [x.col, [x.kind, x.prev, x.total]]));
   // SW5e's Operative: "You've adopted two exploits ... You adopt an additional exploit at 7th, 13th, and 17th level."
@@ -253,6 +299,39 @@ test("level-up choice counts come from the class table (audit 2.9)", () => {
   assert.deepEqual(at("Monk", 1), {}, "nothing counted yet");
   assert.deepEqual(R.choiceCounts("Jedi", 3), []);
   assert.deepEqual(R.choiceCounts("Fighter", 0), []);
+});
+
+test("downtime activities (audit 11.1): Wretched Hives' tables, parsed, and a roll resolved by them", () => {
+  const D = require("../api/_holotable-downtime.js"), L = require("../api/_holotable-sw5e-data.js");
+  const md = ["# Chapter 2: Entertainment and Downtime", "", "## Rivals", "Not an activity.", "",
+    "## Work", "When all else fails.", "", "### Resources", "Taking on a job requires one workweek of work.", "", "### Resolution ", "Make a check.", "",
+    "##### Work Roll Modifier", "|Ability Check DC|d100 Roll Modifier|", "|:--:|:--:|", "|10|+5|", "|15|+10|", "|20|+15|", "",
+    "##### Work Results", "|d100|Result|", "|:--:|:--|", "|40 or lower  |Poor, with 10 cr left over.|", "|41-70        |Modest, with 50 cr left over.|", "|71 or higher|Comfortable.|", "",
+    "### Complications", "A character spending a week working has a 10 percent chance of triggering a complication.", "",
+    "##### Work Complications", "|d8|Complication|", "|:--:|:--|", "|1|A rival.|", "|2|A [scar](#x).|", "",
+    "### Uptime", "##### Work Results (Uptime)", "|AbilityCheck DC|Result|", "|:--:|:--|", "|10|Not this one.|", "",
+    "## Buying Enhanced Items", "Purchasing.", "### Resources", "Five days and 1,000 cr.", "### Resolution", "An Investigation check.",
+    "##### Purchasable Enhanced Items", "|Rarity|DC to Find Seller|d100 Roll Modifier|", "|:--:|:--:|:--:|", "|Standard|10|+10|", "|Premium|15|+0|", "|Prototype|20|-10|", "",
+    "##### Buying an Enhanced Item", "|d100|Result|", "|:--:|:--|", "|40 or lower|Nothing good.|", "|41 or higher|A fair deal.|"].join("\r\n");
+  const acts = L.LISTS.downtime.build([{ chapterName: "Entertainment and Downtime", contentMarkdown: md }, { chapterName: "Equipment", contentMarkdown: "## Work\nnope" }]);
+  assert.deepEqual(acts.map((a) => a.key), ["work", "buying-enhanced-items"], "Rivals isn't an activity; only chapter 2");
+  const work = acts[0];
+  assert.deepEqual(work.mods, [{ dc: 10, mod: 5 }, { dc: 15, mod: 10 }, { dc: 20, mod: 15 }]);
+  assert.deepEqual(work.results.map((r) => [r.lo, r.hi]), [[-999, 40], [41, 70], [71, 999]], "the uptime table isn't read");
+  assert.deepEqual([work.complPct, work.dieN, work.compls], [10, 8, ["A rival.", "A scar."]]);
+  assert.equal(work.resources, "Taking on a job requires one workweek of work.");
+  assert.equal(work.resolution, "Make a check.", "a heading with a trailing space");
+  // Athletics 17 meets DC 15: +10; d100 52 + 10 = 62: modest
+  assert.deepEqual(D.resolve(work, 17, 52, 0), { text: "Modest, with 50 cr left over.", mod: 10, final: 62, label: undefined });
+  assert.equal(D.resolve(work, 7, 30, 0).final, 30, "below DC 10: no modifier");
+  assert.equal(D.resolve(work, 25, 60, 5).text, "Comfortable.", "the GM's extra counts");
+  const buy = acts[1];
+  assert.deepEqual(buy.mods.map((m) => [m.dc, m.mod, m.label]), [[10, 10, "Standard"], [15, 0, "Premium"], [20, -10, "Prototype"]]);
+  assert.equal(D.resolve(buy, 8, 99, 0).text, "No seller found this time.");
+  assert.deepEqual([D.resolve(buy, 22, 45, 0).label, D.resolve(buy, 22, 45, 0).final, D.resolve(buy, 22, 45, 0).text], ["Prototype", 35, "Nothing good."]);
+  assert.deepEqual(D.checkOf({ what: "skill", key: "athletics" }), { what: "skill", key: "athletics", name: "Athletics" });
+  assert.equal(D.checkOf({ what: "skill", key: "__proto__" }), null);
+  assert.equal(D.checkOf({ what: "save", key: "str" }), null);
 });
 
 test("Sage Advice (3.9): once from Scholar 2, back on a long rest, and on a short rest from 13th level", () => {
@@ -287,4 +366,25 @@ test("Wretched Hives' proficiency tiers (5.7), tool checks (6.10) and the tech f
   assert.equal(R.hasTechFocus(c), false);
   c.equipment.push({ name: "Wristpad" });
   assert.equal(R.hasTechFocus(c), true);
+});
+
+test("feat prerequisites (audit 2.5), read from SW5e's own wording", () => {
+  const ch = { classes: [{ name: "Fighter", level: 3 }], abilities: { str: 14, dex: 13, con: 12, int: 10, wis: 10, cha: 8 }, features: [{ name: "Lucky" }], size: "Medium" };
+  const pr = (c, p) => R.featPrereq(c, p);
+  assert.deepEqual(pr(ch, "None"), { ok: true, unmet: [], unknown: [] });
+  assert.deepEqual(pr(ch, "4th level").unmet, ["4th level"]);
+  assert.equal(pr(Object.assign({}, ch, { classes: [{ name: "Fighter", level: 4 }] }), "4th level, Lucky feat").ok, true);
+  assert.deepEqual(pr(ch, "4th level, Durable feat").unmet, ["4th level", "the Durable feat"]);
+  assert.deepEqual(pr(ch, "4th level; Dexterity, Intelligence, Wisdom, or Charisma 13").unmet, ["4th level"], "any one of the four at 13: Dex 13 counts");
+  assert.deepEqual(pr(ch, "Charisma 13").unmet, ["Charisma 13"]);
+  assert.equal(pr(ch, "Strength 13, size Medium").ok, true);
+  assert.deepEqual(pr(ch, "Strength 13, size Small").unmet, ["size Small"]);
+  assert.deepEqual(pr({ classes: [], abilities: { str: 13 } }, "Strength 13, size Small"), { ok: null, unmet: [], unknown: ["size Small"] }, "no size on the sheet: unknown");
+  assert.deepEqual(pr(ch, "Type droid"), { ok: null, unmet: [], unknown: ["type droid"] }, "the GM's call");
+  const con = { classes: [{ name: "Consular", level: 5 }], abilities: { wis: 16 } };
+  assert.equal(pr(con, "The ability to cast 3rd-level force powers").ok, true, "a Consular 5 casts 3rd-level powers");
+  assert.equal(pr(con, "The ability to cast 4th-level force powers").ok, false);
+  assert.equal(pr(con, "The ability to cast tech powers").ok, false);
+  assert.equal(pr(ch, "4th level, the ability to cast force or tech powers").unmet.length, 2);
+  assert.deepEqual(pr(ch, "12th level, Dexterity 20").unmet, ["12th level", "Dexterity 20"]);
 });
