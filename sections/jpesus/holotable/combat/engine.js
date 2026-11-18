@@ -363,8 +363,10 @@
   // or two-handed property) get finesse and may roll the Martial Arts die in place of their own damage; after the Attack
   // action with one, an unarmed strike as a bonus action (Flurry of Blows: one more for a focus point); Dash and
   // Disengage as a bonus action; Dex for the Athletics of a grapple or shove. All of it only while the sheet has no
-  // armor or shield equipped (its gear's armor rows, as rules.js armorClass reads them).
-  const wearsArmor = (ch) => ((ch && ch.equipment) || []).some((e) => e && e.equipped && e.armor && ['light', 'medium', 'heavy', 'shield'].includes(e.armor.kind));
+  // armor or shield equipped (its gear's armor rows, as rules.js armorClass reads them). A Monk with the Vow of the
+  // Sentry keeps both in light or medium armor: then only heavy armor or a shield counts (#254 review).
+  const sentry = (ch) => ((ch && ch.features) || []).some((f) => /^vow of the sentry$/i.test(String((f && f.name) || '').trim()));
+  const wearsArmor = (ch) => ((ch && ch.equipment) || []).some((e) => e && e.equipped && e.armor && (sentry(ch) ? ['heavy', 'shield'] : ['light', 'medium', 'heavy', 'shield']).includes(e.armor.kind));
   const monkColumn = (ch, rules, h) => {
     if (!rules || !rules.classTableAt || wearsArmor(ch)) return '';
     const row = rules.classTableAt(ch).find((x) => x.cls === 'Monk');
