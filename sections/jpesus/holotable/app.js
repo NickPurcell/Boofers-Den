@@ -539,7 +539,8 @@
       if (!ch) return '';
       const con = R.abilityMod(ch, 'con'), fr = R.forceRecovery(ch);
       const frUsed = (ch.resources || []).some(r => r.key === 'force-recovery' && r.used >= 1);
-      return `<h3>Short rest: ${esc(ch.name)}</h3>
+      return `<h3>${vOn('Longer Rests') ? 'Short rest (8 hours)' : 'Short rest'}: ${esc(ch.name)}</h3>
+        ${vOn('Longer Rests') ? `<p class="muted">Longer Rests (variant): finishing gives back missing hit points up to half your maximum (${Math.ceil((+ch.hp.max || 0) / 2)}). One short rest a day. A quick rest (1 hour) is just the hit dice: use Spend Hit Die.</p>` : ''}
         <p class="muted">Each hit die heals its roll ${R.fmt(con)} (Con), at least 0. Hit points ${+ch.hp.current || 0} of ${+ch.hp.max || 0}.</p>
         ${R.hitDice(ch).map(d => `<div class="row" style="margin:4px 0"><span>d${d.die}${d.classes.length ? ` · ${esc(d.classes.join(', '))}` : ''}: <b>${d.total - d.used}</b> of ${d.total} left</span><span class="spacer"></span>
           <button class="btn small" data-hd="${d.die}" ${d.used >= d.total ? 'disabled' : ''}>Roll a d${d.die}</button></div>`).join('')}
@@ -568,8 +569,9 @@
         if (e.target.id === 'srDone') {
           const ch = S.st.characters[id], fr = R.forceRecovery(ch);
           const useFR = fr && $('#srFR', box) && $('#srFR', box).checked && !$('#srFR', box).disabled;
-          const tech = R.techOnShortRest(ch) && (+ch.tech.used || 0) > 0;
+          const tech = R.techOnShortRest(ch) && (+ch.tech.used || 0) > 0, half = vOn('Longer Rests') ? Math.ceil((+ch.hp.max || 0) / 2) : 0;
           mutate(c => {
+            if (half && (+c.hp.current || 0) >= 1) c.hp.current = Math.min(+c.hp.max || 0, (+c.hp.current || 0) + half);
             if (R.techOnShortRest(c)) c.tech.used = 0;
             c.resources = (c.resources || []).map(r => r.refill === 'short' && r.used ? Object.assign({}, r, { used: 0 }) : r);
             if (useFR) {
@@ -579,11 +581,13 @@
             }
           });
           closeModal();
-          act('chat', { text: `*${ch.name} takes a short rest.${tech ? ' Tech points restored.' : ''}${useFR ? ` Force Recovery: ${fr} force points back.` : ''}*`, as: ch.name });
+          act('chat', { text: `*${ch.name} takes a short rest${half ? ' (8 hours; up to half their hit points back)' : ''}.${tech ? ' Tech points restored.' : ''}${useFR ? ` Force Recovery: ${fr} force points back.` : ''}*`, as: ch.name });
         }
       };
     });
   }
+  // the variant rules the GM marks (9.16): the sheet and the table act on these
+  const vOn = name => (S.st.variants || []).includes(name);
   function mutate(fn) {
     const ch = clone(selChar()); fn(ch); saveChar(ch); guarded('sheet', renderSheet);
   }
@@ -777,9 +781,10 @@
             <span class="muted">temp</span>${inp('hp.temp', +ch.hp.temp || 0, { ro, type: 'number', w: '60px' })}</div>
           ${!ro ? `<div class="row hp-adjust" style="margin-top:8px"><input id="hpDelta" placeholder="-7 or +5">
             <button class="btn small danger" data-act="hp" data-sign="-1">Damage</button><button class="btn small" data-act="hp" data-sign="1" style="color:var(--green)">Heal</button></div>
-          <div class="row" style="margin-top:8px"><button class="btn small" data-act="short-rest">Spend Hit Die</button>
+          <div class="row wrap" style="margin-top:8px"><button class="btn small" data-act="short-rest">${vOn('Longer Rests') ? 'Quick Rest (1 h)' : 'Spend Hit Die'}</button>
             <button class="btn small" data-act="short-rest-done" title="${R.techOnShortRest(ch) ? 'Regain all tech points (Engineer, Scout, or a tech archetype). Spend Hit Dice to heal.' : 'Spend Hit Dice to heal during it.'}">Short Rest</button>
-            <button class="btn small" data-act="long-rest">Long Rest</button></div>` : ''}
+            <button class="btn small" data-act="long-rest" ${vOn('Longer Rests') ? 'title="Longer Rests (variant): two days, once a week"' : ''}>${vOn('Longer Rests') ? 'Long Rest (2 days)' : 'Long Rest'}</button>
+            ${vOn('Exertion') ? '<button class="btn small amber" data-act="exert" title="Exertion (variant): roll a hit die without spending it and add it to a check, attack or save, or move 5 ft × the roll farther. You lose that many hit points.">💪 Exert</button>' : ''}</div>` : ''}
           <h4 style="margin-top:12px">Death Saves</h4>
           <div class="row"><span class="muted">Successes</span><span class="dots">${[1, 2, 3].map(n => `<span class="dot s ${ch.deathSaves.s >= n ? 'on' : ''}" data-act="ds" data-k="s" data-n="${n}"></span>`).join('')}</span>
             <span class="muted">Failures</span><span class="dots">${[1, 2, 3].map(n => `<span class="dot f ${ch.deathSaves.f >= n ? 'on' : ''}" data-act="ds" data-k="f" data-n="${n}"></span>`).join('')}</span>
@@ -804,6 +809,16 @@
       </div>`;
     }
 
+    // the variant rules that live on the sheet (9.16), each only while the GM uses it
+    function variantBits(ch, ci, fMax, tMax, ro) {
+      const out = [];
+      if (fMax > 0 && vOn('Simplified Forcecasting')) out.push(`<label class="mini" title="Simplified Forcecasting (variant): one ability for every force power">Forcecasting ability ${ro ? esc(ch.forceAbility === 'cha' ? 'Charisma' : ch.forceAbility === 'wis' ? 'Wisdom' : 'by alignment')
+        : `<select data-act-change="force-ability"><option value="">by alignment (Wis light, Cha dark)</option><option value="wis" ${ch.forceAbility === 'wis' ? 'selected' : ''}>Wisdom</option><option value="cha" ${ch.forceAbility === 'cha' ? 'selected' : ''}>Charisma</option></select>`}</label>`);
+      if (vOn('Saving Throw Checks') && (fMax > 0 || tMax > 0)) out.push(`<span class="muted" title="Saving Throw Checks (variant): you roll d20 + this against the target's defense save DC (14 + its save bonus)">Save checks: ${[fMax > 0 ? `light ${R.fmt(ci.lightDC - 8)}, dark ${R.fmt(ci.darkDC - 8)}` : '', tMax > 0 ? `tech ${R.fmt(ci.techDC - 8)}` : ''].filter(Boolean).join(' · ')}</span>`);
+      if (!ro && vOn('Force and Tech Prowess') && (fMax > 0 || tMax > 0)) out.push(`<span title="Force and Tech Prowess (variant): after a failed check that added your proficiency bonus, without advantage or disadvantage, spend 1 point to reroll it once">${fMax > 0 ? '<button class="btn tiny" data-act="prowess" data-k="force">Force Prowess (1 FP)</button>' : ''}${tMax > 0 ? ' <button class="btn tiny" data-act="prowess" data-k="tech">Tech Prowess (1 TP)</button>' : ''}</span>`);
+      if (vOn('Hunted') && fMax > 0) out.push(`<span title="Hunted (variant): each force power adds its level; the GM rolls d100 after a fight; a long rest takes off the character's level">Disturbance <b>${n0(ch.disturbance)}</b>${isGM() ? ' <button class="btn tiny" data-act="hunted-roll">Roll d100</button>' : ''}</span>`);
+      return out.length ? `<div class="row wrap" style="gap:10px;margin-top:6px;font-size:13px">${out.join('')}</div>` : '';
+    }
     // class resources (audit 3.2-3.11): rages, superiority dice, Second Wind... from SW5e's class tables, spent and
     // given back here (the combat view reads the same list), plus each class's table values at its level
     function classResourcesBox(ch, ro) {
@@ -855,6 +870,7 @@
         ${pts('force', fMax, +ch.force.used || 0, '', 'Force Points', `Light DC ${ci.lightDC} / atk ${R.fmt(ci.lightAtk)} · Dark DC ${ci.darkDC} / atk ${R.fmt(ci.darkAtk)}${ci.forceMaxLevel ? ' · max power level ' + ci.forceMaxLevel : ''}${highNote(ch, 'force', ci.forceMaxLevel)}`)}
         ${pts('tech', tMax, +ch.tech.used || 0, 'tech', 'Tech Points', `Tech DC ${ci.techDC} / atk ${R.fmt(ci.techAtk)}${ci.techMaxLevel ? ' · max power level ' + ci.techMaxLevel : ''}${highNote(ch, 'tech', ci.techMaxLevel)}`)}
       </div>
+      ${variantBits(ch, ci, fMax, tMax, ro)}
       ${classResourcesBox(ch, ro)}
       <div class="box" style="margin-top:12px"><h4>Powers <span class="spacer"></span>${!ro ? `<button class="btn tiny" data-act="pick-power" data-kind="force">＋ force power</button>
           <button class="btn tiny" data-act="pick-power" data-kind="tech">＋ tech power</button>
@@ -905,7 +921,7 @@
             ${ch.tokenImage ? '<button class="btn small ghost" data-act="clear-token-photo">Token: use profile photo</button>' : ''}</div>` : ''}
           <p class="muted" style="font-size:12px;margin:0 0 6px">The token uses the profile photo unless you upload a separate one.</p>
           <label style="margin-top:8px">Token colour${inp('color', ch.color || '#4fc3f7', { ro, type: 'color' })}</label>
-          <label style="margin-top:8px">Experience points${inp('xp', +ch.xp || 0, { ro: lock, type: 'number' })}</label>
+          <label style="margin-top:8px">Experience points${vOn('Milestone Leveling') ? ' <span class="muted">(Milestone Leveling: the GM decides when you level)</span>' : ''}${inp('xp', +ch.xp || 0, { ro: lock, type: 'number' })}</label>
           <label style="margin-top:8px">Proficiency bonus override${inp('profOverride', ch.profOverride ?? '', { ro, type: 'number', ph: String(2 + Math.floor((lvl - 1) / 4)) })}</label>
           <label style="margin-top:8px" title="Your quality of life between adventures (SW5e, PHB): the GM charges it by the day">Lifestyle${inp('lifestyle', ch.lifestyle || '', { ro, type: 'select', options: [{ v: '', t: '—' }, ...Object.entries(LIFESTYLES).map(([k, v]) => ({ v: k, t: `${k} (${v ? (k === 'Aristocratic' ? '100+' : v) + ' cr' : 'free'}/day)` }))] })}</label>
           <label style="margin-top:8px">Initiative bonus (misc)${inp('initMisc', +ch.initMisc || 0, { ro, type: 'number' })}</label>
@@ -932,6 +948,7 @@
   });
   function sheetChangeAction(kind, val, t) {
     if (kind === 'infuse' && !val) return mutate(c => { c.infused = ''; });   // nothing infused
+    if (kind === 'force-ability') return mutate(c => { if (val) c.forceAbility = val; else delete c.forceAbility; });   // Simplified Forcecasting
     if (!val) return;
     if (kind === 'add-cond') mutate(c => { c.conditions = [...new Set([...(c.conditions || []), val])]; });
     if (kind === 'add-weapon') { const w = R.WEAPONS[+val]; mutate(c => c.attacks.push({ name: w.name, ab: w.ab, damage: w.damage, type: w.type, props: w.props, proficient: true })); }
@@ -982,9 +999,34 @@
           // tracked resources that come back on a short or long rest (the combat view's tracker, 3.1), Force Recovery among them
           c.resources = (c.resources || []).map(r => (r.refill === 'short' || r.refill === 'long') && r.used ? Object.assign({}, r, { used: 0 }) : r);
           c.exhaustion = Math.max(0, (+c.exhaustion || 0) - 1);
+          if (vOn('Hunted') && c.disturbance) c.disturbance = Math.max(0, c.disturbance - R.totalLevel(c));   // Hunted: down by the character's level
         });
-        act('chat', { text: `*${ch.name} takes a long rest. HP, force & tech points restored.*`, as: ch.name });
+        act('chat', { text: `*${ch.name} takes a long rest${vOn('Longer Rests') ? ' (2 days)' : ''}. HP, force & tech points restored.*`, as: ch.name });
         break;
+      case 'exert': {   // Exertion (variant, 9.16): the largest hit die, rolled without spending it; its roll in hit points
+        const die = Math.max(0, ...R.hitDice(ch).map(d => d.die));
+        if (!die) return toast('No hit dice to exert with.', true);
+        const res = await roll(`1d${die}`, `Exertion: add it to the roll, or move ${'5 ft ×'} the roll farther; loses that many HP`, { charId: ch.id });
+        if (!res) return;
+        const n = Math.max(0, res.roll.total);
+        mutate(c => { c.hp.current = Math.max(0, (+c.hp.current || 0) - n); });
+        if ((+ch.hp.current || 0) - n <= 0) toast(`${ch.name} is at 0 HP: they stay up until the end of the turn, then fall unconscious and stable.`);
+        break;
+      }
+      case 'prowess': {   // Force and Tech Prowess (variant): a point to reroll a failed check that added proficiency
+        const k = b.dataset.k, ci = R.casterInfo(ch), max = ch[k].max !== '' && ch[k].max != null ? +ch[k].max : (k === 'force' ? ci.forceMax : ci.techMax);
+        const spend = R.pointsSpend(ch[k], 1, max);
+        if (!spend) return toast(`No ${k} points left.`, true);
+        mutate(c => { c[k].used = spend.used; c[k].temp = spend.temp; });
+        act('chat', { text: `*spends 1 ${k} point (${k === 'force' ? 'Force' : 'Tech'} Prowess) to reroll a failed check.*`, as: ch.name });
+        break;
+      }
+      case 'hunted-roll': {   // Hunted (variant): the GM's percentile roll after a fight
+        const d = +ch.disturbance || 0;
+        const res = await roll('1d100', `Hunted: ${ch.name}'s disturbance is ${d}; ${d} or lower and hunters find them`, { charId: ch.id });
+        if (res && res.roll.total <= d) toast(`${res.roll.total}: ${ch.name} is detected.`);
+        break;
+      }
       case 'ds': mutate(c => { const k = b.dataset.k, n = +b.dataset.n; c.deathSaves[k] = c.deathSaves[k] >= n ? n - 1 : n; }); break;
       case 'death-roll': {
         const res = await roll('1d20', 'Death save', { charId: ch.id }); if (!res) return;
@@ -1322,7 +1364,9 @@
     const spend = R.pointsSpend(ch[k], cost, max);   // temporary points first (audit 4.9)
     if (cost && !spend) return toast(`Not enough ${k} points (${cost} needed).`, true);
     const from = R.highCastFrom(ch, k);   // a level that goes once per long rest is noted (#160)
-    if (cost || (from && L >= from)) mutate(c => {
+    const hunted = k === 'force' && vOn('Hunted');   // Hunted (variant): a force power adds its level to the pool
+    if (cost || (from && L >= from) || (hunted && L)) mutate(c => {
+      if (hunted && L) c.disturbance = Math.min(999, (+c.disturbance || 0) + L);
       if (cost) { c[k].used = spend.used; c[k].temp = spend.temp; }
       if (from && L >= from) c[k].high = [...new Set(R.highCastUsed(c, k).concat(L))].sort((a, b) => a - b);
     });
