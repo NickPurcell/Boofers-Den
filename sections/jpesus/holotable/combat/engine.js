@@ -621,6 +621,8 @@
     const net = Math.max(-3, Math.min(3, advN - disN));
     return net > 0 ? { mode: 'adv', k: net + 1 } : net < 0 ? { mode: 'dis', k: 1 - net } : { mode: 'normal', k: 1 };
   }
+  // the Defense Rolls variant (9.16) applies to a creature's attack on a character
+  const defenseRolls = (w, a, t) => variant(w, 'Defense Rolls') && !!a && !!t && a.side !== 'pc' && t.side === 'pc';
   const d20expr = (m) => (m.mode === 'normal' ? '1d20' : `${m.k}d20${m.mode === 'adv' ? 'kh1' : 'kl1'}`);
   const modeName = (m) => (m.mode === 'normal' ? '' : (m.k === 3 ? 'super' : m.k === 4 ? 'hyper' : '') + (m.mode === 'adv' ? 'advantage' : 'disadvantage'));
   const d20chance = (m, p) => (m.mode === 'adv' ? 1 - (1 - p) ** m.k : m.mode === 'dis' ? p ** m.k : p);
@@ -799,9 +801,18 @@
     if (flank) notes.push(`${t.name} is flanked, -${flank} AC`);
     const ac = +t.ac + (cover ? cover.bonus : 0) - flank;
     const need = Math.min(+attack.critFrom >= 15 ? +attack.critFrom : 20, Math.max(2, ac - bonus));   // the d20 needed; a 20 (or the crit range) always hits, a 1 always misses
-    const chance = d20chance(m, (21 - need) / 20);
+    let chance = d20chance(m, (21 - need) / 20);
     const riders = ridersFor(world, a, t, attack, ranged, mode);
-    return { legal: true, feet, ranged, mode, k: m.k, tilts, notes, need, chance, weak, bonus, ac, cover, riders, expr: d20expr(m) + sgn(bonus) };
+    // the Defense Rolls variant (9.16): a creature's attack on a character is the character's roll, d20 + (AC - 10) against
+    // the attack bonus + 12. The attacker's advantage is the defender's disadvantage (and the other way round); a natural 1
+    // is a critical hit (a 1 or a 2 for a crit range from 19, and so on) and a natural 20 always defends.
+    const defense = defenseRolls(world, a, t) ? (() => {
+      const dm = { mode: m.mode === 'adv' ? 'dis' : m.mode === 'dis' ? 'adv' : 'normal', k: m.k }, db = ac - 10, dc = bonus + 12;
+      const critOn = +attack.critFrom >= 15 ? 21 - +attack.critFrom : 1, upTo = Math.max(critOn, Math.min(19, dc - db - 1));   // the defense d20s that let it hit
+      chance = d20chance(m, upTo / 20);
+      return { dc, db, critOn, expr: d20expr(dm) + sgn(db) };
+    })() : null;
+    return { legal: true, feet, ranged, mode, k: m.k, tilts, notes, need, chance, weak, bonus, ac, cover, riders, expr: d20expr(m) + sgn(bonus), defense };
   }
 
   /* ---------------- resources (audit 3.1) ---------------- */
@@ -1535,17 +1546,19 @@
     const mvKey = mvOpt && typeof want === 'string' && mvOpt.options.some((o) => o.key === want) ? want : null;
     const mv = mvKey ? MANEUVERS[mvKey] : null, sup = mv ? superiorityOf(me) : null;
     const spendMv = () => { sup.used += 1; w.spent[me.id] = Object.assign(spentOf(w, me.id), { mv: (+spentOf(w, me.id).mv || 0) | (1 << MANEUVER_KEYS.indexOf(mvKey)) }); };
-    const rexpr = mv && mv.onRoll ? `${pv.expr}+1${sup.die}` : pv.expr;
+    const dfn = pv.defense;   // Defense Rolls (9.16): the character rolls instead (a creature has no maneuver dice to add)
+    const rexpr = dfn ? dfn.expr : mv && mv.onRoll ? `${pv.expr}+1${sup.die}` : pv.expr;
     const r = roll(rexpr);
-    if (mv && mv.onRoll) spendMv();
+    if (mv && mv.onRoll && !dfn) spendMv();
     const helped = helpOn(w, me, t);   // Help (#144) is used up by this attack, hit or miss
     if (helped) w.effects = w.effects.filter((ef) => ef !== helped);
-    const nat = r.nat, fumble = nat === 1;
-    let crit = nat === 20 || (nat != null && +attack.critFrom >= 15 && nat >= +attack.critFrom);   // a wider crit range (#165), which always hits
-    const hit = crit || (!fumble && r.total >= pv.ac);
+    const nat = r.nat, fumble = !dfn && nat === 1;
+    let crit = dfn ? nat != null && nat <= dfn.critOn : nat === 20 || (nat != null && +attack.critFrom >= 15 && nat >= +attack.critFrom);   // a wider crit range (#165), which always hits
+    const hit = crit || (dfn ? nat !== 20 && r.total < dfn.dc : !fumble && r.total >= pv.ac);
     if (hit && pv.feet <= FT && has(t, 'closeCrit')) crit = true;   // any hit from within 5 ft on the paralyzed or unconscious
     const tilt = pv.mode === 'normal' ? '' : ` with ${modeName(pv)} (${pv.tilts.map((x) => x.text).join(', ')})`;
-    const log = [{ unit: me.id, kind: 'attack', roll: r, expr: rexpr, text: `${me.name} ${how ? `makes ${how} against` : 'attacks'} ${t.name} with ${attack.name}${tilt}${mv && mv.onRoll ? ` (${mv.name}, +1${sup.die})` : ''}${pv.notes.length ? ` (${pv.notes.join('; ')})` : ''}${pv.weak ? ` (weakened, −${pv.weak})` : ''}: ${r.total} against AC ${pv.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}` }];
+    const log = [{ unit: me.id, kind: 'attack', roll: r, expr: rexpr, text: `${me.name} ${how ? `makes ${how} against` : 'attacks'} ${t.name} with ${attack.name}${tilt}${mv && mv.onRoll ? ` (${mv.name}, +1${sup.die})` : ''}${pv.notes.length ? ` (${pv.notes.join('; ')})` : ''}${pv.weak ? ` (weakened, −${pv.weak})` : ''}${dfn ? `: ${t.name}'s defense roll ${r.total} against DC ${dfn.dc}, ${crit ? `a natural ${nat}, a critical hit!` : hit ? 'a hit.' : nat === 20 ? 'a natural 20, defended.' : 'defended.'}`
+      : `: ${r.total} against AC ${pv.ac}, ${crit ? 'a critical hit!' : hit ? 'a hit.' : fumble ? 'a natural 1, a miss.' : 'a miss.'}`}` }];
     const events = [];
     if (!hit) {
       events.push({ kind: 'miss', unit: t.id });
@@ -2005,5 +2018,5 @@
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
     SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf, d20, flankOf, fixedTotal, cruel, modeName,
-    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, poolLeft, payPool, ridersOf, unarmoredMoveOf, wearsArmor, ridersFor, attacksPerAction, multiattackOf, offhandOf, stylesOf, withThreshold, thresholdFor, MIN_THRESHOLD, contestBonus, helpOn, maneuverCheck, unitAt, weaponProps, volleysOf, MANEUVERS, maneuversOf, superiorityOf, saveVs, pushAway, landHit, martialOf, martialDieOf, noShots, quarryOf };
+    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, poolLeft, payPool, defenseRolls, ridersOf, unarmoredMoveOf, wearsArmor, ridersFor, attacksPerAction, multiattackOf, offhandOf, stylesOf, withThreshold, thresholdFor, MIN_THRESHOLD, contestBonus, helpOn, maneuverCheck, unitAt, weaponProps, volleysOf, MANEUVERS, maneuversOf, superiorityOf, saveVs, pushAway, landHit, martialOf, martialDieOf, noShots, quarryOf };
 });

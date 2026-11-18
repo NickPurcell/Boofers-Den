@@ -3878,6 +3878,58 @@ test("#212 review: an undo gives back a shot, and a reload's power cell, as they
   assert.deepEqual([st.characters[avery].attacks[0].shots, st.characters[avery].equipment[0].qty], [1, 2], "one shot left and both cells, as before the reload");
 });
 
+/* ---------------------------------------------------------------- the Defense Rolls variant (9.16, the combat view) */
+test("Defense Rolls (variant): a creature's attack on a character is the character's d20 + (AC - 10) against the attack bonus + 12", () => {
+  const ava = (o) => unit(Object.assign({ id: "ava", name: "Avery", side: "pc", x: 0, y: 0, ac: 16, hp: 40, maxHp: 40 }, o));
+  const r1 = (o) => unit(Object.assign({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, ac: 13 }, o));
+  const claw = { name: "Claw", bonus: 4, damage: "1d4+2", type: "kinetic", melee: 5, range: null };
+  const V = { variants: ["Defense Rolls"] };
+  const hitBy = (nat, total, o = {}, extra = V, atk = claw) => { const d = dice({ total, nat }, { total: 3 }); const r = E.apply(world([ava(o), r1()], "r1", extra), { type: "attack", unit: "r1", target: "ava", attack: atk }, d.roll); return { r, d }; };
+  // the preview: DC 16 (4 + 12), DB +6 (16 - 10); a hit on a defense d20 of 9 or less, the same 45% as the attack roll's 12+
+  const pv = E.preview(world([ava(), r1()], "r1", V), "r1", "ava", claw);
+  assert.deepEqual([pv.defense, pv.chance], [{ dc: 16, db: 6, critOn: 1, expr: "1d20+6" }, 0.45]);
+  assert.equal(E.preview(world([ava(), r1()], "r1"), "r1", "ava", claw).chance, 0.45, "the same odds without the variant");
+  // defended, hit, a natural 1 a critical, a natural 20 always defends
+  let { r, d } = hitBy(12, 18);
+  assert.equal(d.asked[0], "1d20+6", "the preview's roll is the server's roll");
+  assert.match(r.log[0].text, /Raider attacks Avery with Claw: Avery's defense roll 18 against DC 16, defended\./);
+  assert.equal(d.asked.length, 1, "no damage");
+  ({ r, d } = hitBy(8, 14));
+  assert.match(r.log[0].text, /defense roll 14 against DC 16, a hit\./);
+  assert.equal(d.asked[1], "1d4+2");
+  ({ r } = hitBy(1, 7));
+  assert.match(r.log[0].text, /a natural 1, a critical hit!/);
+  ({ r } = hitBy(20, 26, {}, V, Object.assign({}, claw, { bonus: 20 })));
+  assert.match(r.log[0].text, /defense roll 26 against DC 32, a natural 20, defended\./);
+  // a crit range from 19: a defense roll of 1 or 2
+  ({ r } = hitBy(2, 8, {}, V, Object.assign({}, claw, { critFrom: 19 })));
+  assert.match(r.log[0].text, /a natural 2, a critical hit!/);
+  assert.equal(E.preview(world([ava(), r1()], "r1", V), "r1", "ava", Object.assign({}, claw, { critFrom: 19 })).defense.critOn, 2);
+  // the attacker's advantage is the defender's disadvantage
+  ({ d } = hitBy(12, 18, { conditions: ["Restrained"] }));
+  assert.equal(d.asked[0], "2d20kl1+6");
+  // off without the variant; a character's attack on a creature is still its own attack roll
+  ({ d } = hitBy(12, 16, {}, {}));
+  assert.equal(d.asked[0], "1d20+4");
+  const d2 = dice({ total: 15, nat: 12 }, { total: 5 });
+  E.apply(world([ava(), r1()], "ava", V), { type: "attack", unit: "ava", target: "r1", attack: blade }, d2.roll);
+  assert.equal(d2.asked[0], "1d20+5");
+});
+
+test("Defense Rolls through the API: the GM's creature attacks, the character's defense roll is said in chat", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await gm.act("variants.set", { variants: ["Defense Rolls"] });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 4, damage: "1d4", type: "kinetic", melee: 5 } })).code, 200);
+  st = await gm.state();
+  const roll = st.chat.filter((m) => m.fight && m.roll).map((m) => m.roll).find((x) => x.kind === "attack");
+  assert.match(roll.label, /Avery's defense roll \d+ against DC 16/);
+  assert.match(roll.expr, /^1d20\+5$/, "Avery's AC 15: DB +5");
+});
+
 test("a character's sheet defences reach the engine with the combat view's additions, each once (audit 1.5)", () => {
   const ch = { id: "c1", name: "Kix", species: "Droid, Class I", hp: { max: 20, current: 20 }, abilities: {}, classes: [{ name: "Scout", level: 2 }],
     defenses: { resist: [{ type: "necrotic", only: null }, { type: "poison", only: null }], immune: [], vuln: [], fromSpecies: ["resist:necrotic", "resist:poison"] } };
