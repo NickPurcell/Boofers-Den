@@ -356,6 +356,44 @@
   }
   Object.assign(SW5E, { RARITIES, SIMPLE_ATTUNEMENT, attunement, attuneBlocked });
 
+  // Consumables (audit 6.7): what using one does, read once from its SW5e text when it's added (its healing, or the save
+  // it asks for and the damage it deals), kept on the item as `use` ({} when there's nothing to roll: a count to lower).
+  //   { hd: n } the creature rolls n of its Hit Dice + Con (medpacs); { heal: '2d4+2' }; { save: { ab, dc } };
+  //   { dmg: [['2d10', 'kinetic'], ...], half: true }
+  const ABBR = { Strength: 'str', Dexterity: 'dex', Constitution: 'con', Intelligence: 'int', Wisdom: 'wis', Charisma: 'cha' };
+  const WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, six: 6 };
+  const DICE_RE = /^\d{1,2}d\d{1,3}(\+\d{1,3})?$/;
+  function consumableUse(text) {
+    const t = String(text || ''), out = {};
+    let m = /rolls (one|two|three|four|five|six) dic?e? equal to the size of their Hit Die/.exec(t);
+    if (m) out.hd = WORDS[m[1]];
+    m = /regains? (\d+d\d+(?:\s*\+\s*\d+)?) hit points/.exec(t);
+    if (m && !out.hd) out.heal = m[1].replace(/\s+/g, '');
+    m = /DC (\d+) (Strength|Dexterity|Constitution|Intelligence|Wisdom|Charisma) saving throw/.exec(t);
+    if (m) out.save = { ab: ABBR[m[2]], dc: +m[1] };
+    // "takes 2d6 fire and 2d10 kinetic damage": every dice-and-type pair in the clause that ends in "damage"
+    const pair = new RegExp(`(\\d+d\\d+(?:\\s*\\+\\s*\\d+)?) (${DAMAGE_TYPES.join('|')})\\b`, 'g');
+    const dmg = [...t.matchAll(/(?:takes?|taking|deals?|dealing) ([^.;]*?) damage/g)].flatMap(c => [...c[1].matchAll(pair)]).slice(0, 3).map(x => [x[1].replace(/\s+/g, ''), x[2]]);
+    if (dmg.length) out.dmg = dmg;
+    if (out.save && /half as much/.test(t)) out.half = true;
+    return cleanUse(out);
+  }
+  // the `use` of an item, checked (the server keeps only this shape)
+  function cleanUse(u) {
+    if (!u || typeof u !== 'object' || Array.isArray(u)) return null;
+    const out = {};
+    if (Number.isInteger(+u.hd) && +u.hd >= 1 && +u.hd <= 9) out.hd = +u.hd;
+    if (typeof u.heal === 'string' && DICE_RE.test(u.heal)) out.heal = u.heal;
+    if (u.save && ABILITIES.some(a => a.key === u.save.ab) && +u.save.dc >= 1 && +u.save.dc <= 40) out.save = { ab: u.save.ab, dc: Math.round(+u.save.dc) };
+    const dmg = (Array.isArray(u.dmg) ? u.dmg : []).slice(0, 3).filter(d => Array.isArray(d) && DICE_RE.test(String(d[0])) && DAMAGE_TYPES.includes(d[1])).map(d => [String(d[0]), d[1]]);
+    if (dmg.length) out.dmg = dmg;
+    if (u.half && out.save) out.half = true;
+    return out;
+  }
+  // the Hit Die a creature has most of (a medpac's die; on a tie the larger)
+  const commonHitDie = c => (hitDice(c).slice().sort((a, b) => b.total - a.total || b.die - a.die)[0] || { die: 8 }).die;
+  Object.assign(SW5E, { consumableUse, cleanUse, commonHitDie });
+
   // Selling (audit 6.8): equipment fetches half its cost (PHB, "Selling Treasure"), whole credits, rounded down
   const sellPrice = e => Math.floor(Math.max(0, +(e && e.cost) || 0) / 2);
   Object.assign(SW5E, { sellPrice });
