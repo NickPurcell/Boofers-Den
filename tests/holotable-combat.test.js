@@ -3778,6 +3778,26 @@ test("Ranger's Quarry through the API: a Scout 5 marks the Raider, then hits it 
   assert.ok(st.fight.effects.some((ef) => ef.condition === "Quarry" && ef.unit === ids.raider));
 });
 
+test("Wounds and #235's char.rest: a rest during the fight keeps the DC; after it, the DC is back to 10", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await gm.act("variants.set", { variants: ["Wounds"] });
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hp: { max: 20, current: 2, temp: 0 } }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  const crypto = require("crypto"), real = crypto.randomInt;
+  crypto.randomInt = (a, b) => (b === 21 ? 19 : real(a, b));   // the claw hits at +30; the Wounds save succeeds: the DC rises
+  try { assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 30, damage: "1d6+5", type: "kinetic", melee: 5 } })).code, 200); }
+  finally { crypto.randomInt = real; }
+  assert.deepEqual((await gm.state()).fight.wounds[avery], { level: 0, step: 1 });
+  assert.equal((await sam.act("char.rest", { charId: avery, kind: "short" })).code, 200);
+  assert.deepEqual((await gm.state()).fight.wounds[avery], { level: 0, step: 1 }, "mid-fight: kept");
+  assert.equal((await gm.act("init.clear", {})).code, 200);
+  assert.equal((await sam.act("char.rest", { charId: avery, kind: "short" })).code, 200);
+  assert.equal((await gm.state()).fight.wounds[avery], undefined, "after the fight: the DC back to 10 (and with no levels, nothing left to keep)");
+});
+
 test("#212 review: an undo gives back a shot, and a reload's power cell, as they were", async () => {
   const { gm, sam, avery, ids } = await fight();
   let st = await sam.state();
