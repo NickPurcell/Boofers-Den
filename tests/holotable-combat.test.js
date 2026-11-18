@@ -2904,6 +2904,9 @@ test("review of #147: a target named like Object's own keys is no target; a push
     assert.equal(E.apply(world([ft, r1], "ft"), { type: "move", unit: bad, x: 1, y: 1 }, dice().roll).ok, false);
   }
   assert.ok(!("conditions" in {}) && !("x" in {}) && !("hp" in {}), "nothing reached Object.prototype");
+  // the one lookup to use for an id from a request (exported for the other combat-adjacent code)
+  const w0 = world([ft, r1], "ft");
+  assert.deepEqual([E.unitAt(w0, "r1").name, E.unitAt(w0, "__proto__"), E.unitAt(w0, "constructor"), E.unitAt(w0, 5), E.unitAt(null, "r1")], ["Raider", null, null, null, null]);
   // the board's edge: pushed from x 1 towards x 0 by someone at x 2, on a board known to the world
   const edge = E.apply(world([unit({ id: "ft", name: "Fenn", side: "pc", x: 1, y: 0, skills: { athletics: 5 } }), unit({ id: "r1", name: "Raider", side: "npc", x: 0, y: 0 })], "ft"),
     { type: "shove", unit: "ft", target: "r1", push: true }, dice({ total: 15 }, { total: 2 }).roll);
