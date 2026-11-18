@@ -321,13 +321,18 @@
     const it = e.target.closest('.char-item'); if (!it) return;
     S.selected = it.dataset.id; setTab('sheet'); renderRoster(); renderSheet($('#sheet'));
   });
-  $('#newCharBtn').addEventListener('click', async () => {
-    const c = R.blankCharacter();
-    c.acAuto = true;   // a brand-new sheet works its AC out from armor (audit 5.3); old sheets and imports keep their typed AC
-    c.name = (me() && me().name ? me().name + "'s character" : 'New Character');
-    c.color = ['#4fc3f7', '#ffb74d', '#66bb6a', '#ef5350', '#b388ff', '#f06292', '#4db6ac'][Math.floor(Math.random() * 7)];
-    const r = await act('char.save', { char: c });
-    if (r) { S.selected = r.id; S.sub = 'main'; setTab('sheet'); }
+  // ＋ New: SW5e's guided level-1 build (books.js) when the SW5e books are on; a blank sheet otherwise, or if chosen
+  $('#newCharBtn').addEventListener('click', () => {
+    const make = async built => {
+      const c = built || R.blankCharacter();
+      c.acAuto = true;   // a brand-new sheet works its AC out from armor (audit 5.3); old sheets and imports keep their typed AC
+      if (!built) c.name = (me() && me().name ? me().name + "'s character" : 'New Character');
+      c.color = ['#4fc3f7', '#ffb74d', '#66bb6a', '#ef5350', '#b388ff', '#f06292', '#4db6ac'][Math.floor(Math.random() * 7)];
+      const r = await act('char.save', { char: c });
+      if (r) { S.selected = r.id; S.sub = 'main'; setTab('sheet'); if (built) toast(`${c.name} is ready`); }
+    };
+    if (window.HTB && HTB.guidedBuild && S.st && S.st.sw5eBooks !== false) return HTB.guidedBuild(make);
+    make(null);
   });
 
   // ---- import
@@ -2977,7 +2982,7 @@
   }
 
   // --------------------------------------------------------------------------- shared with books.js
-  window.HT = { S, $, $$, esc, n0, R, API, modal, closeModal, toast, act, post, mutate, isGM, chars, roll, rollModeFromEvent, setPath, renderRules, setTab, drawMap };
+  window.HT = { S, $, $$, esc, n0, R, API, modal, closeModal, toast, act, post, mutate, isGM, chars, roll, rollModeFromEvent, setPath, renderRules, setTab, drawMap, scoresDialog };
 
   // --------------------------------------------------------------------------- boot
   window.addEventListener('resize', () => drawMap());

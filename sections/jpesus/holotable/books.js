@@ -242,6 +242,183 @@
     });
   }
 
+  // --------------------------------------------------------------------------- guided level-1 build (audit 1.3, 1.7)
+  // SW5e's Player's Handbook, "Step-By-Step Characters": choose a species, a class, determine ability scores, describe
+  // the character (background), choose equipment. Each step picks into a draft; the character is saved once, at the end.
+  const skillKey = name => (R.SKILLS.find(k => lc(k.name) === lc(String(name).trim())) || {}).key;
+  // "Choose two from Deception, Insight, Lore, and Persuasion" -> { n: 2, from: [keys] }
+  const NUM = { one: 1, two: 2, three: 3, four: 4 };
+  function skillChoice(text) {
+    const m = /choose (\w+) from (.*)$/i.exec(String(text || '').trim());
+    if (!m) return { n: 0, from: [] };
+    const from = m[2].replace(/\.$/, '').split(/,\s*|\s+(?:and|or)\s+/).map(x => skillKey(x.replace(/^(and|or)\s+/i, ''))).filter(Boolean);
+    return { n: NUM[lc(m[1])] || +m[1] || 0, from: [...new Set(from)] };
+  }
+  // a class's skill list as sheet keys ("Any" is every skill)
+  const classSkills = cl => (cl.skills.some(x => lc(x) === 'any') ? R.SKILLS.map(k => k.key) : cl.skills.map(skillKey).filter(Boolean));
+  // The character a finished guide makes, from what was chosen (pure: the tests call it). D: { name, color, species,
+  // asi (bool), cls, classSkills [keys], classFeatures [{n, text}], scores {str..}, bg, bgSkills [keys], feat {n, text} }
+  function buildLevel1(D) {
+    const c = R.blankCharacter();
+    c.name = String(D.name || 'New Character').slice(0, 80); if (D.color) c.color = D.color;
+    c.abilities = Object.assign({}, c.abilities, D.scores || {});
+    const x = D.species;
+    if (x) {
+      c.species = x.n;
+      for (const t of x.traits) if (!SKIP_TRAITS.has(lc(t.n))) c.features.push({ name: t.n.slice(0, 80), text: `Species trait (${x.n})\n${t.d}`.slice(0, 4000) });
+      const speed = x.traits.find(t => lc(t.n) === 'speed'); const sp = speed && /(\d+)\s*feet/.exec(speed.d); if (sp) c.speed = +sp[1];
+      c.senses = R.sensesFromTraits(x.traits);
+      const lang = x.traits.find(t => lc(t.n) === 'languages'); if (lang) c.languages = lang.d.slice(0, 300);
+      if (D.asi && x.asi) for (const [k, v] of Object.entries(x.asi)) c.abilities[k] = Math.min(30, n0(c.abilities[k]) + v);
+    }
+    const cl = D.cls;
+    if (cl) {
+      c.classes = [{ name: cl.n, level: 1, archetype: '' }];
+      c.saves = Object.fromEntries(cl.saves.map(k => [k, true]));
+      const hp = Math.max(1, cl.hp1 + mod(c.abilities.con));   // 1st level: the die's maximum + Con
+      c.hp = { max: hp, current: hp, temp: 0 };
+      for (const f of D.classFeatures || []) c.features.push({ name: f.n.slice(0, 80), text: `${cl.n} 1st-level feature\n${f.text}`.slice(0, 4000) });
+      c.proficiencies = [cl.armor.length && 'Armor: ' + cl.armor.join(', '), cl.weapons.length && 'Weapons: ' + cl.weapons.join(', '),
+        cl.tools.length && 'Tools: ' + cl.tools.join(', ')].filter(Boolean).join('\n');
+    }
+    for (const k of [...(D.classSkills || []), ...(D.bgSkills || [])]) if (R.SKILLS.some(s => s.key === k)) c.skills[k] = 1;
+    c.ac = 10 + mod(c.abilities.dex);   // unarmored; armor goes on with the equipment
+    c.acAuto = true;                    // brand-new: the sheet works its AC out from worn armor (#165), as ＋ New's blank sheet does
+    const b = D.bg;
+    if (b) {
+      c.background = b.n;
+      if (b.feature) c.features.push({ name: b.feature.slice(0, 80), text: `Background feature (${b.n})\n${b.featureText}`.slice(0, 4000) });
+      if (D.feat) c.features.push({ name: D.feat.n.slice(0, 80), text: `Background feat (${b.n})\n${D.feat.text || ''}`.slice(0, 4000) });
+      if (b.tools) c.proficiencies = (c.proficiencies ? c.proficiencies + '\n' : '') + `Background (${b.n}) tools: ${b.tools}`;
+      if (b.langs) c.languages = ((c.languages ? c.languages + '\n' : '') + 'Background: ' + b.langs).slice(0, 500);
+    }
+    const plain = x => String(x).replace(/\*/g, '').replace(/^\s*-\s*/, '• ');   // SW5e's markdown: *(a)* -> (a), "- " -> a bullet
+    const eq = [cl && cl.equip.length && `${cl.n}:\n${cl.equip.map(plain).join('\n')}`, b && b.equip && `${b.n}: ${plain(b.equip)}`].filter(Boolean);
+    if (eq.length) c.notes = ('Starting equipment (choose where it says (a) or (b)):\n' + eq.join('\n\n')).slice(0, 20000);
+    c.proficiencies = (c.proficiencies || '').slice(0, 2000);
+    return c;
+  }
+
+  function guidedBuild(onDone) {
+    const me = H.S.st && H.S.st.players && H.S.st.players[H.S.st.you];
+    const D = { name: me && me.name ? me.name + "'s character" : 'New Character', classSkills: [], bgSkills: [] };
+    const step = (n, t) => `<span class="muted" style="text-transform:none;letter-spacing:0">Step ${n} of 5 · </span>${t}`;
+    const box0 = $('#modalBox');
+    if (guidedBuild.skip) box0.removeEventListener('click', guidedBuild.skip);   // one guide's handler at a time, even if the last was closed
+    const skip = guidedBuild.skip = e => { if (e.target.closest('[data-gb=blank]')) { box0.removeEventListener('click', skip); H.closeModal(); onDone(null); } };
+    box0.addEventListener('click', skip);   // the "blank character" button in step 1's intro; removed once the guide moves on
+    // 1. species
+    picker({
+      title: 'New character · 1 of 5: species', intro: "SW5e builds a character in five steps: species, class, ability scores, background, equipment. " +
+        "Nothing is saved until the last step. <button class='btn tiny ghost' data-gb='blank'>Skip: a blank character</button>",
+      load: () => list('species'),
+      facets: [{ key: 'src', label: 'books', get: x => x.src }, { key: 'size', label: 'sizes', get: x => x.size }],
+      search: x => x.n + ' ' + x.home + ' ' + x.traits.map(t => t.n).join(' '),
+      row: x => `<b>${esc(x.n)}</b>${srcTag(x.src)}<span class="pp-lvl">${esc(x.size)}</span>
+        <div class="pp-meta">${esc([x.home && 'Homeworld: ' + x.home, x.asi ? asiText(x.asi) : 'ability increase: your choice', x.lang && 'Speaks ' + x.lang].filter(Boolean).join(' · '))}</div>`,
+      detail: x => x.traits.map(t => `<p><b>${esc(t.n)}.</b> ${md(t.d).replace(/^<p>|<\/p>$/g, '')}</p>`).join(''),
+      detailLabel: 'Traits', action: (x, i) => pickBtn(i, 'Choose'), pickedLabel: '✓ Chosen',
+      onPick: x => { box0.removeEventListener('click', skip); D.species = x; D.asi = !!x.asi; stepClass(); },
+    });
+    // 2. class
+    async function stepClass() {
+      let all;
+      try { all = await list('classes'); } catch (err) { H.toast(err.message, true); return; }
+      const draw = () => {
+        const cl = D.cls, opts = cl ? classSkills(cl) : [];
+        return `<h3>${step(2, 'class')}</h3>
+          <div class="grid g2" style="gap:6px">${all.map(k => `<label style="display:block;cursor:pointer;padding:8px 10px;border:1px solid ${cl && cl.n === k.n ? 'var(--holo)' : 'var(--line)'};border-radius:8px;text-transform:none;letter-spacing:0">
+            <input type="radio" name="gbCls" value="${esc(k.n)}" ${cl && cl.n === k.n ? 'checked' : ''}> <b>${esc(k.n)}</b>
+            <span class="muted" style="font-size:12px"> · d${k.hd} · saves ${k.saves.map(a => a.toUpperCase()).join(', ')}</span>
+            <div class="muted" style="font-size:12px">${esc(k.sum)}</div></label>`).join('')}</div>
+          ${cl ? `<h4 style="margin-top:12px">${esc(cl.n)}: choose ${cl.nSkills} skill${cl.nSkills === 1 ? '' : 's'} <span class="muted" id="gbCount">(${D.classSkills.length} of ${cl.nSkills})</span></h4>
+            <div class="row wrap" style="gap:4px 14px">${opts.map(k => `<label class="toggle"><input type="checkbox" data-gb="cskill" value="${k}" ${D.classSkills.includes(k) ? 'checked' : ''}> ${esc(R.SKILLS.find(s => s.key === k).name)}</label>`).join('')}</div>
+            <p class="muted" style="font-size:12px;margin:8px 0 0">1st-level hit points: ${cl.hp1} + your Constitution modifier. Saving throws: ${cl.saves.map(a => a.toUpperCase()).join(', ')}.</p>` : ''}
+          <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn" data-gb="cancel">Cancel</button>
+            <button class="btn primary" data-gb="next" ${cl && D.classSkills.length === cl.nSkills ? '' : 'disabled'}>Next: ability scores</button></div>`;
+      };
+      H.modal(draw(), box => {
+        box.onchange = e => {
+          if (e.target.name === 'gbCls') { D.cls = all.find(k => k.n === e.target.value); D.classSkills = []; box.innerHTML = draw(); return; }
+          if (e.target.dataset.gb === 'cskill') {
+            D.classSkills = [...box.querySelectorAll('[data-gb=cskill]:checked')].map(i => i.value);
+            if (D.classSkills.length > D.cls.nSkills) { e.target.checked = false; D.classSkills = D.classSkills.filter(k => k !== e.target.value); }
+            box.querySelector('#gbCount').textContent = `(${D.classSkills.length} of ${D.cls.nSkills})`;
+            box.querySelector('[data-gb=next]').disabled = D.classSkills.length !== D.cls.nSkills;
+          }
+        };
+        box.onclick = async e => {
+          const b = e.target.closest('[data-gb]'); if (!b) return;
+          if (b.dataset.gb === 'cancel') return H.closeModal();
+          if (b.dataset.gb === 'next') {
+            D.classFeatures = (await featuresFor(D.cls.n, 'class', 1, 1).catch(() => [])).map(f => ({ n: f.n, text: f.text }));
+            H.scoresDialog({ name: D.name }, sc => { D.scores = sc; stepBackground(); });
+          }
+        };
+      });
+    }
+    // 4. background: the background, two of its skills and one of its feats
+    function stepBackground() {
+      picker({
+        title: 'New character · 4 of 5: background', intro: 'Your background gives two skills, a feature and a feat.',
+        load: () => list('backgrounds'),
+        facets: [{ key: 'src', label: 'books', get: x => x.src }],
+        row: x => `<b>${esc(x.n)}</b>${srcTag(x.src)}<div class="pp-meta">${esc([x.skills, x.feature && 'Feature: ' + x.feature].filter(Boolean).join(' · '))}</div>`,
+        detail: x => `${x.skills ? `<p><b>Skills.</b> ${esc(x.skills)}</p>` : ''}${x.tools ? `<p><b>Tools.</b> ${esc(x.tools)}</p>` : ''}
+          ${x.feature ? `<p><b>Feature: ${esc(x.feature)}.</b></p>${md(x.featureText)}` : ''}${x.feats.length ? `<p><b>Feats.</b> ${esc(x.feats.join(', '))}</p>` : ''}`,
+        action: (x, i) => pickBtn(i, 'Choose'), pickedLabel: '✓ Chosen',
+        onPick: x => { D.bg = x; D.bgSkills = []; D.feat = null; stepBgChoices(); },
+      });
+    }
+    function stepBgChoices() {
+      const ch = skillChoice(D.bg.skills), from = ch.from.filter(k => !D.classSkills.includes(k));
+      const n = Math.min(ch.n, from.length);
+      const draw = () => `<h3>${step(4, esc(D.bg.n))}</h3>
+        <h4>Choose ${n} skill${n === 1 ? '' : 's'} <span class="muted" id="gbCount2">(${D.bgSkills.length} of ${n})</span></h4>
+        <div class="row wrap" style="gap:4px 14px">${from.map(k => `<label class="toggle"><input type="checkbox" data-gb="bskill" value="${k}" ${D.bgSkills.includes(k) ? 'checked' : ''}> ${esc(R.SKILLS.find(s => s.key === k).name)}</label>`).join('')}</div>
+        ${ch.from.length > from.length ? '<p class="muted" style="font-size:12px">Skills your class already gives are left out.</p>' : ''}
+        ${D.bg.feats.length ? `<h4 style="margin-top:12px">Choose a feat</h4><select data-gb="feat"><option value="">— choose —</option>${D.bg.feats.map(f => `<option ${D.feat && D.feat.n === f ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select>` : ''}
+        <div class="row" style="margin-top:12px"><span class="spacer"></span><button class="btn" data-gb="cancel">Cancel</button>
+          <button class="btn primary" data-gb="next2" disabled>Next: review</button></div>`;
+      const ready = () => D.bgSkills.length === n && (!D.bg.feats.length || !!D.feat);
+      H.modal(draw(), box => {
+        box.onchange = async e => {
+          if (e.target.dataset.gb === 'bskill') {
+            D.bgSkills = [...box.querySelectorAll('[data-gb=bskill]:checked')].map(i => i.value);
+            if (D.bgSkills.length > n) { e.target.checked = false; D.bgSkills = D.bgSkills.filter(k => k !== e.target.value); }
+            box.querySelector('#gbCount2').textContent = `(${D.bgSkills.length} of ${n})`;
+          }
+          if (e.target.dataset.gb === 'feat') { const f = e.target.value && await featNamed(e.target.value); D.feat = e.target.value ? { n: e.target.value, text: f ? f.text : '' } : null; }
+          box.querySelector('[data-gb=next2]').disabled = !ready();
+        };
+        box.onclick = e => {
+          const b = e.target.closest('[data-gb]'); if (!b) return;
+          if (b.dataset.gb === 'cancel') return H.closeModal();
+          if (b.dataset.gb === 'next2' && ready()) stepReview();
+        };
+      });
+    }
+    // 5. equipment and a last look
+    function stepReview() {
+      const c = buildLevel1(D), sk = Object.keys(c.skills).map(k => R.SKILLS.find(s => s.key === k).name);
+      H.modal(`<h3>${step(5, 'equipment and a last look')}</h3>
+        <label>Name<input id="gbName" value="${esc(c.name)}" maxlength="80"></label>
+        <p style="margin:8px 0 4px"><b>${esc(c.species)}</b> · <b>${esc(D.cls.n)} 1</b> · ${esc(c.background)}${D.feat ? ' · feat: ' + esc(D.feat.n) : ''}</p>
+        <p style="margin:0 0 4px">${R.ABILITIES.map(a => `${a.key.toUpperCase()} <b>${c.abilities[a.key]}</b>`).join(' · ')}
+          ${D.species.asi ? `<span class="muted">(with ${esc(D.species.n)}'s ${esc(asiText(D.species.asi))})</span>` : `<br><span class="muted">${esc(D.species.n)}'s ability increase is your choice: add it on the sheet.</span>`}</p>
+        <p style="margin:0 0 4px">HP <b>${c.hp.max}</b> · AC <b>${c.ac}</b> (unarmored) · saves ${Object.keys(c.saves).map(a => a.toUpperCase()).join(', ')} · skills ${esc(sk.join(', '))}</p>
+        <h4 style="margin-top:10px">Starting equipment</h4><div class="muted" style="font-size:12px;white-space:pre-wrap;max-height:180px;overflow:auto">${esc(c.notes)}</div>
+        <p class="muted" style="font-size:12px">This goes into your sheet's Notes; add the items you choose on the Features &amp; Gear tab.</p>
+        <div class="row"><span class="spacer"></span><button class="btn" data-gb="cancel">Cancel</button><button class="btn primary" data-gb="make">Create ${esc(D.cls.n)}</button></div>`, box => {
+        box.onclick = e => {
+          const b = e.target.closest('[data-gb]'); if (!b) return;
+          if (b.dataset.gb === 'cancel') return H.closeModal();
+          if (b.dataset.gb === 'make') { D.name = box.querySelector('#gbName').value.trim() || D.name; H.closeModal(); onDone(buildLevel1(D)); }
+        };
+      });
+    }
+  }
+
   // --------------------------------------------------------------------------- archetypes
   async function featuresFor(of, kind, fromLvl, toLvl) {
     const all = await list('features');
@@ -721,6 +898,7 @@
 
   window.HTB = {
     list, mdBlock, libraryBar, openBook, openSpeciesPicker, openBackgroundPicker, openArchetypePicker, openFeaturePicker,
+    guidedBuild, buildLevel1, skillChoice,
     levelFeatures, archetypesOf, featNamed, featNames, openMonsterPicker, openStatBlock, rollCreatureSave, bonuses, saveBonus, difficulty, xpMultiplier, renderEncounter, renderShips, renderShipsSafe,
   };
   // the rules tab and ships tab were drawn before this file loaded
