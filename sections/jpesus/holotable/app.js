@@ -63,7 +63,10 @@
     }
     throw new Error('That image is too large, even after shrinking it.');
   }
-  function downscale(file, maxDim, quality = 0.85) {
+  // keepAlpha (profile and token photos): an image with see-through parts stays a PNG, so a cut-out portrait (the
+  // Duros creator's, say) keeps its transparent background instead of turning black; anything else is a JPEG as before
+  const hasAlpha = ctx => { const d = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height).data; for (let i = 3; i < d.length; i += 4) if (d[i] < 250) return true; return false; };
+  function downscale(file, maxDim, quality = 0.85, keepAlpha = false) {
     return new Promise((res, rej) => {
       const fr = new FileReader();
       fr.onload = () => {
@@ -71,7 +74,11 @@
         img.onload = () => {
           const sc = Math.min(1, maxDim / Math.max(img.width, img.height));
           const c = document.createElement('canvas'); c.width = Math.round(img.width * sc); c.height = Math.round(img.height * sc);
-          c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0, c.width, c.height);
+          if (keepAlpha && hasAlpha(ctx)) {
+            const png = c.toDataURL('image/png');
+            if (png.length * 0.75 < 2.9 * 1024 * 1024) return res({ dataUrl: png, w: c.width, h: c.height });
+          }
           res({ dataUrl: c.toDataURL('image/jpeg', quality), w: c.width, h: c.height });
         };
         img.onerror = rej; img.src = fr.result;
@@ -412,7 +419,7 @@
       const f = inp.files[0]; if (!f) return;
       try {
         toast('Uploading photo…');
-        const { dataUrl } = await downscale(f, kind === 'token' ? 400 : 800, 0.86);
+        const { dataUrl } = await downscale(f, kind === 'token' ? 400 : 800, 0.86, true);
         await post('upload', { purpose: 'photo', charId: ch.id, kind, dataUrl });
         toast(kind === 'token' ? 'Token photo updated' : 'Profile photo updated');
       } catch (err) { toast(err.message || 'Could not upload that image', true); }
