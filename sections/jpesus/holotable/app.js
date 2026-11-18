@@ -582,8 +582,8 @@
         }).join('') || '<tr><td colspan="7" class="muted">No attacks yet.</td></tr>'}</tbody></table>
         <p class="muted" style="font-size:12px;margin:6px 0 0">Hit = ability mod + proficiency (+ the small box for enhancements). Damage adds the ability mod automatically.</p></div>
       <div class="grid g2" style="margin-top:12px">
-        ${pts('force', fMax, +ch.force.used || 0, '', 'Force Points', `Light DC ${ci.lightDC} / atk ${R.fmt(ci.lightAtk)} · Dark DC ${ci.darkDC} / atk ${R.fmt(ci.darkAtk)}${ci.forceMaxLevel ? ' · max power level ' + ci.forceMaxLevel : ''}`)}
-        ${pts('tech', tMax, +ch.tech.used || 0, 'tech', 'Tech Points', `Tech DC ${ci.techDC} / atk ${R.fmt(ci.techAtk)}${ci.techMaxLevel ? ' · max power level ' + ci.techMaxLevel : ''}`)}
+        ${pts('force', fMax, +ch.force.used || 0, '', 'Force Points', `Light DC ${ci.lightDC} / atk ${R.fmt(ci.lightAtk)} · Dark DC ${ci.darkDC} / atk ${R.fmt(ci.darkAtk)}${ci.forceMaxLevel ? ' · max power level ' + ci.forceMaxLevel : ''}${highNote(ch, 'force', ci.forceMaxLevel)}`)}
+        ${pts('tech', tMax, +ch.tech.used || 0, 'tech', 'Tech Points', `Tech DC ${ci.techDC} / atk ${R.fmt(ci.techAtk)}${ci.techMaxLevel ? ' · max power level ' + ci.techMaxLevel : ''}${highNote(ch, 'tech', ci.techMaxLevel)}`)}
       </div>
       ${classResourcesBox(ch, ro)}
       <div class="box" style="margin-top:12px"><h4>Powers <span class="spacer"></span>${!ro ? `<button class="btn tiny" data-act="pick-power" data-kind="force">＋ force power</button>
@@ -689,6 +689,7 @@
       case 'long-rest':
         mutate(c => {
           c.hp.current = +c.hp.max; c.hp.temp = 0; c.force.used = 0; c.tech.used = 0; c.deathSaves = { s: 0, f: 0 };
+          delete c.force.high; delete c.tech.high;   // high-level powers can be cast again (#160)
           // half the total hit dice back (at least one), the largest first (audit 7.5)
           const dice = R.hitDice(c); let back = Math.max(1, Math.floor(dice.reduce((n, d) => n + d.total, 0) / 2));
           for (const d of dice) { const k = Math.min(d.used, back); d.used -= k; back -= k; }
@@ -949,6 +950,12 @@
   // for a power the table has data for, its targets on the map: the server rolls it as the combat view does (attack or
   // saves, damage or healing, conditions, concentration). In a fight this character is in, it is the combat view's own
   // action. A power without data casts as before, at the level chosen.
+  // the force or tech box's note on high-level casting (#160): from which level, and what's been cast since the long rest
+  const highNote = (ch, k, maxL) => {
+    const from = R.highCastFrom(ch, k), used = R.highCastUsed(ch, k);
+    if (!from || maxL < from) return '';
+    return ` · level ${from}${maxL > from ? '+' : ''}: once each per long rest${used.length ? ` (cast: ${used.join(', ')})` : ''}`;
+  };
   const powerData = p => { const lib = (S.st.sheetCast || {}).lib || (S.st.fight || {}).lib || {}, k = String((p && p.name) || '').trim().toLowerCase(); return Object.prototype.hasOwnProperty.call(lib, k) ? lib[k] : null; };
   function castPower(ch, i) {
     const p = ch.powers[i]; if (!p) return;
@@ -965,8 +972,9 @@
     const self = data && data.targets === 'self', area = data && data.area;
     const toks = data && !self ? (S.st.map.tokens || []) : [];
     const up = data && data.upcast && data.upcast.damage ? ` · +${esc(data.upcast.damage)} per level above ${base}` : '';
+    const usedHigh = R.highCastUsed(ch, k), from = R.highCastFrom(ch, k);
     modal(`<h3>Cast ${esc(p.name)}</h3>
-      ${levels.length > 1 ? `<label class="mini">Level <select id="castLvl">${levels.map(n => `<option value="${n}">${n} · ${pts(n)}${n > maxL ? ' (above max)' : ''}</option>`).join('')}</select></label>
+      ${levels.length > 1 ? `<label class="mini">Level <select id="castLvl">${levels.map(n => `<option value="${n}">${n} · ${pts(n)}${n > maxL ? ' (above max)' : from && n >= from ? (usedHigh.includes(n) ? ' (used until a long rest)' : ' (once per long rest)') : ''}</option>`).join('')}</select></label>
         <p class="muted" style="font-size:12px;margin:4px 0">Casting higher costs a point more per level${up}.</p>` : ''}
       ${data ? (self ? `<p class="muted">Affects ${esc(ch.name)}.</p>`
         : `<p class="muted" style="margin:8px 0 4px">${area ? 'Tick who is in the area' : `Targets${data.targets > 1 ? ` (up to ${n0(data.targets)})` : ''}`}, or none to roll it once for the table${isGM() ? '' : ". At anyone but your own characters it rolls and posts, for its owner or the GM to apply"}:</p>
@@ -977,7 +985,7 @@
         if (e.target.id === 'castNo') return closeModal();
         if (e.target.id !== 'castGo') return;
         const L = levels.length > 1 ? +$('#castLvl', box).value : base;
-        const ov = R.overMaxPowerLevel(ch, { level: L, type: k }, ci);
+        const ov = R.overMaxPowerLevel(ch, { level: L, type: k }, ci) || R.highCastBlocked(ch, { type: k }, L);
         if (ov && !isGM()) return toast(ov.text, true);
         if (ov && !confirm(`${ov.text}\n\nCast anyway?`)) return;
         const targets = [...box.querySelectorAll('[data-tok]:checked')].map(x => x.dataset.tok);
@@ -996,12 +1004,16 @@
   // a power without the table's data: pay and post, as the sheet always has, at the level chosen
   function castAt(ch, p, L, ovAsked) {
     const base = +p.level || 0, cost = L ? L + 1 : 0, k = p.type === 'tech' ? 'tech' : 'force', ci = R.casterInfo(ch);
-    const ov = R.overMaxPowerLevel(ch, { level: L, type: k }, ci);
+    const ov = R.overMaxPowerLevel(ch, { level: L, type: k }, ci) || R.highCastBlocked(ch, { type: k }, L);
     if (ov && !isGM()) return toast(ov.text, true);
     if (ov && !ovAsked && !confirm(`${ov.text}\n\nCast anyway?`)) return;
     const max = ch[k].max !== '' && ch[k].max != null ? +ch[k].max : (k === 'force' ? ci.forceMax : ci.techMax);
     if (cost && (+ch[k].used || 0) + cost > max) return toast(`Not enough ${k} points (${cost} needed).`, true);
-    if (cost) mutate(c => { c[k].used = (+c[k].used || 0) + cost; });
+    const from = R.highCastFrom(ch, k);   // a level that goes once per long rest is noted (#160)
+    if (cost || (from && L >= from)) mutate(c => {
+      c[k].used = (+c[k].used || 0) + cost;
+      if (from && L >= from) c[k].high = [...new Set(R.highCastUsed(c, k).concat(L))].sort((a, b) => a - b);
+    });
     const dc = k === 'tech' ? `DC ${ci.techDC}, atk ${R.fmt(ci.techAtk)}` : p.alignment === 'dark' ? `DC ${ci.darkDC}, atk ${R.fmt(ci.darkAtk)}` : p.alignment === 'light' ? `DC ${ci.lightDC}, atk ${R.fmt(ci.lightAtk)}` : `DC ${Math.max(ci.lightDC, ci.darkDC)}, atk ${R.fmt(Math.max(ci.lightAtk, ci.darkAtk))}`;
     act('chat', { text: `casts **${p.name}** (${L ? 'level ' + L : 'at-will'} ${k} power${L > base ? `, cast up from level ${base}` : ''}${cost ? `, −${cost} ${k === 'force' ? 'FP' : 'TP'}` : ''}) · ${dc}${p.notes ? '\n' + p.notes : ''}${p.description ? '\n' + p.description.slice(0, 900) + (p.description.length > 900 ? '…' : '') : ''}`, as: ch.name });
   }
