@@ -324,7 +324,7 @@ function viewFor(camp, cid, gm, online) {
     ...((pg) => (pg.length ? { pings: pg } : {}))((camp.pings || []).filter((q) => q && now() - q.ts < 10).map((q) => ({ id: q.id, x: q.x, y: q.y, gm: q.gm, name: playerName(camp, q.by) }))),
     ...(camp.fight && camp.fight.on ? { fight: Fight.view(camp, cid, gm, shownName) } : {}),
     // the sheet's Cast (#73), combat view on or off: which powers the table has data for, and who concentrates on what
-    ...((sc) => (sc ? { sheetCast: sc } : {}))(Fight.sheetView(camp, gm ? camp.characters : sheetsFor(camp, cid), gm)),
+    ...((sc) => (sc ? { sheetCast: sc } : {}))(Fight.sheetView(camp, gm ? camp.characters : sheetsFor(camp, cid), gm, gm ? null : new Set(ini.entries.map((e) => e.id)))),
     ...((a) => (a ? { ask: a } : {}))(Ask.view(camp, cid, gm)),
     ...Story.view(camp, gm),   // factions and rivals the GM shows (11.3, 11.4)   // an open roll request (9.12), for whom it names
     ...(fogState ? { fog: fogState } : {}),   // the map's fog of war (#93), combat view or not: only while the GM has it on   // the combat view, only while it is on

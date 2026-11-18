@@ -612,7 +612,11 @@ function sheetTurn(camp, prev, cur, wrapped, G) {
     if (!conds || !conds.includes(x.condition)) continue;
     const who = c ? G.shownName(camp, { charId: c.id, name: c.name }) : G.shownName(camp, e);
     const secret = ini.entries.some((k) => isRef(x, k) && k.hidden);
-    const tell = (text) => G.addChat(camp, Object.assign({ system: true, text: str(text, 200) }, secret ? { to: ["@gm"], private: true } : {}));
+    // under fog, only to those who can see who has it (#256's review), as the turn line beside it: by its tracker entry,
+    // or out of one by its tokens; a hidden creature's to the GM only
+    const ids = ini.entries.filter((k) => isRef(x, k)).map((k) => k.id);
+    const to = secret ? null : ids.length ? sightTo(camp, null, ids) : sightToTokens(camp, null, ((camp.map && camp.map.tokens) || []).filter((t) => c && t.charId === c.id).map((t) => t.id));
+    const tell = (text) => G.addChat(camp, Object.assign({ system: true, text: str(text, 200) }, secret ? { to: ["@gm"], private: true } : to ? { to } : {}));
     const lc = x.condition.toLowerCase();
     if (x.save && isRef(x, prev)) tell(`${who} can try to shake off ${lc} (${x.power}): a ${x.save.ability.toUpperCase()} save against DC ${x.save.dc}. On a success, take it off.`);
     const counts = (x.ends === "end" && isRef(x.of, prev)) || (x.ends === "start" && isRef(x.of, cur)) || (wrapped && !ini.entries.some((k) => isRef(x.of, k)));
@@ -867,12 +871,13 @@ function afterDamage(camp, cid, ch, amount, G) {
 }
 // What the sheet needs of the combat view's records, on or off: the table's power data (which powers roll), and who
 // is concentrating on what, by character, for the characters this viewer is sent. Null when there's nothing to show.
-function sheetView(camp, chars, gm) {
+function sheetView(camp, chars, gm, entryIds) {
   const f = camp.fight;
   if (!f) return null;
-  // the countdowns (4.10) on the characters this viewer is sent, and on the tracker entries it can see
+  // the countdowns (4.10) on the characters this viewer is sent, and on the tracker entries it can see: not hidden, and
+  // under fog only those in its own tracker (`entryIds`, from viewFor; #256's review)
   const has = (x) => (x.char ? ((charOf(camp, x.char) || {}).conditions || []) : ((camp.initiative.entries.find((k) => k.id === x.entry) || {}).conditions || [])).includes(x.condition);
-  const fx = (f.sheetFx || []).filter((x) => (x.char ? own(chars, x.char) : gm || camp.initiative.entries.some((k) => k.id === x.entry && !k.hidden)) && has(x))
+  const fx = (f.sheetFx || []).filter((x) => (x.char ? own(chars, x.char) : gm || (camp.initiative.entries.some((k) => k.id === x.entry && !k.hidden) && (!entryIds || entryIds.has(x.entry)))) && has(x))
     .map((x) => Object.assign(x.char ? { char: x.char } : { entry: x.entry }, { condition: x.condition, power: x.power, left: x.left, save: !!x.save }));
   const conc = {};
   for (const [id, name] of Object.entries(concOf(camp))) {

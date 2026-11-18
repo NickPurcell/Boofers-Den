@@ -406,6 +406,27 @@ test("ongoing effects (4.10): the combat view's End turn counts it down too, and
   assert.equal((await gm.state()).sheetCast.fx, undefined);
 });
 
+test("ongoing effects (4.10, #256 review): under fog, a player who can't see the creature gets neither its countdown nor its lines", async () => {
+  const { gm, sam, rae, avery, bolt } = await fightTable({ ends: "end", of: "target", rounds: 1 });
+  await gm.act("map.settings", { cols: 20, rows: 12 });
+  const st0 = await gm.state(), tokId = (n) => st0.map.tokens.find((t) => t.name === n).id;
+  // Avery and the Raider on one side of a wall, Bolt (Rae's) on the other
+  await sam.act("token.move", { id: tokId("Avery"), x: 2, y: 5 }); await gm.act("token.move", { id: tokId("Raider"), x: 4, y: 5 });
+  await rae.act("token.move", { id: tokId("Bolt"), x: 15, y: 5 });
+  await gm.act("fight.wall", { op: "add", a: [10, 0], b: [10, 12] });
+  await sam.act("init.add", { charId: avery, name: "Avery", init: 20 }); await rae.act("init.add", { charId: bolt, name: "Bolt", init: 15 });
+  await gm.act("init.add", { name: "Raider", init: 12, hp: 30, ac: 13 });
+  await gm.act("init.start", {});
+  assert.equal((await gm.act("fight.fog", { on: true })).code, 200);
+  assert.equal((await gm.act("fight.cast", { charId: avery, power: "Hold", level: 1, targets: [tokId("Raider")] })).code, 200);
+  const rs = await rae.state(), ss = await sam.state();
+  assert.deepEqual([rs.initiative.entries.map((e) => e.name), (rs.sheetCast || {}).fx], [["Bolt"], undefined], "Rae can't see the Raider");
+  assert.equal(ss.sheetCast.fx.length, 1, "Sam can");
+  for (let i = 0; i < 3; i++) await gm.act("init.next", {});
+  const ended = (st) => st.chat.some((m) => m.text === "Raider is no longer restrained (Hold).");
+  assert.deepEqual([ended(await rae.state()), ended(await sam.state()), ended(await gm.state())], [false, true, true]);
+});
+
 test("ongoing effects (4.10): the stored record keeps only its shape", () => {
   const F = require("../api/_holotable-fight.js");
   const list = [
