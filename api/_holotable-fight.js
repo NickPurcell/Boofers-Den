@@ -74,7 +74,7 @@ function state(camp) {
     conc: Object.fromEntries(Object.entries(plainObj(f.conc)).filter(([k, v]) => ID.test(k) && typeof v === "string").map(([k, v]) => [k, str(v, 80)])),
     // the Wounds variant (9.16): each character's wounded levels and how far its save's DC has risen
     wounds: cleanWounds(f.wounds),
-    strenuousAt: str(f.strenuousAt, 60),   // the turn Strenuous Combat's saves were made at, so they're made once
+    strenuousAt: str(f.strenuousAt, 60),   // set once Strenuous Combat's saves are made this fight (the turn, or "made"); a new fight clears it
     // concentration begun from the sheet's Cast outside a fight (#73), by character id; it joins `conc` when the
     // character is in the tracker (worldOf), so a fight that starts later keeps it
     sheetConc: Object.fromEntries(Object.entries(plainObj(f.sheetConc)).filter(([k, v]) => ID.test(k) && typeof v === "string" && charOf(camp, k)).slice(0, 60).map(([k, v]) => [k, str(v, 80)])),
@@ -843,7 +843,7 @@ function apply(camp, cid, gm, type, p, G) {
       need(gm);
       if (!(camp.variants || []).includes("Strenuous Combat")) throw new G.Invalid("The Strenuous Combat variant isn't on for this table.");
       if (!ini.active) throw new G.Invalid("There's no fight to conclude.");
-      if (f.strenuousAt && f.strenuousAt === f.lastTurn) throw new G.Invalid("Those saves are already made for this fight.");
+      if (f.strenuousAt) throw new G.Invalid("Those saves are already made for this fight.");   // once a fight: init.start clears it (#233 review)
       const dc = 10 + Math.max(0, (+ini.round || 1) - 1);   // the complete rounds: the one in progress isn't
       const who = ini.entries.filter((e) => e.charId && charOf(camp, e.charId)).map((e) => [e, charOf(camp, e.charId)])
         .filter(([, ch]) => !(+((ch.deathSaves || {}).f) >= 3));
@@ -854,7 +854,7 @@ function apply(camp, cid, gm, type, p, G) {
         if (!ok) ch.exhaustion = Math.min(6, (+ch.exhaustion || 0) + 1);
         say(camp, G, { system: true, fight: true, text: str(`${G.shownName(camp, e)} makes a CON save against Strenuous Combat (DC ${dc}): ${r.total}, ${ok ? "a success" : `a failure: 1 level of exhaustion (now ${ch.exhaustion})`}.`, 200) }, cid, [e.id]);
       }
-      f.strenuousAt = f.lastTurn;
+      f.strenuousAt = f.lastTurn || "made";
       return {};
     }
     case "fight.toggle": {
@@ -1188,8 +1188,13 @@ function view(camp, cid, gm, shownName) {
     npcMods: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, (v && v.mods) || {}])) : {},
     npcSkills: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, (v && v.skills) || {}])) : {},   // Athletics, Acrobatics (#144): the GM's
     ...(gm ? { propWalls: propWalls(camp) } : {}),   // the GM's previews see what the server sees (#110's sight-blocking objects)
-    npcRes: gm ? f.npcres || {} : {},
-    wounds: Object.fromEntries(Object.entries(f.wounds || {}).filter(([k]) => charOf(camp, k))),   // the Wounds variant's levels, by character (like the sheet's, everyone's)   // a creature's limited abilities: the GM's
+    npcRes: gm ? f.npcres || {} : {},   // a creature's limited abilities: the GM's
+    // the Wounds variant's levels, by character: as visible as the character's defences (not one whose token's name the GM
+    // is hiding, except to its owner), so a hidden character's id never reaches a player (#233 review)
+    wounds: Object.fromEntries(Object.entries(f.wounds || {}).filter(([id]) => {
+      const c = charOf(camp, id);
+      return c && (gm || !shownName || c.owner === cid || shownName(camp, { charId: id, name: c.name }) === c.name);
+    })),
     npcDefenses: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, defences(plainObj(v))])) : {},
     // characters' own: as visible as their sheets (not a sheet whose token's name the GM is hiding, except to its owner)
     defenses: gm || !shownName ? f.defenses || {} : Object.fromEntries(Object.entries(f.defenses || {}).filter(([id]) => {
@@ -1450,7 +1455,8 @@ function cleanWalls(list) {
 
 // the Wounds variant (9.16, #233). A sheet saved back at its hit point maximum loses its wounded levels: the sheet's
 // rests, its Heal button and a hand edit all save through char.save (jpesus's agent on #65). A short or long rest (the
-// sheet's char.rest, #235, calls this) sets the save's DC back to 10 and keeps the levels.
+// sheet's char.rest, #235, calls this) sets the save's DC back to 10 and keeps the levels, except for a character in a
+// fight that's still going on.
 function woundsHealed(camp, charId, ch) {
   const ws = camp.fight && camp.fight.wounds, hp = (ch && ch.hp) || {};
   if (ws && typeof ws === "object" && Object.prototype.hasOwnProperty.call(ws, charId) && +hp.max > 0 && +hp.current >= +hp.max) delete ws[charId];
@@ -1459,6 +1465,8 @@ function onRest(camp, charId, kind) {
   const ws = camp.fight && camp.fight.wounds;
   if (kind !== "short" && kind !== "long") return;
   if (!ws || typeof ws !== "object" || !Object.prototype.hasOwnProperty.call(ws, charId)) return;
+  const ini = camp.initiative;   // no rest in the middle of a fight: a character in one keeps its DC (#233 review)
+  if (ini && ini.active && (ini.entries || []).some((e) => e && e.charId === charId)) return;
   const wd = ws[charId];
   if (!wd || typeof wd !== "object" || !(+wd.level > 0)) { delete ws[charId]; return; }
   wd.step = 0;

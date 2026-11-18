@@ -3640,6 +3640,9 @@ test("Wounds and Strenuous Combat through the API: the record kept by character;
   st = await gm.state();
   assert.deepEqual([st.characters[avery].exhaustion || 0, st.characters[bolt].exhaustion || 0], [0, 0], "undone");
   assert.equal((await gm.act("fight.conclude", {})).code, 200, "and can be made again after the undo");
+  assert.equal((await gm.act("fight.conclude", {})).code, 400, "once a fight, still");
+  assert.equal((await gm.act("init.start", {})).code, 200);
+  assert.equal((await gm.act("fight.conclude", {})).code, 200, "a new fight: again");
   await gm.act("variants.set", { variants: [] });
   assert.equal((await gm.act("fight.conclude", {})).code, 400, "only with the variant on");
 });
@@ -3694,9 +3697,36 @@ test("Wounds and the sheet (#233, jpesus's agent on #65): a save back at the hit
   Fight.onRest(camp, "__proto__", "long");
   Fight.onRest({}, "c1", "long");
   assert.deepEqual(camp.fight.wounds, { c1: { level: 2, step: 0 } });
+  const fighting = { initiative: { active: true, entries: [{ id: "e1", charId: "c1" }] }, fight: { wounds: { c1: { level: 1, step: 2 } } } };
+  Fight.onRest(fighting, "c1", "short");
+  assert.deepEqual(fighting.fight.wounds.c1, { level: 1, step: 2 }, "no rest in the middle of a fight it's in");
+  fighting.initiative.active = false;
+  Fight.onRest(fighting, "c1", "short");
+  assert.deepEqual(fighting.fight.wounds.c1, { level: 1, step: 0 });
   Fight.woundsHealed(camp, "c1", { hp: { max: 0, current: 0 } });
   assert.deepEqual(camp.fight.wounds, { c1: { level: 2, step: 0 } }, "no maximum known: kept");
   assert.equal(Object.prototype.level, undefined);
+});
+
+test("#233 review: a character whose token name the GM hides isn't in another player's fight.wounds", async () => {
+  const { gm, sam, rae, avery, ids } = await fight();
+  let st = await sam.state();
+  await gm.act("variants.set", { variants: ["Wounds"] });
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hp: { max: 20, current: 2, temp: 0 } }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  const crypto = require("crypto"), real = crypto.randomInt;
+  crypto.randomInt = (a, b) => (b === 21 ? 3 : real(a, b));
+  try { assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 30, damage: "1d6+5", type: "kinetic", melee: 5 } })).code, 200); }
+  finally { crypto.randomInt = real; }
+  assert.deepEqual((await rae.state()).fight.wounds[avery], { level: 1, step: 0 }, "seen while the name is shown");
+  await gm.act("token.update", { id: tokenOf(st, "Avery").id, fields: { nameHidden: true } });
+  const raeSt = await rae.state();
+  assert.equal(raeSt.fight.wounds[avery], undefined);
+  assert.ok(!JSON.stringify(raeSt.fight.wounds).includes(avery), "not even the id");
+  assert.deepEqual((await sam.state()).fight.wounds[avery], { level: 1, step: 0 }, "the owner still sees it");
+  assert.deepEqual((await gm.state()).fight.wounds[avery], { level: 1, step: 0 }, "and the GM");
 });
 
 test("#212 review: an undo gives back a shot, and a reload's power cell, as they were", async () => {
