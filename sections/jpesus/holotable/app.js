@@ -383,7 +383,7 @@
           <button class="btn small" data-hd="${d.die}" ${d.used >= d.total ? 'disabled' : ''}>Roll a d${d.die}</button></div>`).join('')}
         ${fr ? `<label class="check" style="margin-top:8px"><input type="checkbox" id="srFR" ${frUsed ? 'disabled' : (+ch.force.used || 0) > 0 ? 'checked' : ''}>
           Force Recovery: regain ${fr} force points${frUsed ? ' (used: it comes back after a long rest)' : ''}</label>` : ''}
-        ${R.techOnShortRest(ch) ? '<p class="muted">Finishing gives back all tech points (Engineer, Scout).</p>' : ''}
+        ${R.techOnShortRest(ch) ? '<p class="muted">Finishing gives back all tech points (Engineer, Scout, or a tech archetype).</p>' : ''}
         <div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn" id="srClose">Close</button><button class="btn primary" id="srDone">Finish the short rest</button></div>`;
     };
     modal(draw(), box => {
@@ -517,7 +517,7 @@
           ${!ro ? `<div class="row hp-adjust" style="margin-top:8px"><input id="hpDelta" placeholder="-7 or +5">
             <button class="btn small danger" data-act="hp" data-sign="-1">Damage</button><button class="btn small" data-act="hp" data-sign="1" style="color:var(--green)">Heal</button></div>
           <div class="row" style="margin-top:8px"><button class="btn small" data-act="short-rest">Spend Hit Die</button>
-            <button class="btn small" data-act="short-rest-done" title="${R.techOnShortRest(ch) ? 'Regain all tech points (Engineer/Scout). Spend Hit Dice to heal.' : 'Spend Hit Dice to heal during it.'}">Short Rest</button>
+            <button class="btn small" data-act="short-rest-done" title="${R.techOnShortRest(ch) ? 'Regain all tech points (Engineer, Scout, or a tech archetype). Spend Hit Dice to heal.' : 'Spend Hit Dice to heal during it.'}">Short Rest</button>
             <button class="btn small" data-act="long-rest">Long Rest</button></div>` : ''}
           <h4 style="margin-top:12px">Death Saves</h4>
           <div class="row"><span class="muted">Successes</span><span class="dots">${[1, 2, 3].map(n => `<span class="dot s ${ch.deathSaves.s >= n ? 'on' : ''}" data-act="ds" data-k="s" data-n="${n}"></span>`).join('')}</span>

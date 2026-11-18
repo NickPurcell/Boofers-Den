@@ -160,28 +160,78 @@
 
   // Sentinel table: a new max power level at levels 1, 3, 6, 9, 11, 14 and 17 (up to 7th)
   const THREE_QUARTER_AT = [1, 3, 6, 9, 11, 14, 17];
-  // a short rest gives back all tech points if any of the character's tech casting comes from an Engineer or Scout
-  const techOnShortRest = c => (c.classes || []).some(k => { const d = CLASSES[k.name]; return d && d.shortRest && (+k.level || 0) >= (d.from || 1); });
+  // Archetypes that cast (audit 3.13), from SW5e's archetype data (/api/archetype: casterType, and each one's
+  // Forcecasting or Techcasting table). They start at class level 3, when the archetype is chosen. Force ones: 1 force
+  // point per class level. Tech ones: half the class level, rounded up, in tech points, back on a short rest too. Both
+  // reach max power level 1st at 3, 2nd at 7, 3rd at 13 and 4th at 17. An Archaeologist may use Intelligence for its
+  // force powers. (Artificer Engineering, Inquisitor Technique and Path of Synthesis also have a casterType: they give a
+  // class that already casts two powers of the other kind that count as its own, so they bring no points of their own.)
+  const ARCHETYPE_CASTERS = {
+    'Beguiler Practice': { cls: 'Operative', caster: 'force' }, 'Marauder Approach': { cls: 'Berserker', caster: 'force' },
+    'Adept Specialist': { cls: 'Fighter', caster: 'force' }, 'Aing-Tii Order': { cls: 'Monk', caster: 'force' },
+    'Archaeologist Pursuit': { cls: 'Scholar', caster: 'force', int: true },
+    'Shield Specialist': { cls: 'Fighter', caster: 'tech' }, 'Industrial Approach': { cls: 'Berserker', caster: 'tech' },
+    'Saboteur Practice': { cls: 'Operative', caster: 'tech' }, 'Slicer Pursuit': { cls: 'Scholar', caster: 'tech' },
+  };
+  const ARCHETYPE_AT = [3, 7, 13, 17];
+  const lc = s => String(s || '').trim().toLowerCase();
+  // the casting archetype a class entry has, by its full name or without its last word ("Marauder", "Aing-Tii")
+  function casterArchetype(k) {
+    const a = lc(k && k.archetype);
+    if (!a) return null;
+    const name = Object.keys(ARCHETYPE_CASTERS).find(n => lc(n) === a || lc(n.replace(/\s+\S+$/, '')) === a);
+    return name && lc(ARCHETYPE_CASTERS[name].cls) === lc(k.name) ? Object.assign({ name }, ARCHETYPE_CASTERS[name]) : null;
+  }
+  // Where a character's casting comes from: one entry per class (or archetype) that gives force or tech casting at its
+  // level. points: before the ability modifier; maxLevel: its own table; potential: the highest level it ever reaches.
+  function castingSources(c) {
+    const out = [];
+    for (const k of c.classes || []) {
+      const def = CLASSES[k.name], L = Math.min(20, +k.level || 0);
+      if (def && def.caster && L >= (def.from || 1)) {
+        const maxLevel = def.prog === 'full' ? Math.min(9, Math.ceil(L / 2))
+          : def.prog === 'threeQuarter' ? THREE_QUARTER_AT.filter(t => L >= t).length : Math.min(5, Math.ceil(L / 4));
+        out.push({ of: k.name, caster: def.caster, level: L, points: def.pp * L, maxLevel,
+          potential: def.prog === 'full' ? 9 : def.prog === 'threeQuarter' ? 7 : 5, shortRest: !!def.shortRest });
+      }
+      const arch = casterArchetype(k);
+      if (arch && L >= 3) {
+        out.push({ of: arch.name, caster: arch.caster, level: L, points: arch.caster === 'force' ? L : Math.ceil(L / 2),
+          maxLevel: ARCHETYPE_AT.filter(t => L >= t).length, potential: 4, shortRest: arch.caster === 'tech', int: !!arch.int });
+      }
+    }
+    return out;
+  }
+  // Max power level (audit 3.14). One source: its own table. Two or more of the same kind (PHB, Customization Options,
+  // "Max Power Level"): each one's potential max level / 9 x its class levels, added up and rounded down, read from the
+  // Multiclass Max Power Level table (1st at 1-2, 2nd at 3-4 ... 9th from 17). The rule's own weights can come out below
+  // one class's own table (a Sentinel 3 / Guardian 1 counts as 2nd, so 1st, where Sentinel 3 alone casts at 2nd); a
+  // character never loses a level by multiclassing here, so it takes the higher of the two.
+  function maxPowerLevel(sources) {
+    if (!sources.length) return 0;
+    const own = Math.max(...sources.map(s => s.maxLevel));
+    if (sources.length === 1) return own;
+    const casterLevel = Math.floor(sources.reduce((n, s) => n + s.potential * s.level, 0) / 9);
+    return Math.max(own, casterLevel < 1 ? 0 : Math.min(9, Math.ceil(casterLevel / 2)));
+  }
+  // a short rest gives back all tech points if any of the character's tech casting comes from an Engineer, a Scout or a
+  // tech archetype
+  const techOnShortRest = c => castingSources(c).some(s => s.caster === 'tech' && s.shortRest);
 
   function casterInfo(c) {
-    let force = 0, tech = 0, forceLvl = 0, techLvl = 0;
-    const maxLvl = (prog, L) => (L < 1 ? 0 : prog === 'full' ? Math.min(9, Math.ceil(L / 2))
-      : prog === 'threeQuarter' ? THREE_QUARTER_AT.filter(t => L >= t).length : Math.min(5, Math.ceil(L / 4)));
-    for (const k of c.classes || []) {
-      const def = CLASSES[k.name];
-      if (!def || !def.caster) continue;
-      const L = (+k.level || 0) >= (def.from || 1) ? +k.level || 0 : 0;
-      if (def.caster === 'force') { force += def.pp * L; forceLvl = Math.max(forceLvl, maxLvl(def.prog, L)); }
-      else { tech += def.pp * L; techLvl = Math.max(techLvl, maxLvl(def.prog, L)); }
-    }
-    const fAb = Math.max(abilityMod(c, 'wis'), abilityMod(c, 'cha'));
+    const src = castingSources(c), force = src.filter(s => s.caster === 'force'), tech = src.filter(s => s.caster === 'tech');
+    const sum = list => list.reduce((n, s) => n + s.points, 0);
+    // an Archaeologist may use Intelligence instead of Wisdom (light side) or Charisma (dark side)
+    const int = force.some(s => s.int) ? abilityMod(c, 'int') : -99;
+    const light = Math.max(abilityMod(c, 'wis'), int), dark = Math.max(abilityMod(c, 'cha'), int);
     return {
-      forceMax: force ? force + fAb : 0, techMax: tech ? tech + abilityMod(c, 'int') : 0,
-      forceMaxLevel: forceLvl, techMaxLevel: techLvl,
-      lightDC: 8 + profBonus(c) + abilityMod(c, 'wis'), darkDC: 8 + profBonus(c) + abilityMod(c, 'cha'),
+      forceMax: sum(force) ? sum(force) + Math.max(light, dark) : 0, techMax: sum(tech) ? sum(tech) + abilityMod(c, 'int') : 0,
+      forceMaxLevel: maxPowerLevel(force), techMaxLevel: maxPowerLevel(tech),
+      lightDC: 8 + profBonus(c) + light, darkDC: 8 + profBonus(c) + dark,
       techDC: 8 + profBonus(c) + abilityMod(c, 'int'),
-      lightAtk: profBonus(c) + abilityMod(c, 'wis'), darkAtk: profBonus(c) + abilityMod(c, 'cha'),
+      lightAtk: profBonus(c) + light, darkAtk: profBonus(c) + dark,
       techAtk: profBonus(c) + abilityMod(c, 'int'),
+      sources: src.map(s => ({ of: s.of, caster: s.caster, level: s.level, maxLevel: s.maxLevel })),
     };
   }
 
@@ -322,6 +372,7 @@
 
   root.SW5E = { ABILITIES, SKILLS, CLASSES, SPECIES, BACKGROUNDS, DAMAGE_TYPES, WEAPONS, CONDITIONS, REFERENCE,
     mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo, techOnShortRest,
+    ARCHETYPE_CASTERS, casterArchetype, castingSources,
     attackBonus, damageExpr, critExpr, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
     CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt,
     SENSES, cleanSenses, sensesFromTraits, sensesText, parseSenses };
