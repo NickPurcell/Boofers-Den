@@ -2607,6 +2607,33 @@
       };
     });
   }
+  // more than one campaign (audit 12.9): the GM keeps up to five; the table (everyone) is on one of them
+  function openCampaigns() {
+    const draw = async () => {
+      const j = await fetch(`${API}?op=campaigns`, { cache: 'no-store' }).then(r => r.json()).catch(() => null);
+      if (!j || !j.list) { $('#modalBox').innerHTML = '<p class="muted">Couldn\'t load the campaigns.</p>'; return; }
+      $('#modalBox').innerHTML = `<h3>📚 Campaigns</h3><p class="muted" style="margin-top:0">Everyone is always on the live one. The others wait, untouched, until you switch to them. Up to ${n0(j.max)}.</p>
+        <div class="list-rows">${j.list.map(c => `<div class="lr"><span class="nm">${c.live ? '● ' : ''}<b>${esc(c.name)}</b> <span class="muted">${(n0(c.bytes) / 1024).toFixed(0)} KB${c.live ? ' · live' : ''}</span></span>
+          ${c.live ? '' : `<button class="btn tiny" data-camp="switch" data-code="${esc(c.code)}">Switch the table to it</button>`}
+          <button class="btn tiny ghost" data-camp="rename" data-code="${esc(c.code)}" data-name="${esc(c.name)}">Rename</button>
+          ${c.live || c.code === 'main' ? '' : `<button class="btn tiny ghost" data-camp="delete" data-code="${esc(c.code)}" data-name="${esc(c.name)}">Delete</button>`}</div>`).join('')}</div>
+        <div class="row" style="margin-top:10px"><input id="campNew" placeholder="New campaign's name" maxlength="80" style="flex:1"><button class="btn small" id="campCreate" ${j.list.length >= j.max ? 'disabled' : ''}>＋ New campaign</button></div>
+        <p class="muted" style="font-size:12px">Before deleting one, switch to it and use ⇩ Download full backup if you might want it back.</p>
+        <div class="row" style="justify-content:flex-end"><button class="btn ghost" id="campClose">Close</button></div>`;
+    };
+    const go = async (body) => { try { await post('campaign', body); } catch (e) { toast(e.message, true); } draw(); };
+    modal('<p class="muted">Loading…</p>', box => {
+      draw();
+      box.onclick = async e => {
+        const t = e.target, c = t.dataset.camp;
+        if (t.id === 'campClose') return closeModal();
+        if (t.id === 'campCreate') return go({ do: 'create', name: $('#campNew').value });
+        if (c === 'switch' && confirm('Put the whole table on this campaign? Everyone moves with you; the current one waits as it is.')) { await go({ do: 'switch', code: t.dataset.code }); closeModal(); }
+        if (c === 'rename') { const n = prompt('Name', t.dataset.name); if (n && n.trim()) go({ do: 'rename', code: t.dataset.code, name: n.trim() }); }
+        if (c === 'delete' && confirm(`Delete "${t.dataset.name}" for good? Its characters, maps, chat and backups go with it.`)) go({ do: 'delete', code: t.dataset.code });
+      };
+    });
+  }
   function renderGM(el) {
     if (!isGM()) { el.innerHTML = ''; return; }
     const link = location.origin + location.pathname;
@@ -2621,7 +2648,8 @@
         <h4 style="margin-top:12px">Who's here</h4>
         ${Object.entries(S.st.players).map(([id, p]) => `<div>${esc(p.name)} ${p.role === 'gm' && !/^\s*gm\s*$/i.test(p.name || '') ? '<span class="muted">(GM)</span>' : ''} ${S.st.online.some(o => o.clientId === id) ? '<span style="color:var(--green)">● online</span>' : '<span class="muted">offline</span>'}
           <span class="muted">— ${chars().filter(c => c.owner === id).map(c => esc(c.name)).join(', ') || 'no characters'}</span>${id !== clientId && !S.st.online.some(o => o.clientId === id) && !chars().some(c => c.owner === id) ? ` <button class="btn tiny ghost" data-rmplayer="${esc(id)}" title="Remove this old entry from the list (offline, no characters)" aria-label="Remove ${esc(p.name)} from the player list">✕</button>` : ''}</div>`).join('')}
-        <div class="row" style="margin-top:12px"><a class="btn small" href="${API}?op=chatlog" download title="The whole chat the table keeps (the last 400 messages), as a text file">⇩ Download chat log</a><button class="btn small danger" id="clearChat">Clear chat log</button></div>
+        <div class="row" style="margin-top:12px"><button class="btn small" id="gmCampaigns" title="Keep up to five campaigns (a second game, a one-shot, a test table) and choose which one the table is on">📚 Campaigns…</button></div>
+        <div class="row" style="margin-top:8px"><a class="btn small" href="${API}?op=chatlog" download title="The whole chat the table keeps (the last 400 messages), as a text file">⇩ Download chat log</a><button class="btn small danger" id="clearChat">Clear chat log</button></div>
       </div>
       <div class="box"><h4>Level ups</h4>
         <p style="margin-top:0" class="muted">After a big fight or a hard-won conversation, give the party a level. Each player gets a pop-up and picks how to level.
@@ -2708,6 +2736,7 @@
     if (id === 'doRename') act('campaign.rename', { name: $('#campRename').value });
     if (id === 'clearChat' && confirm('Clear the chat log for everyone?\n\nTip: "Download chat log" keeps a copy first.')) act('chat.clear');
     if (id === 'gmGrant') openGrant();
+    if (id === 'gmCampaigns') openCampaigns();
     if (id === 'gmXp') openAwardXp(0);
     if (id === 'gmAsk') openAskRoll();
     if (id === 'gmLoot') openLoot();
