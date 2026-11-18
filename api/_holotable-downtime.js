@@ -1,8 +1,9 @@
 "use strict";
 // Downtime between adventures (audit 11.1, #202). The GM grants days; activities spend them. Each character keeps
-//   downtime: { days, log: [{ id, act, days, cr, text, at }] }
-// (days granted and not yet spent; the log newest last, the last 100 kept). Only the server writes it: a sheet save
-// keeps what the sheet had. Crafting (11.2) spends days through spend() too, with act "crafting".
+//   downtime: { days, log: [{ id, act, days, cr, text, at }], pending?: [{ id, act, days, note, at, ok, … }] }
+// (days granted and not yet spent; the log newest last, the last 100 kept; requests waiting for the GM or, approved,
+// for the roll). Only the server writes it: a sheet save keeps what the sheet had, and every write keeps the parts it
+// doesn't change (#267). Crafting (11.2) spends days through spend() too, with act "crafting".
 const crypto = require("crypto");
 require("../sections/jpesus/holotable/rules.js");
 const R = globalThis.SW5E;
@@ -159,7 +160,9 @@ function grant(camp, cid, gm, p, h) {
   const why = str(p.reason, 80).trim(), at = Math.floor(Date.now() / 1000);
   for (const id of ids) {
     const ch = camp.characters[id], d = clean(ch.downtime) || { days: 0, log: [] };
-    ch.downtime = { days: clamp(d.days + days, 0, MAX_DAYS), log: [...d.log, { id: crypto.randomBytes(6).toString("hex"), act: "grant", days, cr: 0, text: why, at }].slice(-LOG) };
+    // the rest of the record stays: a waiting or approved request (whose days and credits an approval already spent) is
+    // still there to be decided or rolled (#267)
+    ch.downtime = Object.assign({}, d, { days: clamp(d.days + days, 0, MAX_DAYS), log: [...d.log, { id: crypto.randomBytes(6).toString("hex"), act: "grant", days, cr: 0, text: why, at }].slice(-LOG) });
   }
   const names = ids.map((id) => h.shownName(camp, { charId: id, name: camp.characters[id].name }));
   h.addChat(camp, { system: true, text: `🕰 ${days} day${days === 1 ? "" : "s"} of downtime${why ? ` (${why})` : ""} for ${names.join(", ")}.` });
