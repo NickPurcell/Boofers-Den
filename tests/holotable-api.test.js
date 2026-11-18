@@ -776,8 +776,11 @@ test("starships: party ships are shared, hidden ships are the GM's, and everythi
   let sh = (await p2.poll()).data.state.ships[0];
   assert.deepEqual([sh.name, sh.size, sh.tier, sh.ac, sh.hull.current, sh.abilities.dex, sh.abilities.con, sh.hidden], ["Ebon Hawk", "Medium", 5, 15, 40, 30, 10, false], "players can't hide ships; numbers are clamped");
   assert.deepEqual([sh.skills.boost, sh.skills.hack, sh.crew[0].charId, sh.crew[0].rank, sh.crew[1].deployment, sh.notes.length], [2, undefined, null, 5, "", 10000]);
-  sh.hull.current = 12;
+  sh.hull.current = 12; sh.model = "YT-2400";
   assert.equal((await p2.act("ship.save", { ship: sh })).code, 200, "anyone at the table can update a party ship");
+  assert.deepEqual([(await gm.poll()).data.state.ships[0].model, (await gm.poll()).data.state.ships[0].hull.current], ["YT-2400", 40],
+    "a sheet save keeps the server's current points (#151): they change through ship.points and the damage and repair actions");
+  assert.equal((await p2.act("ship.points", { id: sh.id, what: "hull", current: 12 })).code, 200);
   assert.equal((await gm.poll()).data.state.ships[0].hull.current, 12);
   assert.equal((await p2.act("ship.delete", { id: sh.id })).code, 403, "only the GM or the ship's creator deletes it");
   await gm.act("ship.save", { ship: { name: "Imperial Interdictor", hidden: true } });

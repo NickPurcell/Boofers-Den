@@ -16,16 +16,19 @@ const str = (v, n) => String(v == null ? "" : v).slice(0, n);
 const int = (v, d = 0) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : d; };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-const TYPES = new Set(["ship.damage", "ship.restore", "ship.dsave", "ship.stabilize", "ship.condition", "ship.reset"]);
+const TYPES = new Set(["ship.damage", "ship.restore", "ship.points", "ship.dsave", "ship.stabilize", "ship.condition", "ship.reset"]);
 const handles = (type) => TYPES.has(type);
 
-// On a sheet save: the fight state stays as stored, points stay inside the (possibly halved) maximums, and hull
-// typed back up from 0 brings the ship back (destruction saves reset, no longer disabled by it).
+// On a sheet save: the fight state and the current hull and shield points stay as stored (they change only through
+// the actions below, so a stale copy of the sheet in someone's browser can't undo a hit), and points stay inside the
+// (possibly halved) maximums. A new ship takes the points it is made with.
 function keepStatus(clean, old) {
   clean.status = SR.cleanStatus(old ? old.status : null);
-  SR.capPoints(clean);
-  if (old) SR.revive(clean, (old.hull || {}).current);
-  return clean;
+  if (old) {
+    clean.hull.current = Math.max(0, int((old.hull || {}).current));
+    clean.shield.current = Math.max(0, int((old.shield || {}).current));
+  }
+  return SR.capPoints(clean);
 }
 
 function apply(camp, cid, gm, type, p, h) {
@@ -57,6 +60,16 @@ function apply(camp, cid, gm, type, p, h) {
       put(r.ship);
       if (r.gained) say([`${ship.name} ${p.what === "shield" ? "restores" : "repairs"} ${r.gained} ${p.what === "shield" ? "shield" : "hull"} point${r.gained === 1 ? "" : "s"}.`]);
       return { gained: r.gained };
+    }
+    case "ship.points": {   // current hull or shield points typed on the sheet: up to the maximum; hull up from 0 brings it back
+      const key = p.what === "shield" ? "shield" : "hull";
+      if (SR.isLost(SR.statusOf(ship))) throw new Invalid(`${ship.name} is lost; the GM can undo that.`);
+      const s = SR.capPoints(JSON.parse(JSON.stringify(ship))), was = int(s[key].current);
+      s[key].current = clamp(int(p.current), 0, 100000);
+      SR.capPoints(s);
+      if (key === "hull") SR.revive(s, was);
+      put(s);
+      return {};
     }
     case "ship.dsave": {    // a destruction saving throw, rolled here
       if (!SR.dying(ship)) throw new Invalid(`${ship.name} doesn't need a destruction save (it needs 0 hull points and not to be stable).`);
