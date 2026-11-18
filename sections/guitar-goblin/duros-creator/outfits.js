@@ -171,7 +171,8 @@ function trader(k) {
   const vOpen = k.opening(1.56, 0.032, 1.36, 0.0);
   P.push({ name: 'waistcoat', material: 'cloth', field: k.garment(0.009, (x, y, z) => Math.max(0.99 - y, y - 1.53, Math.abs(x) - 0.2 * b, -vOpen(x, y, z))), bounds: k.torsoBox(0.95, 1.57), res: 0.0055 });
   // the long coat: open down the front, the skirt hanging clear of the legs, sleeves to the wrist
-  const skirt = (x, y, z) => { const t = Math.min(1, Math.max(0, (1.05 - y) / 0.5)); const rx = (0.17 + 0.05 * t) * b, rz = 0.13 + 0.03 * t; return y > 1.05 ? 1 : (Math.hypot(x / rx, z / rz) - 1) * Math.min(rx, rz); };
+  // the skirt starts at the waist at the body's own width (under the sash) and flares toward the hem, so no ledge shows
+  const skirt = (x, y, z) => { const t = Math.min(1, Math.max(0, (1.08 - y) / 0.5)); const rx = (0.132 + 0.088 * t) * b, rz = 0.098 + 0.062 * t; return y > 1.08 ? 1 : (Math.hypot(x / rx, z / rz) - 1) * Math.min(rx, rz); };
   const drape = k.smin(0.05, k.skin, skirt);
   const coatOpen = (x, y, z) => { if (z < 0.02) return 1; const w = y > 1.08 ? 0.072 : 0.072 + (1.08 - y) * 0.18; return Math.abs(x) - w; };
   const coat = k.garment(0.017, (x, y, z) => Math.max(0.58 - y, y - 1.56, Math.abs(x) > sleeveLine ? 0.975 - y : -1, -coatOpen(x, y, z)), drape);
