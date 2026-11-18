@@ -258,9 +258,7 @@ test("turn budget: each unit's own turn refills its movement, action, bonus acti
   const hers = Object.assign({}, w, { turnId: "ava", round: 2 });
   assert.deepEqual([E.budget(hers).reaction, E.budget(hers).moveLeft, E.budget(hers).action], [true, 30, true]);
   const r = E.apply(hers, { type: "move", unit: "ava", x: 2, y: 0 }, dice().roll);
-  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0, surge: 0, ma: 0, mab: 0 });
-
-  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0, surge: 0, ma: 0, mab: 0 });
+  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0, surge: 0, ma: 0, mab: 0, quarry: 0, qm: 0 });
 });
 
 // a level-3 Consular with two powers; the table has data for one of them (numbers invented for the test)
@@ -3609,6 +3607,224 @@ test("Riposte and Return Fire off a power: a power's attack roll that misses one
   const rr = E.react(r.world, { kind: "riposte", reactor: "ft", against: "cass", attack: wpn }, dice({ total: 20, nat: 15 }, { total: 9 }).roll);
   assert.ok(rr.ok, rr.why);
   assert.match(rr.log[0].text, /Fenn makes a riposte against Cass/);
+});
+
+/* ---------------------------------------------------------------- the Wounds and Strenuous Combat variants (9.16, the combat view's half) */
+test("Wounds (variant): dropping to 0 asks a Con save; a failure is a wounded level, and each level is a death save failure", () => {
+  const V = { variants: ["Wounds"] };
+  const av = (o) => unit(Object.assign({ id: "av", name: "Avery", side: "pc", x: 1, y: 0, hp: 5, maxHp: 20, saves: { con: 2 }, deathSaves: { s: 0, f: 0 } }, o));
+  const r1 = () => unit({ id: "r1", name: "Raider", side: "npc", x: 0, y: 0 });
+  const claw = { name: "Claw", bonus: 30, damage: "1d6", type: "kinetic", melee: 5, range: null };
+  const drop = (u, save, extra = V) => { const d = dice({ total: 25, nat: 12 }, { total: 8 }, { total: save }); const r = E.apply(world([u, r1()], "r1", extra), { type: "attack", unit: "r1", target: "av", attack: claw }, d.roll); return { r, d }; };
+  // a failure: 1 wounded level, 1 death save failure
+  let { r, d } = drop(av(), 7);
+  assert.equal(d.asked[2], "1d20+2");
+  assert.match(r.log.map((x) => x.text).join(" | "), /CON save against Wounds \(DC 10\): 7, a failure/);
+  assert.deepEqual([r.world.units.av.wounds, r.world.units.av.deathSaves.f], [{ level: 1, step: 0 }, 1]);
+  // a success with 2 levels already: the DC was 10, next time 15, and 2 failures
+  ({ r } = drop(av({ wounds: { level: 2, step: 0 } }), 14));
+  assert.deepEqual([r.world.units.av.wounds, r.world.units.av.deathSaves.f], [{ level: 2, step: 1 }, 2]);
+  ({ r } = drop(av({ wounds: { level: 2, step: 1 } }), 14));
+  assert.match(r.log.map((x) => x.text).join(" | "), /DC 15\): 14, a failure/, "DC 15 now");
+  // three levels: dead
+  ({ r } = drop(av({ wounds: { level: 2, step: 0 } }), 3));
+  assert.equal(r.world.units.av.deathSaves.f, 3);
+  assert.match(r.log.map((x) => x.text).join(" | "), /Avery dies/);
+  // without the variant: no save, no failures
+  ({ r, d } = drop(av(), 7, {}));
+  assert.deepEqual([d.asked.length, r.world.units.av.deathSaves.f], [2, 0]);
+  // in a built world: the record's levels, gone once the character is back at its hit point maximum
+  const table = (cur) => ({ characters: { c1: { id: "c1", name: "Avery", hp: { max: 20, current: cur }, ac: 10 } }, entries: [{ id: "e1", name: "Avery", charId: "c1" }], active: true, turn: 0,
+    tokens: [{ id: "t1", x: 0, y: 0 }], unitTokens: { e1: "t1" }, wounds: { c1: { level: 2, step: 1 } } });
+  assert.deepEqual(E.buildWorld(table(5), R).units.e1.wounds, { level: 2, step: 1 });
+  assert.deepEqual(E.buildWorld(table(20), R).units.e1.wounds, { level: 0, step: 0 });
+});
+
+test("Wounds and Strenuous Combat through the API: the record kept by character; the GM's conclude saves, once, undone by Undo", async () => {
+  const { gm, sam, rae, avery, bolt, ids } = await fight();
+  let st = await sam.state();
+  await gm.act("variants.set", { variants: ["Wounds", "Strenuous Combat"] });
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hp: { max: 20, current: 2, temp: 0 } }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  const crypto = require("crypto"), real = crypto.randomInt;
+  crypto.randomInt = (a, b) => (b === 21 ? 3 : real(a, b));   // every d20 a 3: the claw still hits at +30; the Wounds save fails
+  try { assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 30, damage: "1d6+5", type: "kinetic", melee: 5 } })).code, 200); }
+  finally { crypto.randomInt = real; }
+  st = await gm.state();
+  assert.deepEqual(st.fight.wounds[avery], { level: 1, step: 0 });
+  assert.equal(st.characters[avery].deathSaves.f, 1);
+  // Strenuous Combat: the GM ends it; a player can't
+  assert.equal((await sam.act("fight.conclude", {})).code, 403);
+  crypto.randomInt = (a, b) => (b === 21 ? 2 : real(a, b));   // both fail DC 10 (round 1: no complete rounds)
+  try { assert.equal((await gm.act("fight.conclude", {})).code, 200); } finally { crypto.randomInt = real; }
+  st = await gm.state();
+  assert.deepEqual([st.characters[avery].exhaustion, st.characters[bolt].exhaustion], [1, 1]);
+  assert.ok(st.chat.some((m) => /CON save against Strenuous Combat \(DC 10\)/.test(m.text || "")));
+  assert.equal((await gm.act("fight.conclude", {})).code, 400, "once");
+  assert.equal((await gm.act("fight.undo", {})).code, 200);
+  st = await gm.state();
+  assert.deepEqual([st.characters[avery].exhaustion || 0, st.characters[bolt].exhaustion || 0], [0, 0], "undone");
+  assert.equal((await gm.act("fight.conclude", {})).code, 200, "and can be made again after the undo");
+  assert.equal((await gm.act("fight.conclude", {})).code, 400, "once a fight, still");
+  assert.equal((await gm.act("init.start", {})).code, 200);
+  assert.equal((await gm.act("fight.conclude", {})).code, 200, "a new fight: again");
+  await gm.act("variants.set", { variants: [] });
+  assert.equal((await gm.act("fight.conclude", {})).code, 400, "only with the variant on");
+});
+
+test("Wounds through the API: Undo takes back the wounded level with the drop", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await gm.act("variants.set", { variants: ["Wounds"] });
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hp: { max: 20, current: 2, temp: 0 } }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  const crypto = require("crypto"), real = crypto.randomInt;
+  crypto.randomInt = (a, b) => (b === 21 ? 3 : real(a, b));
+  try { assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 30, damage: "1d6+5", type: "kinetic", melee: 5 } })).code, 200); }
+  finally { crypto.randomInt = real; }
+  st = await gm.state();
+  assert.deepEqual([st.fight.wounds[avery], st.characters[avery].deathSaves.f], [{ level: 1, step: 0 }, 1]);
+  assert.equal((await gm.act("fight.undo", {})).code, 200);
+  st = await gm.state();
+  assert.deepEqual([st.fight.wounds[avery], st.characters[avery].deathSaves.f, st.characters[avery].hp.current], [undefined, 0, 2], "the level, the failure and the hit points back");
+});
+
+test("Wounds and the sheet (#233, jpesus's agent on #65): a save back at the hit point maximum clears the levels; a rest (#235's char.rest) sets the DC back", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await gm.act("variants.set", { variants: ["Wounds"] });
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hp: { max: 20, current: 2, temp: 0 } }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  const crypto = require("crypto"), real = crypto.randomInt;
+  crypto.randomInt = (a, b) => (b === 21 ? 3 : real(a, b));
+  try { assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 30, damage: "1d6+5", type: "kinetic", melee: 5 } })).code, 200); }
+  finally { crypto.randomInt = real; }
+  st = await sam.state();
+  assert.deepEqual(st.fight.wounds[avery], { level: 1, step: 0 });
+  // a save below the maximum keeps them; at the maximum (a long rest, the Heal button, a hand edit) they're gone
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hp: { max: 20, current: 12, temp: 0 } }) });
+  assert.deepEqual((await sam.state()).fight.wounds[avery], { level: 1, step: 0 });
+  st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hp: { max: 20, current: 20, temp: 0 } }) });
+  assert.equal((await gm.state()).fight.wounds[avery], undefined);
+  // the rest hook: the DC's step back to 0, the levels kept; an unknown kind or a name off the prototype does nothing
+  const Fight = require("../api/_holotable-fight.js");
+  const camp = { fight: { wounds: { c1: { level: 2, step: 3 }, c2: { level: 0, step: 1 } } } };
+  Fight.onRest(camp, "c1", "nap");
+  assert.deepEqual(camp.fight.wounds.c1, { level: 2, step: 3 });
+  Fight.onRest(camp, "c1", "short");
+  Fight.onRest(camp, "c2", "long");
+  Fight.onRest(camp, "constructor", "long");
+  Fight.onRest(camp, "__proto__", "long");
+  Fight.onRest({}, "c1", "long");
+  assert.deepEqual(camp.fight.wounds, { c1: { level: 2, step: 0 } });
+  const fighting = { initiative: { active: true, entries: [{ id: "e1", charId: "c1" }] }, fight: { wounds: { c1: { level: 1, step: 2 } } } };
+  Fight.onRest(fighting, "c1", "short");
+  assert.deepEqual(fighting.fight.wounds.c1, { level: 1, step: 2 }, "no rest in the middle of a fight it's in");
+  fighting.initiative.active = false;
+  Fight.onRest(fighting, "c1", "short");
+  assert.deepEqual(fighting.fight.wounds.c1, { level: 1, step: 0 });
+  Fight.woundsHealed(camp, "c1", { hp: { max: 0, current: 0 } });
+  assert.deepEqual(camp.fight.wounds, { c1: { level: 2, step: 0 } }, "no maximum known: kept");
+  assert.equal(Object.prototype.level, undefined);
+});
+
+test("#233 review: a character whose token name the GM hides isn't in another player's fight.wounds", async () => {
+  const { gm, sam, rae, avery, ids } = await fight();
+  let st = await sam.state();
+  await gm.act("variants.set", { variants: ["Wounds"] });
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hp: { max: 20, current: 2, temp: 0 } }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  const crypto = require("crypto"), real = crypto.randomInt;
+  crypto.randomInt = (a, b) => (b === 21 ? 3 : real(a, b));
+  try { assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 30, damage: "1d6+5", type: "kinetic", melee: 5 } })).code, 200); }
+  finally { crypto.randomInt = real; }
+  assert.deepEqual((await rae.state()).fight.wounds[avery], { level: 1, step: 0 }, "seen while the name is shown");
+  await gm.act("token.update", { id: tokenOf(st, "Avery").id, fields: { nameHidden: true } });
+  const raeSt = await rae.state();
+  assert.equal(raeSt.fight.wounds[avery], undefined);
+  assert.ok(!JSON.stringify(raeSt.fight.wounds).includes(avery), "not even the id");
+  assert.deepEqual((await sam.state()).fight.wounds[avery], { level: 1, step: 0 }, "the owner still sees it");
+  assert.deepEqual((await gm.state()).fight.wounds[avery], { level: 1, step: 0 }, "and the GM");
+});
+
+/* ---------------------------------------------------------------- Ranger's Quarry (#67, 3.10's combat half) */
+test("Ranger's Quarry: no action, once a turn, a creature in sight within 120 ft; once a turn, its die on a weapon hit on that creature", () => {
+  assert.equal(E.ridersOf({ classes: [{ name: "Scout", level: 5 }] }, R).quarry, "d6");
+  const sc = (o) => unit(Object.assign({ id: "sc", name: "Sola", side: "pc", x: 0, y: 0, attacks: 2, riders: { quarry: "d6" } }, o));
+  const r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 90, maxHp: 90 }), r2 = unit({ id: "r2", name: "Thug", side: "npc", x: 1, y: 1, hp: 90, maxHp: 90 });
+  const far = unit({ id: "r3", name: "Sniper", side: "npc", x: 30, y: 0 });
+  const wpn = Object.assign({}, blade, { weapon: true });
+  let r = E.apply(world([sc(), r1, r2, far], "sc"), { type: "common", unit: "sc", key: "quarry", target: "r1" }, dice().roll);
+  assert.equal(r.ok, true, r.why);
+  assert.deepEqual([E.quarryOf(r.world, "sc"), E.budget(r.world).action, E.budget(r.world).bonus], ["r1", true, true], "no action");
+  assert.equal(r.log[0].text, "Sola marks Raider as its quarry: once a turn, a weapon hit on it deals 1d6 more.");
+  assert.equal(E.apply(r.world, { type: "common", unit: "sc", key: "quarry", target: "r2" }, dice().roll).why, "Sola has already marked a quarry this turn.");
+  assert.equal(E.apply(world([sc(), r1, far], "sc"), { type: "common", unit: "sc", key: "quarry", target: "r3" }, dice().roll).why, "Sniper is 150 ft away: a quarry is marked within 120 ft.");
+  assert.equal(E.apply(world([sc({ riders: {} }), r1], "sc"), { type: "common", unit: "sc", key: "quarry", target: "r1" }, dice().roll).why, "Sola has no Ranger's Quarry.");
+  // the die on the first weapon hit on the quarry this turn, not on another creature, not twice
+  let d = dice({ total: 15, nat: 12 }, { total: 9 });
+  let a = E.apply(r.world, { type: "attack", unit: "sc", target: "r2", attack: wpn }, d.roll);
+  assert.equal(d.asked[1], "1d8+3", "not the quarry");
+  d = dice({ total: 15, nat: 12 }, { total: 9 });
+  a = E.apply(a.world, { type: "attack", unit: "sc", target: "r1", attack: wpn }, d.roll);
+  assert.equal(d.asked[1], "1d8+3+1d6");
+  assert.match(a.log[1].text, /with Ranger's Quarry 1d6/);
+  // the next turn: once more; and a new mark moves it
+  const next = Object.assign({}, a.world, { round: 2 });
+  d = dice({ total: 15, nat: 12 }, { total: 9 });
+  E.apply(next, { type: "attack", unit: "sc", target: "r1", attack: wpn }, d.roll);
+  assert.equal(d.asked[1], "1d8+3+1d6", "once a turn, every turn");
+  d = dice({ total: 25, nat: 20 }, { total: 14 });
+  E.apply(Object.assign({}, a.world, { round: 3 }), { type: "attack", unit: "sc", target: "r1", attack: wpn }, d.roll);
+  assert.equal(d.asked[1], "2d8+3+2d6", "a critical doubles the quarry die");
+  const moved = E.apply(next, { type: "common", unit: "sc", key: "quarry", target: "r2" }, dice().roll);
+  assert.deepEqual([E.quarryOf(moved.world, "sc"), moved.world.effects.filter((ef) => ef.condition === "Quarry").length], ["r2", 1], "one at a time");
+  assert.equal(E.apply(world([sc(), r1], "sc"), { type: "common", unit: "sc", key: "quarry", target: "__proto__" }, dice().roll).ok, false);
+});
+
+test("Ranger's Quarry through the API: a Scout 5 marks the Raider, then hits it with the die", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { classes: [{ name: "Scout", level: 5 }] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.common", { key: "quarry", target: ids.raider })).code, 200);
+  assert.equal((await sam.act("fight.common", { key: "quarry", target: "constructor" })).code, 400);
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0" })).code, 200);
+  st = await gm.state();
+  const rolls = st.chat.filter((m) => m.fight && m.roll).map((m) => m.roll);
+  const hit = /hit/.test((rolls.find((x) => x.kind === "attack") || {}).label || "");
+  if (hit) assert.match(rolls.find((x) => x.kind === "damage").expr, /\+[12]d6$/);
+  assert.ok(st.fight.effects.some((ef) => ef.condition === "Quarry" && ef.unit === ids.raider));
+});
+
+test("Wounds and #235's char.rest: a rest during the fight keeps the DC; after it, the DC is back to 10", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await gm.act("variants.set", { variants: ["Wounds"] });
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hp: { max: 20, current: 2, temp: 0 } }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  const crypto = require("crypto"), real = crypto.randomInt;
+  crypto.randomInt = (a, b) => (b === 21 ? 19 : real(a, b));   // the claw hits at +30; the Wounds save succeeds: the DC rises
+  try { assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 30, damage: "1d6+5", type: "kinetic", melee: 5 } })).code, 200); }
+  finally { crypto.randomInt = real; }
+  assert.deepEqual((await gm.state()).fight.wounds[avery], { level: 0, step: 1 });
+  assert.equal((await sam.act("char.rest", { charId: avery, kind: "short" })).code, 200);
+  assert.deepEqual((await gm.state()).fight.wounds[avery], { level: 0, step: 1 }, "mid-fight: kept");
+  assert.equal((await gm.act("init.clear", {})).code, 200);
+  assert.equal((await sam.act("char.rest", { charId: avery, kind: "short" })).code, 200);
+  assert.equal((await gm.state()).fight.wounds[avery], undefined, "after the fight: the DC back to 10 (and with no levels, nothing left to keep)");
 });
 
 test("#212 review: an undo gives back a shot, and a reload's power cell, as they were", async () => {
