@@ -220,7 +220,8 @@ function apply(camp, cid, gm, type, p, h) {
 // the ship sheet fields this subsystem owns, cleaned for cleanShip: its fight state, and the reactor, power coupling and
 // shields the crew picked ("" means: from its equipment or role)
 const pick = (v, table) => (Object.prototype.hasOwnProperty.call(table, v) ? v : "");
-const cleanFields = (sh) => ({ status: SR.cleanStatus(sh.status), reactor: pick(sh.reactor, SR.REACTORS), coupling: pick(sh.coupling, SR.COUPLINGS), shieldType: pick(sh.shieldType, SR.SHIELD_TYPES) });
+const cleanFields = (sh) => ({ status: SR.cleanStatus(sh.status), reactor: pick(sh.reactor, SR.REACTORS), coupling: pick(sh.coupling, SR.COUPLINGS), shieldType: pick(sh.shieldType, SR.SHIELD_TYPES),
+  armor: pick(sh.armor, SR.ARMORS) });
 // a weapon row's fields this subsystem owns: its category (primary to quaternary), its mount (a fixed arc, or a turret;
 // "" means not set, and fires in any arc), and its ammunition ("" means not counted)
 const cleanWeapon = (w) => ({ cat: SR.WEAPON_CATS.includes(w.cat) ? w.cat : "", arc: SR.MOUNTS.includes(w.arc) ? w.arc : "",
