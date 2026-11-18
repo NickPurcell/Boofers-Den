@@ -22,6 +22,7 @@ class Forbidden extends Error {}
 class Invalid extends Error {}
 
 // ---------------------------------------------------------------- dice
+const MAX_DICE = 300;
 const TERM = /([+-]?)\s*(?:(\d*)d(\d+)(?:(kh|kl|k|dh|dl)(\d+))?(?:min(\d+))?(!)?|(\d+))/iy;
 
 // Roll "2d20kh1+5", "1d8+1d6-2", "4d6dl1", "1d6!", "1d12min5". nat = the kept d20 when there is exactly one d20 term.
@@ -42,7 +43,7 @@ function rollDice(expr) {
   const src = String(expr || "").replace(/\s+/g, "").toLowerCase();
   if (!src) throw new Invalid("empty dice expression");
   if (src.length > 120) throw new Invalid("dice expression too long");
-  let pos = 0, total = 0, nat = null, d20s = 0;
+  let pos = 0, total = 0, nat = null, d20s = 0, count = 0;
   const parts = [];
   while (pos < src.length) {
     TERM.lastIndex = pos;
@@ -57,12 +58,18 @@ function rollDice(expr) {
     }
     const n = +(m[2] || 1), sides = +m[3];
     if (n < 1 || n > 100 || sides < 1 || sides > 1000) throw new Invalid("dice out of range");
+    // at most MAX_DICE dice in one expression, explosions included: over it the roll is refused, never cut short (#152)
     const rolls = [], low = {}, floor = m[6] === undefined ? 0 : Math.min(+m[6], sides);
-    const die = () => { const r = crypto.randomInt(1, sides + 1); if (r < floor) { low[rolls.length] = r; return floor; } return r; };
+    const die = () => {   // the natural face decides an explosion; min lifts what counts afterwards
+      if (++count > MAX_DICE) throw new Invalid(`Too many dice: at most ${MAX_DICE} in one roll, explosions included.`);
+      const r = crypto.randomInt(1, sides + 1);
+      if (r < floor) low[rolls.length] = r;
+      rolls.push(Math.max(r, floor));
+      return r;
+    };
     for (let i = 0; i < n; i++) {
       let r = die();
-      rolls.push(r);
-      for (let g = 0; m[7] && r === sides && sides > 1 && g < 20; g++) { r = die(); rolls.push(r); }
+      for (let g = 0; m[7] && r === sides && sides > 1 && g < 20; g++) r = die();
     }
     let kept = rolls.map((_, i) => i);
     const mode = m[4];

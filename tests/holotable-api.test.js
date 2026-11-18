@@ -89,6 +89,30 @@ test("dice: a minimum roll threshold (min N) counts a lower die as N and shows i
   assert.ok(G.rollDice("1d8").detail.indexOf("min") < 0, "an expression without min rolls as before");
 });
 
+test("dice, review of #152: ! explodes on the natural maximum only, and one roll is at most 300 dice (refused, never cut short)", () => {
+  const crypto = require("crypto"), real = crypto.randomInt;
+  try {
+    const faces = [1, 6, 3];
+    crypto.randomInt = () => faces.shift();
+    const r = G.rollDice("2d6min6!");
+    assert.deepEqual([r.total, r.detail], [18, "2d6min6[1→6,6,3→6]"], "a 1 lifted to 6 doesn't explode; a natural 6 does, once");
+  } finally { crypto.randomInt = real; }
+  // min at the die's size no longer forces every die to explode: natural 2, 1, 2, 1… is 100 explosions, not 2,000
+  try {
+    let k = 0;
+    crypto.randomInt = () => (k++ % 2 ? 1 : 2);
+    const r = G.rollDice("100d2min2!");
+    assert.deepEqual([r.total, (r.detail.match(/,/g) || []).length + 1], [400, 200], "200 dice, each counting 2");
+  } finally { crypto.randomInt = real; }
+  assert.doesNotThrow(() => G.rollDice("100d6+100d6+100d6"));
+  assert.throws(() => G.rollDice("100d6+100d6+100d6+1d6"), (e) => e instanceof G.Invalid && /Too many dice/.test(e.message));
+  // explosions count: 100 d1000 that always explode would be 2,100 dice
+  try {
+    crypto.randomInt = (a, b) => b - 1;
+    assert.throws(() => G.rollDice("100d1000!"), (e) => e instanceof G.Invalid && /Too many dice/.test(e.message));
+  } finally { crypto.randomInt = real; }
+});
+
 test("unset or equal passwords: every request is refused", async () => {
   fresh();
   const saved = [process.env.HOLOTABLE_PLAYER_PASSWORD, process.env.HOLOTABLE_GM_PASSWORD];
