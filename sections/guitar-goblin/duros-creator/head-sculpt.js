@@ -30,10 +30,12 @@ export async function makeHead(THREE, opts = {}) {
   for (const sx of [-1, 1]) {
     const pivot = new THREE.Object3D();
     pivot.position.set(sx * e.x, e.y, e.z);
-    pivot.lookAt(new THREE.Vector3(sx * e.x + sx * 0.32, e.y - 0.02, e.z + 1));   // wide-set eyes look a little outward
     pivot.updateMatrix();
-    // the almond: the eye and its lids squashed (wider than tall) and tilted up at the outer corner, as one
-    const shape = new THREE.Matrix4().makeRotationZ(sx * (e.tilt || 0)).multiply(new THREE.Matrix4().makeScale(e.sx || 1, e.sy || 1, 1));
+    // the almond: the eye and its lids squashed (less tall, less deep), rolled up at the outer corner by the slant and
+    // yawed outward so the eye wraps round the side of the face; the field's socket has the same shape
+    const shape = new THREE.Matrix4().makeRotationY(sx * (e.yaw || 0))
+      .multiply(new THREE.Matrix4().makeRotationZ(sx * (e.slant || 0)))
+      .multiply(new THREE.Matrix4().makeScale(1, e.sy || 1, e.sz || 1));
     const at = (g, local) => { if (local) g.applyMatrix4(local); g.applyMatrix4(shape); g.applyMatrix4(pivot.matrix); return g; };
     const ball = new THREE.SphereGeometry(e.r, 40, 28); ball.rotateX(Math.PI / 2);   // the texture's pole to the front
     eyeGeos.push(at(ball));
