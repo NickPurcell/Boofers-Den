@@ -47,7 +47,7 @@ function onTurn(camp, gm, ship) {
 
 const TYPES = new Set(["ship.damage", "ship.restore", "ship.points", "ship.dsave", "ship.stabilize", "ship.condition", "ship.reset",
   "ship.turn", "ship.power", "ship.poweruse", "ship.dice", "ship.boost", "ship.regen", "ship.helm", "ship.patch", "ship.direct", "ship.cool", "ship.reload",
-  "ship.recharge", "ship.hulldie", "ship.refit"]);
+  "ship.recharge", "ship.hulldie", "ship.refit", "ship.install"]);
 const handles = (type) => TYPES.has(type);
 
 // On a sheet save: the fight state and the current hull and shield points stay as stored (they change only through
@@ -71,7 +71,7 @@ function apply(camp, cid, gm, type, p, h) {
   if (!(gm || !ship.hidden)) throw new Forbidden("That ship is the GM's.");
   if (TURN_ACTIONS.has(type) && !onTurn(camp, gm, ship)) throw new Invalid(`Not ${ship.name}'s turn.`);
   // recharging (an hour) and refitting (docked) happen between fights: a player can't start them during ship combat
-  if (["ship.recharge", "ship.hulldie", "ship.refit"].includes(type) && !gm && camp.space && camp.space.active) throw new Invalid("Not during ship combat.");
+  if (["ship.recharge", "ship.hulldie", "ship.refit", "ship.install"].includes(type) && !gm && camp.space && camp.space.active) throw new Invalid("Not during ship combat.");   // installing a modification takes days too
   const say = (lines) => {
     for (const text of lines.filter(Boolean)) {
       const msg = { system: true, text: str(text, 400) };
@@ -240,6 +240,21 @@ function apply(camp, cid, gm, type, p, h) {
       put(r.ship); addChat(camp, msg); say(r.log);
       return { gain: r.gain };
     }
+    case "ship.install": {  // a modification's installation check: Intelligence (mechanic's kit) against its DC, rolled here
+      const mods = Array.isArray(ship.mods) ? ship.mods : [], mi = int(p.mod, -1);
+      if (!(mi >= 0 && mi < mods.length)) throw new Invalid("No such modification.");
+      const m = mods[mi], dc = SR.installDC(ship, mi);
+      if (m.free) throw new Invalid(`${m.name} comes with a tier feature: no check.`);
+      const crew = Array.isArray(ship.crew) ? ship.crew : [], c = crew[clamp(int(p.crew), 0, Math.max(0, crew.length - 1))];
+      const chars = camp.characters || {}, ch = c && typeof c.charId === "string" && Object.prototype.hasOwnProperty.call(chars, c.charId) ? chars[c.charId] : null;
+      const bonus = (ch && R ? R.abilityMod(ch, "int") : 0) + crewPb(camp, ship, p.crew);
+      const expr = "1d20" + (bonus >= 0 ? "+" : "") + bonus, roll = rollDice(expr), ok = roll.total >= dc;
+      const msg = { from: ship.hidden ? "Ship combat (GM only)" : playerName(camp, cid), roll: Object.assign({}, roll, { expr, label: str(`${ship.name}: installing ${m.name} (DC ${dc})`, 120), kind: "check" }) };
+      Object.assign(msg, ship.hidden ? { to: ["@gm"], private: true } : { fromId: cid });
+      addChat(camp, msg);
+      say([ok ? `${m.name} is installed on ${ship.name}.` : `${m.name} isn't installed: half the time and cost are spent (${Math.round(SR.modCost(ship, m, mi) / 2).toLocaleString("en-US")} cr).`]);
+      return { ok, dc };
+    }
     case "ship.reset": {    // the GM undoes a destruction (a mistake, or a story reason): saves cleared, not destroyed
       if (!gm) throw new Forbidden("GM only");
       const s = JSON.parse(JSON.stringify(ship));
@@ -258,10 +273,13 @@ function apply(camp, cid, gm, type, p, h) {
 const pick = (v, table) => (Object.prototype.hasOwnProperty.call(table, v) ? v : "");
 const cleanFields = (sh) => ({ status: SR.cleanStatus(sh.status), reactor: pick(sh.reactor, SR.REACTORS), coupling: pick(sh.coupling, SR.COUPLINGS), shieldType: pick(sh.shieldType, SR.SHIELD_TYPES),
   armor: pick(sh.armor, SR.ARMORS) });
+// a modification row's fields this subsystem owns: its category, grade, prerequisites (from SotG's data when picked),
+// and whether a tier feature gave it (no slot, no suite count, no check)
+const cleanMod = (m) => ({ type: SR.MOD_TYPES.includes(m.type) ? m.type : "", grade: clamp(int(m.grade), 0, 5), pre: str(m.pre, 200), free: m.free === true });
 // a weapon row's fields this subsystem owns: its category (primary to quaternary), its mount (a fixed arc, or a turret;
 // "" means not set, and fires in any arc), and its ammunition ("" means not counted)
 const cleanWeapon = (w) => ({ cat: SR.WEAPON_CATS.includes(w.cat) ? w.cat : "", arc: SR.MOUNTS.includes(w.arc) ? w.arc : "",
   ammo: w.ammo === "" || w.ammo === null || w.ammo === undefined || !Number.isFinite(parseInt(w.ammo, 10)) ? "" : clamp(int(w.ammo), 0, 999),
   heat: clamp(int(w.heat), 0, 99) });   // shots since it was last cooled (overheat N)
 
-module.exports = { handles, apply, onTurn, keepStatus, cleanStatus: SR.cleanStatus, cleanFields, cleanWeapon, boostBonus, crewPb };
+module.exports = { handles, apply, onTurn, keepStatus, cleanStatus: SR.cleanStatus, cleanFields, cleanWeapon, cleanMod, boostBonus, crewPb };
