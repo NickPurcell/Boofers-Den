@@ -106,7 +106,7 @@ test("ship conditions: slowed levels, system damage levels, and what they do to 
   assert.deepEqual(SR.cleanStatus({ cond: ["Hungry", "Ionized", "Ionized"], slowed: 9, system: -2, zero: "x" }),
     { cond: ["Ionized"], slowed: 4, system: 0, zero: { s: 0, f: 0, stable: false, destroyed: false }, power: { central: 0, engines: 0, shields: 0, weapons: 0, sensors: 0, comms: 0 },
       sdUsed: 0, hdUsed: 0, tempShield: 0, boost: { tries: 0, engines: 0, weapons: false, shields: false, regen: false },
-      fx: { evade: 0, fly: 0, hardTurn: false, helm: false, interfered: false, directed: false, interferedBy: "" } }, "anything else is cleaned away");
+      fx: { evade: 0, fly: 0, hardTurn: false, helm: false, interfered: false, directed: false, interferedBy: "" }, recharged: false }, "anything else is cleaned away");
   assert.deepEqual(SR.capPoints({ hull: { current: 30, max: 0 }, shield: { current: 5, max: 4 } }).hull.current, 30, "no maximum typed yet: current stays");
 });
 
@@ -884,4 +884,45 @@ test("burst over a hidden token, and Cool and Reload on the ship's own turn", as
   assert.match((await p1.act("ship.reload", { id: party, weapon: 1 })).data.error || "", /Not Dawn Skiff's turn/);
   while ((await gm.state()).space.turnId !== party) await gm.act("space.next", {});
   assert.equal((await p1.act("ship.cool", { id: party, weapon: 0 })).code, 200);
+});
+
+// ---------------------------------------------------------------- recharging and refitting (10.8)
+test("recharging and refitting: shields and half the shield dice; hull dice by the mechanic's check; a refit's cost, time and system damage", async () => {
+  const s = ship({ size: "Medium", hull: { current: 10, max: 40 }, shield: { current: 0, max: 30 }, abilities: { con: 14 }, status: { sdUsed: 5, hdUsed: 2, system: 2 } });
+  let r = SR.recharge(s);
+  assert.deepEqual([r.ship.shield.current, SR.statusOf(r.ship).sdUsed, SR.statusOf(r.ship).recharged], [30, 3, true], "5 shield dice for a Medium ship: 2 back");
+  assert.equal(SR.rechargeHullDie(s, 15, () => ({ total: 5 })).done, false, "not before a recharge");
+  const seq = (...v) => () => ({ total: v.shift() });
+  assert.equal(SR.rechargeHullDie(r.ship, 8, seq(6, 2)).gain, 4, "10 or less: the lower of two, + Con 2");
+  assert.equal(SR.rechargeHullDie(r.ship, 15, seq(6, 2)).gain, 8, "11 to 20: one roll");
+  assert.equal(SR.rechargeHullDie(r.ship, 25, seq(3, 7)).gain, 9, "21 or more: the higher of two");
+  assert.equal(SR.statusOf(SR.takeDamage(r.ship, 1, "energy").ship).recharged, false, "a hit ends the quiet");
+  assert.equal(SR.refitCost(s), 400, "2 missing hull dice x 100 x Medium's 2");
+  const f = SR.refit(s);
+  assert.deepEqual([f.ship.hull.current, f.ship.shield.current, SR.statusOf(f.ship).system, SR.statusOf(f.ship).hdUsed, SR.statusOf(f.ship).sdUsed], [40, 30, 1, 0, 0]);
+  assert.match(f.log[0], /1 day, a crew of 5, 400 cr/);
+  assert.equal(SR.statusOf(SR.refit(SR.setCondition(s, "system", 6)).ship).system, 5, "a refit repairs failed primary systems");
+  // on the server: the check comes from the crew's sheet
+  const { gm, p1, party, enemy } = await table();
+  await p1.act("ship.damage", { id: party, amount: 20, type: "kinetic" });
+  assert.equal((await p1.act("ship.hulldie", { id: party })).code, 400, "recharge first");
+  assert.equal((await p1.act("ship.recharge", { id: party })).code, 200);
+  let st = await p1.state();
+  assert.equal(shipIn(st, party).shield.current, 20);
+  assert.equal((await p1.act("ship.hulldie", { id: party, bonus: 99 })).code, 200);
+  st = await p1.state();
+  assert.ok(st.chat.some((m) => m.roll && /mechanic's kit/.test(m.roll.label) && m.roll.expr === "1d20+2"), "no crew sheet: +2, not the request's");
+  const r2 = await p1.act("ship.refit", { id: party });
+  assert.equal(r2.code, 200); assert.equal(typeof r2.data.cost, "number");
+  assert.equal(shipIn(await p1.state(), party).hull.current, 40);
+  assert.equal((await p1.act("ship.refit", { id: enemy })).code, 403);
+  // not in the middle of a ship fight (the GM stays free)
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 2, f: 2 });
+  await gm.act("space.init", {});
+  for (const t of ["ship.recharge", "ship.refit", "ship.hulldie"]) assert.match((await p1.act(t, { id: party })).data.error || "", /Not during ship combat/, t);
+  await gm.act("space.end", {});
+  assert.equal((await p1.act("ship.recharge", { id: party })).code, 200, "once it's over");
+  await gm.act("ship.recharge", { id: enemy });
+  assert.ok(!JSON.stringify((await p1.state()).chat).includes("Black Lance"), "an enemy's recharge is the GM's");
 });
