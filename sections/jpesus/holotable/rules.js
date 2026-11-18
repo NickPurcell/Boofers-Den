@@ -254,7 +254,9 @@
     const sum = list => list.reduce((n, s) => n + s.points, 0);
     // an Archaeologist may use Intelligence instead of Wisdom (light side) or Charisma (dark side)
     const int = force.some(s => s.int) ? abilityMod(c, 'int') : -99;
-    const light = Math.max(abilityMod(c, 'wis'), int), dark = Math.max(abilityMod(c, 'cha'), int);
+    // Simplified Forcecasting (variant rule, 9.16): one ability, Wisdom or Charisma, for every force power
+    const one = c.forceAbility === 'wis' || c.forceAbility === 'cha' ? abilityMod(c, c.forceAbility) : null;
+    const light = Math.max(one ?? abilityMod(c, 'wis'), int), dark = Math.max(one ?? abilityMod(c, 'cha'), int);
     // a Rakatan may use Intelligence, Wisdom or Charisma for its tech powers
     const tAb = tech.some(s => s.anyMental) ? Math.max(abilityMod(c, 'int'), abilityMod(c, 'wis'), abilityMod(c, 'cha')) : abilityMod(c, 'int');
     return {

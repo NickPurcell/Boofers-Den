@@ -202,6 +202,9 @@ function cleanChar(ch) {
       ...(+e.wt > 0 ? { wt: Math.min(10000, Math.round(+e.wt * 100) / 100) } : {}), ...(+e.cost > 0 ? { cost: Math.min(1e9, Math.round(+e.cost)) } : {}) })),
     conditions: (Array.isArray(ch.conditions) ? ch.conditions : []).slice(0, 20).map((c) => s(c, 30)),
     exhaustion: clamp(int(ch.exhaustion), 0, 6), inspiration: !!ch.inspiration,
+    // variant rules on the sheet (9.16): Simplified Forcecasting's one ability, and Hunted's disturbance points
+    ...(ch.forceAbility === "wis" || ch.forceAbility === "cha" ? { forceAbility: ch.forceAbility } : {}),
+    ...(int(ch.disturbance) > 0 ? { disturbance: clamp(int(ch.disturbance), 0, 999) } : {}),
     proficiencies: s(ch.proficiencies, 2000), languages: s(ch.languages, 500), notes: s(ch.notes, 20000),
     ...(Object.prototype.hasOwnProperty.call(Story.LIFESTYLES, ch.lifestyle) ? { lifestyle: ch.lifestyle } : {}),   // 11.5
     image: validImg(ch.image) || "", tokenImage: validImg(ch.tokenImage) || "", color: validColor(ch.color),
@@ -575,6 +578,7 @@ function applyAction(camp, cid, gm, type, p) {
       clean.image = old ? old.image || "" : "";
       clean.tokenImage = old ? old.tokenImage || "" : "";
       clean.updated = now();
+      if (!(camp.variants || []).includes("Simplified Forcecasting")) delete clean.forceAbility;   // only while the GM uses it
       chars[id] = clean;
       if (old) {   // the record of changes (12.5)
         const changes = sheetDiff(old, clean);
@@ -1163,7 +1167,12 @@ function applyAction(camp, cid, gm, type, p) {
     }
 
     // ---- which SW5e variant rules this table uses (the GM decides; everyone sees the list)
-    case "variants.set": need(gm); camp.variants = cleanVariants(p.variants); return {};
+    case "variants.set": {
+      need(gm); camp.variants = cleanVariants(p.variants);
+      // a variant the GM stops using stops counting on the sheets too
+      if (!camp.variants.includes("Simplified Forcecasting")) for (const c of Object.values(chars)) delete c.forceAbility;
+      return {};
+    }
 
     // ---- table audio: the GM plays an uploaded track for everyone; each screen keeps itself in step
     case "audio.play": {   // start (or resume) a track at a position

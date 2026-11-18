@@ -2536,6 +2536,27 @@ test("campaign image sets: a campaign saved before the sets existed is still cou
   assert.ok((await db.smembers(S.K.refs("main"))).includes(shared), "and main's set was rebuilt once");
 });
 
+test("variant rules on the sheet (9.16): Simplified Forcecasting's ability counts only while the GM uses it; Hunted's pool is kept", async () => {
+  const { gm, p1 } = await table();
+  const sheet = { name: "Vel", classes: [{ name: "Consular", level: 5 }], abilities: { wis: 10, cha: 18 }, forceAbility: "cha", disturbance: 7 };
+  const id = (await p1.act("char.save", { char: sheet })).data.id;
+  let c = (await p1.poll()).data.state.characters[id];
+  assert.deepEqual([c.forceAbility, c.disturbance], [undefined, 7], "the choice needs the variant");
+  await gm.act("variants.set", { variants: ["Simplified Forcecasting", "Hunted"] });
+  await p1.act("char.save", { char: Object.assign({}, sheet, { id, forceAbility: "str", disturbance: 5000 }) });
+  c = (await p1.poll()).data.state.characters[id];
+  assert.deepEqual([c.forceAbility, c.disturbance], [undefined, 999], "only Wisdom or Charisma; the pool tops out");
+  await p1.act("char.save", { char: Object.assign({}, sheet, { id }) });
+  c = (await p1.poll()).data.state.characters[id];
+  assert.equal(c.forceAbility, "cha");
+  require("../sections/jpesus/holotable/rules.js");
+  const ci = globalThis.SW5E.casterInfo(c);
+  assert.equal(ci.lightDC, ci.darkDC, "one ability for light and dark");
+  assert.equal(ci.lightDC, 8 + 3 + 4);
+  await gm.act("variants.set", { variants: ["Hunted"] });
+  assert.equal((await p1.poll()).data.state.characters[id].forceAbility, undefined, "dropping the variant drops the choice");
+});
+
 test("a sheet keeps Wretched Hives' mastery tiers on skills (5.7)", async () => {
   const { p1 } = await table();
   const id = (await p1.act("char.save", { char: { name: "Ace", skills: { stealth: 3, insight: 5, athletics: 6, perception: 0.5 } } })).data.id;
