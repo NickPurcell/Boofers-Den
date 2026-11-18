@@ -694,7 +694,7 @@
     // these cost force points, so they're the attacker's choice (opt-in): Force-Empowered Strikes (Guardian) on a melee
     // weapon hit, 1d8 a point up to the Focused Strikes column; Double Strike (Sentinel) on a weapon hit, 1 point for a
     // Kinetic Combat die, once a turn
-    const fp = (a.pools || {}).force, left = fp ? fp.max - fp.used : 0;
+    const fp = (a.pools || {}).force, left = poolLeft(fp);
     if (r.fes && attack.weapon && !ranged && left > 0) out.push({ key: 'fes', name: 'Force-Empowered Strikes', perPoint: '1d8', max: Math.min(r.fes, left), optIn: true });
     if (r.kinetic && attack.weapon && left > 0 && !spentOf(world, a.id).double) out.push({ key: 'double', name: 'Double Strike', dice: '1' + r.kinetic, cost: 1, optIn: true });
     // a maneuver (#67): the ones it knows and hasn't used this turn, while a superiority die is left
@@ -781,9 +781,11 @@
       const ci = rules.casterInfo(ch);
       const set = (o) => o && o.max !== '' && o.max != null;
       const fm = set(ch.force) ? +ch.force.max : ci.forceMax, tm = set(ch.tech) ? +ch.tech.max : ci.techMax;
-      if (fm > 0) out.push({ key: 'force', name: 'Force points', max: fm, used: clampN(+(ch.force || {}).used || 0, 0, fm), refill: 'long', from: 'force' });
+      // temporary points (#185, audit 4.9) are spent before the pool's own (SW5e PHB: "the temporary points are spent first")
+      const tempOf = (o) => clampN(Math.round(+(o || {}).temp || 0), 0, 999);
+      if (fm > 0) out.push({ key: 'force', name: 'Force points', max: fm, used: clampN(+(ch.force || {}).used || 0, 0, fm), temp: tempOf(ch.force), refill: 'long', from: 'force' });
       // tech points come back on a short rest only for an Engineer or a Scout (audit 7.3, rules.js techOnShortRest)
-      if (tm > 0) out.push({ key: 'tech', name: 'Tech points', max: tm, used: clampN(+(ch.tech || {}).used || 0, 0, tm), refill: rules.techOnShortRest && rules.techOnShortRest(ch) ? 'short' : 'long', from: 'tech' });
+      if (tm > 0) out.push({ key: 'tech', name: 'Tech points', max: tm, used: clampN(+(ch.tech || {}).used || 0, 0, tm), temp: tempOf(ch.tech), refill: rules.techOnShortRest && rules.techOnShortRest(ch) ? 'short' : 'long', from: 'tech' });
     }
     const L = totalLevel(ch);
     const hdUsed = rules && rules.hitDiceUsedTotal ? rules.hitDiceUsedTotal(ch) : +ch.hitDiceUsed || 0;
@@ -802,11 +804,21 @@
     }
     return rules.hitDiceUsedOf(list);
   }
-  // write one resource's used count back where it lives (a new character; the one passed in is not changed)
-  function withUsed(ch, res, used, rules) {
+  // what a pool has left, temporary points included (#190), and paying n from it: the temporary points first
+  const poolLeft = (p) => (p ? Math.max(0, p.max - p.used) + Math.max(0, +p.temp || 0) : 0);
+  function payPool(p, n) {
+    const temp = Math.max(0, +p.temp || 0), fromTemp = Math.min(temp, n);
+    p.used = Math.min(p.max, p.used + n - fromTemp);
+    if (p.temp != null) p.temp = temp - fromTemp;
+    return p;
+  }
+  // write one resource's used count back where it lives (a new character; the one passed in is not changed); force and
+  // tech also take their temporary points when given
+  function withUsed(ch, res, used, rules, temp) {
     const c = clone(ch);
-    if (res.from === 'force') c.force = Object.assign({}, c.force, { used });
-    else if (res.from === 'tech') c.tech = Object.assign({}, c.tech, { used });
+    const pts = (o) => Object.assign({}, o, { used }, temp != null ? (temp > 0 ? { temp } : { temp: 0 }) : {});
+    if (res.from === 'force') c.force = pts(c.force);
+    else if (res.from === 'tech') c.tech = pts(c.tech);
     else if (res.from === 'hitdice') c.hitDiceUsed = rules && rules.hitDice ? hitDiceTo(c, used, rules) : used;
     else c.resources = (c.resources || []).map((r) => (r.key === res.key ? Object.assign({}, r, { used }) : r));
     return c;
@@ -816,8 +828,9 @@
     n = Math.round(+n);
     if (!res) return no(`No ${key} to spend.`);
     if (!(n > 0)) return no('Spend at least one.');
-    if (res.used + n > res.max) return no(`Not enough ${res.name}: ${res.max - res.used} of ${res.max} left.`);
-    return { ok: true, ch: withUsed(ch, res, res.used + n, rules), res: Object.assign({}, res, { used: res.used + n }) };
+    if (poolLeft(res) < n) return no(`Not enough ${res.name}: ${res.max - res.used} of ${res.max} left${res.temp ? `, and ${res.temp} temporary` : ''}.`);
+    const after = payPool(Object.assign({}, res), n);
+    return { ok: true, ch: withUsed(ch, res, after.used, rules, res.temp != null ? after.temp : undefined), res: after };
   }
   // a rest refills what each resource says: 'short' refills short; 'long' refills short and long (hit dice: half back)
   function rest(ch, kind, rules) {
@@ -919,9 +932,10 @@
     return out;
   }
   // set one resource's used count where it lives (force points, tech points, hit dice, or the sheet's own list)
-  function setPoolUsed(ch, key, used, rules) {
+  function setPoolUsed(ch, key, used, rules, temp) {
     const res = resourcesOf(ch, rules).find((r) => r.key === key);
-    return res ? withUsed(ch, res, clampN(Math.round(+used) || 0, 0, res.max), rules) : ch;
+    const t = temp == null || res == null || res.temp == null ? undefined : clampN(Math.round(+temp) || 0, 0, 999);
+    return res ? withUsed(ch, res, clampN(Math.round(+used) || 0, 0, res.max), rules, t) : ch;
   }
   const diceExpr = (d, add) => (add ? `${d}${add > 0 ? '+' : ''}${add}` : d);
   const doubleDice = (e) => e.replace(/(\d*)d(\d+)/gi, (_, n, s) => (2 * (+n || 1)) + 'd' + s);
@@ -1235,7 +1249,7 @@
         if (up && ab.pool) cost[ab.pool] = (cost[ab.pool] || 0) + up;
         for (const [pool, n] of Object.entries(cost)) {
           const p = (me.pools || {})[pool];
-          if (!p || p.max - p.used < n) return no(`Not enough ${p ? p.name : pool}: ${n} needed${p ? `, ${p.max - p.used} left` : ''}.`);
+          if (!p || poolLeft(p) < n) return no(`Not enough ${p ? p.name : pool}: ${n} needed${p ? `, ${poolLeft(p)} left` : ''}.`);
         }
         let ids, origin = null;
         if (ab.area) {   // everyone the template catches, aimed at a point
@@ -1262,7 +1276,7 @@
         if (slot !== 'free') w.spent[me.id][slot] += 1;
         if (ab.concentration && w.conc[me.id]) endConcentration(w, me.id, `${me.name} starts concentrating on ${ab.name}`, null);
         if (ab.concentration) w.conc[me.id] = ab.name;
-        for (const [pool, n] of Object.entries(cost)) if (n) me.pools[pool] = Object.assign({}, me.pools[pool], { used: me.pools[pool].used + n });
+        for (const [pool, n] of Object.entries(cost)) if (n) me.pools[pool] = payPool(Object.assign({}, me.pools[pool]), n);   // temporary points first (#190)
         const costText = Object.entries(cost).filter(([, n]) => n).map(([pool, n]) => `${n} ${(me.pools[pool] || {}).name || pool}`).join(', ');
         const log = [{ text: `${me.name} uses ${ab.name}${up ? ` at level ${ab.level + up}` : ''}${costText ? ` (${costText})` : ''}.` }], events = [];   // never says who or how many: a hidden creature may be among them
         const extra = up && ab.upcast ? Array.from({ length: up }, () => ab.upcast.damage).join('+') : '';
@@ -1429,7 +1443,7 @@
     const offered = (pv.riders || []).filter((x) => !((opts.no || []).includes(x.key)));
     // Double Strike's point comes out of the same pool, so with it chosen Force-Empowered Strikes gets one point fewer
     const dbl = add.double && offered.some((x) => x.key === 'double') ? 1 : 0;
-    const left = fp ? Math.max(0, fp.max - fp.used) : 0;
+    const left = poolLeft(fp);
     const riders = offered.map((x) => {
       if (!x.optIn) return x;
       if (x.key === 'fes') { const n = Math.max(0, Math.min(x.max, left - dbl, Math.round(+add.fes || 0))); return n ? Object.assign({}, x, { dice: `${n}d8`, points: n }) : null; }
@@ -1440,7 +1454,7 @@
     if (mv && !mv.onRoll) spendMv();   // a superiority die goes on the hit
     if (opts.extra) riders.push(opts.extra);   // a reaction maneuver's die (Riposte, Return Fire), on its hit
     const paid = riders.reduce((n, x) => n + (x.points || 0), 0);
-    if (paid && fp) fp.used = Math.min(fp.max, fp.used + paid);   // the force points go on the hit
+    if (paid && fp) payPool(fp, paid);   // the force points go on the hit, temporary ones first (#190)
     if (riders.some((x) => x.key === 'double')) w.spent[me.id] = Object.assign(spentOf(w, me.id), { double: 1 });   // once a turn
     const expr = base + riders.map((x) => (x.dice ? '+' + (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat)).join('');
     if (riders.some((x) => x.key === 'sneak')) w.spent[me.id] = Object.assign(spentOf(w, me.id), { sneak: 1 });   // once per turn
@@ -1835,5 +1849,5 @@
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
     SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf, d20, flankOf, fixedTotal, cruel, modeName,
-    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, ridersOf, ridersFor, attacksPerAction, multiattackOf, offhandOf, stylesOf, withThreshold, thresholdFor, MIN_THRESHOLD, contestBonus, helpOn, maneuverCheck, unitAt, weaponProps, volleysOf, MANEUVERS, maneuversOf, superiorityOf, saveVs, pushAway, landHit };
+    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, poolLeft, payPool, ridersOf, ridersFor, attacksPerAction, multiattackOf, offhandOf, stylesOf, withThreshold, thresholdFor, MIN_THRESHOLD, contestBonus, helpOn, maneuverCheck, unitAt, weaponProps, volleysOf, MANEUVERS, maneuversOf, superiorityOf, saveVs, pushAway, landHit };
 });
