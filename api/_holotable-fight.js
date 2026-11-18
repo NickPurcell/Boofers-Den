@@ -1448,5 +1448,21 @@ function cleanWalls(list) {
   });
 }
 
-module.exports = { apply, view, sheetView, afterDamage, cleanHigh, canWalk, fogFor, fogView, cleanFog, cleanLight, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
+// the Wounds variant (9.16, #233). A sheet saved back at its hit point maximum loses its wounded levels: the sheet's
+// rests, its Heal button and a hand edit all save through char.save (jpesus's agent on #65). A short or long rest (the
+// sheet's char.rest, #235, calls this) sets the save's DC back to 10 and keeps the levels.
+function woundsHealed(camp, charId, ch) {
+  const ws = camp.fight && camp.fight.wounds, hp = (ch && ch.hp) || {};
+  if (ws && typeof ws === "object" && Object.prototype.hasOwnProperty.call(ws, charId) && +hp.max > 0 && +hp.current >= +hp.max) delete ws[charId];
+}
+function onRest(camp, charId, kind) {
+  const ws = camp.fight && camp.fight.wounds;
+  if (kind !== "short" && kind !== "long") return;
+  if (!ws || typeof ws !== "object" || !Object.prototype.hasOwnProperty.call(ws, charId)) return;
+  const wd = ws[charId];
+  if (!wd || typeof wd !== "object" || !(+wd.level > 0)) { delete ws[charId]; return; }
+  wd.step = 0;
+}
+
+module.exports = { apply, view, sheetView, afterDamage, woundsHealed, onRest, cleanHigh, canWalk, fogFor, fogView, cleanFog, cleanLight, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
   cleanHitDiceUsed: R.cleanHitDiceUsed };   // for cleanChar: the sheet and the undo record clean hit dice the same way

@@ -588,6 +588,7 @@ function applyAction(camp, cid, gm, type, p) {
       clean.updated = now();
       if (!(camp.variants || []).includes("Simplified Forcecasting")) delete clean.forceAbility;   // only while the GM uses it
       chars[id] = clean;
+      Fight.woundsHealed(camp, id, clean);   // back at its hit point maximum: no wounded levels (the Wounds variant, #233)
       if (old) {   // the record of changes (12.5)
         const changes = sheetDiff(old, clean);
         if (changes.length) {

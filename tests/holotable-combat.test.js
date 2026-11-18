@@ -3663,6 +3663,42 @@ test("Wounds through the API: Undo takes back the wounded level with the drop", 
   assert.deepEqual([st.fight.wounds[avery], st.characters[avery].deathSaves.f, st.characters[avery].hp.current], [undefined, 0, 2], "the level, the failure and the hit points back");
 });
 
+test("Wounds and the sheet (#233, jpesus's agent on #65): a save back at the hit point maximum clears the levels; a rest (#235's char.rest) sets the DC back", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await gm.act("variants.set", { variants: ["Wounds"] });
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hp: { max: 20, current: 2, temp: 0 } }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  const crypto = require("crypto"), real = crypto.randomInt;
+  crypto.randomInt = (a, b) => (b === 21 ? 3 : real(a, b));
+  try { assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 30, damage: "1d6+5", type: "kinetic", melee: 5 } })).code, 200); }
+  finally { crypto.randomInt = real; }
+  st = await sam.state();
+  assert.deepEqual(st.fight.wounds[avery], { level: 1, step: 0 });
+  // a save below the maximum keeps them; at the maximum (a long rest, the Heal button, a hand edit) they're gone
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hp: { max: 20, current: 12, temp: 0 } }) });
+  assert.deepEqual((await sam.state()).fight.wounds[avery], { level: 1, step: 0 });
+  st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hp: { max: 20, current: 20, temp: 0 } }) });
+  assert.equal((await gm.state()).fight.wounds[avery], undefined);
+  // the rest hook: the DC's step back to 0, the levels kept; an unknown kind or a name off the prototype does nothing
+  const Fight = require("../api/_holotable-fight.js");
+  const camp = { fight: { wounds: { c1: { level: 2, step: 3 }, c2: { level: 0, step: 1 } } } };
+  Fight.onRest(camp, "c1", "nap");
+  assert.deepEqual(camp.fight.wounds.c1, { level: 2, step: 3 });
+  Fight.onRest(camp, "c1", "short");
+  Fight.onRest(camp, "c2", "long");
+  Fight.onRest(camp, "constructor", "long");
+  Fight.onRest(camp, "__proto__", "long");
+  Fight.onRest({}, "c1", "long");
+  assert.deepEqual(camp.fight.wounds, { c1: { level: 2, step: 0 } });
+  Fight.woundsHealed(camp, "c1", { hp: { max: 0, current: 0 } });
+  assert.deepEqual(camp.fight.wounds, { c1: { level: 2, step: 0 } }, "no maximum known: kept");
+  assert.equal(Object.prototype.level, undefined);
+});
+
 test("#212 review: an undo gives back a shot, and a reload's power cell, as they were", async () => {
   const { gm, sam, avery, ids } = await fight();
   let st = await sam.state();
