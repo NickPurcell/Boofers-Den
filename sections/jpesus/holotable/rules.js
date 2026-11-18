@@ -174,6 +174,9 @@
     'Saboteur Practice': { cls: 'Operative', caster: 'tech' }, 'Slicer Pursuit': { cls: 'Scholar', caster: 'tech' },
   };
   const ARCHETYPE_AT = [3, 7, 13, 17];
+  // High-level casting (#160), from each class's own text in SW5e's data: from this power level up, each level can be cast
+  // only once per long rest (full casters 6th-9th, Sentinel 5th-7th, half casters 4th-5th, casting archetypes 4th)
+  const HIGH_FROM = { full: 6, threeQuarter: 5, half: 4, archetype: 4 };
   const lc = s => String(s || '').trim().toLowerCase();
   // the casting archetype a class entry has, by its full name or without its last word ("Marauder", "Aing-Tii")
   function casterArchetype(k) {
@@ -192,12 +195,12 @@
         const maxLevel = def.prog === 'full' ? Math.min(9, Math.ceil(L / 2))
           : def.prog === 'threeQuarter' ? THREE_QUARTER_AT.filter(t => L >= t).length : Math.min(5, Math.ceil(L / 4));
         out.push({ of: k.name, caster: def.caster, level: L, points: def.pp * L, maxLevel,
-          potential: def.prog === 'full' ? 9 : def.prog === 'threeQuarter' ? 7 : 5, shortRest: !!def.shortRest });
+          potential: def.prog === 'full' ? 9 : def.prog === 'threeQuarter' ? 7 : 5, shortRest: !!def.shortRest, highFrom: HIGH_FROM[def.prog] });
       }
       const arch = casterArchetype(k);
       if (arch && L >= 3) {
         out.push({ of: arch.name, caster: arch.caster, level: L, points: arch.caster === 'force' ? L : Math.ceil(L / 2),
-          maxLevel: ARCHETYPE_AT.filter(t => L >= t).length, potential: 4, shortRest: arch.caster === 'tech', int: !!arch.int });
+          maxLevel: ARCHETYPE_AT.filter(t => L >= t).length, potential: 4, shortRest: arch.caster === 'tech', int: !!arch.int, highFrom: HIGH_FROM.archetype });
       }
     }
     return out;
@@ -213,6 +216,22 @@
     if (sources.length === 1) return own;
     const casterLevel = Math.floor(sources.reduce((n, s) => n + s.potential * s.level, 0) / 9);
     return Math.max(own, casterLevel < 1 ? 0 : Math.min(9, Math.ceil(casterLevel / 2)));
+  }
+  // High-level casting (#160): the power level from which each level may be cast once per long rest, for force or tech
+  // (0: none). A multiclassed caster follows the class with the most levels (PHB, Customization Options, "High-Level
+  // Casting"); on a tie, the later threshold. c[kind].high lists the levels cast since the last long rest.
+  function highCastFrom(c, kind) {
+    const src = castingSources(c).filter(s => s.caster === kind);
+    if (!src.length) return 0;
+    return src.reduce((a, s) => (s.level > a.level || (s.level === a.level && s.highFrom > a.highFrom) ? s : a)).highFrom;
+  }
+  const highCastUsed = (c, kind) => (Array.isArray(((c || {})[kind] || {}).high) ? c[kind].high.map(Number).filter(n => n >= 1 && n <= 9) : []);
+  // a cast at this level that the once-per-long-rest rule stops, or null
+  function highCastBlocked(c, pw, level) {
+    const kind = pw && pw.type === 'tech' ? 'tech' : 'force', L = +level || 0, from = highCastFrom(c, kind);
+    if (!from || L < from || !highCastUsed(c, kind).includes(L)) return null;
+    const who = (c && c.name) || 'This character', th = n => n + (n === 1 ? 'st' : n === 2 ? 'nd' : n === 3 ? 'rd' : 'th');
+    return { level: L, from, text: `${who} has already cast a ${th(L)}-level ${kind} power since the last long rest (${th(from)} level and up: once each per long rest).` };
   }
   // a short rest gives back all tech points if any of the character's tech casting comes from an Engineer, a Scout or a
   // tech archetype
@@ -245,6 +264,38 @@
     return { level: lvl, max, text: max ? `Level ${lvl} is above ${who}'s max ${kind} power level (${max}).`
       : `${who} can't cast leveled ${kind} powers yet (no max ${kind} power level).` };
   }
+
+  // Armor Class from what's worn (audit 5.3, #74). An item marked as armor ({ kind, ac }) and equipped counts: light is
+  // ac + Dex, medium ac + Dex (at most +2), heavy ac; a shield adds its bonus. With no armor, the best of 10 + Dex and
+  // SW5e's Unarmored Defense: Berserker 10 + Dex + Con (a shield still counts), Monk 10 + Dex + Wis or Cha and
+  // Blademaster Specialist 10 + Dex + Str (both with no shield). The sheet's misc AC is added last. Used only when the
+  // sheet's "auto" is on (acAuto); otherwise the typed AC stands, as before.
+  const ARMOR_KINDS = ['light', 'medium', 'heavy', 'shield'];
+  function armorFromItem(it) {   // a SW5e gear entry (the picker's row) -> { kind, ac } or null
+    const kind = String((it && it.accl) || '').toLowerCase(), ac = parseInt(String((it && it.ac) || '').replace(/^\+/, ''), 10);
+    return ARMOR_KINDS.includes(kind) && Number.isFinite(ac) ? { kind, ac } : null;
+  }
+  function armorClass(c) {
+    const m = (k) => abilityMod(c, k), dex = m('dex'), lv = (n) => (c.classes || []).some((k) => String(k.name).toLowerCase() === n);
+    const worn = (c.equipment || []).filter((e) => e && e.equipped && e.armor && ARMOR_KINDS.includes(e.armor.kind));
+    const shields = worn.filter((e) => e.armor.kind === 'shield'), shield = shields.reduce((b, e) => Math.max(b, +e.armor.ac || 0), 0);
+    const bodyAc = (e) => { const a = +e.armor.ac || 0; return e.armor.kind === 'light' ? a + dex : e.armor.kind === 'medium' ? a + Math.min(2, dex) : a; };
+    const body = worn.filter((e) => e.armor.kind !== 'shield').sort((x, y) => bodyAc(y) - bodyAc(x))[0];
+    const misc = +c.acMisc || 0, sh = shields.length ? [`${shields.find((e) => +e.armor.ac === shield).name} +${shield}`] : [];
+    let best;
+    if (body) best = { v: bodyAc(body) + shield, parts: [`${body.name} (${body.armor.kind}) ${bodyAc(body)}`, ...sh] };
+    else {
+      const opts = [{ v: 10 + dex + shield, parts: [`unarmored 10 + Dex ${fmt(dex)}`, ...sh] }];
+      if (lv('berserker')) opts.push({ v: 10 + dex + m('con') + shield, parts: [`Unarmored Defense (Berserker) 10 + Dex + Con`, ...sh] });
+      if (!shields.length && lv('monk')) opts.push({ v: 10 + dex + Math.max(m('wis'), m('cha')), parts: ['Unarmored Defense (Monk) 10 + Dex + Wis or Cha'] });
+      if (!shields.length && (c.classes || []).some((k) => /blademaster/i.test(String(k.archetype || '')) && +k.level >= 3))
+        opts.push({ v: 10 + dex + m('str'), parts: ['Unarmored Defense (Blademaster) 10 + Dex + Str'] });
+      best = opts.sort((x, y) => y.v - x.v)[0];
+    }
+    return { total: best.v + misc, text: [...best.parts, misc ? `misc ${fmt(misc)}` : ''].filter(Boolean).join(' · ') };
+  }
+  // the d20 a weapon crits on: 20, or lower for an attack's own crit range or a "Keen N" weapon (SW5e: the range grows by N)
+  function critFrom(props) { const k = /\bkeen\s*(\d)/i.exec(String(props || '')); return k ? Math.max(15, 20 - +k[1]) : 20; }
 
   function attackBonus(c, a) {
     if (a.bonus !== undefined && a.bonus !== '' && a.bonus !== null && !isNaN(+a.bonus)) return +a.bonus;
@@ -301,6 +352,20 @@
   const forceRecovery = c => {
     const k = (c.classes || []).find(x => x.name === 'Consular' && (+x.level || 0) >= 1);
     return k ? Math.max(1, Math.floor((+k.level || 0) / 2) + Math.max(abilityMod(c, 'wis'), abilityMod(c, 'cha'))) : 0;
+  };
+
+  // ---- ability scores (audit 1.4), from SW5e's Player's Handbook, "Step-By-Step Characters": roll four d6 and keep the
+  // highest three, six times, or use the standard set 15, 14, 13, 12, 10, 8; then place each number on an ability. The
+  // variant "Customizing Ability Scores" (the GM's option) spends 27 points on scores from 8 to 15 at these costs.
+  const STANDARD_ARRAY = [15, 14, 13, 12, 10, 8];
+  const POINT_COST = { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 };
+  const POINT_BUDGET = 27;
+  // what a set of scores ({ str: 8, ... }) costs under point buy; Infinity when one is outside 8-15
+  const pointBuyCost = scores => ABILITIES.reduce((n, a) => n + (POINT_COST[+scores[a.key]] ?? Infinity), 0);
+  // do these scores use each of the six numbers exactly once?
+  const usesEachOnce = (scores, values) => {
+    const got = ABILITIES.map(a => +scores[a.key]).sort((x, y) => x - y), want = (values || []).map(Number).sort((x, y) => x - y);
+    return want.length === 6 && got.every((v, i) => v === want[i]);
   };
 
   function blankCharacter() {
@@ -382,9 +447,10 @@
   const parseSenses = text => cleanSenses(String(text || '').split(/[,;·\n]+/).map(p => { const m = /([a-z]+)\D*(\d+)/i.exec(p); return m && { kind: m[1], range: +m[2] }; }).filter(Boolean));
 
   root.SW5E = { ABILITIES, SKILLS, CLASSES, SPECIES, BACKGROUNDS, DAMAGE_TYPES, WEAPONS, CONDITIONS, REFERENCE,
-    mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo, techOnShortRest, overMaxPowerLevel,
+    mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo, techOnShortRest, overMaxPowerLevel, highCastFrom, highCastUsed, highCastBlocked,
     ARCHETYPE_CASTERS, casterArchetype, castingSources,
-    attackBonus, damageExpr, critExpr, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
+    attackBonus, damageExpr, critExpr, armorClass, armorFromItem, critFrom, ARMOR_KINDS, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
+    STANDARD_ARRAY, POINT_COST, POINT_BUDGET, pointBuyCost, usesEachOnce,
     CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt,
     SENSES, cleanSenses, sensesFromTraits, sensesText, parseSenses };
 })(typeof window !== 'undefined' ? window : globalThis);

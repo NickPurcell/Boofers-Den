@@ -204,6 +204,12 @@
     try { return await act(type, payload); } finally { UI.busy = false; }
   }
   const specOut = (spec) => ({ name: spec.name, bonus: spec.bonus, damage: spec.damage, type: spec.type, melee: spec.melee, range: spec.range, res: spec.res || undefined });
+  // what a reaction can be made with: Return Fire takes a ranged weapon from the sheet; the rest, a melee attack (#67)
+  function reactOptions(re, kind) {
+    if (kind !== 'return-fire') return meleeOf(re);
+    const ch = re.charId && st().characters[re.charId];
+    return ch ? E.attacksOf(ch, R).filter((a) => a.range) : [];
+  }
   // the melee attacks a reacting combatant has: its sheet's, or (for the GM) its stat block's
   function meleeOf(re) {
     if (re.charId) { const ch = st().characters[re.charId]; return ch ? E.attacksOf(ch, R).filter((a) => a.melee > 0) : []; }
@@ -305,14 +311,16 @@
     for (const pr of f.pending || []) {
       const re = w.units[pr.reactor], ag = w.units[pr.against];
       if (!re || !ag) continue;
+      const what = pr.kind === 'riposte' ? `a riposte against <b>${esc(ag.name)}</b>, who missed it (a superiority die, added on a hit)`
+        : pr.kind === 'return-fire' ? `return fire at <b>${esc(ag.name)}</b>, who missed it (a superiority die, added on a hit)` : `an opportunity attack on <b>${esc(ag.name)}</b>, who is leaving its reach`;
       if (pr.mine) {
-        const opts = meleeOf(re);
-        html += `<div class="ct-row ct-react" role="alert"><span>⚡ <b>${esc(re.name)}</b> can make an opportunity attack on <b>${esc(ag.name)}</b>, who is leaving its reach.</span>
-          ${opts.map((a) => `<button class="btn small primary" data-ct="react" data-id="${esc(pr.id)}" data-key="${esc(a.key)}" data-unit="${esc(re.id)}">${esc(a.name)} <b>${esc(sgn(a.bonus))}</b></button>`).join('')}
+        const opts = reactOptions(re, pr.kind);
+        html += `<div class="ct-row ct-react" role="alert"><span>⚡ <b>${esc(re.name)}</b> can make ${what}.</span>
+          ${opts.map((a) => `<button class="btn small primary" data-ct="react" data-id="${esc(pr.id)}" data-key="${esc(a.key)}" data-unit="${esc(re.id)}" data-kind="${esc(pr.kind || 'opportunity')}">${esc(a.name)} <b>${esc(sgn(a.bonus))}</b></button>`).join('')}
           ${opts.length ? '' : `<span class="muted">${UI.npc[re.id] && UI.npc[re.id].loading ? 'Reading the stat block…' : 'No melee attack known.'}</span>`}
           ${gm() && !re.charId ? `<button class="btn small ghost" data-ct="custom" data-unit="${esc(re.id)}">＋ Custom attack</button>` : ''}
           <button class="btn small ghost" data-ct="letgo" data-id="${esc(pr.id)}">Let it go</button></div>`;
-      } else html += `<div class="ct-row ct-react muted">Waiting for ${esc(re.name)}: an opportunity attack on ${esc(ag.name)}, to take or let go.</div>`;
+      } else html += `<div class="ct-row ct-react muted">Waiting for ${esc(re.name)}: ${pr.kind === 'riposte' ? 'a riposte' : pr.kind === 'return-fire' ? 'return fire' : 'an opportunity attack'} against ${esc(ag.name)}, to take or let go.</div>`;
     }
     // the current combatant's conditions (how long each lasts) and what it is concentrating on
     const flags = u ? E.spentOf(w, u.id) : {};
@@ -480,7 +488,7 @@
 
     if (k === 'letgo') return send('fight.react', { id: el.dataset.id, take: false });
     if (k === 'react') {
-      const re = world().units[el.dataset.unit], a = re && meleeOf(re).find((x) => x.key === el.dataset.key);
+      const re = world().units[el.dataset.unit], a = re && reactOptions(re, el.dataset.kind).find((x) => x.key === el.dataset.key);
       if (!a) return;
       return send('fight.react', { id: el.dataset.id, take: true, attack: re.charId ? a.key : specOut(a) });
     }

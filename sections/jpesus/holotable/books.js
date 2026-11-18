@@ -634,7 +634,8 @@
       </div></div>`;
     el.innerHTML = html;
   }
-  function renderShipsSafe() { const el = $('#ships'); if (!el) return; const a = document.activeElement; if (a && el.contains(a) && a.matches('input:not([type=checkbox]), textarea, select')) return; renderShips(el); }
+  // the space map (space.js) redraws with the ships
+  function renderShipsSafe() { if (window.HTSpace) HTSpace.render(); const el = $('#ships'); if (!el) return; const a = document.activeElement; if (a && el.contains(a) && a.matches('input:not([type=checkbox]), textarea, select')) return; renderShips(el); }
   const shipsEl = () => $('#ships');
   if (shipsEl()) {
     shipsEl().addEventListener('change', e => {
