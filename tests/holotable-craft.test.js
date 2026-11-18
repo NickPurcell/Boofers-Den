@@ -74,6 +74,11 @@ test("crafting (11.2): only the owner or the GM; ids and items checked; the fact
   // what the sheet keeps on an item, as "+ from SW5e" adds it: a medpac's use, an enhanced item's +N, armor's speed properties
   assert.deepEqual(Craft.cleanItem({ name: "Medpac", use: { hd: 1, heal: "rm -rf" }, bonus: { hit: 9, dmg: 1 }, armor: { kind: "heavy", ac: 17, str: 15, cumbersome: 1 } }),
     { name: "Medpac", qty: 1, equipped: false, notes: "", armor: { kind: "heavy", ac: 17, str: 15, cumbersome: true }, use: { hd: 1 }, bonus: { dmg: 1 } });
+  // a chassis comes out empty, whatever the request says; a modification keeps the kind it fits (6.4)
+  assert.deepEqual(Craft.cleanItem({ name: "Blaster Chassis (Premium)", rar: "Premium", chassis: { kind: "blaster", mods: [{ name: "Free stuff", bonus: { hit: 5 } }], att0: true } }),
+    { name: "Blaster Chassis (Premium)", qty: 1, equipped: false, notes: "", rar: "Premium", chassis: { kind: "blaster", mods: [] } });
+  assert.deepEqual(Craft.cleanItem({ name: "Barrel Mod", mod: { kind: "blaster" } }).mod, { kind: "blaster" });
+  assert.equal("mod" in Craft.cleanItem({ name: "X", mod: { kind: "toaster" } }), false);
   assert.deepEqual(["expending twice", "one and a half times", "no significant issue", "using only half", "one-quarter"].map(Craft.materialsFactor), [2, 1.5, 1, 0.5, 0.25]);
   assert.equal(Craft.clean({ pending: [{ item: { name: "" } }, "x"] }), undefined);
   // the sheet's suggestions

@@ -231,6 +231,10 @@
     if (st.fx.hardTurn) out.push('Hard turn ready');
     if (st.fx.directed) out.push('Next attack directed (advantage)');
     if (st.fx.interfered) out.push('Interfered with (next roll at disadvantage)');
+    if (st.fx.concealed) out.push('Concealed (unseen until it attacks)');
+    if (st.fx.dogfightVs) out.push('Dogfighting');
+    if (st.fx.runVs) out.push(`Attack run (${st.fx.runFeet} ft)`);
+    if (st.fx.harassedBy) out.push('Harassed (leaving its square costs a critical hit)');
     if (SR.isDisabled(st)) out.push('No actions or reactions');
     else if (st.cond.includes('Shocked')) out.push('No reactions; action or bonus action');
     return out;

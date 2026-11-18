@@ -106,7 +106,8 @@ test("ship conditions: slowed levels, system damage levels, and what they do to 
   assert.deepEqual(SR.cleanStatus({ cond: ["Hungry", "Ionized", "Ionized"], slowed: 9, system: -2, zero: "x" }),
     { cond: ["Ionized"], slowed: 4, system: 0, zero: { s: 0, f: 0, stable: false, destroyed: false }, power: { central: 0, engines: 0, shields: 0, weapons: 0, sensors: 0, comms: 0 },
       sdUsed: 0, hdUsed: 0, tempShield: 0, boost: { tries: 0, engines: 0, weapons: false, shields: false, regen: false },
-      fx: { evade: 0, fly: 0, hardTurn: false, helm: false, interfered: false, directed: false, interferedBy: "" }, recharged: false, astro: 0, startup: 0,
+      fx: { evade: 0, fly: 0, hardTurn: false, helm: false, interfered: false, directed: false, interferedBy: "", dogfightVs: "", dogfightDis: false, dogfightAdv: false,
+        runVs: "", runFeet: 0, concealed: false, harassWeapon: -1, harassedBy: "", harassedWeapon: -1 }, recharged: false, astro: 0, startup: 0,
       course: { rush: 0, careful: false }, pace: "normal" }, "anything else is cleaned away");
   assert.deepEqual(SR.capPoints({ hull: { current: 30, max: 0 }, shield: { current: 5, max: 4 } }).hull.current, 30, "no maximum typed yet: current stays");
 });
@@ -1148,4 +1149,104 @@ test("a crew member whose token's name the GM hides is '???' in ship lines: tech
   const lines = (await p1.state()).chat.map((m) => m.text || "");
   assert.ok(lines.some((t) => /^\?\?\? \(Gunner\) uses Steady Aim: a central power die/.test(t)), "the technique line says ???");
   assert.ok(lines.some((t) => /initiative \(the lowest of its crew: \?\?\? -?\d+\)/.test(t)), "so does the initiative line");
+});
+
+// ---------------------------------------------------------------- the rarer Helm actions (10.11): Dogfight, Harass, Attack Run, Conceal
+test("helm rules: firing from the helm, Dogfight, Attack Run and Conceal change the attack roll", () => {
+  const w = { cat: "primary", range: "800/3200", arc: "forward" };
+  const me = { id: "aaaaaa1", size: "Small" }, foe = { id: "bbbbbb1", size: "Small" }, other = { id: "cccccc1", size: "Small" };
+  const a = { x: 0, y: 0, f: 2 }, ta = { x: 5, y: 0 };
+  assert.deepEqual(SR.fireCheck(me, a, w, foe, ta, { fromHelm: true }).dis, ["firing from the helm"], "a pilot firing a primary weapon");
+  assert.deepEqual(SR.fireCheck(me, a, w, foe, ta, {}).dis, [], "a gunner: no");
+  const dog = Object.assign({}, me, { status: { fx: { dogfightVs: foe.id, dogfightDis: true, dogfightAdv: true } } });
+  assert.deepEqual(SR.fireCheck(dog, a, w, foe, ta, { fromHelm: true }).dis, [], "dogfighting it: forward primary fire without the helm's disadvantage");
+  const back = { x: 5, y: 0, f: 6 };   // facing west, at us
+  assert.deepEqual(SR.fireCheck(foe, back, w, dog, a).dis, ["dogfight"], "its next attack on us: disadvantage");
+  assert.deepEqual(SR.fireCheck(other, back, w, dog, a).adv, ["dogfight"], "another ship's: advantage");
+  const run = Object.assign({}, me, { status: { fx: { runVs: foe.id, runFeet: 300 } } });
+  assert.deepEqual(SR.fireCheck(run, a, w, foe, ta, { fromHelm: true }).dis, [], "an attack run at it: no helm disadvantage");
+  const hid = Object.assign({}, me, { status: { fx: { concealed: true } } });
+  assert.deepEqual([SR.fireCheck(hid, a, w, foe, ta).adv, SR.fireCheck(foe, back, w, hid, a).dis], [["unseen"], ["an unseen target"]]);
+  const st = SR.statusOf(SR.startTurn(Object.assign({}, dog, { status: { fx: { dogfightVs: foe.id, runVs: foe.id, runFeet: 200, harassWeapon: 1, concealed: true } } }), () => ({ total: 0 }), {}).ship).fx;
+  assert.deepEqual([st.dogfightVs, st.runVs, st.harassWeapon, st.concealed], ["", "", -1, true], "a new turn ends the turn's helm work; concealment lasts");
+});
+
+test("Dogfight, Harass, Attack Run and Conceal on the server", async () => {
+  const { gm, p1, p2, party, enemy } = await table();
+  let sh = shipIn(await p1.state(), party);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { abilities: Object.assign({}, sh.abilities, { dex: 30, str: 20, con: 20 }), skills: Object.assign({}, sh.skills, { maneuvering: 2, hide: 2 }),
+    crew: [{ name: "Ione", deployment: "Pilot", pb: 4 }, { name: "Tam", deployment: "Gunner", pb: 4 }],
+    weapons: [{ name: "Laser", dmg: "1d4", type: "energy", range: "800/3200", cat: "primary", arc: "forward", atkMisc: 20 }] }) });
+  const en = shipIn(await gm.state(), enemy);
+  await gm.act("ship.save", { ship: Object.assign({}, en, { hull: { current: 20, max: 500 }, weapons: [{ name: "Gun", dmg: "1d4", type: "energy", range: "800/3200", cat: "primary", atkMisc: 20 }] }) });
+  await gm.act("ship.points", { id: enemy, what: "hull", current: 500 });
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 5, f: 2 });
+  await gm.act("space.place", { id: enemy, x: 6, y: 5, f: 6 });
+  await gm.act("space.init", {});
+  if ((await gm.state()).space.turnId !== party) await gm.act("space.next", {});
+  // firing from the helm: the pilot's shot carries the disadvantage, the gunner's doesn't
+  await p1.act("space.fire", { id: party, target: enemy, weapon: 0, crew: 0 });
+  let atk = (await p1.state()).chat.filter((m) => m.roll && m.roll.kind === "attack").pop();
+  assert.match(atk.roll.label, /firing from the helm/);
+  await p1.act("space.fire", { id: party, target: enemy, weapon: 0, crew: 1 });
+  atk = (await p1.state()).chat.filter((m) => m.roll && m.roll.kind === "attack").pop();
+  assert.doesNotMatch(atk.roll.label, /firing from the helm/);
+  // Dogfight (a Helm action): then no second Helm action this turn
+  let r = await p1.act("space.dogfight", { id: party, target: enemy });
+  assert.equal(r.code, 200);
+  assert.equal((await p1.act("space.conceal", { id: party })).code, 400, "one Helm action a turn");
+  if (r.data.ok) {
+    sh = shipIn(await gm.state(), party);
+    assert.deepEqual([sh.status.fx.dogfightVs, sh.status.fx.dogfightDis], [enemy, true]);
+    await p1.act("space.next", {});   // the enemy's turn: its attack on the dogfighting party ship has disadvantage
+    await gm.act("space.fire", { id: enemy, target: party, weapon: 0 });
+    const g = (await gm.state()).chat.filter((m) => m.roll && m.roll.kind === "attack").pop();
+    assert.match(g.roll.label, /dogfight/);
+    assert.equal(shipIn(await gm.state(), party).status.fx.dogfightDis, false, "used up");
+    await gm.act("space.next", {});
+  } else await p1.act("space.next", {});   // a failed Dogfight still spent the Helm action
+  while ((await gm.state()).space.turnId !== party) await gm.act("space.next", {});
+  // Harass with the forward laser: it can't fire this turn; the enemy breaking away takes a critical
+  r = await p1.act("space.harass", { id: party, target: enemy, weapon: 0 });
+  assert.equal(r.code, 200);
+  assert.match((await p1.act("space.fire", { id: party, target: enemy, weapon: 0, crew: 1 })).data.error || "", /used to harass/);
+  if (r.data.ok) {
+    await p1.act("space.next", {});
+    const hull0 = shipIn(await gm.state(), enemy).hull.current;
+    await gm.act("space.place", { id: enemy, x: 12, y: 5, f: 6 });
+    assert.ok((await gm.state()).chat.some((m) => /breaks away from Dawn Skiff's harassment/.test(m.text || "")));
+    assert.ok(shipIn(await gm.state(), enemy).hull.current < hull0, "the critical lands");
+    assert.ok(!JSON.stringify((await p2.state()).chat).includes("Black Lance"), "and the enemy stays ??? to the players");
+    await gm.act("space.next", {});
+  } else await p1.act("space.next", {});   // a failed Harass still spent this turn's Helm action
+  while ((await gm.state()).space.turnId !== party) await gm.act("space.next", {});
+  // Attack Run: only after 150 ft this turn
+  assert.match((await p1.act("space.run", { id: party, target: enemy })).data.error || "", /150 ft or more/);
+  await p1.act("space.place", { id: party, x: 2, y: 2, f: 2 });   // 150 ft north: sideways, away from the target
+  assert.match((await p1.act("space.run", { id: party, target: enemy })).data.error || "", /moved 0 ft toward \?\?\? this turn/, "movement that doesn't close on the target doesn't count");
+  await p1.act("space.place", { id: party, x: 2, y: 5, f: 2 });   // back: closes 50 ft
+  await p1.act("space.place", { id: party, x: 5, y: 5, f: 2 });   // 150 ft east
+  r = await p1.act("space.run", { id: party, target: enemy });
+  assert.equal(r.code, 200);
+  sh = shipIn(await gm.state(), party);
+  assert.deepEqual([sh.status.fx.runVs, sh.status.fx.runFeet >= 150], [enemy, true]);
+  await p1.act("space.fire", { id: party, target: enemy, weapon: 0, crew: 0 });
+  atk = (await p1.state()).chat.filter((m) => m.roll && m.roll.kind === "attack").pop();
+  assert.doesNotMatch(atk.roll.label, /firing from the helm/, "the run takes the helm's disadvantage off");
+  assert.equal(shipIn(await gm.state(), party).status.fx.runVs, "", "and is spent");
+  // Conceal on the next turn: a success hides the ship until it attacks
+  await p1.act("space.next", {}); while ((await gm.state()).space.turnId !== party) await gm.act("space.next", {});
+  r = await p1.act("space.conceal", { id: party });
+  assert.equal(r.code, 200);
+  const hideLine = (await gm.state()).chat.find((m) => /Dawn Skiff's Hide \d+ against the opposing side's best passive Scan, \d+/.test(m.text || ""));
+  assert.ok(hideLine && hideLine.to[0] === "@gm" && !hideLine.fromId, "the numbers are the GM's");
+  assert.ok(!(await p1.state()).chat.some((m) => /passive Scan|spotted \(/.test(m.text || "")), "a player sees no passive Scan");
+  if (r.data.ok) {
+    assert.equal(shipIn(await gm.state(), party).status.fx.concealed, true);
+    await p1.act("space.fire", { id: party, target: enemy, weapon: 0, crew: 1 });
+    assert.equal(shipIn(await gm.state(), party).status.fx.concealed, false, "firing gives it away");
+  }
+  for (const bad of [{ target: "__proto__" }, { target: party }, { target: "constructor" }]) assert.equal((await p1.act("space.dogfight", Object.assign({ id: party }, bad))).code >= 400, true);
+  assert.equal((await p1.act("space.harass", { id: party, target: enemy, weapon: "__proto__" })).code, 400);
 });

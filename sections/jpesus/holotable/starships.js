@@ -83,7 +83,13 @@
       // until the start of the next; 1: through the next turn); helm: a Helm action taken this turn
       fx: { evade: clamp(int(f.evade), 0, 2), fly: clamp(int(f.fly), 0, 2), hardTurn: f.hardTurn === true, helm: f.helm === true,
         interfered: f.interfered === true, directed: f.directed === true,
-        interferedBy: typeof f.interferedBy === 'string' && /^[a-z0-9]{6,20}$/.test(f.interferedBy) ? f.interferedBy : '' },   // the ship whose next turn ends it
+        interferedBy: typeof f.interferedBy === 'string' && /^[a-z0-9]{6,20}$/.test(f.interferedBy) ? f.interferedBy : '',   // the ship whose next turn ends it
+        // Dogfight (with dogfightVs): its next attack against us at disadvantage (dis), a different ship's next at advantage (adv)
+        dogfightVs: typeof f.dogfightVs === 'string' && /^[a-z0-9]{6,20}$/.test(f.dogfightVs) ? f.dogfightVs : '', dogfightDis: f.dogfightDis === true, dogfightAdv: f.dogfightAdv === true,
+        runVs: typeof f.runVs === 'string' && /^[a-z0-9]{6,20}$/.test(f.runVs) ? f.runVs : '', runFeet: clamp(int(f.runFeet), 0, 100000),   // an Attack Run at that ship, after this many feet
+        concealed: f.concealed === true,   // Conceal succeeded: unseen until it attacks
+        harassWeapon: clamp(int(f.harassWeapon, -1), -1, 29),   // the weapon this ship harassed with: it can't fire this turn
+        harassedBy: typeof f.harassedBy === 'string' && /^[a-z0-9]{6,20}$/.test(f.harassedBy) ? f.harassedBy : '', harassedWeapon: clamp(int(f.harassedWeapon, -1), -1, 29) },   // leaving its square costs a critical hit
       recharged: st.recharged === true,   // a recharge just finished: the crew may spend hull dice
       astro: clamp(int(st.astro), 0, 10), startup: clamp(int(st.startup), 0, 10),   // astrogation equations, start-up procedures done
       // the course choice the equations were worked for (rushes, careful): changing it restarts them (SotG ch. 8)
@@ -387,7 +393,8 @@
     if (isLost(st)) return { ship: s, log: [`${name} is lost.`] };
     st.tempShield = 0; st.boost = { tries: 0, engines: Math.max(0, int(st.boost.engines) - 1), weapons: false, shields: false, regen: false };
     // Direct lasts until the start of the directing ship's next turn (Interfere ends at the interfering ship's: the space map)
-    st.fx = Object.assign(st.fx, { evade: Math.max(0, st.fx.evade - 1), fly: Math.max(0, st.fx.fly - 1), hardTurn: false, helm: false, directed: false });
+    st.fx = Object.assign(st.fx, { evade: Math.max(0, st.fx.evade - 1), fly: Math.max(0, st.fx.fly - 1), hardTurn: false, helm: false, directed: false,
+      dogfightVs: '', dogfightDis: false, dogfightAdv: false, runVs: '', runFeet: 0, harassWeapon: -1 });   // this turn's helm work ends
     st.recharged = false;
     // power
     const rx = own(REACTORS, reactorOf(s));
@@ -562,7 +569,7 @@
   // Can this weapon fire at that ship from here, and how? a / ta: the two tokens (x, y, f); returns
   // { ok, why, feet, arc, kind: 'attack' | 'save', adv: [reasons], dis: [reasons] } where adv / dis are for the attack
   // roll, or (kind 'save') for the target's saving throw.
-  function fireCheck(ship, a, w, target, ta) {
+  function fireCheck(ship, a, w, target, ta, opts = {}) {
     const sa = squaresOf(ship), st = squaresOf(target), feet = shipGap(a, sa, ta, st), arc = arcOf(a, sa, ta, st), cat = catOf(w);
     const big = sizeRank(ship) >= 4;   // Huge or larger: its primary weapons (point-defense) call for a save, like tertiary ones
     const out = { ok: true, why: '', feet, arc, kind: cat === 'tertiary' || cat === 'quaternary' || (cat === 'primary' && big) ? 'save' : 'attack', adv: [], dis: [] };
@@ -589,6 +596,15 @@
       if (feet <= 50) out.dis.push('within 50 ft');
       const mine = rollEffects(ship, 'attack'), theirs = rollEffects(target, 'against');
       out.adv.push(...mine.adv, ...theirs.adv); out.dis.push(...mine.dis, ...theirs.dis);
+      // unseen (Conceal), Dogfight, and firing from the helm (SotG ch. 9)
+      const me = statusOf(ship).fx, them = statusOf(target).fx;
+      if (me.concealed) out.adv.push('unseen');
+      if (them.concealed) out.dis.push('an unseen target');
+      if (them.dogfightVs) { if (them.dogfightVs === ship.id) { if (them.dogfightDis) out.dis.push('dogfight'); } else if (them.dogfightAdv) out.adv.push('dogfight'); }
+      if (opts.fromHelm && (cat === 'primary' || cat === 'secondary')) {
+        const free = arc === 'forward' && ((me.dogfightVs === target.id && cat === 'primary') || me.runVs === target.id);
+        if (!free) out.dis.push('firing from the helm');
+      }
       const con = weaponProp(w, 'constitution');
       if (typeof con === 'number' && int((ship.abilities || {}).con, 10) < con) out.dis.push(`Constitution under ${con}`);
     }
