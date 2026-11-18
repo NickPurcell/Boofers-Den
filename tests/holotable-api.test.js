@@ -464,6 +464,13 @@ test("downtime activities (audit 11.1): the player asks, the GM approves first, 
   await db.del(S.K.sw5e("downtime"));
 });
 
+test("a power keeps its prerequisite on the sheet (audit 2.11)", async () => {
+  const { p1 } = await table();
+  const id = (await p1.act("char.save", { char: { name: "Ves", powers: [{ name: "Crush", level: 4, type: "force", pre: "Choke" }, { name: "Choke", level: 3, type: "force", pre: "  " }] } })).data.id;
+  const pw = (await p1.poll()).data.state.characters[id].powers;
+  assert.deepEqual([pw[0].pre, pw[1].pre], ["Choke", undefined]);
+});
+
 test("level up: the GM can level an absent player's character, and cancel a grant", async () => {
   const { gm, p1 } = await table();
   const kira = (await p1.act("char.save", { char: { name: "Kira", classes: [{ name: "Consular", level: 1 }], abilities: { con: 10 }, hp: { max: 6, current: 6 } } })).data.id;

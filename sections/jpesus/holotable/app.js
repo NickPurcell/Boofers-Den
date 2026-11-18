@@ -907,7 +907,7 @@
           <td style="width:90px">${inp(`powers.${i}.type`, p.type || 'force', { ro, type: 'select', options: ['force', 'tech'] })}</td>
           <td style="width:110px">${p.type === 'tech' ? '' : inp(`powers.${i}.alignment`, p.alignment || 'universal', { ro, type: 'select', options: ['universal', 'light', 'dark'] })}</td>
           <td>${inp(`powers.${i}.notes`, p.notes || '', { ro, ph: 'range, duration, effect…' })}</td>
-          <td style="width:60px">${(over => `<button class="btn small ${over ? 'ghost' : 'amber'}" data-act="cast" data-i="${i}"${over ? ` title="${esc(over.text)}"` : ''}>Cast</button>`)(R.overMaxPowerLevel(ch, p, ci))}</td>
+          <td style="width:60px">${(over => `<button class="btn small ${over ? 'ghost' : 'amber'}" data-act="cast" data-i="${i}"${over ? ` title="${esc(over.text)}"` : ''}>Cast</button>`)(R.overMaxPowerLevel(ch, p, ci) || R.powerPrereqUnmet(ch, powerPre(p)))}</td>
           <td style="white-space:nowrap">${!ro ? `<button class="btn tiny ghost" data-act="power-desc" data-i="${i}" title="Write or edit this power's description">✎</button><button class="btn tiny ghost" data-act="del" data-list="powers" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">No powers.</td></tr>'}</tbody></table>
         <p class="muted" style="font-size:12px;margin:6px 0 0">Hover (or tap) a power for its details. Casting costs 1 + power level points (level 0 at-wills are free).</p></div>`;
     }
@@ -1357,6 +1357,8 @@
   // "+ force power" / "+ tech power": the whole SW5e list (served by our API, cached), filtered by level
   // and, for force powers, by alignment checkboxes. Picking one adds it with the right level, type and alignment.
   let POWER_LIST = null;
+  // a sheet power with its prerequisite: kept on it since 2.11, or (older sheets) from SW5e's list once it has loaded
+  const powerPre = p => (p.pre || !POWER_LIST ? p : Object.assign({}, p, { pre: ((POWER_LIST.find(x => x.n.toLowerCase() === String(p.name).toLowerCase() && x.t === (p.type === 'tech' ? 'tech' : 'force')) || {}).pre) || '' }));
   async function powerList() {
     if (POWER_LIST) return POWER_LIST;
     const r = await fetch(`${API}?op=powers`, { credentials: 'same-origin' });
@@ -1379,12 +1381,16 @@
     return ` · level ${from}${maxL > from ? '+' : ''}: once each per long rest${used.length ? ` (cast: ${used.join(', ')})` : ''}`;
   };
   const powerData = p => { const lib = (S.st.sheetCast || {}).lib || (S.st.fight || {}).lib || {}, k = String((p && p.name) || '').trim().toLowerCase(); return Object.prototype.hasOwnProperty.call(lib, k) ? lib[k] : null; };
-  function castPower(ch, i) {
+  async function castPower(ch, i) {
     const p = ch.powers[i]; if (!p) return;
+    if (!p.pre && !POWER_LIST && S.st.sw5eBooks !== false) await powerList().catch(() => {});   // an older sheet: its prerequisite from SW5e's list
     const base = +p.level || 0, k = p.type === 'tech' ? 'tech' : 'force', ci = R.casterInfo(ch);
     const maxL = k === 'tech' ? ci.techMaxLevel : ci.forceMaxLevel;
     const over = R.overMaxPowerLevel(ch, p, ci);   // audit 4.5: a player is refused; the GM is asked when casting
     if (over && !isGM()) return toast(over.text, true);
+    const need = R.powerPrereqUnmet(ch, powerPre(p));   // audit 2.11: its prerequisite must stay known to cast it
+    if (need && !isGM()) return toast(need.text, true);
+    if (need && !confirm(`${need.text}\n\nCast it anyway?`)) return;
     const data = powerData(p), F = S.st.fight;
     const entry = F && F.on && F.active ? (S.st.initiative.entries || []).find(e => e.charId === ch.id) : null;
     const top = base ? Math.min(9, isGM() ? 9 : Math.max(base, maxL)) : 0;
@@ -1466,7 +1472,7 @@
               <span class="pp-lvl">${p.l ? 'Level ' + p.l : 'At-will'}</span>${force ? `<span class="pp-al pp-${esc(p.a)}">${esc(ALIGN[p.a] || '')}</span>` : ''}
               ${p.c ? '<span class="pp-tag">Concentration</span>' : ''}${p.src === 'EC' ? '<span class="pp-tag" title="SW5e Expanded Content">EC</span>' : ''}
               ${p.l > maxLvl ? `<span class="pp-tag pp-high" title="${maxLvl ? `Above the highest level this character can cast right now (${maxLvl})` : `This character can't cast leveled ${force ? 'force' : 'tech'} powers yet`}">above your level</span>` : ''}
-              <div class="pp-meta">${esc(p.ct)} · Range ${esc(p.r)} · ${esc(p.d)}${p.pre ? ` · Requires ${esc(p.pre)}` : ''}</div>
+              <div class="pp-meta">${esc(p.ct)} · Range ${esc(p.r)} · ${esc(p.d)}${p.pre ? ` · Requires ${esc(p.pre)} ${kn.has(p.pre.toLowerCase()) ? '<span class="up">✓</span>' : '<span class="error">(not known yet)</span>'}` : ''}</div>
               <details class="pp-desc"><summary>Description</summary><div>${md(p.desc)}${p.hl ? `<p><b>At higher levels.</b> ${md(p.hl)}</p>` : ''}</div></details></div>
             <button class="btn small ${has ? 'ghost' : 'primary'}" data-pp="add" ${has ? 'disabled' : ''}>${has ? '✓ Known' : 'Add'}</button></div>`;
         }).join('') + (rows.length > F.limit ? `<button class="btn small" data-pp="more" style="width:100%">Show ${rows.length - F.limit} more</button>` : '')
@@ -1500,9 +1506,13 @@
           // audit 4.5: learning a power above the max power level asks first (players and the GM alike)
           const over = R.overMaxPowerLevel(ch() || {}, { level: p.l, type: force ? 'force' : 'tech' }, ci());
           if (over && !confirm(`${over.text} It can't be cast until then.\n\nAdd it anyway?`)) return;
+          // audit 2.11: its prerequisite power must be known first (one picked in the same level-up counts); the GM may allow it
+          const need = R.powerPrereqUnmet(ch() || {}, { name: p.n, pre: p.pre }, opts.taken ? opts.taken() : []);
+          if (need && !isGM()) return toast(need.text, true);
+          if (need && !confirm(`${need.text}\n\nAdd it anyway?`)) return;
           const notes = [p.ct, p.r && 'Range ' + p.r, p.d, p.c && !/concentration/i.test(p.d) ? 'Concentration' : ''].filter(Boolean).join(' · ');
           const desc = p.desc + (p.hl ? '\n\nAt higher levels. ' + p.hl : '');
-          const pw = { name: p.n, level: p.l, type: force ? 'force' : 'tech', alignment: force ? p.a : 'universal', notes: notes.slice(0, 300), description: desc.slice(0, 4000) };
+          const pw = { name: p.n, level: p.l, type: force ? 'force' : 'tech', alignment: force ? p.a : 'universal', notes: notes.slice(0, 300), description: desc.slice(0, 4000), ...(p.pre ? { pre: p.pre } : {}) };
           if (opts.onAdd) opts.onAdd(pw); else mutate(c => c.powers.push(pw));
           b.textContent = '✓ Added'; b.disabled = true; b.classList.replace('primary', 'ghost');
           toast(`Added ${p.n}`);

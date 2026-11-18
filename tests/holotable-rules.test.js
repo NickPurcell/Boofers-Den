@@ -338,3 +338,13 @@ test("Wretched Hives' proficiency tiers (5.7), tool checks (6.10) and the tech f
   c.equipment.push({ name: "Wristpad" });
   assert.equal(R.hasTechFocus(c), true);
 });
+
+test("power prerequisites (audit 2.11): the named power must be known first, and stay known to cast", () => {
+  const ch = { powers: [{ name: "Choke" }, { name: "Slow" }] };
+  assert.equal(R.powerPrereqUnmet(ch, { name: "Crush", pre: "Choke" }), null);
+  assert.equal(R.powerPrereqUnmet(ch, { name: "Crush", pre: "choke" }), null, "any case");
+  assert.deepEqual(R.powerPrereqUnmet(ch, { name: "Destroy Droid", pre: "Disable Droid" }), { pre: "Disable Droid", text: "Destroy Droid needs Disable Droid known first." });
+  assert.equal(R.powerPrereqUnmet(ch, { name: "Destroy Droid", pre: "Disable Droid" }, ["Disable Droid"]), null, "picked in the same level-up");
+  assert.equal(R.powerPrereqUnmet(ch, { name: "Force Push" }), null, "no prerequisite");
+  assert.equal(R.powerPrereqUnmet({}, { name: "Crush", pre: "Choke" }).pre, "Choke");
+});
