@@ -775,8 +775,9 @@ test("a GM ship whose token is off the players' map: its Fire, Ram and Interfere
   const { gm, p1, p2, party, enemy } = await table();
   const third = (await gm.act("ship.save", { ship: { name: "Grey Wake", hidden: true, hull: { current: 20, max: 20 } } })).data.id;
   let en = shipIn(await gm.state(), enemy);
-  await gm.act("ship.save", { ship: Object.assign({}, en, { abilities: Object.assign({}, en.abilities, { str: 30, cha: 30 }),
+  await gm.act("ship.save", { ship: Object.assign({}, en, { hull: { current: 20, max: 500 }, abilities: Object.assign({}, en.abilities, { str: 30, cha: 30 }),
     weapons: [{ name: "Turbolaser", dmg: "1d6", type: "energy", range: "800/3200", cat: "primary", atkMisc: 20 }, { name: "Torpedo", dmg: "1d6", type: "kinetic", range: "1000/4000", cat: "tertiary" }] }) });
+  await gm.act("ship.points", { id: enemy, what: "hull", current: 500 });   // its own Ram can't knock it out mid-test
   await gm.act("space.on", { on: true });
   await p1.act("space.place", { id: party, x: 2, y: 2, f: 2 });
   await gm.act("space.place", { id: enemy, x: 3, y: 2, f: 6, hidden: true });   // off the players' map: an ambush
