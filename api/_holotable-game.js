@@ -147,7 +147,7 @@ function cleanShip(sh, chars) {
     saves: Object.fromEntries(ABILS.map((a) => [a, !!(sh.saves || {})[a]])),
     skills: Object.fromEntries(SHIP_SKILLS.map((k) => [k, [0, 1, 2].includes(+(sh.skills || {})[k]) ? +(sh.skills || {})[k] : 0])),
     crew: list(sh.crew, 20, (c) => ({ charId: chars[c.charId] ? c.charId : null, name: s(c.name, 60), deployment: DEPLOYMENTS.includes(c.deployment) ? c.deployment : "",
-      rank: clamp(int(c.rank), 0, 5), pb: clamp(int(c.pb, 2), 0, 10) })),
+      rank: clamp(int(c.rank), 0, 5), pb: clamp(int(c.pb, 2), 0, 10), ...Ships.cleanCrew(c) })),
     weapons: list(sh.weapons, 30, (w) => ({ name: s(w.name, 80), atkMisc: clamp(int(w.atkMisc), -20, 20), dmg: s(w.dmg, 40), type: s(w.type, 30),
       range: s(w.range, 40), props: s(w.props, 300), ...Ships.cleanWeapon(w) })),
     equipment: list(sh.equipment, 60, (e) => ({ name: s(e.name, 80), notes: s(e.notes, 300) })),
@@ -308,7 +308,9 @@ function viewFor(camp, cid, gm, online) {
     ...(camp.clock ? { clock: camp.clock } : {}),   // in-game time (9.18)
     ...(camp.sheetLock ? { sheetLock: true } : {}), ...(camp.statBlocksHidden ? { statBlocksHidden: true } : {}),   // the GM's table rules (12.6, 9.17)
     audio: camp.audio ? Object.assign({}, camp.audio, { now: now() }) : null,   // "now" lets each screen line its clock up
-    ships: (camp.ships || []).filter((x) => gm || !x.hidden),
+    // a ship's crew row keeps its character's name: a player reads "???" while the GM hides that token's name
+    ships: (camp.ships || []).filter((x) => gm || !x.hidden).map((x) => (gm || !Array.isArray(x.crew) ? x
+      : Object.assign({}, x, { crew: x.crew.map((c) => (c && c.charId && shownName(camp, { charId: c.charId, name: c.name }) === "???" ? Object.assign({}, c, { name: "???" }) : c)) }))),
     ...(camp.space ? { space: Space.view(camp, gm) } : {}),   // the space map (#146)
     sceneFx: fxView,
     ...(gm && (camp.npcs || []).length ? { npcs: camp.npcs } : {}),   // the GM's NPC templates (9.9), the GM's only
@@ -554,8 +556,8 @@ function applyAction(camp, cid, gm, type, p) {
   if (Story.handles(type)) return Story.apply(camp, cid, gm, type, p, { addChat, shownName, Forbidden, Invalid });
   if (type.startsWith("ask.")) return Ask.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
   if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, fightHelpers());
-  if (Ships.handles(type)) return Ships.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
-  if (Space.handles(type)) return Space.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, applyAction, rid, Forbidden, Invalid });
+  if (Ships.handles(type)) return Ships.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, shownName, Forbidden, Invalid });
+  if (Space.handles(type)) return Space.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, shownName, applyAction, rid, Forbidden, Invalid });
   if (Downtime.handles(type)) return Downtime.apply(camp, cid, gm, type, p, { addChat, shownName, applyAction, rollDice, Forbidden, Invalid });
 
   switch (type) {
@@ -1245,7 +1247,7 @@ function applyAction(camp, cid, gm, type, p) {
       if (old) need(gm || !old.hidden, "That ship is the GM's.");
       else if (camp.ships.length >= MAX_SHIPS) throw new Invalid(`A table can have up to ${MAX_SHIPS} ships.`);
       const sh = cleanShip(Object.assign({}, p.ship, { id: old ? old.id : rid(), owner: old ? old.owner : cid }), chars);
-      Ships.keepStatus(sh, old);   // the fight state (conditions, destruction saves) is the server's; points stay inside the maximums
+      Ships.keepStatus(sh, old, gm);   // the fight state (conditions, destruction saves) is the server's; points stay inside the maximums
       if (!gm) sh.hidden = old ? old.hidden : false;
       if (old) camp.ships[i] = sh; else camp.ships.push(sh);
       return { id: sh.id };

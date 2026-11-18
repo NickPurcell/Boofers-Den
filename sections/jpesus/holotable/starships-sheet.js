@@ -105,6 +105,31 @@
         <tr><td>Hired crew</td><td>salaried: 10 cr a day each and a 300 cr hiring bonus; or a share: 60% of the profits split among them</td></tr>
       </tbody></table></details>`;
   }
+  // a crew row's deployment: the features of each rank they have, and the techniques they know (rank + 1), each with
+  // "use": a power die from its system (or central storage), or a mechanic's tech die
+  const DEP = { list: null, loading: false };
+  function deployments() {
+    if (DEP.list || DEP.loading || !window.HTB) return DEP.list;
+    DEP.loading = true;
+    window.HTB.list('deployments').then((l) => { DEP.list = {}; for (const d of l || []) DEP.list[d.n] = Object.assign(SR.deploymentInfo(d.md), { features: d.features || [] }); window.HTB.renderShipsSafe(); })
+      .catch(() => { DEP.loading = false; });
+    return null;
+  }
+  function crewRow(s, c, i, ro) {
+    if (!c.deployment || !(+c.rank > 0)) return '';
+    const all = deployments();
+    if (!all) return `<tr class="crew-dep"><td colspan="5" class="muted" style="font-size:12px">Loading ${esc(c.deployment)} features…</td></tr>`;
+    const info = all[c.deployment]; if (!info) return '';
+    const featMd = (n) => ((info.features || []).find((f) => f.n === n) || {}).md || '';
+    const ranks = info.ranks.filter(([r]) => r <= +c.rank).map(([r, fs]) => `<span class="muted">${r}:</span> ${fs.map((f) => `<span class="chip" title="${esc(featMd(f).slice(0, 600))}">${esc(f)}</span>`).join('')}`).join(' ');
+    const known = (c.known || []).filter((k) => info.techniques.some((t) => t.name === k)), cap = SR.techniquesKnown(c.rank), st = SR.statusOf(s);
+    const mech = c.deployment === 'Mechanic';
+    const tech = known.map((k) => { const t = info.techniques.find((x) => x.name === k), loc = t.loc;
+      const pool = loc && st.power[loc] > 0 ? loc : 'central', ok = mech || st.power[pool] > 0;
+      return `<span class="chip" title="${esc(t.md.slice(0, 600))}">${esc(k)}${loc ? ` <span class="muted">(${loc})</span>` : ''}${ro ? '' : ` <button class="btn tiny amber" data-sx="tech" data-ci="${i}" data-name="${esc(k)}" data-pool="${mech ? '' : pool}" ${ok ? '' : 'disabled'} title="${mech ? `Roll the tech die (d${SR.techDie(c.rank)}); it isn't spent` : `Spend a power die from ${pool}`}">use</button><button class="btn tiny ghost" data-sx="forget" data-ci="${i}" data-name="${esc(k)}" title="Forget it">✕</button>`}</span>`; }).join('');
+    const learn = !ro && known.length < cap ? `<select data-learn="${i}" style="width:auto;display:inline-block;font-size:12px;padding:1px 4px"><option value="">＋ ${mech ? 'technique' : 'technique'} (${known.length} of ${cap})</option>${info.techniques.filter((t) => !known.includes(t.name)).map((t) => `<option>${esc(t.name)}</option>`).join('')}</select>` : '';
+    return `<tr class="crew-dep"><td colspan="5" style="font-size:12px;padding-top:0">${ranks}<div style="margin-top:3px">${tech || '<span class="muted">No techniques picked.</span>'} ${learn}${mech ? ` <span class="muted">tech die d${SR.techDie(c.rank)}</span>` : ''}</div></td></tr>`;
+  }
   const buildOpen = {};   // per ship, whether the panel below is open (the sheet is redrawn on every change)
   document.addEventListener('toggle', (e) => { const d = e.target; if (d && d.classList && d.classList.contains('ship-build')) buildOpen[d.dataset.sid] = d.open; }, true);
   // what the ship's size, tier and role give it (SotG chapters 1, 3 and 5), next to what the sheet says, with Apply
@@ -234,6 +259,8 @@
     if (a === 'astro') { const t = TV[id] || {}; await H.act('ship.astro', { id, crew: (ctxOf[id] || {}).as || 0, rush: t.rush, careful: t.careful, age: t.age }); return true; }
     if (a === 'startup') { await H.act('ship.startup', { id, crew: (ctxOf[id] || {}).as || 0, crewSize: (TV[id] || {}).crew }); return true; }
     if (a === 'jump') { const t = TV[id] || {}; if (confirm(`Jump to hyperspace, ${t.from} to ${t.to}?`)) await H.act('ship.jump', { id, from: t.from, to: t.to, rush: t.rush, careful: t.careful }); return true; }
+    if (a === 'tech') { await H.act('ship.technique', { id, crew: +b.dataset.ci, name: b.dataset.name, pool: b.dataset.pool }); return true; }
+    if (a === 'forget') { const x = JSON.parse(JSON.stringify(s)), c = x.crew[+b.dataset.ci]; if (c) { c.known = (c.known || []).filter((k) => k !== b.dataset.name); await H.act('ship.save', { ship: x }); } return true; }
     if (a === 'install') { await H.act('ship.install', { id, mod: +b.dataset.i, crew: (ctxOf[id] || {}).as || 0 }); return true; }
     if (a === 'recharge') { await H.act('ship.recharge', { id }); return true; }
     if (a === 'hulldie') { await H.act('ship.hulldie', { id, crew: (ctxOf[id] || {}).as || 0 }); return true; }
@@ -249,12 +276,17 @@
   // the slowed and system damage pickers; returns true when it handled the change
   async function change(e, s) {
     const t = e.target, tv = t.dataset && t.dataset.tv;
+    if (t.dataset && t.dataset.learn !== undefined && s) {   // learn a technique
+      const x = JSON.parse(JSON.stringify(s)), c = x.crew[+t.dataset.learn];
+      if (c && t.value) { c.known = [...new Set([...(c.known || []), t.value])]; await H.act('ship.save', { ship: x }); }
+      return true;
+    }
     if (tv && s) { const o = TV[s.id] = TV[s.id] || {}; o[tv] = t.type === 'checkbox' ? t.checked : tv === 'rush' ? +t.value || 0 : t.value; t.blur(); window.HTB.renderShipsSafe(); return true; }
     const k = t.dataset && t.dataset.sxc; if (!k || !s) return false;
     await H.act('ship.condition', { id: s.id, name: k, level: +t.value || 0 });
     return true;
   }
 
-  window.HTShipSheet = { block, effects, rollOpts, click, change, modsHead, modRow };
+  window.HTShipSheet = { block, effects, rollOpts, click, change, modsHead, modRow, crewRow };
   if (window.HTB && H.S.st) window.HTB.renderShipsSafe();   // the ships tab may have been drawn before this file loaded
 })();

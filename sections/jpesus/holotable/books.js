@@ -941,7 +941,7 @@
             <td>${shipInp(`crew.${i}.deployment`, c.deployment, { ro, type: 'select', options: ['', ...DEPLOY] })} ${c.deployment ? `<button class="btn tiny ghost" data-sa="deploy-info" data-dep="${esc(c.deployment)}" title="Deployment features">ⓘ</button>` : ''}</td>
             <td>${shipInp(`crew.${i}.rank`, n0(c.rank), { ro, type: 'select', options: [0, 1, 2, 3, 4, 5] })}</td>
             <td>${c.charId ? R.fmt(crewPb(s, c)) : shipInp(`crew.${i}.pb`, n0(c.pb) || 2, { ro, w: '50px' })}</td>
-            <td>${!ro ? `<button class="btn tiny ghost" data-sa="del" data-list="crew" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">No crew yet.</td></tr>'}</tbody></table>
+            <td>${!ro ? `<button class="btn tiny ghost" data-sa="del" data-list="crew" data-i="${i}">✕</button>` : ''}</td></tr>${window.HTShipSheet ? HTShipSheet.crewRow(s, c, i, ro) : ''}`).join('') || '<tr><td colspan="5" class="muted">No crew yet.</td></tr>'}</tbody></table>
           ${!ro ? '<button class="btn tiny" data-sa="add-crew">＋ crew member</button>' : ''}
           <p class="muted" style="font-size:12px;margin:6px 0 0">Ship rolls add the acting crew member's proficiency bonus when the ship is proficiently equipped.</p></div>
         <div class="box"><h4>Ship abilities <span class="spacer"></span><span class="muted" style="text-transform:none;letter-spacing:0">Rolling as</span>
@@ -982,7 +982,7 @@
     shipsEl().addEventListener('change', e => {
       const t = e.target;
       if (t.dataset.saChange === 'as') { SH.as = +t.value || 0; return renderShips(shipsEl()); }
-      if ((t.dataset.sxc || t.dataset.tv) && window.HTShipSheet) return HTShipSheet.change(e, ships().find(x => x.id === SH.sel));
+      if ((t.dataset.sxc || t.dataset.tv || t.dataset.learn) && window.HTShipSheet) return HTShipSheet.change(e, ships().find(x => x.id === SH.sel));
       const path = t.dataset.sp; if (!path) return;
       const s = ships().find(x => x.id === SH.sel); if (!canEditShip(s)) return;
       if (path === 'hull.current' || path === 'shield.current') return H.act('ship.points', { id: s.id, what: path.split('.')[0], current: +t.value || 0 });   // the server's, like damage
