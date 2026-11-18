@@ -643,6 +643,7 @@
       if (t.dataset.sxc && window.HTShipSheet) return HTShipSheet.change(e, ships().find(x => x.id === SH.sel));
       const path = t.dataset.sp; if (!path) return;
       const s = ships().find(x => x.id === SH.sel); if (!canEditShip(s)) return;
+      if (path === 'hull.current' || path === 'shield.current') return H.act('ship.points', { id: s.id, what: path.split('.')[0], current: +t.value || 0 });   // the server's, like damage
       let v = t.type === 'checkbox' ? t.checked : t.type === 'number' ? +t.value || 0 : t.value;
       if (/^(tier|crew\.\d+\.rank)$/.test(path)) v = +v || 0;
       mutateShip(x => { H.setPath(x, path, v); if (/^crew\.\d+\.charId$/.test(path) && v) { const c = x.crew[+path.split('.')[1]]; c.name = (charOf(v) || {}).name || ''; } });

@@ -195,7 +195,7 @@ test("ship actions: damage by type, 0 hull, destruction saves rolled on the serv
   assert.equal(shipIn(await p1.state(), party).shield.current, 20);
 });
 
-test("ship actions: the fight state is the server's; a stale sheet save can't undo it, but typed hull brings a ship back", async () => {
+test("ship actions: the fight state and current points are the server's; a stale sheet save can't undo them; typed hull brings a ship back", async () => {
   const { p1, party } = await table();
   const stale = shipIn(await p1.state(), party);
   await p1.act("ship.damage", { id: party, amount: 40, type: "energy" });
@@ -204,14 +204,16 @@ test("ship actions: the fight state is the server's; a stale sheet save can't un
   // a save from a browser that hadn't seen any of that, carrying its own idea of the status
   await p1.act("ship.save", { ship: Object.assign({}, stale, { notes: "fuel low", hull: { current: 0, max: 40 }, status: { cond: [], system: 0, zero: { destroyed: false } } }) });
   let sh = shipIn(await p1.state(), party);
-  assert.deepEqual([sh.notes, sh.status.cond, sh.status.slowed, sh.status.system], ["fuel low", ["Disabled", "Ionized"], 2, 1], "conditions and system damage stay");
-  sh.hull.current = 12;   // the GM or a player types the hull back up after a repair at a station
-  await p1.act("ship.save", { ship: sh });
+  assert.deepEqual([sh.notes, sh.status.cond, sh.status.slowed, sh.status.system, sh.hull.current, sh.shield.current], ["fuel low", ["Disabled", "Ionized"], 2, 1, 0, 0],
+    "conditions, system damage and the points stay");
+  await p1.act("ship.points", { id: party, what: "hull", current: 12 });   // a player types the hull back up after a repair at a station
   sh = shipIn(await p1.state(), party);
   assert.deepEqual([sh.hull.current, sh.status.cond, sh.status.zero.s], [12, ["Ionized"], 0], "no longer disabled by 0 hull");
-  sh.hull.current = 999;
-  await p1.act("ship.save", { ship: sh });
+  await p1.act("ship.points", { id: party, what: "hull", current: 999 });
   assert.equal(shipIn(await p1.state(), party).hull.current, 40, "never above the maximum");
+  await p1.act("ship.points", { id: party, what: "shield", current: 7 });
+  assert.equal(shipIn(await p1.state(), party).shield.current, 7);
+  assert.equal((await p1.act("ship.points", { id: "__proto__", what: "hull", current: 5 })).code, 400);
   // system damage 4 halves the maximums, and the points follow
   await p1.act("ship.condition", { id: party, name: "system", level: 4 });
   sh = shipIn(await p1.state(), party);
@@ -241,6 +243,9 @@ test("ship actions: only the GM undoes a destruction; the status survives a back
   let sh = shipIn(await p1.state(), party);
   assert.ok(sh.status.zero.destroyed);
   assert.equal((await p1.act("ship.restore", { id: party, what: "hull", amount: 10 })).data.gained, 0, "no repairing a destroyed ship");
+  assert.equal((await p1.act("ship.points", { id: party, what: "hull", current: 25 })).code, 400, "nor typing its hull back");
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { hull: { current: 25, max: 40 } }) });
+  assert.equal(shipIn(await p1.state(), party).hull.current, 0, "nor saving a sheet that says otherwise");
   assert.equal((await p1.act("ship.reset", { id: party })).code, 403);
   assert.equal((await gm.act("ship.reset", { id: party })).code, 200);
   sh = shipIn(await p1.state(), party);
