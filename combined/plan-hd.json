@@ -1,0 +1,374 @@
+{
+ "pieces": [
+  {
+   "card": "title",
+   "dur": 4.0,
+   "fade": [
+    0.8,
+    0.5
+   ]
+  },
+  {
+   "from": 4.01,
+   "to": 10.02,
+   "cap": "j_fog",
+   "note": "theirs: fog (raw)",
+   "split": [
+    {
+     "file": "../wt-combine/jpesus-agent/raw-gm-screen-1280x800.mp4",
+     "crop": [
+      240,
+      275,
+      690,
+      470
+     ]
+    },
+    {
+     "file": "../wt-combine/jpesus-agent/raw-kira-player-screen-1280x800.mp4",
+     "crop": [
+      240,
+      250,
+      690,
+      470
+     ]
+    }
+   ],
+   "label": "jsplit"
+  },
+  {
+   "from": 10.02,
+   "to": 17.02,
+   "cap": "j_shuttle",
+   "note": "theirs: shuttle, ??? (raw)",
+   "split": [
+    {
+     "file": "../wt-combine/jpesus-agent/raw-gm-screen-1280x800.mp4",
+     "crop": [
+      240,
+      275,
+      690,
+      470
+     ]
+    },
+    {
+     "file": "../wt-combine/jpesus-agent/raw-kira-player-screen-1280x800.mp4",
+     "crop": [
+      240,
+      250,
+      690,
+      470
+     ]
+    }
+   ],
+   "label": "jsplit"
+  },
+  {
+   "from": 17.02,
+   "to": 24.03,
+   "cap": "j_start",
+   "note": "theirs: combat-start moves (raw)",
+   "file": "../wt-combine/jpesus-agent/raw-gm-screen-1280x800.mp4",
+   "crop": [
+    236,
+    212,
+    1044,
+    588
+   ]
+  },
+  {
+   "from": 24.03,
+   "to": 30.09,
+   "cap": "j_init",
+   "note": "theirs: initiative, meter (raw)",
+   "file": "../wt-combine/jpesus-agent/raw-gm-screen-1280x800.mp4",
+   "crop": [
+    236,
+    280,
+    800,
+    450
+   ],
+   "captop": false
+  },
+  {
+   "from": 30.1,
+   "to": 35.11,
+   "cap": "j_move",
+   "note": "theirs: lit movement (raw)",
+   "file": "../wt-combine/jpesus-agent/raw-kira-player-screen-1280x800.mp4",
+   "crop": [
+    183,
+    183,
+    1097,
+    617
+   ]
+  },
+  {
+   "take": "take-3",
+   "win": "kira",
+   "from": "k1_attack",
+   "to": "k1_end",
+   "crop": [
+    230,
+    130,
+    1370,
+    770
+   ],
+   "cap": "attack",
+   "note": "ours: attack odds"
+  },
+  {
+   "take": "take-3",
+   "win": "gm",
+   "from": "sesh",
+   "to": "sesh_end",
+   "crop": [
+    230,
+    130,
+    1370,
+    770
+   ],
+   "cap": [
+    [
+     0,
+     6.6,
+     "cover"
+    ],
+    [
+     6.6,
+     99,
+     "temp"
+    ]
+   ],
+   "note": "ours: cover, temp HP"
+  },
+  {
+   "take": "take-3",
+   "win": "gm",
+   "from": "area",
+   "to": "area_end",
+   "crop": [
+    230,
+    130,
+    1370,
+    770
+   ],
+   "cap": "area",
+   "note": "ours: area at walls"
+  },
+  {
+   "from": 42.34,
+   "to": 49.17,
+   "cap": "j_oa",
+   "note": "theirs: OA prompt (raw)",
+   "file": "../wt-combine/jpesus-agent/raw-kira-player-screen-1280x800.mp4",
+   "crop": [
+    183,
+    183,
+    1097,
+    617
+   ]
+  },
+  {
+   "from": 49.17,
+   "to": 54.18,
+   "cap": "j_oa2",
+   "note": "theirs: OA taken (raw)",
+   "file": "../wt-combine/jpesus-agent/raw-kira-player-screen-1280x800.mp4",
+   "crop": [
+    183,
+    183,
+    1097,
+    617
+   ]
+  },
+  {
+   "take": "take-3",
+   "win": "gm",
+   "from": "droid",
+   "to": "droid_end",
+   "crop": [
+    230,
+    320,
+    1030,
+    580
+   ],
+   "cap": "recharge1",
+   "note": "ours: recharge used"
+  },
+  {
+   "take": "take-3",
+   "win": "gm",
+   "from": "recharge",
+   "to": "recharge_end+0.6",
+   "crop": [
+    760,
+    428,
+    840,
+    472
+   ],
+   "cap": "recharge2",
+   "note": "ours: recharge back"
+  },
+  {
+   "take": "take-3",
+   "win": "gm",
+   "from": "legend",
+   "to": "legend_end",
+   "crop": [
+    230,
+    320,
+    1030,
+    580
+   ],
+   "cap": "legend",
+   "note": "ours: legendary"
+  },
+  {
+   "take": "take-rs",
+   "win": "kira",
+   "from": "sw",
+   "to": "sw_end",
+   "crop": [
+    230,
+    130,
+    1370,
+    770
+   ],
+   "cap": "sw",
+   "note": "re-shoot: Second Wind heals"
+  },
+  {
+   "take": "take-3",
+   "win": "kira",
+   "from": "k2_dash",
+   "to": "k2_end",
+   "crop": [
+    230,
+    130,
+    1370,
+    770
+   ],
+   "cap": "dash",
+   "note": "ours: Dash"
+  },
+  {
+   "take": "take-3",
+   "win": "gm",
+   "from": "save",
+   "to": "save_end",
+   "crop": [
+    330,
+    186,
+    1270,
+    714
+   ],
+   "cap": "save",
+   "note": "ours: GM-only save"
+  },
+  {
+   "take": "take-3",
+   "win": "tobin",
+   "from": "flank+0.2",
+   "to": "flank_end",
+   "crop": [
+    230,
+    130,
+    1370,
+    770
+   ],
+   "cap": "flank",
+   "note": "ours: flanking"
+  },
+  {
+   "from": 77.99,
+   "to": 86.43,
+   "cap": "j_chat",
+   "note": "theirs: chat follows sight (raw)",
+   "split": [
+    {
+     "file": "../wt-combine/jpesus-agent/raw-gm-screen-1280x800.mp4",
+     "crop": [
+      600,
+      185,
+      680,
+      615
+     ]
+    },
+    {
+     "file": "../wt-combine/jpesus-agent/raw-kira-player-screen-1280x800.mp4",
+     "crop": [
+      600,
+      185,
+      680,
+      615
+     ]
+    }
+   ],
+   "label": "jchat"
+  },
+  {
+   "take": "take-3",
+   "win": "kira",
+   "from": "drop",
+   "to": "drop_end+0.6",
+   "crop": [
+    760,
+    428,
+    840,
+    472
+   ],
+   "cap": "drop",
+   "note": "ours: drop to 0 (replaces their sniper miss)"
+  },
+  {
+   "from": 86.43,
+   "to": 92.45,
+   "cap": "j_ds",
+   "note": "theirs: death save (raw)",
+   "file": "../wt-combine/jpesus-agent/raw-kira-player-screen-1280x800.mp4",
+   "crop": [
+    183,
+    183,
+    1097,
+    617
+   ]
+  },
+  {
+   "from": 92.45,
+   "to": 97.49,
+   "cap": "j_end",
+   "note": "theirs: end combat (raw)",
+   "file": "../wt-combine/jpesus-agent/raw-gm-screen-1280x800.mp4",
+   "crop": [
+    236,
+    212,
+    1044,
+    588
+   ]
+  },
+  {
+   "take": "take-rs",
+   "win": "kira",
+   "from": "rest",
+   "to": "rest_end",
+   "crop": [
+    230,
+    130,
+    1370,
+    770
+   ],
+   "cap": "wake",
+   "note": "re-shoot: short rest wakes her"
+  },
+  {
+   "card": "credits",
+   "dur": 6.0,
+   "fade": [
+    0.6,
+    1.0
+   ]
+  }
+ ],
+ "caps": "caps-hd",
+ "target_mb": 21
+}
