@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0e1420" />
+  <title>Duros character creator</title>
+  <meta name="description" content="A small 3D character creator for a Duros: skin, eyes, head, build and outfit, then save a portrait." />
+  <link rel="stylesheet" href="duros.css" />
+  <script type="importmap">
+    { "imports": { "three": "../vendor/three/three.module.min.js", "three/addons/": "../vendor/three/jsm/" } }
+  </script>
+</head>
+<body>
+  <a class="back" href="../">&larr; Guitar Goblin</a>
+
+  <header class="hero">
+    <p class="kicker">3D &middot; character creator &middot; first cut</p>
+    <h1>Duros <span>character creator</span></h1>
+    <p class="sub">A spacer from Duro: smooth hairless skin, big red eyes, no nose. Pick the look, drag to turn them round, and save a portrait for your character sheet or token.</p>
+  </header>
+
+  <main class="stage">
+    <div class="viewport" id="viewport">
+      <canvas id="scene" aria-label="3D view of your Duros. Drag to turn, pinch or scroll to zoom."></canvas>
+      <p class="hint" id="hint">Drag to turn &middot; pinch or scroll to zoom</p>
+      <p class="nogl" id="nogl" hidden>The 3D view needs WebGL, which this browser has turned off.</p>
+    </div>
+
+    <div class="panel">
+      <fieldset class="opt">
+        <legend>Skin</legend>
+        <div class="swatches" data-opt="skin"></div>
+      </fieldset>
+      <fieldset class="opt">
+        <legend>Eyes</legend>
+        <div class="swatches" data-opt="eyes"></div>
+      </fieldset>
+      <fieldset class="opt">
+        <legend>Head</legend>
+        <div class="seg" data-opt="head"></div>
+      </fieldset>
+      <fieldset class="opt">
+        <legend>Build</legend>
+        <div class="seg" data-opt="build"></div>
+      </fieldset>
+      <fieldset class="opt">
+        <legend>Outfit</legend>
+        <div class="seg wrap" data-opt="outfit"></div>
+      </fieldset>
+
+      <div class="actions">
+        <button type="button" class="btn" id="random">🎲 Randomise</button>
+        <button type="button" class="btn primary" id="save">⬇ Download portrait</button>
+      </div>
+      <label class="check"><input type="checkbox" id="plainbg" /> Plain background (otherwise transparent)</label>
+      <p class="note" id="summary" aria-live="polite"></p>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <p>Modelled in code from simple shapes for this page; no art from any game or film. The link to this page keeps your choices, so you can share a look.</p>
+  </footer>
+
+  <script type="module" src="duros.js"></script>
+</body>
+</html>
