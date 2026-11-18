@@ -924,7 +924,7 @@
             ${isGM() ? `<label class="muted carry-var" title="Wretched Hives variant: three slots, every item takes one (the GM's call, for the whole table)"><input type="checkbox" data-act-change="simple-attune" ${at.simple ? 'checked' : ''}> Simpler attunement</label>` : ''}</div>` : '')(R.attunement(ch, S.st.variants))}
           <div class="eq-wrap"><table class="t eq-table"><thead><tr><th>Qty</th><th>Item</th><th>Notes</th><th title="Weight in pounds, each">Wt</th><th title="Armor or shield, for the auto AC: its kind and AC (a shield's bonus)">Armor</th><th>Eq.</th><th></th></tr></thead><tbody>
           ${(ch.equipment || []).map((e, i) => `<tr><td class="n">${inp(`equipment.${i}.qty`, +e.qty || 1, { ro, type: 'number' })}</td>
-            <td>${inp(`equipment.${i}.name`, e.name, { ro })}</td><td>${inp(`equipment.${i}.notes`, e.notes || '', { ro })}</td>
+            <td class="eq-name">${inp(`equipment.${i}.name`, e.name, { ro })}<button class="btn tiny ghost eq-info" data-act="item-info" data-i="${i}" title="What it is (SW5e's text)${e.bonus ? `; ${[e.bonus.hit && `+${e.bonus.hit} to hit`, e.bonus.dmg && `+${e.bonus.dmg} damage`, e.bonus.ac && `+${e.bonus.ac} AC`].filter(Boolean).join(', ')}` : ''}">ⓘ</button></td><td>${inp(`equipment.${i}.notes`, e.notes || '', { ro })}</td>
             <td class="n eq-wt">${inp(`equipment.${i}.wt`, +e.wt || '', { ro, type: 'number', ph: '0' })}</td>
             <td class="armor-cell">${inp(`equipment.${i}.armor.kind`, (e.armor || {}).kind || '', { ro, type: 'select', options: [{ v: '', t: '—' }, ...R.ARMOR_KINDS] })}${e.armor && e.armor.kind ? inp(`equipment.${i}.armor.ac`, +e.armor.ac || 0, { ro, type: 'number' }) : ''}</td>
             <td class="eq-cell">${inp(`equipment.${i}.equipped`, e.equipped, { ro, type: 'checkbox' })}${e.att ? `<span class="attune" title="Attuned (Wretched Hives: it takes a short rest with the item)${e.rar ? ` · ${esc(e.rar)}` : ''}">⟡${inp(`equipment.${i}.attuned`, !!e.attuned, { ro, type: 'checkbox' })}</span>` : ''}</td>
@@ -1029,7 +1029,7 @@
     if (r && ch) return roll(r.dataset.roll, `${r.dataset.label}`, { d20: !!r.dataset.d20, mode: rollModeFromEvent(e), charId: ch.id });
     const b = e.target.closest('[data-act]'); if (!b || !ch) return;
     const a = b.dataset.act, i = +b.dataset.i, ro = !canEdit(ch);
-    const pub = ['sub', 'export', 'atk', 'dmg', 'crit', 'dismiss-note', 'share-feature'];
+    const pub = ['sub', 'export', 'atk', 'dmg', 'crit', 'dismiss-note', 'share-feature', 'item-info'];
     if (ro && !pub.includes(a)) return;
     switch (a) {
       case 'sub': S.sub = b.dataset.sub; renderSheet($('#sheet')); break;
@@ -1129,6 +1129,16 @@
       case 'pick-feature': HTB.openFeaturePicker(ch.id); break;
       case 'del': mutate(c => c[b.dataset.list].splice(i, 1)); break;
       case 'use-item': useItem(ch, i); break;
+      case 'item-info': {   // the item's SW5e text (audit 6.2), looked up by name, never stored on the sheet
+        const e0 = ch.equipment[i]; if (!e0) break;
+        const found = await itemInfo(e0.name);
+        const b0 = e0.bonus ? [e0.bonus.hit && `+${e0.bonus.hit} to attack rolls`, e0.bonus.dmg && `+${e0.bonus.dmg} to damage rolls`, e0.bonus.ac && `+${e0.bonus.ac} to AC while worn${e0.att ? ' and attuned' : ''}`].filter(Boolean).join(', ') : '';
+        modal(`<h3>${esc(e0.name)}</h3>${found ? `<p class="muted">${esc(itemNotes(found.it, found.enh))}${found.it.src ? ` · ${esc(SRC[found.it.src] || found.it.src)}` : ''}</p>` : ''}
+          ${b0 ? `<p><b>On the sheet:</b> ${esc(b0)}.</p>` : ''}
+          <div class="hc-desc">${found && found.it.desc ? md(found.it.desc) : `<p class="muted">${found ? 'No description in SW5e.' : 'Not an SW5e item by this name (or the list did not load).'}</p>`}</div>
+          <div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn" id="infoClose">Close</button></div>`, box => { box.onclick = ev => { if (ev.target.id === 'infoClose') closeModal(); }; });
+        break;
+      }
       case 'sell': {   // selling (audit 6.8): one of the item, for half its cost by default (PHB, Selling Treasure); the table can agree another price
         const it = ch.equipment[i]; if (!it) break;
         const ans = prompt(`Sell one ${it.name} for how many credits?${+it.cost > 0 ? ` (Half its cost is ${R.sellPrice(it).toLocaleString()} cr.)` : ''}`, String(R.sellPrice(it)));
@@ -1255,6 +1265,20 @@
       <div class="row" style="gap:4px"><button class="btn tiny" data-eq="all" data-key="${esc(key)}">All</button><button class="btn tiny ghost" data-eq="none" data-key="${esc(key)}">None</button></div>
       ${values.map(v => `<label class="toggle"><input type="checkbox" data-eq="check" data-key="${esc(key)}" value="${esc(v)}" ${sel.has(v) ? 'checked' : ''}> ${esc(names[v] || v)}</label>`).join('')}</div></details>`;
   }
+  // the standard weapon an enhanced weapon is made from: by its subtype ("bo-rifle") or its name without the grade in
+  // brackets ("Vibroblade (Fine)"), from the standard list when it's already loaded
+  function enhancedBase(it) {
+    const std = EQUIP.standard || [], key = s => String(s || '').toLowerCase().replace(/\s*\(.*\)\s*$/, '').trim();
+    return std.find(w => w.cat === 'Weapon' && (key(w.n) === key(it.sub) || key(w.n) === key(it.n))) || null;
+  }
+  // the SW5e text of an item on the sheet, from the lists the picker loads (kept off the sheet, so sheets stay small)
+  async function itemInfo(name) {
+    const k = String(name || '').toLowerCase();
+    for (const set of ['standard', 'enhanced']) {
+      try { const it = (await equipList(set)).find(x => x.n.toLowerCase() === k); if (it) return { it, enh: set === 'enhanced' }; } catch { /* the list didn't load */ }
+    }
+    return null;
+  }
   function weaponAttack(it) {
     const props = (it.props || []).join(', ');
     const ab = /blaster/i.test(it.wc) ? 'dex' : /finesse/i.test(props) ? 'finesse' : 'str';
@@ -1356,7 +1380,11 @@
             else { const armor = !enh && R.armorFromItem(it); c.equipment.push({ name: it.n, qty: 1, equipped: false, notes: itemNotes(it, enh).slice(0, 200), ...(armor ? { armor } : {}),
               ...(!enh && parseFloat(it.wt) > 0 ? { wt: parseFloat(it.wt) } : {}), ...(!enh && it.cost > 0 ? { cost: it.cost } : {}),   // weight (6.5) and cost (6.8)
               ...(enh && R.RARITIES.includes(it.rar) ? { rar: it.rar } : {}), ...(enh && it.att ? { att: true } : {}),   // rarity and attunement (6.3)
-              ...((enh ? it.cat === 'Consumable' : ['Medical', 'Explosive'].includes(it.cat)) ? { use: R.consumableUse(it.desc) || {} } : {}) }); }   // a consumable (6.7)
+              ...((enh ? it.cat === 'Consumable' : ['Medical', 'Explosive'].includes(it.cat)) ? { use: R.consumableUse(it.desc) || {} } : {}),   // a consumable (6.7)
+              ...(enh && R.enhancedBonus(it.desc) ? { bonus: R.enhancedBonus(it.desc) } : {}) });   // an enhanced item's +N (6.2)
+              // an enhanced weapon of a known kind ("Vibroblade (Fine)", or its subtype) also gets that weapon's attack, with its +N
+              const plus = enh && it.cat === 'Weapon' ? R.enhancedBonus(it.desc) : null, base = plus && plus.hit ? enhancedBase(it) : null;
+              if (base && !c.attacks.some(x => String(x.name).toLowerCase() === it.n.toLowerCase())) c.attacks.push(Object.assign(weaponAttack(base), { name: it.n }, plus.dmg === plus.hit ? { magic: plus.hit } : {})); }   // the attack box adds to both
             if (!enh && it.cat === 'Weapon' && !c.attacks.some(x => String(x.name).toLowerCase() === it.n.toLowerCase())) c.attacks.push(weaponAttack(it));
           });
           toast(`${buy ? 'Bought' : 'Added'} ${it.n}${!enh && it.cat === 'Weapon' ? ' (and its attack)' : ''}${buy ? ` for ${it.cost.toLocaleString()} cr` : ''}`);

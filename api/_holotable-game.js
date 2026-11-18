@@ -204,7 +204,8 @@ function cleanChar(ch) {
       ...(+e.wt > 0 ? { wt: Math.min(10000, Math.round(+e.wt * 100) / 100) } : {}), ...(+e.cost > 0 ? { cost: Math.min(1e9, Math.round(+e.cost)) } : {}),
       // an enhanced item's rarity, whether it requires attunement, and whether it's attuned (audit 6.3), kept only when set
       ...(R.RARITIES.includes(e.rar) ? { rar: e.rar } : {}), ...(e.att ? { att: true } : {}), ...(e.att && e.attuned ? { attuned: true } : {}),
-      ...(e.use && R.cleanUse(e.use) ? { use: R.cleanUse(e.use) } : {}) })),   // a consumable: what using it rolls (audit 6.7)
+      ...(e.use && R.cleanUse(e.use) ? { use: R.cleanUse(e.use) } : {}),   // a consumable: what using it rolls (audit 6.7)
+      ...(R.cleanBonus(e.bonus) ? { bonus: R.cleanBonus(e.bonus) } : {}) })),   // an enhanced item's +N (audit 6.2)
     conditions: (Array.isArray(ch.conditions) ? ch.conditions : []).slice(0, 20).map((c) => s(c, 30)),
     exhaustion: clamp(int(ch.exhaustion), 0, 6), inspiration: !!ch.inspiration,
     // variant rules on the sheet (9.16): Simplified Forcecasting's one ability, and Hunted's disturbance points
