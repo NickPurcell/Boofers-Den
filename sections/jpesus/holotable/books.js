@@ -659,7 +659,7 @@
     { key: 'rules-wh', name: 'Wretched Hives' },
     { key: 'rules-sotg', name: 'Starships of the Galaxy' },
     { key: 'rules-variant', name: 'Variant Rules', variants: true },
-    { key: 'monsters', name: 'Scum and Villainy', monsters: true },
+    { key: 'monsters', name: 'Scum and Villainy', monsters: true, gmOnly: 'statBlocksHidden' },
     { key: 'tables', name: 'Reference tables', entries: true },
     { key: 'weapon-props', name: 'Weapon properties', entries: true },
     { key: 'armor-props', name: 'Armor properties', entries: true },
@@ -667,7 +667,7 @@
   const LIB = { book: null, ch: 0, q: '' };
   function libraryBar() {
     const v = (H.S.st && H.S.st.variants) || [];
-    return `<div class="box lib-bar"><h4>SW5e rulebooks <span class="spacer"></span><span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">from <a href="https://sw5e.com" target="_blank" rel="noopener noreferrer">sw5e.com</a>, a free fan project</span></h4><div class="row wrap">${BOOKS.map(b => `<button class="btn small" data-lib="${esc(b.key)}">${esc(b.name)}</button>`).join('')}</div>
+    return `<div class="box lib-bar"><h4>SW5e rulebooks <span class="spacer"></span><span class="muted" style="text-transform:none;letter-spacing:0;font-weight:400">from <a href="https://sw5e.com" target="_blank" rel="noopener noreferrer">sw5e.com</a>, a free fan project</span></h4><div class="row wrap">${BOOKS.filter(b => !(b.gmOnly && !H.isGM() && (H.S.st || {})[b.gmOnly])).map(b => `<button class="btn small" data-lib="${esc(b.key)}">${esc(b.name)}</button>`).join('')}</div>
       ${v.length ? `<div style="margin-top:8px"><span class="muted">Variant rules in use at this table:</span> ${v.map(n => `<button class="chip lib-var" data-lib="rules-variant" data-libch="${esc(n)}">${esc(n)}</button>`).join(' ')}</div>` : ''}</div>`;
   }
   async function openBook(key, chapterName) {

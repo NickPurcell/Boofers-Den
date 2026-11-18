@@ -588,7 +588,7 @@
         <button class="btn" onclick="document.getElementById('newCharBtn').click()">＋ New character</button></div></div>`;
       return;
     }
-    const ro = !canEdit(ch);
+    const ro = !canEdit(ch), lock = ro || (!isGM() && !!S.st.sheetLock);   // the GM's lock (12.6): levels, XP, max HP
     const pb = R.profBonus(ch), lvl = R.totalLevel(ch), ci = R.casterInfo(ch);
     const owner = (S.st.players[ch.owner] || {}).name || 'unknown';
     const note = S.importNotes[ch.id];
@@ -616,7 +616,7 @@
         </div>
         <div class="row wrap">${(ch.classes || []).map((k, i) => `
           <span class="row">${inp(`classes.${i}.name`, k.name, { ro, list: 'dlClasses', w: '110px' })}
-          ${inp(`classes.${i}.level`, +k.level || 1, { ro, type: 'number', w: '58px' })}
+          ${inp(`classes.${i}.level`, +k.level || 1, { ro: lock, type: 'number', w: '58px' })}
           ${k.archetype ? `<span class="muted class-arch" title="${esc((R.CLASSES[k.name] || {}).arch || 'Archetype')}">${esc(k.archetype)}</span>` : ''}
           ${archetypeButton(ch, k, i, ro)}
           ${!ro && ch.classes.length > 1 ? `<button class="btn tiny ghost" data-act="del-class" data-i="${i}">✕</button>` : ''}</span>`).join('')}
@@ -665,7 +665,7 @@
       <div class="grid g2">
         <div class="box hp-box"><h4>Hit Points</h4>
           <div class="row wrap"><span>${inp('hp.current', +ch.hp.current || 0, { ro, type: 'number', cls: 'hpnum' })}</span><span class="muted">/</span>
-            <span>${inp('hp.max', +ch.hp.max || 0, { ro, type: 'number', cls: 'hpnum' })}</span>
+            <span>${inp('hp.max', +ch.hp.max || 0, { ro: lock, type: 'number', cls: 'hpnum' })}</span>
             <span class="muted">temp</span>${inp('hp.temp', +ch.hp.temp || 0, { ro, type: 'number', w: '60px' })}</div>
           ${!ro ? `<div class="row hp-adjust" style="margin-top:8px"><input id="hpDelta" placeholder="-7 or +5">
             <button class="btn small danger" data-act="hp" data-sign="-1">Damage</button><button class="btn small" data-act="hp" data-sign="1" style="color:var(--green)">Heal</button></div>
@@ -796,7 +796,7 @@
             ${ch.tokenImage ? '<button class="btn small ghost" data-act="clear-token-photo">Token: use profile photo</button>' : ''}</div>` : ''}
           <p class="muted" style="font-size:12px;margin:0 0 6px">The token uses the profile photo unless you upload a separate one.</p>
           <label style="margin-top:8px">Token colour${inp('color', ch.color || '#4fc3f7', { ro, type: 'color' })}</label>
-          <label style="margin-top:8px">Experience points${inp('xp', +ch.xp || 0, { ro, type: 'number' })}</label>
+          <label style="margin-top:8px">Experience points${inp('xp', +ch.xp || 0, { ro: lock, type: 'number' })}</label>
           <label style="margin-top:8px">Proficiency bonus override${inp('profOverride', ch.profOverride ?? '', { ro, type: 'number', ph: String(2 + Math.floor((lvl - 1) / 4)) })}</label>
           <label style="margin-top:8px">Initiative bonus (misc)${inp('initMisc', +ch.initMisc || 0, { ro, type: 'number' })}</label>
           ${isGM() ? `<label style="margin-top:8px">Owner (GM)<select data-act-change="assign">${Object.entries(S.st.players).map(([id, p]) => `<option value="${esc(id)}" ${id === ch.owner ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></label>` : ''}
@@ -2455,6 +2455,10 @@
         <button class="btn small" id="gmAsk" title="Everyone roll Perception, a group check, a secret Insight roll for a player…">🎲 Ask for a roll…</button>
         <label class="toggle" style="margin-top:8px" title="A table rule: whether players may take the hit die's maximum instead of the average or a roll">
           <input type="checkbox" id="gmHpMax" ${S.st.hpMax !== false ? 'checked' : ''}> Players may take maximum hit points when levelling</label>
+        <label class="toggle" style="margin-top:4px" title="On: class levels, XP and maximum HP change only by your grant or your own edits. Archetype picks, credits and everything else stay the player's.">
+          <input type="checkbox" id="gmSheetLock" ${S.st.sheetLock ? 'checked' : ''}> Only I change levels, XP and max HP</label>
+        <label class="toggle" style="margin-top:4px" title="On: players can't open Scum and Villainy's creature stat blocks in the Rules library">
+          <input type="checkbox" id="gmStatBlocks" ${S.st.statBlocksHidden ? 'checked' : ''}> Keep creature stat blocks to myself</label>
         ${pendingNames.length ? `<p class="muted" style="font-size:12px">Waiting to level: ${pendingNames.join(', ')}</p>` : ''}
       </div>
       <div class="box"><h4>Saving &amp; backups</h4>
@@ -2542,6 +2546,8 @@
   });
   $('#gm').addEventListener('change', async e => {
     if (e.target.id === 'gmHpMax') { act('settings.hpMax', { on: e.target.checked }); return; }
+    if (e.target.id === 'gmSheetLock') { act('settings.sheetLock', { on: e.target.checked }); return; }
+    if (e.target.id === 'gmStatBlocks') { act('settings.statBlocks', { hidden: e.target.checked }); return; }
     if (e.target.id !== 'restoreFile' || !e.target.files[0]) return;
     const f = e.target.files[0]; e.target.value = '';
     let campaign;
