@@ -3528,6 +3528,9 @@ test("Ranger's Quarry: no action, once a turn, a creature in sight within 120 ft
   d = dice({ total: 15, nat: 12 }, { total: 9 });
   E.apply(next, { type: "attack", unit: "sc", target: "r1", attack: wpn }, d.roll);
   assert.equal(d.asked[1], "1d8+3+1d6", "once a turn, every turn");
+  d = dice({ total: 25, nat: 20 }, { total: 14 });
+  E.apply(Object.assign({}, a.world, { round: 3 }), { type: "attack", unit: "sc", target: "r1", attack: wpn }, d.roll);
+  assert.equal(d.asked[1], "2d8+3+2d6", "a critical doubles the quarry die");
   const moved = E.apply(next, { type: "common", unit: "sc", key: "quarry", target: "r2" }, dice().roll);
   assert.deepEqual([E.quarryOf(moved.world, "sc"), moved.world.effects.filter((ef) => ef.condition === "Quarry").length], ["r2", 1], "one at a time");
   assert.equal(E.apply(world([sc(), r1], "sc"), { type: "common", unit: "sc", key: "quarry", target: "__proto__" }, dice().roll).ok, false);
