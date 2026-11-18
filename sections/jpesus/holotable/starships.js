@@ -68,6 +68,7 @@
     st = st && typeof st === 'object' && !Array.isArray(st) ? st : {};
     const z = st.zero && typeof st.zero === 'object' && !Array.isArray(st.zero) ? st.zero : {};
     const b = st.boost && typeof st.boost === 'object' && !Array.isArray(st.boost) ? st.boost : {};
+    const f = st.fx && typeof st.fx === 'object' && !Array.isArray(st.fx) ? st.fx : {};
     const out = {
       cond: [...new Set((Array.isArray(st.cond) ? st.cond : []).filter((c) => CONDITIONS.includes(c)))],
       slowed: clamp(int(st.slowed), 0, 4), system: clamp(int(st.system), 0, 6),
@@ -75,6 +76,11 @@
       power: Object.fromEntries(['central', 'engines', 'shields', 'weapons', 'sensors', 'comms'].map((k) => [k, clamp(int((st.power || {})[k]), 0, 99)])),
       sdUsed: clamp(int(st.sdUsed), 0, 200), hdUsed: clamp(int(st.hdUsed), 0, 200), tempShield: clamp(int(st.tempShield), 0, 1000),
       boost: { tries: clamp(int(b.tries), 0, 20), engines: clamp(int(b.engines), 0, 2), weapons: b.weapons === true, shields: b.shields === true, regen: b.regen === true },
+      // the Helm and crew actions' effects: evade / fly count down at the start of the ship's turns (2: this turn and
+      // until the start of the next; 1: through the next turn); helm: a Helm action taken this turn
+      fx: { evade: clamp(int(f.evade), 0, 2), fly: clamp(int(f.fly), 0, 2), hardTurn: f.hardTurn === true, helm: f.helm === true,
+        interfered: f.interfered === true, directed: f.directed === true,
+        interferedBy: typeof f.interferedBy === 'string' && /^[a-z0-9]{6,20}$/.test(f.interferedBy) ? f.interferedBy : '' },   // the ship whose next turn ends it
     };
     if (out.system >= 5 && !out.cond.includes('Used')) out.cond.push('Used');   // system damage 5 makes it used for good
     return out;
@@ -115,6 +121,17 @@
   function rollEffects(ship, kind, ability) {
     const st = statusOf(ship), out = { adv: [], dis: [], fail: [] };
     const add = (k, why) => out[k].push(why);
+    const fx = st.fx;
+    // Evade ends when the ship is incapacitated (disabled) or its speed drops to 0 (SotG ch. 9)
+    const evade = isDisabled(st) || has(st, 'Stunned') || has(st, 'Tractored') || st.slowed >= 4 ? 0 : fx.evade;
+    if (kind === 'check' || kind === 'attack') {   // Evade and Fly cost the whole ship its aim; Interfere the next roll
+      if (evade >= 1) add('dis', 'Evade');
+      if (fx.fly >= 1) add('dis', 'Fly');
+      if (fx.interfered) add('dis', 'Interfered');
+    }
+    if (kind === 'attack' && fx.directed) add('adv', 'Directed');
+    if (kind === 'save' && ability === 'dex' && evade >= 2) add('adv', 'Evade');
+    if (kind === 'against' && evade >= 2) add('dis', 'Evading');
     if (kind === 'check') {
       if (st.system >= 1) add('dis', 'System damage ' + st.system);
       if (has(st, 'Ionized')) add('dis', 'Ionized');
@@ -346,6 +363,8 @@
   const regenDC = (ship) => Math.max(10, Math.floor((shieldMax(ship) - int(ship && ship.shield && ship.shield.current)) / 2));
   // speed with this turn's boosts
   const boostedSpeed = (ship) => { const lv = slowedLevel(ship); return speedOf(ship) + (lv < 4 && int(statusOf(ship).boost.engines) > 0 ? 50 : 0); };
+  // the feet the ship may move this turn: its speed, twice over after Fly
+  const moveBudget = (ship) => boostedSpeed(ship) * (statusOf(ship).fx.fly >= 2 ? 2 : 1);
 
   // The start of the ship's turn. roll(expr) -> { total } is the server's dice.
   // opts.regen: the crew regenerates shields this turn (it costs a shield die).
@@ -357,6 +376,8 @@
     const st = s.status = statusOf(s), name = s.name || 'The ship', log = [];
     if (isLost(st)) return { ship: s, log: [`${name} is lost.`] };
     st.tempShield = 0; st.boost = { tries: 0, engines: Math.max(0, int(st.boost.engines) - 1), weapons: false, shields: false, regen: false };
+    // Direct lasts until the start of the directing ship's next turn (Interfere ends at the interfering ship's: the space map)
+    st.fx = Object.assign(st.fx, { evade: Math.max(0, st.fx.evade - 1), fly: Math.max(0, st.fx.fly - 1), hardTurn: false, helm: false, directed: false });
     // power
     const rx = own(REACTORS, reactorOf(s));
     if (rx && !isDisabled(st)) {
@@ -544,6 +565,50 @@
     return out;
   }
 
+
+  // ---- the Helm and crew actions (SotG chapter 9, "Actions in Combat")
+  const HELM = ['evade', 'fly', 'hardturn', 'ram'];
+  // a ship's skill check bonus with a crew member's proficiency bonus: the ability, plus pb once or twice (proficiently or
+  // expertly equipped)
+  const SKILL_ABILITY = { astrogation: 'int', boost: 'str', data: 'int', hide: 'dex', impress: 'cha', interfere: 'cha', maneuvering: 'dex', menace: 'cha',
+    patch: 'con', probe: 'int', ram: 'str', regulation: 'con', scan: 'wis', swindle: 'cha' };
+  function skillBonus(ship, skill, pb) {
+    const ab = own(SKILL_ABILITY, skill); if (!ab) return 0;
+    const mod = Math.floor((int((ship && ship.abilities || {})[ab], 10) - 10) / 2);
+    return mod + clamp(int((ship && ship.skills || {})[skill]), 0, 2) * crewPbOf(pb);
+  }
+  // Evade, Fly or Hard Turn (one Helm action a turn): Evade gives attacks against it disadvantage and its Dexterity
+  // saves advantage until the start of its next turn, and its own checks and attacks disadvantage until the end of
+  // its next turn; Fly doubles this turn's movement at the same cost to its aim; Hard Turn makes its next turn of up
+  // to 90 degrees cost nothing.
+  function helm(ship, what) {
+    const s = copy(ship), st = s.status = statusOf(s), name = s.name || 'The ship';
+    if (!['evade', 'fly', 'hardturn'].includes(what)) return { ship: s, ok: false, log: [] };
+    if (st.fx.helm) return { ship: s, ok: false, log: [`${name} has already taken a Helm action this turn.`] };
+    st.fx.helm = true;
+    if (what === 'evade') st.fx.evade = 2;
+    if (what === 'fly') st.fx.fly = 2;
+    if (what === 'hardturn') st.fx.hardTurn = true;
+    const said = { evade: `${name} evades: attacks against it have disadvantage until its next turn, and its own rolls have disadvantage through it.`,
+      fly: `${name} flies flat out: twice its speed this turn, and disadvantage on its rolls through its next turn.`,
+      hardturn: `${name} makes a hard turn: its next turn of up to 90° costs no movement.` }[what];
+    return { ship: s, ok: true, log: [said] };
+  }
+  // Patch (the action, any number a turn): a Constitution (Patch) check against 10 or half the missing hull points,
+  // spending a hull die: rolled on a success, rolled twice and the lower kept on a failure.
+  const patchDC = (ship) => Math.max(10, Math.floor((hullMax(ship) - int(ship && ship.hull && ship.hull.current)) / 2));
+  function patch(ship, check, roll) {
+    const s = capPoints(copy(ship)), st = s.status = statusOf(s), name = s.name || 'The ship';
+    if (isLost(st)) return { ship: s, done: false, log: [`${name} is lost.`] };
+    if (diceLeft(s, 'hull') <= 0) return { ship: s, done: false, log: [`${name} has no hull dice left.`] };
+    if (int(s.hull.current) >= hullMax(s)) return { ship: s, done: false, log: [`${name}'s hull needs no patching.`] };
+    const dc = patchDC(s), ok = int(check) >= dc, d = diceOf(s, 'hull').die;
+    const a = int(roll('1d' + d).total), b = ok ? a : int(roll('1d' + d).total), got = ok ? a : Math.min(a, b);
+    st.hdUsed += 1;
+    const r = restore(s, 'hull', got);
+    return { ship: r.ship, done: true, ok, dc, gain: r.gained, log: [`${name} is patched up: ${check} against DC ${dc}, ${ok ? 'a success' : 'a failure (the lower of two rolls)'}, +${r.gained} hull point${r.gained === 1 ? '' : 's'}.`] };
+  }
+
   // what the sheet shows of a ship's state, in short phrases
   function summary(ship) {
     const st = statusOf(ship), hullNow = int(ship && ship.hull && ship.hull.current), out = [];
@@ -558,5 +623,5 @@
     setCondition, summary, SIZE_DATA, SHIELD_TYPES, REACTORS, COUPLINGS, SYSTEMS, POOLS, SYSTEM_NAMES, POWER_DIE, sizeOf, roleOf, reactorOf, couplingOf,
     shieldTypeOf, powerDie, powerDieText, powerCaps, diceOf, diceLeft, regenRate, boostDC, regenDC, boostedSpeed, startTurn, usePower, setPower,
     setDiceUsed, boost, regenerateShields, SQUARE_FT, SQUARES, squaresOf, FACING_NAMES, DIRS, gridFeet, turnSteps, turnCost, moveCost, inBounds, shipGap,
-    arcOf, INIT_SIZE_MOD, npcInitBonus, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck };
+    arcOf, INIT_SIZE_MOD, npcInitBonus, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck };
 });
