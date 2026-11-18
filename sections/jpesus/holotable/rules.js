@@ -341,7 +341,7 @@
       classes: [{ name: 'Fighter', level: 1, archetype: '' }], xp: 0,
       abilities: { str: 10, dex: 10, con: 10, int: 10, wis: 10, cha: 10 },
       saves: {}, skills: {}, skillMisc: {}, saveMisc: {},
-      ac: 10, acAuto: true, speed: 30, hp: { max: 10, current: 10, temp: 0 }, hitDiceUsed: 0,
+      ac: 10, speed: 30, hp: { max: 10, current: 10, temp: 0 }, hitDiceUsed: 0,
       deathSaves: { s: 0, f: 0 }, initMisc: 0, profOverride: '',
       force: { max: '', used: 0 }, tech: { max: '', used: 0 },
       attacks: [], powers: [], features: [], equipment: [], credits: 0,

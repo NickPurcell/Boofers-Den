@@ -1920,4 +1920,10 @@ test("AC from armor, Unarmored Defense and misc (audit 5.3), crit range, misc bo
   c = (await gm.poll()).data.state.characters[id2];
   assert.equal(c.ac, 18, "without auto, the typed AC stands as before");
   assert.equal(c.acAuto, undefined);
+  // the page fills every sheet it gets from a blank one, and imports start from one: neither may switch auto on (#165)
+  assert.equal(R.blankCharacter().acAuto, undefined, "a blank sheet doesn't turn auto AC on");
+  const old = Object.assign(R.blankCharacter(), { name: "Old", ac: 17, abilities: { dex: 12 }, equipment: [{ name: "Combat suit", equipped: true }] });
+  const id3 = (await p1.act("char.save", { char: old })).data.id;
+  c = (await gm.poll()).data.state.characters[id3];
+  assert.equal(c.ac, 17, "an old sheet (or an import) filled from the blank keeps its typed AC");
 });

@@ -266,6 +266,7 @@
   });
   $('#newCharBtn').addEventListener('click', async () => {
     const c = R.blankCharacter();
+    c.acAuto = true;   // a brand-new sheet works its AC out from armor (audit 5.3); old sheets and imports keep their typed AC
     c.name = (me() && me().name ? me().name + "'s character" : 'New Character');
     c.color = ['#4fc3f7', '#ffb74d', '#66bb6a', '#ef5350', '#b388ff', '#f06292', '#4db6ac'][Math.floor(Math.random() * 7)];
     const r = await act('char.save', { char: c });
