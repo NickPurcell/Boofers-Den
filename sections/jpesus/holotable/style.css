@@ -638,6 +638,15 @@ table.t td:first-child input { min-width: 140px; }
 .ship-pool { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; }
 .ship-pool .dpip, .ship-power .dpip { display: inline-block; width: 9px; height: 9px; border: 1px solid currentColor; border-radius: 50%; }
 .ship-pool .dpip.on { background: currentColor; }
+.space-top { margin-bottom: 10px; gap: 8px; }
+.space-body { display: grid; grid-template-columns: 240px 1fr; gap: 10px; align-items: start; }
+.space-wrap { overflow: auto; max-height: calc(100vh - 190px); border: 1px solid var(--line); }
+.space-wrap canvas { display: block; cursor: crosshair; }
+.space-order { list-style: none; margin: 0 0 8px; padding: 0; }
+.space-order li { display: flex; align-items: center; gap: 6px; padding: 3px 6px; cursor: pointer; font-size: 13px; }
+.space-order li.on { outline: 1px solid var(--amber); color: var(--amber); }
+.space-order .sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+@media (max-width: 900px) { .space-body { grid-template-columns: 1fr; } }
 .ship-skills .lr .ab { text-transform: uppercase; }
 @media (max-width: 720px) { .ship-abil { grid-template-columns: repeat(2, 1fr); } .sb-abil { grid-template-columns: repeat(3, 1fr); } }
 #ships .t select { min-width: 120px; }
@@ -726,3 +735,23 @@ body.no-sw5e-books [data-sa="deploy-info"], body.no-sw5e-books .lib-bar { displa
 .res-row .dot.on { background: var(--holo); border-color: var(--holo); }
 .senses-row { display: flex; align-items: center; gap: 8px; margin: 8px 0 2px; font-size: 13px; }
 .senses-row .lbl { font-family: var(--display); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+/* the GM asks for a roll (audit 9.12): the card above the chat */
+.ask-card { margin: 6px 8px 0; padding: 8px 10px; border: 1px solid var(--amber, #ffb74d); border-radius: 8px; background: var(--panel, rgba(0,0,0,.3)); font-size: 13px; }
+.ask-card .ask-head, .ask-card .ask-row { display: flex; align-items: center; gap: 6px; }
+.ask-card .ask-row { padding: 3px 0; border-top: 1px solid var(--row-line, rgba(255,255,255,.08)); }
+.ask-card .spacer { flex: 1; }
+.ask-who { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+/* sheet: AC worked out from armor (audit 5.3), misc bonus boxes on saves and skills (5.5) */
+.ac-stat .ac-opts { display: flex; align-items: center; justify-content: center; gap: 4px; margin-top: 4px; font-size: 11px; }
+.ac-stat .ac-opts label { display: inline-flex; align-items: center; gap: 3px; margin: 0; }
+.ac-stat .ac-opts input[type="number"] { padding: 1px 4px; font-size: 11px; }
+.misc-box { margin-left: auto; }
+.misc-box input { padding: 1px 4px; font-size: 11px; text-align: center; }
+/* the equipment table: Qty stays narrow and Item gets the room (the armor column, audit 5.3) */
+table.t td.n input { min-width: 0; }
+table.t td.n { width: 56px; }
+.eq-table td:nth-child(2) input { min-width: 120px; }
+.eq-table .armor-cell { white-space: nowrap; width: 1%; }
+.eq-table .armor-cell select { width: 70px; }
+.eq-table .armor-cell input { width: 44px; margin-left: 3px; }

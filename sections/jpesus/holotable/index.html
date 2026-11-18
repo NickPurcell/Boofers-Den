@@ -63,6 +63,7 @@
           <button data-tab="map">Map</button>
           <button data-tab="combat">Combat</button>
           <button data-tab="ships">Ships</button>
+          <button data-tab="space">Space</button>
           <button data-tab="handouts">Handouts</button>
           <button data-tab="rules">Rules</button>
           <button data-tab="gm" class="gm-only">GM</button>
@@ -78,6 +79,7 @@
           </div>
           <div class="pane" id="pane-combat"><div id="combat"></div></div>
           <div class="pane" id="pane-ships"><div id="ships"></div></div>
+          <div class="pane" id="pane-space"><div id="space"></div></div>
           <div class="pane" id="pane-handouts"><div id="handouts"></div></div>
           <div class="pane" id="pane-rules"><div id="rules"></div></div>
           <div class="pane" id="pane-gm"><div id="gm"></div></div>
@@ -85,6 +87,7 @@
       </main>
 
       <aside class="chat">
+        <div id="askCard" class="ask-card hidden" aria-live="polite"></div>
         <div id="chatLog" class="chat-log"></div>
         <form id="chatForm" class="chat-form">
           <div id="cmdMenu" class="cmd-menu hidden" role="listbox" aria-label="Chat commands"></div>
@@ -109,6 +112,7 @@
   <script src="books.js"></script>
   <script src="starships.js"></script>
   <script src="starships-sheet.js"></script>
+  <script src="space.js"></script>
   <script src="audio.js"></script>
   <script src="combat/engine.js"></script>
   <script src="combat/view.js"></script>

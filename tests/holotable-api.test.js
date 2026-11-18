@@ -1880,3 +1880,135 @@ test("Second Wind by a character whose name the GM hides names nobody in players
   const gmRoll = (await gm.poll()).data.state.chat.find((m) => m.roll && m.roll.label === "Second Wind (healing)");
   assert.ok(gmRoll && gmRoll.roll.expr === "1d10+5");
 });
+
+// The GM asking for a roll (audit 9.12)
+const askSheet = (name, wis) => ({ name, abilities: { str: 10, dex: 10, con: 10, int: 10, wis, cha: 10 }, skills: { perception: 1 } });
+
+test("ask: the GM rolls Perception for everyone now, from their sheets; players can't ask", async () => {
+  const { gm, p1, p2 } = await table();
+  const kira = (await p1.act("char.save", { char: askSheet("Kira", 16) })).data.id;
+  const rex = (await p2.act("char.save", { char: askSheet("Rex", 8) })).data.id;
+  await gm.act("char.save", { char: askSheet("Darth Secret", 20) });
+  assert.equal((await p1.act("ask.roll", { what: "skill", key: "perception" })).code, 403);
+  const r = await gm.act("ask.roll", { what: "skill", key: "perception", dc: 12, showDc: true });
+  assert.equal(r.code, 200);
+  assert.deepEqual(Object.keys(r.data.results).sort(), [kira, rex].sort(), "every player's character, not the GM's own");
+  const rolls = (await p1.poll()).data.state.chat.filter((m) => m.roll && /Perception/.test(m.roll.label));
+  assert.equal(rolls.length, 2);
+  const k = rolls.find((m) => m.charName === "Kira");
+  assert.match(k.roll.expr, /^1d20\+5$/, "Wis +3 and proficiency +2, from the sheet");
+  assert.match(k.roll.label, /vs DC 12: (success|fail)/);
+  assert.ok(!JSON.stringify((await p1.poll()).data.state.chat).includes("Darth Secret"), "a GM sheet's name never reaches players");
+  for (const [what, key] of [["skill", "__proto__"], ["save", "constructor"], ["nope", "dex"]])
+    assert.equal((await gm.act("ask.roll", { what, key })).code, 400);
+  assert.equal((await gm.act("ask.roll", { what: "save", key: "dex", chars: ["__proto__", "toString"] })).code, 400, "no such characters");
+  assert.equal(Object.prototype.polluted, undefined);
+});
+
+test("ask: a secret DC'd request; each player rolls only their own; group result and close", async () => {
+  const { gm, p1, p2 } = await table();
+  const kira = (await p1.act("char.save", { char: askSheet("Kira", 16) })).data.id;
+  const rex = (await p2.act("char.save", { char: askSheet("Rex", 8) })).data.id;
+  const open = await gm.act("ask.open", { what: "skill", key: "insight", dc: 15, group: true, secret: true });
+  assert.equal(open.code, 200);
+  const id = open.data.id;
+  let s1 = (await p1.poll()).data.state;
+  assert.equal(s1.ask.dc, undefined, "the DC isn't sent unless shown");
+  assert.deepEqual(s1.ask.mine, [kira]);
+  assert.equal((await p1.act("ask.answer", { id, charId: rex })).code, 403, "not your character");
+  assert.equal((await p1.act("ask.answer", { id: "nope", charId: kira })).code, 400);
+  const a1 = await p1.act("ask.answer", { id, charId: kira, mode: "adv" });
+  assert.equal(a1.code, 200);
+  assert.equal(a1.data.total, undefined, "a secret roll's number isn't returned to the player");
+  assert.equal((await p1.act("ask.answer", { id, charId: kira })).code, 400, "once each");
+  s1 = (await p1.poll()).data.state;
+  assert.deepEqual(s1.ask.results[kira], { done: true });
+  assert.ok(!s1.chat.some((m) => m.roll && /Insight/.test(m.roll.label)), "the roll itself is the GM's");
+  assert.ok(s1.chat.some((m) => /Kira rolled Insight for the GM/.test(m.text || "")));
+  await p2.act("ask.answer", { id, charId: rex });
+  const g = (await gm.poll()).data.state;
+  assert.equal(Object.keys(g.ask.results).length, 2);
+  assert.ok(g.chat.some((m) => m.roll && /Insight \(group\) vs DC 15/.test(m.roll.label) && m.roll.expr.startsWith("2d20kh1")), "advantage kept");
+  assert.ok(g.chat.some((m) => /^Group Insight: \d of 2 succeeded/.test(m.text || "") && m.private));
+  assert.equal((await p1.act("ask.close", {})).code, 403);
+  await gm.act("ask.close", {});
+  assert.equal((await p1.poll()).data.state.ask, undefined);
+});
+
+test("ask: a player not asked sees nothing of the request", async () => {
+  const { gm, p1, p2 } = await table();
+  const kira = (await p1.act("char.save", { char: askSheet("Kira", 16) })).data.id;
+  await p2.act("char.save", { char: askSheet("Rex", 8) });
+  await gm.act("ask.open", { what: "save", key: "wis", chars: [kira] });
+  assert.equal((await p2.poll()).data.state.ask, undefined);
+  assert.equal((await p1.poll()).data.state.ask.check.name, "Wisdom save");
+});
+
+test("ask: a hidden DC isn't bracketed by verdicts, and the GM's NPC isn't in a player's view (#170 review)", async () => {
+  const { gm, p1, p2 } = await table();
+  const kira = (await p1.act("char.save", { char: askSheet("Kira", 16) })).data.id;
+  const rex = (await p2.act("char.save", { char: askSheet("Rex", 8) })).data.id;
+  const npc = (await gm.act("char.save", { char: askSheet("Darth Secret", 20) })).data.id;
+  const id = (await gm.act("ask.open", { what: "skill", key: "perception", dc: 15, chars: [kira, rex, npc] })).data.id;
+  await p1.act("ask.answer", { id, charId: kira });
+  await p2.act("ask.answer", { id, charId: rex });
+  await gm.act("ask.answer", { id, charId: npc });
+  const a = (await p1.poll()).data.state.ask;
+  assert.deepEqual(a.chars.sort(), [kira, rex].sort(), "the GM's NPC isn't listed");
+  assert.equal(a.results[npc], undefined, "nor its result");
+  assert.ok(Object.values(a.results).every((r) => r.ok === undefined && Number.isFinite(r.total)), "totals, no verdicts, while the DC is hidden");
+  assert.equal(a.dc, undefined, "the DC isn't there");
+  await gm.act("ask.close", {});
+  const id2 = (await gm.act("ask.open", { what: "skill", key: "perception", dc: 12, showDc: true, chars: [kira] })).data.id;
+  await p1.act("ask.answer", { id: id2, charId: kira });
+  const b = (await p1.poll()).data.state.ask;
+  assert.equal(typeof b.results[kira].ok, "boolean", "with the DC shown, the verdict is too");
+  assert.ok(Object.keys((await gm.poll()).data.state.ask.results).length === 1);
+});
+
+test("AC from armor, Unarmored Defense and misc (audit 5.3), crit range, misc boxes (#74)", async () => {
+  require("../sections/jpesus/holotable/rules.js");
+  const R = globalThis.SW5E;
+  const ch = (o) => Object.assign({ classes: [{ name: "Fighter", level: 1 }], abilities: { str: 10, dex: 14, con: 16, int: 10, wis: 16, cha: 10 }, equipment: [] }, o);
+  const arm = (name, kind, ac, equipped = true) => ({ name, equipped, armor: { kind, ac } });
+  assert.equal(R.armorClass(ch()).total, 12, "unarmored 10 + Dex");
+  assert.equal(R.armorClass(ch({ equipment: [arm("Combat suit", "light", 11)] })).total, 13, "light: ac + Dex");
+  assert.equal(R.armorClass(ch({ abilities: { dex: 18 }, equipment: [arm("Composite armor", "medium", 15)] })).total, 17, "medium: Dex at most +2");
+  assert.equal(R.armorClass(ch({ abilities: { dex: 18 }, equipment: [arm("Assault armor", "heavy", 17)] })).total, 17, "heavy: no Dex");
+  assert.equal(R.armorClass(ch({ equipment: [arm("Combat suit", "light", 11), arm("Medium shield", "shield", 2)] })).total, 15, "a shield adds");
+  assert.equal(R.armorClass(ch({ equipment: [arm("Assault armor", "heavy", 17, false)] })).total, 12, "armor not equipped doesn't count");
+  assert.equal(R.armorClass(ch({ classes: [{ name: "Berserker", level: 1 }] })).total, 15, "Berserker: 10 + Dex + Con");
+  assert.equal(R.armorClass(ch({ classes: [{ name: "Berserker", level: 1 }], equipment: [arm("Light shield", "shield", 1)] })).total, 16, "and keeps a shield");
+  assert.equal(R.armorClass(ch({ classes: [{ name: "Monk", level: 1 }] })).total, 15, "Monk: 10 + Dex + Wis");
+  assert.equal(R.armorClass(ch({ classes: [{ name: "Monk", level: 1 }], equipment: [arm("Light shield", "shield", 1)] })).total, 13, "not with a shield");
+  assert.equal(R.armorClass(ch({ classes: [{ name: "Berserker", level: 1 }], equipment: [arm("Combat suit", "light", 11)] })).total, 13, "armor ends Unarmored Defense");
+  assert.equal(R.armorClass(ch({ acMisc: 1 })).total, 13, "misc adds");
+  assert.deepEqual(R.armorFromItem({ ac: "14 + Dex modifier (max 2)", accl: "Medium" }), { kind: "medium", ac: 14 });
+  assert.deepEqual(R.armorFromItem({ ac: "+2", accl: "Shield" }), { kind: "shield", ac: 2 });
+  assert.equal(R.armorFromItem({ ac: "", accl: "" }), null);
+  assert.equal(R.critFrom("Keen 1, Finesse"), 19);
+  assert.equal(R.critFrom("finesse"), 20);
+
+  const { gm, p1 } = await table();
+  const id = (await p1.act("char.save", { char: Object.assign(ch({ ac: 99, acAuto: true, acMisc: 1 }), { name: "Kira",
+    equipment: [arm("Combat suit", "light", 11), arm("Medium shield", "shield", 2), { name: "Junk", equipped: true, armor: { kind: "__proto__", ac: 5 } }],
+    attacks: [{ name: "Keen blade", critRange: 19 }, { name: "Plain", critRange: 20 }, { name: "Silly", critRange: 3 }],
+    saveMisc: { dex: 2 }, skillMisc: { stealth: 1 } }) })).data.id;
+  let c = (await gm.poll()).data.state.characters[id];
+  assert.equal(c.ac, 16, "the server works out AC when auto is on (11 + 2 + 2 + misc 1), ignoring the typed 99");
+  assert.equal(c.equipment[2].armor, undefined, "an unknown armor kind is dropped");
+  assert.equal(c.attacks[0].critRange, 19);
+  assert.equal(c.attacks[1].critRange, undefined, "20 is the default, not stored");
+  assert.equal(c.attacks[2].critRange, 15, "clamped to 15-20");
+  assert.equal(R.saveBonus(c, "dex"), 2 + 2, "save misc adds");
+  const id2 = (await p1.act("char.save", { char: Object.assign(ch({ ac: 18 }), { name: "Typed", equipment: [arm("Combat suit", "light", 11)] }) })).data.id;
+  c = (await gm.poll()).data.state.characters[id2];
+  assert.equal(c.ac, 18, "without auto, the typed AC stands as before");
+  assert.equal(c.acAuto, undefined);
+  // the page fills every sheet it gets from a blank one, and imports start from one: neither may switch auto on (#165)
+  assert.equal(R.blankCharacter().acAuto, undefined, "a blank sheet doesn't turn auto AC on");
+  const old = Object.assign(R.blankCharacter(), { name: "Old", ac: 17, abilities: { dex: 12 }, equipment: [{ name: "Combat suit", equipped: true }] });
+  const id3 = (await p1.act("char.save", { char: old })).data.id;
+  c = (await gm.poll()).data.state.characters[id3];
+  assert.equal(c.ac, 17, "an old sheet (or an import) filled from the blank keeps its typed AC");
+});
