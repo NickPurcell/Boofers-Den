@@ -889,7 +889,7 @@
         ${ch.acAuto ? `<div class="val">${acx.total}</div>` : inp('ac', +ch.ac || 10, { ro, type: 'number' })}
         <div class="ac-opts"><label class="muted">${inp('acAuto', !!ch.acAuto, { ro, type: 'checkbox' })} auto</label>${ch.acAuto ? `<span class="muted">misc</span>${inp('acMisc', +ch.acMisc || 0, { ro, type: 'number', w: '44px' })}` : ''}</div></div>`)(R.armorClass(ch))}
       <div class="stat rollable" data-roll="${d20(R.initiative(ch))}" data-label="Initiative" data-d20="1"><div class="lbl">Initiative</div><div class="val">${R.fmt(R.initiative(ch))}</div></div>
-      <div class="stat"><div class="lbl">Speed</div>${inp('speed', +ch.speed || 30, { ro, type: 'number' })}${(sp => (sp.slow ? `<div class="muted" style="font-size:11px" title="${esc(sp.parts.join(' · '))}">${n0(sp.speed)} ft now ⓘ</div>` : '')
+      <div class="stat"><div class="lbl">Speed</div>${inp('speed', +ch.speed || 30, { ro, type: 'number' })}${(sp => (sp.slow || sp.bonus ? `<div class="muted" style="font-size:11px" title="${esc(sp.parts.join(' · '))}">${n0(sp.speed)} ft now ⓘ</div>` : '')
         + (Object.keys(sp.other).length ? `<div class="muted" style="font-size:11px" title="From the species traits on this sheet">${Object.entries(sp.other).map(([k, v]) => `${k} ${n0(v)}`).join(' · ')}</div>` : ''))(R.speedOf(ch, S.st.variants))}</div>
       <div class="stat"><div class="lbl">Proficiency</div><div class="val">${R.fmt(pb)}</div></div>
       <div class="stat" title="Passive scores: 10 + the skill's bonus (audit 5.13)"><div class="lbl">Passive Perc.</div><div class="val">${R.passive(ch, 'perception')}</div>
