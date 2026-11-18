@@ -16,7 +16,8 @@ const str = (v, n) => String(v == null ? "" : v).slice(0, n);
 const int = (v, d = 0) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : d; };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-const TYPES = new Set(["ship.damage", "ship.restore", "ship.points", "ship.dsave", "ship.stabilize", "ship.condition", "ship.reset"]);
+const TYPES = new Set(["ship.damage", "ship.restore", "ship.points", "ship.dsave", "ship.stabilize", "ship.condition", "ship.reset",
+  "ship.turn", "ship.power", "ship.poweruse", "ship.dice", "ship.boost", "ship.regen"]);
 const handles = (type) => TYPES.has(type);
 
 // On a sheet save: the fight state and the current hull and shield points stay as stored (they change only through
@@ -99,6 +100,48 @@ function apply(camp, cid, gm, type, p, h) {
       else if (before.cond.includes(name) !== after.cond.includes(name)) say([`${ship.name} is ${after.cond.includes(name) ? "now" : "no longer"} ${name.toLowerCase()}.`]);
       return {};
     }
+    case "ship.turn": {     // the start of the ship's turn: power dice back, shields regenerate, boosts end, a destruction save at 0 hull
+      const dying = SR.dying(ship);
+      const r = SR.startTurn(ship, (e) => rollDice(e), { regen: p.regen !== false });
+      put(r.ship); say([`${ship.name}'s turn starts.`, ...r.log]);
+      if (dying) return apply(camp, cid, gm, "ship.dsave", { id: ship.id }, h);
+      return {};
+    }
+    case "ship.power": {    // the sheet's + and - on a power store
+      const pool = str(p.pool, 20);
+      if (!SR.POOLS.includes(pool)) throw new Invalid("No such power store.");
+      put(SR.setPower(ship, pool, int(p.n)));
+      return {};
+    }
+    case "ship.poweruse": { // spend a power die from a store, rolled here
+      const pool = str(p.pool, 20);
+      if (!SR.POOLS.includes(pool)) throw new Invalid("No such power store.");
+      const r = SR.usePower(ship, pool, (e) => rollDice(e));
+      if (r.value === null) throw new Invalid(`No power dice in ${SR.SYSTEM_NAMES[pool].toLowerCase()}.`);
+      put(r.ship);
+      say([`${playerName(camp, cid)} spends a ${SR.SYSTEM_NAMES[pool].toLowerCase()} power die on ${ship.name}: ${r.value}.`]);
+      return { value: r.value };
+    }
+    case "ship.dice": {     // shield or hull dice spent, set on the sheet
+      put(SR.setDiceUsed(ship, p.kind === "hull" ? "hull" : "shield", int(p.used)));
+      return {};
+    }
+    case "ship.boost": case "ship.regen": {   // Boost Engines / Shields / Weapons, or Regenerate Shields: a Strength (Boost) check rolled here
+      const what = type === "ship.regen" ? "regen" : str(p.what, 10);
+      if (what !== "regen" && !["engines", "shields", "weapons"].includes(what)) throw new Invalid("Boost engines, shields or weapons.");
+      if (SR.isDisabled(SR.statusOf(ship)) || SR.isLost(SR.statusOf(ship))) throw new Invalid(`${ship.name} can't take actions.`);
+      // the crew member's Boost bonus comes from the sheet (ship Strength + their proficiency); the ship's conditions set the mode
+      const bonus = clamp(int(p.bonus), -10, 30), fx = SR.rollEffects(ship, "check", "str"), mode = SR.rollMode(fx, ["adv", "dis"].includes(p.mode) ? p.mode : "normal");
+      const expr = (mode === "adv" ? "2d20kh1" : mode === "dis" ? "2d20kl1" : "1d20") + (bonus >= 0 ? "+" : "") + bonus;
+      const roll = rollDice(expr);
+      const label = what === "regen" ? `${ship.name}: Regenerate Shields (DC ${SR.regenDC(ship)})` : `${ship.name}: Boost ${what} (DC ${SR.boostDC(ship)})`;
+      const r = what === "regen" ? SR.regenerateShields(ship, roll.total, (e) => rollDice(e)) : SR.boost(ship, what, roll.total, (e) => rollDice(e));
+      if (r.already || r.done === false) throw new Invalid(r.log[0] || "Not now.");
+      const msg = { from: playerName(camp, cid), fromId: cid, roll: Object.assign({}, roll, { expr, label: str(label + ([...fx.adv, ...fx.dis].length ? ` [${[...fx.adv, ...fx.dis].join(", ")}]` : ""), 120), kind: "boost" }) };
+      if (ship.hidden) Object.assign(msg, { to: ["@gm", cid], private: true });
+      put(r.ship); addChat(camp, msg); say(r.log);
+      return { ok: !!r.ok, total: roll.total };
+    }
     case "ship.reset": {    // the GM undoes a destruction (a mistake, or a story reason): saves cleared, not destroyed
       if (!gm) throw new Forbidden("GM only");
       const s = JSON.parse(JSON.stringify(ship));
@@ -112,4 +155,9 @@ function apply(camp, cid, gm, type, p, h) {
   return {};
 }
 
-module.exports = { handles, apply, keepStatus, cleanStatus: SR.cleanStatus };
+// the ship sheet fields this subsystem owns, cleaned for cleanShip: its fight state, and the reactor, power coupling and
+// shields the crew picked ("" means: from its equipment or role)
+const pick = (v, table) => (Object.prototype.hasOwnProperty.call(table, v) ? v : "");
+const cleanFields = (sh) => ({ status: SR.cleanStatus(sh.status), reactor: pick(sh.reactor, SR.REACTORS), coupling: pick(sh.coupling, SR.COUPLINGS), shieldType: pick(sh.shieldType, SR.SHIELD_TYPES) });
+
+module.exports = { handles, apply, keepStatus, cleanStatus: SR.cleanStatus, cleanFields };

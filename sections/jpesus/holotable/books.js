@@ -594,7 +594,7 @@
         <div class="stat"><div class="lbl">Hyperdrive</div>${shipInp('hyper', s.hyper, { ro, ph: 'class' })}</div>
       </div>
       ${!ro ? `<div class="row wrap ship-dmg"><span class="muted" style="font-size:12px">Hull dice ${shipInp('hullDice', s.hullDice, { ro, w: '80px', ph: 'e.g. 3d10' })} Shield dice ${shipInp('shieldDice', s.shieldDice, { ro, w: '80px', ph: 'e.g. 3d10' })} Regen ${shipInp('shieldRegen', s.shieldRegen, { ro, w: '90px' })}</span></div>` : ''}
-      ${window.HTShipSheet ? HTShipSheet.block(s, ro) : ''}
+      ${window.HTShipSheet ? HTShipSheet.block(s, ro, { pb }) : ''}
       <div class="grid g2" style="margin-top:12px">
         <div class="box"><h4>Crew &amp; deployments</h4>
           <table class="t"><thead><tr><th>Crew member</th><th>Deployment</th><th>Rank</th><th>Prof.</th><th></th></tr></thead><tbody>
