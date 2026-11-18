@@ -439,12 +439,19 @@
     if (!cw.variant) for (const e of worn) if (+e.armor.str > str) { slow += 10; parts.push(`${e.name} needs Str ${e.armor.str}: -10 ft`); break; }
     for (const e of worn) if (e.armor.cumbersome) { slow += 5; parts.push(`${e.name} is cumbersome: -5 ft`); }
     if (cw.slow) { slow += cw.slow; parts.push(`carrying ${cw.weight} lb: -${cw.slow} ft`); }
-    const other = {};
-    for (const f of (c && c.features) || []) for (const m of String((f && f.text) || '').matchAll(/(flying|swimming|climbing|burrowing) speed of (\d+)/gi)) {
-      const k = { flying: 'fly', swimming: 'swim', climbing: 'climb', burrowing: 'burrow' }[m[1].toLowerCase()];
-      other[k] = Math.max(other[k] || 0, +m[2]);
+    const other = {}, now = Math.max(0, base - slow);
+    const midHeavy = worn.some(e => e.armor.kind === 'medium' || e.armor.kind === 'heavy');
+    for (const f of (c && c.features) || []) {
+      const text = String((f && f.text) || '');
+      for (const m of text.matchAll(/(flying|swimming|climbing|burrowing) speed (?:of (\d+)|equal to your walking speed)/gi)) {
+        const k = { flying: 'fly', swimming: 'swim', climbing: 'climb', burrowing: 'burrow' }[m[1].toLowerCase()];
+        // "equal to your walking speed" follows it now; SW5e's flyers: "while wearing medium or heavy armor, ... reduced by half"
+        let v = m[2] ? +m[2] : now;
+        if (k === 'fly' && midHeavy && /medium or heavy armor, your flying speed is reduced by half/i.test(text)) v = Math.floor(v / 2);
+        other[k] = Math.max(other[k] || 0, v);
+      }
     }
-    return { base, speed: Math.max(0, base - slow), slow, parts, other };
+    return { base, speed: now, slow, parts, other };
   }
   Object.assign(SW5E, { speedOf });
 

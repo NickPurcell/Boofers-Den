@@ -219,6 +219,11 @@ test("speed (audit 5.11): SW5e's strength and cumbersome armor properties, the e
   assert.equal(R.speedOf(heavy, [R.ENCUMBRANCE]).speed, 20, "the load, under the variant");
   const tr = c(10, false, { features: [{ name: "Swim", text: "You have a swimming speed of 30 feet." }, { name: "Climb", text: "You have a climbing speed of 25 feet." }] });
   assert.deepEqual(R.speedOf(tr).other, { swim: 30, climb: 25 });
+  // SW5e's flyers: "a flying speed equal to your walking speed", halved in medium or heavy armor
+  const fl = { speed: 30, abilities: { str: 16 }, features: [{ name: "Flight", text: "You have a flying speed equal to your walking speed. While wearing medium or heavy armor, your flying speed is reduced by half." }], equipment: [] };
+  assert.deepEqual(R.speedOf(fl).other, { fly: 30 });
+  fl.equipment.push({ name: "Mesh armor", equipped: true, armor: { kind: "medium", ac: 14 } });
+  assert.deepEqual(R.speedOf(fl).other, { fly: 15 });
 });
 
 test("Engineers and Scouts get tech points back on a short rest; others don't", () => {
