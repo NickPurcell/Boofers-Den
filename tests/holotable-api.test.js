@@ -2658,6 +2658,21 @@ test("variant rules on the sheet (9.16): Simplified Forcecasting's ability count
   assert.equal((await p1.poll()).data.state.characters[id].forceAbility, undefined, "dropping the variant drops the choice");
 });
 
+test("char.rest: the sheet's short and long rests reach the fight module's onRest hook", async () => {
+  const { gm, p1, p2 } = await table();
+  const id = (await p1.act("char.save", { char: { name: "Resty" } })).data.id;
+  const Fight = require("../api/_holotable-fight.js"), seen = [], had = Fight.onRest;
+  Fight.onRest = (camp, charId, kind) => seen.push([charId, kind]);
+  try {
+    assert.equal((await p1.act("char.rest", { charId: id, kind: "short" })).data.rested, "short");
+    assert.equal((await gm.act("char.rest", { charId: id, kind: "long" })).data.rested, "long");
+    assert.equal((await p2.act("char.rest", { charId: id, kind: "long" })).code, 403, "only the owner or the GM");
+    assert.equal((await p1.act("char.rest", { charId: id, kind: "nap" })).code, 400);
+    assert.equal((await p1.act("char.rest", { charId: "__proto__", kind: "long" })).code, 400);
+    assert.deepEqual(seen, [[id, "short"], [id, "long"]]);
+  } finally { if (had) Fight.onRest = had; else delete Fight.onRest; }
+});
+
 test("a sheet keeps Wretched Hives' mastery tiers on skills (5.7)", async () => {
   const { p1 } = await table();
   const id = (await p1.act("char.save", { char: { name: "Ace", skills: { stealth: 3, insight: 5, athletics: 6, perception: 0.5 } } })).data.id;
