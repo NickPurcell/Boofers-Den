@@ -53,7 +53,7 @@ function state(camp) {
     spent: Object.fromEntries(Object.entries(plainObj(f.spent)).filter(([k, v]) => ID.test(k) && v && typeof v === "object")
       .map(([k, v]) => [k, { key: str(v.key, 40), move: clamp(int(v.move), 0, 1000), action: clamp(int(v.action), 0, 9), bonus: clamp(int(v.bonus), 0, 9), reaction: clamp(int(v.reaction), 0, 9), diag: v.diag ? 1 : 0,
         dash: clamp(int(v.dash), 0, 9), disengage: v.disengage ? 1 : 0, dodge: v.dodge ? 1 : 0, ds: v.ds ? 1 : 0, sneak: v.sneak ? 1 : 0, double: v.double ? 1 : 0,
-        atk: clamp(int(v.atk), 0, 9), atkMax: clamp(int(v.atkMax), 0, 9), lt: clamp(int(v.lt), 0, 41), dw: clamp(int(v.dw), 0, 41), off: clamp(int(v.off), 0, 9) }])),
+        atk: clamp(int(v.atk), 0, 9), atkMax: clamp(int(v.atkMax), 0, 9), lt: clamp(int(v.lt), 0, 41), dw: clamp(int(v.dw), 0, 41), off: clamp(int(v.off), 0, 9), mv: clamp(int(v.mv), 0, 1023) }])),
     // reactions waiting for an answer: an opportunity attack someone may take (the turn waits until it's answered)
     pending: (Array.isArray(f.pending) ? f.pending : []).slice(0, 12).map(cleanPending).filter(Boolean),
     // a creature's limited abilities from its stat block (audit 9.5, issue #76): recharge, per day, legendary actions
@@ -661,6 +661,12 @@ function apply(camp, cid, gm, type, p, G) {
         return !!(ab && ab.area);
       })();
       // Rage counts its uses: a sheet from before #108 gets its class's Rages resource from the class table first
+      // a maneuver (#67) spends superiority dice: a sheet from before #108 gets its class's pool from the class table first
+      const mover = type === "fight.attack" && p.add && typeof p.add.maneuver === "string" && p.add.maneuver && cur.charId && charOf(camp, cur.charId);
+      if (mover && R.withClassResources && !(mover.resources || []).some((r) => r && /^superiority/.test(String(r.key)))) {
+        const withSup = E.cleanResources(R.withClassResources(mover));
+        if (withSup.some((r) => /^superiority/.test(r.key))) mover.resources = withSup;
+      }
       const rager = type === "fight.common" && String(p.key || "") === "rage" && cur.charId && charOf(camp, cur.charId);
       if (rager && R.withClassResources && !(rager.resources || []).some((r) => r && r.key === "rage")) {
         const withRage = E.cleanResources(R.withClassResources(rager));
@@ -699,7 +705,8 @@ function apply(camp, cid, gm, type, p, G) {
           if (!spec) throw new G.Invalid("That attack isn't on the sheet.");
         } else spec = cleanSpec(p.attack, G);
         act = { type: "attack", unit: cur.id, target: idOr(p.target), attack: spec, adv: !!p.adv, dis: !!p.dis, no: Array.isArray(p.no) ? p.no.slice(0, 4).map((x) => str(x, 20)) : [],
-          add: { fes: clamp(int(p.add && p.add.fes), 0, 20), double: !!(p.add && p.add.double) }, twoHands: !!p.twoHands,   // only how many, never the dice: the engine works those out
+          add: { fes: clamp(int(p.add && p.add.fes), 0, 20), double: !!(p.add && p.add.double),
+            maneuver: p.add && typeof p.add.maneuver === "string" && /^[a-z-]{3,30}$/.test(p.add.maneuver) ? p.add.maneuver : "" }, twoHands: !!p.twoHands,   // a maneuver by name; the engine checks the sheet knows it   // only how many, never the dice: the engine works those out
           multi: gm && !cur.charId ? clamp(int(p.multi, 1), 1, 6) : 1,
           offhand: !!cur.charId && !!p.offhand };   // Two- or Double-Weapon Fighting (5.8): the engine checks it may   // a creature's Multiattack (#139): the GM's screen reads it from the stat block
       }

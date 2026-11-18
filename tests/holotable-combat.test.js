@@ -258,7 +258,7 @@ test("turn budget: each unit's own turn refills its movement, action, bonus acti
   const hers = Object.assign({}, w, { turnId: "ava", round: 2 });
   assert.deepEqual([E.budget(hers).reaction, E.budget(hers).moveLeft, E.budget(hers).action], [true, 30, true]);
   const r = E.apply(hers, { type: "move", unit: "ava", x: 2, y: 0 }, dice().roll);
-  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0 });
+  assert.deepEqual(r.world.spent.ava, { key: "2:ava", move: 10, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0 });
 });
 
 // a level-3 Consular with two powers; the table has data for one of them (numbers invented for the test)
@@ -3001,4 +3001,103 @@ test("review of #147 through the API: fight.grapple, shove, release and help on 
   }
   assert.ok(!("conditions" in {}) && !("x" in {}) && !("y" in {}), "Object.prototype untouched");
   assert.equal((await sam.act("fight.grapple", { target: ids.raider })).code, 200, "a real target still works");
+});
+
+/* ---------------------------------------------------------------- maneuvers on an attack (#67, the combat view's half) */
+test("maneuvers: the ones the sheet knows, its save DC by type, offered while a superiority die is left", () => {
+  const ch = { classes: [{ name: "Fighter", level: 5 }], abilities: { str: 16, dex: 14, con: 12, int: 10, wis: 13, cha: 8 }, features: [{ name: "Trip Attack" }, { name: "menacing attack" }, { name: "Second Wind" }] };
+  assert.deepEqual(E.maneuversOf(ch, R), { known: ["trip-attack", "menacing-attack"], dc: { physical: 14, mental: 12, general: 14 } });
+  assert.equal(E.maneuversOf({ features: [{ name: "Second Wind" }] }, R), null);
+  const sup = (used) => ({ superiority: { key: "superiority", name: "Superiority dice", max: 3, die: "d6", used, refill: "short" } });
+  const ft = (o) => unit(Object.assign({ id: "ft", name: "Fenn", side: "pc", x: 0, y: 0, pools: sup(0), maneuvers: { known: ["trip-attack", "precision-attack"], dc: { physical: 14, mental: 12, general: 14 } } }, o));
+  const r1 = unit({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 90, maxHp: 90 });
+  const wpn = Object.assign({}, blade, { weapon: true });
+  const offer = (u) => ((E.preview(world([u, r1], "ft"), "ft", "r1", wpn).riders || []).find((x) => x.key === "maneuver") || null);
+  assert.deepEqual(offer(ft()).options.map((o) => [o.key, o.save, o.dc]), [["trip-attack", "str", 14], ["precision-attack", null, null]]);
+  assert.equal(offer(ft()).die, "d6");
+  assert.equal(offer(ft({ pools: sup(3) })), null, "no dice left");
+  assert.equal(offer(ft({ maneuvers: null })), null);
+  assert.equal(((E.preview(world([ft(), r1], "ft"), "ft", "r1", blade).riders || []).find((x) => x.key === "maneuver")), undefined, "a weapon attack only");
+});
+
+test("maneuvers in an attack: the die on the hit, the save, the effect; once a turn; Precision on the roll", () => {
+  const sup = (used) => ({ superiority: { key: "superiority", name: "Superiority dice", max: 4, die: "d8", used, refill: "short" } });
+  const all = ["trip-attack", "pushing-attack", "menacing-attack", "distracting-blow", "crippling-blow", "weak-point-strike", "exploit-weakness", "precision-attack"];
+  const ft = (o) => unit(Object.assign({ id: "ft", name: "Fenn", side: "pc", x: 0, y: 0, attacks: 2, pools: sup(0), maneuvers: { known: all, dc: { physical: 15, mental: 13, general: 15 } } }, o));
+  const r1 = (o) => unit(Object.assign({ id: "r1", name: "Raider", side: "npc", x: 1, y: 0, hp: 90, maxHp: 90, saves: { str: 1, wis: 0, con: 2 } }, o));
+  const wpn = Object.assign({}, blade, { weapon: true });
+  const go = (w, key, ...rolls) => { const d = dice(...rolls); const r = E.apply(w, { type: "attack", unit: "ft", target: "r1", attack: wpn, add: { maneuver: key } }, d.roll); return { r, d }; };
+  // Trip: the die on the damage, a Str save against the physical DC, prone on a failure, the die spent
+  let { r, d } = go(world([ft(), r1()], "ft"), "trip-attack", { total: 15, nat: 12 }, { total: 9 }, { total: 6 });
+  assert.deepEqual([d.asked[1], d.asked[2]], ["1d8+3+1d8", "1d20+1"]);
+  assert.match(r.log[1].text, /with Trip Attack 1d8/);
+  assert.match(r.log[2].text, /STR save against Trip Attack \(DC 15\): 6, a failure/);
+  assert.ok(r.world.units.r1.conditions.includes("Prone"));
+  assert.equal(r.world.units.ft.pools.superiority.used, 1);
+  // once a turn: not offered again; a second attack the same turn can use another
+  assert.ok(!E.preview(r.world, "ft", "r1", wpn).riders.find((x) => x.key === "maneuver").options.some((o) => o.key === "trip-attack"));
+  ({ r, d } = go(r.world, "trip-attack", { total: 15, nat: 12 }, { total: 9 }));
+  assert.deepEqual([d.asked[1], r.world.units.ft.pools.superiority.used], ["1d8+3", 1], "asked again: ignored, nothing spent");
+  // a miss spends nothing; a save that succeeds does nothing more
+  ({ r } = go(world([ft(), r1()], "ft"), "trip-attack", { total: 2, nat: 2 }));
+  assert.equal(r.world.units.ft.pools.superiority.used, 0);
+  ({ r } = go(world([ft(), r1()], "ft"), "trip-attack", { total: 15, nat: 12 }, { total: 9 }, { total: 19 }));
+  assert.ok(!(r.world.units.r1.conditions || []).includes("Prone"));
+  // too big: Huge
+  ({ r } = go(world([ft(), r1({ sizeCat: 4 })], "ft"), "trip-attack", { total: 15, nat: 12 }, { total: 9 }));
+  assert.match(r.log[2].text, /too big for Trip Attack/);
+  // Pushing: 15 ft away
+  ({ r } = go(world([ft(), r1()], "ft"), "pushing-attack", { total: 15, nat: 12 }, { total: 9 }, { total: 3 }));
+  assert.deepEqual([r.world.units.r1.x, r.log[3].text], [4, "Raider is pushed 15 ft."]);
+  // Menacing: Wis save against the mental DC; frightened of Fenn until the end of Fenn's next turn
+  ({ r, d } = go(world([ft(), r1()], "ft"), "menacing-attack", { total: 15, nat: 12 }, { total: 9 }, { total: 5 }));
+  assert.equal(d.asked[2], "1d20+0");
+  assert.match(r.log[2].text, /DC 13/);
+  const fr = r.world.effects.find((ef) => ef.condition === "Frightened");
+  assert.deepEqual([fr.source, fr.ends, fr.of, fr.rounds], ["ft", "end", "ft", 2]);
+  // Distracting: the next attack on it by someone else has advantage
+  ({ r } = go(world([ft(), r1(), unit({ id: "bo", name: "Bolt", side: "pc", x: 1, y: 1 })], "ft"), "distracting-blow", { total: 15, nat: 12 }, { total: 9 }));
+  assert.deepEqual(E.preview(Object.assign({}, r.world, { turnId: "bo" }), "bo", "r1", blade).tilts.map((x) => x.text), ["distracted by Fenn"]);
+  assert.equal(E.preview(r.world, "ft", "r1", blade).mode, "normal", "not for Fenn");
+  // Crippling: 1 slowed level until the end of its next turn; Weak Point: Con save or stunned
+  ({ r } = go(world([ft(), r1()], "ft"), "crippling-blow", { total: 15, nat: 12 }, { total: 9 }));
+  assert.equal(E.levelOf(r.world, r.world.units.r1, "Slowed"), 1);
+  ({ r, d } = go(world([ft(), r1()], "ft"), "weak-point-strike", { total: 15, nat: 12 }, { total: 9 }, { total: 4 }));
+  assert.deepEqual([d.asked[2], r.world.units.r1.conditions.includes("Stunned")], ["1d20+2", true]);
+  // Exploit Weakness: true damage on top, past a resistance
+  ({ r, d } = go(world([ft(), r1({ resist: [{ type: "kinetic", only: null }] })], "ft"), "exploit-weakness", { total: 15, nat: 12 }, { total: 10 }, { total: 7 }));
+  assert.deepEqual([d.asked[1], d.asked[2], r.world.units.r1.hp], ["1d8+3", "1d8", 90 - 5 - 7]);
+  // Precision: the die on the attack roll, spent even on a miss
+  ({ r, d } = go(world([ft(), r1()], "ft"), "precision-attack", { total: 9, nat: 4 }));
+  assert.deepEqual([d.asked[0], r.world.units.ft.pools.superiority.used], ["1d20+5+1d8", 1]);
+  assert.match(r.log[0].text, /Precision Attack, \+1d8/);
+  // a name it doesn't know, or an inherited one: nothing
+  for (const bad of ["parry", "__proto__", "constructor"]) {
+    ({ r, d } = go(world([ft({ maneuvers: { known: ["trip-attack"], dc: { physical: 15, mental: 13, general: 15 } } }), r1()], "ft"), bad, { total: 15, nat: 12 }, { total: 9 }));
+    assert.deepEqual([r.ok, d.asked[1], r.world.units.ft.pools.superiority.used], [true, "1d8+3", 0], bad);
+  }
+  assert.ok(!("mv" in {}) && !("conditions" in {}));
+});
+
+test("maneuvers through the API: the sheet's maneuver and pool, the die from the class table, spent on the hit", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { classes: [{ name: "Fighter", level: 5 }], features: [{ name: "Trip Attack", text: "" }] }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0", add: { maneuver: "trip-attack", dice: "9d12" } })).code, 200);
+  st = await gm.state();
+  const rolls = st.chat.filter((m) => m.fight && m.roll).map((m) => m.roll);
+  const hit = rolls.find((x) => x.kind === "attack") && /hit/.test(rolls.find((x) => x.kind === "attack").label);
+  const pool = (st.characters[avery].resources || []).find((r) => r.key === "superiority");
+  assert.ok(pool, "the sheet got its Fighter pool");
+  if (hit) {
+    assert.match(rolls.find((x) => x.kind === "damage").expr, /\+1d6$|\+2d6$/, "a Fighter 5's d6");
+    assert.equal(pool.used, 1);
+    assert.match(rolls.find((x) => x.kind === "save").label, /STR save against Trip Attack \(DC 14\)/);
+  } else assert.equal(pool.used, 0);
+  assert.ok(!rolls.some((x) => /9d12/.test(x.expr + x.label)));
+  // the second attack of the action (Extra Attack), naming an inherited key: no maneuver, not an error
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0", add: { maneuver: "__proto__" } })).code, 200);
+  assert.ok(!("mv" in {}) && !("conditions" in {}));
 });

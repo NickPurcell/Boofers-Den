@@ -433,6 +433,8 @@
              ${spec.versatile && !pv.ranged ? `<label class="ct-tog ct-rider" title="Versatile: the weapon in both hands uses the larger die"><input type="checkbox" data-ct="twohands" ${UI.twoHands ? 'checked' : ''}> Two hands (${esc(spec.versatile)})</label>` : ''}
              ${(pv.riders || []).map((x) => x.key === 'fes'
                ? `<label class="ct-tog ct-rider" title="On a melee weapon hit: 1d8 for each force point spent (paid only if it hits)">+ ${esc(x.name)} <select data-ct="fes">${Array.from({ length: x.max + 1 }, (_, i) => `<option value="${i}" ${+((UI.addRiders || {}).fes || 0) === i ? 'selected' : ''}>${i ? `${i}d8 (${i} FP)` : 'none'}</option>`).join('')}</select></label>`
+               : x.key === 'maneuver'
+               ? `<label class="ct-tog ct-rider" title="A superiority die (${esc(x.die)}), spent on a hit (Precision Attack: when used). One maneuver an attack, each once a turn">Maneuver <select data-ct="maneuver"><option value="">none</option>${x.options.map((o) => `<option value="${esc(o.key)}" ${(UI.addRiders || {}).maneuver === o.key ? 'selected' : ''}>${esc(o.name)} (+1${esc(x.die)}${o.save ? `, ${o.save.toUpperCase()} save DC ${o.dc}` : ''})</option>`).join('')}</select></label>`
                : x.key === 'double'
                ? `<label class="ct-tog ct-rider" title="On a weapon hit, once a turn: 1 force point for a Kinetic Combat die (paid only if it hits)"><input type="checkbox" data-ct="rider-add" data-key="double" ${(UI.addRiders || {}).double ? 'checked' : ''}> + ${esc(x.name)} ${esc(x.dice)} (1 FP)</label>`
                : `<label class="ct-tog ct-rider" title="${esc(x.key === 'sneak' ? 'Once per turn, on a hit: the same type as the weapon' : 'While raging, on a Strength melee weapon hit')}"><input type="checkbox" data-ct="rider" data-key="${esc(x.key)}" ${(UI.noRiders || []).includes(x.key) ? '' : 'checked'}> + ${esc(x.name)} ${esc(x.dice || '+' + x.flat)}</label>`).join('')}
@@ -446,6 +448,8 @@
     if (el) { UI.upcast = +el.value || 0; render(); }
     const fes = e.target.closest('[data-ct=fes]');   // Force-Empowered Strikes: how many force points to spend on a hit
     if (fes) { UI.addRiders = Object.assign({}, UI.addRiders, { fes: +fes.value || 0 }); render(); }
+    const mvSel = e.target.closest('[data-ct=maneuver]');   // a maneuver for this attack (#67)
+    if (mvSel) { UI.addRiders = Object.assign({}, UI.addRiders, { maneuver: mvSel.value || '' }); render(); }
   }
   function onBar(e) {
     const el = e.target.closest('[data-ct]');
