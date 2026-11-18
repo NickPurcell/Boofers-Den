@@ -21,13 +21,17 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // A ship's Strength (Boost) bonus, worked out here from the ship sheet: the ship's Strength modifier, plus the
 // proficiency bonus of the crew member making the check (their character's, else the number on the crew row) times the
 // ship's Boost equipment (0, 1 proficiently, 2 expertly). The request only says which crew row is rolling.
-function boostBonus(camp, ship, crewIndex) {
+// The proficiency bonus of a crew row, worked out from the stored sheets: the crew member's character's, else the number
+// on the row, else 2. A row number from a request picks a row; anything else reads as the first.
+function crewPb(camp, ship, crewIndex) {
   const crew = Array.isArray(ship.crew) ? ship.crew : [], c = crew[clamp(int(crewIndex), 0, Math.max(0, crew.length - 1))];
   const chars = camp.characters || {};
   const ch = c && typeof c.charId === "string" && Object.prototype.hasOwnProperty.call(chars, c.charId) ? chars[c.charId] : null;
-  const pb = ch && R ? R.profBonus(ch) : (c && int(c.pb)) || 2;
+  return ch && R ? R.profBonus(ch) : (c && int(c.pb)) || 2;
+}
+function boostBonus(camp, ship, crewIndex) {
   const str = Math.floor((int((ship.abilities || {}).str, 10) - 10) / 2), lv = clamp(int((ship.skills || {}).boost), 0, 2);
-  return str + lv * pb;
+  return str + lv * crewPb(camp, ship, crewIndex);
 }
 
 const TYPES = new Set(["ship.damage", "ship.restore", "ship.points", "ship.dsave", "ship.stabilize", "ship.condition", "ship.reset",
@@ -175,5 +179,9 @@ function apply(camp, cid, gm, type, p, h) {
 // shields the crew picked ("" means: from its equipment or role)
 const pick = (v, table) => (Object.prototype.hasOwnProperty.call(table, v) ? v : "");
 const cleanFields = (sh) => ({ status: SR.cleanStatus(sh.status), reactor: pick(sh.reactor, SR.REACTORS), coupling: pick(sh.coupling, SR.COUPLINGS), shieldType: pick(sh.shieldType, SR.SHIELD_TYPES) });
+// a weapon row's fields this subsystem owns: its category (primary to quaternary), its mount (a fixed arc, or a turret;
+// "" means not set, and fires in any arc), and its ammunition ("" means not counted)
+const cleanWeapon = (w) => ({ cat: SR.WEAPON_CATS.includes(w.cat) ? w.cat : "", arc: SR.MOUNTS.includes(w.arc) ? w.arc : "",
+  ammo: w.ammo === "" || w.ammo === null || w.ammo === undefined || !Number.isFinite(parseInt(w.ammo, 10)) ? "" : clamp(int(w.ammo), 0, 999) });
 
-module.exports = { handles, apply, keepStatus, cleanStatus: SR.cleanStatus, cleanFields, boostBonus };
+module.exports = { handles, apply, keepStatus, cleanStatus: SR.cleanStatus, cleanFields, cleanWeapon, boostBonus, crewPb };

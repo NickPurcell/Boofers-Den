@@ -172,12 +172,21 @@
     'Archaeologist Pursuit': { cls: 'Scholar', caster: 'force', int: true },
     'Shield Specialist': { cls: 'Fighter', caster: 'tech' }, 'Industrial Approach': { cls: 'Berserker', caster: 'tech' },
     'Saboteur Practice': { cls: 'Operative', caster: 'tech' }, 'Slicer Pursuit': { cls: 'Scholar', caster: 'tech' },
+    // in SW5e's data with no casterType, but with a Techcasting table of the same shape (#160's review): may cast with Int,
+    // Wis or Cha
+    'Rakatan Order': { cls: 'Monk', caster: 'tech', anyMental: true },
   };
+  // Mechanist Technique (Scout, from 3rd level; also no casterType in the data) improves the Scout's own techcasting rather
+  // than adding a second: 1.5 tech points per Scout level, rounded up; the max power level of the Sentinel's table (2nd at
+  // 3rd, up to 7th at 17th); and 5th to 7th level once per long rest instead of 4th and 5th
+  const MECHANIST = 'Mechanist Technique';
   const ARCHETYPE_AT = [3, 7, 13, 17];
   // High-level casting (#160), from each class's own text in SW5e's data: from this power level up, each level can be cast
   // only once per long rest (full casters 6th-9th, Sentinel 5th-7th, half casters 4th-5th, casting archetypes 4th)
   const HIGH_FROM = { full: 6, threeQuarter: 5, half: 4, archetype: 4 };
   const lc = s => String(s || '').trim().toLowerCase();
+  // a class entry's archetype is this one, by its full name or without its last word ("Marauder", "Aing-Tii", "Mechanist")
+  const archetypeIs = (k, name) => { const a = lc(k && k.archetype); return !!a && (lc(name) === a || lc(name.replace(/\s+\S+$/, '')) === a); };
   // the casting archetype a class entry has, by its full name or without its last word ("Marauder", "Aing-Tii")
   function casterArchetype(k) {
     const a = lc(k && k.archetype);
@@ -192,15 +201,16 @@
     for (const k of c.classes || []) {
       const def = CLASSES[k.name], L = Math.min(20, +k.level || 0);
       if (def && def.caster && L >= (def.from || 1)) {
-        const maxLevel = def.prog === 'full' ? Math.min(9, Math.ceil(L / 2))
-          : def.prog === 'threeQuarter' ? THREE_QUARTER_AT.filter(t => L >= t).length : Math.min(5, Math.ceil(L / 4));
-        out.push({ of: k.name, caster: def.caster, level: L, points: def.pp * L, maxLevel,
-          potential: def.prog === 'full' ? 9 : def.prog === 'threeQuarter' ? 7 : 5, shortRest: !!def.shortRest, highFrom: HIGH_FROM[def.prog] });
+        const mech = k.name === 'Scout' && L >= 3 && archetypeIs(k, MECHANIST), prog = mech ? 'threeQuarter' : def.prog;
+        const maxLevel = prog === 'full' ? Math.min(9, Math.ceil(L / 2))
+          : prog === 'threeQuarter' ? THREE_QUARTER_AT.filter(t => L >= t).length : Math.min(5, Math.ceil(L / 4));
+        out.push({ of: mech ? `${k.name} (${MECHANIST})` : k.name, caster: def.caster, level: L, points: mech ? Math.ceil(1.5 * L) : def.pp * L, maxLevel,
+          potential: prog === 'full' ? 9 : prog === 'threeQuarter' ? 7 : 5, shortRest: !!def.shortRest, highFrom: HIGH_FROM[prog] });
       }
       const arch = casterArchetype(k);
       if (arch && L >= 3) {
         out.push({ of: arch.name, caster: arch.caster, level: L, points: arch.caster === 'force' ? L : Math.ceil(L / 2),
-          maxLevel: ARCHETYPE_AT.filter(t => L >= t).length, potential: 4, shortRest: arch.caster === 'tech', int: !!arch.int, highFrom: HIGH_FROM.archetype });
+          maxLevel: ARCHETYPE_AT.filter(t => L >= t).length, potential: 4, shortRest: arch.caster === 'tech', int: !!arch.int, anyMental: !!arch.anyMental, highFrom: HIGH_FROM.archetype });
       }
     }
     return out;
@@ -243,13 +253,15 @@
     // an Archaeologist may use Intelligence instead of Wisdom (light side) or Charisma (dark side)
     const int = force.some(s => s.int) ? abilityMod(c, 'int') : -99;
     const light = Math.max(abilityMod(c, 'wis'), int), dark = Math.max(abilityMod(c, 'cha'), int);
+    // a Rakatan may use Intelligence, Wisdom or Charisma for its tech powers
+    const tAb = tech.some(s => s.anyMental) ? Math.max(abilityMod(c, 'int'), abilityMod(c, 'wis'), abilityMod(c, 'cha')) : abilityMod(c, 'int');
     return {
-      forceMax: sum(force) ? sum(force) + Math.max(light, dark) : 0, techMax: sum(tech) ? sum(tech) + abilityMod(c, 'int') : 0,
+      forceMax: sum(force) ? sum(force) + Math.max(light, dark) : 0, techMax: sum(tech) ? sum(tech) + tAb : 0,
       forceMaxLevel: maxPowerLevel(force), techMaxLevel: maxPowerLevel(tech),
       lightDC: 8 + profBonus(c) + light, darkDC: 8 + profBonus(c) + dark,
-      techDC: 8 + profBonus(c) + abilityMod(c, 'int'),
+      techDC: 8 + profBonus(c) + tAb,
       lightAtk: profBonus(c) + light, darkAtk: profBonus(c) + dark,
-      techAtk: profBonus(c) + abilityMod(c, 'int'),
+      techAtk: profBonus(c) + tAb,
       sources: src.map(s => ({ of: s.of, caster: s.caster, level: s.level, maxLevel: s.maxLevel })),
     };
   }
@@ -295,6 +307,26 @@
     return { total: best.v + misc, text: [...best.parts, misc ? `misc ${fmt(misc)}` : ''].filter(Boolean).join(' · ') };
   }
   // the d20 a weapon crits on: 20, or lower for an attack's own crit range or a "Keen N" weapon (SW5e: the range grows by N)
+  // Reliable Talent (Operative 11, SW5e): ability checks that add the proficiency bonus get the d20's minimum roll
+  // threshold, 8 (PHB chapter 7). Skill rolls with proficiency or expertise use 1d20min8.
+  const classLevelOf = (c, name) => (c.classes || []).filter((k) => String(k.name).toLowerCase() === name).reduce((a, k) => a + (+k.level || 0), 0);
+  const reliableTalent = (c) => classLevelOf(c, 'operative') >= 11;
+  function skillRollExpr(c, sk) {
+    const b = skillBonus(c, sk), rt = reliableTalent(c) && +((c.skills || {})[sk] || 0) >= 1;
+    return { expr: `1d20${rt ? 'min8' : ''}${b >= 0 ? '+' : ''}${b}`, reliable: rt };
+  }
+  // Brutal Critical (Berserker 9 / 13 / 17): one, two or three more weapon damage dice on a melee critical hit
+  const brutalDice = (c) => { const l = classLevelOf(c, 'berserker'); return l >= 17 ? 3 : l >= 13 ? 2 : l >= 9 ? 1 : 0; };
+  const isMelee = (a) => !/\b(range|reload|power cell|slug|ammunition)\b/i.test(String(a.props || ''));
+  function critDamage(c, a) {
+    const base = critExpr(damageExpr(c, a)), n = isMelee(a) ? brutalDice(c) : 0, die = /d(\d+)/i.exec(String(a.damage || ''));
+    return n && die ? { expr: `${base}+${n}d${die[1]}`, brutal: n } : { expr: base, brutal: 0 };
+  }
+  // Reload N (SW5e): N shots, then a reload (an action or bonus action) that uses one power cell or slug cartridge
+  const reloadOf = (a) => { const m = /\breload\s*(\d+)/i.exec(String(a.props || '')); return m ? Math.min(999, +m[1]) : 0; };
+  const ammoOf = (a) => /slug/i.test(String(a.props || '')) ? 'Slug cartridge' : /power\s*cell/i.test(String(a.props || '')) || reloadOf(a) ? 'Power cell' : null;
+  const shotsOf = (a) => { const n = reloadOf(a); return n ? Math.max(0, Math.min(n, a.shots == null || a.shots === '' ? n : +a.shots || 0)) : null; };
+
   function critFrom(props) { const k = /\bkeen\s*(\d)/i.exec(String(props || '')); return k ? Math.max(15, 20 - +k[1]) : 20; }
 
   function attackBonus(c, a) {
@@ -449,7 +481,7 @@
   root.SW5E = { ABILITIES, SKILLS, CLASSES, SPECIES, BACKGROUNDS, DAMAGE_TYPES, WEAPONS, CONDITIONS, REFERENCE,
     mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo, techOnShortRest, overMaxPowerLevel, highCastFrom, highCastUsed, highCastBlocked,
     ARCHETYPE_CASTERS, casterArchetype, castingSources,
-    attackBonus, damageExpr, critExpr, armorClass, armorFromItem, critFrom, ARMOR_KINDS, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
+    attackBonus, damageExpr, critExpr, armorClass, armorFromItem, critFrom, ARMOR_KINDS, reliableTalent, skillRollExpr, brutalDice, critDamage, isMelee, reloadOf, ammoOf, shotsOf, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
     STANDARD_ARRAY, POINT_COST, POINT_BUDGET, pointBuyCost, usesEachOnce,
     CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt,
     SENSES, cleanSenses, sensesFromTraits, sensesText, parseSenses };
