@@ -2299,3 +2299,15 @@ test("the GM's lock also holds a player's new sheet and current HP (#191 review 
   const id2 = (await p1.act("char.save", { char: { name: "Import", classes: [{ name: "Fighter", level: 7 }], xp: 23000 } })).data.id;
   assert.equal((await gm.poll()).data.state.characters[id2].classes[0].level, 7, "off: as before");
 });
+
+test("multiclassing reads only SW5e's own classes (no inherited names); the PHB's extra skill is noted (#194 review)", async () => {
+  require("../sections/jpesus/holotable/rules.js");
+  const R = globalThis.SW5E;
+  assert.deepEqual(R.multiclassUnmet({ classes: [{ name: "constructor", level: 1 }], abilities: {} }, "toString"), []);
+  assert.equal(R.mcProfs("__proto__"), "");
+  assert.match(R.mcProfs("Engineer"), /^Light armor, \+ one skill and one tool/);
+  const { gm, p1 } = await table();
+  const id = (await p1.act("char.save", { char: { name: "Odd", classes: [{ name: "constructor", level: 2 }], abilities: { str: 14 } } })).data.id;
+  await gm.act("levelup.grant", { charIds: [id] });
+  assert.equal((await p1.act("levelup.apply", { charId: id, className: "hasOwnProperty", hpMode: "average", hitDie: 8 })).code, 200, "no 500: an unknown class has no prerequisites");
+});

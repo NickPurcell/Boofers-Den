@@ -466,7 +466,7 @@ function applyLevelUp(camp, cid, gm, p) {
       alignment: ["light", "dark"].includes(pw.alignment) ? pw.alignment : "universal", notes: str(pw.notes, 300), description: str(pw.description, 4000) });
   }
   // a new class gives only its multiclass proficiencies (audit 2.13), noted on the sheet
-  if (multiclass && R.MC_PROFS[k.name] && ch.classes.length > 1) ch.proficiencies = `${str(ch.proficiencies, 1800)}${ch.proficiencies ? "\n" : ""}Multiclass ${k.name}: ${R.MC_PROFS[k.name]}`.slice(0, 2000);
+  if (multiclass && R.mcProfs(k.name) && ch.classes.length > 1) ch.proficiencies = `${str(ch.proficiencies, 1800)}${ch.proficiencies ? "\n" : ""}Multiclass ${k.name}: ${R.mcProfs(k.name)}`.slice(0, 2000);
   ch.updated = now();
   pend.count -= 1;
   if (pend.count < 1) delete camp.levelUps[ch.id];

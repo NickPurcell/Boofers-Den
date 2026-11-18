@@ -359,12 +359,16 @@
     Fighter: 'Light armor, medium armor, all blasters, all vibroweapons', Guardian: 'Light armor, medium armor, all lightweapons, all vibroweapons',
     Monk: 'Simple vibroweapons, techblades', Operative: 'Light armor', Scholar: 'Light armor',
     Scout: 'Light armor, medium armor, all blasters, all vibroweapons', Sentinel: 'Light armor, simple lightweapons, simple vibroweapons' };
+  // the multiclass proficiencies a class gives (own keys only), with the PHB's extra skill (and tool) the data leaves out
+  const MC_EXTRA = { Engineer: "one skill and one tool from the class's lists", Operative: "one skill and one tool from the class's lists",
+    Scout: "one skill from the class's list", Scholar: "one skill from the class's list", Sentinel: "one skill from the class's list" };
+  const mcProfs = (n) => Object.prototype.hasOwnProperty.call(MC_PROFS, n) ? MC_PROFS[n] + (Object.prototype.hasOwnProperty.call(MC_EXTRA, n) ? `, + ${MC_EXTRA[n]}` : '') : '';
   const AB_NAME = { str: 'Strength', dex: 'Dexterity', con: 'Constitution', int: 'Intelligence', wis: 'Wisdom', cha: 'Charisma' };
   // what's not met to add newClass: [] when it's fine (or the class isn't one of SW5e's ten)
   function multiclassUnmet(c, newClass) {
     const score = (k) => +((c.abilities || {})[k]) || 10, out = [];
     const names = [...new Set([...(c.classes || []).map((k) => k.name), newClass])];
-    for (const n of names) for (const g of MC_PREREQ[n] || []) if (!g.some((k) => score(k) >= 13)) out.push(`${n} needs ${g.map((k) => AB_NAME[k]).join(' or ')} 13`);
+    for (const n of names) for (const g of (Object.prototype.hasOwnProperty.call(MC_PREREQ, n) ? MC_PREREQ[n] : [])) if (!g.some((k) => score(k) >= 13)) out.push(`${n} needs ${g.map((k) => AB_NAME[k]).join(' or ')} 13`);
     return out;
   }
 
@@ -521,7 +525,7 @@
     mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo, techOnShortRest, overMaxPowerLevel, highCastFrom, highCastUsed, highCastBlocked,
     ARCHETYPE_CASTERS, casterArchetype, castingSources,
     SIZES, tokenSquares, pointsSpend,
-    MC_PREREQ, MC_PROFS, multiclassUnmet, infuseBonus, infuseBonusFor, attackBonus, damageExpr, critExpr, armorClass, armorFromItem, critFrom, ARMOR_KINDS, reliableTalent, skillRollExpr, brutalDice, critDamage, isMelee, reloadOf, ammoOf, shotsOf, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
+    MC_PREREQ, MC_PROFS, mcProfs, multiclassUnmet, infuseBonus, infuseBonusFor, attackBonus, damageExpr, critExpr, armorClass, armorFromItem, critFrom, ARMOR_KINDS, reliableTalent, skillRollExpr, brutalDice, critDamage, isMelee, reloadOf, ammoOf, shotsOf, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
     STANDARD_ARRAY, POINT_COST, POINT_BUDGET, pointBuyCost, usesEachOnce,
     CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt,
     SENSES, cleanSenses, sensesFromTraits, sensesText, parseSenses };
