@@ -3644,6 +3644,25 @@ test("Wounds and Strenuous Combat through the API: the record kept by character;
   assert.equal((await gm.act("fight.conclude", {})).code, 400, "only with the variant on");
 });
 
+test("Wounds through the API: Undo takes back the wounded level with the drop", async () => {
+  const { gm, sam, avery, ids } = await fight();
+  let st = await sam.state();
+  await gm.act("variants.set", { variants: ["Wounds"] });
+  await sam.act("char.save", { char: Object.assign({}, st.characters[avery], { hp: { max: 20, current: 2, temp: 0 } }) });
+  await gm.act("token.move", { id: tokenOf(st, "Raider").id, x: 1, y: 0 });
+  await gm.act("fight.toggle", { on: true });
+  assert.equal((await sam.act("fight.end", {})).code, 200);
+  const crypto = require("crypto"), real = crypto.randomInt;
+  crypto.randomInt = (a, b) => (b === 21 ? 3 : real(a, b));
+  try { assert.equal((await gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 30, damage: "1d6+5", type: "kinetic", melee: 5 } })).code, 200); }
+  finally { crypto.randomInt = real; }
+  st = await gm.state();
+  assert.deepEqual([st.fight.wounds[avery], st.characters[avery].deathSaves.f], [{ level: 1, step: 0 }, 1]);
+  assert.equal((await gm.act("fight.undo", {})).code, 200);
+  st = await gm.state();
+  assert.deepEqual([st.fight.wounds[avery], st.characters[avery].deathSaves.f, st.characters[avery].hp.current], [undefined, 0, 2], "the level, the failure and the hit points back");
+});
+
 test("#212 review: an undo gives back a shot, and a reload's power cell, as they were", async () => {
   const { gm, sam, avery, ids } = await fight();
   let st = await sam.state();
