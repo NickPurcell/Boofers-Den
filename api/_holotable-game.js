@@ -341,7 +341,7 @@ function doRoll(camp, cid, expr, label, charId, priv, kind) {
 const HIT_DIE = { berserker: 12, consular: 6, engineer: 8, fighter: 10, guardian: 10, monk: 8, operative: 8, scholar: 8, scout: 10, sentinel: 8 };
 const ABILS = ["str", "dex", "con", "int", "wis", "cha"];
 // SW5e (as 5e): the XP a character needs to reach the next level, by current level (index 1-19)
-const XP_FOR_LEVEL = [0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000, 85000, 100000, 120000, 140000, 165000, 195000, 225000, 265000, 305000, 355000];
+const XP_FOR_LEVEL = R.XP_FOR_LEVEL;   // SW5e's, in rules.js since 2.14, so the sheet and the XP award read the same table
 const totalLevel = (ch) => (ch.classes || []).reduce((a, k) => a + (int(k.level) || 0), 0);
 const abMod = (ch, ab) => Math.floor((num((ch.abilities || {})[ab], 10) - 10) / 2);
 const hitDieFor = (name, fallback) => HIT_DIE[String(name || "").toLowerCase()] || ([6, 8, 10, 12].includes(int(fallback)) ? int(fallback) : 8);

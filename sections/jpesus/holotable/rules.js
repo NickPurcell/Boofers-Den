@@ -710,6 +710,17 @@
   };
   Object.assign(SW5E, { powerPrereqUnmet });
 
+  // ---- XP and the level thresholds (audit 2.14), SW5e's Player's Handbook: the XP a character needs for each level,
+  // and where a sheet stands: the next level's XP and how far off it is (enough: the GM grants it when it suits)
+  const XP_FOR_LEVEL = [0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000, 85000, 100000, 120000, 140000, 165000, 195000, 225000, 265000, 305000, 355000];
+  function xpNext(ch) {
+    const lvl = totalLevel(ch), xp = Math.max(0, +(ch && ch.xp) || 0);
+    if (lvl < 1 || lvl >= 20) return null;
+    const need = XP_FOR_LEVEL[lvl];
+    return { level: lvl + 1, need, left: Math.max(0, need - xp), ready: xp >= need };
+  }
+  Object.assign(SW5E, { XP_FOR_LEVEL, xpNext });
+
   // ---- senses (audit 5.12): [{ kind, range }] on the sheet. The four kinds SW5e's creatures and species use; feet 1-9999.
   const SENSES = ['darkvision', 'blindsight', 'tremorsense', 'truesight'];
   function cleanSenses(list) {

@@ -441,3 +441,11 @@ test("feat prerequisites (audit 2.5), read from SW5e's own wording", () => {
   assert.equal(pr(ch, "4th level, the ability to cast force or tech powers").unmet.length, 2);
   assert.deepEqual(pr(ch, "12th level, Dexterity 20").unmet, ["12th level", "Dexterity 20"]);
 });
+
+test("XP and the level thresholds (audit 2.14): the next level's XP from SW5e's table, and how far off", () => {
+  assert.equal(R.XP_FOR_LEVEL.length, 20);
+  assert.deepEqual([R.XP_FOR_LEVEL[1], R.XP_FOR_LEVEL[4], R.XP_FOR_LEVEL[19]], [300, 6500, 355000], "PHB: level 2 at 300, 5 at 6,500, 20 at 355,000");
+  assert.deepEqual(R.xpNext({ classes: [{ name: "Fighter", level: 4 }], xp: 2700 }), { level: 5, need: 6500, left: 3800, ready: false });
+  assert.deepEqual(R.xpNext({ classes: [{ name: "Fighter", level: 4 }], xp: 7000 }).ready, true);
+  assert.equal(R.xpNext({ classes: [{ name: "Fighter", level: 20 }], xp: 999999 }), null, "nothing past 20");
+});
