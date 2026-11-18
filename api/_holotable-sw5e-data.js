@@ -65,7 +65,29 @@ function classes(d) {
     nSkills: int(e.numSkillChoices, 0, 6), skills: strs(e.skillChoicesList, 20, 40),
     armor: strs(e.armorProficiencies, 10, 80).filter(none), weapons: strs(e.weaponProficiencies, 10, 80).filter(none),
     tools: strs(e.toolProficiencies, 10, 120).filter(none), equip: strs(e.equipmentLines, 12, 300), wealth: t(e.startingWealthVariant, 40),
+    lv: levelFeatureNames(e.levelChanges), opts: classOptions(e.classFeatureText),
   })).sort(byName);
+}
+// The Features column of a class's table, level 1 to 20 ("Expertise, Sneak Attack"): the level-up wizard reads it for
+// the choices a feature brings at a level the feature list files under its first level (Expertise at Operative 6).
+function levelFeatureNames(lc) {
+  if (!lc || typeof lc !== "object") return [];
+  return Array.from({ length: 20 }, (_, i) => t(lc[String(i + 1)] && lc[String(i + 1)].Features, 200)).map((x) => (/[a-z]/i.test(x) ? x : ""));
+}
+// The options a class picks from as it levels (Berserker Instincts, Monastic Vows, Operative Exploits, Fighter
+// Strategies...): the last "### " section of the class's text, one "#### " heading per option, with any
+// "Prerequisite: 7th level" as a number (audit 2.9).
+function classOptions(text) {
+  const s = String(text || "").split(CR).join(""), at = s.lastIndexOf("\n### ");
+  if (at < 0) return null;
+  const [head, ...parts] = s.slice(at + 5).split(/\n#### /);
+  if (!parts.length) return null;
+  const items = parts.slice(0, 40).map((part) => {
+    const nl = part.indexOf("\n"), n = t(part.slice(0, nl < 0 ? undefined : nl).trim(), 80), body = nl < 0 ? "" : part.slice(nl + 1).trim();
+    const pre = /^_\*\*Prerequisite:\*\*\s*(\d+)(?:st|nd|rd|th) level_/i.exec(body);
+    return { n, pre: pre ? int(pre[1], 0, 20) : 0, text: t(unlink(body), 2500) };
+  }).filter((x) => x.n);
+  return items.length ? { title: t(head.split("\n")[0].trim(), 60), items } : null;
 }
 function feats(d) {
   return named(d).map((e) => ({

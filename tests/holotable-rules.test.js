@@ -217,3 +217,17 @@ test("ability scores (audit 1.4): SW5e's standard set, and point buy's 27 points
   assert.ok(R.usesEachOnce(sc(9, 17, 12, 12, 6, 14), [17, 14, 12, 12, 9, 6]), "rolled numbers, repeats allowed once each");
   assert.ok(!R.usesEachOnce(sc(9, 17, 12, 12, 6, 14), [17, 14, 12, 9, 6]), "five numbers for six abilities");
 });
+
+test("level-up choice counts come from the class table (audit 2.9)", () => {
+  const at = (c, L) => Object.fromEntries(R.choiceCounts(c, L).map((x) => [x.col, [x.kind, x.prev, x.total]]));
+  // SW5e's Operative: "You've adopted two exploits ... You adopt an additional exploit at 7th, 13th, and 17th level."
+  assert.deepEqual(at("Operative", 2), { "Operative Exploits": ["opts", 0, 2] });
+  assert.deepEqual(at("Operative", 6), { "Operative Exploits": ["opts", 2, 2] });
+  assert.deepEqual(at("Operative", 7), { "Operative Exploits": ["opts", 2, 3] });
+  assert.deepEqual(at("operative", 17)["Operative Exploits"], ["opts", 4, 5], "any case");
+  assert.deepEqual(at("Fighter", 3), { "Maneuvers Known": ["maneuvers", 1, 2], "Strategies Known": ["opts", 0, 1] });
+  assert.deepEqual(at("Consular", 2)["Force Powers Known"], ["powers", 9, 11]);
+  assert.deepEqual(at("Monk", 1), {}, "nothing counted yet");
+  assert.deepEqual(R.choiceCounts("Jedi", 3), []);
+  assert.deepEqual(R.choiceCounts("Fighter", 0), []);
+});

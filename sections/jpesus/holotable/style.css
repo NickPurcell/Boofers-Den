@@ -658,6 +658,10 @@ table.t td:first-child input { min-width: 140px; }
 .hover-card .md-table { overflow: hidden; }
 .wiz-feats { margin: 2px 0 8px; padding-left: 18px; }
 .wiz-feats li { cursor: help; }
+.wiz-choice { margin: 0 0 8px; }
+.wiz-opts { max-height: 180px; overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 2px 12px; }
+.wiz-opt { flex-direction: row; align-items: baseline; gap: 6px; text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--text); cursor: pointer; }
+.wiz-opt input { flex: none; }
 .wiz-sub { margin: 8px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
 .wiz-power { gap: 6px; margin-bottom: 4px; align-items: center; }
 .lib-credit { font-size: 12px; margin: 6px 0 0; }

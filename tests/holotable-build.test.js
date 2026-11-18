@@ -67,6 +67,9 @@ test("buildLevel1: species, class, scores and background make one level-1 charac
   assert.equal(c.ac, 11, "10 + Dex +1, unarmored");
   assert.equal(c.acAuto, true, "brand-new: the sheet works its AC out from worn armor (#165)");
   assert.equal(c.speed, 30);
+  assert.equal(c.size, "Medium", "the species' size, as the species picker sets it (#185)");
+  assert.equal(B.buildLevel1({ species: Object.assign({}, species, { size: "Small" }), cls: fighter, scores: {} }).size, "Small");
+  assert.equal(B.buildLevel1({ species: Object.assign({}, species, { size: "Enormous" }), cls: fighter, scores: {} }).size, undefined, "only SW5e's sizes");
   const names = c.features.map((f) => f.name);
   assert.ok(names.includes("Iron Constitution") && !names.includes("Speed") && !names.includes("Ability Score Increase"), "traits, not the bookkeeping ones");
   assert.ok(names.includes("Second Wind") && names.includes("Second Identity") && names.includes("Silver-Tongued"), "class feature, background feature and feat");
@@ -74,6 +77,54 @@ test("buildLevel1: species, class, scores and background make one level-1 charac
   assert.match(c.languages, /Zabraki/); assert.match(c.notes, /mesh armor/); assert.match(c.notes, /disguise kit/);
   const noAsi = B.buildLevel1({ species, asi: false, cls: fighter, scores: { str: 15, dex: 13, con: 14, int: 8, wis: 12, cha: 10 } });
   assert.equal(noAsi.abilities.con, 14, "an increase the player chooses isn't applied"); assert.equal(noAsi.hp.max, 12);
+});
+
+// audit 2.9: what a class asks for as it levels
+const OPERATIVE = { name: "Operative", hitDiceDieType: 8, savingThrows: ["Dexterity"],
+  levelChanges: { 1: { Features: "Expertise, Sneak Attack" }, 2: { Features: "Cunning Action, Operative Exploits" }, 6: { Features: "Expertise" }, 7: { Features: "Evasion" }, 9: { Features: "—" } },
+  classFeatureText: "### Expertise\n_**Operative:** 1st and 6th level_\nChoose two.\r\n\n### Operative Exploits\nThe exploits are presented in alphabetical order.\n\n" +
+    "#### Commander's Exploit\nYou learn [three maneuvers](#Maneuvers).\n\n#### Fate's Exploit\n_**Prerequisite:** 7th level_\nYou gain an [inspiration](#x) die.\n\n#### Skill's Exploit\nOne more skill." };
+
+test("SW5e's class list: the Features column by level, and the class's own options with their prerequisite levels", () => {
+  const [o] = D.LISTS.classes.build([OPERATIVE]);
+  assert.equal(o.lv.length, 20);
+  assert.deepEqual([o.lv[0], o.lv[5], o.lv[7], o.lv[8]], ["Expertise, Sneak Attack", "Expertise", "", ""], "a dash or a gap is no feature");
+  assert.equal(o.opts.title, "Operative Exploits");
+  assert.deepEqual(o.opts.items.map((x) => [x.n, x.pre]), [["Commander's Exploit", 0], ["Fate's Exploit", 7], ["Skill's Exploit", 0]]);
+  assert.equal(o.opts.items[0].text, "You learn three maneuvers.", "links unwrapped");
+  assert.ok(!o.opts.items[0].text.includes("\r"));
+  assert.equal(D.LISTS.classes.build([{ name: "Engineer", classFeatureText: "### Tech Mastery\nNo options here." }])[0].opts, null);
+  assert.deepEqual(D.LISTS.classes.build([{ name: "X" }])[0].lv, []);
+});
+
+test("the level-up wizard's choices: counted against the class table, what the sheet has, and prerequisites", () => {
+  const B = loadBooks(), [op] = D.LISTS.classes.build([OPERATIVE]);
+  const fighter = { n: "Fighter", lv: ["Fighting Style, Second Wind", "Action Surge", "Fighter Strategies"], opts: { title: "Fighter Strategies", items: [{ n: "Cover Strategist", pre: 0, text: "Cover." }] } };
+  const lists = { classes: [op, fighter], maneuvers: [{ n: "Riposte", type: "Physical", pre: "", text: "r" }, { n: "Feint", type: "General", pre: "", text: "f" }, { n: "Rally", type: "Mental", pre: "Fighter 3rd level", text: "y" }],
+    styles: [{ n: "Dueling", text: "d" }, { n: "Defense", text: "a" }] };
+  const plain = (x) => JSON.parse(JSON.stringify(x));
+  const ved = { features: [{ name: "Skill's Exploit" }], skills: { stealth: 1, insight: 2, perception: 1 } };
+  // Operative 2: two exploits; the sheet already has one, so one more, from what's left below 7th level
+  let g = plain(B.levelChoices(ved, "Operative", 2, lists));
+  assert.deepEqual(g.map((x) => [x.kind, x.min, x.max, x.have]), [["opts", 1, 1, 1]]);
+  assert.deepEqual(g[0].items.map((x) => x.n), ["Commander's Exploit"], "Fate's Exploit waits for 7th; Skill's is on the sheet");
+  assert.match(g[0].items[0].text, /^Operative Exploits \(Operative\)\nYou learn three maneuvers/);
+  // Operative 6: Expertise again (the Features column), from proficient skills not already expertise; no new exploit
+  g = plain(B.levelChoices({ features: [{ name: "Skill's Exploit" }, { name: "Commander's Exploit" }], skills: ved.skills }, "Operative", 6, lists));
+  assert.deepEqual(g.map((x) => [x.kind, x.min, x.max]), [["expertise", 2, 2]]);
+  assert.deepEqual(g[0].items.map((x) => x.key), ["perception", "stealth"]);
+  // Operative 7: the third exploit, and Fate's Exploit is open now
+  g = plain(B.levelChoices({ features: [{ name: "Skill's Exploit" }, { name: "Commander's Exploit" }], skills: {} }, "Operative", 7, lists));
+  assert.deepEqual([g[0].min, g[0].max, g[0].items.map((x) => x.n)], [1, 1, ["Fate's Exploit"]]);
+  // a sheet that's behind may catch up: Fighter 3 knows 2 maneuvers and 1 strategy; this sheet has none
+  g = plain(B.levelChoices({ features: [], skills: {} }, "Fighter", 3, lists));
+  assert.deepEqual(g.map((x) => [x.kind, x.min, x.max]), [["maneuvers", 1, 2], ["opts", 1, 1]]);
+  assert.equal(g[0].items.find((x) => x.n === "Rally").pre, "Fighter 3rd level", "a maneuver's prerequisite is shown, not judged");
+  // Fighter 1 (a multiclass): a fighting style, not one the sheet has
+  g = plain(B.levelChoices({ features: [{ name: "Defense" }], skills: {} }, "Fighter", 1, lists));
+  assert.deepEqual(g.map((x) => [x.kind, x.min, x.max, x.items.map((i) => i.n).join()]), [["style", 1, 1, "Dueling"]]);
+  // a class with no data (books off, or a homebrew name) asks for nothing
+  assert.deepEqual(plain(B.levelChoices({ features: [] }, "Jedi", 3, lists)), []);
 });
 
 test("the ◈ background on a sheet (audit 1.8): chosen skills become ticked dots, the chosen feat is added, re-choosing replaces both", () => {

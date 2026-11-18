@@ -369,6 +369,26 @@ test("level up: GM grants to everyone or one character; players level their own"
   assert.ok(st.chat.some((m) => m.roll && /Rook: level 5 hit points \(d10\)/.test(m.roll.label)));
 });
 
+test("level up: Expertise goes on up to two skills the character is proficient in (audit 2.9)", async () => {
+  const { gm, p1 } = await table();
+  const ved = (await p1.act("char.save", { char: { name: "Ved", classes: [{ name: "Operative", level: 5 }], abilities: { con: 12 }, hp: { max: 30, current: 30 },
+    skills: { stealth: 1, perception: 1, deception: 1, insight: 2 } } })).data.id;
+  await gm.act("levelup.grant", { charIds: [ved] });
+  const up = (expertise) => p1.act("levelup.apply", { charId: ved, className: "Operative", hpMode: "average", expertise });
+  assert.equal((await up(["stealth", "perception", "deception"])).code, 400, "two at a time");
+  assert.equal((await up(["athletics"])).code, 400, "not proficient");
+  assert.equal((await up(["insight"])).code, 400, "already expertise");
+  assert.equal((await up(["__proto__"])).code, 400);
+  assert.equal((await up(["constructor"])).code, 400);
+  let st = (await p1.poll()).data.state;
+  assert.equal(st.characters[ved].classes[0].level, 5, "a refused level changes nothing");
+  assert.equal(st.levelUps[ved].count, 1);
+  assert.equal((await up(["stealth", "perception", "stealth"])).code, 200, "a repeat counts once");
+  st = (await p1.poll()).data.state;
+  assert.deepEqual(st.characters[ved].skills, { stealth: 2, perception: 2, deception: 1, insight: 2 });
+  assert.match(st.chat.at(-1).text, /expertise: stealth, perception/);
+});
+
 test("level up: the GM can level an absent player's character, and cancel a grant", async () => {
   const { gm, p1 } = await table();
   const kira = (await p1.act("char.save", { char: { name: "Kira", classes: [{ name: "Consular", level: 1 }], abilities: { con: 10 }, hp: { max: 6, current: 6 } } })).data.id;
