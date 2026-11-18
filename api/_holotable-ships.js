@@ -91,8 +91,10 @@ function apply(camp, cid, gm, type, p, h) {
       const roll = rollDice("1d20");
       const r = SR.destructionSave(ship, roll.nat);
       put(r.ship);
-      const msg = { from: playerName(camp, cid), fromId: cid, roll: Object.assign({}, roll, { expr: "1d20", label: str(`${ship.name}: destruction save`, 120), kind: "dsave" }) };
-      if (ship.hidden) Object.assign(msg, { to: ["@gm", cid], private: true });
+      // a hidden ship's roll is the GM's alone, with no sender id (a message's sender always receives it, and a player's
+      // Next on the space map can start a hidden ship's turn)
+      const msg = { from: ship.hidden ? "Ship combat (GM only)" : playerName(camp, cid), roll: Object.assign({}, roll, { expr: "1d20", label: str(`${ship.name}: destruction save`, 120), kind: "dsave" }) };
+      Object.assign(msg, ship.hidden ? { to: ["@gm"], private: true } : { fromId: cid });
       addChat(camp, msg);
       say(r.log);
       return { result: r.result, d20: roll.nat };
@@ -151,8 +153,8 @@ function apply(camp, cid, gm, type, p, h) {
       const label = what === "regen" ? `${ship.name}: Regenerate Shields (DC ${SR.regenDC(ship)})` : `${ship.name}: Boost ${what} (DC ${SR.boostDC(ship)})`;
       const r = what === "regen" ? SR.regenerateShields(ship, roll.total, (e) => rollDice(e)) : SR.boost(ship, what, roll.total, (e) => rollDice(e));
       if (r.already || r.done === false) throw new Invalid(r.log[0] || "Not now.");
-      const msg = { from: playerName(camp, cid), fromId: cid, roll: Object.assign({}, roll, { expr, label: str(label + ([...fx.adv, ...fx.dis].length ? ` [${[...fx.adv, ...fx.dis].join(", ")}]` : ""), 120), kind: "boost" }) };
-      if (ship.hidden) Object.assign(msg, { to: ["@gm", cid], private: true });
+      const msg = { from: ship.hidden ? "Ship combat (GM only)" : playerName(camp, cid), roll: Object.assign({}, roll, { expr, label: str(label + ([...fx.adv, ...fx.dis].length ? ` [${[...fx.adv, ...fx.dis].join(", ")}]` : ""), 120), kind: "boost" }) };
+      Object.assign(msg, ship.hidden ? { to: ["@gm"], private: true } : { fromId: cid });
       put(r.ship); addChat(camp, msg); say(r.log);
       return { ok: !!r.ok, total: roll.total };
     }
