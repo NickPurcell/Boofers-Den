@@ -226,7 +226,7 @@ function apply(camp, cid, gm, type, p, h) {
         if (SR.heatCap(w) === null || !int(w.heat)) throw new Invalid(`${w.name} doesn't need cooling.`);
         w.heat = 0; put(s); say([`${ship.name} cools its ${w.name}.`]);
       } else {
-        const n = SR.reloadOf(w);
+        const n = SR.reloadFor(ship, w);   // a launcher's reload scales with the ship's size
         if (n === null) throw new Invalid(`${w.name} doesn't reload.`);
         w.ammo = n; put(s); say([`${ship.name} reloads its ${w.name}: ${n} rounds.`]);
       }
@@ -417,6 +417,7 @@ const cleanCrew = (c) => ({ known: [...new Set((Array.isArray(c.known) ? c.known
 // "" means not set, and fires in any arc), and its ammunition ("" means not counted)
 const cleanWeapon = (w) => ({ cat: SR.WEAPON_CATS.includes(w.cat) ? w.cat : "", arc: SR.MOUNTS.includes(w.arc) ? w.arc : "",
   ammo: w.ammo === "" || w.ammo === null || w.ammo === undefined || !Number.isFinite(parseInt(w.ammo, 10)) ? "" : clamp(int(w.ammo), 0, 999),
-  heat: clamp(int(w.heat), 0, 99) });   // shots since it was last cooled (overheat N)
+  heat: clamp(int(w.heat), 0, 99),   // shots since it was last cooled (overheat N)
+  load: typeof w.load === "string" && Object.prototype.hasOwnProperty.call(SR.AMMO, w.load) ? w.load : "" });   // a launcher's round (SotG's table)
 
 module.exports = { handles, apply, onTurn, keepStatus, cleanStatus: SR.cleanStatus, cleanFields, cleanWeapon, cleanMod, cleanCrew, boostBonus, crewPb };

@@ -84,11 +84,11 @@
     const crewName = (c) => (c.charId && H.S.st.characters[c.charId] ? H.S.st.characters[c.charId].name : c.name) || 'Crew member';
     return `<div class="box" style="margin-top:8px"><h4>Actions</h4>
       <label class="ship-lv">Crew member <select id="spCrew">${crew.length ? crew.map((c, i) => `<option value="${i}" ${i === V.crew ? 'selected' : ''}>${esc(crewName(c))}</option>`).join('') : '<option value="0">no crew (+2)</option>'}</select></label>
-      <label class="ship-lv">Weapon <select id="spWeapon">${weapons.map((w, i) => `<option value="${i}" ${i === V.weapon ? 'selected' : ''}>${esc(w.name)}${w.arc ? ' · ' + esc(w.arc) : ''}${typeof w.ammo === 'number' ? ` · ${w.ammo} left` : ''}${SR.heatCap(w) !== null ? ` · heat ${+w.heat || 0}/${SR.heatCap(w)}` : ''}</option>`).join('')}</select></label>
-      ${modeSel(weapons[V.weapon])}${tradeSel(weapons[V.weapon])}
+      <label class="ship-lv">Weapon <select id="spWeapon">${weapons.map((w, i) => `<option value="${i}" ${i === V.weapon ? 'selected' : ''}>${esc(w.name)}${w.arc ? ' · ' + esc(w.arc) : ''}${w.load ? ' · ' + esc(w.load) : ''}${typeof w.ammo === 'number' ? ` · ${w.ammo} left` : ''}${SR.heatCap(w) !== null ? ` · heat ${+w.heat || 0}/${SR.heatCap(w)}` : ''}</option>`).join('')}</select></label>
+      ${loadSel(weapons[V.weapon])}${modeSel(SR.loadedWeapon(ship, weapons[V.weapon]))}${tradeSel(SR.loadedWeapon(ship, weapons[V.weapon]))}
       <label class="ship-lv">Target <select id="spTarget">${targets.map((x) => `<option value="${esc(x.id)}" ${x.id === V.target ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
       <p class="muted" id="spPreview" style="font-size:12px;margin:6px 0"></p>
-      <button class="btn small amber" data-spx="fire">Fire</button>${coolReload(weapons[V.weapon])}${zoneBtn(ship, weapons[V.weapon])}${helmRow}</div>`;
+      <button class="btn small amber" data-spx="fire">Fire</button>${coolReload(ship, weapons[V.weapon])}${zoneBtn(ship, weapons[V.weapon])}${helmRow}</div>`;
   }
   // rapid and burst modes, for weapons that have them (auto weapons fire only in those)
   function modeSel(w) {
@@ -113,15 +113,21 @@
     const on = SR.statusOf(ship).zones.includes(V.weapon);
     return ` <button class="btn tiny ${on ? 'primary' : ''}" data-spx="zone" data-on="${on ? 0 : 1}" title="${on ? 'Switch the zone off (no action)' : 'An action: difficult terrain in its arc and normal range until switched off; advantage on Dexterity saves against tertiary weapons from outside that range'}">${on ? 'Zone on: switch off' : 'Switch on its zone'}</button>`;
   }
-  function coolReload(w) {
+  // a tertiary launcher's round, from SotG's ammunition table (those its launcher takes)
+  function loadSel(w) {
+    if (!w || SR.catOf(w) !== 'tertiary') return '';
+    const opts = SR.ammoFor(w);
+    return `<label class="ship-lv" title="The round it fires: its damage (by the ship's size), range and properties">Round <select id="spLoad"><option value="">—</option>${opts.map((k) => `<option ${k === w.load ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select></label>`;
+  }
+  function coolReload(ship, w) {
     if (!w) return '';
-    const cap = SR.heatCap(w), rl = SR.reloadOf(w);
+    const cap = SR.heatCap(w), rl = SR.reloadFor(ship, w);
     return (cap !== null && +w.heat ? ` <button class="btn tiny" data-spx="cool" title="An action: the weapon's heat back to 0">Cool (${+w.heat}/${cap})</button>` : '')
       + (rl !== null && typeof w.ammo === 'number' && w.ammo < rl ? ` <button class="btn tiny ghost" data-spx="reload" title="A minute per round of ammunition: not in the middle of a fight">Reload to ${rl}</button>` : '');
   }
   function preview() {
     const el = $('#spPreview'); if (!el) return;
-    const t = tokById(V.sel), ship = t && shipById(t.id), tt = tokById(V.target), w = ship && (ship.weapons || [])[V.weapon];
+    const t = tokById(V.sel), ship = t && shipById(t.id), tt = tokById(V.target), w = ship && SR.loadedWeapon(ship, (ship.weapons || [])[V.weapon]);
     if (!t || !ship || !tt || !w) { el.textContent = ''; return; }
     const row = (ship.crew || [])[V.crew], target = shipById(tt.id) || { id: tt.id, size: tt.size }, c = SR.fireCheck(ship, t, w, target, tt, { fromHelm: !!row && row.deployment === 'Pilot' });
     const crew = (ship.crew || [])[V.crew], pb = crew && crew.charId && H.S.st.characters[crew.charId] ? H.R.profBonus(H.S.st.characters[crew.charId]) : (crew && +crew.pb) || 2;
@@ -230,6 +236,12 @@
     const tk = e.target.dataset && e.target.dataset.sptr;
     if (tk) { V[tk] = tk === 'melt' ? e.target.checked : +e.target.value || 0; return preview(); }
     if (e.target.id === 'spMode') { V.mode = e.target.value; return preview(); }
+    if (e.target.id === 'spLoad') {   // the round loaded: saved on the ship's sheet
+      const t = tokById(V.sel), ship = t && shipById(t.id); if (!ship) return;
+      const x = JSON.parse(JSON.stringify(ship)); if (!x.weapons[V.weapon]) return;
+      x.weapons[V.weapon].load = e.target.value; e.target.blur();
+      return H.act('ship.save', { ship: x });
+    }
     if (e.target.id === 'spTarget') { V.target = e.target.value; return preview(); }
     if (e.target.id === 'spCrew') { V.crew = +e.target.value || 0; return preview(); }
     const t = tokById(V.sel), k = e.target.dataset.spt;

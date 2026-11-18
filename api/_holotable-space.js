@@ -213,7 +213,9 @@ function apply(camp, cid, gm, type, p, h) {
       if (!(wi >= 0 && wi < weapons.length)) throw new Invalid("No such weapon.");
       // a crew row deployed as Pilot fires from the helm (disadvantage with primary and secondary weapons, SotG ch. 9)
       const gunRow = (Array.isArray(s0.crew) ? s0.crew : [])[clamp(int(p.crew), 0, Math.max(0, (s0.crew || []).length - 1))];
-      const w = weapons[wi], chk = SR.fireCheck(s0, a, w, t0, ta, { fromHelm: !!gunRow && gunRow.deployment === "Pilot" });
+      // a launcher fires the round it has loaded: its damage (by size), range and properties
+      const w = SR.loadedWeapon(s0, weapons[wi]), chk = SR.fireCheck(s0, a, w, t0, ta, { fromHelm: !!gunRow && gunRow.deployment === "Pilot" });
+      if (SR.catOf(w) === "tertiary" && !SR.damageExpr(s0, w, false) && !SR.weaponProp(w, "special")) throw new Invalid(`${w.name} has no round loaded: pick its ammunition.`);
       if (SR.statusOf(s0).fx.harassWeapon === wi) throw new Invalid(`${w.name} was used to harass: it can't fire this turn.`);
       if (!chk.ok) throw new Invalid(`${w.name} can't fire: ${chk.why}.`);
       // the firing mode (single, rapid, burst) and what it costs in heat or ammunition
@@ -266,12 +268,13 @@ function apply(camp, cid, gm, type, p, h) {
       };
       const hurt = (amount, crit) => hurtShip(t0, amount, crit);
       // a ship's Dexterity save against this weapon: its own bonus, its conditions, and what the shot gives it
+      let lastNat = null;   // the last save's natural die (a tertiary weapon: a 1 takes the damage at its maximum)
       const dexSave = (ship, tok, dc, adv, dis) => {
         const fx = SR.rollEffects(ship, "save", "dex"), name = shownOf(ship, tok), unseen = !!(tok && tok.hidden);
         if (fx.fail.length) { line(`${name} fails it automatically (${fx.fail.join(", ")}).`, unseen); return false; }
         const mode = SR.rollMode({ adv: [...adv, ...fx.adv], dis: [...dis, ...fx.dis] }, "normal");
         const bonus = Math.floor((int((ship.abilities || {}).dex, 10) - 10) / 2) + ((ship.saves || {}).dex ? Ships.crewPb(camp, ship, 0) : 0);
-        const se = d20(mode, bonus), sr = rollDice(se);
+        const se = d20(mode, bonus), sr = rollDice(se); lastNat = sr.nat;
         roll2(sr, se, `${ship.hidden ? ship.name : name}: Dexterity save (DC ${dc})`, "save", !!ship.hidden || unseen);
         return sr.total >= dc;
       };
@@ -323,8 +326,11 @@ function apply(camp, cid, gm, type, p, h) {
         const zr = SR.catOf(w) === "tertiary" ? SR.zonesOf(t0).filter((z) => chk.feet > z.range) : [];
         if (zr.length) chk.adv.push("launched outside its zone");   // not which weapon: an enemy's sheet is the GM's
         line(`${A} fires ${w.name} at ${T}: a Dexterity save, DC ${dc}${why([...chk.adv, ...chk.dis, ...tr.notes])}.`);
-        const saved = dexSave(t0, ta, dc, chk.adv, chk.dis);
+        const saved = dexSave(t0, ta, dc, chk.adv, chk.dis), nat1 = lastNat === 1 && SR.catOf(w) === "tertiary";
         const dmg = rollDamage(false), st00 = SR.statusOf(s0);
+        if (SR.weaponProp(w, "special") && !dmg.expr) line(`${w.load || w.name}: a special round; its effect is in its own text (SotG ch. 5).`);
+        // a natural 1 on the save against a tertiary weapon: the damage as if every die rolled its maximum (SotG ch. 5)
+        if (nat1 && dmg.expr) { const top = SR.maxOf(SR.damageExpr(s0, w, false)) + (typeof SR.weaponProp(w, "vicious") === "number" ? SR.weaponProp(w, "vicious") : 0) + tr.dmg; if (top > dmg.total) { line(`A natural 1 on the save: the damage counts as its maximum, ${top}.`); dmg.total = top; } }
         // an Attack Run with a tertiary weapon: + its feet / 50, up to the ship's Strength (at least 1)
         if (st00.fx.runVs === t0.id && st00.fx.runFeet >= 150) dmg.total += clamp(Math.floor(st00.fx.runFeet / 50), 1, Math.max(1, Math.floor((int((s0.abilities || {}).str, 10) - 10) / 2)));
         const amount = saved ? Math.floor(dmg.total / 2) : dmg.total;
