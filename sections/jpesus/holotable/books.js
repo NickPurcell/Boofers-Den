@@ -269,6 +269,7 @@
       for (const t of x.traits) if (!SKIP_TRAITS.has(lc(t.n))) c.features.push({ name: t.n.slice(0, 80), text: `Species trait (${x.n})\n${t.d}`.slice(0, 4000) });
       const speed = x.traits.find(t => lc(t.n) === 'speed'); const sp = speed && /(\d+)\s*feet/.exec(speed.d); if (sp) c.speed = +sp[1];
       c.senses = R.sensesFromTraits(x.traits);
+      if (R.SIZES.includes(x.size)) c.size = x.size;   // and its size (#185), as the species picker sets it
       const lang = x.traits.find(t => lc(t.n) === 'languages'); if (lang) c.languages = lang.d.slice(0, 300);
       if (D.asi && x.asi) for (const [k, v] of Object.entries(x.asi)) c.abilities[k] = Math.min(30, n0(c.abilities[k]) + v);
     }
