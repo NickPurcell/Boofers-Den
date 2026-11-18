@@ -25,7 +25,7 @@ const int = (v, d = 0) => { const n = parseInt(v, 10); return Number.isFinite(n)
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const plain = (o) => (o && typeof o === "object" && !Array.isArray(o) ? o : {});
 
-const TYPES = new Set(["space.on", "space.size", "space.place", "space.remove", "space.token", "space.init", "space.next", "space.prev", "space.end", "space.fire"]);
+const TYPES = new Set(["space.on", "space.size", "space.place", "space.remove", "space.token", "space.init", "space.next", "space.prev", "space.end", "space.fire", "space.ram", "space.interfere"]);
 const handles = (type) => TYPES.has(type);
 
 // the space map's state, with its shape checked every time (a backup restore can bring anything back)
@@ -99,7 +99,17 @@ function apply(camp, cid, gm, type, p, h) {
         return {};
       }
       const from = sp.tok[i];
-      if (s.id === curId()) sp.moved[s.id] = (sp.moved[s.id] || 0) + SR.moveCost(s, from, to);
+      // in ship combat a player moves their ship on its own turn
+      if (!Ships.onTurn(camp, gm, s)) throw new Invalid(`Not ${shownOf(s, from)}'s turn.`);
+      if (s.id === curId()) {
+        let cost = SR.moveCost(s, from, to);
+        const st = SR.statusOf(s), steps = SR.turnSteps(from.f, to.f);
+        if (st.fx.hardTurn && steps > 0 && steps <= 2) {   // Hard Turn: this turn of up to 90 degrees costs nothing
+          cost -= SR.turnCost(s, from.f, to.f);
+          st.fx.hardTurn = false; putShip(Object.assign({}, s, { status: st }));
+        }
+        sp.moved[s.id] = (sp.moved[s.id] || 0) + cost;
+      }
       sp.tok[i] = Object.assign({}, from, to);
       return { moved: sp.moved[s.id] || 0 };
     }
@@ -165,6 +175,7 @@ function apply(camp, cid, gm, type, p, h) {
       if (s0.id === t0.id) throw new Invalid("A ship can't fire at itself.");
       const a = sp.tok.find((x) => x.id === s0.id), ta = sp.tok.find((x) => x.id === t0.id);
       if (!a || !ta || (!gm && ta.hidden)) throw new Invalid("Both ships need to be on the space map.");
+      if (!Ships.onTurn(camp, gm, s0)) throw new Invalid(`Not ${shownOf(s0, a)}'s turn.`);
       if (SR.isDisabled(SR.statusOf(s0)) || SR.isLost(SR.statusOf(s0))) throw new Invalid(`${shownOf(s0, a)} can't take actions.`);
       const weapons = Array.isArray(s0.weapons) ? s0.weapons : [], wi = int(p.weapon, -1);
       if (!(wi >= 0 && wi < weapons.length)) throw new Invalid("No such weapon.");
@@ -208,10 +219,10 @@ function apply(camp, cid, gm, type, p, h) {
         rollMsg(roll, expr, `${s0.hidden ? s0.name : A} fires ${w.name} at ${s0.hidden ? t0.name : T}${why([...chk.adv, ...chk.dis])}`, "attack");
         if (!hit) { line(`${A} misses ${T} with ${w.name}.`); result = { hit: false }; }
         else {
-          const dmg = rollDamage(crit);
-          line(`${A} hits ${T} with ${w.name}${crit ? ", a critical" : ""}: ${dmg.total} ${SR.damageType(w.type)} damage.`);
-          hurt(dmg.total, crit);
-          result = { hit: true, crit, damage: dmg.total };
+          const dmg = rollDamage(crit), dealt = SR.afterDR(t0, dmg.total), dr = dmg.total - dealt;   // armor's damage reduction counts against attack rolls
+          line(`${A} hits ${T} with ${w.name}${crit ? ", a critical" : ""}: ${dealt} ${SR.damageType(w.type)} damage${dr > 0 ? ` (${dr} stopped by its armor)` : ""}.`);
+          hurt(dealt, crit);
+          result = { hit: true, crit, damage: dealt };
           // ionizing: a DC 13 Constitution save or ionized; a larger target has advantage
           if (SR.weaponProp(w, "ionizing") && !SR.isLost(SR.statusOf(shipOf(t0.id)))) {
             const t1 = shipOf(t0.id), cb = Math.floor((int((t1.abilities || {}).con, 10) - 10) / 2) + ((t1.saves || {}).con ? Ships.crewPb(camp, t1, 0) : 0);
@@ -241,8 +252,64 @@ function apply(camp, cid, gm, type, p, h) {
         if (amount) hurt(amount, false);
         result = { saved, damage: amount };
       }
-      putShip(Object.assign(shipOf(s0.id), { weapons: s.weapons, status: Object.assign(SR.statusOf(shipOf(s0.id)), { boost: s.status.boost }) }));
+      const after = SR.statusOf(shipOf(s0.id));
+      if (chk.kind === "attack") Object.assign(after.fx, { directed: false, interfered: false });   // each lasts one attack roll
+      putShip(Object.assign(shipOf(s0.id), { weapons: s.weapons, status: Object.assign(after, { boost: s.status.boost }) }));
       return result;
+    }
+    case "space.ram": case "space.interfere": {
+      // Ram (a Helm action): within 50 ft, Strength (Ram) against the target's Dexterity (Maneuvering); on a success both
+      // take kinetic damage of two of the rammer's hull dice + its Strength, the rammer half while its shields hold.
+      // Interfere: within 1,000 ft, Charisma (Interfere) against the target's Wisdom (Scan); on a success the target's
+      // next check or attack roll has disadvantage.
+      const ram = type === "space.ram";
+      const s0 = shipOf(p.id), t0 = shipOf(p.target);
+      if (!s0 || !t0) throw new Invalid("No such ship.");
+      need(mayMove(s0), "That ship is the GM's.");
+      if (s0.id === t0.id) throw new Invalid(ram ? "A ship can't ram itself." : "A ship can't interfere with itself.");
+      const a = sp.tok.find((x) => x.id === s0.id), ta = sp.tok.find((x) => x.id === t0.id);
+      if (!a || !ta || (!gm && ta.hidden)) throw new Invalid("Both ships need to be on the space map.");
+      if (!Ships.onTurn(camp, gm, s0)) throw new Invalid(`Not ${shownOf(s0, a)}'s turn.`);
+      const st0 = SR.statusOf(s0);
+      if (SR.isDisabled(st0) || SR.isLost(st0)) throw new Invalid(`${shownOf(s0, a)} can't take actions.`);
+      if (ram && st0.fx.helm) throw new Invalid(`${shownOf(s0, a)} has already taken a Helm action this turn.`);
+      const feet = SR.shipGap(a, SR.squaresOf(s0), ta, SR.squaresOf(t0));
+      if (ram && feet > 50) throw new Invalid(`${feet} ft away: ramming takes flying into it (within 50 ft).`);
+      if (!ram && feet > 1000) throw new Invalid(`${feet} ft away: Interfere reaches 1,000 ft.`);
+      const A = shownOf(s0, a), T = shownOf(t0, ta);
+      const [mySkill, theirSkill] = ram ? ["ram", "maneuvering"] : ["interfere", "scan"];
+      const check = (ship, skill, crew, hidden, label) => {
+        const ab = SR.SKILL_ABILITY[skill], fx = SR.rollEffects(ship, "check", ab), mode = SR.rollMode(fx, "normal");
+        const bonus = SR.skillBonus(ship, skill, Ships.crewPb(camp, ship, crew));
+        const expr = (mode === "adv" ? "2d20kh1" : mode === "dis" ? "2d20kl1" : "1d20") + (bonus >= 0 ? "+" : "") + bonus, r = rollDice(expr);
+        addChat(camp, Object.assign({ from: hidden ? "Ship combat (GM only)" : playerName(camp, cid), roll: Object.assign({}, r, { expr, label: str(label, 120), kind: "check" }) },
+          hidden ? { to: ["@gm"], private: true } : { fromId: cid }));
+        return r.total;
+      };
+      const mine = check(s0, mySkill, p.crew, !!s0.hidden, `${s0.hidden ? s0.name : A}: ${ram ? "Strength (Ram)" : "Charisma (Interfere)"} against ${s0.hidden ? t0.name : T}`);
+      const theirs = check(t0, theirSkill, 0, !!t0.hidden, `${t0.hidden ? t0.name : T}: ${ram ? "Dexterity (Maneuvering)" : "Wisdom (Scan)"}`);
+      const won = mine > theirs;
+      const s1 = JSON.parse(JSON.stringify(shipOf(s0.id))); s1.status = SR.statusOf(s1);
+      s1.status.fx.interfered = false;   // its own check used up an Interfere on it
+      if (ram) s1.status.fx.helm = true;
+      putShip(s1);
+      const line = (text, gmOnly) => addChat(camp, Object.assign({ system: true, text: str(text, 400) }, gmOnly ? { to: ["@gm"], private: true } : {}));
+      if (!won) { line(`${A} ${ram ? "tries to ram" : "tries to interfere with"} ${T}, and fails (${mine} against ${theirs}).`); return { ok: false }; }
+      if (!ram) {
+        const t1 = JSON.parse(JSON.stringify(shipOf(t0.id))); t1.status = SR.statusOf(t1);
+        Object.assign(t1.status.fx, { interfered: true, interferedBy: s0.id }); putShip(t1);   // until its next roll, or the start of our next turn
+        line(`${A} interferes with ${T}: its next check or attack roll has disadvantage.`);
+        return { ok: true };
+      }
+      const hd = SR.diceOf(s0, "hull").die, sm = Math.floor((int((s0.abilities || {}).str, 10) - 10) / 2), expr = `2d${hd}` + (sm ? (sm > 0 ? "+" : "") + sm : "");
+      const dr = rollDice(expr), dmg = Math.max(0, dr.total), mineDmg = int((shipOf(s0.id).shield || {}).current) > 0 ? Math.floor(dmg / 2) : dmg;
+      line(`${A} rams ${T}: ${dmg} kinetic damage to it, ${mineDmg} to itself.`);
+      for (const [id, n] of [[t0.id, dmg], [s0.id, mineDmg]]) {
+        const x = shipOf(id), r = SR.takeDamage(x, n, "kinetic", {});
+        putShip(r.ship);
+        for (const l of r.log) line(l, !!x.hidden);
+      }
+      return { ok: true, damage: dmg };
     }
     case "space.end": {
       need(gm);
@@ -260,6 +327,11 @@ function startTurn(camp, cid, gm, h) {
   const sp = camp.space, e = sp.order[sp.turn];
   if (!e) return {};
   sp.moved[e.id] = 0;
+  // an Interfere by this ship lasts until the start of its next turn
+  for (let k = 0; k < camp.ships.length; k++) {
+    const x = camp.ships[k], st = x && SR.statusOf(x);
+    if (st && st.fx.interfered && st.fx.interferedBy === e.id) { Object.assign(st.fx, { interfered: false, interferedBy: "" }); camp.ships[k] = Object.assign({}, x, { status: st }); }
+  }
   const s = camp.ships.find((x) => x && x.id === e.id);
   if (!s) return {};
   Ships.apply(camp, cid, true, "ship.turn", { id: s.id, regen: true }, h);   // the turn belongs to the table, not to whoever pressed Next

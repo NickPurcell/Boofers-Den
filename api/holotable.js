@@ -449,6 +449,14 @@ async function handleGet(req, res, q, ses) {
     return res.status(200).json(await storageReport());
   }
 
+  if (op === "history") {   // the record of one sheet's changes (audit 12.5), the GM's, read only when opened
+    if (!gm) return fail(res, 403, "GM only");
+    const camp = await loadGame(), id = String(q.char || "");
+    const log = Object.prototype.hasOwnProperty.call(camp.sheetLog || {}, id) ? camp.sheetLog[id] : [];
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(200).json({ log });
+  }
+
   if (op === "chatlog") {   // a log of play (audit 12.4): the whole chat the table keeps, as text, for the GM
     if (!gm) return fail(res, 403, "GM only");
     const camp = await loadGame();
@@ -583,7 +591,10 @@ async function handlePost(req, res, q, b, ses) {
       // every part of the game a backup holds (cleanGame checks each one below). sceneFx is left out on purpose:
       // a restored table shouldn't replay the last scene change's wipe and movements.
       for (const k of ["name", "players", "chat", "initiative", "map", "notes", "handouts", "levelUps", "created",
-        "scenes", "activeScene", "ships", "variants", "hpMax", "fight", "sensesFilled"]) if (file[k] !== undefined) g[k] = file[k];
+        "scenes", "activeScene", "ships", "variants", "hpMax", "fight", "sensesFilled",
+        // and what came since (each cleaned by cleanGame like the rest): the space map, the stash, the clock, the GM's
+        // switches and NPCs, the level undo, factions and rivals
+        "space", "stash", "clock", "sheetLock", "statBlocksHidden", "npcs", "levelUndo", "factions", "rivals", "sheetLog"]) if (file[k] !== undefined) g[k] = file[k];
       if (g.sensesFilled !== undefined) g.sensesFilled = g.sensesFilled === true;   // the one-time senses fill (#132): done or not, nothing else
       // everything coming back in goes through the same checks as a live edit
       g.characters = {};
