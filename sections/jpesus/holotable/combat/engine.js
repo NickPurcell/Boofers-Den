@@ -374,7 +374,7 @@
   function stylesOf(ch) {
     const names = ((ch && ch.features) || []).map((f) => String((f && f.name) || '').toLowerCase().replace(/fighting style|style|[:()\[\]\-–—]/g, ' ').replace(/\s+/g, ' ').trim());
     const has = (n) => names.includes(n);
-    return { twfDamage: has('dual wield') || has('split'), dwfAttack: has('twin blade') || has('split'), greatWeapon: has('great weapon'), snapshot: has('snapshot') };
+    return { twfDamage: has('dual wield') || has('split'), dwfAttack: has('twin blade') || has('split'), greatWeapon: has('great weapon'), snapshot: has('snapshot'), sharpshooter: has('sharpshooter') };
   }
   // SW5e's minimum roll threshold (PHB chapter 7, #150): no die counts under 2 (d4, d6), 3 (d8), 4 (d10), 5 (d12) or
   // 8 (d20). Written into an expression as the roller's `min` suffix: "1d12+3" becomes "1d12min5+3".
@@ -722,10 +722,14 @@
     if (opts.dis) tilts.push({ dis: true, text: 'chosen' });
     const m = d20(world, tilts.filter((x) => x.adv).length, tilts.filter((x) => x.dis).length), mode = m.mode;
     const weak = weakPenalty(a, attack.abil), bonus = attack.bonus - weak;
-    const cover = coverOf(world, a, t);
+    // Snapshot Style (within 30 ft) and Sharpshooter Style (beyond it) step partial cover down one for ranged weapon attacks (#157)
+    const cover0 = coverOf(world, a, t), st = a.styles || {};
+    const stepBy = cover0 && cover0.bonus != null && attack.weapon && ranged ? (st.snapshot && feet <= 30 ? 'Snapshot Style' : st.sharpshooter && feet > 30 ? 'Sharpshooter Style' : '') : '';
+    const cover = stepBy ? COVER[COVER.indexOf(cover0) - 1] : cover0;
     if (cover && cover.bonus == null) return { legal: false, why: `${t.name} has total cover.`, feet };
+    if (stepBy) notes.push(`${cover ? `${cover.name} cover` : 'no cover'}, down from ${cover0.name} (${stepBy})`);
     const flank = flankOf(world, t, a);
-    if (cover) notes.push(`${cover.name} cover, +${cover.bonus} AC`);
+    if (cover) notes.push(`${cover.name} cover, +${cover.bonus} AC`);   // (after a step-down, the line above says from what)
     if (flank) notes.push(`${t.name} is flanked, -${flank} AC`);
     const ac = +t.ac + (cover ? cover.bonus : 0) - flank;
     const need = Math.min(20, Math.max(2, ac - bonus));   // the d20 needed; a 20 always hits, a 1 always misses

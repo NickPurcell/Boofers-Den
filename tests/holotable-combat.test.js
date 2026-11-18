@@ -2695,8 +2695,8 @@ test("Two- and Double-Weapon Fighting: the off-hand numbers from the sheet, and 
     ["Vibrosword", false, null, null, null]]);
   assert.deepEqual(pick(sheet([{ name: "Dual Wield Style" }])).map((x) => x[2]), ["1d6+3", "1d4+4", null, null], "Dual Wield: the modifier on off-hand damage");
   assert.deepEqual(pick(sheet([{ name: "Fighting Style: Twin-Blade" }])).map((x) => x[4]), [6, null, null, null], "Twin-Blade: the modifier on the other end's attack roll");
-  assert.deepEqual(E.stylesOf({ features: [{ name: "Split Style" }] }), { twfDamage: true, dwfAttack: true, greatWeapon: false, snapshot: false });
-  assert.deepEqual(E.stylesOf({ features: [{ name: "Duelist Style" }] }), { twfDamage: false, dwfAttack: false, greatWeapon: false, snapshot: false });
+  assert.deepEqual(E.stylesOf({ features: [{ name: "Split Style" }] }), { twfDamage: true, dwfAttack: true, greatWeapon: false, snapshot: false, sharpshooter: false });
+  assert.deepEqual(E.stylesOf({ features: [{ name: "Duelist Style" }] }), { twfDamage: false, dwfAttack: false, greatWeapon: false, snapshot: false, sharpshooter: false });
   const weak = Object.assign(sheet([]), { abilities: { str: 6, dex: 6, con: 10, int: 10, wis: 10, cha: 10 } });
   assert.deepEqual(pick(weak).slice(0, 2).map((x) => [x[2], x[4]]), [["1d6-2", 1], ["1d4-1", null]], "a negative modifier always counts (on the roll: -2 + 3 proficiency)");
 });
@@ -3003,6 +3003,31 @@ test("review of #147 through the API: fight.grapple, shove, release and help on 
   assert.equal((await sam.act("fight.grapple", { target: ids.raider })).code, 200, "a real target still works");
 });
 
+test("cover and styles (#157): Snapshot within 30 ft and Sharpshooter beyond it step partial cover down one for ranged weapon attacks", () => {
+  const gun = Object.assign({}, rifle, { weapon: true });
+  const thug = unit({ id: "th", name: "Thug", side: "npc", x: 2, y: 2 });   // a creature in the line: half cover (walls elsewhere on the map)
+  const far = [{ a: [40, 40], b: [41, 40], kind: "wall" }];
+  const at = (styles, rx, attack = gun) => {
+    const ava = unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 2, styles });
+    const r1 = unit({ id: "r1", name: "Raider", side: "npc", x: rx, y: 2, ac: 12 });
+    const th = Object.assign({}, thug, { x: Math.floor(rx / 2) });
+    return E.preview(world([ava, r1, th], "ava", { walls: far }), "ava", "r1", attack);
+  };
+  assert.equal(at({}, 4).cover.name, "half", "no style: half cover");
+  let pv = at({ snapshot: true }, 4);
+  assert.deepEqual([pv.cover.name, pv.ac], ["one-quarter", 14]);
+  assert.ok(pv.notes.includes("one-quarter cover, down from half (Snapshot Style)"), pv.notes.join(" | "));
+  assert.equal(at({ snapshot: true }, 8).cover.name, "half", "Snapshot beyond 30 ft: no step");
+  pv = at({ sharpshooter: true }, 8);
+  assert.deepEqual([pv.cover.name, pv.ac], ["one-quarter", 14], "Sharpshooter beyond 30 ft");
+  assert.equal(at({ sharpshooter: true }, 4).cover.name, "half", "Sharpshooter within 30 ft: no step");
+  assert.equal(at({ snapshot: true }, 4, rifle).cover.name, "half", "not a weapon attack (a power's): no step");
+  // one-quarter steps down to none; total cover stays total
+  const wall = (walls, styles) => E.preview(world([unit({ id: "ava", name: "Avery", side: "pc", x: 0, y: 2, styles }), unit({ id: "r1", name: "Raider", side: "npc", x: 4, y: 2, ac: 12 })], "ava", { walls }), "ava", "r1", gun);
+  assert.equal(wall([{ a: [3, -9], b: [3, 9], kind: "wall" }], { snapshot: true }).why, "Raider has total cover.");
+  assert.deepEqual(E.stylesOf({ features: [{ name: "Sharpshooter Style" }] }).sharpshooter, true);
+});
+
 /* ---------------------------------------------------------------- maneuvers on an attack (#67, the combat view's half) */
 test("maneuvers: the ones the sheet knows, its save DC by type, offered while a superiority die is left", () => {
   const ch = { classes: [{ name: "Fighter", level: 5 }], abilities: { str: 16, dex: 14, con: 12, int: 10, wis: 13, cha: 8 }, features: [{ name: "Trip Attack" }, { name: "menacing attack" }, { name: "Second Wind" }] };
@@ -3258,3 +3283,5 @@ test("Parry, lapsed by hiding: the GM hides the attacker while the prompt is up;
   assert.equal(st.characters[avery].hp.current, 20 - pend.hit.amount);
   assert.ok(!JSON.stringify((await sam.state()).chat).includes("Raider"), "the hidden Raider is not named to the player");
 });
+
+

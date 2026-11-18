@@ -100,6 +100,26 @@ test("max power level check (audit 4.5): above it is reported, at or below it is
   assert.equal(R.overMaxPowerLevel(kira, { level: 4, type: "force" }, after), null);
 });
 
+test("high-level casting (#160): from which level each level goes once per long rest; a used one is blocked", () => {
+  const from = (classes, kind = "force") => R.highCastFrom({ classes: classes.map(([name, level, archetype]) => ({ name, level, archetype })) }, kind);
+  assert.equal(from([["Consular", 11]]), 6);
+  assert.equal(from([["Engineer", 17]], "tech"), 6);
+  assert.equal(from([["Sentinel", 11]]), 5);
+  assert.equal(from([["Guardian", 13]]), 4);
+  assert.equal(from([["Scout", 13]], "tech"), 4);
+  assert.equal(from([["Berserker", 17, "Marauder Approach"]]), 4);
+  assert.equal(from([["Fighter", 10]]), 0, "no casting, no rule");
+  assert.equal(from([["Consular", 11]], "tech"), 0);
+  // multiclassed: the class with the most levels; on a tie, the later threshold
+  assert.equal(from([["Guardian", 10], ["Consular", 5]]), 4);
+  assert.equal(from([["Consular", 10], ["Guardian", 10]]), 6);
+  const kira = { name: "Kira", classes: [{ name: "Consular", level: 11 }], force: { used: 0, high: [6] } };
+  assert.equal(R.highCastBlocked(kira, { type: "force" }, 5), null, "below the threshold");
+  assert.equal(R.highCastBlocked(kira, { type: "force" }, 7), null, "7th not cast yet");
+  assert.equal(R.highCastBlocked(kira, { type: "force" }, 6).text, "Kira has already cast a 6th-level force power since the last long rest (6th level and up: once each per long rest).");
+  assert.deepEqual(R.highCastUsed({ force: { high: [9, "6", 12, 0] } }, "force"), [9, 6]);
+});
+
 test("Engineers and Scouts get tech points back on a short rest; others don't", () => {
   assert.equal(R.techOnShortRest(char([["Engineer", 1]])), true);
   assert.equal(R.techOnShortRest(char([["Scout", 2]])), true);
@@ -162,4 +182,20 @@ test("senses: species traits read as senses; the GM's typing parsed; only the fo
   assert.deepEqual(R.parseSenses("darkvision 60, Blindsight 30 ft; xray 10"), [{ kind: "darkvision", range: 60 }, { kind: "blindsight", range: 30 }]);
   assert.deepEqual(R.cleanSenses([{ kind: "truesight", range: 99999 }, { kind: "darkvision", range: 0 }]), [{ kind: "truesight", range: 9999 }]);
   assert.equal(R.sensesText([{ kind: "darkvision", range: 60 }, { kind: "blindsight", range: 10 }]), "Darkvision 60 ft · Blindsight 10 ft");
+});
+
+test("ability scores (audit 1.4): SW5e's standard set, and point buy's 27 points from 8 to 15", () => {
+  assert.deepEqual(R.STANDARD_ARRAY, [15, 14, 13, 12, 10, 8]);
+  assert.deepEqual(R.POINT_COST, { 8: 0, 9: 1, 10: 2, 11: 3, 12: 4, 13: 5, 14: 7, 15: 9 });
+  assert.equal(R.POINT_BUDGET, 27);
+  const sc = (str, dex, con, int, wis, cha) => ({ str, dex, con, int, wis, cha });
+  assert.equal(R.pointBuyCost(sc(15, 15, 15, 8, 8, 8)), 27, "the PHB's three high, three low example");
+  assert.equal(R.pointBuyCost(sc(13, 13, 13, 12, 12, 12)), 27, "and its nearly equal example");
+  assert.equal(R.pointBuyCost(sc(8, 8, 8, 8, 8, 8)), 0);
+  assert.equal(R.pointBuyCost(sc(16, 8, 8, 8, 8, 8)), Infinity, "above 15 can't be bought");
+  assert.equal(R.pointBuyCost(sc(7, 8, 8, 8, 8, 8)), Infinity, "nor below 8");
+  assert.ok(R.usesEachOnce(sc(8, 15, 12, 13, 10, 14), R.STANDARD_ARRAY), "the PHB's Han Solo placement");
+  assert.ok(!R.usesEachOnce(sc(15, 15, 12, 13, 10, 8), R.STANDARD_ARRAY), "a number used twice");
+  assert.ok(R.usesEachOnce(sc(9, 17, 12, 12, 6, 14), [17, 14, 12, 12, 9, 6]), "rolled numbers, repeats allowed once each");
+  assert.ok(!R.usesEachOnce(sc(9, 17, 12, 12, 6, 14), [17, 14, 12, 9, 6]), "five numbers for six abilities");
 });
