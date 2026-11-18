@@ -23,9 +23,11 @@ class Forbidden extends Error {}
 class Invalid extends Error {}
 
 // ---------------------------------------------------------------- dice
-const TERM = /([+-]?)\s*(?:(\d*)d(\d+)(?:(kh|kl|k|dh|dl)(\d+))?(!)?|(\d+))/iy;
+const MAX_DICE = 300;
+const TERM = /([+-]?)\s*(?:(\d*)d(\d+)(?:(kh|kl|k|dh|dl)(\d+))?(?:min(\d+))?(!)?|(\d+))/iy;
 
-// Roll "2d20kh1+5", "1d8+1d6-2", "4d6dl1", "1d6!". nat = the kept d20 when there is exactly one d20 term.
+// Roll "2d20kh1+5", "1d8+1d6-2", "4d6dl1", "1d6!", "1d12min5". nat = the kept d20 when there is exactly one d20 term.
+// min N: a die that rolls under N counts as N (SW5e's minimum roll threshold, PHB chapter 7; shown as "3→5"). #150
 // SW5e, as 5e: a creature at 0 hit points that regains any stops being unconscious, and its death saves reset (it
 // stays Prone until it stands). Every way the sheet raises HP goes through char.save, so this runs there (and for the
 // combat view's Second Wind); the combat view's own healing does the same in its engine. #138
@@ -42,7 +44,7 @@ function rollDice(expr) {
   const src = String(expr || "").replace(/\s+/g, "").toLowerCase();
   if (!src) throw new Invalid("empty dice expression");
   if (src.length > 120) throw new Invalid("dice expression too long");
-  let pos = 0, total = 0, nat = null, d20s = 0;
+  let pos = 0, total = 0, nat = null, d20s = 0, count = 0;
   const parts = [];
   while (pos < src.length) {
     TERM.lastIndex = pos;
@@ -50,18 +52,25 @@ function rollDice(expr) {
     if (!m || m.index !== pos || TERM.lastIndex === pos) throw new Invalid(`can't read '${src.slice(pos)}'`);
     pos = TERM.lastIndex;
     const sign = m[1] === "-" ? -1 : 1;
-    if (m[7] !== undefined) {
-      total += sign * +m[7];
-      parts.push((sign < 0 ? "-" : "+") + m[7]);
+    if (m[8] !== undefined) {
+      total += sign * +m[8];
+      parts.push((sign < 0 ? "-" : "+") + m[8]);
       continue;
     }
     const n = +(m[2] || 1), sides = +m[3];
     if (n < 1 || n > 100 || sides < 1 || sides > 1000) throw new Invalid("dice out of range");
-    const rolls = [];
+    // at most MAX_DICE dice in one expression, explosions included: over it the roll is refused, never cut short (#152)
+    const rolls = [], low = {}, floor = m[6] === undefined ? 0 : Math.min(+m[6], sides);
+    const die = () => {   // the natural face decides an explosion; min lifts what counts afterwards
+      if (++count > MAX_DICE) throw new Invalid(`Too many dice: at most ${MAX_DICE} in one roll, explosions included.`);
+      const r = crypto.randomInt(1, sides + 1);
+      if (r < floor) low[rolls.length] = r;
+      rolls.push(Math.max(r, floor));
+      return r;
+    };
     for (let i = 0; i < n; i++) {
-      let r = crypto.randomInt(1, sides + 1);
-      rolls.push(r);
-      for (let g = 0; m[6] && r === sides && sides > 1 && g < 20; g++) { r = crypto.randomInt(1, sides + 1); rolls.push(r); }
+      let r = die();
+      for (let g = 0; m[7] && r === sides && sides > 1 && g < 20; g++) r = die();
     }
     let kept = rolls.map((_, i) => i);
     const mode = m[4];
@@ -74,9 +83,9 @@ function rollDice(expr) {
     const keep = new Set(kept);
     const sub = rolls.reduce((a, r, i) => a + (keep.has(i) ? r : 0), 0);
     total += sign * sub;
-    const shown = rolls.map((r, i) => (keep.has(i) ? r : `~${r}~`)).join(",");
-    parts.push(`${sign < 0 ? "-" : "+"}${n}d${sides}${mode ? mode + m[5] : ""}[${shown}]`);
-    if (sides === 20) { d20s++; if (keep.size === 1) nat = rolls[[...keep][0]]; }
+    const shown = rolls.map((r, i) => { const v = low[i] !== undefined ? `${low[i]}→${r}` : r; return keep.has(i) ? v : `~${v}~`; }).join(",");
+    parts.push(`${sign < 0 ? "-" : "+"}${n}d${sides}${mode ? mode + m[5] : ""}${floor ? "min" + floor : ""}[${shown}]`);
+    if (sides === 20) { d20s++; if (keep.size === 1) { const k = [...keep][0]; nat = low[k] !== undefined ? low[k] : rolls[k]; } }
   }
   if (d20s !== 1) nat = null;
   return { total, detail: parts.join(" ").replace(/^\+/, ""), nat };

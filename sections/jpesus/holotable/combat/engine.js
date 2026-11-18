@@ -347,7 +347,8 @@
     const burst = /\bburst\s+(\d{1,2})\b/i.exec(p), rapid = /\brapid\s+(\d{1,2})\b/i.exec(p);
     if (burst) out.burst = +burst[1];
     if (rapid) out.rapid = +rapid[1];
-    if (/\blight\b/i.test(p)) out.light = true;                       // Two- and Double-Weapon Fighting need it
+    if (/\blight\b/i.test(p)) out.light = true;
+    if (/\btwo-handed\b/i.test(p)) out.twoHanded = true;             // Great Weapon Style needs it (#150)                       // Two- and Double-Weapon Fighting need it
     const dbl = /\bdouble\s*\(\s*(\d*d\d+)/i.exec(p);                  // "Double (1d6 kinetic)": the other end's damage
     if (dbl) out.otherEnd = dbl[1].toLowerCase();
     for (const [, name, n] of p.matchAll(/\b(strength|dexterity)\s+(\d{1,2})\b/gi)) {
@@ -364,7 +365,7 @@
       const ab = a.ab === 'finesse' ? (rules.abilityMod(ch, 'dex') > rules.abilityMod(ch, 'str') ? 'dex' : 'str') : ABILS.includes(a.ab) ? a.ab : 'str';
       const bonus = rules.attackBonus(ch, a), wp = weaponProps(ch, a, ab, rules);
       return Object.assign({ key: String(i), name: a.name || 'Attack', bonus, abil: ab, damage, crit: rules.critExpr(damage), type: a.type || '', enhanced: +a.magic > 0,
-        finesse: a.ab === 'finesse' || /\bfinesse\b/i.test(String(a.props || '')), weapon: true }, readRange(a.props), wp, offhandNumbers(ch, a, ab, bonus, wp, st, rules));
+        finesse: a.ab === 'finesse' || /\bfinesse\b/i.test(String(a.props || '')), weapon: true, proficient: a.proficient !== false }, readRange(a.props), wp, offhandNumbers(ch, a, ab, bonus, wp, st, rules));
     }).filter((a) => a.melee || a.range);
   }
   /* ---------------- Two- and Double-Weapon Fighting (audit 5.8) ---------------- */
@@ -372,7 +373,20 @@
   function stylesOf(ch) {
     const names = ((ch && ch.features) || []).map((f) => String((f && f.name) || '').toLowerCase().replace(/fighting style|style|[:()\[\]\-–—]/g, ' ').replace(/\s+/g, ' ').trim());
     const has = (n) => names.includes(n);
-    return { twfDamage: has('dual wield') || has('split'), dwfAttack: has('twin blade') || has('split') };
+    return { twfDamage: has('dual wield') || has('split'), dwfAttack: has('twin blade') || has('split'), greatWeapon: has('great weapon'), snapshot: has('snapshot') };
+  }
+  // SW5e's minimum roll threshold (PHB chapter 7, #150): no die counts under 2 (d4, d6), 3 (d8), 4 (d10), 5 (d12) or
+  // 8 (d20). Written into an expression as the roller's `min` suffix: "1d12+3" becomes "1d12min5+3".
+  const MIN_THRESHOLD = { 4: 2, 6: 2, 8: 3, 10: 4, 12: 5, 20: 8 };
+  const withThreshold = (expr) => String(expr).replace(/(\d*)d(\d+)(?![\dkdm!])/gi, (all, n, sides) => (MIN_THRESHOLD[sides] ? `${all}min${MIN_THRESHOLD[sides]}` : all));
+  // whose weapon damage gets one: Great Weapon Style with a two-handed melee weapon (or a versatile one in both hands)
+  // it's proficient with; Snapshot Style with a ranged weapon (not a thrown one) against a creature within 30 ft
+  function thresholdFor(a, attack, ranged, feet, twoHands) {
+    const st = (a && a.styles) || {};
+    if (!attack || !attack.weapon) return '';
+    if (st.greatWeapon && !ranged && attack.proficient !== false && (attack.twoHanded || twoHands)) return 'Great Weapon Style';
+    if (st.snapshot && ranged && !attack.melee && feet <= 30) return 'Snapshot Style';
+    return '';
   }
   // A light weapon's off-hand attack (Two-Weapon Fighting): no positive ability modifier on its damage. A light and
   // double weapon's other end (Double-Weapon Fighting): the die in its Double property, no positive ability modifier on
@@ -416,7 +430,7 @@
   // Reasons that tilt a roll. Each is data: who it applies to and which way. Conditions and features join this list later.
   const REASONS = [
     { id: 'long', dis: true, text: 'long range', when: (c) => c.ranged && c.feet > c.attack.range[0] },
-    { id: 'close', dis: true, text: 'an enemy within 5 ft', when: (c) => c.ranged && c.enemyClose },
+    { id: 'close', dis: true, text: 'an enemy within 5 ft', when: (c) => c.ranged && c.enemyClose && !(((c.actor || {}).styles || {}).snapshot && c.attack.weapon) },   // Snapshot Style (#150)
     { id: 'help', adv: true, text: 'helped', each: (c) => [{ adv: true, text: `helped by ${c.world.units[helpOn(c.world, c.actor, c.target).source].name}` }], when: (c) => !!helpOn(c.world, c.actor, c.target) },   // #144
   ];
   /* ---------------- conditions that take effect (issue #72) ---------------- */
@@ -1345,7 +1359,9 @@
     if (!hit) { events.push({ kind: 'miss', unit: t.id }); return { ok: true, log, events }; }
     // versatile in two hands (5.8): its larger die for a melee attack, in place of the weapon's own
     const twoHands = !!(opts.twoHands && attack.versatile && !pv.ranged), dmg0 = twoHands ? String(attack.damage).replace(/\d*d\d+/i, attack.versatile) : attack.damage;
-    const base = (!crit ? dmg0 : variant(w, 'Crueler Criticals') ? cruel(dmg0) : twoHands ? doubleDice(dmg0) : attack.crit || dmg0) + (attack.heavy ? '+' + attack.heavy : '');
+    const thr = thresholdFor(me, attack, pv.ranged, pv.feet, twoHands);   // a fighting style's minimum roll threshold (#150)
+    const base0 = !crit ? dmg0 : variant(w, 'Crueler Criticals') ? cruel(dmg0) : twoHands ? doubleDice(dmg0) : attack.crit || dmg0;
+    const base = (thr ? withThreshold(base0) : base0) + (attack.heavy ? '+' + attack.heavy : '');
     // bonus damage from class features (audit 5.9); a rider the attacker turned down (opts.no) isn't added
     const add = opts.add || {}, fp = (me.pools || {}).force;
     const offered = (pv.riders || []).filter((x) => !((opts.no || []).includes(x.key)));
@@ -1368,7 +1384,7 @@
     const df = defended(t, Math.max(0, d.total) + corr, String(attack.type || '').toLowerCase(), attack.enhanced ? 'enhanced' : 'weapon');
     const amount = df.amount;
     const took = takeDamage(t, amount);
-    log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${twoHands ? ' (two-handed)' : ''}${attack.heavy ? ` (heavy +${attack.heavy})` : ''}${riders.length ? ` (with ${riders.map((x) => `${x.name} ${x.dice ? (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat}${x.points ? `, ${x.points} force point${x.points === 1 ? '' : 's'}` : ''}`).join('; ')})` : ''}${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
+    log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${attack.type ? ' ' + attack.type : ''} damage${twoHands ? ' (two-handed)' : ''}${attack.heavy ? ` (heavy +${attack.heavy})` : ''}${thr ? ` (${thr}: no die under its threshold)` : ''}${riders.length ? ` (with ${riders.map((x) => `${x.name} ${x.dice ? (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat}${x.points ? `, ${x.points} force point${x.points === 1 ? '' : 's'}` : ''}`).join('; ')})` : ''}${corr ? ` (${corr} more from corrosion)` : ''}${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
     fallen(t, took, crit, log, w);
     events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
     concentrationCheck(w, t, amount, roll, log);
@@ -1628,7 +1644,7 @@
         speed: ch ? +ch.speed || 30 : +((table.npcSpeed || {})[e.id]) || 30,
         pools: ch ? Object.fromEntries(resourcesOf(ch, rules).map((r) => [r.key, r])) : {},
         riders: ch ? ridersOf(ch, rules) : {},
-        attacks: ch ? attacksPerAction(ch) : 1, offhands: ch ? bonusAttacksOf(ch) : 0,   // per Attack action (#139); a creature's Multiattack comes with its attack
+        attacks: ch ? attacksPerAction(ch) : 1, offhands: ch ? bonusAttacksOf(ch) : 0, styles: ch ? stylesOf(ch) : {},   // per Attack action (#139); a creature's Multiattack comes with its attack
         // Raging is a rage in progress: without its live effect (the fight ended, a new one began) it's dropped here
         conditions: Array.from(new Set([].concat(e.conditions || [], ch ? ch.conditions || [] : [])))
           .filter((c) => c !== 'Raging' || (table.effects || []).some((ef) => ef.unit === e.id && ef.condition === 'Raging')),
@@ -1656,5 +1672,5 @@
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
     SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf, d20, flankOf, fixedTotal, cruel, modeName,
-    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, ridersOf, ridersFor, attacksPerAction, multiattackOf, offhandOf, stylesOf, contestBonus, helpOn, maneuverCheck, unitAt, weaponProps, volleysOf };
+    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, ridersOf, ridersFor, attacksPerAction, multiattackOf, offhandOf, stylesOf, withThreshold, thresholdFor, MIN_THRESHOLD, contestBonus, helpOn, maneuverCheck, unitAt, weaponProps, volleysOf };
 });
