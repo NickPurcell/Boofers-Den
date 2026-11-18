@@ -95,6 +95,26 @@ function studio() {
 }
 scene.environment = studio();
 scene.environmentIntensity = 0.55;
+// depth in a Duros eye (no white, no pupil): brighter at the centre, a darker ring a little way out, and the edge
+// falling off darker still, with faint streaks running out from the centre. Painted on the sphere's own map, whose
+// front (+Z) is at u = 0.25, v = 0.5; white where the eye's colour shows as chosen, darker where it deepens.
+function eyeDepth() {
+  const W = 512, H = 256, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d'), img = x.createImageData(W, H);
+  const smooth = (a, b, t) => { const s = Math.min(1, Math.max(0, (t - a) / (b - a))); return s * s * (3 - 2 * s); };   // made before the shared helpers
+  for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+    const phi = (i / W) * Math.PI * 2, th = (j / H) * Math.PI;
+    const dz = Math.sin(phi) * Math.sin(th), a = Math.acos(Math.max(-1, Math.min(1, dz)));   // angle from the front
+    const streak = 0.025 * Math.sin(Math.atan2(Math.cos(th), -Math.cos(phi) * Math.sin(th)) * 22);
+    let v = 1 - 0.25 * smooth(0.0, 0.5, a) - 0.22 * Math.exp(-(((a - 0.62) / 0.09) ** 2)) - 0.45 * smooth(0.75, 1.3, a) + (a < 0.6 ? streak : 0);
+    v = Math.max(0.12, Math.min(1, v)) * 255;
+    img.data.set([v, v, v, 255], (j * W + i) * 4);
+  }
+  x.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+const eyeSculpted = new THREE.MeshPhysicalMaterial({ color: 0xd0222c, map: eyeDepth(), roughness: 0.08, clearcoat: 1, clearcoatRoughness: 0.03, emissive: 0x000000 });
 // fine skin grain for the sculpted head: a tileable noise used as a bump map
 function grain() {
   const n = 256, c = document.createElement('canvas'); c.width = c.height = n;
@@ -241,8 +261,8 @@ function buildSculptedHead() {
   // eyes in the sockets, each with an upper and a lower lid of skin
   for (const e of eyes) {
     const c = e.p.clone().addScaledVector(e.n, -R * 0.78);
-    const eye = new THREE.Mesh(new THREE.SphereGeometry(R, 48, 32), eyeMat);
-    eye.position.copy(c); eye.scale.set(1, 1.04, 0.92); g.add(eye);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(R, 48, 32), eyeSculpted);
+    eye.position.copy(c); eye.lookAt(c.clone().add(e.n)); eye.scale.set(1, 1.04, 0.92); g.add(eye);   // its front faces out of the socket
     const lids = new THREE.Group(); lids.position.copy(c); lids.lookAt(c.clone().add(e.n)); g.add(lids);
     // a lid is a cap of a slightly larger sphere, its axis tipped away from the viewer, so its edge arches over the
     // eye the way a real lid's does (a cap facing straight up would cut across the eye in a straight line)
@@ -375,6 +395,8 @@ function recolour() {
   const e = pick('eyes', state.eyes).c;
   eyeMat.color.set(e);
   eyeMat.emissive.set(e).multiplyScalar(0.12);
+  eyeSculpted.color.set(e);
+  eyeSculpted.emissive.set(e).multiplyScalar(0.08);
   mouthMat.color.set(pick('skin', state.skin).c).multiplyScalar(0.28);
 }
 
