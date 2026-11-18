@@ -88,6 +88,18 @@ test("multiclass max power level (audit 3.14): the PHB's weighted caster level a
     [["Marauder Approach", "force", 1], ["Guardian", "force", 1]]);
 });
 
+test("max power level check (audit 4.5): above it is reported, at or below it isn't", () => {
+  const kira = { name: "Kira", classes: [{ name: "Consular", level: 5 }], abilities: {} };   // force up to 3rd, no tech
+  assert.equal(R.overMaxPowerLevel(kira, { level: 3, type: "force" }), null);
+  assert.equal(R.overMaxPowerLevel(kira, { level: 0, type: "tech" }), null, "at-will powers are always fine");
+  assert.deepEqual(R.overMaxPowerLevel(kira, { level: 4, type: "force" }),
+    { level: 4, max: 3, text: "Level 4 is above Kira's max force power level (3)." });
+  assert.equal(R.overMaxPowerLevel(kira, { level: 1, type: "tech" }).text, "Kira can't cast leveled tech powers yet (no max tech power level).");
+  // checked against a given casterInfo instead (the level-up wizard passes the level being gained)
+  const after = R.casterInfo({ classes: [{ name: "Consular", level: 7 }], abilities: {} });
+  assert.equal(R.overMaxPowerLevel(kira, { level: 4, type: "force" }, after), null);
+});
+
 test("Engineers and Scouts get tech points back on a short rest; others don't", () => {
   assert.equal(R.techOnShortRest(char([["Engineer", 1]])), true);
   assert.equal(R.techOnShortRest(char([["Scout", 2]])), true);

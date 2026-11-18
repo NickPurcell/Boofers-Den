@@ -1,0 +1,102 @@
+// HoloTable starships: the ship actions that change a ship in a fight, on the server. Not a route.
+//
+// The rules are in sections/jpesus/holotable/starships.js (pure, shared with the ship sheet). This file finds the
+// ship, checks who may act, rolls the dice, lets the rules decide, writes the ship back and says what happened in
+// the chat. A ship's fight state (ship.status: conditions, slowed and system damage levels, destruction saves) is
+// the server's: a sheet save keeps what is stored (see keepStatus), so a stale copy in someone's browser can't undo
+// a hit or a failed save.
+//
+// Who may act: anyone at the table on a party ship, as with the rest of its sheet; only the GM on a hidden ship,
+// whose lines in the chat only the GM sees.
+// Helpers from _holotable-game.js are passed in (no circular require).
+
+const SR = require("../sections/jpesus/holotable/starships.js");
+
+const str = (v, n) => String(v == null ? "" : v).slice(0, n);
+const int = (v, d = 0) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : d; };
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+const TYPES = new Set(["ship.damage", "ship.restore", "ship.dsave", "ship.stabilize", "ship.condition", "ship.reset"]);
+const handles = (type) => TYPES.has(type);
+
+// On a sheet save: the fight state stays as stored, points stay inside the (possibly halved) maximums, and hull
+// typed back up from 0 brings the ship back (destruction saves reset, no longer disabled by it).
+function keepStatus(clean, old) {
+  clean.status = SR.cleanStatus(old ? old.status : null);
+  SR.capPoints(clean);
+  if (old) SR.revive(clean, (old.hull || {}).current);
+  return clean;
+}
+
+function apply(camp, cid, gm, type, p, h) {
+  const { rollDice, addChat, playerName, Forbidden, Invalid } = h;
+  camp.ships = camp.ships || [];
+  const i = camp.ships.findIndex((x) => x && x.id === p.id);
+  if (i < 0) throw new Invalid("No such ship.");
+  const ship = camp.ships[i];
+  if (!(gm || !ship.hidden)) throw new Forbidden("That ship is the GM's.");
+  const say = (lines) => {
+    for (const text of lines.filter(Boolean)) {
+      const msg = { system: true, text: str(text, 400) };
+      if (ship.hidden) Object.assign(msg, { to: ["@gm"], private: true });
+      addChat(camp, msg);
+    }
+  };
+  const put = (s) => { s.updated = Date.now() / 1000; camp.ships[i] = s; return s; };
+
+  switch (type) {
+    case "ship.damage": {   // damage of one type: shields first at their share, the rest to the hull, then the 0-hull rules
+      const amount = clamp(int(p.amount), 0, 100000);
+      if (!amount) return {};
+      const r = SR.takeDamage(ship, amount, str(p.type, 30), { crit: !!p.crit, disable: !!p.disable });
+      put(r.ship); say(r.log);
+      return { outcome: r.outcome, shieldLost: r.shieldLost, hullLost: r.hullLost };
+    }
+    case "ship.restore": {  // repairs (hull) or restored shields, up to the maximum
+      const r = SR.restore(ship, p.what === "shield" ? "shield" : "hull", clamp(int(p.amount), 0, 100000));
+      put(r.ship);
+      if (r.gained) say([`${ship.name} ${p.what === "shield" ? "restores" : "repairs"} ${r.gained} ${p.what === "shield" ? "shield" : "hull"} point${r.gained === 1 ? "" : "s"}.`]);
+      return { gained: r.gained };
+    }
+    case "ship.dsave": {    // a destruction saving throw, rolled here
+      if (!SR.dying(ship)) throw new Invalid(`${ship.name} doesn't need a destruction save (it needs 0 hull points and not to be stable).`);
+      const roll = rollDice("1d20");
+      const r = SR.destructionSave(ship, roll.nat);
+      put(r.ship);
+      const msg = { from: playerName(camp, cid), fromId: cid, roll: Object.assign({}, roll, { expr: "1d20", label: str(`${ship.name}: destruction save`, 120), kind: "dsave" }) };
+      if (ship.hidden) Object.assign(msg, { to: ["@gm", cid], private: true });
+      addChat(camp, msg);
+      say(r.log);
+      return { result: r.result, d20: roll.nat };
+    }
+    case "ship.stabilize": {   // after a crew member's DC 10 Intelligence (mechanic's kit) check succeeds
+      const r = SR.stabilize(ship);
+      if (!r.done) return {};
+      put(r.ship); say([`${playerName(camp, cid)} stabilizes ${ship.name}.`]);
+      return {};
+    }
+    case "ship.condition": {   // a condition on or off, or a level of slowed (0-4) or system damage (0-6)
+      const name = str(p.name, 30);
+      if (!(SR.CONDITIONS.includes(name) || name === "slowed" || name === "system")) throw new Invalid("No such ship condition.");
+      const before = SR.statusOf(ship);
+      const s = put(SR.setCondition(ship, name, name === "slowed" || name === "system" ? clamp(int(p.level), 0, 6) : !!p.on));
+      const after = SR.statusOf(s);
+      if (name === "system" && after.system !== before.system) say([`${ship.name}: system damage ${after.system}${after.system ? " (" + SR.SYSTEM_NOTES[after.system].toLowerCase() + ")" : ""}.`]);
+      else if (name === "slowed" && after.slowed !== before.slowed) say([`${ship.name}: slowed ${after.slowed}.`]);
+      else if (before.cond.includes(name) !== after.cond.includes(name)) say([`${ship.name} is ${after.cond.includes(name) ? "now" : "no longer"} ${name.toLowerCase()}.`]);
+      return {};
+    }
+    case "ship.reset": {    // the GM undoes a destruction (a mistake, or a story reason): saves cleared, not destroyed
+      if (!gm) throw new Forbidden("GM only");
+      const s = JSON.parse(JSON.stringify(ship));
+      s.status = SR.cleanStatus(s.status);
+      s.status.zero = { s: 0, f: 0, stable: false, destroyed: false };
+      if (p.system !== undefined) s.status.system = clamp(int(p.system), 0, 6);
+      put(SR.capPoints(s));
+      return {};
+    }
+  }
+  return {};
+}
+
+module.exports = { handles, apply, keepStatus, cleanStatus: SR.cleanStatus };

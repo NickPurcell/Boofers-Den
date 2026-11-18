@@ -595,7 +595,7 @@
           <td style="width:90px">${inp(`powers.${i}.type`, p.type || 'force', { ro, type: 'select', options: ['force', 'tech'] })}</td>
           <td style="width:110px">${p.type === 'tech' ? '' : inp(`powers.${i}.alignment`, p.alignment || 'universal', { ro, type: 'select', options: ['universal', 'light', 'dark'] })}</td>
           <td>${inp(`powers.${i}.notes`, p.notes || '', { ro, ph: 'range, duration, effect…' })}</td>
-          <td style="width:60px"><button class="btn small amber" data-act="cast" data-i="${i}">Cast</button></td>
+          <td style="width:60px">${(over => `<button class="btn small ${over ? 'ghost' : 'amber'}" data-act="cast" data-i="${i}"${over ? ` title="${esc(over.text)}"` : ''}>Cast</button>`)(R.overMaxPowerLevel(ch, p, ci))}</td>
           <td style="white-space:nowrap">${!ro ? `<button class="btn tiny ghost" data-act="power-desc" data-i="${i}" title="Write or edit this power's description">✎</button><button class="btn tiny ghost" data-act="del" data-list="powers" data-i="${i}">✕</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">No powers.</td></tr>'}</tbody></table>
         <p class="muted" style="font-size:12px;margin:6px 0 0">Hover a power for its details. Casting costs 1 + power level points (level 0 at-wills are free).</p></div>`;
     }
@@ -780,6 +780,10 @@
       case 'cast': {
         const p = ch.powers[i], lvl = +p.level || 0, cost = lvl ? lvl + 1 : 0, k = p.type === 'tech' ? 'tech' : 'force';
         const ci = R.casterInfo(ch);
+        // audit 4.5: above the character's max power level a player is refused; the GM is warned and may cast anyway
+        const over = R.overMaxPowerLevel(ch, p);
+        if (over && !isGM()) return toast(over.text, true);
+        if (over && !confirm(`${over.text}\n\nCast anyway?`)) return;
         const max = ch[k].max !== '' && ch[k].max != null ? +ch[k].max : (k === 'force' ? ci.forceMax : ci.techMax);
         if (cost && (+ch[k].used || 0) + cost > max) return toast(`Not enough ${k} points (${cost} needed).`, true);
         if (cost) mutate(c => { c[k].used = (+c[k].used || 0) + cost; });
@@ -961,7 +965,7 @@
       catch (err) { pp.innerHTML = `<h3>${force ? 'Force' : 'Tech'} powers</h3><p class="error">${esc(err.message)}</p><div class="row"><span class="spacer"></span><button class="btn" data-pp="close">Close</button></div>`; pp.onclick = e => { if (e.target.dataset.pp === 'close') closeModal(); }; return; }
       const ch = () => S.st.characters[charId];
       const known = () => new Set([...(ch() ? ch().powers : []).map(p => String(p.name).toLowerCase()), ...(opts.taken ? opts.taken() : [])]);
-      const ci = () => R.casterInfo(ch() || {});
+      const ci = () => (opts.caster ? opts.caster() : R.casterInfo(ch() || {}));
       const shown = () => list.filter(p => (F.level === 'all' || p.l === +F.level) && (!force || F.align.has(p.a))
         && (!F.q || p.n.toLowerCase().includes(F.q)));
       const alignLabel = () => F.align.size === 3 ? 'All alignments' : F.align.size === 0 ? 'None selected' : [...F.align].map(a => ALIGN[a]).join(', ');
@@ -973,7 +977,7 @@
             <div class="pp-main"><b>${esc(p.n)}</b>
               <span class="pp-lvl">${p.l ? 'Level ' + p.l : 'At-will'}</span>${force ? `<span class="pp-al pp-${esc(p.a)}">${esc(ALIGN[p.a] || '')}</span>` : ''}
               ${p.c ? '<span class="pp-tag">Concentration</span>' : ''}${p.src === 'EC' ? '<span class="pp-tag" title="SW5e Expanded Content">EC</span>' : ''}
-              ${maxLvl && p.l > maxLvl ? '<span class="pp-tag pp-high" title="Above the highest level this character can cast right now">above your level</span>' : ''}
+              ${p.l > maxLvl ? `<span class="pp-tag pp-high" title="${maxLvl ? `Above the highest level this character can cast right now (${maxLvl})` : `This character can't cast leveled ${force ? 'force' : 'tech'} powers yet`}">above your level</span>` : ''}
               <div class="pp-meta">${esc(p.ct)} · Range ${esc(p.r)} · ${esc(p.d)}${p.pre ? ` · Requires ${esc(p.pre)}` : ''}</div>
               <details class="pp-desc"><summary>Description</summary><div>${md(p.desc)}${p.hl ? `<p><b>At higher levels.</b> ${md(p.hl)}</p>` : ''}</div></details></div>
             <button class="btn small ${has ? 'ghost' : 'primary'}" data-pp="add" ${has ? 'disabled' : ''}>${has ? '✓ Known' : 'Add'}</button></div>`;
@@ -1005,6 +1009,9 @@
         if (b.dataset.pp === 'more') { F.limit += 200; return render(); }
         if (b.dataset.pp === 'add') {
           const p = list.find(x => x.n === b.closest('.pp-row').dataset.n); if (!p) return;
+          // audit 4.5: learning a power above the max power level asks first (players and the GM alike)
+          const over = R.overMaxPowerLevel(ch() || {}, { level: p.l, type: force ? 'force' : 'tech' }, ci());
+          if (over && !confirm(`${over.text} It can't be cast until then.\n\nAdd it anyway?`)) return;
           const notes = [p.ct, p.r && 'Range ' + p.r, p.d, p.c && !/concentration/i.test(p.d) ? 'Concentration' : ''].filter(Boolean).join(' · ');
           const desc = p.desc + (p.hl ? '\n\nAt higher levels. ' + p.hl : '');
           const pw = { name: p.n, level: p.l, type: force ? 'force' : 'tech', alignment: force ? p.a : 'universal', notes: notes.slice(0, 300), description: desc.slice(0, 4000) };
@@ -2556,6 +2563,7 @@
         if (a === 'cancel') return closeModal();
         if (a === 'pick-power') {   // the same SW5e picker as on the sheet; Done comes back here
           return openPowerPicker(charId, b.dataset.kind, { taken: () => W.powers.map(x => x.name.toLowerCase()),
+            caster: () => R.casterInfo(wizardPlan(charId, W).after),   // the max power level after this level
             onAdd: pw => W.powers.push(pw), onDone: () => openWizard(charId, W) });
         }
         if (a === 'rm-power') { W.powers.splice(+b.dataset.i, 1); render(); }
