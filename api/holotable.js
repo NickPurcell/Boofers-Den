@@ -117,6 +117,7 @@ async function gameWasLost(GAME) {
 async function loadGame(GAME) {
   const camp = await S.getCampaign(GAME);
   if (camp) {
+    camp.code = GAME;   // a save always lands in the campaign it was read from, whatever a stored code says (#208 review)
     // tables made before 70 px squares: move the old 50 px default to 70 (saved with the next change)
     if (camp.map && !camp.map.gridV2) { if (camp.map.gridSize === 50) camp.map.gridSize = 70; camp.map.gridV2 = true; }
     return camp;
@@ -1074,7 +1075,7 @@ async function campaignOp(res, b, ses, GAME) {
     if (code === "main") return fail(res, 400, "The first campaign stays (it's the table's own). Rename it instead.");
     const texts = [await r.get(S.K.camp(code)), ...(await r.lrange(S.K.bk(code), 0, S.BACKUP_KEEP - 1))].filter(Boolean);
     const urls = [...new Set(texts.join(" ").match(/\/api\/holotable\?img=[a-f0-9]{16,40}/g) || [])];
-    await r.del(S.K.camp(code), S.K.ver(code), S.K.bk(code), S.K.on(code));
+    await r.del(S.K.camp(code), S.K.ver(code), S.K.bk(code), S.K.on(code), S.K.refs(code));
     await r.hdel(S.K.camps(), code);
     if (urls.length) await S.dropUnusedImages(urls, "", code);   // only what no other campaign (or its backups) uses
     return res.status(200).json({ ok: true });

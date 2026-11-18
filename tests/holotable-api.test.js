@@ -2474,3 +2474,17 @@ test("more than one campaign (12.9): the GM keeps several, the table is on one, 
   for (let i = 0; i < 4; i++) assert.equal((await gm.post("campaign", { do: "create", name: "c" + i })).code, 200);
   assert.equal((await gm.post("campaign", { do: "create", name: "too many" })).code, 400, "five at most");
 });
+
+test("campaign image sets: a campaign saved before the sets existed is still counted (#208 review)", async () => {
+  const { gm } = await table();
+  const shared = (await gm.post("upload", { purpose: "bg", dataUrl: PNG_URL })).data.url;
+  await gm.act("map.bg", { url: shared });
+  await db.del(S.K.refs("main"));   // as if "main" were last saved before the sets
+  const code = (await gm.post("campaign", { do: "create", name: "B" })).data.code;
+  await gm.post("campaign", { do: "switch", code });
+  await gm.act("map.bg", { url: shared });
+  const up2 = await gm.post("upload", { purpose: "bg", dataUrl: PNG_URL.replace(/A=*$/, "B") });
+  await gm.act("map.bg", { url: up2.data.url });   // B lets go of the shared image
+  assert.equal((await gm.call("GET", { img: shared.split("=")[1] })).code, 200, "main still uses it, so it stays");
+  assert.ok((await db.smembers(S.K.refs("main"))).includes(shared), "and main's set was rebuilt once");
+});
