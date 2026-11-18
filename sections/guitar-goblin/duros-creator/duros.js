@@ -28,13 +28,17 @@ const OPTIONS = {
     { key: 'average', name: 'Average', s: 1 },
     { key: 'broad', name: 'Broad', s: 1.14 },
   ],
+  detail: [
+    { key: 'sculpted', name: 'Sculpted' },
+    { key: 'lowpoly', name: 'First cut' },
+  ],
   outfit: [
     { key: 'scout', name: "Scout's jacket & scarf" },
     { key: 'pilot', name: 'Flight suit' },
     { key: 'trader', name: "Trader's coat" },
   ],
 };
-const DEFAULT = { skin: 'blue', eyes: 'red', head: 'round', build: 'average', outfit: 'scout' };
+const DEFAULT = { skin: 'blue', eyes: 'red', head: 'round', build: 'average', outfit: 'scout', detail: 'sculpted' };
 const pick = (opt, key) => OPTIONS[opt].find((o) => o.key === key) || OPTIONS[opt][0];
 
 // the look lives in the page's address (#skin=teal&eyes=red&…), so a link keeps it
@@ -78,10 +82,35 @@ const key = new THREE.DirectionalLight(0xfff0de, 2.6); key.position.set(3, 4, 5)
 const rim = new THREE.DirectionalLight(0x86ccff, 1.8); rim.position.set(-4, 2.5, -5); scene.add(rim);
 const fill = new THREE.DirectionalLight(0xffffff, 0.45); fill.position.set(-3, -1, 4); scene.add(fill);
 
+// a small studio for reflections (the glossy eyes, the sheen on the skin): a dark room with a warm key panel, a cool
+// rim panel and a soft overhead, baked once into an environment map
+function studio() {
+  const room = new THREE.Scene();
+  room.add(new THREE.Mesh(new THREE.SphereGeometry(20, 24, 16), new THREE.MeshBasicMaterial({ color: 0x0c1220, side: THREE.BackSide })));
+  const panel = (c, w, h, x, y, z) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: c, side: THREE.DoubleSide })); m.position.set(x, y, z); m.lookAt(0, 0, 0); room.add(m); };
+  panel(0xfff1dc, 8, 6, 9, 8, 12); panel(0x9fd4ff, 4, 9, -12, 4, -9); panel(0x6a7a90, 14, 3, 0, 16, 0);
+  const pm = new THREE.PMREMGenerator(renderer), env = pm.fromScene(room, 0.03).texture;
+  pm.dispose();
+  return env;
+}
+scene.environment = studio();
+scene.environmentIntensity = 0.55;
+// fine skin grain for the sculpted head: a tileable noise used as a bump map
+function grain() {
+  const n = 256, c = document.createElement('canvas'); c.width = c.height = n;
+  const x = c.getContext('2d'), img = x.createImageData(n, n);
+  for (let i = 0; i < n * n; i++) { const v = 118 + Math.random() * 20 + (Math.random() < 0.012 ? -40 : 0); img.data.set([v, v, v, 255], i * 4); }
+  x.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(6, 4);
+  return t;
+}
 const skinMat = new THREE.MeshStandardMaterial({ color: 0x4c86b8, roughness: 0.5, metalness: 0, flatShading: true });
+const skinSmooth = new THREE.MeshPhysicalMaterial({ color: 0x4c86b8, roughness: 0.48, metalness: 0, sheen: 0.35, sheenRoughness: 0.6, sheenColor: 0x9fd0ff,
+  clearcoat: 0.12, clearcoatRoughness: 0.6, bumpMap: grain(), bumpScale: 0.6 });
+const skin = () => (state.detail === 'lowpoly' ? skinMat : skinSmooth);
 const eyeMat = new THREE.MeshPhysicalMaterial({ color: 0xd0222c, roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.05, emissive: 0x000000 });
 const mouthMat = new THREE.MeshStandardMaterial({ color: 0x1a2430, roughness: 0.8 });
-const cloth = (c, rough = 0.85) => new THREE.MeshStandardMaterial({ color: c, roughness: rough, metalness: 0, flatShading: true });
+const cloth = (c, rough = 0.85) => new THREE.MeshStandardMaterial({ color: c, roughness: rough, metalness: 0, flatShading: state.detail === 'lowpoly' });
 
 const figure = new THREE.Group();
 scene.add(figure);
@@ -115,6 +144,7 @@ const HEADS = {
 };
 function buildHead() {
   if (headParts) { headPivot.remove(headParts); headParts.traverse((o) => o.geometry && o.geometry.dispose()); }
+  if (state.detail !== 'lowpoly') return buildSculptedHead();
   const h = HEADS[state.head] || HEADS.round, g = new THREE.Group();
   const geo = new THREE.SphereGeometry(1, 28, 22), pos = geo.attributes.position, v = new THREE.Vector3();
   for (let i = 0; i < pos.count; i++) {
@@ -153,6 +183,80 @@ function buildHead() {
   headPivot.position.y = 0.25 + (h.H - 1.32) * 0.55;
 }
 
+// The sculpted head (detail "Sculpted"): the same Duros shape on a much finer sphere, then sculpted where a face has
+// form: deep sockets the eyes sit in, a soft brow ridge over them, cheekbones under them, a mouth cut into the face
+// (no lips), a faint dip at the temples and under the chin. Upper and lower lids wrap the eyes. Smooth shading.
+function headShape(h, v) {
+  const t = (v.y + 1) / 2;
+  const w = lerp(h.jaw, 1, smooth(0.04, 0.6, t)) * lerp(1, h.crown, smooth(0.55, 0.95, t)) * h.wide;
+  let z = v.z;
+  if (z > 0) z *= lerp(0.74, 0.9, smooth(0, 0.7, t)) * lerp(1, 0.92, smooth(0.6, 1, t));
+  else z *= lerp(0.88, h.back, smooth(0.3, 0.9, t));
+  z -= smooth(0.55, 1, t) * (h.back - 1) * 1.1;
+  if (t < 0.22 && v.z > 0) z += (0.22 - t) * 0.5;
+  return new THREE.Vector3(v.x * w, v.y * h.H, z);
+}
+const gauss = (d2) => Math.exp(-d2);
+function buildSculptedHead() {
+  const h = HEADS[state.head] || HEADS.round, g = new THREE.Group();
+  const geo = new THREE.SphereGeometry(1, 128, 96), pos = geo.attributes.position, v = new THREE.Vector3();
+  for (let i = 0; i < pos.count; i++) { v.fromBufferAttribute(pos, i); const p = headShape(h, v); pos.setXYZ(i, p.x, p.y, p.z); }
+  geo.computeVertexNormals();
+  const base = new THREE.Mesh(geo, skin());
+  g.add(base); headPivot.add(g); g.updateMatrixWorld(true);
+  // where the face features sit, found on the unsculpted shape
+  const R = h.eye, ex = 0.43 * h.wide, ey = h.H * 0.06, my = -h.H * 0.56;
+  const eyes = [-1, 1].map((sx) => front(base, sx * ex, ey)).filter(Boolean);
+  const nrm = geo.attributes.normal, n = new THREE.Vector3(), p = new THREE.Vector3();
+  const out = new Float32Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    p.fromBufferAttribute(pos, i); n.fromBufferAttribute(nrm, i);
+    if (n.z < -0.2) continue;   // the back of the head stays as it is
+    let d = 0;
+    for (const e of eyes) {
+      const dx = (p.x - e.p.x) / R, dy = (p.y - e.p.y) / R, dz = (p.z - e.p.z) / R;
+      d -= 0.42 * R * gauss((dx * dx + dy * dy + dz * dz) / 0.78);                              // the socket
+      const bx = (p.x - e.p.x) / (R * 1.25), by = (p.y - e.p.y - R * 1.02) / (R * 0.34);
+      d += 0.055 * gauss(bx * bx + by * by);                                                     // the brow ridge
+      const cx = (p.x - e.p.x - Math.sign(e.p.x) * R * 0.35) / (R * 0.9), cy = (p.y - e.p.y + R * 1.2) / (R * 0.45);
+      d += 0.04 * gauss(cx * cx + cy * cy);                                                      // the cheekbone
+      const tx = (p.x - e.p.x - Math.sign(e.p.x) * R * 1.6) / (R * 0.7), ty = (p.y - e.p.y - R * 0.3) / (R * 0.9);
+      d -= 0.025 * gauss(tx * tx + ty * ty);                                                     // the temple
+    }
+    if (p.z > 0.2) {   // the mouth: a thin cut, curving up a little at the ends, with soft lip lines either side
+      const ax = Math.abs(p.x) / h.wide, yc = my + ax * ax * 0.55, m = smooth(0.3, 0.2, ax);
+      const u = (p.y - yc) / 0.022;
+      d += m * (-0.034 * gauss(u * u) + 0.012 * gauss(((p.y - yc - 0.06) / 0.035) ** 2) + 0.01 * gauss(((p.y - yc + 0.065) / 0.04) ** 2));
+      const cy = (p.y - (my - 0.32)) / 0.12, cx = p.x / 0.25;
+      d -= 0.018 * gauss(cx * cx + cy * cy);                                                     // the dip above the chin
+    }
+    out[i] = d;
+  }
+  for (let i = 0; i < pos.count; i++) {
+    if (!out[i]) continue;
+    n.fromBufferAttribute(nrm, i);
+    pos.setXYZ(i, pos.getX(i) + n.x * out[i], pos.getY(i) + n.y * out[i], pos.getZ(i) + n.z * out[i]);
+  }
+  geo.computeVertexNormals(); pos.needsUpdate = true;
+  // eyes in the sockets, each with an upper and a lower lid of skin
+  for (const e of eyes) {
+    const c = e.p.clone().addScaledVector(e.n, -R * 0.78);
+    const eye = new THREE.Mesh(new THREE.SphereGeometry(R, 48, 32), eyeMat);
+    eye.position.copy(c); eye.scale.set(1, 1.04, 0.92); g.add(eye);
+    const lids = new THREE.Group(); lids.position.copy(c); lids.lookAt(c.clone().add(e.n)); g.add(lids);
+    // a lid is a cap of a slightly larger sphere, its axis tipped away from the viewer, so its edge arches over the
+    // eye the way a real lid's does (a cap facing straight up would cut across the eye in a straight line)
+    const lid = (start, len, tip) => {
+      const m = new THREE.Mesh(new THREE.SphereGeometry(R * 1.06, 64, 24, 0, Math.PI * 2, start, len), skin());
+      m.rotation.x = tip; m.scale.set(1, 1.04, 0.92); lids.add(m); return m;
+    };
+    lid(0, Math.PI * 0.45, -0.45);                  // the upper lid, a little hooded
+    lid(Math.PI * 0.72, Math.PI * 0.28, 0.45);      // the lower lid, a thin rim
+  }
+  headParts = g;
+  headPivot.position.y = 0.25 + (h.H - 1.32) * 0.55;
+}
+
 /* ---------------- the body and the outfits ---------------- */
 // A torso turned on a lathe (wide at the shoulders, flatter front to back), a neck, shoulders and upper arms; each
 // outfit dresses it in its own colours and adds a few plain pieces: collar, straps, scarf, lapels.
@@ -176,7 +280,7 @@ function strap(g, mat, a, b, w = 0.16, out = 0.05) {
 function buildBody() {
   if (bodyParts) { figure.remove(bodyParts); bodyParts.traverse((o) => o.geometry && o.geometry.dispose()); }
   const s = pick('build', state.build).s, g = new THREE.Group();
-  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.46, 1.7, 16), skinMat);
+  const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.46, 1.7, state.detail === 'lowpoly' ? 16 : 40), skin());
   neck.position.set(0, -1.35, -0.08);
   g.add(neck);
   const look = {
@@ -267,6 +371,7 @@ function buildBody() {
 
 function recolour() {
   skinMat.color.set(pick('skin', state.skin).c);
+  skinSmooth.color.set(pick('skin', state.skin).c);
   const e = pick('eyes', state.eyes).c;
   eyeMat.color.set(e);
   eyeMat.emissive.set(e).multiplyScalar(0.12);
@@ -288,8 +393,8 @@ function paint() {
 function set(opt, keyName) {
   if (state[opt] === keyName) return;
   state[opt] = keyName;
-  if (opt === 'head') buildHead();
-  if (opt === 'build' || opt === 'outfit') buildBody();
+  if (opt === 'head' || opt === 'detail') buildHead();
+  if (opt === 'build' || opt === 'outfit' || opt === 'detail') buildBody();
   recolour(); paint(); writeHash();
 }
 for (const el of document.querySelectorAll('[data-opt]')) {
