@@ -638,6 +638,15 @@ table.t td:first-child input { min-width: 140px; }
 .ship-pool { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; }
 .ship-pool .dpip, .ship-power .dpip { display: inline-block; width: 9px; height: 9px; border: 1px solid currentColor; border-radius: 50%; }
 .ship-pool .dpip.on { background: currentColor; }
+.space-top { margin-bottom: 10px; gap: 8px; }
+.space-body { display: grid; grid-template-columns: 240px 1fr; gap: 10px; align-items: start; }
+.space-wrap { overflow: auto; max-height: calc(100vh - 190px); border: 1px solid var(--line); }
+.space-wrap canvas { display: block; cursor: crosshair; }
+.space-order { list-style: none; margin: 0 0 8px; padding: 0; }
+.space-order li { display: flex; align-items: center; gap: 6px; padding: 3px 6px; cursor: pointer; font-size: 13px; }
+.space-order li.on { outline: 1px solid var(--amber); color: var(--amber); }
+.space-order .sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+@media (max-width: 900px) { .space-body { grid-template-columns: 1fr; } }
 .ship-skills .lr .ab { text-transform: uppercase; }
 @media (max-width: 720px) { .ship-abil { grid-template-columns: repeat(2, 1fr); } .sb-abil { grid-template-columns: repeat(3, 1fr); } }
 #ships .t select { min-width: 120px; }

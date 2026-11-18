@@ -674,31 +674,58 @@ function castUnaimed(camp, cid, ch, ab, up, G, at) {
   if (ab.heal && ab.heal.dice) roll(expr([dice(ab.heal)]), `${ab.name}: healing`, "heal");
   return {};
 }
-// the sheet's "Concentrating: X ✕" (its owner or the GM): the concentration ends, and what it held with it
-function endSheetConc(camp, cid, gm, p, G) {
-  if (!camp.fight) return {};
-  if (!ID.test(String(p.charId || ""))) throw new G.Invalid("No such character.");
-  const f = state(camp), ch = charOf(camp, p.charId);
-  if (!ch) throw new G.Invalid("No such character.");
-  if (!gm && ch.owner !== cid) throw new G.Forbidden("not your character");
-  const mine = camp.initiative.entries.find((e) => e.charId === ch.id);
+// a character stops concentrating, from wherever it was begun: the conditions it held come off (the engine's effects
+// in the tracker, sheetHeld outside it), and the table reads why
+function stopConcentrating(camp, cid, ch, G, why) {
+  const f = camp.fight, mine = camp.initiative.entries.find((e) => e.charId === ch.id);
   const name = (mine && own(f.conc, mine.id) && f.conc[mine.id]) || (own(f.sheetConc, ch.id) && f.sheetConc[ch.id]);
-  if (!name) return {};
+  if (!name) return null;
   delete f.sheetConc[ch.id];
   dropHeld(camp, ch.id);
   if (mine && own(f.conc, mine.id)) {   // in the tracker: the engine ends it, with the conditions it held there
     const before = worldOf(camp, false, G);
     if (before.units[mine.id]) {
       const after = JSON.parse(JSON.stringify(before));
-      E.endConcentration(after, mine.id, `${G.shownName(camp, mine)} stops concentrating`, null);
+      E.endConcentration(after, mine.id, why, null);
       writeBack(camp, cid, before, after, G);
     }
     delete f.conc[mine.id];
   }
   const tok = (camp.map.tokens || []).find((t) => t.charId === ch.id);
-  sayTokens(camp, G, Object.assign({ system: true, fight: true, text: str(`${G.shownName(camp, { charId: ch.id, name: ch.name })} stops concentrating on ${name}.`, 200) },
+  sayTokens(camp, G, Object.assign({ system: true, fight: true, text: str(`${why}: ${name} ends.`, 200) },
     tok && tok.hidden ? { to: ["@gm"], private: true } : {}), cid, tok ? [tok.id] : []);
+  return name;
+}
+// the sheet's "Concentrating: X ✕" (its owner or the GM): the concentration ends, and what it held with it
+function endSheetConc(camp, cid, gm, p, G) {
+  if (!camp.fight) return {};
+  if (!ID.test(String(p.charId || ""))) throw new G.Invalid("No such character.");
+  state(camp);
+  const ch = charOf(camp, p.charId);
+  if (!ch) throw new G.Invalid("No such character.");
+  if (!gm && ch.owner !== cid) throw new G.Forbidden("not your character");
+  stopConcentrating(camp, cid, ch, G, `${G.shownName(camp, { charId: ch.id, name: ch.name })} stops concentrating`);
   return {};
+}
+// Damage that doesn't go through the engine (the sheet's Damage button, the tracker's −n), audit 4.6: a concentrating
+// character makes a Con save, DC 10 or half the damage, whichever is higher, rolled on the server as the combat view
+// does; a failure, or 0 hit points, ends the concentration
+function afterDamage(camp, cid, ch, amount, G) {
+  if (!camp.fight || !ch || !(amount > 0)) return;
+  state(camp);
+  const f = camp.fight, mine = camp.initiative.entries.find((e) => e.charId === ch.id);
+  if (!((mine && own(f.conc, mine.id)) || own(f.sheetConc, ch.id))) return;
+  const who = G.shownName(camp, { charId: ch.id, name: ch.name });
+  if ((+(ch.hp || {}).current || 0) <= 0) { stopConcentrating(camp, cid, ch, G, `${who} drops to 0 hit points`); return; }
+  const dc = Math.max(10, Math.floor(amount / 2)), bonus = R.saveBonus(ch, "con"), expr = `1d20${bonus >= 0 ? "+" : ""}${bonus}`;
+  const res = G.rollDice(expr), kept = res.total >= dc;
+  const tok = (camp.map.tokens || []).find((t) => t.charId === ch.id), secret = !!(tok && tok.hidden);
+  const msg = { from: who === ch.name ? G.playerName(camp, ch.owner) : "Combat", fromId: secret ? "@gm" : ch.owner, fight: true,
+    roll: { total: res.total, detail: res.detail, nat: res.nat == null ? null : res.nat, expr, label: str(`${who} makes a concentration save (CON, DC ${dc}): ${res.total}, ${kept ? "a success" : "a failure"}.`, 200), kind: "save" } };
+  if (who === ch.name && !secret) msg.charName = ch.name;
+  if (secret) Object.assign(msg, { to: ["@gm"], private: true, from: "Combat (GM only)" });
+  sayTokens(camp, G, msg, cid, tok ? [tok.id] : []);
+  if (!kept) stopConcentrating(camp, cid, ch, G, `${who} loses concentration`);
 }
 // What the sheet needs of the combat view's records, on or off: the table's power data (which powers roll), and who
 // is concentrating on what, by character, for the characters this viewer is sent. Null when there's nothing to show.
@@ -1285,5 +1312,5 @@ function cleanWalls(list) {
   });
 }
 
-module.exports = { apply, view, sheetView, canWalk, fogFor, fogView, cleanFog, cleanLight, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
+module.exports = { apply, view, sheetView, afterDamage, canWalk, fogFor, fogView, cleanFog, cleanLight, noteSeen, sightTo, unitTokens, worldOf, state, turned, restored, cleanResources: E.cleanResources, cleanWalls,
   cleanHitDiceUsed: R.cleanHitDiceUsed };   // for cleanChar: the sheet and the undo record clean hit dice the same way

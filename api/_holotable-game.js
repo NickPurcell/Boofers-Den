@@ -9,6 +9,7 @@
 const crypto = require("crypto");
 const Fight = require("./_holotable-fight.js");   // the combat view (fight.*), off until the GM switches it on
 const Ships = require("./_holotable-ships.js");   // a ship in a fight (ship.damage, destruction saves, ship conditions): Starships of the Galaxy
+const Space = require("./_holotable-space.js");   // the space map (space.*): ship fights on their own map, jpesus's call on #146
 const R = globalThis.SW5E;   // rules.js, loaded by the fight module (senses)
 
 const CHAT_LIMIT = 400;
@@ -283,6 +284,7 @@ function viewFor(camp, cid, gm, online) {
     hpMax: camp.hpMax !== false,
     audio: camp.audio ? Object.assign({}, camp.audio, { now: now() }) : null,   // "now" lets each screen line its clock up
     ships: (camp.ships || []).filter((x) => gm || !x.hidden),
+    ...(camp.space ? { space: Space.view(camp, gm) } : {}),   // the space map (#146)
     sceneFx: fxView,
     ...(camp.fight && camp.fight.on ? { fight: Fight.view(camp, cid, gm, shownName) } : {}),
     // the sheet's Cast (#73), combat view on or off: which powers the table has data for, and who concentrates on what
@@ -482,13 +484,17 @@ function damageChar(camp, ch, amount) {
   for (const e of camp.initiative.entries) if (e.charId === ch.id) e.hp = hp.current;
 }
 
+// what the combat module is given to work with
+const fightHelpers = () => ({ rollDice, addChat, playerName, applyAction, shownName, combatMoves, reviveChar, Forbidden, Invalid });
+
 function applyAction(camp, cid, gm, type, p) {
   p = p || {};
   const chars = camp.characters, ini = camp.initiative, mp = camp.map;
   mp.props = mp.props || [];
   const need = (ok, why = "GM only") => { if (!ok) throw new Forbidden(why); };
-  if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, applyAction, shownName, combatMoves, reviveChar, Forbidden, Invalid });
+  if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, fightHelpers());
   if (Ships.handles(type)) return Ships.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
+  if (Space.handles(type)) return Space.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, applyAction, rid, Forbidden, Invalid });
 
   switch (type) {
     // ---- characters
@@ -540,6 +546,7 @@ function applyAction(camp, cid, gm, type, p) {
       if (!ch) return {};
       need(gm || ch.owner === cid, "not your character");
       damageChar(camp, ch, p.amount);
+      Fight.afterDamage(camp, cid, ch, clamp(int(p.amount), 0, 100000), fightHelpers());   // concentration (audit 4.6)
       return {};
     }
     case "char.delete": {
@@ -659,7 +666,7 @@ function applyAction(camp, cid, gm, type, p) {
       if ("hidden" in f && gm) e.hidden = !!f.hidden;
       if ("hp" in f && e.charId && chars[e.charId]) (chars[e.charId].hp = chars[e.charId].hp || {}).current = numOr(f.hp, 0);
       if ("damage" in f) {   // the tracker's -n: a character's temporary hit points first, on the server (#107); a creature just loses it
-        if (e.charId && chars[e.charId]) damageChar(camp, chars[e.charId], f.damage);
+        if (e.charId && chars[e.charId]) { damageChar(camp, chars[e.charId], f.damage); Fight.afterDamage(camp, cid, chars[e.charId], clamp(int(f.damage), 0, 100000), fightHelpers()); }
         else if (e.hp != null) e.hp = Math.max(0, e.hp - clamp(int(f.damage), 0, 100000));
       }
       if ("init" in f) sortInit(ini);
@@ -1037,6 +1044,7 @@ function cleanGame(g) {
     pos: clamp(num(au.pos), 0, 86400), at: num(au.at, now()), loop: !!au.loop, vol: clamp(num(au.vol, 1), 0, 1) } : null;
   g.hpMax = g.hpMax !== false;
   g.ships = (Array.isArray(g.ships) ? g.ships : []).slice(0, MAX_SHIPS).filter((x) => x && typeof x === "object").map((x) => cleanShip(x, g.characters));
+  if (g.space) g.space = Space.clean(g.space, g.ships);
   g.scenes = (Array.isArray(g.scenes) ? g.scenes : []).slice(0, 30).filter((x) => x && typeof x === "object")
     .map((x) => ({ id: /^[a-z0-9]{6,20}$/.test(x.id || "") ? x.id : rid(), name: str(x.name, 60) || "Scene", savedAt: num(x.savedAt, now()), map: cleanMap(g, x.map) }));
   if (!g.scenes.some((x) => x.id === g.activeScene)) g.activeScene = null;

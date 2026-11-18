@@ -164,7 +164,7 @@ test("sheet cast: concentration is recorded, a new one ends the old and frees it
   gv = await gm.state();
   assert.equal((gv.sheetCast || { conc: {} }).conc[avery], undefined);
   assert.deepEqual(gv.initiative.entries.find((e) => e.name === "Raider").conditions, []);
-  assert.ok(gv.chat.some((m) => m.system && /Avery stops concentrating on Hold/.test(m.text)));
+  assert.ok(gv.chat.some((m) => m.system && /Avery stops concentrating: Hold ends/.test(m.text)));
   // again, then the fight starts: the combat view knows Avery is concentrating
   assert.equal((await gm.act("fight.cast", { charId: avery, power: "Hold", level: 1, targets: [tok.bolt] })).code, 200);
   await sam.act("init.add", { charId: avery, name: "Avery", init: 20 });
@@ -241,4 +241,42 @@ test("sheet cast reach (#156 review): a player's free at-will at others changes 
   await gm.act("fight.toggle", { on: false });
   assert.equal((await gm.act("fight.cast", { charId: avery, power: "Zap", level: 0, targets: [tok.raider] })).code, 200);
   assert.ok((await hp())[1] < 60);
+});
+
+test("concentration after damage (audit 4.6): the sheet's Damage and the tracker's −n ask for the Con save; 0 hit points ends it", async () => {
+  const { gm, sam, avery, bolt, tok } = await table();
+  const concNow = async () => ((await gm.state()).sheetCast || { conc: {} }).conc[avery];
+  // a small hit: DC 10, with Avery's Con save from the sheet (Con 12, not proficient: +1)
+  assert.equal((await gm.act("fight.cast", { charId: avery, power: "Hold", level: 1, targets: [tok.bolt] })).code, 200);
+  assert.equal((await sam.act("char.damage", { id: avery, amount: 4 })).code, 200);
+  let gv = await gm.state();
+  const save = gv.chat.filter((m) => m.roll && /concentration save/.test(m.roll.label)).at(-1);
+  assert.equal(save.roll.expr, "1d20+1");
+  assert.match(save.roll.label, /^Avery makes a concentration save \(CON, DC 10\)/);
+  const kept = save.roll.total >= 10;
+  assert.equal(await concNow(), kept ? "Hold" : undefined);
+  assert.deepEqual(gv.characters[bolt].conditions, kept ? ["Restrained"] : [], "a lost concentration frees Bolt");
+  // a hit to 0 hit points ends it, no save
+  if (!kept) assert.equal((await gm.act("fight.cast", { charId: avery, power: "Hold", level: 1, targets: [tok.bolt] })).code, 200);
+  const n = (await gm.state()).chat.filter((m) => m.roll && /concentration save/.test(m.roll.label)).length;
+  assert.equal((await gm.act("char.damage", { id: avery, amount: 50 })).code, 200);
+  gv = await gm.state();
+  assert.equal(await concNow(), undefined);
+  assert.equal(gv.chat.filter((m) => m.roll && /concentration save/.test(m.roll.label)).length, n, "no save at 0 hit points");
+  assert.ok(gv.chat.some((m) => m.system && /Avery drops to 0 hit points: Hold ends/.test(m.text)));
+  assert.deepEqual(gv.characters[bolt].conditions, []);
+  // the tracker's −n: half of 30 is a DC 15 save
+  await gm.act("char.save", { char: Object.assign({}, gv.characters[avery], { hp: { max: 60, current: 60, temp: 0 } }) });
+  await sam.act("init.add", { charId: avery, name: "Avery", init: 20 });
+  assert.equal((await gm.act("fight.cast", { charId: avery, power: "Hold", level: 1, targets: [tok.bolt] })).code, 200);
+  const aid = (await gm.state()).initiative.entries.find((e) => e.name === "Avery").id;
+  assert.equal((await gm.act("init.update", { id: aid, fields: { damage: 30 } })).code, 200);
+  gv = await gm.state();
+  assert.match(gv.chat.filter((m) => m.roll && /concentration save/.test(m.roll.label)).at(-1).roll.label, /DC 15/);
+  // nobody concentrating: damage rolls nothing
+  const before = gv.chat.length;
+  await gm.act("char.damage", { id: bolt, amount: 3 });
+  assert.equal((await gm.state()).chat.filter((m) => m.roll && /concentration save/.test(m.roll.label)).length,
+    gv.chat.filter((m) => m.roll && /concentration save/.test(m.roll.label)).length);
+  assert.ok((await gm.state()).chat.length >= before);
 });
