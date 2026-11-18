@@ -397,6 +397,11 @@
         const used = bud && !bud[c.use];
         html += `<button class="btn small ghost ct-common" data-ct="common" data-key="${esc(c.key)}" ${used ? 'disabled' : ''} title="${esc(used ? `Your ${c.use === 'bonus' ? 'bonus action' : c.use} is used this turn` : c.hint)}">${esc(c.name)}</button>`;
       }
+      const surge = (u.pools || {})['action-surge'];   // a Fighter's Action Surge (#67): free, once a turn, one more action
+      if (surge) {
+        const why = +E.spentOf(w, u.id).surge ? 'Already surged this turn' : surge.used >= surge.max ? 'No Action Surge left until a short or long rest' : `One more action this turn (${surge.max - surge.used} of ${surge.max} left)`;
+        html += `<button class="btn small ghost ct-common" data-ct="common" data-key="surge" ${+E.spentOf(w, u.id).surge || surge.used >= surge.max ? 'disabled' : ''} title="${esc(why)}">⚡ Action Surge</button>`;
+      }
       if ((u.riders || {}).rage) {   // a Berserker's Rage (audit 5.9): a bonus action and a use of Rages
         const raging = (u.conditions || []).includes('Raging'), pool = (u.pools || {}).rage, out = pool && pool.used >= pool.max, used = bud && !bud.bonus;
         html += `<button class="btn small ghost ct-common" data-ct="common" data-key="rage" ${raging || out || used ? 'disabled' : ''} title="${esc(raging ? 'Raging: +' + u.riders.rage + ' damage on Strength melee weapon attacks, resistance to kinetic and energy' : out ? 'No rages left until a long rest' : used ? 'Your bonus action is used this turn' : `Bonus action, 1 minute: +${u.riders.rage} damage on Strength melee weapon attacks, resistance to kinetic and energy, advantage on Strength saves`)}">${raging ? '🔥 Raging' : 'Rage'}${pool && pool.max < 99 ? ` <span class="muted">${pool.max - pool.used}/${pool.max}</span>` : ''}</button>`;

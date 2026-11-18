@@ -1000,7 +1000,7 @@
   /* ---------------- turns: the turn budget is resources too, refilled at the start of the unit's own turn ---------------- */
   const turnKey = (world) => `${world.round}:${world.turnId}`;
   const TURN = ['move', 'action', 'bonus', 'reaction'];
-  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0 });
+  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0, surge: 0 });
   function spentOf(world, id) {
     const s = (world.spent || {})[id];
     return s && (id !== world.turnId || s.key === turnKey(world)) ? Object.assign(blank(s.key), s) : blank(id === world.turnId ? turnKey(world) : '');
@@ -1016,7 +1016,7 @@
     const out = has(u || {}, 'noActions'), noReact = out || has(u || {}, 'noReactions');
     const one = has(u || {}, 'oneAction') && (s.action >= 1 || s.bonus >= 1);   // shocked: an action or a bonus action, not both
     const total = speed * (1 + (+s.dash || 0));   // each Dash adds the speed again
-    return { key: s.key, moved: s.move, speed, total, moveLeft: Math.max(0, total - s.move), action: !out && !one && s.action < 1, bonus: !out && !one && s.bonus < 1, reaction: !noReact && s.reaction < 1,
+    return { key: s.key, moved: s.move, speed, total, moveLeft: Math.max(0, total - s.move), action: !out && !one && s.action < 1 + (+s.surge || 0), bonus: !out && !one && s.bonus < 1, reaction: !noReact && s.reaction < 1,
       dash: +s.dash || 0, disengage: !!s.disengage, dodge: !!s.dodge,
       attacks: !out && s.atk > 0 ? Math.max(0, (+s.atkMax || 1) - s.atk) : 0 };   // attacks left in an Attack action already begun (#139)
   }
@@ -1183,6 +1183,15 @@
         return { ok: true, world: w, log, events: [] };
       }
       case 'common': {   // Dash, Disengage, Dodge; and a Berserker's Rage
+        if (act.key === 'surge') {   // a Fighter's Action Surge (#67): one more action this turn, once a turn, a use of its pool
+          const pool = (me.pools || {})['action-surge'];
+          if (!pool) return no(`${me.name} has no Action Surge.`);
+          if (+spentOf(w, me.id).surge) return no(`${me.name} has already surged this turn.`);
+          if (pool.used >= pool.max) return no(`${me.name} has no Action Surge left until a short or long rest.`);
+          pool.used += 1;
+          w.spent[me.id] = Object.assign(spentOf(w, me.id), { surge: 1 });
+          return { ok: true, world: w, log: [{ unit: me.id, text: `${me.name} surges: one more action this turn (${pool.max - pool.used} of ${pool.max} Action Surge left).` }], events: [] };
+        }
         if (act.key === 'help') {   // #144: the first attack an ally makes on a creature within 5 ft of me, before my next turn, has advantage
           const t = unitAt(w, act.target);
           if (!t || t.id === me.id) return no('Pick a creature within 5 ft to help against.');
