@@ -338,12 +338,18 @@
   const roleOf = (ship) => { const r = own(sizeOf(ship).roles, String((ship && ship.role) || '').trim()); return r ? { reactor: r[0], coupling: r[1], shields: r[2], speed: r[3], turn: r[4], adj: r[5] || {}, armor: r[6] || '' } : null; };
   const tierOf = (ship) => clamp(int(ship && ship.tier), 0, 5);
   // the ship's reactor, coupling and shields: what the sheet says, else what its equipment says, else its role's
+  // from the picked equipment, an item counts only for its own kind (a "... power coupling" for the coupling, a
+  // "... shield" for the shield type) and the table's name must match as whole words: a Directional Shield is not a
+  // Direct coupling (#266)
+  const PICK_KIND = { reactor: 'reactor', coupling: 'coupling', shieldType: 'shield', armor: 'armor' };
+  const words = (t) => ' ' + String(t || '').toLowerCase().replace(/[&-]/g, ' ').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
   function pickFrom(ship, field, table) {
     if (own(table, ship && ship[field])) return ship[field];
-    const names = ((ship && ship.equipment) || []).map((e) => String(e && e.name || '').toLowerCase());
+    const kind = own(PICK_KIND, field);
+    const names = ((ship && ship.equipment) || []).map((e) => words(e && e.name)).filter((n) => !kind || n.includes(' ' + kind + ' '));
     for (const k of Object.keys(table)) {
-      const w = k.toLowerCase().replace(' & ', ' ').replace('-', ' ');
-      if (names.some((n) => n.replace(/&|-/g, ' ').replace(/\s+/g, ' ').includes(w))) return k;
+      const w = words(k);
+      if (names.some((n) => n.includes(w))) return k;
     }
     const r = roleOf(ship), key = field === 'shieldType' ? 'shields' : field;
     return r && own(table, r[key]) ? r[key] : '';

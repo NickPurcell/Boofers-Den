@@ -135,6 +135,15 @@ test("power: die size by tier, stores by coupling, recovery by reactor; reactor,
   const eq = ship({ equipment: [{ name: "Power Core Reactor" }, { name: "Distributed Power Coupling" }, { name: "Quick-Charge Shield" }] });
   assert.deepEqual([SR.reactorOf(eq), SR.couplingOf(eq), SR.shieldTypeOf(eq)], ["Power Core", "Distributed", "Quick-Charge"], "equipment picked from SotG names them");
   assert.equal(SR.reactorOf(Object.assign({}, eq, { reactor: "Ionization" })), "Ionization", "the sheet's own choice wins");
+  // #266: an item counts only for its own kind, and names match as whole words: a Directional Shield isn't a Direct coupling
+  const eqs = (...names) => ship({ size: "Medium", equipment: names.map((name) => ({ name })) });
+  assert.equal(SR.couplingOf(eqs("Directional Shield", "Distributed Power Coupling")), "Distributed");
+  assert.equal(SR.couplingOf(eqs("Directional Shield", "Hub & Spoke Power Coupling")), "Hub & Spoke");
+  assert.equal(SR.couplingOf(eqs("Directional Shield")), "", "no coupling picked: none (not Direct)");
+  assert.equal(SR.couplingOf(Object.assign(eqs("Directional Shield"), { role: "Freighter" })), "Hub & Spoke", "the role's coupling, not Direct");
+  assert.deepEqual(SR.powerCaps(eqs("Directional Shield", "Distributed Power Coupling")).central, 0, "so its stores are the distributed coupling's");
+  assert.equal(SR.shieldTypeOf(eqs("Directional Shield", "Direct Power Coupling")), "Directional", "and the shield still reads as directional");
+  assert.equal(SR.couplingOf(eqs("Direct Power Coupling")), "Direct");
   for (const k of ["constructor", "__proto__", "toString"]) {   // names typed on a sheet never reach an inherited entry (#111)
     assert.equal(SR.damageType(k), "energy");
     assert.equal(SR.reactorOf(ship({ role: k, reactor: k, coupling: k })), "");
