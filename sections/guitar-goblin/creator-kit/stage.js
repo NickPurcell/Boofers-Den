@@ -25,6 +25,7 @@ export function makeStage(canvas, o = {}) {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   renderer.shadowMap.autoUpdate = false;   // figures mostly stand still: shadows are drawn again only after a change
+  renderer.shadowMap.needsUpdate = true;
 
   const scene = new THREE.Scene();
   // a room to reflect: dark, with light panels, which is what makes metal read as metal and skin catch a sheen

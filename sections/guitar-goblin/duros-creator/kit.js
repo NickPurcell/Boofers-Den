@@ -18,21 +18,29 @@ export function makeKit(build = 1) {
   const body = bodyField(build), H = HEAD_AT[1];
   // the neck as the clothes see it (the same for every head shape)
   const neck = roundCone([0, H - 0.07, -0.032], [0, H - 0.25, -0.03], 0.044, 0.051);
-  const skin = smin(0.03, body.field, neck);
   const hands = [handField(1, build), handField(-1, build)];
-  const b = build;
-
-  const kit = {
-    build: b,
-    skin,                       // the bare figure below the head: body and neck
-    hands: union(hands[0].field, hands[1].field),
+  return kitFor({
+    skin: smin(0.03, body.field, neck), hands: union(hands[0].field, hands[1].field), build,
     at: {                       // landmarks, figure's left side (mirror x for the right)
       neckBase: [0, 1.535, -0.012], throat: [0, 1.53, 0.045], chest: [0, 1.4, 0.1], sternum: [0, 1.46, 0.085],
       navel: [0, 1.16, 0.095], waistY: 1.07, hipY: 0.97,
       shoulder: body.shoulder, elbow: body.elbow, wrist: body.wrist, hand: hands[0].wrist,
     },
+  });
+}
+
+// The same kit for any figure: `skin` is its bare surface as a field (below the head, or all of it), `hands` its hands
+// as a field, `at` its landmarks, `halfWidth` half the width of a box that holds its clothed torso and arms.
+export function kitFor({ skin, hands, at, build = 1, halfWidth = 0.34 * build }) {
+  const b = build;
+
+  const kit = {
+    build: b,
+    skin,                       // the bare figure: body and neck
+    hands,
+    at,
     // a box round the clothed torso, for a piece's meshing bounds
-    torsoBox: (y0 = 0.56, y1 = 1.62, pad = 0.03) => [[-0.34 * b - pad, y0 - pad, -0.19 - pad], [0.34 * b + pad, y1 + pad, 0.19 + pad]],
+    torsoBox: (y0 = 0.56, y1 = 1.62, pad = 0.03) => [[-halfWidth - pad, y0 - pad, -0.19 - pad], [halfWidth + pad, y1 + pad, 0.19 + pad]],
 
     /* fields */
     // the skin pushed out by t (a garment's outer face), and a shell of that thickness

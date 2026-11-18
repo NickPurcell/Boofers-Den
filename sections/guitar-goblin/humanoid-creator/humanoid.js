@@ -1,0 +1,211 @@
+// Character creator for the humanoid species (Echani, Sith Pureblood, Mirialan, human): the page.
+// One figure carries them all. Its head (head-field.js), body and hands (anatomy.js), hair (hair.js) and clothes
+// (outfits.js) are sculpted from signed distance shapes and meshed in workers (jobs.js, on the shared pool); what a
+// species adds to the head is in features.js; skin, eyes and hair materials are skin.js; lips, brows, lined eyes and
+// tattoos are painted onto one picture wrapped round the head (face-paint.js, tattoos.js). species.js says what each
+// people offers. The scene, lights, studio and picture export are the shared stage (../creator-kit/stage.js).
+import * as THREE from 'three';
+import { makeStage } from '../creator-kit/stage.js';
+import { createPool } from '../creator-kit/pool.js';
+import { makeTextures, clothMaterial, leatherMaterial, metalMaterial, plasticMaterial } from '../duros-creator/materials.js';
+import { skinGeometry, skinMaterial, eyeTexture, eyeGeometries, hairMaterial, merge } from './skin.js';
+import { HEAD_AT } from './anatomy.js';
+import { FACES } from './head-field.js';
+import { facePainter, WRAP } from './face-paint.js';
+import { STYLES } from './hair.js';
+import { OUTFITS, HOODS } from './outfits.js';
+import { SPECIES, CLOTH, FRAMES, BUILDS, AGES, MARKS, LINERS } from './species.js';
+import { tattooMarks } from './tattoos.js';
+
+/* ---------------- the options ---------------- */
+const named = (o) => Object.entries(o).map(([key, v]) => ({ key, name: v.name }));
+const state = {}, chosen = new Set();   // chosen: what a person picked themselves; the rest follows the species
+const sp = () => SPECIES[state.species] || SPECIES.echani;
+function options() {
+  const S = sp(), o = {
+    species: { label: 'Species', items: named(SPECIES) },
+    frame: { label: 'Frame', items: FRAMES }, build: { label: 'Build', items: BUILDS }, face: { label: 'Face', items: named(FACES) }, age: { label: 'Age', items: AGES },
+    skin: { label: 'Skin', swatch: true, items: S.skins }, eyes: { label: 'Eyes', swatch: true, items: S.eyes },
+    style: { label: 'Hair', items: named(STYLES) }, hair: { label: 'Hair colour', swatch: true, items: S.hairs },
+    ...S.groups,
+  };
+  if (state.species !== 'pureblood') o.marks = { label: 'Face detail', items: MARKS };
+  o.liner = { label: 'Lined eyes', items: LINERS };
+  o.outfit = { label: 'Outfit', items: named(OUTFITS) }; o.hood = { label: 'Hood', items: named(HOODS) };
+  o.main = { label: 'Main colour', swatch: true, items: CLOTH }; o.second = { label: 'Second colour', swatch: true, items: CLOTH };
+  return o;
+}
+const pick = (opt) => { const it = options()[opt].items; return it.find((o) => o.key === state[opt]) || it[0]; };
+const val = (list, key) => (list.find((o) => o.key === key) || list[0]).v;
+const setOf = (s, def) => { const ok = def.items.map((o) => o.key); return new Set(String(s || '').split('.').filter((k) => ok.includes(k))); };
+// make the state whole for its species: anything missing or not on offer takes the species' own default
+function settle(from = {}) {
+  const want = from.species ?? state.species;
+  state.species = SPECIES[want] ? want : 'echani';
+  const defs = sp().defaults, opts = options();
+  for (const k of Object.keys(state)) if (k !== 'species' && !opts[k]) delete state[k];
+  for (const [k, def] of Object.entries(opts)) {
+    if (k === 'species') continue;
+    const v = from[k] ?? state[k];
+    if (def.multi) state[k] = [...setOf(v ?? defs[k], def)].join('.');
+    else state[k] = def.items.some((o) => o.key === v) ? v : def.items.some((o) => o.key === defs[k]) ? defs[k] : def.items[0].key;
+  }
+}
+{ const q = Object.fromEntries(new URLSearchParams(location.hash.slice(1))); for (const k of Object.keys(q)) if (k !== 'species') chosen.add(k); settle(q); }
+const writeHash = () => history.replaceState(null, '', '#' + new URLSearchParams(state).toString());
+
+/* ---------------- the stage and the figure ---------------- */
+const canvas = document.getElementById('scene'), status = document.getElementById('status');
+const stage = makeStage(canvas, { tall: 1.8, minDistance: 0.3, onNoGL: () => { document.getElementById('nogl').hidden = false; } });
+makeTextures();
+const pool = createPool(new URL('./jobs.js', import.meta.url));
+const VIEWS = { whole: { target: [0, 0.9, 0], pos: [1.2, 1.2, 4.0] }, head: { target: [0, 1.61, 0.02], pos: [0.25, 1.65, 0.84] } };
+const figure = new THREE.Group(); stage.scene.add(figure);
+const face = facePainter(stage.phone ? 1024 : 2048);
+const skin = skinMaterial(face.texture), bodySkin = skinMaterial(null), hairMat = hairMaterial();
+const lidMat = new THREE.MeshPhysicalMaterial({ roughness: 0.5, sheen: 0.3, sheenRoughness: 0.5 });
+const eyeMat = new THREE.MeshPhysicalMaterial({ roughness: 0.16, clearcoat: 1, clearcoatRoughness: 0.04 }), lashMat = new THREE.MeshStandardMaterial({ color: 0x120d0a, roughness: 0.8 });
+const ringMat = metalMaterial('#c9a24a');
+const CLOTHS = { cloth: clothMaterial, leather: leatherMaterial, metal: metalMaterial, plastic: (hex) => { const m = plasticMaterial(hex); m.roughness = 0.46; m.clearcoat = 0.25; return m; } };
+const KEEP = new Set([skin, bodySkin, hairMat, lidMat, eyeMat, lashMat, ringMat]);
+let built = null, cloth = [], info = {}, ticket = 0, current = Promise.resolve(), eyeKey = '';
+
+function args() {
+  const base = { face: state.face, masc: val(FRAMES, state.frame), age: val(AGES, state.age), build: val(BUILDS, state.build), coarse: stage.phone ? 1.2 : 1 };
+  const feat = state.species === 'pureblood' ? { species: 'pureblood', spurs: state.spurs, tendrils: state.tendrils, ridges: state.ridges } : {};
+  const body = { face: 'oval', masc: base.masc, age: 0.3, build: base.build, coarse: base.coarse };
+  return { head: { ...base, ...feat }, bust: base, body, hair: { face: base.face, masc: base.masc, age: 0.3, build: 0.5, coarse: base.coarse, style: state.style } };
+}
+const copy = (m) => ({ position: m.position.slice(), normal: m.normal.slice(), uv: m.uv.slice(), index: m.index.slice(), ao: m.ao });
+async function rebuild() {
+  const my = ++ticket; status.hidden = false; status.textContent = 'Sculpting…';
+  pool.cancelQueued();   // whatever was waiting to be meshed for an older choice is no longer wanted
+  const A = args(), kB = JSON.stringify(A.body), n = pool.size(), ok = `outfit:${state.outfit}:${state.hood}:${kB}`;
+  if (!pool.cache.has(ok)) pool.keep(ok, Promise.all(Array.from({ length: n }, (_, part) => pool.mesh('outfit', { ...A.body, key: state.outfit, hood: state.hood, part, of: n }, ok)))
+    .then((rs) => ({ pieces: rs.flatMap((r) => r.pieces).sort((x, y) => x.index - y.index) })));
+  let r; const t0 = performance.now();
+  try {
+    r = await Promise.all([pool.cached('head:' + JSON.stringify(A.head), 'head', A.head), pool.cached('bust:' + JSON.stringify(A.bust), 'bust', A.bust), pool.cached('handL:' + kB, 'hand', { ...A.body, side: 1 }), pool.cached('handR:' + kB, 'hand', { ...A.body, side: -1 }),
+      pool.cached('hair:' + JSON.stringify(A.hair), 'hair', A.hair), pool.cache.get(ok)]);
+  } catch (e) { if (my !== ticket) return; if (e && e.cancelled) return rebuild(); console.error(e); status.textContent = 'Something went wrong building the figure. Try another choice.'; return; }
+  if (my !== ticket) return;   // a newer choice is on its way
+  const [head, bust, hl, hr, hair, outfit] = r;
+  figure.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material && !KEEP.has(o.material)) o.material.dispose(); });
+  figure.clear(); cloth = [];
+  const add = (g, mat, to = figure) => { const m = new THREE.Mesh(g, mat); m.castShadow = m.receiveShadow = true; to.add(m); return m; };
+  add(skinGeometry(copy(head.mesh), { wrap: [WRAP[0], HEAD_AT[1] + WRAP[1], WRAP[2], WRAP[3]] }), skin);
+  // where the bust runs up under the head's mesh, tuck it in a hair so the two never fight for the same pixels
+  const bm = copy(bust.mesh); for (let i = 0; i < bm.ao.length; i++) if (bm.position[i * 3 + 1] > bust.seamY - 0.004) for (let k = 0; k < 3; k++) bm.position[i * 3 + k] -= bm.normal[i * 3 + k] * 0.0007;
+  add(skinGeometry(bm), bodySkin);
+  for (const h of [hl, hr]) add(skinGeometry(copy(h.mesh)), bodySkin);
+  const hg = new THREE.Group(); hg.position.set(...HEAD_AT); figure.add(hg);
+  const eg = eyeGeometries(head.eye, head.lid);
+  add(eg.balls, eyeMat, hg).receiveShadow = false; add(eg.lids, lidMat, hg); add(eg.lashes, lashMat, hg);
+  if (hair.mesh && state.hood !== 'up') add(skinGeometry(copy(hair.mesh), { hair: true }), hairMat, hg);   // a raised hood covers the hair
+  if (state.jewel && state.jewel !== 'none' && head.tendrils.length) {   // a ring on each tendril
+    const rings = head.tendrils.map((t) => {
+      const a = new THREE.Vector3(...t.a), b = new THREE.Vector3(...t.b), f = 0.42, at = a.clone().lerp(b, f), rad = t.r0 + (t.r1 - t.r0) * f + 0.0009;
+      const g = new THREE.TorusGeometry(rad, 0.0011, 6, 18); g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), b.clone().sub(a).normalize())); g.translate(at.x, at.y, at.z); return g;
+    });
+    add(merge(rings), ringMat, hg);
+  }
+  for (const p of outfit.pieces) { const m = add(skinGeometry(copy(p.mesh), { cloth: true }), (CLOTHS[p.material] || clothMaterial)('#777777')); m.name = p.name; cloth.push({ mesh: m, role: p.role }); }
+  built = { head, fresh: true };
+  let tris = 0; figure.traverse((o) => { if (o.isMesh) tris += o.geometry.index.count / 3; });
+  info = { tris, ms: Math.round(performance.now() - t0) };
+  while (pool.cache.size > 40) pool.cache.delete(pool.cache.keys().next().value);   // don't keep every figure ever tried
+  recolour(); stage.changed(); status.hidden = true;
+}
+// everything that is only colour: skin, eyes, hair, the face's paint, the clothes
+function recolour() {
+  if (!built) return;
+  const S = sp(), skinHex = pick('skin').c, hairHex = pick('hair').c, c = new THREE.Color(skinHex), liner = Math.min(1, val(LINERS, state.liner) + (S.look.shade || 0));
+  bodySkin.color.copy(c); for (const m of [skin, bodySkin]) m.sheenColor.copy(c).lerp(new THREE.Color(0xffffff), 0.5);
+  lidMat.color.copy(c).multiplyScalar(0.84 - 0.36 * liner);
+  hairMat.color.set(hairHex); hairMat.sheenColor.set(hairHex).lerp(new THREE.Color(0xffffff), 0.35);
+  const ek = pick('eyes').c + S.look.white;
+  if (ek !== eyeKey) { eyeKey = ek; if (eyeMat.map) eyeMat.map.dispose(); eyeMat.map = eyeTexture(pick('eyes').c, { white: S.look.white }); eyeMat.needsUpdate = true; }
+  face.paint({
+    mesh: built.fresh ? built.head.mesh : null, at: HEAD_AT, P: built.head.P, skin: skinHex, hair: hairHex, scalp: (STYLES[state.style] || {}).roots ?? 0.9,
+    stubble: state.marks === 'stubble' ? 1 : 0, freckles: state.marks === 'freckles', liner, flush: S.look.flush, lips: S.look.lips ? c.clone().lerp(new THREE.Color(S.look.lips), 0.6) : null,
+    marks: state.species === 'mirialan' && state.tattoo ? tattooMarks(setOf(state.tattoo, options().tattoo), state.shape, pick('ink').c) : null,
+  });
+  built.fresh = false;
+  const cols = { main: pick('main').c, second: pick('second').c, dark: '#25272d', leather: '#46321f', metal: '#a4a9b0', trim: '#c9a24a' };
+  for (const p of cloth) p.mesh.material.color.set(cols[p.role] || '#777777');
+  ringMat.color.set(state.jewel === 'silver' ? '#c3c7cd' : '#c9a24a');
+  stage.redraw();
+}
+const go = () => { current = rebuild(); return current; };
+
+/* ---------------- the panel ---------------- */
+const GEOMETRY = new Set(['frame', 'build', 'face', 'age', 'style', 'spurs', 'tendrils', 'ridges', 'jewel', 'outfit', 'hood']);
+function summary() {
+  const n = (k) => pick(k).name.toLowerCase(), S = sp();
+  document.getElementById('title').textContent = S.name; document.getElementById('blurb').textContent = S.blurb;
+  document.getElementById('summary').textContent = `${S.name}: ${n('frame')} frame, ${n('build')} build, ${n('face')} face, ${n('age')}; ${n('skin')} skin, ${n('eyes')} eyes, ${n('hair')} hair worn ${n('style')}; in ${pick('outfit').name.toLowerCase()}, ${n('main')} and ${n('second')}${state.hood !== 'none' ? ', hood ' + n('hood') : ''}.`;
+}
+function paintPanel() {
+  const opts = options();
+  for (const el of document.querySelectorAll('[data-opt]')) {
+    const def = opts[el.dataset.opt], on = def.multi ? setOf(state[el.dataset.opt], def) : null;
+    for (const b of el.querySelectorAll('button')) b.setAttribute('aria-pressed', String(def.multi ? on.has(b.dataset.key) : b.dataset.key === state[el.dataset.opt]));
+  }
+  summary();
+}
+function set(opt, k) {
+  const def = options()[opt]; if (!def) return;
+  if (def.multi) { const on = setOf(state[opt], def); if (on.has(k)) on.delete(k); else on.add(k); state[opt] = [...on].join('.'); }
+  else { if (state[opt] === k) return; state[opt] = k; }
+  if (opt === 'species') { for (const [q, v] of Object.entries(sp().defaults)) if (!chosen.has(q)) state[q] = v; settle(); panel(); eyeKey = ''; go(); }
+  else { chosen.add(opt); if (GEOMETRY.has(opt)) go(); else recolour(); }
+  paintPanel(); writeHash();
+}
+const panelEl = document.getElementById('options');
+function panel() {   // the choices on offer change with the species
+  panelEl.textContent = '';
+  for (const [opt, def] of Object.entries(options())) {
+    const fs = document.createElement('fieldset'); fs.className = 'opt';
+    const lg = document.createElement('legend'); lg.textContent = def.label; fs.appendChild(lg);
+    const box = document.createElement('div'); box.className = def.swatch ? 'swatches' : 'seg wrap'; box.dataset.opt = opt;
+    for (const o of def.items) {
+      const b = document.createElement('button'); b.type = 'button'; b.dataset.key = o.key;
+      if (def.swatch) { b.className = 'sw'; b.style.setProperty('--c', o.c); b.setAttribute('aria-label', o.name); b.title = o.name; } else b.textContent = o.name;
+      b.addEventListener('click', () => set(opt, o.key));
+      box.appendChild(b);
+    }
+    fs.appendChild(box); panelEl.appendChild(fs);
+  }
+}
+document.getElementById('random').addEventListener('click', () => {
+  const opts = options(), any = (k) => { const it = opts[k].items; return it[Math.floor(Math.random() * it.length)].key; };
+  for (const [k, def] of Object.entries(opts)) {
+    if (k === 'species' || k === 'second') continue;
+    state[k] = def.multi ? def.items.map((o) => o.key).filter(() => Math.random() < 0.45).join('.') : any(k);
+    chosen.add(k);
+  }
+  do state.second = any('second'); while (state.second === state.main);
+  chosen.add('second');
+  if (Math.random() < 0.6) state.hood = 'none';
+  go(); paintPanel(); writeHash();
+});
+for (const b of document.querySelectorAll('[data-view]')) b.addEventListener('click', () => stage.view(VIEWS[b.dataset.view].target, VIEWS[b.dataset.view].pos));
+
+/* ---------------- pictures ---------------- */
+const bgChoice = () => (document.querySelector('input[name=bg]:checked') || { value: 'studio' }).value;
+// the portrait: the current view, 1024 px square
+document.getElementById('save').addEventListener('click', () => stage.download(stage.snapshot(1024, bgChoice(), stage.squareCamera()), `${state.species}-${state.skin}-${state.outfit}.png`));
+// the token: 512 px, head and shoulders from the front and a little to one side; plain by default
+const tokenCam = new THREE.PerspectiveCamera(30, 1, 0.05, 30);
+document.getElementById('token').addEventListener('click', () => {
+  tokenCam.position.set(0.14, 1.63, 1.02); tokenCam.lookAt(0, 1.58, 0); tokenCam.updateProjectionMatrix();
+  stage.download(stage.snapshot(512, bgChoice() === 'studio' ? 'plain' : bgChoice(), tokenCam, false), `${state.species}-token.png`);
+});
+
+/* ---------------- run ---------------- */
+const hint = document.getElementById('hint');
+stage.controls.addEventListener('start', () => hint.classList.add('gone'));
+panel(); paintPanel(); stage.view(VIEWS.head.target, VIEWS.head.pos);   // open on the face: that is where a species shows
+go();
+stage.start();
+window.__fig = { state, set, stage, camera: stage.camera, controls: stage.controls, redraw: stage.redraw, get ready() { return current; }, stats: () => ({ ...stage.stats(), built: info }) };

@@ -2,8 +2,9 @@
 // when a browser can't start a module worker.
 //
 //   const pool = createPool(new URL('./jobs.js', import.meta.url));
-//   const out = await pool.mesh('body', { build: 1 });          // one job
+//   const out = await pool.mesh('body', { build: 1 });          // one job (a third argument names the cache entry it feeds)
 //   const out = await pool.cached('body:1', 'body', { build: 1 });   // the same, remembered by key
+//   pool.cancelQueued();   // when a newer choice replaces what was asked for: drop whatever has not started
 //
 // The jobs module exports run(job, args), which returns plain objects and typed arrays, and may export
 // transferables(out), the list of array buffers to hand over without copying. It runs in a worker, so nothing it
@@ -24,9 +25,18 @@ export function createPool(jobsUrl, o = {}) {
       workers.push(w);
     }
   } catch (e) { ok = false; }
-  const mesh = (job, args) => {
+  // key: the cache entry this job feeds, if any, so that cancelling the job forgets the entry at once
+  const mesh = (job, args, key) => {
     if (!ok || !workers.length) return here(job, args);
-    return new Promise((res, rej) => { queue.push({ id: ++seq, job, args, res, rej }); pump(); }).catch((e) => { console.warn(e); ok = false; return here(job, args); });
+    return new Promise((res, rej) => { queue.push({ id: ++seq, job, args, res, rej, key }); pump(); }).catch((e) => { if (e && e.cancelled) throw e; console.warn(e); ok = false; return here(job, args); });
   };
-  return { mesh, cache, size: () => (ok ? workers.length : 1), cached: (key, job, args) => { if (!cache.has(key)) cache.set(key, mesh(job, args)); return cache.get(key); } };
+  // forget a result that failed or was cancelled, so asking again runs it again
+  const keep = (key, p) => { cache.set(key, p); p.catch(() => { if (cache.get(key) === p) cache.delete(key); }); return p; };
+  return {
+    mesh, cache, keep, size: () => (ok ? workers.length : 1),
+    cached: (key, job, args) => (cache.has(key) ? cache.get(key) : keep(key, mesh(job, args, key))),
+    // drop every job that has not started yet (the choice it was for has been replaced); their promises reject with
+    // an error marked `cancelled`
+    cancelQueued() { for (const j of queue.splice(0)) { if (j.key !== undefined) cache.delete(j.key); const e = new Error('cancelled'); e.cancelled = true; j.rej(e); } },
+  };
 }

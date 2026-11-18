@@ -101,7 +101,7 @@ const PAINT = /* glsl */ `
   float streak = smoothstep(0.56, 0.82, nS.a) * (0.3 + 0.7 * nD.b);
   float soil = wear * wear * smoothstep(0.42, 0.75, nD.r) * 0.3;
   float grime = clamp(wear * (0.8 * cav + 0.5 * streak * smoothstep(0.15, 0.7, wear)) + soil, 0.0, 1.0);
-  float dust = clamp(wear * 1.15 * smoothstep(0.50, 0.03, vWPos.y) * (0.3 + 0.9 * nD.g + 0.3 * nB.b), 0.0, 1.0);
+  float dust = clamp(wear * 1.15 * (1.0 - smoothstep(0.03, 0.50, vWPos.y)) * (0.3 + 0.9 * nD.g + 0.3 * nB.b), 0.0, 1.0);
   col = mix(col, uDirt * mix(0.4, 0.2, cav), grime); metal *= 1.0 - grime; rough = mix(rough, 0.85, grime);
   col = mix(col, uDirt, dust * 0.85); metal *= 1.0 - dust; rough = mix(rough, 0.95, dust);
   // a little shade in every seam, even on a unit fresh from the works
