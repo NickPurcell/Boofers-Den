@@ -556,6 +556,14 @@
     const ch = clone(selChar()); fn(ch); saveChar(ch); guarded('sheet', renderSheet);
   }
 
+  // The way into the archetype picker (audit 2.7): SW5e's classes take their archetype at 3rd level. A class at 3+ with
+  // none (an import, a missed pick) gets a button; one that has it gets a small ◈ to change it. Needs the SW5e books.
+  function archetypeButton(ch, k, i, ro) {
+    const cls = R.CLASSES[k.name];
+    if (ro || !cls || n0(k.level) < 3 || !window.HTB || S.st.sw5eBooks === false) return '';
+    return k.archetype ? `<button class="btn tiny ghost" data-act="pick-archetype" data-i="${i}" title="Change the ${esc(cls.arch)}">◈</button>`
+      : `<button class="btn tiny amber" data-act="pick-archetype" data-i="${i}" title="${esc(k.name)} ${n0(k.level)} has no ${esc(cls.arch)} yet">◈ Choose ${esc(cls.arch)}</button>`;
+  }
   function inp(path, val, opts = {}) {
     const ro = opts.ro ? 'disabled' : '';
     const type = opts.type || (typeof val === 'number' ? 'number' : 'text');
@@ -610,6 +618,7 @@
           <span class="row">${inp(`classes.${i}.name`, k.name, { ro, list: 'dlClasses', w: '110px' })}
           ${inp(`classes.${i}.level`, +k.level || 1, { ro, type: 'number', w: '58px' })}
           ${k.archetype ? `<span class="muted class-arch" title="${esc((R.CLASSES[k.name] || {}).arch || 'Archetype')}">${esc(k.archetype)}</span>` : ''}
+          ${archetypeButton(ch, k, i, ro)}
           ${!ro && ch.classes.length > 1 ? `<button class="btn tiny ghost" data-act="del-class" data-i="${i}">✕</button>` : ''}</span>`).join('')}
         </div>
       </div>
@@ -882,6 +891,7 @@
       case 'pick-weapon': openEquipPicker(ch.id, { weapons: true }); break;
       case 'pick-species': HTB.openSpeciesPicker(ch.id); break;
       case 'pick-background': HTB.openBackgroundPicker(ch.id); break;
+      case 'pick-archetype': if (window.HTB) HTB.openArchetypePicker(ch.id, i); break;
       case 'pick-feature': HTB.openFeaturePicker(ch.id); break;
       case 'del': mutate(c => c[b.dataset.list].splice(i, 1)); break;
       case 'atk': {
