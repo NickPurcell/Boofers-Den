@@ -365,10 +365,10 @@
       const damage = rules.damageExpr(ch, a);
       const ab = a.ab === 'finesse' ? (rules.abilityMod(ch, 'dex') > rules.abilityMod(ch, 'str') ? 'dex' : 'str') : ABILS.includes(a.ab) ? a.ab : 'str';
       const bonus = rules.attackBonus(ch, a), wp = weaponProps(ch, a, ab, rules);
-      // critFrom: the sheet's crit range (#165), a crit on this d20 or higher
+      // critFrom: the sheet's crit range (#165) or a Keen N weapon (R.critFrom), a crit on this d20 or higher
       return Object.assign({ key: String(i), name: a.name || 'Attack', bonus, abil: ab, damage, crit: rules.critExpr(damage), type: a.type || '', enhanced: +a.magic > 0,
         finesse: a.ab === 'finesse' || /\bfinesse\b/i.test(String(a.props || '')), weapon: true, proficient: a.proficient !== false,
-        ...(+a.critRange >= 15 && +a.critRange < 20 ? { critFrom: Math.round(+a.critRange) } : {}) }, readRange(a.props), wp, offhandNumbers(ch, a, ab, bonus, wp, st, rules));
+        ...(() => { const k = Math.min(+a.critRange >= 15 && +a.critRange < 20 ? Math.round(+a.critRange) : 20, rules.critFrom ? +rules.critFrom(a.props) || 20 : 20); return k < 20 ? { critFrom: k } : {}; })() }, readRange(a.props), wp, offhandNumbers(ch, a, ab, bonus, wp, st, rules));
     }).filter((a) => a.melee || a.range);
   }
   /* ---------------- Two- and Double-Weapon Fighting (audit 5.8) ---------------- */

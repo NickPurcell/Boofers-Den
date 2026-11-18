@@ -3145,4 +3145,5 @@ test("crit range (#165): an attack row's critRange makes the engine crit on that
   assert.equal(d.asked[1], "1d8+3", "an 18 isn't");
   assert.equal(E.preview(world([ft, r1(30)], "ft"), "ft", "r1", keen).need, 19, "the preview counts it");
   assert.equal(E.attacksOf(Object.assign({}, ch, { attacks: [{ name: "Odd", ab: "str", damage: "1d8", critRange: 3 }] }), R)[0].critFrom, undefined, "out of range: ignored");
+  assert.equal(E.attacksOf(Object.assign({}, ch, { attacks: [{ name: "Keen saber", ab: "str", damage: "1d8", props: "Keen 2, luminous" }] }), R)[0].critFrom, 18, "Keen 2: 18-20");
 });
