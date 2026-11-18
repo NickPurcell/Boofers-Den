@@ -6,9 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="theme-color" content="#f6f1e7" />
   <title>HoloTable against SW5e: what's done, what's missing</title>
-  <meta name="description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules (first at commit 4427cbe, kept up to date since): 127 done, 33 partial, 1 missing, and the ten gaps that matter most." />
+  <meta name="description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules (first at commit 4427cbe, kept up to date since): 128 done, 32 partial, 1 missing, and the ten gaps that matter most." />
   <meta property="og:title" content="HoloTable against SW5e: what's done, what's missing" />
-  <meta property="og:description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules (first at commit 4427cbe, kept up to date since): 127 done, 33 partial, 1 missing, and the ten gaps that matter most." />
+  <meta property="og:description" content="HoloTable, jpesus's Star Wars 5e tabletop, checked line by line against the SW5e rules (first at commit 4427cbe, kept up to date since): 128 done, 32 partial, 1 missing, and the ten gaps that matter most." />
   <link rel="stylesheet" href="audit.css" />
 </head>
 <body>
@@ -19,8 +19,8 @@
       <h1>HoloTable against SW5e <span>what a table needs to play the whole system, and what is there</span></h1>
       <p class="lead">This is a line-by-line check of <a href="https://boofers-den.vercel.app/sections/jpesus/holotable/">HoloTable</a>, the Star Wars 5e tabletop jpesus built on the Den, against what the SW5e rules ask of a table: making and levelling characters, class resources, powers, the sheet's arithmetic, gear, rests and conditions, combat on the map, the GM's side, starships, downtime, and the table itself. It was first checked at commit <code>4427cbe</code> (17 Nov 2026, 08:01 PST), and each line marked "Since 17 Nov" says what has landed on main since and which pull request did it, so the counts are today's. It is meant as a to-do list for the group, not a verdict.</p>
       <ul class="counts" aria-label="The 161 lines">
-        <li class="done"><b>127</b> <span aria-hidden="true">✓</span> done</li>
-        <li class="partial"><b>33</b> <span aria-hidden="true">◐</span> partial</li>
+        <li class="done"><b>128</b> <span aria-hidden="true">✓</span> done</li>
+        <li class="partial"><b>32</b> <span aria-hidden="true">◐</span> partial</li>
         <li class="missing"><b>1</b> <span aria-hidden="true">✗</span> missing</li>
       </ul>
     </header>
@@ -67,8 +67,8 @@
       </dl>
       <div class="filters" id="filters" hidden>
         <div class="fgroup" role="group" aria-label="Show by state">
-          <button type="button" data-f="state" data-v="done" aria-pressed="true">✓ Done 127</button>
-          <button type="button" data-f="state" data-v="partial" aria-pressed="true">◐ Partial 33</button>
+          <button type="button" data-f="state" data-v="done" aria-pressed="true">✓ Done 128</button>
+          <button type="button" data-f="state" data-v="partial" aria-pressed="true">◐ Partial 32</button>
           <button type="button" data-f="state" data-v="missing" aria-pressed="true">✗ Missing 1</button>
         </div>
         <div class="fgroup" role="group" aria-label="Show by how much it matters">
@@ -83,7 +83,7 @@
         </div>
       </div>
 <details class="sec" id="s-1">
-<summary><span class="sn">1.</span> <span class="st">Making a character (level 1)</span> <span class="sc"><span class="tally">8 done · 2 partial · 0 missing</span><span class="shown" hidden></span></span></summary>
+<summary><span class="sn">1.</span> <span class="st">Making a character (level 1)</span> <span class="sc"><span class="tally">9 done · 1 partial · 0 missing</span><span class="shown" hidden></span></span></summary>
 
 <ul class="items">
 <li class="item done" id="l-1-1" data-state="done" data-matters="some">
@@ -106,10 +106,10 @@
 <p class="text">Ability score generation: the PHB's standard array, point buy and rolled scores, assigned to abilities. Only <code>/r 4d6dl1</code> in chat; scores are typed.</p>
 <p class="ev">Evidence: no code; abilities are number inputs in <code>renderSheet</code> (app.js:380). <strong>Since 17 Nov:</strong> a 🎲 Ability scores… dialog sets all six from the standard set, six server rolls of 4d6 (highest three, in chat), or SW5e's 27-point buy (#166).</p>
 </li>
-<li class="item partial" id="l-1-5" data-state="partial" data-matters="some">
-<p class="row"><span class="state partial"><span aria-hidden="true">◐</span> Partial</span> <span class="id">1.5</span> <span class="meta">computes · sometimes</span></p>
+<li class="item done" id="l-1-5" data-state="done" data-matters="some">
+<p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">1.5</span> <span class="meta">computes · sometimes</span></p>
 <p class="text">Species: traits, speed, languages, size and the ability increase. The ◈ picker adds each trait as a feature, sets walking speed, appends languages, and applies the increase only when it is one fixed choice. Size, senses (darkvision etc.), resistances and other movement speeds are not set anywhere on the sheet.</p>
-<p class="ev">Evidence: <code>openSpeciesPicker</code> (books.js:189); <code>fixedAsi</code> (_holotable-sw5e-data.js:23). <strong>Since 17 Nov:</strong> the species picker and the guided build set size and senses (#129, #185), and swim, climb and fly speeds are read from the species' traits for the speed box (#238). Still missing: a species' damage resistances and vulnerabilities on the sheet (built, not yet merged).</p>
+<p class="ev">Evidence: <code>openSpeciesPicker</code> (books.js:189); <code>fixedAsi</code> (_holotable-sw5e-data.js:23). <strong>Since 17 Nov:</strong> the species picker and the guided build set size and senses (#129, #185), and swim, climb and fly speeds are read from the species' traits for the speed box (#238). A species' damage resistances, immunities and vulnerabilities fill the sheet's Defences from its traits, the GM's to edit, and the combat view applies them (#259).</p>
 </li>
 <li class="item done" id="l-1-6" data-state="done" data-matters="some">
 <p class="row"><span class="state done"><span aria-hidden="true">✓</span> Done</span> <span class="id">1.6</span> <span class="meta">computes · sometimes</span></p>
