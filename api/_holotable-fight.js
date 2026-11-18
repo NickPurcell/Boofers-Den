@@ -533,6 +533,12 @@ function sheetCast(camp, cid, gm, p, G) {
     if (!t || (!gm && (t.hidden || (fog && fog.tokens.has(t.id))))) throw new G.Invalid("No such token.");
     picked.push(t);
   }
+  // How far a player's Cast reaches (#156's review; the question is jpesus's, on #65): their own characters take its
+  // effects; anyone else's character or a creature gets the rolls posted, for its owner or the GM to apply; and while a
+  // fight is on the tracker, a player casts at others only from the combat view, on their turn. The GM's applies everywhere.
+  const others = gm ? [] : picked.filter((t) => { const c = t.charId && charOf(camp, t.charId); return !(c && c.owner === cid); });
+  if (others.length && ini.active) throw new G.Invalid("A fight is on: cast it at others from the combat view, on your turn.");
+  if (others.length) return castUnaimed(camp, cid, ch, ability, up, G, picked);
   if (!picked.length && ability.targets !== "self") return castUnaimed(camp, cid, ch, ability, up, G);
   // the caster's pretend turn, with the picked tokens as the units
   const ut = unitTokens(camp), entryOf = Object.fromEntries(Object.entries(ut).map(([e, t]) => [t, e]));
@@ -621,9 +627,10 @@ function sheetCast(camp, cid, gm, p, G) {
   }
   return {};
 }
-// No target picked (no map, or a power rolled for the table to read): pay, note concentration, roll the damage or the
-// healing once, at the level cast, and say the DC or the attack bonus. Nobody's hit points change.
-function castUnaimed(camp, cid, ch, ab, up, G) {
+// No target picked (no map, or a power rolled for the table to read), or a player's Cast at someone not theirs (at):
+// pay, note concentration, roll the damage or the healing once, at the level cast, and say the DC or the attack bonus,
+// and whom it's aimed at. Nobody's hit points change: the target's owner or the GM applies it.
+function castUnaimed(camp, cid, ch, ab, up, G, at) {
   const f = camp.fight, cost = Object.assign({}, ab.cost || {});
   if (up && ab.pool) cost[ab.pool] = (cost[ab.pool] || 0) + up;
   let c = ch;
@@ -645,11 +652,14 @@ function castUnaimed(camp, cid, ch, ab, up, G) {
   const sgn = (n) => (n >= 0 ? "+" : "") + n;
   const costText = Object.entries(cost).filter(([, n]) => n).map(([pool, n]) => `${n} ${pool === "force" ? "force" : pool === "tech" ? "tech" : pool} points`).join(", ");
   const what = ab.attack ? `attack ${sgn(ab.attack.bonus)}` : ab.save ? `${ab.save.ability.toUpperCase()} save DC ${ab.save.dc}${ab.save.onSave === "half" ? ", half on a save" : ""}` : "";
-  const out = (msg) => {
+  const out = (msg, also) => {
     if (secret) { msg.to = ["@gm"]; msg.private = true; if (msg.roll) { msg.fromId = "@gm"; msg.from = "Combat (GM only)"; delete msg.charName; } }
-    sayTokens(camp, G, msg, cid, tok ? [tok.id] : []);
+    sayTokens(camp, G, msg, cid, (tok ? [tok.id] : []).concat(also || []));
   };
-  out({ system: true, fight: true, text: str(`${who} casts ${ab.name}${up ? ` at level ${ab.level + up}` : ""}${costText ? ` (${costText})` : ""}${what ? `: ${what}` : ""}.`, 200) });
+  const names = (at || []).map((t) => (t.charId === ch.id ? who : G.shownName(camp, { charId: t.charId || null, name: t.name })));
+  const aimed = names.length ? ` at ${names.length > 1 ? names.slice(0, -1).join(", ") + " and " + names[names.length - 1] : names[0]}` : "";
+  out({ system: true, fight: true, text: str(`${who} casts ${ab.name}${aimed}${up ? ` at level ${ab.level + up}` : ""}${costText ? ` (${costText})` : ""}${what ? `: ${what}` : ""}.${aimed ? " Its owner or the GM applies it." : ""}`, 240) },
+    (at || []).map((t) => t.id));
   if (ab.concentration && was && was !== ab.name) out({ system: true, fight: true, text: str(`${who} stops concentrating on ${was}.`, 200) });
   const extra = up && ab.upcast && ab.upcast.damage ? Array.from({ length: up }, () => ab.upcast.damage) : [];
   const expr = (parts) => parts.filter(Boolean).join("+").replace(/\+-/g, "-");

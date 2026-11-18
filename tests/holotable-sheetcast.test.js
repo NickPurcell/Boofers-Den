@@ -80,10 +80,17 @@ test("sheet cast: with the view off, the table's data reaches the sheet, and a s
   assert.equal((await rae.act("fight.cast", { charId: avery, power: "Mind Shove", level: 1, targets: [tok.bolt] })).code, 403, "not Rae's character");
   assert.equal((await sam.act("fight.cast", { charId: avery, power: "Plain Light", level: 1, targets: [tok.bolt] })).code, 400, "no data for that power");
   assert.equal((await sam.act("fight.cast", { charId: avery, power: "Force Lightning", level: 1, targets: [tok.bolt] })).code, 400, "not on the sheet");
-  const r = await sam.act("fight.cast", { charId: avery, power: "Mind Shove", level: 2, targets: [tok.bolt] });
+  // Sam's Cast at Rae's Bolt rolls and posts; Bolt's owner or the GM applies it
+  let r = await sam.act("fight.cast", { charId: avery, power: "Mind Shove", level: 2, targets: [tok.bolt] });
   assert.equal(r.code, 200, JSON.stringify(r.data));
-  const gv = await gm.state();
+  let gv = await gm.state();
   assert.equal(gv.characters[avery].force.used, 3, "level 2: three force points");
+  assert.equal(gv.characters[bolt].hp.current, 20, "nothing applied to someone else's character");
+  assert.ok(gv.chat.some((m) => m.system && /Avery casts Mind Shove at Bolt at level 2 \(3 force points\): STR save DC 13, half on a save\. Its owner or the GM applies it\./.test(m.text)));
+  // the GM's Cast of Avery's power applies
+  r = await gm.act("fight.cast", { charId: avery, power: "Mind Shove", level: 2, targets: [tok.bolt] });
+  assert.equal(r.code, 200, JSON.stringify(r.data));
+  gv = await gm.state();
   assert.ok(gv.characters[bolt].hp.current < 20, "Bolt took the damage on the sheet (half on a save, at least 1)");
   assert.ok(gv.chat.some((m) => m.system && /Avery uses Mind Shove at level 2 \(3 Force points\)/.test(m.text)));
   const save = gv.chat.filter((m) => m.roll && m.roll.kind === "save").at(-1);
@@ -107,22 +114,22 @@ test("sheet cast: the max power level refuses a player and lets the GM through; 
   assert.ok(!JSON.stringify(pv.chat).includes("Lurker"), "the player never reads its name");
 });
 
-test("sheet cast: a creature token with a tracker entry uses it; without one it has no numbers and nothing changes", async () => {
+test("sheet cast (the GM's): a creature token with a tracker entry uses it; without one it has no numbers and nothing changes", async () => {
   const { gm, sam, avery, tok } = await table();
   // a bare token: the save has no bonus and the damage lands nowhere
-  let r = await sam.act("fight.cast", { charId: avery, power: "Mind Shove", level: 1, targets: [tok.raider] });
+  let r = await gm.act("fight.cast", { charId: avery, power: "Mind Shove", level: 1, targets: [tok.raider] });
   assert.equal(r.code, 200, JSON.stringify(r.data));
   let gv = await gm.state();
   assert.ok(gv.chat.some((m) => m.roll && m.roll.kind === "save" && /no save bonus known/.test(m.roll.label)));
   // in the tracker (no fight running): its hit points there take it
   await gm.act("init.add", { name: "Raider", init: 12, hp: 30, ac: 13 });
-  r = await sam.act("fight.cast", { charId: avery, power: "Mind Shove", level: 1, targets: [tok.raider] });
+  r = await gm.act("fight.cast", { charId: avery, power: "Mind Shove", level: 1, targets: [tok.raider] });
   assert.equal(r.code, 200, JSON.stringify(r.data));
   gv = await gm.state();
   assert.ok(gv.initiative.entries.find((e) => e.name === "Raider").hp < 30);
 });
 
-test("sheet cast: no target rolls the damage once; healing a character heals the sheet", async () => {
+test("sheet cast: no target rolls the damage once; healing your own character heals the sheet", async () => {
   const { gm, sam, avery, bolt, tok } = await table();
   let r = await sam.act("fight.cast", { charId: avery, power: "Mind Shove", level: 2, targets: [] });
   assert.equal(r.code, 200, JSON.stringify(r.data));
@@ -130,24 +137,23 @@ test("sheet cast: no target rolls the damage once; healing a character heals the
   assert.equal(gv.characters[avery].force.used, 3);
   assert.ok(gv.chat.some((m) => m.system && /Avery casts Mind Shove at level 2 \(3 force points\): STR save DC 13, half on a save\./.test(m.text)));
   assert.equal(gv.chat.filter((m) => m.roll && m.roll.kind === "damage").at(-1).roll.expr, "2d6+1d6");
-  // Bolt is hurt; Mend heals him on his sheet
-  const b = gv.characters[bolt];
-  await gm.act("char.save", { char: Object.assign({}, b, { hp: { max: 20, current: 5, temp: 0 } }) });
-  r = await sam.act("fight.cast", { charId: avery, power: "Mend", level: 1, targets: [tok.bolt] });
+  // Avery is hurt; Sam's Mend on his own Avery heals the sheet
+  await gm.act("char.damage", { id: avery, amount: 15 });
+  r = await sam.act("fight.cast", { charId: avery, power: "Mend", level: 1, targets: [tok.avery] });
   assert.equal(r.code, 200, JSON.stringify(r.data));
-  const healed = (await sheet(gm, bolt)).hp.current;
+  const healed = (await sheet(gm, avery)).hp.current;
   assert.ok(healed >= 5 + 2 + 3 && healed <= 5 + 8 + 3, `2d4 + Wis healed him on his sheet (${healed})`);
   assert.equal((await gm.state()).chat.filter((m) => m.roll && m.roll.kind === "heal").at(-1).roll.expr, "2d4+3");
 });
 
 test("sheet cast: concentration is recorded, a new one ends the old and frees its target, the ✕ ends it, and it carries into a fight", async () => {
   const { gm, sam, rae, avery, bolt, tok } = await table();
-  assert.equal((await sam.act("fight.cast", { charId: avery, power: "Hold", level: 1, targets: [tok.bolt] })).code, 200);
+  assert.equal((await gm.act("fight.cast", { charId: avery, power: "Hold", level: 1, targets: [tok.bolt] })).code, 200);
   assert.equal((await rae.state()).sheetCast.conc[avery], "Hold", "everyone who sees Avery's sheet sees the concentration");
   assert.deepEqual((await sheet(gm, bolt)).conditions, ["Restrained"], "the condition goes on Bolt's sheet");
   // Hold again, on a creature in the tracker: the first one ends, and Bolt is free
   await gm.act("init.add", { name: "Raider", init: 12, hp: 30, ac: 13 });
-  assert.equal((await sam.act("fight.cast", { charId: avery, power: "Hold", level: 1, targets: [tok.raider] })).code, 200);
+  assert.equal((await gm.act("fight.cast", { charId: avery, power: "Hold", level: 1, targets: [tok.raider] })).code, 200);
   let gv = await gm.state();
   assert.deepEqual(gv.characters[bolt].conditions, [], "Bolt is no longer held");
   assert.deepEqual(gv.initiative.entries.find((e) => e.name === "Raider").conditions, ["Restrained"]);
@@ -160,7 +166,7 @@ test("sheet cast: concentration is recorded, a new one ends the old and frees it
   assert.deepEqual(gv.initiative.entries.find((e) => e.name === "Raider").conditions, []);
   assert.ok(gv.chat.some((m) => m.system && /Avery stops concentrating on Hold/.test(m.text)));
   // again, then the fight starts: the combat view knows Avery is concentrating
-  assert.equal((await sam.act("fight.cast", { charId: avery, power: "Hold", level: 1, targets: [tok.bolt] })).code, 200);
+  assert.equal((await gm.act("fight.cast", { charId: avery, power: "Hold", level: 1, targets: [tok.bolt] })).code, 200);
   await sam.act("init.add", { charId: avery, name: "Avery", init: 20 });
   await rae.act("init.add", { charId: bolt, name: "Bolt", init: 10 });
   await gm.act("init.start", {});
@@ -200,4 +206,39 @@ test("sheet cast: a name the GM hides stays hidden from other players", async ()
   assert.ok(!lines.includes("Avery") && !lines.includes("Raider"), "Rae reads neither name");
   assert.ok(lines.includes("???"));
   assert.ok(!lines.includes('"from":"Sam"'), "nor who plays the hidden character");
+});
+
+test("sheet cast reach (#156 review): a player's free at-will at others changes nothing; in a fight it's refused; the GM's applies", async () => {
+  const { gm, sam, rae, avery, bolt, tok } = await table();
+  const ZAP = { use: "action", range: [60, 60], save: { ability: "dex", dc: 40, onSave: "none" }, damage: [{ dice: "3d6", type: "lightning" }] };
+  let av = await sheet(gm, avery);
+  await sam.act("char.save", { char: Object.assign({}, av, { powers: av.powers.concat([{ name: "Zap", level: 0, type: "force", alignment: "dark" }]) }) });
+  await gm.act("fight.toggle", { on: true }); await gm.act("fight.ability", { name: "Zap", data: ZAP }); await gm.act("fight.toggle", { on: false });
+  await gm.act("init.add", { name: "Raider", init: 12, hp: 60, ac: 13 });
+  const hp = async () => { const st = await gm.state(); return [st.characters[bolt].hp.current, st.initiative.entries.find((e) => e.name === "Raider").hp]; };
+  // no fight: rolls and posts, three times each, and nobody's hit points move; it costs nothing
+  for (let n = 0; n < 3; n++) {
+    assert.equal((await sam.act("fight.cast", { charId: avery, power: "Zap", level: 0, targets: [tok.bolt] })).code, 200);
+    assert.equal((await sam.act("fight.cast", { charId: avery, power: "Zap", level: 0, targets: [tok.raider] })).code, 200);
+  }
+  assert.deepEqual(await hp(), [20, 60]);
+  assert.equal((await sheet(gm, avery)).force.used, 0, "an at-will is free");
+  const st = await rae.state();
+  assert.ok(st.chat.some((m) => m.system && /Avery casts Zap at Bolt: DEX save DC 40\. Its owner or the GM applies it\./.test(m.text)), "Rae reads what to apply");
+  // aimed at your own character, it applies
+  assert.equal((await sam.act("fight.cast", { charId: avery, power: "Zap", level: 0, targets: [tok.avery] })).code, 200);
+  assert.ok((await sheet(gm, avery)).hp.current < 20);
+  // a fight on the tracker that Avery isn't in, combat view off then on: refused at others
+  await rae.act("init.add", { charId: bolt, name: "Bolt", init: 10 });
+  await gm.act("init.start", {});
+  for (const on of [false, true]) {
+    await gm.act("fight.toggle", { on });
+    const r = await sam.act("fight.cast", { charId: avery, power: "Zap", level: 0, targets: [tok.raider] });
+    assert.deepEqual([r.code, r.data.error], [400, "A fight is on: cast it at others from the combat view, on your turn."]);
+  }
+  assert.deepEqual(await hp(), [20, 60]);
+  // the GM's applies
+  await gm.act("fight.toggle", { on: false });
+  assert.equal((await gm.act("fight.cast", { charId: avery, power: "Zap", level: 0, targets: [tok.raider] })).code, 200);
+  assert.ok((await hp())[1] < 60);
 });

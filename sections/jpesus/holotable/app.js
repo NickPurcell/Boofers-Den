@@ -969,7 +969,7 @@
       ${levels.length > 1 ? `<label class="mini">Level <select id="castLvl">${levels.map(n => `<option value="${n}">${n} · ${pts(n)}${n > maxL ? ' (above max)' : ''}</option>`).join('')}</select></label>
         <p class="muted" style="font-size:12px;margin:4px 0">Casting higher costs a point more per level${up}.</p>` : ''}
       ${data ? (self ? `<p class="muted">Affects ${esc(ch.name)}.</p>`
-        : `<p class="muted" style="margin:8px 0 4px">${area ? 'Tick who is in the area' : `Targets${data.targets > 1 ? ` (up to ${n0(data.targets)})` : ''}`}, or none to roll it once for the table:</p>
+        : `<p class="muted" style="margin:8px 0 4px">${area ? 'Tick who is in the area' : `Targets${data.targets > 1 ? ` (up to ${n0(data.targets)})` : ''}`}, or none to roll it once for the table${isGM() ? '' : ". At anyone but your own characters it rolls and posts, for its owner or the GM to apply"}:</p>
         <div class="cast-targets" style="max-height:220px;overflow:auto">${toks.map(t => `<label class="check" style="display:block"><input type="checkbox" data-tok="${esc(t.id)}"> ${esc(t.name)}${t.hidden ? ' <span class="muted">(hidden)</span>' : ''}</label>`).join('') || '<p class="muted">No tokens on the map.</p>'}</div>`)
         : '<p class="muted">The table has no data for this power, so it posts as before, at the level chosen.</p>'}
       <div class="row" style="margin-top:10px"><span class="spacer"></span><button class="btn" id="castNo">Cancel</button><button class="btn primary" id="castGo">Cast</button></div>`, box => {
