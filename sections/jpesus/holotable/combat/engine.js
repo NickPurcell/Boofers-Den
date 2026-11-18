@@ -699,6 +699,8 @@
   // the superiority pool with a die left (a Fighter's, or a Scholar's)
   const superiorityOf = (u) => ['superiority', 'superiority-scholar'].map((k) => ((u && u.pools) || {})[k]).find((p) => p && p.used < p.max && /^d\d+$/.test(String(p.die || ''))) || null;
   const maneuverUsed = (w, id, key) => !!((+spentOf(w, id).mv || 0) & (1 << MANEUVER_KEYS.indexOf(key)));
+  // the creature a Scout has marked as its quarry (one at a time), or null
+  const quarryOf = (w, id) => { const ef = (w.effects || []).find((e) => e.condition === 'Quarry' && e.source === id); return ef ? ef.unit : null; };
   /* ---------------- bonus damage from class features (audit 5.9) ---------------- */
   // What a character's classes add to a weapon hit, from HoloTable's class table (#108) at its levels: Sneak Attack dice
   // (Operative) and Rage Damage (Berserker). Worked out here from the sheet, never taken from a request.
@@ -709,6 +711,7 @@
       if (h === 'Rage Damage' && /^\+?\d+$/.test(String(v))) out.rage = +String(v).replace('+', '');
       if (h === 'Focused Strikes' && /^\d+d8$/i.test(String(v))) out.fes = parseInt(v, 10);          // Force-Empowered Strikes: up to N d8s
       if (h === 'Kinetic Combat' && /^d\d+$/i.test(String(v))) out.kinetic = String(v).toLowerCase();  // Double Strike: one Kinetic Combat die
+      if (h === "Ranger's Quarry" && /^d\d+$/i.test(String(v))) out.quarry = String(v).toLowerCase();   // its die on a hit on the quarry (#67)
     }
     return out;
   }
@@ -722,6 +725,8 @@
       if (mode === 'adv' || (helper && mode !== 'dis')) out.push({ key: 'sneak', name: 'Sneak Attack', dice: r.sneak });
     }
     if (r.rage && attack.weapon && !ranged && attack.abil === 'str' && effectsOf(a).some(([, e]) => e.rage)) out.push({ key: 'rage', name: 'Rage', flat: r.rage });
+    // Ranger's Quarry (#67): once a turn, a weapon hit on the creature this Scout has marked
+    if (r.quarry && attack.weapon && !spentOf(world, a.id).quarry && quarryOf(world, a.id) === t.id) out.push({ key: 'quarry', name: "Ranger's Quarry", dice: '1' + r.quarry });
     // these cost force points, so they're the attacker's choice (opt-in): Force-Empowered Strikes (Guardian) on a melee
     // weapon hit, 1d8 a point up to the Focused Strikes column; Double Strike (Sentinel) on a weapon hit, 1 point for a
     // Kinetic Combat die, once a turn
@@ -1028,7 +1033,7 @@
   /* ---------------- turns: the turn budget is resources too, refilled at the start of the unit's own turn ---------------- */
   const turnKey = (world) => `${world.round}:${world.turnId}`;
   const TURN = ['move', 'action', 'bonus', 'reaction'];
-  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0, surge: 0, ma: 0, mab: 0 });
+  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0, surge: 0, ma: 0, mab: 0, quarry: 0, qm: 0 });
   function spentOf(world, id) {
     const s = (world.spent || {})[id];
     return s && (id !== world.turnId || s.key === turnKey(world)) ? Object.assign(blank(s.key), s) : blank(id === world.turnId ? turnKey(world) : '');
@@ -1221,6 +1226,18 @@
         return { ok: true, world: w, log, events: [] };
       }
       case 'common': {   // Dash, Disengage, Dodge; and a Berserker's Rage
+        if (act.key === 'quarry') {   // a Scout's Ranger's Quarry (#67): no action, once a turn, one creature at a time
+          if (!(me.riders || {}).quarry) return no(`${me.name} has no Ranger's Quarry.`);
+          const t = unitAt(w, act.target);
+          if (!t || t.id === me.id) return no('Pick a creature to mark.');
+          if (+spentOf(w, me.id).qm) return no(`${me.name} has already marked a quarry this turn.`);
+          if (feetBetween(me, t) > 120) return no(`${t.name} is ${feetBetween(me, t)} ft away: a quarry is marked within 120 ft.`);
+          if (!sees(w, me, t)) return no(`${me.name} can't see ${t.name}.`);
+          w.effects = w.effects.filter((ef) => !(ef.condition === 'Quarry' && ef.source === me.id));
+          w.effects.push({ id: `quarry-${me.id}-${t.id}-${w.effects.length}`, unit: t.id, condition: 'Quarry', ends: 'never', of: t.id, rounds: 1, save: null, source: me.id, conc: false, level: 0, amount: '' });
+          w.spent[me.id] = Object.assign(spentOf(w, me.id), { qm: 1 });
+          return { ok: true, world: w, log: [{ unit: me.id, about: t.id, text: `${me.name} marks ${t.name} as its quarry: once a turn, a weapon hit on it deals ${me.riders.quarry} more.` }], events: [] };
+        }
         if (act.key === 'surge') {   // a Fighter's Action Surge (#67): one more action this turn, once a turn, a use of its pool
           const pool = (me.pools || {})['action-surge'];
           if (!pool) return no(`${me.name} has no Action Surge.`);
@@ -1476,6 +1493,7 @@
     if (riders.some((x) => x.key === 'double')) w.spent[me.id] = Object.assign(spentOf(w, me.id), { double: 1 });   // once a turn
     const expr = base + riders.map((x) => (x.dice ? '+' + (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat)).join('');
     if (riders.some((x) => x.key === 'sneak')) w.spent[me.id] = Object.assign(spentOf(w, me.id), { sneak: 1 });   // once per turn
+    if (riders.some((x) => x.key === 'quarry')) w.spent[me.id] = Object.assign(spentOf(w, me.id), { quarry: 1 });   // once per turn
     const d = roll(expr);
     const corr = levelOf(w, t, 'Corroded');   // corroded: 1 more damage from weapons for each level
     const df = defended(t, Math.max(0, d.total) + corr, String(attack.type || '').toLowerCase(), attack.enhanced ? 'enhanced' : 'weapon');
@@ -1818,5 +1836,5 @@
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
     SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf, d20, flankOf, fixedTotal, cruel, modeName,
-    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, ridersOf, ridersFor, attacksPerAction, multiattackOf, offhandOf, martialOf, martialDieOf, stylesOf, withThreshold, thresholdFor, MIN_THRESHOLD, contestBonus, helpOn, maneuverCheck, unitAt, weaponProps, volleysOf, MANEUVERS, maneuversOf, superiorityOf, saveVs, pushAway };
+    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, ridersOf, ridersFor, attacksPerAction, multiattackOf, offhandOf, martialOf, quarryOf, martialDieOf, stylesOf, withThreshold, thresholdFor, MIN_THRESHOLD, contestBonus, helpOn, maneuverCheck, unitAt, weaponProps, volleysOf, MANEUVERS, maneuversOf, superiorityOf, saveVs, pushAway };
 });

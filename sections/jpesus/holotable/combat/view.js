@@ -72,7 +72,9 @@
       // a monk's Martial Arts bonus strike, then Flurry of Blows (#67)
       const mas = me ? weapons.filter((a) => a.unarmed).map((a) => ({ a, o: E.martialOf(w, me, a) })).filter((x) => x.o.spec)
         .map(({ a, o }) => Object.assign({}, o.spec, { key: 'ma:' + a.key, base: a.key, martialBonus: true, flurry: !!o.flurry })) : [];
-      return weapons.concat(offs, mas, powers, MANEUVERS);
+      // a Scout marks its quarry like picking a target (#67): no action, once a turn
+      const quarry = (u.riders || {}).quarry ? [{ key: 'quarry', name: '🎯 Mark quarry', maneuver: 'quarry', damage: `+1${u.riders.quarry} on a hit, once a turn`, type: '', melee: 120 }] : [];
+      return weapons.concat(offs, mas, powers, MANEUVERS, quarry);
     }
     if (!gm()) return [];
     const known = UI.npc[u.id];
@@ -167,6 +169,7 @@
   const targets = (spec) => {
     const w = world(), u = cur();
     if (!u || !spec) return [];
+    if (spec.maneuver === 'quarry') return Object.values(w.units).filter((t) => t.id !== u.id && t.side !== u.side && !E.isDead(t) && E.feetBetween(u, t) <= 120 && E.sees(w, u, t));
     if (spec.maneuver) return Object.values(w.units).filter((t) => t.id !== u.id && t.side !== u.side && !E.isDead(t) && !(spec.maneuver === 'help' ? helpWhy(u, t) : E.maneuverCheck(w, u, t, spec.maneuver)));
     if (spec.power) {
       const ab = spec.power;
@@ -218,7 +221,7 @@
     const spec = armedSpec(), u = cur();
     if (!spec || !u) return;
     if (spec.maneuver) {   // #144
-      const r = spec.maneuver === 'help' ? await send('fight.common', { key: 'help', target: targetId })
+      const r = spec.maneuver === 'help' || spec.maneuver === 'quarry' ? await send('fight.common', { key: spec.maneuver, target: targetId })
         : await send('fight.' + spec.maneuver, { target: targetId, push: !!spec.push, multi: u.charId ? undefined : (UI.npc[u.id] || {}).multi || 1 });
       if (r) { UI.armed = null; UI.target = null; render(); }
       return;
@@ -377,7 +380,7 @@
       html += '<div class="ct-row ct-actions" role="group" aria-label="Attacks">';
       for (const a of atks) {
         const n = targets(a).length;
-        const slot = a.power ? a.power.use : a.offhand || a.martialBonus ? 'bonus' : 'action';
+        const slot = a.power ? a.power.use : a.maneuver === 'quarry' ? 'free' : a.offhand || a.martialBonus ? 'bonus' : 'action';
         const lim = !u.charId && a.res && ((f.npcRes || {})[u.id] || []).find((r) => r.key === a.res);
         const slotSpent = (bud && slot !== 'free' && !bud[slot] && !a.offhand && !a.martialBonus && !(slot === 'action' && !a.power && a.maneuver !== 'help' && bud.attacks)) || (lim && lim.used >= lim.max);   // a weapon attack: also the rest of an Attack action (#139)
         const pool = a.power && Object.entries(a.power.cost || {})[0];
@@ -426,13 +429,14 @@
         if (self && !UI.target) UI.target = u.id;
       } else if (spec && spec.maneuver) {   // Grapple, Shove, Help (#144)
         const t = UI.target && w.units[UI.target];
-        const why = t && (spec.maneuver === 'help' ? helpWhy(u, t) : E.maneuverCheck(w, u, t, spec.maneuver));
+        const why = t && (spec.maneuver === 'help' ? helpWhy(u, t) : spec.maneuver === 'quarry' ? (E.feetBetween(u, t) > 120 ? `${t.name} is out of range (120 ft).` : '') : E.maneuverCheck(w, u, t, spec.maneuver));
         const knows = t && (t.charId || gm());
         const theirs = t && (knows ? `the better of its Athletics ${sgn(E.contestBonus(t, 'athletics'))} and Acrobatics ${sgn(E.contestBonus(t, 'acrobatics'))}` : 'its Athletics or Acrobatics, whichever is better');
         const wins = spec.maneuver === 'grapple' ? 'it is grappled' : spec.push ? 'it is pushed 5 ft away' : 'it is knocked prone';
         html += `<div class="ct-row ct-preview" aria-live="polite">${!t ? `<span>${esc(spec.name)}: pick a creature on the map (lit in red).</span><button class="btn tiny ghost" data-ct="disarm">Cancel</button>`
           : why ? `<span>${esc(why)}</span>`
           : spec.maneuver === 'help' ? `<span><b>${esc(t.name)}</b>: the first attack an ally makes on it before your next turn has advantage. Takes your action.</span><button class="btn small primary" data-ct="go">Help</button>`
+          : spec.maneuver === 'quarry' ? `<span><b>${esc(t.name)}</b>: your quarry. Once a turn, a weapon hit on it deals +1${esc((u.riders || {}).quarry || '')} more. No action; one quarry at a time.</span><button class="btn small primary" data-ct="go">Mark</button>`
           : `<span><b>${esc(t.name)}</b>, ${E.feetBetween(u, t)} ft: your Athletics ${sgn(E.contestBonus(u, 'athletics'))} against ${esc(theirs)}. If you win, ${wins}; a tie changes nothing.</span><button class="btn small primary" data-ct="go">${esc(spec.maneuver === 'grapple' ? 'Grapple' : 'Shove')}</button>`}</div>`;
       } else if (spec) {
         const t = UI.target && w.units[UI.target];
