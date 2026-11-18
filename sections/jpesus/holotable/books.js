@@ -407,7 +407,8 @@
       <span><b>${f(d.adj)}</b> XP adjusted <span class="muted">(${f(d.raw)} × ${d.mult} for ${xps.length} creature${xps.length === 1 ? '' : 's'})</span></span>
       <span class="muted" title="${esc(party.map(c => `${c.name} (level ${R.totalLevel(c)})`).join(', '))}">Party of ${party.length}${inIni.length ? '' : ' (everyone; none in initiative yet)'}, level${new Set(lv).size > 1 ? 's' : ''} ${esc([...new Set(lv)].sort((a, b) => a - b).join('/'))}:
         easy ${f(d.th[0])} · medium ${f(d.th[1])} · hard ${f(d.th[2])} · deadly ${f(d.th[3])}</span>
-      ${skipped ? `<span class="muted">${skipped} without an SW5e stat block not counted</span>` : ''}`;
+      ${skipped ? `<span class="muted">${skipped} without an SW5e stat block not counted</span>` : ''}
+      <button class="btn tiny" id="encAwardXp" data-xp="${n0(d.raw)}" title="When the fight is over: give the party the creatures' XP (${f(d.raw)}, before the multiplier), split among them">★ Award XP…</button>`;
   }
   const crNum = cr => (/^\d+\/\d+$/.test(cr) ? eval_frac(cr) : +cr || 0);
   function eval_frac(s) { const [a, b] = s.split('/'); return +a / +b; }

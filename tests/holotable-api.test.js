@@ -1927,3 +1927,25 @@ test("AC from armor, Unarmored Defense and misc (audit 5.3), crit range, misc bo
   c = (await gm.poll()).data.state.characters[id3];
   assert.equal(c.ac, 17, "an old sheet (or an import) filled from the blank keeps its typed AC");
 });
+
+test("the GM awards XP after an encounter, split evenly; levelling stays the GM's grant (audit 9.8)", async () => {
+  const { gm, p1, p2 } = await table();
+  const kira = (await p1.act("char.save", { char: { name: "Kira", xp: 250, classes: [{ name: "Operative", level: 1 }] } })).data.id;
+  const rex = (await p2.act("char.save", { char: { name: "Rex", xp: 0, classes: [{ name: "Fighter", level: 1 }] } })).data.id;
+  const npc = (await gm.act("char.save", { char: { name: "Darth Secret" } })).data.id;
+  assert.equal((await p1.act("xp.award", { amount: 100, chars: [kira] })).code, 403, "GM only");
+  assert.equal((await gm.act("xp.award", { amount: 100, chars: ["__proto__", "constructor"] })).code, 400);
+  const r = await gm.act("xp.award", { amount: 101, chars: [kira, rex, npc], reason: "The cantina fight" });
+  assert.equal(r.code, 200);
+  assert.equal(r.data.each, 33);
+  const g = (await gm.poll()).data.state;
+  assert.equal(g.characters[kira].xp, 283);
+  assert.equal(g.characters[rex].xp, 33);
+  assert.equal(g.characters[kira].classes[0].level, 1, "nobody levels by themselves");
+  await gm.act("xp.award", { amount: 40, chars: [kira] });
+  const pchat = (await p1.poll()).data.state.chat.map((m) => m.text || "");
+  assert.ok(pchat.some((t) => /^The cantina fight: 101 XP, 33 each for Kira, Rex, 1 more\.$/.test(t)), pchat.join(" | "));
+  assert.ok(!pchat.join(" ").includes("Darth Secret"), "the GM's NPC isn't named");
+  assert.ok(!pchat.some((t) => /Enough XP/.test(t)), "the level note is the GM's");
+  assert.ok((await gm.poll()).data.state.chat.some((m) => /Enough XP for the next level: Kira \(323 XP, level 2 at 300\)/.test(m.text || "")));
+});

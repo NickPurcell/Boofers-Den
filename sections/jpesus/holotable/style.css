@@ -749,3 +749,6 @@ table.t td.n { width: 56px; }
 .eq-table .armor-cell { white-space: nowrap; width: 1%; }
 .eq-table .armor-cell select { width: 70px; }
 .eq-table .armor-cell input { width: 44px; margin-left: 3px; }
+
+/* the GM's Award XP dialog (audit 9.8) */
+.ask-who { display: flex; flex-wrap: wrap; gap: 4px 14px; }

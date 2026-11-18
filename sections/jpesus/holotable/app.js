@@ -2197,6 +2197,31 @@
   $('#rules').addEventListener('input', e => { if (e.target.id === 'rulesSearch') renderRules(e.target.value); });
 
   // --------------------------------------------------------------------------- GM
+  // XP after an encounter (audit 9.8): an amount (the meter fills in the creatures' XP), split among the characters
+  // ticked. The server adds it and tells the GM who has reached the next level; levelling stays the GM's grant.
+  function openAwardXp(amount) {
+    const gmIds = new Set(Object.entries(S.st.players).filter(([, p]) => p.role === 'gm').map(([id]) => id));
+    const ini = S.st.initiative || {}, inIni = new Set((ini.entries || []).map(e => e.charId).filter(Boolean));
+    const list = chars().map(c => ({ c, on: !gmIds.has(c.owner) && (!inIni.size || inIni.has(c.id)) }));
+    modal(`<h3>★ Award XP</h3>
+      <div class="row wrap"><label>XP<input id="xpAmt" type="number" min="1" value="${n0(amount) || ''}" style="width:110px"></label>
+        <label style="flex:1">For <input id="xpWhy" maxlength="80" placeholder="e.g. The cantina fight"></label></div>
+      <h4 style="margin-top:10px">Split among</h4>
+      <div class="ask-who">${list.map(({ c, on }) => `<label class="toggle"><input type="checkbox" class="xpChar" value="${esc(c.id)}" ${on ? 'checked' : ''}> ${esc(c.name)} <span class="muted">${n0(c.xp).toLocaleString()} XP</span></label>`).join('') || '<p class="muted">No characters yet.</p>'}</div>
+      <p class="muted" id="xpEach" style="font-size:12px"></p>
+      <div class="row" style="margin-top:12px;justify-content:flex-end"><button class="btn ghost" id="xpCancel">Cancel</button><button class="btn primary" id="xpGo">Award</button></div>`, box => {
+      const each = () => { const n = box.querySelectorAll('.xpChar:checked').length, a = n0($('#xpAmt').value); $('#xpEach').textContent = n && a ? `${Math.floor(a / n).toLocaleString()} XP each for ${n}.` : ''; };
+      each(); box.oninput = box.onchange = each;
+      box.onclick = e => {
+        if (e.target.id === 'xpCancel') closeModal();
+        if (e.target.id === 'xpGo') {
+          const ids = [...box.querySelectorAll('.xpChar:checked')].map(x => x.value);
+          act('xp.award', { amount: n0($('#xpAmt').value), chars: ids, reason: $('#xpWhy').value }).then(r => { if (r) { closeModal(); toast(`Awarded ${n0(r.each).toLocaleString()} XP each`); } });
+        }
+      };
+    });
+  }
+  document.addEventListener('click', e => { const b = e.target.closest('#encAwardXp'); if (b && isGM()) openAwardXp(+b.dataset.xp || 0); });
   function renderGM(el) {
     if (!isGM()) { el.innerHTML = ''; return; }
     const link = location.origin + location.pathname;
@@ -2217,6 +2242,7 @@
         <p style="margin-top:0" class="muted">After a big fight or a hard-won conversation, give the party a level. Each player gets a pop-up and picks how to level.
           Someone missed the session? Grant just their character, and you can level it for them.</p>
         <button class="btn small amber" id="gmGrant">⬆ Grant a level…</button>
+        <button class="btn small" id="gmXp" title="Give the party XP and split it; you're told who has enough to level">★ Award XP…</button>
         <label class="toggle" style="margin-top:8px" title="A table rule: whether players may take the hit die's maximum instead of the average or a roll">
           <input type="checkbox" id="gmHpMax" ${S.st.hpMax !== false ? 'checked' : ''}> Players may take maximum hit points when levelling</label>
         ${pendingNames.length ? `<p class="muted" style="font-size:12px">Waiting to level: ${pendingNames.join(', ')}</p>` : ''}
@@ -2291,6 +2317,7 @@
     if (id === 'doRename') act('campaign.rename', { name: $('#campRename').value });
     if (id === 'clearChat' && confirm('Clear the chat log for everyone?')) act('chat.clear');
     if (id === 'gmGrant') openGrant();
+    if (id === 'gmXp') openAwardXp(0);
     if (id === 'restoreBtn') $('#restoreFile').click();
     if (id === 'showBackups') {
       post('backups', {}).then(r => {
