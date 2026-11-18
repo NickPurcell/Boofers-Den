@@ -6,7 +6,7 @@
   const H = window.HT, SR = window.HTShips;
   if (!H || !SR) return;
   const { $, esc } = H;
-  const V = { sel: null, seenN: null, cell: 24, weapon: 0, target: null, crew: 0 };
+  const V = { sel: null, seenN: null, cell: 24, weapon: 0, target: null, crew: 0, mode: 'single' };
   const sp = () => (H.S.st && H.S.st.space) || null;
   const shipById = (id) => ((H.S.st && H.S.st.ships) || []).find((s) => s.id === id);
   const tokById = (id) => ((sp() || {}).tok || []).find((t) => t.id === id);
@@ -80,10 +80,24 @@
     const crewName = (c) => (c.charId && H.S.st.characters[c.charId] ? H.S.st.characters[c.charId].name : c.name) || 'Crew member';
     return `<div class="box" style="margin-top:8px"><h4>Actions</h4>
       <label class="ship-lv">Crew member <select id="spCrew">${crew.length ? crew.map((c, i) => `<option value="${i}" ${i === V.crew ? 'selected' : ''}>${esc(crewName(c))}</option>`).join('') : '<option value="0">no crew (+2)</option>'}</select></label>
-      <label class="ship-lv">Weapon <select id="spWeapon">${weapons.map((w, i) => `<option value="${i}" ${i === V.weapon ? 'selected' : ''}>${esc(w.name)}${w.arc ? ' · ' + esc(w.arc) : ''}${typeof w.ammo === 'number' ? ` · ${w.ammo} left` : ''}</option>`).join('')}</select></label>
+      <label class="ship-lv">Weapon <select id="spWeapon">${weapons.map((w, i) => `<option value="${i}" ${i === V.weapon ? 'selected' : ''}>${esc(w.name)}${w.arc ? ' · ' + esc(w.arc) : ''}${typeof w.ammo === 'number' ? ` · ${w.ammo} left` : ''}${SR.heatCap(w) !== null ? ` · heat ${+w.heat || 0}/${SR.heatCap(w)}` : ''}</option>`).join('')}</select></label>
+      ${modeSel(weapons[V.weapon])}
       <label class="ship-lv">Target <select id="spTarget">${targets.map((x) => `<option value="${esc(x.id)}" ${x.id === V.target ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
       <p class="muted" id="spPreview" style="font-size:12px;margin:6px 0"></p>
-      <button class="btn small amber" data-spx="fire">Fire</button>${helmRow}</div>`;
+      <button class="btn small amber" data-spx="fire">Fire</button>${coolReload(weapons[V.weapon])}${helmRow}</div>`;
+  }
+  // rapid and burst modes, for weapons that have them (auto weapons fire only in those)
+  function modeSel(w) {
+    const modes = SR.weaponModes(w);
+    if (!modes.includes(V.mode)) V.mode = modes[0];
+    if (modes.length < 2) return modes[0] === 'single' ? '' : `<span class="muted" style="font-size:12px">${modes[0]} only</span>`;
+    return `<label class="ship-lv">Mode <select id="spMode">${modes.map((m) => `<option ${m === V.mode ? 'selected' : ''}>${m}</option>`).join('')}</select></label>`;
+  }
+  function coolReload(w) {
+    if (!w) return '';
+    const cap = SR.heatCap(w), rl = SR.reloadOf(w);
+    return (cap !== null && +w.heat ? ` <button class="btn tiny" data-spx="cool" title="An action: the weapon's heat back to 0">Cool (${+w.heat}/${cap})</button>` : '')
+      + (rl !== null && typeof w.ammo === 'number' && w.ammo < rl ? ` <button class="btn tiny ghost" data-spx="reload" title="A minute per round of ammunition: not in the middle of a fight">Reload to ${rl}</button>` : '');
   }
   function preview() {
     const el = $('#spPreview'); if (!el) return;
@@ -93,6 +107,11 @@
     const crew = (ship.crew || [])[V.crew], pb = crew && crew.charId && H.S.st.characters[crew.charId] ? H.R.profBonus(H.S.st.characters[crew.charId]) : (crew && +crew.pb) || 2;
     const sign = (n) => (n >= 0 ? '+' : '') + n;
     if (!c.ok) { el.textContent = `Can't fire: ${c.why}.`; return; }
+    if (V.mode === 'rapid' || V.mode === 'burst') {
+      const atkDis = SR.rollMode({ adv: c.adv, dis: c.dis }, 'normal') === 'dis';
+      el.textContent = `${c.feet} ft, in its ${c.arc} arc · ${V.mode} (${SR.shotCost(w, V.mode)} shots): ${V.mode === 'burst' ? 'every ship in a 150-ft cube makes' : 'a'} Dexterity save DC ${8 + SR.attackBonusOf(ship, w, pb)}, damage ${SR.damageExpr(ship, w, V.mode === 'rapid') || '—'}, none on a success${atkDis ? ' · they save with advantage' : ''}`;
+      return;
+    }
     const how = c.kind === 'attack' ? `attack ${sign(SR.attackBonusOf(ship, w, pb))}, damage ${SR.damageExpr(ship, w, false) || '—'}` : `Dexterity save DC ${SR.saveDcOf(ship, w, pb)}, damage ${SR.damageExpr(ship, w, false) || '—'}`;
     const mods = [...c.adv.map((x) => '+' + x), ...c.dis.map((x) => '−' + x)];
     el.textContent = `${c.feet} ft, in its ${c.arc} arc · ${how}${mods.length ? ` · ${c.kind === 'attack' ? 'advantage/disadvantage' : 'their save'}: ${mods.join(', ')}` : ''}`;
@@ -166,7 +185,8 @@
     if (a === 'end') { if (confirm('End ship combat?')) H.act('space.end', {}); return; }
     if (!t) return;
     if (a === 'turn') return H.act('space.place', { id: t.id, x: t.x, y: t.y, f: (t.f + (+b.dataset.d) + 8) % 8 });
-    if (a === 'fire') return H.act('space.fire', { id: t.id, target: V.target, weapon: V.weapon, crew: V.crew, mode: H.rollModeFromEvent(e) });
+    if (a === 'fire') return H.act('space.fire', { id: t.id, target: V.target, weapon: V.weapon, crew: V.crew, fireMode: V.mode, mode: H.rollModeFromEvent(e) });
+    if (a === 'cool' || a === 'reload') return H.act('ship.' + a, { id: t.id, weapon: V.weapon });
     if (a === 'helm') return H.act('ship.helm', { id: t.id, what: b.dataset.what });
     if (a === 'ram' || a === 'interfere') return H.act('space.' + a, { id: t.id, target: V.target, crew: V.crew });
     if (a === 'direct') return H.act('ship.direct', { id: t.id });
@@ -175,7 +195,8 @@
   });
   document.addEventListener('change', (e) => {
     const el = $('#space'); if (!el || !el.contains(e.target)) return;
-    if (e.target.id === 'spWeapon') { V.weapon = +e.target.value || 0; return preview(); }
+    if (e.target.id === 'spWeapon') { V.weapon = +e.target.value || 0; e.target.blur(); return render(); }
+    if (e.target.id === 'spMode') { V.mode = e.target.value; return preview(); }
     if (e.target.id === 'spTarget') { V.target = e.target.value; return preview(); }
     if (e.target.id === 'spCrew') { V.crew = +e.target.value || 0; return preview(); }
     const t = tokById(V.sel), k = e.target.dataset.spt;

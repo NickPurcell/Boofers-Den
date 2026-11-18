@@ -369,6 +369,26 @@ test("level up: GM grants to everyone or one character; players level their own"
   assert.ok(st.chat.some((m) => m.roll && /Rook: level 5 hit points \(d10\)/.test(m.roll.label)));
 });
 
+test("level up: Expertise goes on up to two skills the character is proficient in (audit 2.9)", async () => {
+  const { gm, p1 } = await table();
+  const ved = (await p1.act("char.save", { char: { name: "Ved", classes: [{ name: "Operative", level: 5 }], abilities: { con: 12 }, hp: { max: 30, current: 30 },
+    skills: { stealth: 1, perception: 1, deception: 1, insight: 2 } } })).data.id;
+  await gm.act("levelup.grant", { charIds: [ved] });
+  const up = (expertise) => p1.act("levelup.apply", { charId: ved, className: "Operative", hpMode: "average", expertise });
+  assert.equal((await up(["stealth", "perception", "deception"])).code, 400, "two at a time");
+  assert.equal((await up(["athletics"])).code, 400, "not proficient");
+  assert.equal((await up(["insight"])).code, 400, "already expertise");
+  assert.equal((await up(["__proto__"])).code, 400);
+  assert.equal((await up(["constructor"])).code, 400);
+  let st = (await p1.poll()).data.state;
+  assert.equal(st.characters[ved].classes[0].level, 5, "a refused level changes nothing");
+  assert.equal(st.levelUps[ved].count, 1);
+  assert.equal((await up(["stealth", "perception", "stealth"])).code, 200, "a repeat counts once");
+  st = (await p1.poll()).data.state;
+  assert.deepEqual(st.characters[ved].skills, { stealth: 2, perception: 2, deception: 1, insight: 2 });
+  assert.match(st.chat.at(-1).text, /expertise: stealth, perception/);
+});
+
 test("level up: the GM can level an absent player's character, and cancel a grant", async () => {
   const { gm, p1 } = await table();
   const kira = (await p1.act("char.save", { char: { name: "Kira", classes: [{ name: "Consular", level: 1 }], abilities: { con: 10 }, hp: { max: 6, current: 6 } } })).data.id;
@@ -2473,4 +2493,18 @@ test("more than one campaign (12.9): the GM keeps several, the table is on one, 
   assert.equal((await gm.post("campaign", { do: "switch", code: "__proto__" })).code, 400);
   for (let i = 0; i < 4; i++) assert.equal((await gm.post("campaign", { do: "create", name: "c" + i })).code, 200);
   assert.equal((await gm.post("campaign", { do: "create", name: "too many" })).code, 400, "five at most");
+});
+
+test("campaign image sets: a campaign saved before the sets existed is still counted (#208 review)", async () => {
+  const { gm } = await table();
+  const shared = (await gm.post("upload", { purpose: "bg", dataUrl: PNG_URL })).data.url;
+  await gm.act("map.bg", { url: shared });
+  await db.del(S.K.refs("main"));   // as if "main" were last saved before the sets
+  const code = (await gm.post("campaign", { do: "create", name: "B" })).data.code;
+  await gm.post("campaign", { do: "switch", code });
+  await gm.act("map.bg", { url: shared });
+  const up2 = await gm.post("upload", { purpose: "bg", dataUrl: PNG_URL.replace(/A=*$/, "B") });
+  await gm.act("map.bg", { url: up2.data.url });   // B lets go of the shared image
+  assert.equal((await gm.call("GET", { img: shared.split("=")[1] })).code, 200, "main still uses it, so it stays");
+  assert.ok((await db.smembers(S.K.refs("main"))).includes(shared), "and main's set was rebuilt once");
 });

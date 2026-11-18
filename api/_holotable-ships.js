@@ -37,7 +37,7 @@ function boostBonus(camp, ship, crewIndex) {
 // During ship combat on the space map, a player's ship takes its actions on its own turn (SotG ch. 9: one Helm action
 // a turn; Boost once a turn; Patch, Interfere and Direct on the ship's turn). The GM stays free, to run enemies and fix
 // things. Outside ship combat (the sheet between fights) nothing is turn-bound.
-const TURN_ACTIONS = new Set(["ship.helm", "ship.direct", "ship.patch", "ship.boost", "ship.regen"]);
+const TURN_ACTIONS = new Set(["ship.helm", "ship.direct", "ship.patch", "ship.boost", "ship.regen", "ship.cool", "ship.reload"]);   // Cool is an action too
 function onTurn(camp, gm, ship) {
   const sp = camp.space;
   if (gm || !sp || !sp.active || !Array.isArray(sp.order)) return true;
@@ -46,7 +46,7 @@ function onTurn(camp, gm, ship) {
 }
 
 const TYPES = new Set(["ship.damage", "ship.restore", "ship.points", "ship.dsave", "ship.stabilize", "ship.condition", "ship.reset",
-  "ship.turn", "ship.power", "ship.poweruse", "ship.dice", "ship.boost", "ship.regen", "ship.helm", "ship.patch", "ship.direct"]);
+  "ship.turn", "ship.power", "ship.poweruse", "ship.dice", "ship.boost", "ship.regen", "ship.helm", "ship.patch", "ship.direct", "ship.cool", "ship.reload"]);
 const handles = (type) => TYPES.has(type);
 
 // On a sheet save: the fight state and the current hull and shield points stay as stored (they change only through
@@ -204,6 +204,20 @@ function apply(camp, cid, gm, type, p, h) {
       put(s); say([`${playerName(camp, cid)} directs ${ship.name}'s gunners: its next attack has advantage.`]);
       return {};
     }
+    case "ship.cool": case "ship.reload": {   // cool an overheated weapon (an action), or reload one (a minute per round of ammunition)
+      const weapons = Array.isArray(ship.weapons) ? ship.weapons : [], wi = int(p.weapon, -1);
+      if (!(wi >= 0 && wi < weapons.length)) throw new Invalid("No such weapon.");
+      const s = JSON.parse(JSON.stringify(ship)), w = s.weapons[wi];
+      if (type === "ship.cool") {
+        if (SR.heatCap(w) === null || !int(w.heat)) throw new Invalid(`${w.name} doesn't need cooling.`);
+        w.heat = 0; put(s); say([`${ship.name} cools its ${w.name}.`]);
+      } else {
+        const n = SR.reloadOf(w);
+        if (n === null) throw new Invalid(`${w.name} doesn't reload.`);
+        w.ammo = n; put(s); say([`${ship.name} reloads its ${w.name}: ${n} rounds.`]);
+      }
+      return {};
+    }
     case "ship.reset": {    // the GM undoes a destruction (a mistake, or a story reason): saves cleared, not destroyed
       if (!gm) throw new Forbidden("GM only");
       const s = JSON.parse(JSON.stringify(ship));
@@ -225,6 +239,7 @@ const cleanFields = (sh) => ({ status: SR.cleanStatus(sh.status), reactor: pick(
 // a weapon row's fields this subsystem owns: its category (primary to quaternary), its mount (a fixed arc, or a turret;
 // "" means not set, and fires in any arc), and its ammunition ("" means not counted)
 const cleanWeapon = (w) => ({ cat: SR.WEAPON_CATS.includes(w.cat) ? w.cat : "", arc: SR.MOUNTS.includes(w.arc) ? w.arc : "",
-  ammo: w.ammo === "" || w.ammo === null || w.ammo === undefined || !Number.isFinite(parseInt(w.ammo, 10)) ? "" : clamp(int(w.ammo), 0, 999) });
+  ammo: w.ammo === "" || w.ammo === null || w.ammo === undefined || !Number.isFinite(parseInt(w.ammo, 10)) ? "" : clamp(int(w.ammo), 0, 999),
+  heat: clamp(int(w.heat), 0, 99) });   // shots since it was last cooled (overheat N)
 
 module.exports = { handles, apply, onTurn, keepStatus, cleanStatus: SR.cleanStatus, cleanFields, cleanWeapon, boostBonus, crewPb };
