@@ -3503,3 +3503,32 @@ test("class pools in the world (#164): a sheet that hasn't added its class's res
   const w2 = E.buildWorld({ characters: { c1: kept }, entries: [{ id: "e1", name: "Fenn", charId: "c1" }], active: true, turn: 0, tokens: [{ id: "t1", x: 0, y: 0 }], unitTokens: { e1: "t1" } }, R);
   assert.equal(w2.units.e1.pools.superiority.used, 2, "a stored pool keeps its count");
 });
+
+/* ---------------------------------------------------------------- #163's follow-up: a missed power attack raises Riposte or Return Fire */
+test("Riposte and Return Fire off a power: a power's attack roll that misses one who knows them gives the same prompt", () => {
+  const ch = consular();
+  const pw = (o) => E.abilitiesOf(ch, R, { "mind shove": Object.assign({ use: "action", attack: { bonus: "power" }, damage: [{ dice: "1d6", type: "force" }] }, o) })[0];
+  const sup = (used) => ({ superiority: { key: "superiority", name: "Superiority dice", max: 3, die: "d6", used, refill: "short" } });
+  const ft = (o) => unit(Object.assign({ id: "ft", name: "Fenn", side: "npc", x: 1, y: 0, ac: 18, hp: 40, maxHp: 40, pools: sup(0), maneuvers: { known: ["riposte", "return-fire"], dc: { physical: 14, mental: 12, general: 14 } } }, o));
+  const me = () => unit({ id: "cass", name: "Cass", side: "pc", x: 0, y: 0, pools: Object.fromEntries(E.resourcesOf(ch, R).map((x) => [x.key, x])) });
+  const use = (ab, fenn, d) => E.apply(world([me(), fenn], "cass"), { type: "use", unit: "cass", ability: ab, target: "ft" }, d.roll);
+  // a melee power (in reach) that misses: a riposte
+  let r = use(pw({ reach: 5 }), ft(), dice({ total: 8, nat: 6 }));
+  assert.ok(r.ok, r.why);
+  assert.deepEqual(r.reactions, [{ reactor: "ft", against: "cass", kind: "riposte" }]);
+  // a ranged power that misses: return fire
+  r = use(pw({ reach: null, range: [30, 60] }), ft({ x: 4 }), dice({ total: 8, nat: 6 }));
+  assert.deepEqual(r.reactions, [{ reactor: "ft", against: "cass", kind: "return-fire" }]);
+  // a hit, no die left, not knowing it: none
+  assert.deepEqual(use(pw({ reach: 5 }), ft(), dice({ total: 25, nat: 19 }, { total: 3 })).reactions, []);
+  assert.deepEqual(use(pw({ reach: 5 }), ft({ pools: sup(3) }), dice({ total: 8, nat: 6 })).reactions, [], "no dice left");
+  assert.deepEqual(use(pw({ reach: 5 }), ft({ maneuvers: { known: ["trip-attack"], dc: {} } }), dice({ total: 8, nat: 6 })).reactions, [], "doesn't know it");
+  // a save power never asks for one
+  assert.deepEqual(use(pw({ attack: null, save: { ability: "str", dc: 13 }, range: [30, 30] }), ft({ x: 3, saves: { str: 0 } }), dice({ total: 20, nat: 20 })).reactions, []);
+  // the prompt answered: Fenn's riposte against Cass
+  r = use(pw({ reach: 5 }), ft(), dice({ total: 8, nat: 6 }));
+  const wpn = Object.assign({}, blade, { weapon: true });
+  const rr = E.react(r.world, { kind: "riposte", reactor: "ft", against: "cass", attack: wpn }, dice({ total: 20, nat: 15 }, { total: 9 }).roll);
+  assert.ok(rr.ok, rr.why);
+  assert.match(rr.log[0].text, /Fenn makes a riposte against Cass/);
+});
