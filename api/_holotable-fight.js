@@ -53,7 +53,7 @@ function state(camp) {
     spent: Object.fromEntries(Object.entries(plainObj(f.spent)).filter(([k, v]) => ID.test(k) && v && typeof v === "object")
       .map(([k, v]) => [k, { key: str(v.key, 40), move: clamp(int(v.move), 0, 1000), action: clamp(int(v.action), 0, 9), bonus: clamp(int(v.bonus), 0, 9), reaction: clamp(int(v.reaction), 0, 9), diag: v.diag ? 1 : 0,
         dash: clamp(int(v.dash), 0, 9), disengage: v.disengage ? 1 : 0, dodge: v.dodge ? 1 : 0, ds: v.ds ? 1 : 0, sneak: v.sneak ? 1 : 0, double: v.double ? 1 : 0,
-        atk: clamp(int(v.atk), 0, 9), atkMax: clamp(int(v.atkMax), 0, 9), lt: clamp(int(v.lt), 0, 41), dw: clamp(int(v.dw), 0, 41), off: clamp(int(v.off), 0, 9), mv: clamp(int(v.mv), 0, 1023), surge: v.surge ? 1 : 0 }])),
+        atk: clamp(int(v.atk), 0, 9), atkMax: clamp(int(v.atkMax), 0, 9), lt: clamp(int(v.lt), 0, 41), dw: clamp(int(v.dw), 0, 41), off: clamp(int(v.off), 0, 9), mv: clamp(int(v.mv), 0, 1023), surge: v.surge ? 1 : 0, ma: v.ma ? 1 : 0, mab: clamp(int(v.mab), 0, 2) }])),
     // reactions waiting for an answer: an opportunity attack someone may take (the turn waits until it's answered)
     pending: (Array.isArray(f.pending) ? f.pending : []).slice(0, 12).map(cleanPending).filter(Boolean),
     // a creature's limited abilities from its stat block (audit 9.5, issue #76): recharge, per day, legendary actions
@@ -130,8 +130,8 @@ function cleanSnap(x) {
       .map(([id, ec, cc]) => [id, (Array.isArray(ec) ? ec : []).slice(0, 20).map((c) => str(c, 30)), Array.isArray(cc) ? cc.slice(0, 20).map((c) => str(c, 30)) : null]),
     chars: (Array.isArray(x.chars) ? x.chars : []).slice(0, 60).filter((c) => Array.isArray(c) && typeof c[0] === "string" && c[1] && typeof c[1] === "object")
       .map(([id, r]) => [id, { resources: E.cleanResources(r.resources),
-        force: Object.assign({ max: plainObj(r.force).max == null || plainObj(r.force).max === "" ? "" : num(plainObj(r.force).max, 0, 999), used: num(plainObj(r.force).used, 0, 999) }, cleanHigh(plainObj(r.force).high)),
-        tech: Object.assign({ max: plainObj(r.tech).max == null || plainObj(r.tech).max === "" ? "" : num(plainObj(r.tech).max, 0, 999), used: num(plainObj(r.tech).used, 0, 999) }, cleanHigh(plainObj(r.tech).high)),
+        force: Object.assign({ max: plainObj(r.force).max == null || plainObj(r.force).max === "" ? "" : num(plainObj(r.force).max, 0, 999), used: num(plainObj(r.force).used, 0, 999) }, num(plainObj(r.force).temp, 0, 999) ? { temp: num(plainObj(r.force).temp, 0, 999) } : {}, cleanHigh(plainObj(r.force).high)),
+        tech: Object.assign({ max: plainObj(r.tech).max == null || plainObj(r.tech).max === "" ? "" : num(plainObj(r.tech).max, 0, 999), used: num(plainObj(r.tech).used, 0, 999) }, num(plainObj(r.tech).temp, 0, 999) ? { temp: num(plainObj(r.tech).temp, 0, 999) } : {}, cleanHigh(plainObj(r.tech).high)),
         hitDiceUsed: R.cleanHitDiceUsed(r.hitDiceUsed),   // the sheet's own cleaner: per die size or an old number
         deathSaves: { s: num(plainObj(r.deathSaves).s, 0, 3), f: num(plainObj(r.deathSaves).f, 0, 3) } }]),
   };
@@ -279,12 +279,13 @@ function writeBack(camp, cid, before, after, G) {
     // points spent by an ability go back where the sheet keeps them
     if (a.charId && camp.characters[a.charId]) {
       for (const [key, pool] of Object.entries(a.pools || {})) {
-        if (!b.pools[key] || b.pools[key].used === pool.used) continue;
+        if (!b.pools[key] || (b.pools[key].used === pool.used && (b.pools[key].temp || 0) === (pool.temp || 0))) continue;
+        // force and tech take their temporary points too (#190): spent before the pool's own
         const ch = camp.characters[a.charId];
-        let next = E.setPoolUsed(ch, key, pool.used, R);
+        let next = E.setPoolUsed(ch, key, pool.used, R, pool.temp);
         if (next === ch && R.withClassResources) {   // a class pool the sheet hasn't stored yet (the world fills them in): store it, then spend
           ch.resources = E.cleanResources(R.withClassResources(ch));
-          next = E.setPoolUsed(ch, key, pool.used, R);
+          next = E.setPoolUsed(ch, key, pool.used, R, pool.temp);
         }
         Object.assign(ch, { resources: next.resources, force: next.force, tech: next.tech, hitDiceUsed: next.hitDiceUsed });
       }
@@ -1012,7 +1013,7 @@ function apply(camp, cid, gm, type, p, G) {
       if (tch && (tch.features || []).some((x) => x && /^(riposte|return fire)$/i.test(String(x.name || "").trim()))) seedSup(tch);
       // Rage and Action Surge count their uses: a sheet from before #108 gets its class's resource from the class table first
       const POOL_KEYS = new Map([["rage", "rage"], ["surge", "action-surge"]]);   // a Map, so a key named like Object's own is no pool (#164 review)
-      const poolKey = type === "fight.common" ? POOL_KEYS.get(String(p.key || "")) || null : null;
+      const poolKey = type === "fight.common" ? POOL_KEYS.get(String(p.key || "")) || null : type === "fight.attack" && p.martial ? "focus" : null;   // ...and Flurry of Blows, focus
       const rager = poolKey && cur.charId && charOf(camp, cur.charId);
       if (rager && R.withClassResources && !(rager.resources || []).some((r) => r && r.key === poolKey)) {
         const withRage = E.cleanResources(R.withClassResources(rager));
@@ -1030,7 +1031,7 @@ function apply(camp, cid, gm, type, p, G) {
       else if (type === "fight.end") act = { type: "end", unit: cur.id };
       else if (type === "fight.stand") act = { type: "stand", unit: cur.id };
       else if (type === "fight.douse") act = { type: "douse", unit: cur.id, target: idOr(p.target) };
-      else if (type === "fight.common") act = { type: "common", unit: cur.id, key: String(p.key || ""), target: idOr(p.target) };   // Help names its target (#144)
+      else if (type === "fight.common") act = { type: "common", unit: cur.id, key: String(p.key || ""), target: idOr(p.target), asBonus: !!p.asBonus };   // a monk's bonus Dash or Disengage   // Help names its target (#144)
       else if (type === "fight.grapple" || type === "fight.shove") act = { type: type.slice(6), unit: cur.id, target: idOr(p.target), push: !!p.push, multi: gm && !cur.charId ? clamp(int(p.multi, 1), 1, 6) : 1 };
       else if (type === "fight.escape") act = { type: "escape", unit: cur.id, skill: p.skill === "athletics" ? "athletics" : "acrobatics" };
       else if (type === "fight.release") act = { type: "release", unit: cur.id, target: idOr(p.target) };
@@ -1057,7 +1058,7 @@ function apply(camp, cid, gm, type, p, G) {
           add: { fes: clamp(int(p.add && p.add.fes), 0, 20), double: !!(p.add && p.add.double),
             maneuver: p.add && typeof p.add.maneuver === "string" && /^[a-z-]{3,30}$/.test(p.add.maneuver) ? p.add.maneuver : "" }, twoHands: !!p.twoHands,   // a maneuver by name; the engine checks the sheet knows it   // only how many, never the dice: the engine works those out
           multi: gm && !cur.charId ? clamp(int(p.multi, 1), 1, 6) : 1,
-          offhand: !!cur.charId && !!p.offhand };   // Two- or Double-Weapon Fighting (5.8): the engine checks it may   // a creature's Multiattack (#139): the GM's screen reads it from the stat block
+          offhand: !!cur.charId && !!p.offhand, martial: !!cur.charId && !!p.martial };   // Two- or Double-Weapon Fighting (5.8): the engine checks it may   // a creature's Multiattack (#139): the GM's screen reads it from the stat block
       }
       const limited = act.type === "attack" && !cur.charId && p.attack && p.attack.res && ((f.npcres || {})[cur.id] || []).find((x) => x.key === String(p.attack.res));
       if (limited && limited.used >= limited.max) throw new G.Invalid(`${limited.name} is spent${limited.recharge ? ` until it recharges (${limited.recharge}-6 at the start of ${cur.name}'s turn)` : ""}.`);

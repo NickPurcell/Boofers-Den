@@ -69,7 +69,10 @@
       const w = world(), me = w && w.units[u.id];
       const offs = me ? weapons.map((a) => ({ a, o: E.offhandOf(w, me, a) })).filter((x) => x.o.spec)
         .map(({ a, o }) => Object.assign({}, o.spec, { key: 'off:' + a.key, base: a.key, offhand: o.kind })) : [];
-      return weapons.concat(offs, powers, MANEUVERS);
+      // a monk's Martial Arts bonus strike, then Flurry of Blows (#67)
+      const mas = me ? weapons.filter((a) => a.unarmed).map((a) => ({ a, o: E.martialOf(w, me, a) })).filter((x) => x.o.spec)
+        .map(({ a, o }) => Object.assign({}, o.spec, { key: 'ma:' + a.key, base: a.key, martialBonus: true, flurry: !!o.flurry })) : [];
+      return weapons.concat(offs, mas, powers, MANEUVERS);
     }
     if (!gm()) return [];
     const known = UI.npc[u.id];
@@ -228,7 +231,7 @@
       return;
     }
     const r = spec.power ? await send('fight.use', Object.assign({ ability: spec.key, upcast: UI.upcast || 0, adv: UI.adv, dis: UI.dis }, spec.power.area ? { point: UI.aim } : { target: targetId }))
-      : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.base || spec.key : specOut(spec), offhand: !!spec.offhand, no: UI.noRiders || [], add: UI.addRiders || {}, twoHands: !!UI.twoHands,
+      : await send('fight.attack', { target: targetId, adv: UI.adv, dis: UI.dis, attack: u.charId ? spec.base || spec.key : specOut(spec), offhand: !!spec.offhand, martial: !!spec.martialBonus, no: UI.noRiders || [], add: UI.addRiders || {}, twoHands: !!UI.twoHands,
         multi: u.charId ? undefined : (UI.npc[u.id] || {}).multi || 1 });
     if (r) { UI.armed = null; UI.target = null; UI.aim = null; UI.adv = UI.dis = false; UI.upcast = 0; UI.noRiders = []; UI.addRiders = {}; render(); }
   }
@@ -378,7 +381,7 @@
     // the current character's resources (its owner and the GM): use one, or add one
     if (f.active && u && u.charId && (mine || gm())) {
       const pools = Object.values(u.pools || {}).filter((r) => r.key !== 'hitdice');
-      html += `<div class="ct-row ct-pools">${pools.map((r) => `<button class="ct-chip ct-pool ${r.used >= r.max ? 'spent' : ''}" data-ct="pool" data-key="${esc(r.key)}" title="${esc(r.name)}: ${r.max - r.used} of ${r.max} left${r.refill === 'short' ? ', back on a short or long rest' : r.refill === 'long' ? ', back on a long rest' : ''}">${esc(r.name)} ${r.max - r.used}/${r.max}${r.die ? ' ' + esc(r.die) : ''}</button>`).join('')}
+      html += `<div class="ct-row ct-pools">${pools.map((r) => `<button class="ct-chip ct-pool ${r.used >= r.max ? 'spent' : ''}" data-ct="pool" data-key="${esc(r.key)}" title="${esc(r.name)}: ${r.max - r.used} of ${r.max} left${r.refill === 'short' ? ', back on a short or long rest' : r.refill === 'long' ? ', back on a long rest' : ''}">${esc(r.name)} ${r.max - r.used}/${r.max}${r.temp ? ` +${r.temp}` : ''}${r.die ? ' ' + esc(r.die) : ''}</button>`).join('')}
         <button class="btn tiny ghost" data-ct="addres" title="Add a resource with a maximum (uses, or a pool of dice)">＋ Resource</button>
         ${gm() ? '<button class="btn tiny ghost" data-ct="senses" title="Every character\'s senses at a glance">👁 Senses</button>' : ''}
         <button class="btn tiny ghost" data-ct="defs" title="Damage resistances, immunities and vulnerabilities, and senses">🛡 ${(() => { const d = (f.defenses || {})[u.charId] || {}; const n = (d.resist || []).length + (d.immune || []).length + (d.vuln || []).length; return n ? `Defences (${n})` : 'Defences'; })()}</button></div>`;
@@ -390,11 +393,11 @@
       html += '<div class="ct-row ct-actions" role="group" aria-label="Attacks">';
       for (const a of atks) {
         const n = targets(a).length;
-        const slot = a.power ? a.power.use : a.offhand ? 'bonus' : 'action';
+        const slot = a.power ? a.power.use : a.offhand || a.martialBonus ? 'bonus' : 'action';
         const lim = !u.charId && a.res && ((f.npcRes || {})[u.id] || []).find((r) => r.key === a.res);
-        const slotSpent = (bud && slot !== 'free' && !bud[slot] && !a.offhand && !(slot === 'action' && !a.power && a.maneuver !== 'help' && bud.attacks)) || (lim && lim.used >= lim.max);   // a weapon attack: also the rest of an Attack action (#139)
+        const slotSpent = (bud && slot !== 'free' && !bud[slot] && !a.offhand && !a.martialBonus && !(slot === 'action' && !a.power && a.maneuver !== 'help' && bud.attacks)) || (lim && lim.used >= lim.max);   // a weapon attack: also the rest of an Attack action (#139)
         const pool = a.power && Object.entries(a.power.cost || {})[0];
-        const poorly = pool && (!u.pools[pool[0]] || u.pools[pool[0]].max - u.pools[pool[0]].used < pool[1]);
+        const poorly = pool && (!u.pools[pool[0]] || E.poolLeft(u.pools[pool[0]]) < pool[1]);   // temporary points count (#190)
         const off = slotSpent || !n || poorly;
         const why = slotSpent ? `Your ${slot === 'bonus' ? 'bonus action' : slot} is used this turn` : poorly ? `Not enough ${pool[0] === 'force' ? 'force' : pool[0] === 'tech' ? 'tech' : pool[0]} points` : !n ? 'Nothing in reach or range' : a.power && a.power.targets === 'self' ? 'Use it on yourself' : 'Pick a target on the map';
         const tag = a.maneuver ? (a.maneuver === 'help' ? '' : sgn(E.contestBonus(u, 'athletics'))) : a.power ? (a.power.attack ? sgn(a.power.attack.bonus) : a.power.save ? `DC ${a.power.save.dc}` : '') : sgn(a.bonus);
@@ -404,6 +407,8 @@
       for (const c of E.COMMON) {
         const used = bud && !bud[c.use];
         html += `<button class="btn small ghost ct-common" data-ct="common" data-key="${esc(c.key)}" ${used ? 'disabled' : ''} title="${esc(used ? `Your ${c.use === 'bonus' ? 'bonus action' : c.use} is used this turn` : c.hint)}">${esc(c.name)}</button>`;
+        // a monk's Dash or Disengage as a bonus action (Martial Arts, #67)
+        if (u.monk && (c.key === 'dash' || c.key === 'disengage')) html += `<button class="btn small ghost ct-common" data-ct="common" data-key="${esc(c.key)}" data-bonus="1" ${bud && !bud.bonus ? 'disabled' : ''} title="Martial Arts: as a bonus action">${esc(c.name)} (bonus)</button>`;
       }
       const surge = (u.pools || {})['action-surge'];   // a Fighter's Action Surge (#67): free, once a turn, one more action
       if (surge) {
@@ -483,7 +488,7 @@
     if (k === 'douse') return send('fight.douse', { target: el.dataset.id });
     if (k === 'escape') { const u = cur(); return send('fight.escape', { skill: u && E.contestBonus(u, 'athletics') > E.contestBonus(u, 'acrobatics') ? 'athletics' : 'acrobatics' }); }
     if (k === 'release') return send('fight.release', { target: el.dataset.id });
-    if (k === 'common') return send('fight.common', { key: el.dataset.key });
+    if (k === 'common') return send('fight.common', Object.assign({ key: el.dataset.key }, el.dataset.bonus ? { asBonus: true } : {}));
     if (k === 'deathsave') return send('fight.deathsave', {});
     if (k === 'legend') return send('fight.npcres', { id: el.dataset.unit, op: 'use', key: 'legendary', n: +el.dataset.n || 1 });
     if (k === 'npcres') {

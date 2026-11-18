@@ -25,7 +25,7 @@ const int = (v, d = 0) => { const n = parseInt(v, 10); return Number.isFinite(n)
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const plain = (o) => (o && typeof o === "object" && !Array.isArray(o) ? o : {});
 
-const TYPES = new Set(["space.on", "space.size", "space.place", "space.remove", "space.token", "space.init", "space.next", "space.prev", "space.end", "space.fire"]);
+const TYPES = new Set(["space.on", "space.size", "space.place", "space.remove", "space.token", "space.init", "space.next", "space.prev", "space.end", "space.fire", "space.ram", "space.interfere"]);
 const handles = (type) => TYPES.has(type);
 
 // the space map's state, with its shape checked every time (a backup restore can bring anything back)
@@ -99,7 +99,17 @@ function apply(camp, cid, gm, type, p, h) {
         return {};
       }
       const from = sp.tok[i];
-      if (s.id === curId()) sp.moved[s.id] = (sp.moved[s.id] || 0) + SR.moveCost(s, from, to);
+      // in ship combat a player moves their ship on its own turn
+      if (!Ships.onTurn(camp, gm, s)) throw new Invalid(`Not ${shownOf(s, from)}'s turn.`);
+      if (s.id === curId()) {
+        let cost = SR.moveCost(s, from, to);
+        const st = SR.statusOf(s), steps = SR.turnSteps(from.f, to.f);
+        if (st.fx.hardTurn && steps > 0 && steps <= 2) {   // Hard Turn: this turn of up to 90 degrees costs nothing
+          cost -= SR.turnCost(s, from.f, to.f);
+          st.fx.hardTurn = false; putShip(Object.assign({}, s, { status: st }));
+        }
+        sp.moved[s.id] = (sp.moved[s.id] || 0) + cost;
+      }
       sp.tok[i] = Object.assign({}, from, to);
       return { moved: sp.moved[s.id] || 0 };
     }
@@ -165,42 +175,80 @@ function apply(camp, cid, gm, type, p, h) {
       if (s0.id === t0.id) throw new Invalid("A ship can't fire at itself.");
       const a = sp.tok.find((x) => x.id === s0.id), ta = sp.tok.find((x) => x.id === t0.id);
       if (!a || !ta || (!gm && ta.hidden)) throw new Invalid("Both ships need to be on the space map.");
+      if (!Ships.onTurn(camp, gm, s0)) throw new Invalid(`Not ${shownOf(s0, a)}'s turn.`);
       if (SR.isDisabled(SR.statusOf(s0)) || SR.isLost(SR.statusOf(s0))) throw new Invalid(`${shownOf(s0, a)} can't take actions.`);
       const weapons = Array.isArray(s0.weapons) ? s0.weapons : [], wi = int(p.weapon, -1);
       if (!(wi >= 0 && wi < weapons.length)) throw new Invalid("No such weapon.");
       const w = weapons[wi], chk = SR.fireCheck(s0, a, w, t0, ta);
       if (!chk.ok) throw new Invalid(`${w.name} can't fire: ${chk.why}.`);
-      if (typeof w.ammo === "number" && w.ammo <= 0) throw new Invalid(`${w.name} is out of ammunition.`);
+      // the firing mode (single, rapid, burst) and what it costs in heat or ammunition
+      const modes = SR.weaponModes(w), fm = modes.includes(p.fireMode) ? p.fireMode : modes[0], cost = SR.shotCost(w, fm), cap = SR.heatCap(w);
+      if (typeof w.ammo === "number" && w.ammo < cost) throw new Invalid(w.ammo <= 0 ? `${w.name} is out of ammunition.` : `${w.name} has ${w.ammo} shots left; ${fm} takes ${cost}.`);
+      if (cap !== null && int(w.heat) + cost > cap) throw new Invalid(`${w.name} is too hot (${int(w.heat)} of ${cap}): cool it first (an action).`);
       const s = JSON.parse(JSON.stringify(s0)), sw = s.weapons[wi];
-      if (typeof sw.ammo === "number") sw.ammo -= 1;
+      if (typeof sw.ammo === "number") sw.ammo -= cost;
+      if (cap !== null) sw.heat = int(sw.heat) + cost;
       const pb = Ships.crewPb(camp, s0, p.crew), A = shownOf(s0, a), T = shownOf(t0, ta);
+      // jpesus (#65, 17 Nov): while a GM ship's token is off the players' map, its lines go to the GM only; a hit
+      // still shows its damage on the party's own ship sheet. Here: every line and roll of this shot, including the
+      // party ship's save and its damage lines, when either token is hidden.
+      const secret = !!a.hidden || !!ta.hidden;
       // A roll in the chat. One about an enemy ship (the GM's) goes to the GM only, and carries no sender id: a message's
       // sender always receives it, and the player who fired must not read the enemy's name. The result lines below are
       // everyone's, with the names players may read.
-      const roll2 = (roll, expr, label, kind, gmOnly) => addChat(camp, Object.assign({ from: gmOnly ? "Ship combat (GM only)" : playerName(camp, cid),
-        roll: Object.assign({}, roll, { expr, label: str(label, 120), kind }) }, gmOnly ? { to: ["@gm"], private: true } : { fromId: cid }));
+      const roll2 = (roll, expr, label, kind, gmOnly0) => { const gmOnly = gmOnly0 || secret; return addChat(camp, Object.assign({ from: gmOnly ? "Ship combat (GM only)" : playerName(camp, cid),
+        roll: Object.assign({}, roll, { expr, label: str(label, 120), kind }) }, gmOnly ? { to: ["@gm"], private: true } : { fromId: cid })); };
       const rollMsg = (roll, expr, label, kind) => roll2(roll, expr, label, kind, !!s0.hidden);
-      const line = (text, gmOnly) => addChat(camp, Object.assign({ system: true, text: str(text, 400) }, gmOnly ? { to: ["@gm"], private: true } : {}));
+      const line = (text, gmOnly) => addChat(camp, Object.assign({ system: true, text: str(text, 400) }, gmOnly || secret ? { to: ["@gm"], private: true } : {}));
       const d20 = (mode, bonus) => (mode === "adv" ? "2d20kh1" : mode === "dis" ? "2d20kl1" : "1d20") + (bonus >= 0 ? "+" : "") + bonus;
       const why = (x) => (x.length ? ` [${x.join(", ")}]` : "");
-      // the damage roll: advantage after Boost Weapons (two rolls, the higher kept), which it then uses up
-      const rollDamage = (crit) => {
+      // the damage roll: advantage after Boost Weapons (two rolls, the higher kept), which it then uses up; crit (or a
+      // rapid volley) rolls the dice twice
+      const rollDamage = (crit, tag) => {
         const expr = SR.damageExpr(s0, w, crit);
         if (!expr) return { total: 0, expr: "" };
         let r = rollDice(expr);
         if (s.status && s.status.boost && s.status.boost.weapons) { const r2 = rollDice(expr); if (r2.total > r.total) r = r2; s.status.boost.weapons = false; }
-        rollMsg(r, expr, `${s0.hidden ? s0.name : A}: ${w.name} damage${crit ? " (critical)" : ""}`, "damage");
+        rollMsg(r, expr, `${s0.hidden ? s0.name : A}: ${w.name} damage${tag ? ` (${tag})` : crit ? " (critical)" : ""}`, "damage");
         return { total: Math.max(0, r.total), expr };
       };
-      const hurt = (amount, crit) => {
-        const r = SR.takeDamage(t0, amount, w.type, { crit });
+      const hurtShip = (ship, amount, crit, tok) => {
+        const r = SR.takeDamage(shipOf(ship.id), amount, w.type, { crit });
         putShip(r.ship);
-        for (const l of r.log) line(l, !!t0.hidden);   // the target's hull and shields: the GM's for an enemy ship
+        for (const l of r.log) line(l, !!ship.hidden || !!(tok && tok.hidden));   // its hull and shields: the GM's for an enemy ship or a hidden token
         return r;
+      };
+      const hurt = (amount, crit) => hurtShip(t0, amount, crit);
+      // a ship's Dexterity save against this weapon: its own bonus, its conditions, and what the shot gives it
+      const dexSave = (ship, tok, dc, adv, dis) => {
+        const fx = SR.rollEffects(ship, "save", "dex"), name = shownOf(ship, tok), unseen = !!(tok && tok.hidden);
+        if (fx.fail.length) { line(`${name} fails it automatically (${fx.fail.join(", ")}).`, unseen); return false; }
+        const mode = SR.rollMode({ adv: [...adv, ...fx.adv], dis: [...dis, ...fx.dis] }, "normal");
+        const bonus = Math.floor((int((ship.abilities || {}).dex, 10) - 10) / 2) + ((ship.saves || {}).dex ? Ships.crewPb(camp, ship, 0) : 0);
+        const se = d20(mode, bonus), sr = rollDice(se);
+        roll2(sr, se, `${ship.hidden ? ship.name : name}: Dexterity save (DC ${dc})`, "save", !!ship.hidden || unseen);
+        return sr.total >= dc;
       };
       s.status = SR.statusOf(s);
       let result;
-      if (chk.kind === "attack") {
+      if (fm === "rapid" || fm === "burst") {
+        // rapid: the target saves or takes the damage plus its dice again; burst: every ship in a 150-ft cube on the
+        // target saves or takes the damage; nothing on a success. Where the attack roll would have had disadvantage, the
+        // ships save with advantage.
+        const dc = 8 + SR.attackBonusOf(s0, w, pb), atk = SR.rollMode({ adv: chk.adv, dis: chk.dis }, "normal");
+        const box = SR.burstBox(ta, SR.squaresOf(t0));
+        const hit = fm === "rapid" ? [[t0, ta]] : sp.tok.filter((x) => x.id !== s0.id && shipOf(x.id) && SR.inBox(box, x, SR.squaresOf(shipOf(x.id)))).map((x) => [shipOf(x.id), x]);
+        line(`${A} fires ${w.name} in ${fm} mode at ${T}: ${fm === "burst" ? "every ship in a 150-ft cube makes" : "a"} Dexterity save, DC ${dc}${atk === "dis" ? " (with advantage: the shot would have had disadvantage)" : ""}.`);
+        const dmg = rollDamage(fm === "rapid", fm);
+        result = { mode: fm, ships: [] };
+        for (const [ship, tok] of hit) {
+          const saved = dexSave(ship, tok, dc, atk === "dis" ? ["a shot at disadvantage"] : [], []);
+          // a ship in the cube whose token is off the players' map: its save and its lines are the GM's (jpesus, #65)
+          line(`${shownOf(ship, tok)} ${saved ? "saves: no damage" : `fails: ${dmg.total} ${SR.damageType(w.type)} damage`}.`, !!tok.hidden);
+          if (!saved && dmg.total) hurtShip(ship, dmg.total, false, tok);
+          if (gm || !tok.hidden) result.ships.push({ saved, damage: saved ? 0 : dmg.total });   // a player isn't told of a ship they can't see
+        }
+      } else if (chk.kind === "attack") {
         const mode = SR.rollMode({ adv: chk.adv, dis: chk.dis }, ["adv", "dis"].includes(p.mode) ? p.mode : "normal");
         const bonus = SR.attackBonusOf(s0, w, pb), expr = d20(mode, bonus), roll = rollDice(expr);
         const keen = typeof SR.weaponProp(w, "keen") === "number" ? SR.weaponProp(w, "keen") : 0;
@@ -208,10 +256,10 @@ function apply(camp, cid, gm, type, p, h) {
         rollMsg(roll, expr, `${s0.hidden ? s0.name : A} fires ${w.name} at ${s0.hidden ? t0.name : T}${why([...chk.adv, ...chk.dis])}`, "attack");
         if (!hit) { line(`${A} misses ${T} with ${w.name}.`); result = { hit: false }; }
         else {
-          const dmg = rollDamage(crit);
-          line(`${A} hits ${T} with ${w.name}${crit ? ", a critical" : ""}: ${dmg.total} ${SR.damageType(w.type)} damage.`);
-          hurt(dmg.total, crit);
-          result = { hit: true, crit, damage: dmg.total };
+          const dmg = rollDamage(crit), dealt = SR.afterDR(t0, dmg.total), dr = dmg.total - dealt;   // armor's damage reduction counts against attack rolls
+          line(`${A} hits ${T} with ${w.name}${crit ? ", a critical" : ""}: ${dealt} ${SR.damageType(w.type)} damage${dr > 0 ? ` (${dr} stopped by its armor)` : ""}.`);
+          hurt(dealt, crit);
+          result = { hit: true, crit, damage: dealt };
           // ionizing: a DC 13 Constitution save or ionized; a larger target has advantage
           if (SR.weaponProp(w, "ionizing") && !SR.isLost(SR.statusOf(shipOf(t0.id)))) {
             const t1 = shipOf(t0.id), cb = Math.floor((int((t1.abilities || {}).con, 10) - 10) / 2) + ((t1.saves || {}).con ? Ships.crewPb(camp, t1, 0) : 0);
@@ -225,24 +273,73 @@ function apply(camp, cid, gm, type, p, h) {
       } else {
         // tertiary weapons, and a Huge or larger ship's primary weapons: the target's Dexterity save against the
         // weapon's DC; half damage on a success
-        const dc = SR.saveDcOf(s0, w, pb), fx = SR.rollEffects(t0, "save", "dex");
-        const mode = SR.rollMode({ adv: chk.adv, dis: [...chk.dis, ...fx.dis] }, "normal");
-        const bonus = Math.floor((int((t0.abilities || {}).dex, 10) - 10) / 2) + ((t0.saves || {}).dex ? Ships.crewPb(camp, t0, 0) : 0);
+        const dc = SR.saveDcOf(s0, w, pb);
         line(`${A} fires ${w.name} at ${T}: a Dexterity save, DC ${dc}${why([...chk.adv, ...chk.dis])}.`);
-        let saved = false;
-        if (fx.fail.length) line(`${T} fails it automatically (${fx.fail.join(", ")}).`);
-        else {
-          const se = d20(mode, bonus), sr = rollDice(se);
-          roll2(sr, se, `${t0.hidden ? t0.name : T}: Dexterity save (DC ${dc})`, "save", !!t0.hidden);
-          saved = sr.total >= dc;
-        }
+        const saved = dexSave(t0, ta, dc, chk.adv, chk.dis);
         const dmg = rollDamage(false), amount = saved ? Math.floor(dmg.total / 2) : dmg.total;
         line(`${T} ${saved ? "saves: half damage" : "fails"}: ${amount} ${SR.damageType(w.type)} damage.`);
         if (amount) hurt(amount, false);
         result = { saved, damage: amount };
       }
-      putShip(Object.assign(shipOf(s0.id), { weapons: s.weapons, status: Object.assign(SR.statusOf(shipOf(s0.id)), { boost: s.status.boost }) }));
+      const after = SR.statusOf(shipOf(s0.id));
+      if (chk.kind === "attack" && fm === "single") Object.assign(after.fx, { directed: false, interfered: false });   // each lasts one attack roll
+      putShip(Object.assign(shipOf(s0.id), { weapons: s.weapons, status: Object.assign(after, { boost: s.status.boost }) }));
       return result;
+    }
+    case "space.ram": case "space.interfere": {
+      // Ram (a Helm action): within 50 ft, Strength (Ram) against the target's Dexterity (Maneuvering); on a success both
+      // take kinetic damage of two of the rammer's hull dice + its Strength, the rammer half while its shields hold.
+      // Interfere: within 1,000 ft, Charisma (Interfere) against the target's Wisdom (Scan); on a success the target's
+      // next check or attack roll has disadvantage.
+      const ram = type === "space.ram";
+      const s0 = shipOf(p.id), t0 = shipOf(p.target);
+      if (!s0 || !t0) throw new Invalid("No such ship.");
+      need(mayMove(s0), "That ship is the GM's.");
+      if (s0.id === t0.id) throw new Invalid(ram ? "A ship can't ram itself." : "A ship can't interfere with itself.");
+      const a = sp.tok.find((x) => x.id === s0.id), ta = sp.tok.find((x) => x.id === t0.id);
+      if (!a || !ta || (!gm && ta.hidden)) throw new Invalid("Both ships need to be on the space map.");
+      if (!Ships.onTurn(camp, gm, s0)) throw new Invalid(`Not ${shownOf(s0, a)}'s turn.`);
+      const st0 = SR.statusOf(s0);
+      if (SR.isDisabled(st0) || SR.isLost(st0)) throw new Invalid(`${shownOf(s0, a)} can't take actions.`);
+      if (ram && st0.fx.helm) throw new Invalid(`${shownOf(s0, a)} has already taken a Helm action this turn.`);
+      const feet = SR.shipGap(a, SR.squaresOf(s0), ta, SR.squaresOf(t0));
+      if (ram && feet > 50) throw new Invalid(`${feet} ft away: ramming takes flying into it (within 50 ft).`);
+      if (!ram && feet > 1000) throw new Invalid(`${feet} ft away: Interfere reaches 1,000 ft.`);
+      const A = shownOf(s0, a), T = shownOf(t0, ta);
+      const secret = !!a.hidden || !!ta.hidden;   // a token off the players' map: every line and roll is the GM's (jpesus, #65)
+      const [mySkill, theirSkill] = ram ? ["ram", "maneuvering"] : ["interfere", "scan"];
+      const check = (ship, skill, crew, hidden, label) => {
+        const ab = SR.SKILL_ABILITY[skill], fx = SR.rollEffects(ship, "check", ab), mode = SR.rollMode(fx, "normal");
+        const bonus = SR.skillBonus(ship, skill, Ships.crewPb(camp, ship, crew));
+        const expr = (mode === "adv" ? "2d20kh1" : mode === "dis" ? "2d20kl1" : "1d20") + (bonus >= 0 ? "+" : "") + bonus, r = rollDice(expr);
+        addChat(camp, Object.assign({ from: hidden || secret ? "Ship combat (GM only)" : playerName(camp, cid), roll: Object.assign({}, r, { expr, label: str(label, 120), kind: "check" }) },
+          hidden || secret ? { to: ["@gm"], private: true } : { fromId: cid }));
+        return r.total;
+      };
+      const mine = check(s0, mySkill, p.crew, !!s0.hidden, `${s0.hidden ? s0.name : A}: ${ram ? "Strength (Ram)" : "Charisma (Interfere)"} against ${s0.hidden ? t0.name : T}`);
+      const theirs = check(t0, theirSkill, 0, !!t0.hidden, `${t0.hidden ? t0.name : T}: ${ram ? "Dexterity (Maneuvering)" : "Wisdom (Scan)"}`);
+      const won = mine > theirs;
+      const s1 = JSON.parse(JSON.stringify(shipOf(s0.id))); s1.status = SR.statusOf(s1);
+      s1.status.fx.interfered = false;   // its own check used up an Interfere on it
+      if (ram) s1.status.fx.helm = true;
+      putShip(s1);
+      const line = (text, gmOnly) => addChat(camp, Object.assign({ system: true, text: str(text, 400) }, gmOnly || secret ? { to: ["@gm"], private: true } : {}));
+      if (!won) { line(`${A} ${ram ? "tries to ram" : "tries to interfere with"} ${T}, and fails (${mine} against ${theirs}).`); return { ok: false }; }
+      if (!ram) {
+        const t1 = JSON.parse(JSON.stringify(shipOf(t0.id))); t1.status = SR.statusOf(t1);
+        Object.assign(t1.status.fx, { interfered: true, interferedBy: s0.id }); putShip(t1);   // until its next roll, or the start of our next turn
+        line(`${A} interferes with ${T}: its next check or attack roll has disadvantage.`);
+        return { ok: true };
+      }
+      const hd = SR.diceOf(s0, "hull").die, sm = Math.floor((int((s0.abilities || {}).str, 10) - 10) / 2), expr = `2d${hd}` + (sm ? (sm > 0 ? "+" : "") + sm : "");
+      const dr = rollDice(expr), dmg = Math.max(0, dr.total), mineDmg = int((shipOf(s0.id).shield || {}).current) > 0 ? Math.floor(dmg / 2) : dmg;
+      line(`${A} rams ${T}: ${dmg} kinetic damage to it, ${mineDmg} to itself.`);
+      for (const [id, n] of [[t0.id, dmg], [s0.id, mineDmg]]) {
+        const x = shipOf(id), r = SR.takeDamage(x, n, "kinetic", {});
+        putShip(r.ship);
+        for (const l of r.log) line(l, !!x.hidden);
+      }
+      return { ok: true, damage: dmg };
     }
     case "space.end": {
       need(gm);
@@ -260,6 +357,11 @@ function startTurn(camp, cid, gm, h) {
   const sp = camp.space, e = sp.order[sp.turn];
   if (!e) return {};
   sp.moved[e.id] = 0;
+  // an Interfere by this ship lasts until the start of its next turn
+  for (let k = 0; k < camp.ships.length; k++) {
+    const x = camp.ships[k], st = x && SR.statusOf(x);
+    if (st && st.fx.interfered && st.fx.interferedBy === e.id) { Object.assign(st.fx, { interfered: false, interferedBy: "" }); camp.ships[k] = Object.assign({}, x, { status: st }); }
+  }
   const s = camp.ships.find((x) => x && x.id === e.id);
   if (!s) return {};
   Ships.apply(camp, cid, true, "ship.turn", { id: s.id, regen: true }, h);   // the turn belongs to the table, not to whoever pressed Next
