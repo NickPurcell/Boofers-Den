@@ -510,6 +510,8 @@
   }
   const senseNote = (d, cond) => ({ note: true, text: `${d.who.name}'s ${d.sense.kind} (${d.sense.range} ft): ${cond.toLowerCase()} doesn't count` });
   const effectsOf = (u) => (u.conditions || []).map((c) => [c, CONDITION_EFFECTS[c]]).filter(([, e]) => e);
+  // heavily encumbered (the table's encumbrance variant, audit 6.5): disadvantage on Str, Dex and Con checks, attacks and saves
+  const heavyDis = (u, abil) => !!u && u.encumbered === 'heavy' && ['str', 'dex', 'con'].includes(abil);
   const has = (u, flag) => effectsOf(u).find(([, e]) => e[flag]);
   const INCAPACITATING = (u) => !!has(u, 'noActions');
   const LEVELS = { Slowed: 4, Corroded: 3 }, SLOWED_FT = [0, 15, 25, 30];
@@ -538,6 +540,7 @@
       return out;
     } },
     { id: 'exhausted', when: (c) => (+c.actor.exhaustion || 0) >= 3, each: () => [{ dis: true, text: 'exhaustion' }] },
+    { id: 'heavy', when: (c) => heavyDis(c.actor, c.attack && c.attack.abil), each: () => [{ dis: true, text: 'heavily encumbered' }] },   // the encumbrance variant (6.5)
     { id: 'requirement', when: (c) => !!(c.attack && c.attack.unmet), each: (c) => [{ dis: true, text: `${c.attack.unmet} not met` }] },   // a weapon's Strength or Dexterity number (5.8)
     { id: 'dodge', when: (c) => c.dodging, each: (c) => [{ dis: true, text: `${c.target.name} is dodging` }] },
     { id: 'target', when: (c) => effectsOf(c.target).some(([, e]) => e.attacked), each: (c) => effectsOf(c.target).filter(([, e]) => e.attacked).map(([n, e]) => {
@@ -1047,7 +1050,7 @@
   }
   // `me` against `t`: me's skill against the better of t's (it picks); a tie leaves things as they are, so me loses it
   function contest(w, me, t, mine, theirs, roll, log, what) {
-    const side = (u, k) => { const b = contestBonus(u, k), m = d20(w, 0, has(u, 'checksDis') ? 1 : 0); return { k, b, expr: d20expr(m) + sgn(b) }; };
+    const side = (u, k) => { const b = contestBonus(u, k), m = d20(w, 0, has(u, 'checksDis') || heavyDis(u, SKILL_AB[k]) ? 1 : 0); return { k, b, expr: d20expr(m) + sgn(b) }; };
     const a = side(me, mine), d = theirs.map((k) => side(t, k)).sort((p, q) => q.b - p.b)[0];
     const ra = roll(a.expr), rt = roll(d.expr), won = ra.total > rt.total;
     log.push({ unit: me.id, kind: 'check', roll: ra, expr: a.expr, text: `${me.name} tries to ${what} ${t.name} (${SKILL_NAME[a.k]}): ${ra.total}.` });
@@ -1278,7 +1281,7 @@
           } else if (ab.save) {
             const bonus = (t.saves || {})[ab.save.ability];
             const fail = effectsOf(t).find(([, e]) => (e.autoFail || []).includes(ab.save.ability));
-            const sdis = effectsOf(t).some(([, e]) => (e.saveDis || []).includes(ab.save.ability));
+            const sdis = effectsOf(t).some(([, e]) => (e.saveDis || []).includes(ab.save.ability)) || heavyDis(t, ab.save.ability);
             const sadv = (ab.save.ability === 'dex' && dodging(w, t)) || effectsOf(t).some(([, e]) => (e.saveAdv || []).includes(ab.save.ability));
             // cover helps a Dex save: from the caster for a power aimed at the target, from the origin for an area; flanked makes it worse
             const scv = ab.save.ability !== 'dex' || t.id === me.id ? null : ab.area ? coverFrom(w, origin, t) : coverOf(w, me, t);
@@ -1440,7 +1443,7 @@
   // advantage or disadvantage from its conditions and from dodging (Dex)
   function saveVs(w, t, ab, dc, roll, log, what) {
     const fail = effectsOf(t).find(([, e]) => (e.autoFail || []).includes(ab));
-    const sdis = effectsOf(t).some(([, e]) => (e.saveDis || []).includes(ab));
+    const sdis = effectsOf(t).some(([, e]) => (e.saveDis || []).includes(ab)) || heavyDis(t, ab);
     const sadv = (ab === 'dex' && dodging(w, t)) || effectsOf(t).some(([, e]) => (e.saveAdv || []).includes(ab));
     const m = d20(w, sadv ? 1 : 0, sdis ? 1 : 0), bonus = (+((t.saves || {})[ab]) || 0) - weakPenalty(t, ab), expr = d20expr(m) + sgn(bonus);
     const r = roll(expr), ok = !fail && r.total >= dc;
@@ -1732,7 +1735,10 @@
         ac: ch ? +ch.ac : e.ac == null || e.ac === '' ? null : +e.ac,
         hp: ch ? +hp.current : e.hp == null || e.hp === '' ? null : +e.hp, maxHp: ch ? +hp.max : e.maxHp == null ? null : +e.maxHp,
         temp: ch ? +hp.temp || 0 : 0,
-        speed: ch ? +ch.speed || 30 : +((table.npcSpeed || {})[e.id]) || 30,
+        // the table's encumbrance variant (audit 6.5, rules.js carrying): a character's load slows it, and a heavy one tilts its rolls
+        ...(() => { const cw = ch && rules && rules.carrying ? rules.carrying(ch, table.variants) : null;
+          return { speed: ch ? Math.max(0, (+ch.speed || 30) - (cw ? cw.slow : 0)) : +((table.npcSpeed || {})[e.id]) || 30,
+            encumbered: cw && cw.slow >= 20 ? 'heavy' : cw && cw.slow ? 'encumbered' : '' }; })(),
         pools: ch ? Object.fromEntries(resourcesOf(ch, rules).map((r) => [r.key, r])) : {},
         riders: ch ? ridersOf(ch, rules) : {},
         attacks: ch ? attacksPerAction(ch) : 1, offhands: ch ? bonusAttacksOf(ch) : 0, maneuvers: ch ? maneuversOf(ch, rules) : null, styles: ch ? stylesOf(ch) : {},   // per Attack action (#139); a creature's Multiattack comes with its attack
