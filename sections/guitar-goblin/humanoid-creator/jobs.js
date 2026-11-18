@@ -1,6 +1,6 @@
 // What the worker pool does for the humanoid page: turn one part of the figure into triangle arrays.
 import { mesh, gradient } from '../duros-creator/sdf.js';
-import { skinField, handField, HEAD_AT } from './anatomy.js';
+import { skinField, handField, bodyField, HEAD_AT } from './anatomy.js';
 import { headField } from './head-field.js';
 import { hairField } from './hair.js';
 import { extraFor } from './features.js';
@@ -48,7 +48,13 @@ export function run(job, a) {
     return { mesh: mesh(h.field, h.bounds, RES.hand * Q, { aoStep: 0.003, uvScale: 0.03 }) };
   }
   if (job === 'hair' && a.species === 'mikkian') {   // a Mikkian's head-tendrils, with how far along its tendril each vertex is
-    const T = tendrils(a.style, a.thick, headField(a).field), m = mesh(T.field, T.bounds, RES.hair * Q, { aoStep: 0.006, uvScale: 0.03 });
+    const head = headField(a).field, dreads = a.style === 'dreads';
+    // dreads hang to the shoulders and below, so they lie on the body in its clothes as well as on the head
+    const bf = dreads ? bodyField({ masc: a.masc, build: a.bodyBuild ?? 0.5 }).field : null, hy = HEAD_AT[1];
+    const obstacle = bf ? (x, y, z) => Math.min(head(x, y, z), bf(x, y + hy, z) - 0.026) : head;
+    const T = tendrils(a.style, a.thick, head, { length: a.length, obstacle });
+    // dreads are thick enough for a coarser mesh; their uvs are stretched so the fibres show at the size of a lock's strands
+    const m = mesh(T.field, T.bounds, (dreads ? 0.0042 : RES.hair) * Q, { aoStep: dreads ? 0.008 : 0.006, uvScale: dreads ? 0.2 : 0.03 });
     return { mesh: m, t: T.param(m.position) };
   }
   if (job === 'hair') {   // in the head's own frame; the page sets it on the head

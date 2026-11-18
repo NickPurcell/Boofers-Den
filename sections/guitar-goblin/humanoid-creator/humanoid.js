@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { makeStage } from '../creator-kit/stage.js';
 import { createPool } from '../creator-kit/pool.js';
 import { makeTextures, clothMaterial, leatherMaterial, metalMaterial, plasticMaterial } from '../duros-creator/materials.js';
-import { skinGeometry, skinMaterial, eyeTexture, eyeGeometries, hairMaterial, merge } from './skin.js';
+import { skinGeometry, skinMaterial, eyeTexture, eyeGeometries, hairMaterial, lockMaterial, merge } from './skin.js';
 import { HEAD_AT } from './anatomy.js';
 import { FACES } from './head-field.js';
 import { facePainter, WRAP } from './face-paint.js';
@@ -67,18 +67,19 @@ const face = facePainter(stage.phone ? 1024 : 2048);
 const skin = skinMaterial(face.texture), bodySkin = skinMaterial(null), hairMat = hairMaterial();
 const lidMat = new THREE.MeshPhysicalMaterial({ roughness: 0.5, sheen: 0.3, sheenRoughness: 0.5 });
 const tendrilMat = skinMaterial(null);   // a Mikkian's head-tendrils: skin, painted per vertex
+const lockMat = lockMaterial();          // or worn as dreads: matte and fibrous
 const eyeMat = new THREE.MeshPhysicalMaterial({ roughness: 0.16, clearcoat: 1, clearcoatRoughness: 0.04 }), lashMat = new THREE.MeshStandardMaterial({ color: 0x120d0a, roughness: 0.8 });
 const glintMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false, transparent: true, opacity: 0.85 });
 const ringMat = new THREE.MeshStandardMaterial({ color: 0xc9a24a, metalness: 1, roughness: 0.28, emissive: 0xc9a24a, emissiveIntensity: 0.22 });   // a little glow of its own, or polished metal goes black in a dark room
 const CLOTHS = { cloth: clothMaterial, leather: leatherMaterial, metal: metalMaterial, plastic: (hex) => { const m = plasticMaterial(hex); m.roughness = 0.46; m.clearcoat = 0.25; return m; } };
-const KEEP = new Set([skin, bodySkin, hairMat, lidMat, eyeMat, lashMat, glintMat, ringMat, tendrilMat, gearMaterial()]);
+const KEEP = new Set([skin, bodySkin, hairMat, lidMat, eyeMat, lashMat, glintMat, ringMat, tendrilMat, lockMat, gearMaterial()]);
 let built = null, cloth = [], info = {}, ticket = 0, current = Promise.resolve(), eyeKey = '';
 
 function args() {
   const base = { face: state.face, masc: val(FRAMES, state.frame), age: val(AGES, state.age), build: val(BUILDS, state.build), coarse: stage.phone ? 1.2 : 1 };
   const feat = state.species === 'pureblood' ? { species: 'pureblood', spurs: state.spurs, tendrils: state.tendrils, ridges: state.ridges } : {};
   const body = { face: 'oval', masc: base.masc, age: 0.3, build: base.build, coarse: base.coarse };
-  return { head: { ...base, ...feat }, bust: base, body, hair: { face: base.face, masc: base.masc, age: 0.3, build: 0.5, coarse: base.coarse, style: state.style, ...(state.species === 'mikkian' ? { species: 'mikkian', thick: state.thick } : {}) } };
+  return { head: { ...base, ...feat }, bust: base, body, hair: { face: base.face, masc: base.masc, age: 0.3, build: 0.5, coarse: base.coarse, style: state.style, ...(state.species === 'mikkian' ? { species: 'mikkian', thick: state.thick, length: state.length, bodyBuild: base.build } : {}) } };
 }
 const copy = (m) => ({ position: m.position.slice(), normal: m.normal.slice(), uv: m.uv.slice(), index: m.index.slice(), ao: m.ao });
 async function rebuild() {
@@ -108,7 +109,7 @@ async function rebuild() {
   { const gl = new THREE.Mesh(eg.glints, glintMat); gl.renderOrder = 2; hg.add(gl); }   // the catchlights cast no shadow
   let mane = null;
   if (hair.mesh && state.hood !== 'up') {   // a raised hood covers the hair
-    if (hair.t) mane = { mesh: add(skinGeometry(copy(hair.mesh)), tendrilMat, hg), t: hair.t, ao: hair.mesh.ao };
+    if (hair.t) mane = { mesh: add(skinGeometry(copy(hair.mesh)), state.style === 'dreads' ? lockMat : tendrilMat, hg), t: hair.t, ao: hair.mesh.ao };
     else add(skinGeometry(copy(hair.mesh), { hair: true }), hairMat, hg);
   }
   if (state.jewel && state.jewel !== 'none' && head.tendrils.length) {   // a ring on each tendril
@@ -148,7 +149,7 @@ function recolour() {
       const a = Math.pow(ao[i], 1.5), v = 0.5 + 0.5 * a;
       k.copy(c).lerp(acc, w); col.setXYZ(i, k.r * v, k.g * v, k.b * v);
     }
-    col.needsUpdate = true; tendrilMat.sheenColor.copy(c).lerp(new THREE.Color(0xffffff), 0.5);
+    col.needsUpdate = true; tendrilMat.sheenColor.copy(c).lerp(new THREE.Color(0xffffff), 0.5); lockMat.sheenColor.copy(c).lerp(new THREE.Color(0xffffff), 0.3);
   }
   const cols = { main: pick('main').c, second: pick('second').c, dark: '#25272d', leather: '#46321f', metal: '#a4a9b0', trim: '#c9a24a' };
   for (const p of cloth) p.mesh.material.color.set(cols[p.role] || '#777777');
@@ -159,11 +160,11 @@ function recolour() {
 const go = () => { current = rebuild(); return current; };
 
 /* ---------------- the panel ---------------- */
-const GEOMETRY = new Set(['frame', 'build', 'face', 'age', 'style', 'thick', 'spurs', 'tendrils', 'ridges', 'jewel', 'outfit', 'hood', 'gear']);
+const GEOMETRY = new Set(['frame', 'build', 'face', 'age', 'style', 'thick', 'length', 'spurs', 'tendrils', 'ridges', 'jewel', 'outfit', 'hood', 'gear']);
 function summary() {
   const n = (k) => pick(k).name.toLowerCase(), S = sp();
   document.getElementById('title').textContent = S.name; document.getElementById('blurb').textContent = S.blurb;
-  document.getElementById('summary').textContent = `${S.name}: ${n('frame')} frame, ${n('build')} build, ${n('face')} face, ${n('age')}; ${n('skin')} skin, ${n('eyes')} eyes, ${state.species === 'mikkian' ? `head-tendrils ${n('style')} with ${n('hair')} accents` : `${n('hair')} hair worn ${n('style')}`}; in ${pick('outfit').name.toLowerCase()}, ${n('main')} and ${n('second')}${state.hood !== 'none' ? ', hood ' + n('hood') : ''}${state.gear !== 'none' ? ', carrying a ' + n('gear') : ''}.`;
+  document.getElementById('summary').textContent = `${S.name}: ${n('frame')} frame, ${n('build')} build, ${n('face')} face, ${n('age')}; ${n('skin')} skin, ${n('eyes')} eyes, ${state.species === 'mikkian' ? (state.style === 'dreads' ? `${state.length === 'long' ? 'long' : 'shoulder-length'} dreads with ${n('hair')} accents` : `head-tendrils ${n('style')} with ${n('hair')} accents`) : `${n('hair')} hair worn ${n('style')}`}; in ${pick('outfit').name.toLowerCase()}, ${n('main')} and ${n('second')}${state.hood !== 'none' ? ', hood ' + n('hood') : ''}${state.gear !== 'none' ? ', carrying a ' + n('gear') : ''}.`;
 }
 function paintPanel() {
   const opts = options();

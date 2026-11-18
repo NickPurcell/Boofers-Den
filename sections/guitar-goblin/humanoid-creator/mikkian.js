@@ -1,22 +1,26 @@
 // A Mikkian's head-tendrils: what the species wears in place of hair. From a study of many of them (never one
-// person): dozens of slim, tapering, fleshy tendrils growing from the whole scalp behind the hairline, lying swept
-// back in a mane, standing out short all round, hanging loose and wavy, or bound together behind the head.
+// person): dozens of tendrils growing from the whole scalp behind the hairline, worn as heavy locks hanging like
+// dreads, swept back in a mane, standing out short all round, or bound together behind the head.
 // Built as signed distance shapes on the head as built, so they fit every face. Pure: the workers import it.
 //
-// Interface: tendrils(style, thick, head) -> { field, bounds, param(positions) }
-//   style: a key of ARRANGE; thick: a key of THICK; head: the head's own field (metres from between the eyes).
+// Interface: tendrils(style, thick, head, o) -> { field, bounds, param(positions) }
+//   style: a key of ARRANGE; thick: a key of THICK; head: the head's own field (metres from between the eyes);
+//   o.length: a key of LENGTHS; o.obstacle: what the locks must lie on and not pass through (the head, and the
+//   shoulders and back in their clothes), in the same frame; the head alone if not given.
 //   param(positions) gives, for each vertex of the mesh, how far along its tendril it is (0 at the scalp, 1 at the
 //   tip; 1.5 on the band that binds them), so the page can paint tips, bands and roots.
 import { chain, ellipsoid, smin, cast, gradient } from '../duros-creator/sdf.js';
 import { hairline } from './hair.js';
 
-export const ARRANGE = { swept: { name: 'Swept back' }, short: { name: 'Short' }, loose: { name: 'Loose' }, bound: { name: 'Bound' } };
+export const ARRANGE = { dreads: { name: 'Dreads' }, swept: { name: 'Swept back' }, short: { name: 'Short' }, bound: { name: 'Bound' } };
 export const THICK = { slender: { name: 'Slender', r: 0.0064 }, medium: { name: 'Medium', r: 0.008 }, thick: { name: 'Thick', r: 0.0098 } };   // about a finger thick at the root
+// dreads are heavier than the other arrangements: the same three choices, thicker
+const DREAD_R = { slender: 0.0078, medium: 0.0098, thick: 0.0128 };
+export const LENGTHS = { shoulder: { name: 'To the shoulders' }, long: { name: 'Long' } };
 export const PATTERNS = { plain: { name: 'Plain' }, tips: { name: 'Tips' }, bands: { name: 'Bands' }, roots: { name: 'Roots' } };
-const LEN = { swept: 0.21, short: 0.062, loose: 0.17, bound: 0.2 };
+const LEN = { swept: 0.21, short: 0.062, bound: 0.2 };
 const hash = (i, j = 0) => { const s = Math.sin(i * 127.1 + j * 311.7 + 17.3) * 43758.5453; return s - Math.floor(s); };
 const norm = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
-const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 // a smooth curve through points, with a point added between each pair, so a tendril bends without elbows
 function smooth(pts) {
@@ -28,31 +32,153 @@ function smooth(pts) {
   out.push(pts[n - 1]);
   return out;
 }
-// every tendril as a line of points from the scalp out, with its radius at each point
-export function tendrilPaths(style, thick, head) {
-  const C = [0, 0.03, -0.012], r0 = (THICK[thick] || THICK.medium).r, out = [], N = 6;
+
+// where the roots are: rings round the skull, kept to the scalp behind the hairline; `k` thins them out for thick locks
+function roots(head, k = 1) {
+  const C = [0, 0.03, -0.012], out = [];
   let id = 0;
-  for (const [elDeg, n] of [[10, 13], [26, 13], [42, 11], [58, 8], [74, 5], [90, 1]]) for (let k = 0; k < n; k++) {
-    id++;
-    const el = (elDeg * Math.PI) / 180, az = ((k + (elDeg === 26 || elDeg === 58 ? 0.5 : 0)) / n) * 2 * Math.PI - Math.PI + (hash(id, 1) - 0.5) * 0.22;
-    const d = [Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)];
-    const hit = cast(head, [C[0] + d[0] * 0.25, C[1] + d[1] * 0.25, C[2] + d[2] * 0.25], [-d[0], -d[1], -d[2]], 0.3);
-    if (!hit || hit.p[1] < hairline(Math.atan2(hit.p[0], hit.p[2])) + 0.006) continue;   // only behind the hairline
-    const p = hit.p, n0 = hit.n, L = (LEN[style] || LEN.swept) * (0.78 + 0.44 * hash(id, 2)), rad = (i) => Math.max(0.003, r0 * (style === 'bound' ? (i < 3.5 ? 0.7 : i < 5.5 ? 0.92 : 0.6) : 1 - 0.55 * (i / N)) * (0.9 + 0.2 * hash(id, 7)));   // bound ones are pulled thin over the skull, full again where they hang together behind it
+  for (const [elDeg, n0] of [[-8, 13], [10, 13], [26, 13], [42, 11], [58, 8], [74, 5], [90, 1]]) {
+    const n = Math.max(1, Math.round(n0 * k));
+    for (let j = 0; j < n; j++) {
+      id++;
+      const el = (elDeg * Math.PI) / 180, az = ((j + (elDeg === 26 || elDeg === 58 ? 0.5 : 0)) / n) * 2 * Math.PI - Math.PI + (hash(id, 1) - 0.5) * 0.22;
+      const d = [Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)];
+      const hit = cast(head, [C[0] + d[0] * 0.25, C[1] + d[1] * 0.25, C[2] + d[2] * 0.25], [-d[0], -d[1], -d[2]], 0.3);
+      if (!hit || hit.p[1] < hairline(Math.atan2(hit.p[0], hit.p[2])) + 0.006) continue;   // only behind the hairline
+      out.push({ id, p: hit.p, n: hit.n });
+    }
+  }
+  return out;
+}
+
+// A dread: a heavy lock that leaves the scalp with only a short lift and falls at once under its own weight. It lies
+// on the skull and slides off it (away from the crown, and never forward over the face), hangs straight down past
+// the ears, and drapes over whatever it meets lower down, the shoulders front or back, until it ends at yEnd. A lock
+// cut to the shoulders (rest) ends where it comes to rest on them.
+function dreadPath(p, n0, id, r, obstacle, yEnd, rest) {
+  const seg = 0.018, pts = [[p[0] - n0[0] * 0.005, p[1] - n0[1] * 0.005, p[2] - n0[2] * 0.005]];
+  // which way it slides off the head: out from the head's upright axis, turned back where that would be forward
+  let rx = p[0], rz = p[2] + 0.012; const rl = Math.hypot(rx, rz) || 1; rx /= rl; rz /= rl;
+  const front = Math.max(0, rz), off = norm([rx + (hash(id, 11) - 0.5) * 0.3, 0, rz - 1.6 * front]);
+  const sway = [(hash(id, 12) - 0.5) * 0.08, 0, (hash(id, 13) - 0.5) * 0.08];   // no two hang quite alike
+  const side = Math.sign(p[0]) || (hash(id, 14) < 0.5 ? -1 : 1);
+  // keep a point clear of the head and body by the lock's own thickness; give the way the surface it touched faces
+  // (null if it touched nothing)
+  const clear = (q) => {
+    let nrm = null;
+    for (let k = 0; k < 3; k++) {
+      const d = obstacle(q[0], q[1], q[2]);
+      if (d >= r + 0.0015) break;
+      const g = gradient(obstacle, q[0], q[1], q[2]), m = r + 0.0015 - d; q[0] += g[0] * m; q[1] += g[1] * m; q[2] += g[2] * m; nrm = g;
+    }
+    // and off the face: nothing hangs across the eyes, nose or mouth
+    if (q[2] > -0.008 && q[1] > -0.17 && q[1] < 0.072 && Math.abs(q[0]) < 0.083 + r) { q[0] = side * (0.083 + r); nrm = nrm || [side, 0, 0]; }
+    return nrm;
+  };
+  let q = [p[0] + n0[0] * r * 0.7, p[1] + n0[1] * r * 0.7, p[2] + n0[2] * r * 0.7];   // the short lift at the root
+  clear(q); pts.push(q.slice());
+  let dir = norm([n0[0] * 0.35 + off[0], n0[1] * 0.35 - 0.5, n0[2] * 0.35 + off[2]]), touching = true, shelf = false;
+  for (let i = 0; i < 44 && q[1] > yEnd; i++) {
+    // over the shoulders a lock falls to the front or the back, whichever side of them it is on
+    // (and not out along them: a lock does not ride along the top of a shoulder to its edge)
+    const low = shelf || q[1] < -0.16, lean = low ? [-0.25 * Math.sign(q[0]), 0, q[2] > 0.01 ? 1.3 : -1.3] : off, w = touching ? (low ? 0.8 : 0.6) : 0.12;
+    const want = norm([lean[0] * w + sway[0], -1, lean[2] * w + sway[2]]), s = i < 1 ? 0.5 : 0.22;
+    dir = norm([dir[0] * s + want[0] * (1 - s), dir[1] * s + want[1] * (1 - s), dir[2] * s + want[2] * (1 - s)]);
+    const nq = [q[0] + dir[0] * seg, q[1] + dir[1] * seg, q[2] + dir[2] * seg];
+    const nrm = clear(nq); touching = !!nrm;
+    // a shelf: something below the jaw facing upward, the top of a shoulder or the slope up to the neck
+    shelf = !!nrm && nrm[1] > 0.45 && nq[1] < -0.09;
+    dir = norm([nq[0] - q[0], nq[1] - q[1], nq[2] - q[2]]); q = nq; pts.push(q.slice());
+    if (rest && shelf && i > 2) break;   // cut to the shoulders: it ends where it lands on them
+  }
+  return smooth(pts);
+}
+// Every lock's surface at once: tubes along the paths whose radius changes along their length (narrower where they
+// leave the scalp, tapering a little, lumpy as a matted lock is). Dozens of locks crowd round the head, so a query
+// looks only at the segments registered in its cell of a grid: every segment is registered in each cell within reach
+// of it (its half length, its widest radius, and M more), so a cell with nothing in it is at least M from any lock.
+function lockGrid(locks, cell = 0.025, M = 0.022) {
+  const S = [], lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  locks.forEach((lk, li) => {
+    let s = 0, rmax = 0; const n = lk.pts.length - 1, segs = [];
+    for (let i = 0; i < n; i++) {
+      const a = lk.pts[i], b = lk.pts[i + 1], bx = b[0] - a[0], by = b[1] - a[1], bz = b[2] - a[2], len = Math.hypot(bx, by, bz) || 1e-6;
+      segs.push({ a, bx, by, bz, l2: len * len, len, s0: s, mx: (a[0] + b[0]) / 2, my: (a[1] + b[1]) / 2, mz: (a[2] + b[2]) / 2, li, i, n, radAt: lk.radAt });
+      s += len;
+    }
+    for (let t = 0; t <= s; t += 0.004) rmax = Math.max(rmax, lk.radAt(t));
+    for (const g of segs) { g.R = g.len / 2 + rmax; S.push(g); for (const [c, k] of [[g.mx, 0], [g.my, 1], [g.mz, 2]]) { lo[k] = Math.min(lo[k], c - g.R - M); hi[k] = Math.max(hi[k], c + g.R + M); } }
+  });
+  const nx = Math.ceil((hi[0] - lo[0]) / cell), ny = Math.ceil((hi[1] - lo[1]) / cell), nz = Math.ceil((hi[2] - lo[2]) / cell), cells = new Array(nx * ny * nz);
+  const at = (v, k, n) => Math.max(0, Math.min(n - 1, Math.floor((v - lo[k]) / cell)));
+  S.forEach((g, si) => {
+    const e = g.R + M;
+    for (let k = at(g.mz - e, 2, nz); k <= at(g.mz + e, 2, nz); k++) for (let j = at(g.my - e, 1, ny); j <= at(g.my + e, 1, ny); j++) for (let i = at(g.mx - e, 0, nx); i <= at(g.mx + e, 0, nx); i++) {
+      const o = i + nx * (j + ny * k); (cells[o] || (cells[o] = [])).push(si);
+    }
+  });
+  const list = (x, y, z) => {
+    const i = Math.floor((x - lo[0]) / cell), j = Math.floor((y - lo[1]) / cell), k = Math.floor((z - lo[2]) / cell);
+    return i < 0 || j < 0 || k < 0 || i >= nx || j >= ny || k >= nz ? null : cells[i + nx * (j + ny * k)];
+  };
+  const field = (x, y, z) => {
+    const L = list(x, y, z);
+    if (!L) return M + Math.hypot(Math.max(lo[0] - x, x - hi[0], 0), Math.max(lo[1] - y, y - hi[1], 0), Math.max(lo[2] - z, z - hi[2], 0));
+    let d = M;
+    for (let q = 0; q < L.length; q++) {
+      const g = S[L[q]];
+      if (Math.hypot(x - g.mx, y - g.my, z - g.mz) - g.R >= d) continue;
+      const px = x - g.a[0], py = y - g.a[1], pz = z - g.a[2], h = Math.max(0, Math.min(1, (px * g.bx + py * g.by + pz * g.bz) / g.l2));
+      const v = Math.hypot(px - g.bx * h, py - g.by * h, pz - g.bz * h) - g.radAt(g.s0 + g.len * h);
+      if (v < d) d = v;
+    }
+    return d;
+  };
+  // how far along its lock the nearest axis point is (0 at the scalp, 1 at the tip)
+  const along = (x, y, z) => {
+    const L = list(x, y, z); if (!L) return 0;
+    let best = Infinity, t = 0;
+    for (let q = 0; q < L.length; q++) {
+      const g = S[L[q]], px = x - g.a[0], py = y - g.a[1], pz = z - g.a[2], h = Math.max(0, Math.min(1, (px * g.bx + py * g.by + pz * g.bz) / g.l2));
+      const dd = Math.hypot(px - g.bx * h, py - g.by * h, pz - g.bz * h) - g.radAt(g.s0 + g.len * h);
+      if (dd < best) { best = dd; t = (g.i + h) / g.n; }
+    }
+    return t;
+  };
+  return { field, along, bounds: [lo.map((v) => v + M - 0.004), hi.map((v) => v - M + 0.004)] };
+}
+
+// every tendril as a line of points from the scalp out, with its radius at each point (or, for dreads, its own field)
+export function tendrilPaths(style, thick, head, o = {}) {
+  const obstacle = o.obstacle || head, out = [], N = 6;
+  if (style === 'dreads') {
+    const r0 = DREAD_R[thick] || DREAD_R.medium, yEnd0 = o.length === 'long' ? -0.4 : -0.215;
+    for (const { id, p, n } of roots(head, Math.max(0.62, Math.min(1.1, 0.0098 / r0)))) {
+      const r = r0 * (0.86 + 0.26 * hash(id, 7)), pts = dreadPath(p, n, id, r, obstacle, yEnd0 - 0.045 * hash(id, 2), o.length !== 'long');
+      let L = 0; for (let i = 0; i + 1 < pts.length; i++) L += Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1], pts[i + 1][2] - pts[i][2]);
+      // lumpy, but not in a row of beads: three slow waves at unrelated lengths
+      const ph = hash(id, 8) * 6.28, ph2 = hash(id, 9) * 6.28, ph3 = hash(id, 10) * 6.28, k1 = 0.021 + 0.006 * hash(id, 15);
+      const radAt = (s) => r * (0.8 + 0.2 * Math.min(1, s / 0.03)) * (1 - 0.13 * (s / L)) * (1 + 0.04 * Math.sin((s / k1) * 6.283 + ph) + 0.04 * Math.sin((s / 0.053) * 6.283 + ph2) + 0.022 * Math.sin((s / 0.0127) * 6.283 + ph3));
+      out.push({ pts, radAt });
+    }
+    return out;
+  }
+  const r0 = (THICK[thick] || THICK.medium).r, lenK = o.length === 'long' ? 1.45 : 1;
+  for (const { id, p, n: n0 } of roots(head)) {
+    const L = (LEN[style] || LEN.swept) * (style === 'short' ? 1 : lenK) * (0.78 + 0.44 * hash(id, 2)), rad = (i) => Math.max(0.003, r0 * (style === 'bound' ? (i < 3.5 ? 0.7 : i < 5.5 ? 0.92 : 0.6) : 1 - 0.55 * (i / N)) * (0.9 + 0.2 * hash(id, 7)));   // bound ones are pulled thin over the skull, full again where they hang together behind it
     const pts = [[p[0] - n0[0] * 0.004, p[1] - n0[1] * 0.004, p[2] - n0[2] * 0.004]];
     // keep a point outside the head by the tendril's own thickness, so tendrils lie on the skull and never in it
-    const clear = (q, r) => { const dd = head(q[0], q[1], q[2]); if (dd < r + 0.002) { const g = gradient(head, q[0], q[1], q[2]), m = r + 0.002 - dd; q[0] += g[0] * m; q[1] += g[1] * m; q[2] += g[2] * m; } return q; };
+    const clear = (q, r) => { const dd = obstacle(q[0], q[1], q[2]); if (dd < r + 0.002) { const g = gradient(obstacle, q[0], q[1], q[2]), m = r + 0.002 - dd; q[0] += g[0] * m; q[1] += g[1] * m; q[2] += g[2] * m; } return q; };
     if (style === 'bound') {
-      const G = [0, 0.018, -0.132], o = [(hash(id, 3) - 0.5) * 0.03, (hash(id, 4) - 0.5) * 0.02, (hash(id, 5) - 0.5) * 0.02];
+      const G = [0, 0.018, -0.132], off = [(hash(id, 3) - 0.5) * 0.03, (hash(id, 4) - 0.5) * 0.02, (hash(id, 5) - 0.5) * 0.02];
       for (const t of [0.3, 0.6, 0.85]) pts.push(clear([p[0] + (G[0] - p[0]) * t, p[1] + (G[1] - p[1]) * t, p[2] + (G[2] - p[2]) * t], rad(2) + 0.004));
-      pts.push([G[0] + o[0] * 0.5, G[1] + o[1] * 0.5, G[2]], [o[0] * 1.6, G[1] - 0.07 + o[1], G[2] - 0.02 + o[2] * 1.5], [o[0] * 3.2, G[1] - 0.08 - L * 0.75 + o[1] * 2, G[2] - 0.012 + o[2] * 2.5]);
+      pts.push([G[0] + off[0] * 0.5, G[1] + off[1] * 0.5, G[2]], [off[0] * 1.6, G[1] - 0.07 + off[1], G[2] - 0.02 + off[2] * 1.5], [off[0] * 3.2, G[1] - 0.08 - L * 0.75 + off[1] * 2, G[2] - 0.012 + off[2] * 2.5]);
     } else {
-      const sweep = norm([n0[0] * 0.3, -0.1, -1]), side = norm([n0[2], 0, -n0[0]]), back = n0[2] > 0 ? 0.55 * n0[2] : 0;   // nothing falls forward over the face
+      const sweep = norm([n0[0] * 0.3, -0.1, -1]), back = n0[2] > 0 ? 0.55 * n0[2] : 0;   // nothing falls forward over the face
       let q = pts[0].slice();
       for (let i = 1; i <= N; i++) {
         const u = i / N; let v;
         if (style === 'short') v = [n0[0], n0[1] + 0.2, n0[2] - 0.35 * u - back];
-        else if (style === 'loose') { const w = Math.sin(u * 5 + hash(id, 6) * 6.28) * 0.45, k = 1 - 0.55 * u; v = [n0[0] * k + side[0] * w, n0[1] * k - 1.25 * u, n0[2] * k + side[2] * w - 0.15 - back * 1.6]; }   // out, then down, with a wave
         else { const g = Math.min(1, u * 1.8), f = g * (1 - 0.75 * u), flick = u > 0.8 ? (u - 0.8) * 1.5 : 0; v = [n0[0] * (1 - g + flick) + sweep[0] * f, n0[1] * (1 - g) + sweep[1] * f - 1.7 * u, n0[2] * (1 - g) + sweep[2] * f - 0.12]; }   // out of the scalp, back over the skull, then hanging down behind it under its own weight, the tips turning out a little
         v = norm(v); q = clear([q[0] + (v[0] * L) / N, q[1] + (v[1] * L) / N, q[2] + (v[2] * L) / N], rad(i)); pts.push(q.slice());
       }
@@ -62,8 +188,14 @@ export function tendrilPaths(style, thick, head) {
   return out;
 }
 
-export function tendrils(style, thick, head) {
-  const list = tendrilPaths(style, thick, head), ropes = list.map((t) => chain(t.pts, t.rad));
+export function tendrils(style, thick, head, o = {}) {
+  const list = tendrilPaths(style, thick, head, o);
+  if (style === 'dreads') {
+    const G = lockGrid(list);
+    const param = (P) => { const n = P.length / 3, T = new Float32Array(n); for (let i = 0; i < n; i++) T[i] = G.along(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]); return T; };
+    return { field: G.field, bounds: G.bounds, param };
+  }
+  const ropes = list.map((t) => chain(t.pts, t.rad));
   const band = style === 'bound' ? ellipsoid(0, 0.004, -0.142, 0.036, 0.014, 0.032) : null;
   const all = (x, y, z) => { let d = Infinity; for (const f of ropes) { const v = f(x, y, z); if (v < d) d = v; } return d; };
   // they grow straight out of the scalp (their roots are sunk into the head), so there is no cap and no seam

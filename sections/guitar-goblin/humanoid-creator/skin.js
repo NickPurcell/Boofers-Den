@@ -103,10 +103,10 @@ export function merge(geos) {
   return m;
 }
 
-// hair: a satin sheen and fine fibres running along each lock (the mesh's uvs run up and down the head on its
-// sides and front to back on top, which is how hair lies)
+// fine fibres running one way, as a normal map: up and down a mesh's box-projected uvs on its sides, and front to
+// back on top, which is how hair lies (and how a hanging lock's strands run)
 let fibres = null;
-export function hairMaterial() {
+function fibreTexture() {
   if (!fibres) {
     const S = 256, data = new Uint8Array(S * S * 4), h = (i, j) => { const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return s - Math.floor(s); };
     const hgt = new Float32Array(S * S);
@@ -117,5 +117,13 @@ export function hairMaterial() {
     }
     fibres = new THREE.DataTexture(data, S, S, THREE.RGBAFormat); fibres.wrapS = fibres.wrapT = THREE.RepeatWrapping; fibres.magFilter = THREE.LinearFilter; fibres.minFilter = THREE.LinearMipmapLinearFilter; fibres.generateMipmaps = true; fibres.anisotropy = 4; fibres.needsUpdate = true;
   }
-  return new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.46, metalness: 0, normalMap: fibres, normalScale: new THREE.Vector2(0.55, 0.55), sheen: 0.55, sheenRoughness: 0.4, side: THREE.DoubleSide });
+  return fibres;
+}
+// hair: a satin sheen over fine fibres
+export function hairMaterial() {
+  return new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.46, metalness: 0, normalMap: fibreTexture(), normalScale: new THREE.Vector2(0.55, 0.55), sheen: 0.55, sheenRoughness: 0.4, side: THREE.DoubleSide });
+}
+// a heavy lock (a Mikkian's dreads): matte and fibrous, like dense rope, not bare skin; its colour is the vertex colour
+export function lockMaterial() {
+  return new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, normalMap: fibreTexture(), normalScale: new THREE.Vector2(1.15, 1.15), sheen: 0.3, sheenRoughness: 0.75 });
 }

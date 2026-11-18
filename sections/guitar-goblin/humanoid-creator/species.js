@@ -3,7 +3,7 @@
 // species; no default is any one named person's look.
 import { SPURS, TENDRILS, RIDGES } from './pureblood.js';
 import { PLACES, SHAPES, INKS } from './tattoos.js';
-import { ARRANGE, THICK, PATTERNS } from './mikkian.js';
+import { ARRANGE, THICK, LENGTHS, PATTERNS } from './mikkian.js';
 
 const named = (o) => Object.entries(o).map(([key, v]) => ({ key, name: v.name }));
 const sw = (...list) => list.map(([key, name, c]) => ({ key, name, c }));
@@ -55,8 +55,8 @@ export const SPECIES = {
     look: { white: '#e9e6e2', flush: '#7a4a9a', brows: false, scalp: 0, accentLips: 0.55 },
     outfits: ['coat', 'robe', 'jacket', 'wraps', 'armour'],
     // opens on the look its first player asked for: mostly medium blue with dark blue accents
-    defaults: { frame: 'andro', build: 'average', face: 'oval', age: 'adult', skin: 'blue', eyes: 'dark', style: 'swept', hair: 'dkblue', thick: 'medium', pattern: 'tips', marks: 'none', liner: 'none', outfit: 'coat', hood: 'none', gear: 'none', main: 'charcoal', second: 'steel' },
-    groups: { thick: { label: 'Tendril thickness', items: named(THICK) }, pattern: { label: 'Tendril pattern', items: named(PATTERNS) } },
+    defaults: { frame: 'andro', build: 'average', face: 'oval', age: 'adult', skin: 'blue', eyes: 'dark', style: 'dreads', hair: 'dkblue', thick: 'thick', length: 'shoulder', pattern: 'tips', marks: 'none', liner: 'none', outfit: 'coat', hood: 'none', gear: 'none', main: 'charcoal', second: 'steel' },
+    groups: { thick: { label: 'Tendril thickness', items: named(THICK) }, length: { label: 'Tendril length', items: named(LENGTHS) }, pattern: { label: 'Tendril pattern', items: named(PATTERNS) } },
   },
   human: {
     name: 'Human', blurb: 'The common stock of the galaxy.',
