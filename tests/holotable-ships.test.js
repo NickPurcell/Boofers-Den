@@ -839,6 +839,10 @@ test("weapon properties: dire, piercing and melt trade accuracy for damage; vici
   await gm.act("space.on", { on: true });
   await p1.act("space.place", { id: party, x: 2, y: 5, f: 2 });
   await gm.act("space.place", { id: enemy, x: 8, y: 5, f: 6 });
+  // enough hull that no run of dice (a critical with dire and vicious, then the torpedo) takes it to 0 before the
+  // explosive check: a ship at 0 hull takes no more hull damage, so there'd be no blast line (engineer7: a rare flake)
+  await gm.act("ship.save", { ship: Object.assign({}, shipIn(await gm.state(), enemy), { hull: { current: 20, max: 100000 } }) });
+  await gm.act("ship.points", { id: enemy, what: "hull", current: 100000 });
   let r, st;
   for (let i = 0; i < 6; i++) {   // until a hit (a natural 1 misses)
     r = await p1.act("space.fire", { id: party, target: enemy, weapon: 0, dire: 2 });
