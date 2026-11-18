@@ -72,7 +72,9 @@
       // a monk's Martial Arts bonus strike, then Flurry of Blows (#67)
       const mas = me ? weapons.filter((a) => a.unarmed).map((a) => ({ a, o: E.martialOf(w, me, a) })).filter((x) => x.o.spec)
         .map(({ a, o }) => Object.assign({}, o.spec, { key: 'ma:' + a.key, base: a.key, martialBonus: true, flurry: !!o.flurry })) : [];
-      return weapons.concat(offs, mas, powers, MANEUVERS);
+      // a Scout marks its quarry like picking a target (#67): no action, once a turn
+      const quarry = (u.riders || {}).quarry ? [{ key: 'quarry', name: '🎯 Mark quarry', maneuver: 'quarry', damage: `+1${u.riders.quarry} on a hit, once a turn`, type: '', melee: 120 }] : [];
+      return weapons.concat(offs, mas, powers, MANEUVERS, quarry);
     }
     if (!gm()) return [];
     const known = UI.npc[u.id];
@@ -167,6 +169,7 @@
   const targets = (spec) => {
     const w = world(), u = cur();
     if (!u || !spec) return [];
+    if (spec.maneuver === 'quarry') return Object.values(w.units).filter((t) => t.id !== u.id && t.side !== u.side && !E.isDead(t) && E.feetBetween(u, t) <= 120 && E.sees(w, u, t));
     if (spec.maneuver) return Object.values(w.units).filter((t) => t.id !== u.id && t.side !== u.side && !E.isDead(t) && !(spec.maneuver === 'help' ? helpWhy(u, t) : E.maneuverCheck(w, u, t, spec.maneuver)));
     if (spec.power) {
       const ab = spec.power;
@@ -225,7 +228,7 @@
     const spec = armedSpec(), u = cur();
     if (!spec || !u) return;
     if (spec.maneuver) {   // #144
-      const r = spec.maneuver === 'help' ? await send('fight.common', { key: 'help', target: targetId })
+      const r = spec.maneuver === 'help' || spec.maneuver === 'quarry' ? await send('fight.common', { key: spec.maneuver, target: targetId })
         : await send('fight.' + spec.maneuver, { target: targetId, push: !!spec.push, multi: u.charId ? undefined : (UI.npc[u.id] || {}).multi || 1 });
       if (r) { UI.armed = null; UI.target = null; render(); }
       return;
@@ -393,9 +396,10 @@
       html += '<div class="ct-row ct-actions" role="group" aria-label="Attacks">';
       for (const a of atks) {
         const n = targets(a).length;
-        const slot = a.power ? a.power.use : a.offhand || a.martialBonus ? 'bonus' : 'action';
+        const slot = a.power ? a.power.use : a.maneuver === 'quarry' ? 'free' : a.offhand || a.martialBonus ? 'bonus' : 'action';
         const lim = !u.charId && a.res && ((f.npcRes || {})[u.id] || []).find((r) => r.key === a.res);
-        const slotSpent = (bud && slot !== 'free' && !bud[slot] && !a.offhand && !a.martialBonus && !(slot === 'action' && !a.power && a.maneuver !== 'help' && bud.attacks)) || (lim && lim.used >= lim.max);   // a weapon attack: also the rest of an Attack action (#139)
+        const marked = a.maneuver === 'quarry' && +E.spentOf(w, u.id).qm;   // a quarry is marked once a turn (#67)
+        const slotSpent = marked || (bud && slot !== 'free' && !bud[slot] && !a.offhand && !a.martialBonus && !(slot === 'action' && !a.power && a.maneuver !== 'help' && bud.attacks)) || (lim && lim.used >= lim.max);   // a weapon attack: also the rest of an Attack action (#139)
         const pool = a.power && Object.entries(a.power.cost || {})[0];
         const poorly = pool && (!u.pools[pool[0]] || E.poolLeft(u.pools[pool[0]]) < pool[1]);   // temporary points count (#190)
         // a Reload weapon's shots (6.6, #179): a volley needs its burst or rapid number of them
@@ -403,8 +407,8 @@
         const shots = gunKey != null && u.shots && u.shots[gunKey] != null ? +u.shots[gunKey] : null, needs = a.power && a.power.shots ? +a.power.shots : 1;
         const dry = shots != null && shots < needs;
         const off = slotSpent || !n || poorly || dry;
-        const why = dry ? (shots ? `${shots} shot${shots === 1 ? '' : 's'} left; this needs ${needs}. Reload first.` : 'Out of shots: reload first') : slotSpent ? `Your ${slot === 'bonus' ? 'bonus action' : slot} is used this turn` : poorly ? `Not enough ${pool[0] === 'force' ? 'force' : pool[0] === 'tech' ? 'tech' : pool[0]} points` : !n ? 'Nothing in reach or range' : a.power && a.power.targets === 'self' ? 'Use it on yourself' : 'Pick a target on the map';
-        const tag = a.maneuver ? (a.maneuver === 'help' ? '' : sgn(E.contestBonus(u, 'athletics'))) : a.power ? (a.power.attack ? sgn(a.power.attack.bonus) : a.power.save ? `DC ${a.power.save.dc}` : '') : sgn(a.bonus);
+        const why = marked ? 'A quarry is already marked this turn' : dry ? (shots ? `${shots} shot${shots === 1 ? '' : 's'} left; this needs ${needs}. Reload first.` : 'Out of shots: reload first') : slotSpent ? `Your ${slot === 'bonus' ? 'bonus action' : slot} is used this turn` : poorly ? `Not enough ${pool[0] === 'force' ? 'force' : pool[0] === 'tech' ? 'tech' : pool[0]} points` : !n ? 'Nothing in reach or range' : a.power && a.power.targets === 'self' ? 'Use it on yourself' : 'Pick a target on the map';
+        const tag = a.maneuver ? (a.maneuver === 'help' || a.maneuver === 'quarry' ? '' : sgn(E.contestBonus(u, 'athletics'))) : a.power ? (a.power.attack ? sgn(a.power.attack.bonus) : a.power.save ? `DC ${a.power.save.dc}` : '') : sgn(a.bonus);
         html += `<button class="btn small ct-atk ${a.power ? 'ct-power' : ''} ${UI.armed === a.key ? 'primary' : ''}" data-ct="arm" data-key="${esc(a.key)}" ${off ? 'disabled' : ''} aria-pressed="${UI.armed === a.key}"
           title="${esc(why)}">${esc(a.name)} <b>${esc(tag)}</b> <span class="muted">${esc(a.damage)}${a.type ? ' ' + esc(a.type) : ''} · ${a.power && a.power.targets === 'self' ? 'self' : a.range ? `${a.range[0]}${a.range[1] !== a.range[0] ? '/' + a.range[1] : ''} ft` : `${a.melee} ft`}${pool ? ` · ${pool[1]} ${pool[0] === 'force' ? 'FP' : pool[0] === 'tech' ? 'TP' : pool[0]}` : ''}${shots != null && gunKey === String(a.key) ? ` · ${shots}/${(u.reloads || {})[gunKey]} shots` : ''}${slot !== 'action' ? ` · ${slot === 'bonus' ? 'bonus' : slot}` : ''}</span></button>`;
       }
@@ -454,13 +458,14 @@
         if (self && !UI.target) UI.target = u.id;
       } else if (spec && spec.maneuver) {   // Grapple, Shove, Help (#144)
         const t = UI.target && w.units[UI.target];
-        const why = t && (spec.maneuver === 'help' ? helpWhy(u, t) : E.maneuverCheck(w, u, t, spec.maneuver));
+        const why = t && (spec.maneuver === 'help' ? helpWhy(u, t) : spec.maneuver === 'quarry' ? (E.feetBetween(u, t) > 120 ? `${t.name} is out of range (120 ft).` : '') : E.maneuverCheck(w, u, t, spec.maneuver));
         const knows = t && (t.charId || gm());
         const theirs = t && (knows ? `the better of its Athletics ${sgn(E.contestBonus(t, 'athletics'))} and Acrobatics ${sgn(E.contestBonus(t, 'acrobatics'))}` : 'its Athletics or Acrobatics, whichever is better');
         const wins = spec.maneuver === 'grapple' ? 'it is grappled' : spec.push ? 'it is pushed 5 ft away' : 'it is knocked prone';
         html += `<div class="ct-row ct-preview" aria-live="polite">${!t ? `<span>${esc(spec.name)}: pick a creature on the map (lit in red).</span><button class="btn tiny ghost" data-ct="disarm">Cancel</button>`
           : why ? `<span>${esc(why)}</span>`
           : spec.maneuver === 'help' ? `<span><b>${esc(t.name)}</b>: the first attack an ally makes on it before your next turn has advantage. Takes your action.</span><button class="btn small primary" data-ct="go">Help</button>`
+          : spec.maneuver === 'quarry' ? `<span><b>${esc(t.name)}</b>: your quarry. Once a turn, a weapon hit on it deals +1${esc((u.riders || {}).quarry || '')} more. No action; one quarry at a time.</span><button class="btn small primary" data-ct="go">Mark</button>`
           : `<span><b>${esc(t.name)}</b>, ${E.feetBetween(u, t)} ft: your Athletics ${sgn(E.contestBonus(u, 'athletics'))} against ${esc(theirs)}. If you win, ${wins}; a tie changes nothing.</span><button class="btn small primary" data-ct="go">${esc(spec.maneuver === 'grapple' ? 'Grapple' : 'Shove')}</button>`}</div>`;
       } else if (spec) {
         const t = UI.target && w.units[UI.target];

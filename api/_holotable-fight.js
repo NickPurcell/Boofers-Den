@@ -53,7 +53,7 @@ function state(camp) {
     spent: Object.fromEntries(Object.entries(plainObj(f.spent)).filter(([k, v]) => ID.test(k) && v && typeof v === "object")
       .map(([k, v]) => [k, { key: str(v.key, 40), move: clamp(int(v.move), 0, 1000), action: clamp(int(v.action), 0, 9), bonus: clamp(int(v.bonus), 0, 9), reaction: clamp(int(v.reaction), 0, 9), diag: v.diag ? 1 : 0,
         dash: clamp(int(v.dash), 0, 9), disengage: v.disengage ? 1 : 0, dodge: v.dodge ? 1 : 0, ds: v.ds ? 1 : 0, sneak: v.sneak ? 1 : 0, double: v.double ? 1 : 0,
-        atk: clamp(int(v.atk), 0, 9), atkMax: clamp(int(v.atkMax), 0, 9), lt: clamp(int(v.lt), 0, 41), dw: clamp(int(v.dw), 0, 41), off: clamp(int(v.off), 0, 9), mv: clamp(int(v.mv), 0, 1023), surge: v.surge ? 1 : 0, ma: v.ma ? 1 : 0, mab: clamp(int(v.mab), 0, 2) }])),
+        atk: clamp(int(v.atk), 0, 9), atkMax: clamp(int(v.atkMax), 0, 9), lt: clamp(int(v.lt), 0, 41), dw: clamp(int(v.dw), 0, 41), off: clamp(int(v.off), 0, 9), mv: clamp(int(v.mv), 0, 1023), surge: v.surge ? 1 : 0, ma: v.ma ? 1 : 0, mab: clamp(int(v.mab), 0, 2), quarry: v.quarry ? 1 : 0, qm: v.qm ? 1 : 0 }])),
     // reactions waiting for an answer: an opportunity attack someone may take (the turn waits until it's answered)
     pending: (Array.isArray(f.pending) ? f.pending : []).slice(0, 12).map(cleanPending).filter(Boolean),
     // a creature's limited abilities from its stat block (audit 9.5, issue #76): recharge, per day, legendary actions
