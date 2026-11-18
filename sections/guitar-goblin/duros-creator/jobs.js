@@ -13,7 +13,7 @@ export function run(job, a) {
     const m = mesh(h.field, h.bounds, RES.headB, { aoStep: 0.004, uvScale: 0.04 });
     // the mouth line: each point cast straight in from in front of the face, so it lands on the floor of the shallow
     // cut (or the face beside it) and never starts inside it; then pushed in a hair
-    const mouth = h.mouthLine.map((p) => { const r = cast(h.field, [p[0], p[1], 0.2], [0, 0, -1], 0.3) || project(h.field, p, 10); return [r.p[0] + r.n[0] * 0.0003, r.p[1] + r.n[1] * 0.0003, r.p[2] + r.n[2] * 0.0003]; });   // a hair proud of the cut's floor, so the line is unbroken   // seated a millimetre in: the tube is 0.8 mm thick
+    const mouth = h.mouthLine.map((p) => { const r = cast(h.field, [p[0], p[1], 0.2], [0, 0, -1], 0.3) || project(h.field, p, 10); return [r.p[0] + r.n[0] * 0.0003, r.p[1] + r.n[1] * 0.0003, r.p[2] + r.n[2] * 0.0003]; });   // a hair proud of the cut's floor, so the 1.3 mm line reads unbroken
     return { mesh: m, eye: h.eye, lid: h.lid, earAt: h.earAt, at: HEAD_AT, mouth };
   }
   if (job === 'body') {

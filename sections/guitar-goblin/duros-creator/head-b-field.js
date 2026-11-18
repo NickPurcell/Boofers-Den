@@ -41,10 +41,15 @@ export function headBField(shapeKey = 'round', exprKey = 'neutral', age = 0) {
   /* ---- the skull: a box with big corner radii, widest high up, carried well back ---- */
   // the box from y -0.029 up to the crown (less what the blends add), its big corner radius rounding it over late
   const top = S.crown - 0.008, crY = (top - 0.029) / 2, hy = (top + 0.029) / 2;
-  const cranium = roundBox(0, crY, -0.036, 0.096 * fw, hy, 0.094, 0.07);   // corner radius under the half-width: broad high up, still bulbous
+  // smooth shapes only (a rounded box's flat side bands drew a hard line down the side in the light): a main ellipsoid,
+  // two upper lobes that keep it widest high up and broad near the top, and one dome over all of it
+  const cranium = ellipsoid(0, crY - 0.004, -0.036, 0.096 * fw, hy, 0.096);
+  const lobes = mirrorX(ellipsoid(0.036 * fw, top - 0.066, -0.036, 0.05 * fw, 0.064, 0.09));
+  const dome = ellipsoid(0, top - 0.071, -0.035, 0.084 * fw, 0.068, 0.095);
   const crownBack = ellipsoid(0, top - 0.045, -0.045, 0.06 * fw, 0.042, 0.07);       // the crown's high point, over the neck
   const back = ellipsoid(0, 0.045, -0.068, 0.074 * fw, 0.1, 0.058);                        // the back of the skull at z -0.135
-  const forehead = roundBox(0, 0.048, 0.03, 0.07 * fw, 0.042, 0.045, 0.034);             // rising almost straight over the brow
+  // the forehead, rising almost straight over the brow: a broad ellipsoid, deep enough to run back into the skull's sides
+  const forehead = ellipsoid(0, 0.05, 0.012, 0.084 * fw, 0.058, 0.066);
   const occiput = ellipsoid(0, -0.025, -0.08, 0.064 * fw, 0.055, 0.055);
 
   /* ---- the face ---- */
@@ -53,9 +58,9 @@ export function headBField(shapeKey = 'round', exprKey = 'neutral', age = 0) {
   const browPlate = ellipsoid(0, 0.022, 0.058, 0.07 * fw, 0.02, 0.022);
   // the face below the eyes: 0.080 at the eyes, 0.062 at the jaw hinge, tapering hard to the chin
   const midface = ellipsoid(0, -0.016, 0.018, 0.068 * fw, 0.045, 0.05);
-  const lowerFace = roundCone([0, -0.03, 0.012], [0, -0.098, 0.043], 0.05 * fw, 0.017 * fw);
+  const lowerFace = roundCone([0, -0.03, 0.012], [0, -0.095, 0.04], 0.05 * fw, 0.013 * fw);   // ends inside the chin, so the chin sits back
   const jawSide = mirrorX(capsule([0.054 * fw, -0.035, -0.028], [0.012 * fw, -0.104, 0.042], 0.008));
-  const chin = ellipsoid(0, -0.104, 0.046, 0.017 * fw, 0.011, 0.013);                      // bottom at -0.114, behind the mouth
+  const chin = ellipsoid(0, -0.104, 0.044, 0.017 * fw, 0.011, 0.013);                      // bottom at -0.114, ~8 mm behind the mouth
   const cheekbone = mirrorX(ellipsoid(0.055 * fw, -0.022 + X.cheek, 0.052, 0.02, 0.011, 0.016));
   // the long flat central plane, between the brows to just above the mouth, its lower end overhanging the line
   const plane = roundCone([0, 0.006, 0.07], [0, -0.066, 0.058], 0.02 * fw, 0.017 * fw);   // its lower end sinks into the muzzle above the mouth
@@ -79,17 +84,21 @@ export function headBField(shapeKey = 'round', exprKey = 'neutral', age = 0) {
   const neck = roundCone([0, -0.06, -0.032], [0, -0.3, -0.026], 0.047 * fw, 0.05);
   const neckMuscle = mirrorX(capsule([0.057 * fw, -0.046, -0.04], [0.015, -0.262, 0.03], 0.0105));
   const nape = roundCone([0, -0.07, -0.064], [0, -0.21, -0.056], 0.031, 0.022);
+  const upperNeck = roundCone([0, -0.055, -0.034], [0, -0.165, -0.031], 0.05 * fw, 0.047);   // to the clothes' 0.0475 by -0.16
 
-  let skull = smin(0.03, cranium, crownBack, back, forehead, occiput);
-  skull = smin(0.024, skull, browPlate, midface, lowerFace);
+  let skull = smin(0.03, cranium, lobes, crownBack, back, occiput);
+  skull = smin(0.03, skull, dome);
+  skull = smin(0.04, skull, forehead);
+  skull = smin(0.038, skull, browPlate, midface);   // soft: the skull and the face are one surface down the side
+  skull = smin(0.022, skull, lowerFace);             // tighter below, so the face still tapers to the mouth and chin
   skull = smin(0.01, skull, jawSide, chin, cheekbone);
   skull = smin(0.01, skull, brow);
   skull = smin(0.018, skull, mouthPlate);
   skull = smin(0.008, skull, planeFlat);
   if (bags) skull = smin(0.02, skull, bags);
-  skull = smin(0.03, skull, neck, nape);
-  skull = smin(0.016, skull, neckMuscle);
-  skull = ssub(0.02, skull, temple);
+  skull = smin(0.03, skull, neck, upperNeck, nape);
+  skull = smin(0.01, skull, neckMuscle);   // a tighter blend, so the cords show
+  // (no temple dip: on a smooth skull it only drew a line down the side)
   skull = ssub(0.02, skull, hollow);
   skull = ssub(0.007, skull, translateIn(crease, 0.0018));
   skull = ssub(0.005, skull, socket);
