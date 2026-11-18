@@ -235,6 +235,17 @@
     };
   }
 
+  // audit 4.5: a power above the character's max power level for its kind (force or tech), or null. ci: casterInfo to
+  // check against, when not the character's own (the level-up wizard checks the level being gained).
+  function overMaxPowerLevel(c, pw, ci) {
+    const lvl = +(pw && pw.level) || 0, tech = pw && pw.type === 'tech';
+    const max = (tech ? (ci || casterInfo(c)).techMaxLevel : (ci || casterInfo(c)).forceMaxLevel) || 0;
+    if (lvl <= max) return null;
+    const who = (c && c.name) || 'This character', kind = tech ? 'tech' : 'force';
+    return { level: lvl, max, text: max ? `Level ${lvl} is above ${who}'s max ${kind} power level (${max}).`
+      : `${who} can't cast leveled ${kind} powers yet (no max ${kind} power level).` };
+  }
+
   function attackBonus(c, a) {
     if (a.bonus !== undefined && a.bonus !== '' && a.bonus !== null && !isNaN(+a.bonus)) return +a.bonus;
     let ab = a.ab || 'str';
@@ -371,7 +382,7 @@
   const parseSenses = text => cleanSenses(String(text || '').split(/[,;·\n]+/).map(p => { const m = /([a-z]+)\D*(\d+)/i.exec(p); return m && { kind: m[1], range: +m[2] }; }).filter(Boolean));
 
   root.SW5E = { ABILITIES, SKILLS, CLASSES, SPECIES, BACKGROUNDS, DAMAGE_TYPES, WEAPONS, CONDITIONS, REFERENCE,
-    mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo, techOnShortRest,
+    mod, fmt, totalLevel, profBonus, abilityMod, saveBonus, skillBonus, initiative, passive, casterInfo, techOnShortRest, overMaxPowerLevel,
     ARCHETYPE_CASTERS, casterArchetype, castingSources,
     attackBonus, damageExpr, critExpr, hitDiceSummary, hitDice, hitDiceUsedTotal, hitDiceUsedOf, cleanHitDiceUsed, forceRecovery, blankCharacter,
     CLASS_TABLE, CLASS_RESOURCES, missingClassResources, withClassResources, resourceRows, classTableAt,
