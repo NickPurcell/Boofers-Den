@@ -521,6 +521,71 @@
   }
   Object.assign(SW5E, { CHASSIS_KINDS, MOD_KINDS, MOD_DC, MOD_TOOL, chassisKind, modSlots, modDC, installBlocked, chassisBonus, cleanChassis, cleanMod, rechassis, installMod, removeMod });
 
+  // Cybernetic augmentations and droid customizations (audit 6.4's second part; Wretched Hives, chapter 7). In the
+  // inventory such an item carries `implant: { kind }`: enhancement or replacement (cybernetics), part or protocol (droids).
+  // Installed, it moves into the character's own `implants` list, as a modification moves into its chassis.
+  //  - Cybernetics: a creature supports as many as its proficiency bonus; installed with biotech's implements; side
+  //    effects at 2, 4 and 6 augmentations.
+  //  - Droids: the motor's slots, two to start and upgradeable to six for credits; parts up to the best of the Str, Dex
+  //    and Con modifiers, protocols up to the best of Int, Wis and Cha (at least one each); installed with astrotech's.
+  //  - Either takes 8 hours for a Medium creature (times its size's modifier) and a check against the rarity's DC (MOD_DC).
+  const IMPLANT_KINDS = { enhancement: 'cyber', replacement: 'cyber', part: 'droid', protocol: 'droid' };
+  const IMPLANT_TOOL = { cyber: "Biotech's implements", droid: "Astrotech's implements" };
+  const SIZE_TIME = { Tiny: 0.25, Small: 0.5, Medium: 1, Large: 2, Huge: 5, Gargantuan: 10 };
+  const MOTOR_COST = { 3: 2000, 4: 10000, 5: 50000, 6: 200000 };
+  const CYBER_SIDE = [[2, 'Disadvantage on saving throws against effects that deal ion damage.'], [4, 'Vulnerability to ion damage.'],
+    [6, 'Counts as a droid for powers that affect only droids or constructs.']];
+  const groupOf = k => (Object.prototype.hasOwnProperty.call(IMPLANT_KINDS, k) ? IMPLANT_KINDS[k] : null);   // 'cyber', 'droid' or null
+  const isDroid = c => /\bdroid\b/i.test(String((c && c.species) || ''));
+  const motorSlots = c => Math.min(6, Math.max(2, Math.round(+(c && c.motor) || 2)));
+  function implantCounts(c) {
+    const list = (c && c.implants) || [], n = k => list.filter(x => x && x.kind === k).length;
+    const best = abs => Math.max(1, ...abs.map(a => abilityMod(c, a)));
+    return { cyber: n('enhancement') + n('replacement'), cyberMax: profBonus(c), droid: n('part') + n('protocol'), motor: motorSlots(c),
+      parts: n('part'), partsMax: best(['str', 'dex', 'con']), protocols: n('protocol'), protocolsMax: best(['int', 'wis', 'cha']) };
+  }
+  // why this item can't go into this character, or null. A player is stopped; the GM may go past it.
+  function implantBlocked(c, item) {
+    const kind = item && item.implant && item.implant.kind, g = groupOf(kind), who = (c && c.name) || 'This character';
+    if (!g) return `${(item && item.name) || 'That'} isn't a cybernetic augmentation or a droid customization.`;
+    const k = implantCounts(c);
+    if (g === 'droid' && !isDroid(c)) return `Only droids take droid customizations, and ${who}'s species isn't a droid.`;
+    if (g === 'cyber' && isDroid(c)) return `Cybernetic augmentations are for beasts and humanoids, and ${who} is a droid.`;
+    if (g === 'cyber' && k.cyber >= k.cyberMax) return `${who} supports ${k.cyberMax} cybernetic augmentations (the proficiency bonus) and has ${k.cyber}.`;
+    if (g === 'droid' && k.droid >= k.motor) return `${who}'s motor has ${k.motor} slots, all in use: upgrade the motor first.`;
+    if (kind === 'part' && k.parts >= k.partsMax) return `${who} can have ${k.partsMax} part${k.partsMax === 1 ? '' : 's'} (the best of the Str, Dex and Con modifiers).`;
+    if (kind === 'protocol' && k.protocols >= k.protocolsMax) return `${who} can have ${k.protocolsMax} protocol${k.protocolsMax === 1 ? '' : 's'} (the best of the Int, Wis and Cha modifiers).`;
+    return null;
+  }
+  const cyberSideEffects = c => { const n = implantCounts(c).cyber; return CYBER_SIDE.filter(([at]) => n >= at).map(([, t]) => t); };
+  const implantHours = c => 8 * (SIZE_TIME[c && c.size] || 1);
+  // a droid's motor going up to `slots`: what it costs (the table's price times the size's modifier), or null past six
+  const motorCost = (c, slots) => (MOTOR_COST[slots] ? MOTOR_COST[slots] * (SIZE_TIME[c && c.size] || 1) : null);
+  // move equipment[j] into the character's implants (one off the stack); held before anything moves, as installMod is
+  function installImplant(c, j) {
+    const eq = (c && c.equipment) || [], it = eq[j];
+    if (!it || !it.implant || !groupOf(it.implant.kind)) return 'That item is gone.';
+    c.implants = cleanImplants((c.implants || []).concat([Object.assign({ name: it.name, kind: it.implant.kind }, RARITIES.includes(it.rar) ? { rar: it.rar } : {})]));
+    if ((+it.qty || 1) > 1) it.qty = (+it.qty || 1) - 1; else eq.splice(j, 1);
+    return null;
+  }
+  // take implant k out: salvaged, it goes back in the pack; otherwise it's destroyed
+  function removeImplant(c, k, salvaged) {
+    const list = (c && c.implants) || [], m = list[k];
+    if (!m) return 'That one is gone.';
+    list.splice(k, 1);
+    if (salvaged) (c.equipment = c.equipment || []).push(Object.assign({ name: m.name, qty: 1, equipped: false, notes: `${m.rar || ''} ${m.kind}`.trim() },
+      m.rar ? { rar: m.rar } : {}, { implant: { kind: m.kind } }));
+    return null;
+  }
+  const cleanImplant = x => (x && groupOf(x.kind) ? { kind: x.kind } : null);
+  const cleanImplants = list => (Array.isArray(list) ? list : []).filter(x => x && typeof x === 'object' && String(x.name || '').trim() && cleanImplant(x)).slice(0, 12)
+    .map(x => Object.assign({ name: String(x.name).trim().slice(0, 80), kind: x.kind }, RARITIES.includes(x.rar) ? { rar: x.rar } : {}));
+  // an SW5e enhanced item's implant kind, from its category and subtype ("Cybernetic Augmentation" / "enhancement")
+  const implantOf = it => (it && /^(Cybernetic Augmentation|Droid Customization)$/.test(it.cat) && cleanImplant({ kind: String(it.sub || '').toLowerCase() })) || null;
+  Object.assign(SW5E, { IMPLANT_KINDS, IMPLANT_TOOL, groupOf, isDroid, motorSlots, implantCounts, implantBlocked, cyberSideEffects, implantHours, motorCost,
+    installImplant, removeImplant, cleanImplant, cleanImplants, implantOf });
+
   // Selling (audit 6.8): equipment fetches half its cost (PHB, "Selling Treasure"), whole credits, rounded down
   const sellPrice = e => Math.floor(Math.max(0, +(e && e.cost) || 0) / 2);
   Object.assign(SW5E, { sellPrice });
