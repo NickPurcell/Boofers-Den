@@ -112,3 +112,16 @@ test("enhanced items (6.2): an item keeps its checked +N, and the server's own A
   assert.deepEqual(c.equipment.map((e) => e.bonus), [{ ac: 2 }, undefined]);
   assert.equal(c.ac, 10 + 1 + 2, "unarmored 10 + Dex, +2 from the worn item");
 });
+
+test("item modification (6.4): a chassis and a modification keep their checked shapes", async () => {
+  const { gm, sam, avery } = await table();
+  const av = await sheet(sam, avery);
+  await sam.act("char.save", { char: Object.assign({}, av, { equipment: [
+    { name: "Blaster Chassis (Premium)", qty: 1, rar: "Premium", att: true, chassis: { kind: "blaster", mods: [{ name: "Accuracy Focus Mk II", rar: "Premium", bonus: { hit: 1 } }], extra: 1 } },
+    { name: "Bayonet", qty: 1, rar: "Premium", mod: { kind: "blaster" } }, { name: "Odd", qty: 1, chassis: { kind: "toaster" }, mod: "x" },
+  ] }) });
+  const eq = (await sheet(gm, avery)).equipment;
+  assert.deepEqual(eq[0].chassis, { kind: "blaster", mods: [{ name: "Accuracy Focus Mk II", rar: "Premium", bonus: { hit: 1 } }] });
+  assert.deepEqual(eq[1].mod, { kind: "blaster" });
+  assert.ok(!("chassis" in eq[2]) && !("mod" in eq[2]));
+});

@@ -206,6 +206,31 @@ test("enhanced items (audit 6.2): a +N to attack and damage, or to AC, read from
   assert.equal(R.armorClass(c).total, 16);
 });
 
+test("item modification (audit 6.4): chassis kinds, slots by rarity, what fits, the DC, and the chassis's own +N", () => {
+  assert.deepEqual(["Blaster Chassis (Premium)", "Tunic Chassis (Standard)", "Focus Generator Chassis (Advanced)", "Reinforced Chassis (Premium)", "Blaster"].map(R.chassisKind),
+    ["blaster", "clothing", "focus generator", null, null]);
+  assert.deepEqual(["Standard", "Premium", "Prototype", "Advanced", "Legendary", "Artifact"].map((r) => R.modSlots(r).aug), [0, 0, 1, 1, 2, 2]);
+  assert.deepEqual(["Standard", "Artifact", undefined].map(R.modDC), [10, 30, 10]);
+  const chassis = (rar, mods = []) => ({ name: `Blaster Chassis (${rar})`, rar, chassis: { kind: "blaster", mods } });
+  const mod = (name, kind, rar, extra) => Object.assign({ name, rar, mod: { kind } }, extra);
+  assert.equal(R.installBlocked(chassis("Premium"), mod("Accuracy Focus Mk II", "blaster", "Premium")), null);
+  assert.match(R.installBlocked(chassis("Premium"), mod("Edge", "vibroweapon", "Standard")), /a vibroweapon modification; Blaster Chassis \(Premium\) is a blaster chassis/);
+  assert.match(R.installBlocked(chassis("Standard"), mod("Accuracy Focus Mk II", "blaster", "Premium")), /holds modifications up to Standard/);
+  assert.match(R.installBlocked(chassis("Premium"), mod("Charisma Augment (Basic)", "augment", "Standard")), /has no augment slot/);
+  assert.equal(R.installBlocked(chassis("Prototype"), mod("Charisma Augment (Basic)", "augment", "Standard")), null);
+  assert.match(R.installBlocked(chassis("Legendary", [{ name: "Charisma Augment (Basic)", aug: true }]), mod("Charisma Augment (Basic)", "augment", "Standard")), /No two of the same augment/);
+  const full = chassis("Premium", [1, 2, 3, 4].map((n) => ({ name: `M${n}` })));
+  assert.match(R.installBlocked(full, mod("Accuracy Focus Mk II", "blaster", "Premium")), /No modification slot is free/);
+  assert.match(R.installBlocked({ name: "Rock" }, mod("X", "blaster", "Standard")), /isn't a chassis/);
+  // the chassis's own +N: its modifications' added up
+  assert.deepEqual(R.chassisBonus(chassis("Premium", [{ name: "A", bonus: { hit: 1 } }, { name: "B", bonus: { hit: 1, dmg: 2 } }])), { hit: 2, dmg: 2 });
+  assert.equal(R.chassisBonus(chassis("Premium", [{ name: "A" }])), null);
+  // only this shape is kept
+  assert.deepEqual(R.cleanChassis({ kind: "blaster", mods: [{ name: " A ", rar: "Premium", aug: 1, bonus: { hit: 9 } }, { name: "" }, "x"] }), { kind: "blaster", mods: [{ name: "A", rar: "Premium", aug: true }] });
+  assert.equal(R.cleanChassis({ kind: "__proto__", mods: [] }), null);
+  assert.deepEqual([R.cleanMod({ kind: "augment" }), R.cleanMod({ kind: "toaster" })], [{ kind: "augment" }, null]);
+});
+
 test("Engineers and Scouts get tech points back on a short rest; others don't", () => {
   assert.equal(R.techOnShortRest(char([["Engineer", 1]])), true);
   assert.equal(R.techOnShortRest(char([["Scout", 2]])), true);

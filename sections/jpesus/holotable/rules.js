@@ -417,6 +417,48 @@
   }
   Object.assign(SW5E, { enhancedBonus, cleanBonus });
 
+  // Item modification (audit 6.4; Wretched Hives, "Modifiable Items"). A chassis ("Blaster Chassis (Premium)") has four
+  // base slots for modifications of its own kind, plus one augment slot at prototype and advanced and two at legendary and
+  // artifact. A modification fits a chassis of its kind (an augment fits any) at the chassis's rarity or lower, and no two of
+  // the same augment go in one chassis. Installing or removing one is a check with the item's tool (Wretched Hives' Item
+  // Specific Tools) against the DC its rarity sets. A chassis with anything installed requires attunement, and its
+  // modifications' plain +N add up as the chassis's own bonus.
+  const CHASSIS_KINDS = { armor: 'armor', blaster: 'blaster', cloak: 'clothing', 'focus generator': 'focus generator', handwraps: 'clothing',
+    lightweapon: 'lightweapon', pants: 'clothing', shield: 'shield', tunic: 'clothing', vibroweapon: 'vibroweapon', wristpad: 'wristpad' };
+  const MOD_KINDS = [...new Set(Object.values(CHASSIS_KINDS)), 'augment'];
+  const MOD_DC = { Standard: 10, Premium: 14, Prototype: 18, Advanced: 22, Legendary: 26, Artifact: 30 };
+  const MOD_TOOL = { armor: "Armormech's implements", shield: "Armormech's implements", blaster: "Armstech's implements", vibroweapon: "Armstech's implements",
+    lightweapon: "Artificer's implements", 'focus generator': "Artificer's implements", wristpad: "Cybertech's implements", clothing: "Synthweaver's implements", augment: "Tinker's implements" };
+  const chassisKind = name => { const m = /^(.+?) Chassis\b/i.exec(String(name || '')); return m ? CHASSIS_KINDS[m[1].toLowerCase()] || null : null; };
+  const modSlots = rar => { const i = RARITIES.indexOf(rar); return { base: 4, aug: i >= 4 ? 2 : i >= 2 ? 1 : 0 }; };
+  const modDC = rar => MOD_DC[rar] || 10;
+  // why this modification can't go into this chassis, or null
+  function installBlocked(item, mod) {
+    const ch = item && item.chassis, kind = mod && mod.mod && mod.mod.kind;
+    if (!ch) return 'That item isn\'t a chassis.';
+    if (!kind) return `${(mod && mod.name) || 'That'} isn't a modification.`;
+    if (kind !== 'augment' && kind !== ch.kind) return `${mod.name} is a ${kind} modification; ${item.name} is a ${ch.kind} chassis.`;
+    if (RARITIES.indexOf(mod.rar) > RARITIES.indexOf(item.rar)) return `${item.name} holds modifications up to ${item.rar || 'Standard'}; ${mod.name} is ${mod.rar}.`;
+    const slots = modSlots(item.rar), mods = ch.mods || [], aug = kind === 'augment';
+    if (aug && mods.some(m => m.aug && String(m.name).toLowerCase() === String(mod.name).toLowerCase())) return 'No two of the same augment in one chassis.';
+    if (mods.filter(m => !!m.aug === aug).length >= (aug ? slots.aug : slots.base)) return aug ? (slots.aug ? 'No augment slot is free.' : `A ${item.rar || 'Standard'} chassis has no augment slot.`) : 'No modification slot is free.';
+    return null;
+  }
+  // a chassis's own +N: its installed modifications' added up (each 1-5 still)
+  function chassisBonus(item) {
+    const out = {};
+    for (const m of ((item && item.chassis && item.chassis.mods) || [])) for (const k of ['hit', 'dmg', 'ac']) if (m.bonus && +m.bonus[k]) out[k] = Math.min(5, (out[k] || 0) + +m.bonus[k]);
+    return cleanBonus(out);
+  }
+  function cleanChassis(x) {
+    if (!x || typeof x !== 'object' || !Object.values(CHASSIS_KINDS).includes(x.kind)) return null;
+    const mods = (Array.isArray(x.mods) ? x.mods : []).slice(0, 6).filter(m => m && typeof m === 'object' && String(m.name || '').trim())
+      .map(m => Object.assign({ name: String(m.name).trim().slice(0, 80) }, RARITIES.includes(m.rar) ? { rar: m.rar } : {}, m.aug ? { aug: true } : {}, cleanBonus(m.bonus) ? { bonus: cleanBonus(m.bonus) } : {}));
+    return { kind: x.kind, mods };
+  }
+  const cleanMod = x => (x && MOD_KINDS.includes(x.kind) ? { kind: x.kind } : null);
+  Object.assign(SW5E, { CHASSIS_KINDS, MOD_KINDS, MOD_DC, MOD_TOOL, chassisKind, modSlots, modDC, installBlocked, chassisBonus, cleanChassis, cleanMod });
+
   // Selling (audit 6.8): equipment fetches half its cost (PHB, "Selling Treasure"), whole credits, rounded down
   const sellPrice = e => Math.floor(Math.max(0, +(e && e.cost) || 0) / 2);
   Object.assign(SW5E, { sellPrice });
