@@ -64,6 +64,9 @@
   const SYSTEM_NOTES = ['', 'Disadvantage on ability checks', '1 slowed level', 'Disadvantage on attack rolls and saving throws',
     'Hull and shield maximums and shield regeneration halved', 'Permanently used', 'Catastrophic power failure: all primary systems fail'];
 
+  // realspace travel pace (SotG ch. 8): fast doubles the flying speed, with disadvantage on Probe and Scan checks and
+  // -5 to passive Scan; slow halves it, and the ship can travel stealthily
+  const PACES = { normal: { speed: 1 }, fast: { speed: 2 }, slow: { speed: 0.5 } };
   function cleanStatus(st) {
     st = st && typeof st === 'object' && !Array.isArray(st) ? st : {};
     const z = st.zero && typeof st.zero === 'object' && !Array.isArray(st.zero) ? st.zero : {};
@@ -80,11 +83,20 @@
       // until the start of the next; 1: through the next turn); helm: a Helm action taken this turn
       fx: { evade: clamp(int(f.evade), 0, 2), fly: clamp(int(f.fly), 0, 2), hardTurn: f.hardTurn === true, helm: f.helm === true,
         interfered: f.interfered === true, directed: f.directed === true,
-        interferedBy: typeof f.interferedBy === 'string' && /^[a-z0-9]{6,20}$/.test(f.interferedBy) ? f.interferedBy : '' },   // the ship whose next turn ends it
+        interferedBy: typeof f.interferedBy === 'string' && /^[a-z0-9]{6,20}$/.test(f.interferedBy) ? f.interferedBy : '',   // the ship whose next turn ends it
+        // Dogfight (with dogfightVs): its next attack against us at disadvantage (dis), a different ship's next at advantage (adv)
+        dogfightVs: typeof f.dogfightVs === 'string' && /^[a-z0-9]{6,20}$/.test(f.dogfightVs) ? f.dogfightVs : '', dogfightDis: f.dogfightDis === true, dogfightAdv: f.dogfightAdv === true,
+        runVs: typeof f.runVs === 'string' && /^[a-z0-9]{6,20}$/.test(f.runVs) ? f.runVs : '', runFeet: clamp(int(f.runFeet), 0, 100000),   // an Attack Run at that ship, after this many feet
+        concealed: f.concealed === true,   // Conceal succeeded: unseen until it attacks
+        harassWeapon: clamp(int(f.harassWeapon, -1), -1, 29),   // the weapon this ship harassed with: it can't fire this turn
+        harassedBy: typeof f.harassedBy === 'string' && /^[a-z0-9]{6,20}$/.test(f.harassedBy) ? f.harassedBy : '', harassedWeapon: clamp(int(f.harassedWeapon, -1), -1, 29) },   // leaving its square costs a critical hit
+      // the weapons (by index) whose zone is switched on: it lasts until switched off (SotG ch. 5, zone)
+      zones: [...new Set((Array.isArray(st.zones) ? st.zones : []).map((x) => int(x, -1)).filter((x) => x >= 0 && x <= 29))].slice(0, 10),
       recharged: st.recharged === true,   // a recharge just finished: the crew may spend hull dice
       astro: clamp(int(st.astro), 0, 10), startup: clamp(int(st.startup), 0, 10),   // astrogation equations, start-up procedures done
       // the course choice the equations were worked for (rushes, careful): changing it restarts them (SotG ch. 8)
       course: { rush: clamp(int((st.course || {}).rush), 0, 10), careful: (st.course || {}).careful === true },
+      pace: own(PACES, st.pace) ? st.pace : 'normal',   // realspace travel pace (SotG ch. 8)
     };
     if (out.system >= 5 && !out.cond.includes('Used')) out.cond.push('Used');   // system damage 5 makes it used for good
     return out;
@@ -122,7 +134,7 @@
   // What the ship's conditions do to one of its rolls. kind: 'check' | 'save' | 'attack' | 'against' (an attack made
   // against the ship). ability: the ship ability ('str', 'dex', ...) for checks and saves.
   // Returns { adv: [reasons], dis: [reasons], fail: [reasons] }.
-  function rollEffects(ship, kind, ability) {
+  function rollEffects(ship, kind, ability, skill) {
     const st = statusOf(ship), out = { adv: [], dis: [], fail: [] };
     const add = (k, why) => out[k].push(why);
     const fx = st.fx;
@@ -138,6 +150,7 @@
     if (kind === 'against' && evade >= 2) add('dis', 'Evading');
     if (kind === 'check') {
       if (st.system >= 1) add('dis', 'System damage ' + st.system);
+      if (st.pace === 'fast' && (skill === 'probe' || skill === 'scan')) add('dis', 'Fast pace');
       if (has(st, 'Ionized')) add('dis', 'Ionized');
     }
     if (kind === 'save') {
@@ -382,7 +395,8 @@
     if (isLost(st)) return { ship: s, log: [`${name} is lost.`] };
     st.tempShield = 0; st.boost = { tries: 0, engines: Math.max(0, int(st.boost.engines) - 1), weapons: false, shields: false, regen: false };
     // Direct lasts until the start of the directing ship's next turn (Interfere ends at the interfering ship's: the space map)
-    st.fx = Object.assign(st.fx, { evade: Math.max(0, st.fx.evade - 1), fly: Math.max(0, st.fx.fly - 1), hardTurn: false, helm: false, directed: false });
+    st.fx = Object.assign(st.fx, { evade: Math.max(0, st.fx.evade - 1), fly: Math.max(0, st.fx.fly - 1), hardTurn: false, helm: false, directed: false,
+      dogfightVs: '', dogfightDis: false, dogfightAdv: false, runVs: '', runFeet: 0, harassWeapon: -1 });   // this turn's helm work ends
     st.recharged = false;
     // power
     const rx = own(REACTORS, reactorOf(s));
@@ -554,10 +568,169 @@
     if (weaponProp(w, 'heavy')) bonus += Math.max(1, Math.ceil(strMod(ship) / 2));
     return `${n}d${m[2]}` + (bonus ? (bonus > 0 ? '+' : '') + bonus : '');
   }
+  // Trading accuracy for damage (SotG ch. 5), chosen before the shot: dire N, up to N off the attack roll and as much
+  // onto the damage on a hit; piercing N, up to N onto the attack roll and as much off the damage; melt, the gunner's
+  // proficiency bonus off the attack roll (or off the save DC, for a weapon the target saves against) and onto the
+  // damage. Dire and piercing are for attack rolls only. kind: 'attack' (a single shot's attack roll) or 'save'.
+  // Returns { atk, dc, dmg, notes } from what was asked, capped by the weapon.
+  // crew: the firing crew row, whose gunning styles always apply and whose mastery applies when asked (ask.mastery):
+  // Cannoneer (primary: +2 damage and save DC), Heavy Gunner (secondary: +2 attack and save DC); Cannon Mastery (primary:
+  // no proficiency bonus on the attack), Heavy Gun Mastery (secondary: the bonus twice on the attack, that much off the
+  // damage), Payload Mastery (tertiary and quaternary: the DC lowered by it, twice it more damage on a failed save: onFail).
+  // A proficiency bonus is forgone only once (SotG ch. 6), so melt with Cannon Mastery takes it off once.
+  function weaponTrade(w, ask, pb, kind, crew) {
+    const out = { atk: 0, dc: 0, dmg: 0, onFail: 0, notes: [] }, q = ask || {}, b = crewPbOf(pb), cat = catOf(w);
+    const num = (k) => { const v = weaponProp(w, k); return typeof v === 'number' ? v : 0; };
+    if (kind === 'attack') {
+      const d = clamp(int(q.dire), 0, num('dire')), pc = clamp(int(q.piercing), 0, num('piercing'));
+      if (d) { out.atk -= d; out.dmg += d; out.notes.push(`dire ${d}`); }
+      if (pc) { out.atk += pc; out.dmg -= pc; out.notes.push(`piercing ${pc}`); }
+    }
+    let forgone = false;
+    if (q.melt === true && weaponProp(w, 'melt')) {
+      if (kind === 'attack') { out.atk -= b; forgone = true; } else out.dc -= b;
+      out.dmg += b; out.notes.push(`melt ${b}`);
+    }
+    const styles = crew ? activeStyles(crew) : [], mast = crew ? activeMasteries(crew) : [];
+    if (cat === 'primary' && styles.includes('Cannoneer')) { out.dmg += 2; if (kind === 'save') out.dc += 2; out.notes.push('cannoneer'); }
+    if (cat === 'secondary' && styles.includes('Heavy Gunner')) { if (kind === 'attack') out.atk += 2; else out.dc += 2; out.notes.push('heavy gunner'); }
+    if (q.mastery === true) {
+      if (cat === 'primary' && kind === 'attack' && mast.includes('Cannon Mastery')) { if (!forgone) out.atk -= b; out.notes.push('cannon mastery'); }
+      if (cat === 'secondary' && kind === 'attack' && mast.includes('Heavy Gun Mastery')) { out.atk += b; out.dmg -= b; out.notes.push('heavy gun mastery'); }
+      if ((cat === 'tertiary' || cat === 'quaternary') && kind === 'save' && mast.includes('Payload Mastery')) { out.dc -= b; out.onFail += 2 * b; out.notes.push('payload mastery'); }
+    }
+    return out;
+  }
+  // which mastery (if any) the crew row can use with this weapon fired this way: for the Fire box's checkbox
+  function masteryFor(crew, w, kind) {
+    const cat = catOf(w), mast = crew ? activeMasteries(crew) : [];
+    if (cat === 'primary' && kind === 'attack' && mast.includes('Cannon Mastery')) return 'Cannon Mastery';
+    if (cat === 'secondary' && kind === 'attack' && mast.includes('Heavy Gun Mastery')) return 'Heavy Gun Mastery';
+    if ((cat === 'tertiary' || cat === 'quaternary') && kind === 'save' && mast.includes('Payload Mastery')) return 'Payload Mastery';
+    return '';
+  }
+  // Payload Delivery: the damage dice that showed 1 or 2 (kept, not struck), to roll again once: [{ sides, v }]
+  function lowDice(detail) {
+    const out = [], re = /\d+d(\d+)[a-z0-9]*\[([^\]]*)\]/g;
+    for (let m; (m = re.exec(String(detail || ''))); ) for (const v of m[2].split(',')) if (!/~/.test(v)) { const n = int(v.split('→').pop()); if (n >= 1 && n <= 2) out.push({ sides: int(m[1]), v: n }); }
+    return out;
+  }
+
+  // ---- gunning styles and masteries, and ventures (SotG ch. 6): a crew member's own, on their crew row
+  const GUNNING_STYLES = { Cannoneer: 'Firing a primary weapon: +2 to damage rolls and save DCs.', 'Heavy Gunner': 'Firing a secondary weapon: +2 to attack rolls and save DCs.',
+    'Payload Delivery': 'Tertiary and quaternary weapons: damage dice showing 1 or 2 are rolled again, once.' };
+  const GUNNING_MASTERIES = { 'Cannon Mastery': 'Primary weapons: fire rapidly, attacking without the proficiency bonus, with a second attack (also without it) as a bonus action.',
+    'Heavy Gun Mastery': 'Secondary weapons: the proficiency bonus twice on the attack roll; on a hit, that much less damage.',
+    'Payload Mastery': 'Tertiary and quaternary weapons: the DC lowered by the proficiency bonus; on a failed save, twice the bonus in extra damage.' };
+  const REPEATABLE_VENTURES = ['Gunning Mastery', 'Gunning Stylist'];   // the two ventures SotG lets you take more than once
+  // a venture at each rank of the deployment (1st to 5th); a gunner's style at 2nd rank and a second at 4th (Protean
+  // Gunner), a mastery at 4th; each Gunning Stylist or Gunning Mastery venture one more
+  const venturesAllowed = (c) => clamp(int(c && c.rank), 0, 5);
+  function gunningAllowed(c) {
+    const gr = c && c.deployment === 'Gunner' ? clamp(int(c.rank), 0, 5) : 0, v = Array.isArray(c && c.ventures) ? c.ventures : [];
+    const count = (n) => v.slice(0, venturesAllowed(c)).filter((x) => x === n).length;
+    return { styles: (gr >= 2 ? 1 : 0) + (gr >= 4 ? 1 : 0) + count('Gunning Stylist'), masteries: (gr >= 4 ? 1 : 0) + count('Gunning Mastery') };
+  }
+  // the styles and masteries that count: as many as the rank and ventures allow, first picked first
+  const activeStyles = (c) => (Array.isArray(c && c.styles) ? c.styles : []).filter((x) => own(GUNNING_STYLES, x)).slice(0, gunningAllowed(c).styles);
+  const activeMasteries = (c) => (Array.isArray(c && c.masteries) ? c.masteries : []).filter((x) => own(GUNNING_MASTERIES, x)).slice(0, gunningAllowed(c).masteries);
+  // a crew row's picks as stored: ventures (names, the repeatable two may repeat), styles and masteries from SotG's lists
+  function cleanGunning(c) {
+    const seen = new Set(), ventures = [];
+    for (const x of (Array.isArray(c && c.ventures) ? c.ventures : []).map((v) => String(v == null ? '' : v).slice(0, 80).trim()).filter(Boolean)) {
+      if (seen.has(x) && !REPEATABLE_VENTURES.includes(x)) continue;
+      seen.add(x); ventures.push(x);
+    }
+    const pick = (arr, table) => [...new Set((Array.isArray(arr) ? arr : []).filter((x) => typeof x === 'string' && own(table, x)))].slice(0, 3);
+    return { ventures: ventures.slice(0, 12), styles: pick(c && c.styles, GUNNING_STYLES), masteries: pick(c && c.masteries, GUNNING_MASTERIES) };
+  }
+  // multispecializing (SotG ch. 6): one character on several crew rows, each a deployment; its rank is their sum
+  function multispec(ship, c) {
+    if (!c || typeof c.charId !== 'string' || !c.charId) return null;
+    const rows = (Array.isArray(ship && ship.crew) ? ship.crew : []).filter((x) => x && x.charId === c.charId && x.deployment && int(x.rank) > 0);
+    return rows.length > 1 ? { rows: rows.map((x) => ({ deployment: x.deployment, rank: clamp(int(x.rank), 0, 5) })), rank: rows.reduce((a, x) => a + clamp(int(x.rank), 0, 5), 0) } : null;
+  }
+  // ---- tertiary ammunition (SotG ch. 5, "Tertiary Ammunition"): what a launcher fires. Damage for Tiny to Large ships,
+  // then for Huge and Gargantuan; '' for the special rounds, whose effects are in their own text.
+  const AMMO = {
+    'Adv. cluster missile': { fam: 'cluster', dmg: ['3d6', '6d6'], type: 'kinetic', range: '600/2400', props: 'auto, burst 6, explosive, rapid 6' },
+    'Adv. homing cluster missile': { fam: 'cluster', dmg: ['3d6', '6d6'], type: 'kinetic', range: '600/2400', props: 'auto, burst 6, explosive, homing, rapid 6' },
+    'Cluster missile': { fam: 'cluster', dmg: ['3d4', '6d4'], type: 'kinetic', range: '600/2400', props: 'auto, burst 6, explosive, rapid 6' },
+    'Homing cluster missile': { fam: 'cluster', dmg: ['3d4', '6d4'], type: 'kinetic', range: '600/2400', props: 'auto, burst 6, explosive, homing, rapid 6' },
+    'Nano cluster rocket': { fam: 'cluster', dmg: ['1d4', '2d4'], type: 'kinetic', range: '800/3200', props: 'explosive, homing' },
+    'Adv. concussion missile': { fam: 'missile', dmg: ['2d10', '4d10'], type: 'energy', range: '800/3200', props: 'auto, burst 1, explosive, rapid 1' },
+    'Concussion missile': { fam: 'missile', dmg: ['2d8', '4d8'], type: 'energy', range: '600/2400', props: 'auto, burst 1, explosive, rapid 1' },
+    'Conner net (missile)': { fam: 'missile', dmg: ['', ''], type: '', range: '600/2400', props: 'special' },
+    'Discord missile': { fam: 'missile', dmg: ['', ''], type: '', range: '600/2400', props: 'special' },
+    'Proton rocket': { fam: 'missile', dmg: ['10d4', '20d4'], type: 'kinetic', range: '200/800', props: 'explosive, vicious 1' },
+    'Ion pulse missile': { fam: 'missile', dmg: ['2d10', '4d10'], type: 'ion', range: '1000/4000', props: 'ionizing' },
+    'Silent thunder missile': { fam: 'missile', dmg: ['4d10', '8d10'], type: 'energy', range: '1200/4800', props: 'explosive' },
+    'S-thread tracer': { fam: 'missile', dmg: ['', ''], type: '', range: '1200/4800', props: 'special' },
+    'Advanced proton torpedo': { fam: 'torpedo', dmg: ['2d12', '4d12'], type: 'energy', range: '800/3200', props: 'explosive, keen 1' },
+    'Flechette torpedo': { fam: 'torpedo', dmg: ['', ''], type: '', range: '600/2400', props: 'special' },
+    'Homing torpedo': { fam: 'torpedo', dmg: ['1d12', '2d12'], type: 'energy', range: '1200/4800', props: 'explosive, homing' },
+    'Plasma torpedo': { fam: 'torpedo', dmg: ['2d12', '4d12'], type: 'ion', range: '1200/4800', props: 'vicious 1' },
+    'Proton torpedo': { fam: 'torpedo', dmg: ['2d10', '4d10'], type: 'energy', range: '1200/4800', props: 'explosive, keen 1' },
+    'Thermite torpedo': { fam: 'torpedo', dmg: ['2d10', '4d10'], type: 'fire', range: '1200/4800', props: 'melt, keen 1' },
+  };
+  // which rounds a launcher takes, from its name (a cluster pod, missile or torpedo launcher; "assault" ones too)
+  const launcherOf = (w) => { const n = String((w && w.name) || '').toLowerCase(); return /cluster/.test(n) ? 'cluster' : /missile/.test(n) ? 'missile' : /torpedo/.test(n) ? 'torpedo' : ''; };
+  const ammoFor = (w) => Object.keys(AMMO).filter((k) => !launcherOf(w) || AMMO[k].fam === launcherOf(w));
+  // the weapon as it fires: a tertiary launcher with a round loaded takes the round's damage (by the ship's size), type,
+  // range and properties, keeping its own (ammunition, reload); anything else is itself
+  function loadedWeapon(ship, w) {
+    const a = w && catOf(w) === 'tertiary' && typeof w.load === 'string' ? own(AMMO, w.load) : null;
+    if (!a || !ammoFor(w).includes(w.load)) return w;
+    const own0 = String(w.props || '').split(',').map((x) => x.trim()).filter((x) => /^(ammunition|reload)/i.test(x));
+    return Object.assign({}, w, { dmg: a.dmg[sizeRank(ship) >= 4 ? 1 : 0], type: a.type || w.type, range: a.range, props: [...own0, a.props].filter(Boolean).join(', ') });
+  }
+  // a tertiary or quaternary weapon's reload by the ship's size: the table's number is a Small ship's (a Huge one's for the
+  // assault launchers); half for Tiny, twice for Medium, four times for Large, twice for Gargantuan
+  const RELOAD_SCALE = { Tiny: 0.5, Small: 1, Medium: 2, Large: 4, Huge: 1, Gargantuan: 2 };
+  function reloadFor(ship, w) {
+    const n = reloadOf(w); if (n === null) return null;
+    const cat = catOf(w);
+    return cat === 'tertiary' || cat === 'quaternary' ? Math.max(1, Math.round(n * (own(RELOAD_SCALE, sizeKey(ship)) || 1))) : n;
+  }
+  // the most an expression like "2d10+3" can roll (SotG: a tertiary save's natural 1 takes the damage as if it rolled that)
+  const maxOf = (expr) => { const m = /^(\d+)d(\d+)([+-]\d+)?$/.exec(String(expr || '').replace(/\s/g, '')); return m ? int(m[1]) * int(m[2]) + int(m[3] || 0) : 0; };
+  // Zone (SotG ch. 5): a weapon with the property, switched on with an action, makes difficult terrain within its firing
+  // arc and normal range until switched off; and its ship has advantage on Dexterity saves against tertiary weapons
+  // launched from outside that range. zonesOf: the ship's zones that are on, as { wi, name, arc ('' for any), range }.
+  function zonesOf(ship) {
+    const ws = Array.isArray(ship && ship.weapons) ? ship.weapons : [];
+    return statusOf(ship).zones.map((wi) => [wi, ws[wi]]).filter(([, w]) => w && weaponProp(w, 'zone') && weaponRange(w))
+      .map(([wi, w]) => ({ wi, name: String(w.name || 'Weapon'), arc: MOUNTS.includes(w.arc) && w.arc !== 'turret' ? w.arc : '', range: weaponRange(w).a }));
+  }
+  // is a ship of psq squares at p inside zone z of the ship of zsq squares at token zt?
+  const inZone = (z, zt, zsq, p, psq) => shipGap(zt, zsq, p, psq) <= z.range && (!z.arc || arcOf(zt, zsq, p, psq) === z.arc);
+  // the extra feet a move costs through zones (difficult terrain: each foot in one costs two): the straight path's
+  // share of squares inside any zone, of the move's feet. zones: [{ z, tok, sq }]; psq: the moving ship's squares.
+  function zoneExtra(psq, from, to, zones) {
+    const dx = int(to.x) - int(from.x), dy = int(to.y) - int(from.y), n = Math.max(Math.abs(dx), Math.abs(dy));
+    if (!n || !zones || !zones.length) return 0;
+    let inside = 0;
+    for (let k = 1; k <= n; k++) {
+      const p = { x: Math.round(int(from.x) + dx * k / n), y: Math.round(int(from.y) + dy * k / n) };
+      if (zones.some((q) => inZone(q.z, q.tok, q.sq, p, psq))) inside++;
+    }
+    return Math.round(gridFeet(dx, dy) * inside / n);
+  }
+  // vicious N: a damage roll with a weapon die at its maximum gains N (once per roll). detail: the roller's
+  // "2d10[10,3]+4" text, struck dice "~3~" not counting
+  function viciousBonus(w, detail) {
+    const n = weaponProp(w, 'vicious'); if (typeof n !== 'number' || !n) return 0;
+    const re = /\d+d(\d+)[a-z0-9]*\[([^\]]*)\]/g;
+    for (let m; (m = re.exec(String(detail || ''))); ) {
+      const sides = int(m[1]);
+      if (m[2].split(',').some((v) => !/~/.test(v) && int(v.split('→').pop()) === sides)) return n;
+    }
+    return 0;
+  }
   // Can this weapon fire at that ship from here, and how? a / ta: the two tokens (x, y, f); returns
   // { ok, why, feet, arc, kind: 'attack' | 'save', adv: [reasons], dis: [reasons] } where adv / dis are for the attack
   // roll, or (kind 'save') for the target's saving throw.
-  function fireCheck(ship, a, w, target, ta) {
+  function fireCheck(ship, a, w, target, ta, opts = {}) {
     const sa = squaresOf(ship), st = squaresOf(target), feet = shipGap(a, sa, ta, st), arc = arcOf(a, sa, ta, st), cat = catOf(w);
     const big = sizeRank(ship) >= 4;   // Huge or larger: its primary weapons (point-defense) call for a save, like tertiary ones
     const out = { ok: true, why: '', feet, arc, kind: cat === 'tertiary' || cat === 'quaternary' || (cat === 'primary' && big) ? 'save' : 'attack', adv: [], dis: [] };
@@ -584,6 +757,15 @@
       if (feet <= 50) out.dis.push('within 50 ft');
       const mine = rollEffects(ship, 'attack'), theirs = rollEffects(target, 'against');
       out.adv.push(...mine.adv, ...theirs.adv); out.dis.push(...mine.dis, ...theirs.dis);
+      // unseen (Conceal), Dogfight, and firing from the helm (SotG ch. 9)
+      const me = statusOf(ship).fx, them = statusOf(target).fx;
+      if (me.concealed) out.adv.push('unseen');
+      if (them.concealed) out.dis.push('an unseen target');
+      if (them.dogfightVs) { if (them.dogfightVs === ship.id) { if (them.dogfightDis) out.dis.push('dogfight'); } else if (them.dogfightAdv) out.adv.push('dogfight'); }
+      if (opts.fromHelm && (cat === 'primary' || cat === 'secondary')) {
+        const free = arc === 'forward' && ((me.dogfightVs === target.id && cat === 'primary') || me.runVs === target.id);
+        if (!free) out.dis.push('firing from the helm');
+      }
       const con = weaponProp(w, 'constitution');
       if (typeof con === 'number' && int((ship.abilities || {}).con, 10) < con) out.dis.push(`Constitution under ${con}`);
     }
@@ -801,6 +983,22 @@
   // fuel for a jump: one unit for the jump and one for each day (or part) in hyperspace, times the reactor's fuel use
   const jumpFuel = (ship, hours) => { const rx = own(REACTORS, reactorOf(ship)); return Math.ceil((1 + Math.ceil(int(Math.ceil(hours)) / 24)) * (rx ? rx.fuel : 1)); };
   const fuelOf = (ship) => { const m = /(\d+(?:\.\d+)?)/.exec(String((ship && ship.fuel) || '')); return m ? parseFloat(m[1]) : null; };
+  // realspace (SotG ch. 8): a day of flight (or an hour in atmosphere) burns a unit of fuel, times the reactor's use
+  const flyFuel = (ship, n) => { const rx = own(REACTORS, reactorOf(ship)); return Math.round(clamp(int(n), 0, 365) * (rx ? rx.fuel : 1) * 10) / 10; };
+  // its speed at its pace: fast doubles it, slow halves it
+  const travelSpeed = (ship) => Math.floor(speedOf(ship) * PACES[statusOf(ship).pace].speed);
+  // sample realspace travel times for an average ship at a normal pace, in minutes (low, high); a fast pace halves
+  // them (its speed doubles) and a slow one doubles them
+  const REALSPACE_TIMES = [['Surface of a planet to orbit', 1, 5], ['Orbit to a safe hyperspace jump distance', 1, 1], ["Orbit to the planet's moon", 10, 30],
+    ['Orbit to another planet in the same system', 120, 360], ['Orbit to the outer edge of the system', 720, 1440]];
+  function realspaceTime(row, pace) {
+    const f = 1 / ((own(PACES, pace) || PACES.normal).speed);
+    // a number of minutes as [amount, unit]: seconds under a minute, hours from an hour
+    const part = (m) => (m < 1 ? [Math.round(m * 60), 'second'] : m < 60 ? [Math.round(m * 10) / 10, 'minute'] : [Math.round(m / 6) / 10, 'hour']);
+    const [a, ua] = part(row[1] * f), [b, ub] = part(row[2] * f), unit = (n, u) => `${u}${n === 1 ? '' : 's'}`;
+    if (a === b && ua === ub) return `${a} ${unit(a, ua)}`;
+    return ua === ub ? `${a} to ${b} ${unit(b, ub)}` : `${a} ${unit(a, ua)} to ${b} ${unit(b, ub)}`;
+  }
   // a rushed jump's mishap: a d20 plus the equations completed (SotG's table)
   const MISHAPS = [
     [20, 'no adverse consequences'],
@@ -839,6 +1037,25 @@
     };
   }
 
+  // ---- deployments (SotG chapter 2): rank features and techniques, read from SW5e's deployment text
+  // { ranks: [[1, [features]], ...], techniques: [{ name, loc: 'weapons' | ... | null, md }] }
+  const LOCATIONS = { weapons: 'weapons', shields: 'shields', engines: 'engines', sensors: 'sensors', comms: 'comms', communications: 'comms' };
+  function deploymentInfo(md) {
+    const t = String(md || '').replace(/\r/g, '');
+    const ranks = [];
+    for (const m of t.matchAll(/^\|\s*(\d)(?:st|nd|rd|th)\s*\|\s*([^|\n]+)\|/gm)) ranks.push([int(m[1]), m[2].split(',').map((x) => x.trim()).filter(Boolean)]);
+    const at = t.lastIndexOf('presented in alphabetical order'), techniques = [];
+    if (at >= 0) {
+      for (const block of t.slice(at).split(/\n#### /).slice(1)) {
+        const name = block.split('\n')[0].trim(), loc = /Power Die Location:\*\*\s*([A-Za-z]+)/.exec(block);
+        if (name) techniques.push({ name: name.slice(0, 60), loc: loc ? own(LOCATIONS, loc[1].toLowerCase()) || null : null, md: block.slice(name.length).trim().slice(0, 1500) });
+      }
+    }
+    return { ranks, techniques };
+  }
+  const techniquesKnown = (rank) => (int(rank) > 0 ? int(rank) + 1 : 0);   // two at 1st rank, one more at each rank after
+  const techDie = (rank) => [0, 4, 6, 8, 10, 12][clamp(int(rank), 0, 5)];   // a mechanic's tech die (not spent)
+
   // what the sheet shows of a ship's state, in short phrases
   function summary(ship) {
     const st = statusOf(ship), hullNow = int(ship && ship.hull && ship.hull.current), out = [];
@@ -853,5 +1070,5 @@
     setCondition, summary, SIZE_DATA, SHIELD_TYPES, REACTORS, COUPLINGS, SYSTEMS, POOLS, SYSTEM_NAMES, POWER_DIE, sizeOf, roleOf, reactorOf, couplingOf,
     shieldTypeOf, powerDie, powerDieText, powerCaps, diceOf, diceLeft, regenRate, boostDC, regenDC, boostedSpeed, startTurn, usePower, setPower,
     setDiceUsed, boost, regenerateShields, SQUARE_FT, SQUARES, squaresOf, FACING_NAMES, DIRS, gridFeet, turnSteps, turnCost, moveCost, inBounds, shipGap,
-    arcOf, INIT_SIZE_MOD, npcInitBonus, STOCK_COST, TIER_COST, minCrew, costs, REGIONS, HYPER_HOURS, START_UP, hyperClass, stepsFor, jumpHours, jumpFuel, fuelOf, mishapFor, MOD_TYPES, modsSummary, modCost, installDC, pastCapacity, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck };
+    arcOf, INIT_SIZE_MOD, npcInitBonus, deploymentInfo, techniquesKnown, techDie, STOCK_COST, TIER_COST, minCrew, costs, REGIONS, HYPER_HOURS, START_UP, hyperClass, stepsFor, jumpHours, jumpFuel, fuelOf, mishapFor, MOD_TYPES, modsSummary, modCost, installDC, pastCapacity, prereqs, REFIT_TIME, UPGRADE_COST, recharge, rechargeHullDie, refitCost, refit, weaponModes, shotCost, heatCap, reloadOf, burstBox, inBox, ARMORS, armorOf, SIZE_ADJ, STANDARD_ARRAY, avgDie, dicePoints, derive, armorDR, afterDR, moveBudget, HELM, SKILL_ABILITY, skillBonus, helm, patchDC, patch, WEAPON_CATS, MOUNTS, sizeRank, catOf, weaponRange, weaponProp, attackBonusOf, saveDcOf, damageExpr, fireCheck, PACES, flyFuel, travelSpeed, REALSPACE_TIMES, realspaceTime, weaponTrade, viciousBonus, zonesOf, inZone, zoneExtra, AMMO, launcherOf, ammoFor, loadedWeapon, reloadFor, maxOf, masteryFor, lowDice, GUNNING_STYLES, GUNNING_MASTERIES, REPEATABLE_VENTURES, venturesAllowed, gunningAllowed, activeStyles, activeMasteries, cleanGunning, multispec };
 });

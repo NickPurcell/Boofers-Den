@@ -59,3 +59,12 @@ test("heavily encumbered: disadvantage on a Dex save against a power", () => {
   assert.ok(r.ok, r.why);
   assert.match(d.asked[0], /^2d20kl1/, "the Dex save at disadvantage");
 });
+
+test("speed in the combat view (5.11): heavy armor a character is too weak for, and cumbersome armor, slow it", () => {
+  const t = table(0, []);
+  t.characters.c1.equipment = [{ name: "Assault armor", equipped: true, armor: { kind: "heavy", ac: 17, str: 15, cumbersome: true } }];
+  const w = E.buildWorld(t, R);
+  assert.equal(w.units.e1kell.speed, 15, "Str 10 under Str 15: -10; cumbersome: -5");
+  assert.equal(E.budget(w).moveLeft, 15);
+  assert.equal(E.buildWorld(table(0, []), R).units.e1kell.speed, 30, "carried, not worn: no change");
+});

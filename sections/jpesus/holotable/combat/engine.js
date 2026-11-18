@@ -719,6 +719,8 @@
   // the superiority pool with a die left (a Fighter's, or a Scholar's)
   const superiorityOf = (u) => ['superiority', 'superiority-scholar'].map((k) => ((u && u.pools) || {})[k]).find((p) => p && p.used < p.max && /^d\d+$/.test(String(p.die || ''))) || null;
   const maneuverUsed = (w, id, key) => !!((+spentOf(w, id).mv || 0) & (1 << MANEUVER_KEYS.indexOf(key)));
+  // the creature a Scout has marked as its quarry (one at a time), or null
+  const quarryOf = (w, id) => { const ef = (w.effects || []).find((e) => e.condition === 'Quarry' && e.source === id); return ef ? ef.unit : null; };
   /* ---------------- bonus damage from class features (audit 5.9) ---------------- */
   // What a character's classes add to a weapon hit, from HoloTable's class table (#108) at its levels: Sneak Attack dice
   // (Operative) and Rage Damage (Berserker). Worked out here from the sheet, never taken from a request.
@@ -729,6 +731,7 @@
       if (h === 'Rage Damage' && /^\+?\d+$/.test(String(v))) out.rage = +String(v).replace('+', '');
       if (h === 'Focused Strikes' && /^\d+d8$/i.test(String(v))) out.fes = parseInt(v, 10);          // Force-Empowered Strikes: up to N d8s
       if (h === 'Kinetic Combat' && /^d\d+$/i.test(String(v))) out.kinetic = String(v).toLowerCase();  // Double Strike: one Kinetic Combat die
+      if (h === "Ranger's Quarry" && /^d\d+$/i.test(String(v))) out.quarry = String(v).toLowerCase();   // its die on a hit on the quarry (#67)
     }
     return out;
   }
@@ -742,6 +745,8 @@
       if (mode === 'adv' || (helper && mode !== 'dis')) out.push({ key: 'sneak', name: 'Sneak Attack', dice: r.sneak });
     }
     if (r.rage && attack.weapon && !ranged && attack.abil === 'str' && effectsOf(a).some(([, e]) => e.rage)) out.push({ key: 'rage', name: 'Rage', flat: r.rage });
+    // Ranger's Quarry (#67): once a turn, a weapon hit on the creature this Scout has marked
+    if (r.quarry && attack.weapon && !spentOf(world, a.id).quarry && quarryOf(world, a.id) === t.id) out.push({ key: 'quarry', name: "Ranger's Quarry", dice: '1' + r.quarry });
     // these cost force points, so they're the attacker's choice (opt-in): Force-Empowered Strikes (Guardian) on a melee
     // weapon hit, 1d8 a point up to the Focused Strikes column; Double Strike (Sentinel) on a weapon hit, 1 point for a
     // Kinetic Combat die, once a turn
@@ -1066,7 +1071,7 @@
   /* ---------------- turns: the turn budget is resources too, refilled at the start of the unit's own turn ---------------- */
   const turnKey = (world) => `${world.round}:${world.turnId}`;
   const TURN = ['move', 'action', 'bonus', 'reaction'];
-  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0, surge: 0, ma: 0, mab: 0 });
+  const blank = (key) => ({ key, move: 0, action: 0, bonus: 0, reaction: 0, diag: 0, dash: 0, disengage: 0, dodge: 0, ds: 0, sneak: 0, double: 0, atk: 0, atkMax: 0, lt: 0, dw: 0, off: 0, mv: 0, surge: 0, ma: 0, mab: 0, quarry: 0, qm: 0 });
   function spentOf(world, id) {
     const s = (world.spent || {})[id];
     return s && (id !== world.turnId || s.key === turnKey(world)) ? Object.assign(blank(s.key), s) : blank(id === world.turnId ? turnKey(world) : '');
@@ -1274,6 +1279,18 @@
         return { ok: true, world: w, log, events: [] };
       }
       case 'common': {   // Dash, Disengage, Dodge; and a Berserker's Rage
+        if (act.key === 'quarry') {   // a Scout's Ranger's Quarry (#67): no action, once a turn, one creature at a time
+          if (!(me.riders || {}).quarry) return no(`${me.name} has no Ranger's Quarry.`);
+          const t = unitAt(w, act.target);
+          if (!t || t.id === me.id) return no('Pick a creature to mark.');
+          if (+spentOf(w, me.id).qm) return no(`${me.name} has already marked a quarry this turn.`);
+          if (feetBetween(me, t) > 120) return no(`${t.name} is ${feetBetween(me, t)} ft away: a quarry is marked within 120 ft.`);
+          if (!sees(w, me, t)) return no(`${me.name} can't see ${t.name}.`);
+          w.effects = w.effects.filter((ef) => !(ef.condition === 'Quarry' && ef.source === me.id));
+          w.effects.push({ id: `quarry-${me.id}-${t.id}-${w.effects.length}`, unit: t.id, condition: 'Quarry', ends: 'never', of: t.id, rounds: 1, save: null, source: me.id, conc: false, level: 0, amount: '' });
+          w.spent[me.id] = Object.assign(spentOf(w, me.id), { qm: 1 });
+          return { ok: true, world: w, log: [{ unit: me.id, about: t.id, text: `${me.name} marks ${t.name} as its quarry: once a turn, a weapon hit on it deals 1${me.riders.quarry} more.` }], events: [] };
+        }
         if (act.key === 'reload') {   // Reload N (6.6, #179): an action or a bonus action, the weapon full again
           const key = String(act.weapon || ''), full = Object.prototype.hasOwnProperty.call(me.reloads || {}, key) ? me.reloads[key] : 0;
           if (!full) return no('That weapon has no Reload number.');
@@ -1441,7 +1458,7 @@
             const amount = df.amount;
             const took = takeDamage(t, amount);
             log.push({ unit: t.id, kind: 'damage', roll: d, expr, text: `${t.name} takes ${amount}${dtype ? ' ' + dtype : ''} damage${half ? ' (half, on a save)' : ''}${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${t.hp != null && t.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
-            fallen(t, took, crit, log, w);
+            fallen(t, took, crit, log, w, roll);
             events.push({ kind: crit ? 'crit' : 'hit', unit: t.id, amount });
             concentrationCheck(w, t, amount, roll, log);
           } else if (ab.heal) {
@@ -1552,6 +1569,7 @@
     if (riders.some((x) => x.key === 'double')) w.spent[me.id] = Object.assign(spentOf(w, me.id), { double: 1 });   // once a turn
     const expr = base + riders.map((x) => (x.dice ? '+' + (crit ? doubleDice(x.dice) : x.dice) : '+' + x.flat)).join('');
     if (riders.some((x) => x.key === 'sneak')) w.spent[me.id] = Object.assign(spentOf(w, me.id), { sneak: 1 });   // once per turn
+    if (riders.some((x) => x.key === 'quarry')) w.spent[me.id] = Object.assign(spentOf(w, me.id), { quarry: 1 });   // once per turn
     const d = roll(expr);
     const corr = levelOf(w, t, 'Corroded');   // corroded: 1 more damage from weapons for each level
     const df = defended(t, Math.max(0, d.total) + corr, String(attack.type || '').toLowerCase(), attack.enhanced ? 'enhanced' : 'weapon');
@@ -1572,7 +1590,7 @@
   }
   // what follows a hit's damage: dropping at 0, the floating number, concentration, and the attacker's maneuver
   function afterHit(w, me, t, landing, took, roll, log, events) {
-    fallen(t, took, landing.crit, log, w);
+    fallen(t, took, landing.crit, log, w, roll);
     events.push({ kind: landing.crit ? 'crit' : 'hit', unit: t.id, amount: landing.amount });
     concentrationCheck(w, t, landing.amount, roll, log);
     const mv = landing.mv && Object.prototype.hasOwnProperty.call(MANEUVERS, landing.mv) ? MANEUVERS[landing.mv] : null;
@@ -1809,7 +1827,7 @@
       const df = defended(burning, Math.max(0, d.total), 'fire', 'other');
       const took = takeDamage(burning, df.amount);
       log.push({ unit: burning.id, kind: 'damage', roll: d, expr: burn, text: `${burning.name} burns for ${df.amount} fire damage${df.note ? ` (${df.note})` : ''}${took.fromTemp ? ` (${took.fromTemp} from temporary hit points)` : ''}${burning.hp != null && burning.hp <= 0 && took.before > 0 ? ' and drops to 0 hit points.' : '.'}` });
-      fallen(burning, took, false, log, w);
+      fallen(burning, took, false, log, w, roll);
       concentrationCheck(w, burning, df.amount, roll, log);
     }
     // incapacitated casters stop concentrating
@@ -1861,7 +1879,7 @@
   const isDead = (t) => t.side === 'pc' && t.hp === 0 && +((t.deathSaves || {}).f) >= 3;
   const isStable = (t) => t.side === 'pc' && t.hp === 0 && !isDead(t) && +((t.deathSaves || {}).s) >= 3;
   const isDying = (t) => t.side === 'pc' && t.hp === 0 && !isDead(t) && !isStable(t);
-  function fallen(t, took, crit, log, w) {
+  function fallen(t, took, crit, log, w, roll) {
     if (t.side !== 'pc' || t.hp == null || t.hp > 0 || !(took.hurt > 0)) return;
     const ds = saves0(t), max = +t.maxHp || 0;
     if (ds.f >= 3) return;
@@ -1871,6 +1889,17 @@
       t.conditions = Array.from(new Set((t.conditions || []).concat('Unconscious', 'Prone'))).filter((c) => c !== 'Raging');   // a rage ends when knocked unconscious
       if (w && w.effects) w.effects = w.effects.filter((ef) => !(ef.unit === t.id && ef.condition === 'Raging'));
       log.push({ unit: t.id, text: `${t.name} falls unconscious.` });
+      // the Wounds variant (9.16): a Con save at DC 10, 5 more after each success; a failure is a wounded level; either way
+      // one death save failure for each wounded level
+      if (variant(w, 'Wounds') && roll) {
+        const wd = Object.assign({ level: 0, step: 0 }, t.wounds), dc = 10 + 5 * wd.step;
+        if (saveVs(w, t, 'con', dc, roll, log, 'Wounds')) wd.step += 1; else { wd.level += 1; wd.step = 0; }
+        t.wounds = wd;
+        if (wd.level) {
+          ds.f = Math.min(3, wd.level);
+          log.push({ unit: t.id, text: `${t.name} has ${wd.level} wounded level${wd.level === 1 ? '' : 's'}: ${ds.f} death save failure${ds.f === 1 ? '' : 's'}${ds.f >= 3 ? `. ${t.name} dies.` : '.'}` });
+        }
+      }
       return;
     }
     if (max && took.hurt >= max) { ds.f = 3; log.push({ unit: t.id, text: `${t.name} dies: damage at 0 hit points that is at least the hit point maximum.` }); return; }
@@ -1918,10 +1947,11 @@
         ac: ch ? +ch.ac : e.ac == null || e.ac === '' ? null : +e.ac,
         hp: ch ? +hp.current : e.hp == null || e.hp === '' ? null : +e.hp, maxHp: ch ? +hp.max : e.maxHp == null ? null : +e.maxHp,
         temp: ch ? +hp.temp || 0 : 0,
-        // the table's encumbrance variant (audit 6.5, rules.js carrying): a character's load slows it, and a heavy one tilts its rolls;
+        // the table's encumbrance variant (audit 6.5, rules.js carrying): a character's load slows it, and a heavy one tilts its rolls
+        // and its armor (5.11, rules.js speedOf): SW5e's "strength N" and "cumbersome" armor properties slow it too;
         // a Monk out of armor adds its Unarmored Movement (#67)
-        ...(() => { const cw = ch && rules && rules.carrying ? rules.carrying(ch, table.variants) : null;
-          return { speed: ch ? Math.max(0, (+ch.speed || 30) + unarmoredMoveOf(ch, rules) - (cw ? cw.slow : 0)) : +((table.npcSpeed || {})[e.id]) || 30,
+        ...(() => { const cw = ch && rules && rules.carrying ? rules.carrying(ch, table.variants) : null, sp = ch && rules && rules.speedOf ? rules.speedOf(ch, table.variants) : null;
+          return { speed: ch ? (sp ? sp.speed : Math.max(0, (+ch.speed || 30) - (cw ? cw.slow : 0))) + unarmoredMoveOf(ch, rules) : +((table.npcSpeed || {})[e.id]) || 30,
             encumbered: cw && cw.slow >= 20 ? 'heavy' : cw && cw.slow ? 'encumbered' : '' }; })(),
         // its classes' own pools (#108's presets) are there even before the sheet has added them; the server stores one on
         // the sheet the first time it's spent (writeBack), so Action Surge, maneuvers and the rest work on any sheet
@@ -1937,6 +1967,8 @@
           .filter((c) => c !== 'Raging' || (table.effects || []).some((ef) => ef.unit === e.id && ef.condition === 'Raging')),
         exhaustion: ch ? +ch.exhaustion || 0 : 0,
         deathSaves: ch ? { s: +((ch.deathSaves || {}).s) || 0, f: +((ch.deathSaves || {}).f) || 0 } : null,
+        // the Wounds variant (9.16): its wounded levels and how far the save's DC has risen; back at its hit point maximum, gone
+        wounds: ch && (table.wounds || {})[e.charId] && !(+hp.current >= +hp.max) ? Object.assign({ level: 0, step: 0 }, table.wounds[e.charId]) : { level: 0, step: 0 },
         ...(() => { const d = ch ? (table.defenses || {})[e.charId] || {} : (table.npcStats || {})[e.id] || {};
           return { resist: d.resist || [], immune: d.immune || [], vuln: d.vuln || [], condImmune: d.condImmune || [],
             senses: cleanSenses(ch ? ch.senses : d.senses) }; })(),   // a character's from its sheet (#92, the GM's), a creature's from its stat block
@@ -1961,5 +1993,5 @@
     ruler, areaSquares, areaHits, CONDITION_EFFECTS, turnPassed, endConcentration, readDefenses, defended, DAMAGE, gridFeet,
     setCondition, levelOf, burnOf, weakPenalty, LEVELS, DICE, pathTo, opportunities, react, COMMON, sizeCat, spentOf,
     SENSES, readSenses, cleanSenses, senseFor, reasons, isDead, isStable, isDying, crosses, sees, cleanWalls, WALL_KINDS, coverOf, d20, flankOf, fixedTotal, cruel, modeName,
-    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, poolLeft, payPool, ridersOf, unarmoredMoveOf, wearsArmor, ridersFor, attacksPerAction, multiattackOf, offhandOf, stylesOf, withThreshold, thresholdFor, MIN_THRESHOLD, contestBonus, helpOn, maneuverCheck, unitAt, weaponProps, volleysOf, MANEUVERS, maneuversOf, superiorityOf, saveVs, pushAway, landHit, martialOf, martialDieOf, noShots };
+    sightPolygon, visibleSquares, seenIn, packSquares, unpackSquares, lightSquares, LIGHT_LEVELS, sqFeet, inDark, seesInLight, walkable, poolLeft, payPool, ridersOf, unarmoredMoveOf, wearsArmor, ridersFor, attacksPerAction, multiattackOf, offhandOf, stylesOf, withThreshold, thresholdFor, MIN_THRESHOLD, contestBonus, helpOn, maneuverCheck, unitAt, weaponProps, volleysOf, MANEUVERS, maneuversOf, superiorityOf, saveVs, pushAway, landHit, martialOf, martialDieOf, noShots, quarryOf };
 });

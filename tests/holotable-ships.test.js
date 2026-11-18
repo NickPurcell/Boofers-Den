@@ -106,8 +106,9 @@ test("ship conditions: slowed levels, system damage levels, and what they do to 
   assert.deepEqual(SR.cleanStatus({ cond: ["Hungry", "Ionized", "Ionized"], slowed: 9, system: -2, zero: "x" }),
     { cond: ["Ionized"], slowed: 4, system: 0, zero: { s: 0, f: 0, stable: false, destroyed: false }, power: { central: 0, engines: 0, shields: 0, weapons: 0, sensors: 0, comms: 0 },
       sdUsed: 0, hdUsed: 0, tempShield: 0, boost: { tries: 0, engines: 0, weapons: false, shields: false, regen: false },
-      fx: { evade: 0, fly: 0, hardTurn: false, helm: false, interfered: false, directed: false, interferedBy: "" }, recharged: false, astro: 0, startup: 0,
-      course: { rush: 0, careful: false } }, "anything else is cleaned away");
+      fx: { evade: 0, fly: 0, hardTurn: false, helm: false, interfered: false, directed: false, interferedBy: "", dogfightVs: "", dogfightDis: false, dogfightAdv: false,
+        runVs: "", runFeet: 0, concealed: false, harassWeapon: -1, harassedBy: "", harassedWeapon: -1 }, zones: [], recharged: false, astro: 0, startup: 0,
+      course: { rush: 0, careful: false }, pace: "normal" }, "anything else is cleaned away");
   assert.deepEqual(SR.capPoints({ hull: { current: 30, max: 0 }, shield: { current: 5, max: 4 } }).hull.current, 30, "no maximum typed yet: current stays");
 });
 
@@ -819,6 +820,186 @@ test("weapon property rules: modes, shots, heat, reload, saturate, the burst cub
   assert.deepEqual([SR.inBox(box, { x: 11, y: 11 }, 1), SR.inBox(box, { x: 12, y: 10 }, 1), SR.inBox(box, { x: 8, y: 8 }, 2)], [true, false, true], "a 3 x 3 square cube on the target");
 });
 
+test("weapon properties: dire, piercing and melt trade accuracy for damage; vicious; explosive asks for concentration saves", async () => {
+  const w = { props: "Power (range 600/2400), dire 2, piercing 1, vicious 1, melt" };
+  assert.deepEqual(SR.weaponTrade(w, { dire: 9 }, 3, "attack"), { atk: -2, dc: 0, dmg: 2, onFail: 0, notes: ["dire 2"] }, "capped at the weapon's number");
+  assert.deepEqual(SR.weaponTrade(w, { piercing: 1, melt: true }, 3, "attack"), { atk: -2, dc: 0, dmg: 2, onFail: 0, notes: ["piercing 1", "melt 3"] });
+  assert.deepEqual(SR.weaponTrade(w, { dire: 2, piercing: 1, melt: true }, 3, "save"), { atk: 0, dc: -3, dmg: 3, onFail: 0, notes: ["melt 3"] }, "dire and piercing are for attack rolls; melt lowers a save DC");
+  assert.deepEqual(SR.weaponTrade({ props: "rapid 2" }, { dire: 2, melt: true }, 3, "attack").notes, [], "only what the weapon has");
+  assert.deepEqual(SR.weaponTrade(w, { melt: "true" }, 3, "attack").notes, [], "melt is a real true");
+  assert.deepEqual(["1d8[8]+2", "2d8[3,7]", "2d8kh1[~8~,3]", "2d6min3[2→3,6]"].map((d) => SR.viciousBonus(w, d)), [1, 0, 0, 1], "a top die, once a roll; struck dice don't count");
+  assert.equal(SR.viciousBonus({ props: "dire 1" }, "1d8[8]"), 0);
+  // on the server
+  const { gm, p1, party, enemy } = await table();
+  await p1.act("ship.save", { ship: Object.assign({}, shipIn(await p1.state(), party), { weapons: [
+    { name: "Slug cannon", dmg: "1d8", type: "kinetic", range: "600/2400", props: "Power (range 600/2400), dire 2, vicious 1", cat: "primary", atkMisc: 20 },
+    { name: "Needle gun", dmg: "1d8", type: "energy", range: "600/2400", props: "Power (range 600/2400), piercing 1", cat: "primary", atkMisc: 20 },
+    { name: "Thermite torpedoes", dmg: "4d10", type: "fire", range: "1000/4000", props: "Ammunition, melt, explosive", cat: "tertiary", atkMisc: 20, ammo: 10 },
+  ] }) });
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 5, f: 2 });
+  await gm.act("space.place", { id: enemy, x: 8, y: 5, f: 6 });
+  let r, st;
+  for (let i = 0; i < 6; i++) {   // until a hit (a natural 1 misses)
+    r = await p1.act("space.fire", { id: party, target: enemy, weapon: 0, dire: 2 });
+    assert.equal(r.code, 200);
+    if (r.data.hit) break;
+  }
+  st = await p1.state();
+  assert.ok(st.chat.some((m) => m.roll && m.roll.kind === "attack" && m.roll.expr === "1d20+20" && /\[dire 2\]/.test(m.roll.label)), "+22 less dire 2, and the label says so");
+  if (r.data.hit) assert.ok(st.chat.some((m) => m.roll && m.roll.kind === "damage" && /\[(vicious \+1; )?dire 2: \+2\]/.test(m.roll.label)), "dire's 2 onto the damage");
+  await p1.act("space.fire", { id: party, target: enemy, weapon: 1, piercing: 5 });
+  assert.ok((await p1.state()).chat.some((m) => m.roll && m.roll.kind === "attack" && m.roll.expr === "1d20+23" && /\[piercing 1\]/.test(m.roll.label)), "piercing capped at 1");
+  // melt on a weapon the target saves against: the DC drops by the proficiency bonus (2 with no crew), the damage gains it;
+  // explosive: the enemy's crew save for concentration, a line for the GM only (it's the GM's ship)
+  const n0 = (await gm.state()).chat.length;
+  await p1.act("space.fire", { id: party, target: enemy, weapon: 2, melt: true });
+  const gmNew = (await gm.state()).chat.slice(n0), pl = (await p1.state()).chat;
+  assert.ok(pl.some((m) => /fires Thermite torpedoes at \?\?\?: a Dexterity save, DC 28 \[melt 2\]/.test(m.text || "")), "30 - 2");
+  const blast = gmNew.find((m) => /The blast shakes Black Lance: anyone aboard keeping concentration makes a Constitution save, DC \d+/.test(m.text || ""));
+  assert.ok(blast && blast.to && blast.to[0] === "@gm" && !blast.fromId, "the enemy's concentration line is the GM's");
+  assert.ok(!pl.some((m) => /keeping concentration/.test(m.text || "")), "the player doesn't see it");
+  // a shot between two GM ships on hidden tokens: every line the GM's, naming both ships (not "???")
+  const g2 = (await gm.act("ship.save", { ship: { name: "Grey Wake", hidden: true, size: "Small", weapons: [{ name: "Gun", dmg: "1d4", type: "energy", range: "600/2400", cat: "primary" }] } })).data.id;
+  await gm.act("space.token", { id: enemy, hidden: true });
+  await gm.act("space.place", { id: g2, x: 4, y: 5, f: 2, hidden: true });
+  await gm.act("space.fire", { id: g2, target: enemy, weapon: 0 });
+  const shot = (await gm.state()).chat.filter((m) => /Grey Wake (misses|hits) Black Lance/.test(m.text || ""));
+  assert.ok(shot.length === 1 && shot[0].to[0] === "@gm", "named for the GM, and the GM's only");
+  assert.ok(!JSON.stringify((await p1.state()).chat).includes("Grey Wake"));
+});
+
+test("zone: on with an action, off for free; difficult terrain in its arc and normal range; advantage against tertiary from outside", async () => {
+  const pd = { name: "Laser point-defense", dmg: "3d6", type: "energy", range: "300/1200", props: "Power (range 300/1200), saturate, zone", cat: "primary", arc: "forward" };
+  const me = { weapons: [{ name: "Gun", dmg: "1d8" }, pd], status: { zones: [1, 0, 1, "__proto__", 99] } };
+  assert.deepEqual(SR.statusOf(me).zones, [1, 0], "weapon indices, once each");
+  assert.deepEqual(SR.zonesOf(me), [{ wi: 1, name: "Laser point-defense", arc: "forward", range: 300 }], "only weapons with zone");
+  const zt = { x: 10, y: 10, f: 2 }, z = SR.zonesOf(me)[0];   // facing east
+  assert.equal(SR.inZone(z, zt, 1, { x: 14, y: 10 }, 1), true, "ahead, 150 ft");
+  assert.equal(SR.inZone(z, zt, 1, { x: 18, y: 10 }, 1), false, "ahead, past 300 ft");
+  assert.equal(SR.inZone(z, zt, 1, { x: 6, y: 10 }, 1), false, "behind it");
+  assert.equal(SR.zoneExtra(1, { x: 15, y: 1 }, { x: 15, y: 4 }, [{ z, tok: zt, sq: 1 }]), 0, "a path that stays outside");
+  assert.ok(SR.zoneExtra(1, { x: 13, y: 6 }, { x: 13, y: 14 }, [{ z, tok: zt, sq: 1 }]) > 0, "a path through it costs more");
+  assert.equal(SR.zoneExtra(1, { x: 12, y: 10 }, { x: 14, y: 10 }, [{ z, tok: zt, sq: 1 }]), 100, "all inside: each foot twice");
+  // on the server
+  const { gm, p1, p2, party, enemy } = await table();
+  await gm.act("ship.save", { ship: Object.assign({}, shipIn(await gm.state(), enemy), { weapons: [pd] }) });
+  await p1.act("ship.save", { ship: Object.assign({}, shipIn(await p1.state(), party), { speed: 1000, weapons: [
+    { name: "Torpedoes", dmg: "2d10", type: "explosive", range: "1000/4000", props: "Ammunition", cat: "tertiary", ammo: 9, arc: "forward" }] }) });
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 10, f: 2 });
+  await gm.act("space.place", { id: enemy, x: 12, y: 10, f: 6 });   // facing west, at the party
+  await gm.act("space.init", {});
+  if ((await gm.state()).space.turnId === party) await gm.act("space.next", {});
+  assert.equal((await gm.act("space.zone", { id: enemy, weapon: 0, on: "yes" })).code, 200, "not a real true: nothing switched on");
+  assert.deepEqual(shipIn(await gm.state(), enemy).status.zones, []);
+  assert.equal((await gm.act("space.zone", { id: enemy, weapon: 0, on: true })).code, 200);
+  assert.equal((await p1.act("space.zone", { id: enemy, weapon: 0, on: false })).code, 403, "the GM's ship");
+  assert.equal((await p1.act("space.zone", { id: party, weapon: 0, on: true })).code, 400, "no zone on torpedoes");
+  let st = await p1.state();
+  assert.deepEqual(st.space.tok.find((t) => t.id === enemy).zones, [{ arc: "forward", range: 300 }], "the player's map shows where the zone is");
+  assert.ok(!JSON.stringify(st).includes("Black Lance"), "and still not whose");
+  await gm.act("space.next", {});
+  assert.equal((await gm.state()).space.turnId, party);
+  // the party flies 300 ft east: its last three squares are within 300 ft ahead of the enemy, so they cost twice
+  await p1.act("space.place", { id: party, x: 8, y: 10, f: 2 });
+  assert.equal((await p1.state()).space.moved[party], 300 + 150, "300 ft, 150 of them through difficult terrain");
+  // torpedoes from inside the zone's range: no advantage; from outside: the enemy saves with advantage
+  await p1.act("space.fire", { id: party, target: enemy, weapon: 0 });
+  assert.ok(!(await gm.state()).chat.some((m) => /launched outside its zone/.test(m.text || "")), "inside its range");
+  await p1.act("space.place", { id: party, x: 2, y: 10, f: 2 });
+  await p1.act("space.fire", { id: party, target: enemy, weapon: 0 });
+  const save = (await gm.state()).chat.filter((m) => m.roll && /Dexterity save/.test(m.roll.label)).pop();
+  assert.ok((await p1.state()).chat.some((m) => /a Dexterity save, DC \d+ \[launched outside its zone\]/.test(m.text || "")));
+  assert.ok(!JSON.stringify((await p1.state()).chat).includes("Laser point-defense"), "nor which weapon the enemy has");
+  assert.match(save.roll.expr, /^2d20kh1/, "advantage");
+  // a hidden token's zone isn't difficult terrain for anyone; switching off is free, on anyone's turn
+  await gm.act("space.token", { id: enemy, hidden: true });
+  const m0 = (await p1.state()).space.moved[party];
+  await p1.act("space.place", { id: party, x: 8, y: 10, f: 2 });
+  assert.equal((await p1.state()).space.moved[party] - m0, 300);
+  assert.equal((await gm.act("space.zone", { id: enemy, weapon: 0, on: false })).code, 200);
+  assert.deepEqual(shipIn(await gm.state(), enemy).status.zones, []);
+  assert.ok(!(await p2.state()).chat.some((m) => /switches (on|off)/.test(m.text || "")), "the GM ship's zone lines are the GM's");
+  assert.ok((await gm.state()).chat.some((m) => /Black Lance switches off Laser point-defense's zone/.test(m.text || "") && m.to[0] === "@gm"));
+});
+
+test("tertiary ammunition: a launcher fires its round (damage by size), reload by size, a natural 1 on the save takes the maximum", async () => {
+  const L = { name: "Torpedo launcher", cat: "tertiary", props: "Ammunition reload 4", dmg: "", load: "Proton torpedo" };
+  const small = SR.loadedWeapon({ size: "Small" }, L), huge = SR.loadedWeapon({ size: "Huge" }, L);
+  assert.deepEqual([small.dmg, small.type, small.range, huge.dmg], ["2d10", "energy", "1200/4800", "4d10"], "SotG's table, the bracketed number for Huge");
+  assert.deepEqual([SR.weaponProp(small, "keen"), SR.weaponProp(small, "explosive"), SR.weaponProp(small, "reload")], [1, true, 4], "the round's properties and the launcher's own");
+  assert.equal(SR.loadedWeapon({ size: "Small" }, Object.assign({}, L, { load: "Cluster missile" })).dmg, "", "a torpedo launcher doesn't take cluster missiles");
+  assert.deepEqual(SR.ammoFor({ name: "Assault cluster pod launcher" }), ["Adv. cluster missile", "Adv. homing cluster missile", "Cluster missile", "Homing cluster missile", "Nano cluster rocket"]);
+  assert.deepEqual(["Tiny", "Small", "Medium", "Large", "Huge", "Gargantuan"].map((size) => SR.reloadFor({ size }, { cat: "tertiary", props: "Ammunition, reload 12" })), [6, 12, 24, 48, 12, 24], "SotG's scaling");
+  assert.equal(SR.reloadFor({ size: "Large" }, { cat: "primary", props: "reload 4" }), 4, "only tertiary and quaternary weapons scale");
+  assert.deepEqual([SR.maxOf("2d10"), SR.maxOf("4d12+3"), SR.maxOf("")], [20, 51, 0]);
+  // on the server
+  const { gm, p1, party, enemy } = await table();
+  let sh = shipIn(await p1.state(), party);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { size: "Medium", weapons: [{ name: "Torpedo launcher", dmg: "", type: "", range: "", props: "Ammunition reload 4", cat: "tertiary", ammo: 999, load: "__proto__" }] }) });
+  sh = shipIn(await p1.state(), party);
+  assert.equal(sh.weapons[0].load, "", "only a round from the table");
+  await gm.act("ship.save", { ship: Object.assign({}, shipIn(await gm.state(), enemy), { size: "Medium", hull: { current: 20, max: 100000 } }) });
+  await gm.act("ship.points", { id: enemy, what: "hull", current: 100000 });
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 5, f: 2 });
+  await gm.act("space.place", { id: enemy, x: 8, y: 5, f: 6 });
+  assert.match((await p1.act("space.fire", { id: party, target: enemy, weapon: 0 })).data.error || "", /no round loaded/);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { weapons: [Object.assign({}, sh.weapons[0], { load: "Proton torpedo" })] }) });
+  let found = false;
+  for (let i = 0; i < 200 && !found; i++) {
+    const r = await p1.act("space.fire", { id: party, target: enemy, weapon: 0 });
+    assert.equal(r.code, 200);
+    found = (await gm.state()).chat.some((m) => /A natural 1 on the save: the damage counts as its maximum, 20\./.test(m.text || ""));
+  }
+  const st = await gm.state();
+  assert.ok(st.chat.some((m) => m.roll && m.roll.kind === "damage" && m.roll.expr === "2d10"), "a proton torpedo from a Medium ship: 2d10");
+  assert.ok(found, "a natural 1 on the save: 20, the most 2d10 can roll");
+  // reload: 4 for a Small ship's launcher, twice that on a Medium one
+  assert.equal((await p1.act("ship.reload", { id: party, weapon: 0 })).code, 200);
+  assert.equal(shipIn(await p1.state(), party).weapons[0].ammo, 8);
+});
+
+test("ventures, gunning styles and masteries (SotG ch. 6): picks by rank, their effects on Fire, multispecializing", async () => {
+  const g = { deployment: "Gunner", rank: 4, styles: ["Cannoneer", "Heavy Gunner", "Payload Delivery"], masteries: ["Payload Mastery", "Cannon Mastery"], ventures: ["Gunning Stylist", "Keen Eye"] };
+  assert.deepEqual(SR.gunningAllowed(g), { styles: 3, masteries: 1 }, "2nd and 4th rank, and a Gunning Stylist venture");
+  assert.deepEqual([SR.activeStyles(g).length, SR.activeMasteries(g)], [3, ["Payload Mastery"]], "first picked first");
+  assert.deepEqual(SR.gunningAllowed({ deployment: "Pilot", rank: 5, ventures: ["Gunning Mastery"] }), { styles: 0, masteries: 1 }, "a venture gives a pilot a mastery");
+  assert.equal(SR.venturesAllowed({ rank: 3 }), 3);
+  assert.deepEqual(SR.cleanGunning({ ventures: ["A", "A", "Gunning Mastery", "Gunning Mastery"], styles: ["Cannoneer", "__proto__", "Cannoneer"], masteries: "x" }),
+    { ventures: ["A", "Gunning Mastery", "Gunning Mastery"], styles: ["Cannoneer"], masteries: [] }, "only SotG's styles; only the two repeatable ventures repeat");
+  const can = { deployment: "Gunner", rank: 4, styles: ["Cannoneer"], masteries: ["Cannon Mastery"] };
+  assert.deepEqual(SR.weaponTrade({ cat: "primary" }, {}, 3, "attack", can), { atk: 0, dc: 0, dmg: 2, onFail: 0, notes: ["cannoneer"] }, "Cannoneer: +2 damage");
+  assert.deepEqual(SR.weaponTrade({ cat: "primary", props: "melt" }, { mastery: true, melt: true }, 3, "attack", can).atk, -3, "the proficiency bonus is forgone only once");
+  assert.deepEqual(SR.weaponTrade({ cat: "secondary" }, { mastery: true }, 3, "attack", { deployment: "Gunner", rank: 4, styles: ["Heavy Gunner"], masteries: ["Heavy Gun Mastery"] }),
+    { atk: 5, dc: 0, dmg: -3, onFail: 0, notes: ["heavy gunner", "heavy gun mastery"] });
+  assert.deepEqual(SR.weaponTrade({ cat: "tertiary" }, { mastery: true }, 3, "save", g), { atk: 0, dc: -3, dmg: 0, onFail: 6, notes: ["payload mastery"] });
+  assert.deepEqual(SR.weaponTrade({ cat: "tertiary" }, { mastery: true }, 3, "save", { deployment: "Gunner", rank: 2, masteries: ["Payload Mastery"] }).notes, [], "a mastery takes 4th rank");
+  assert.deepEqual(SR.lowDice("3d4[1,4,~2~]+2"), [{ sides: 4, v: 1 }], "struck dice don't count");
+  assert.deepEqual(SR.multispec({ crew: [{ charId: "abc123", deployment: "Pilot", rank: 2 }, { charId: "abc123", deployment: "Gunner", rank: 1 }] }, { charId: "abc123" }).rank, 3, "pilot 2 / gunner 1: 3rd rank");
+  // on the server: the picks are stored, cleaned; the gunner's Payload Mastery and Payload Delivery reach the shot
+  const { gm, p1, party, enemy } = await table();
+  let sh = shipIn(await p1.state(), party);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { crew: [{ name: "Ione", deployment: "Gunner", rank: 4, pb: 3, ventures: ["Keen Eye", "Keen Eye", "Gunning Stylist"], styles: ["Payload Delivery", "nope"], masteries: ["Payload Mastery"] }],
+    weapons: [{ name: "Missiles", dmg: "20d4", type: "kinetic", range: "1000/4000", props: "Ammunition", cat: "tertiary", ammo: 99 }] }) });
+  sh = shipIn(await p1.state(), party);
+  assert.deepEqual([sh.crew[0].ventures, sh.crew[0].styles, sh.crew[0].masteries], [["Keen Eye", "Gunning Stylist"], ["Payload Delivery"], ["Payload Mastery"]]);
+  await gm.act("ship.save", { ship: Object.assign({}, shipIn(await gm.state(), enemy), { hull: { current: 20, max: 100000 } }) });
+  await gm.act("ship.points", { id: enemy, what: "hull", current: 100000 });
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 5, f: 2 });
+  await gm.act("space.place", { id: enemy, x: 8, y: 5, f: 6 });
+  const r = await p1.act("space.fire", { id: party, target: enemy, weapon: 0, crew: 0, mastery: true });
+  assert.equal(r.code, 200);
+  const st = await p1.state();
+  const dc = 8 + 3 + 0 - 3;   // 8 + the gunner's 3 + Wisdom 0, less 3 for Payload Mastery
+  assert.ok(st.chat.some((m) => new RegExp(`a Dexterity save, DC ${dc} \\[payload mastery\\]`).test(m.text || "")), "the DC is lowered");
+  const dmg = st.chat.filter((m) => m.roll && m.roll.kind === "damage").pop();
+  assert.match(dmg.roll.label, /payload delivery: \d+ rolled again/, "twenty d4s: some showed 1 or 2 and were rolled again");
+  if (!r.data.saved) assert.ok(st.chat.some((m) => /fails: \d+ kinetic damage/.test(m.text || "")));
+});
+
 test("space.fire modes on the server: rapid, a burst over three ships, heat and Cool, ammunition and Reload", async () => {
   const { gm, p1, party, enemy } = await table();
   let sh = shipIn(await p1.state(), party);
@@ -1033,6 +1214,54 @@ test("travel: hyperspace times by region and class, rushing and care, fuel by re
   assert.equal((await p1.act("ship.astro", { id: party })).code, 200, "on its own turn");
 });
 
+test("realspace: pace (speed, Probe and Scan), sample times, fuel by the day or the hour; GM-only for a hidden ship; not mid-fight", async () => {
+  const fast = { speed: 300, status: { pace: "fast" } }, slow = { speed: 300, status: { pace: "slow" } };
+  assert.deepEqual([SR.travelSpeed(fast), SR.travelSpeed(slow), SR.travelSpeed({ speed: 300 })], [600, 150, 300], "fast doubles, slow halves");
+  assert.equal(SR.statusOf({ status: { pace: "__proto__" } }).pace, "normal", "only the three paces");
+  assert.deepEqual(SR.rollEffects(fast, "check", "wis", "scan").dis, ["Fast pace"]);
+  assert.deepEqual(SR.rollEffects(fast, "check", "int", "probe").dis, ["Fast pace"]);
+  assert.deepEqual(SR.rollEffects(fast, "check", "int", "data").dis, [], "only Probe and Scan");
+  assert.deepEqual(SR.rollEffects(slow, "check", "wis", "scan").dis, []);
+  assert.deepEqual(SR.REALSPACE_TIMES.map((r) => SR.realspaceTime(r, "normal")), ["1 to 5 minutes", "1 minute", "10 to 30 minutes", "2 to 6 hours", "12 to 24 hours"], "SotG's sample table");
+  assert.equal(SR.realspaceTime(SR.REALSPACE_TIMES[0], "fast"), "30 seconds to 2.5 minutes");
+  assert.equal(SR.realspaceTime(SR.REALSPACE_TIMES[4], "slow"), "24 to 48 hours");
+  assert.deepEqual([SR.flyFuel({ reactor: "Fuel Cell" }, 3), SR.flyFuel({ reactor: "Ionization" }, 3), SR.flyFuel({ reactor: "Power Core" }, 2)], [3, 1.5, 3], "a unit a day, times the reactor's use");
+  // on the server
+  const { gm, p1, party, enemy } = await table();
+  await p1.act("ship.save", { ship: Object.assign({}, shipIn(await p1.state(), party), { fuel: "10", reactor: "Ionization" }) });
+  assert.equal((await p1.act("ship.pace", { id: party, pace: "constructor" })).code, 400);
+  assert.equal((await p1.act("ship.pace", { id: party, pace: "fast" })).code, 200);
+  let st = await p1.state();
+  assert.equal(shipIn(st, party).status.pace, "fast");
+  assert.ok(st.chat.some((m) => /Dawn Skiff travels at a fast pace: speed \d+ ft; disadvantage on Probe and Scan/.test(m.text || "")));
+  await p1.act("ship.save", { ship: Object.assign({}, shipIn(await p1.state(), party), { status: { pace: "slow" } }) });
+  assert.equal(shipIn(await p1.state(), party).status.pace, "fast", "a sheet save keeps the stored pace");
+  let r = await p1.act("ship.fly", { id: party, where: "realspace", n: 4 });
+  assert.deepEqual([r.code, r.data.fuel], [200, 2], "4 days x0.5 for an ionization reactor");
+  st = await p1.state();
+  assert.equal(shipIn(st, party).fuel, "8");
+  assert.ok(st.chat.some((m) => /flies 4 days in realspace: 2 units of fuel, 8 left/.test(m.text || "")));
+  r = await p1.act("ship.fly", { id: party, where: "atmosphere", n: 3 });
+  assert.equal(shipIn(await p1.state(), party).fuel, "6.5", "an hour in atmosphere is a unit");
+  assert.equal((await p1.act("ship.fly", { id: party, n: 20 })).code, 400, "not enough fuel");
+  assert.equal((await p1.act("ship.pace", { id: enemy, pace: "slow" })).code, 403);
+  // a hidden ship's travel lines reach the GM only
+  const n0 = (await gm.state()).chat.length;
+  await gm.act("ship.pace", { id: enemy, pace: "slow" }); await gm.act("ship.fly", { id: enemy, n: 1 });
+  const lines = (await gm.state()).chat.slice(n0);
+  assert.equal(lines.length, 2);
+  assert.ok(lines.every((m) => m.to && m.to.length === 1 && m.to[0] === "@gm" && !m.fromId));
+  assert.ok(!(await p1.state()).chat.some((m) => /slow pace|flies 1 day/.test(m.text || "")), "the player sees neither");
+  // ship combat: travel waits for players; rolling initiative puts every ship on the map back to a normal pace
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 2, f: 2 });
+  await gm.act("space.place", { id: enemy, x: 9, y: 2, f: 6 });
+  await gm.act("space.init", {});
+  st = await gm.state();
+  assert.deepEqual([shipIn(st, party).status.pace, shipIn(st, enemy).status.pace], ["normal", "normal"]);
+  for (const t of ["ship.pace", "ship.fly"]) assert.match((await p1.act(t, { id: party, pace: "fast", n: 1 })).data.error || "", /Not during ship combat/, t);
+});
+
 // ---------------------------------------------------------------- buying, building, upgrading, docking, crew (10.17)
 test("costs: SotG's own figures for buying, building, upgrading, docking and the minimum crew", () => {
   let c = SR.costs({ size: "Small", tier: 0 });
@@ -1043,4 +1272,168 @@ test("costs: SotG's own figures for buying, building, upgrading, docking and the
   assert.deepEqual([SR.costs({ size: "Small" }).docking, SR.costs({ size: "Medium" }).docking, SR.costs({ size: "Huge" }).docking], [20, 40, 1000]);
   assert.deepEqual([SR.minCrew({ size: "Tiny" }), SR.minCrew({ size: "Small" }), SR.minCrew({ size: "Medium", abilities: { int: 10 } }), SR.minCrew({ size: "Large", abilities: { int: 14 } }),
     SR.minCrew({ size: "Gargantuan", abilities: { int: 30 } }), SR.minCrew({ size: "Huge", abilities: { int: 30 } })], [0, 1, 4, 120, 10000, 1000]);
+});
+
+// ---------------------------------------------------------------- deployments: rank features and techniques (10.12)
+test("deployments: rank features and techniques read from SW5e's text; using a technique spends the right die", async () => {
+  // the shape of SW5e's deployment text (made-up names)
+  const md = "##### The Gunner\r\n| Rank | Feature |\r\n|:---:|:---|\r\n| 1st | Venture, Gunner Techniques |\r\n| 2nd | Gunning Style, Improved Critical |\r\n\r\n### Gambits\r\nThe gambits are presented in alphabetical order.\r\n\r\n#### Pinning Shot\r\n_**Power Die Location:** Weapons_\r\nAdd the power die.\r\n\r\n#### Comms Ping\r\n_**Power Die Location:** Comms_\r\nText.\r\n\r\n#### Tune Up\r\nNo die location.";
+  const info = SR.deploymentInfo(md);
+  assert.deepEqual(info.ranks, [[1, ["Venture", "Gunner Techniques"]], [2, ["Gunning Style", "Improved Critical"]]]);
+  assert.deepEqual(info.techniques.map((t) => [t.name, t.loc]), [["Pinning Shot", "weapons"], ["Comms Ping", "comms"], ["Tune Up", null]]);
+  assert.deepEqual([SR.techniquesKnown(0), SR.techniquesKnown(1), SR.techniquesKnown(5), SR.techDie(1), SR.techDie(5)], [0, 2, 6, 4, 12]);
+  // on the server
+  const { gm, p1, party, enemy } = await table();
+  const sh = shipIn(await p1.state(), party);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { coupling: "Hub & Spoke", tier: 2, crew: [
+    { name: "Ione", deployment: "Gunner", rank: 1, known: ["Pinning Shot", "Pinning Shot", "x".repeat(99), "a", "b", "c", "d", "e"] },
+    { name: "Tam", deployment: "Mechanic", rank: 3, known: ["Tune Up"] }] }) });
+  let crew = shipIn(await p1.state(), party).crew;
+  assert.deepEqual([crew[0].known.length, crew[0].known[0], crew[0].known[1].length], [6, "Pinning Shot", 60], "unique, at most six, each cut to 60");
+  assert.equal((await p1.act("ship.technique", { id: party, crew: 0, name: "Pinning Shot", pool: "weapons" })).code, 400, "no weapons power die yet");
+  await p1.act("ship.power", { id: party, pool: "weapons", n: 1 });
+  let r = await p1.act("ship.technique", { id: party, crew: 0, name: "Pinning Shot", pool: "weapons" });
+  assert.equal(r.code, 200); assert.ok(r.data.value >= 1 && r.data.value <= 6, "a tier 2 power die: d6");
+  assert.equal(shipIn(await p1.state(), party).status.power.weapons, 0, "spent");
+  assert.ok((await p1.state()).chat.some((m) => /Ione \(Gunner\) uses Pinning Shot: a weapons power die/.test(m.text || "")));
+  assert.equal((await p1.act("ship.technique", { id: party, crew: 0, name: "Comms Ping", pool: "central" })).code, 400, "not one they know");
+  r = await p1.act("ship.technique", { id: party, crew: 1, name: "Tune Up" });
+  assert.equal(r.code, 200); assert.ok(r.data.value >= 1 && r.data.value <= 8, "a 3rd-rank mechanic's tech die: d8, not spent");
+  for (const bad of [{ crew: "__proto__" }, { crew: 7 }, { pool: "__proto__" }, { name: "constructor" }]) {
+    assert.equal((await p1.act("ship.technique", Object.assign({ id: party, crew: 0, name: "Pinning Shot", pool: "weapons" }, bad))).code, 400, JSON.stringify(bad));
+  }
+  assert.equal((await p1.act("ship.technique", { id: enemy, crew: 0, name: "x" })).code, 403);
+});
+
+test("a crew member whose token's name the GM hides is '???' in ship lines: techniques and initiative (jpesus: keep it hidden)", async () => {
+  const { gm, p1, p2, party } = await table();
+  const inq = (await gm.act("char.save", { char: { name: "Grand Inquisitor", abilities: { dex: 14 } } })).data.id;
+  await gm.act("token.add", { charId: inq, x: 3, y: 3, nameHidden: true });
+  const sh = shipIn(await gm.state(), party);
+  await gm.act("ship.save", { ship: Object.assign({}, sh, { coupling: "Direct", crew: [{ charId: inq, name: "Grand Inquisitor", deployment: "Gunner", rank: 1, known: ["Steady Aim"] }] }) });
+  await gm.act("ship.power", { id: party, pool: "central", n: 2 });
+  assert.equal((await gm.act("ship.technique", { id: party, crew: 0, name: "Steady Aim", pool: "central" })).code, 200);
+  await gm.act("space.on", { on: true });
+  await gm.act("space.place", { id: party, x: 2, y: 2, f: 2 });
+  await gm.act("space.init", {});
+  for (const who of [p1, p2]) {
+    assert.ok(!JSON.stringify(await who.state()).includes("Grand Inquisitor"), "no player's state holds the hidden name: chat, ship crew rows, anything");
+  }
+  assert.equal(shipIn(await gm.state(), party).crew[0].name, "Grand Inquisitor", "the GM's copy keeps it");
+  // a player's ordinary save sends the masked row back: the stored name stays
+  const seen = shipIn(await p1.state(), party);
+  assert.equal(seen.crew[0].name, "???");
+  assert.equal((await p1.act("ship.save", { ship: Object.assign({}, seen, { notes: "fuel low" }) })).code, 200);
+  const back = shipIn(await gm.state(), party);
+  assert.deepEqual([back.notes, back.crew[0].name], ["fuel low", "Grand Inquisitor"], "the save took the notes, not the ???");
+  const lines = (await p1.state()).chat.map((m) => m.text || "");
+  assert.ok(lines.some((t) => /^\?\?\? \(Gunner\) uses Steady Aim: a central power die/.test(t)), "the technique line says ???");
+  assert.ok(lines.some((t) => /initiative \(the lowest of its crew: \?\?\? -?\d+\)/.test(t)), "so does the initiative line");
+});
+
+// ---------------------------------------------------------------- the rarer Helm actions (10.11): Dogfight, Harass, Attack Run, Conceal
+test("helm rules: firing from the helm, Dogfight, Attack Run and Conceal change the attack roll", () => {
+  const w = { cat: "primary", range: "800/3200", arc: "forward" };
+  const me = { id: "aaaaaa1", size: "Small" }, foe = { id: "bbbbbb1", size: "Small" }, other = { id: "cccccc1", size: "Small" };
+  const a = { x: 0, y: 0, f: 2 }, ta = { x: 5, y: 0 };
+  assert.deepEqual(SR.fireCheck(me, a, w, foe, ta, { fromHelm: true }).dis, ["firing from the helm"], "a pilot firing a primary weapon");
+  assert.deepEqual(SR.fireCheck(me, a, w, foe, ta, {}).dis, [], "a gunner: no");
+  const dog = Object.assign({}, me, { status: { fx: { dogfightVs: foe.id, dogfightDis: true, dogfightAdv: true } } });
+  assert.deepEqual(SR.fireCheck(dog, a, w, foe, ta, { fromHelm: true }).dis, [], "dogfighting it: forward primary fire without the helm's disadvantage");
+  const back = { x: 5, y: 0, f: 6 };   // facing west, at us
+  assert.deepEqual(SR.fireCheck(foe, back, w, dog, a).dis, ["dogfight"], "its next attack on us: disadvantage");
+  assert.deepEqual(SR.fireCheck(other, back, w, dog, a).adv, ["dogfight"], "another ship's: advantage");
+  const run = Object.assign({}, me, { status: { fx: { runVs: foe.id, runFeet: 300 } } });
+  assert.deepEqual(SR.fireCheck(run, a, w, foe, ta, { fromHelm: true }).dis, [], "an attack run at it: no helm disadvantage");
+  const hid = Object.assign({}, me, { status: { fx: { concealed: true } } });
+  assert.deepEqual([SR.fireCheck(hid, a, w, foe, ta).adv, SR.fireCheck(foe, back, w, hid, a).dis], [["unseen"], ["an unseen target"]]);
+  const st = SR.statusOf(SR.startTurn(Object.assign({}, dog, { status: { fx: { dogfightVs: foe.id, runVs: foe.id, runFeet: 200, harassWeapon: 1, concealed: true } } }), () => ({ total: 0 }), {}).ship).fx;
+  assert.deepEqual([st.dogfightVs, st.runVs, st.harassWeapon, st.concealed], ["", "", -1, true], "a new turn ends the turn's helm work; concealment lasts");
+});
+
+test("Dogfight, Harass, Attack Run and Conceal on the server", async () => {
+  const { gm, p1, p2, party, enemy } = await table();
+  let sh = shipIn(await p1.state(), party);
+  await p1.act("ship.save", { ship: Object.assign({}, sh, { abilities: Object.assign({}, sh.abilities, { dex: 30, str: 20, con: 20 }), skills: Object.assign({}, sh.skills, { maneuvering: 2, hide: 2 }),
+    crew: [{ name: "Ione", deployment: "Pilot", pb: 4 }, { name: "Tam", deployment: "Gunner", pb: 4 }],
+    weapons: [{ name: "Laser", dmg: "1d4", type: "energy", range: "800/3200", cat: "primary", arc: "forward", atkMisc: 20 }] }) });
+  const en = shipIn(await gm.state(), enemy);
+  await gm.act("ship.save", { ship: Object.assign({}, en, { hull: { current: 20, max: 500 }, weapons: [{ name: "Gun", dmg: "1d4", type: "energy", range: "800/3200", cat: "primary", atkMisc: 20 }] }) });
+  await gm.act("ship.points", { id: enemy, what: "hull", current: 500 });
+  await gm.act("space.on", { on: true });
+  await p1.act("space.place", { id: party, x: 2, y: 5, f: 2 });
+  await gm.act("space.place", { id: enemy, x: 6, y: 5, f: 6 });
+  await gm.act("space.init", {});
+  if ((await gm.state()).space.turnId !== party) await gm.act("space.next", {});
+  // firing from the helm: the pilot's shot carries the disadvantage, the gunner's doesn't
+  await p1.act("space.fire", { id: party, target: enemy, weapon: 0, crew: 0 });
+  let atk = (await p1.state()).chat.filter((m) => m.roll && m.roll.kind === "attack").pop();
+  assert.match(atk.roll.label, /firing from the helm/);
+  await p1.act("space.fire", { id: party, target: enemy, weapon: 0, crew: 1 });
+  atk = (await p1.state()).chat.filter((m) => m.roll && m.roll.kind === "attack").pop();
+  assert.doesNotMatch(atk.roll.label, /firing from the helm/);
+  // Dogfight (a Helm action): then no second Helm action this turn
+  let r = await p1.act("space.dogfight", { id: party, target: enemy });
+  assert.equal(r.code, 200);
+  assert.equal((await p1.act("space.conceal", { id: party })).code, 400, "one Helm action a turn");
+  if (r.data.ok) {
+    sh = shipIn(await gm.state(), party);
+    assert.deepEqual([sh.status.fx.dogfightVs, sh.status.fx.dogfightDis], [enemy, true]);
+    await p1.act("space.next", {});   // the enemy's turn: its attack on the dogfighting party ship has disadvantage
+    await gm.act("space.fire", { id: enemy, target: party, weapon: 0 });
+    const g = (await gm.state()).chat.filter((m) => m.roll && m.roll.kind === "attack").pop();
+    assert.match(g.roll.label, /dogfight/);
+    assert.equal(shipIn(await gm.state(), party).status.fx.dogfightDis, false, "used up");
+    await gm.act("space.next", {});
+  } else await p1.act("space.next", {});   // a failed Dogfight still spent the Helm action
+  while ((await gm.state()).space.turnId !== party) await gm.act("space.next", {});
+  // Harass with the forward laser: it can't fire this turn; the enemy breaking away takes a critical
+  r = await p1.act("space.harass", { id: party, target: enemy, weapon: 0 });
+  assert.equal(r.code, 200);
+  assert.match((await p1.act("space.fire", { id: party, target: enemy, weapon: 0, crew: 1 })).data.error || "", /used to harass/);
+  if (r.data.ok) {
+    await p1.act("space.next", {});
+    const hull0 = shipIn(await gm.state(), enemy).hull.current;
+    await gm.act("space.place", { id: enemy, x: 12, y: 5, f: 6 });
+    assert.ok((await gm.state()).chat.some((m) => /breaks away from Dawn Skiff's harassment/.test(m.text || "")));
+    assert.ok(shipIn(await gm.state(), enemy).hull.current < hull0, "the critical lands");
+    assert.ok(!JSON.stringify((await p2.state()).chat).includes("Black Lance"), "and the enemy stays ??? to the players");
+    await gm.act("space.next", {});
+  } else await p1.act("space.next", {});   // a failed Harass still spent this turn's Helm action
+  while ((await gm.state()).space.turnId !== party) await gm.act("space.next", {});
+  // Attack Run: only after 150 ft this turn
+  assert.match((await p1.act("space.run", { id: party, target: enemy })).data.error || "", /150 ft or more/);
+  await p1.act("space.place", { id: party, x: 2, y: 2, f: 2 });   // 150 ft north: sideways, away from the target
+  assert.match((await p1.act("space.run", { id: party, target: enemy })).data.error || "", /moved 0 ft toward \?\?\? this turn/, "movement that doesn't close on the target doesn't count");
+  await p1.act("space.place", { id: party, x: 2, y: 5, f: 2 });   // back: closes 50 ft
+  await p1.act("space.place", { id: party, x: 5, y: 5, f: 2 });   // 150 ft east
+  r = await p1.act("space.run", { id: party, target: enemy });
+  assert.equal(r.code, 200);
+  sh = shipIn(await gm.state(), party);
+  assert.deepEqual([sh.status.fx.runVs, sh.status.fx.runFeet >= 150], [enemy, true]);
+  await p1.act("space.fire", { id: party, target: enemy, weapon: 0, crew: 0 });
+  atk = (await p1.state()).chat.filter((m) => m.roll && m.roll.kind === "attack").pop();
+  assert.doesNotMatch(atk.roll.label, /firing from the helm/, "the run takes the helm's disadvantage off");
+  assert.equal(shipIn(await gm.state(), party).status.fx.runVs, "", "and is spent");
+  // Conceal on the next turn: a success hides the ship until it attacks
+  await p1.act("space.next", {}); while ((await gm.state()).space.turnId !== party) await gm.act("space.next", {});
+  r = await p1.act("space.conceal", { id: party });
+  assert.equal(r.code, 200);
+  const hideLine = (await gm.state()).chat.find((m) => /Dawn Skiff's Hide \d+ against the opposing side's best passive Scan, \d+/.test(m.text || ""));
+  assert.ok(hideLine && hideLine.to[0] === "@gm" && !hideLine.fromId, "the numbers are the GM's");
+  assert.ok(!(await p1.state()).chat.some((m) => /passive Scan|spotted \(/.test(m.text || "")), "a player sees no passive Scan");
+  if (r.data.ok) {
+    assert.equal(shipIn(await gm.state(), party).status.fx.concealed, true);
+    await p1.act("space.fire", { id: party, target: enemy, weapon: 0, crew: 1 });
+    assert.equal(shipIn(await gm.state(), party).status.fx.concealed, false, "firing gives it away");
+  }
+  for (const bad of [{ target: "__proto__" }, { target: party }, { target: "constructor" }]) assert.equal((await p1.act("space.dogfight", Object.assign({ id: party }, bad))).code >= 400, true);
+  // a line only the GM reads names the GM's ships (not "???"): two GM ships, one on a hidden token
+  const g2 = (await gm.act("ship.save", { ship: { name: "Grey Wake", hidden: true, size: "Small" } })).data.id;
+  await gm.act("space.place", { id: g2, x: 12, y: 9, f: 6, hidden: true });
+  await gm.act("space.conceal", { id: g2 });
+  const gl = (await gm.state()).chat.filter((m) => /Grey Wake (slips out of sight|tries to conceal itself)/.test(m.text || ""));
+  assert.ok(gl.length === 1 && gl[0].to[0] === "@gm", "named for the GM, and the GM's only");
+  assert.ok(!JSON.stringify((await p2.state()).chat).includes("Grey Wake"));
+  assert.equal((await p1.act("space.harass", { id: party, target: enemy, weapon: "__proto__" })).code, 400);
 });
