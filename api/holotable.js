@@ -412,6 +412,8 @@ async function handleGet(req, res, q, ses) {
     const name = String(q.list || "");
     if (!Object.prototype.hasOwnProperty.call(SW5E_LISTS, name) || ["powers", "standard", "enhanced"].includes(name)) return fail(res, 404, "No such SW5e list.");
     if (!SW5E_BOOKS.on) return fail(res, 503, "The SW5e books aren't switched on for this table.");
+    // creature stat blocks are the GM's to share (audit 9.17): with the GM's switch on, a player isn't sent them
+    if (name === "monsters" && !gm && (await loadGame().catch(() => ({}))).statBlocksHidden) return fail(res, 403, "The GM keeps creature stat blocks to themselves at this table.");
     const raw = await sw5eList(r, name);
     if (!raw) return fail(res, 503, "Couldn't reach SW5e for that list right now. Try again in a minute.");
     res.setHeader("Content-Type", "application/json");
@@ -445,6 +447,30 @@ async function handleGet(req, res, q, ses) {
   if (op === "files") { // GM: what the store holds, what the table counts, and what's still waiting in Redis to be moved
     if (!gm) return fail(res, 403, "GM only");
     return res.status(200).json(await storageReport());
+  }
+
+  if (op === "history") {   // the record of one sheet's changes (audit 12.5), the GM's, read only when opened
+    if (!gm) return fail(res, 403, "GM only");
+    const camp = await loadGame(), id = String(q.char || "");
+    const log = Object.prototype.hasOwnProperty.call(camp.sheetLog || {}, id) ? camp.sheetLog[id] : [];
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(200).json({ log });
+  }
+
+  if (op === "chatlog") {   // a log of play (audit 12.4): the whole chat the table keeps, as text, for the GM
+    if (!gm) return fail(res, 403, "GM only");
+    const camp = await loadGame();
+    const t = (ts) => new Date((+ts || 0) * 1000).toISOString().replace("T", " ").slice(0, 16);
+    const line = (m) => {
+      const who = m.system ? "" : `${m.charName ? m.charName + " (" + (m.from || "") + ")" : m.from || ""}${m.to ? " → " + (m.private ? "GM/private" : "whisper") : ""}: `;
+      const body = m.roll ? `${m.roll.label || "roll"} = ${m.roll.total} [${m.roll.expr || ""} → ${m.roll.detail || ""}]` : String(m.text || "");
+      return `[${t(m.ts)}] ${who}${body}`.replace(/\r?\n/g, " / ");
+    };
+    const text = `${camp.name || "HoloTable"} — chat log, ${camp.chat.length} messages, downloaded ${t(Date.now() / 1000)} UTC\n\n` + camp.chat.map(line).join("\n") + "\n";
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="holotable-chat-${new Date().toISOString().slice(0, 10)}.txt"`);
+    res.setHeader("Cache-Control", "no-store");
+    return res.status(200).send(text);
   }
 
   if (op === "export") {
@@ -565,7 +591,10 @@ async function handlePost(req, res, q, b, ses) {
       // every part of the game a backup holds (cleanGame checks each one below). sceneFx is left out on purpose:
       // a restored table shouldn't replay the last scene change's wipe and movements.
       for (const k of ["name", "players", "chat", "initiative", "map", "notes", "handouts", "levelUps", "created",
-        "scenes", "activeScene", "ships", "variants", "hpMax", "fight", "sensesFilled"]) if (file[k] !== undefined) g[k] = file[k];
+        "scenes", "activeScene", "ships", "variants", "hpMax", "fight", "sensesFilled",
+        // and what came since (each cleaned by cleanGame like the rest): the space map, the stash, the clock, the GM's
+        // switches and NPCs, the level undo, factions and rivals
+        "space", "stash", "clock", "sheetLock", "statBlocksHidden", "npcs", "levelUndo", "factions", "rivals", "sheetLog"]) if (file[k] !== undefined) g[k] = file[k];
       if (g.sensesFilled !== undefined) g.sensesFilled = g.sensesFilled === true;   // the one-time senses fill (#132): done or not, nothing else
       // everything coming back in goes through the same checks as a live edit
       g.characters = {};

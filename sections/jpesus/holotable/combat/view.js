@@ -378,7 +378,7 @@
     // the current character's resources (its owner and the GM): use one, or add one
     if (f.active && u && u.charId && (mine || gm())) {
       const pools = Object.values(u.pools || {}).filter((r) => r.key !== 'hitdice');
-      html += `<div class="ct-row ct-pools">${pools.map((r) => `<button class="ct-chip ct-pool ${r.used >= r.max ? 'spent' : ''}" data-ct="pool" data-key="${esc(r.key)}" title="${esc(r.name)}: ${r.max - r.used} of ${r.max} left${r.refill === 'short' ? ', back on a short or long rest' : r.refill === 'long' ? ', back on a long rest' : ''}">${esc(r.name)} ${r.max - r.used}/${r.max}${r.die ? ' ' + esc(r.die) : ''}</button>`).join('')}
+      html += `<div class="ct-row ct-pools">${pools.map((r) => `<button class="ct-chip ct-pool ${r.used >= r.max ? 'spent' : ''}" data-ct="pool" data-key="${esc(r.key)}" title="${esc(r.name)}: ${r.max - r.used} of ${r.max} left${r.refill === 'short' ? ', back on a short or long rest' : r.refill === 'long' ? ', back on a long rest' : ''}">${esc(r.name)} ${r.max - r.used}/${r.max}${r.temp ? ` +${r.temp}` : ''}${r.die ? ' ' + esc(r.die) : ''}</button>`).join('')}
         <button class="btn tiny ghost" data-ct="addres" title="Add a resource with a maximum (uses, or a pool of dice)">＋ Resource</button>
         ${gm() ? '<button class="btn tiny ghost" data-ct="senses" title="Every character\'s senses at a glance">👁 Senses</button>' : ''}
         <button class="btn tiny ghost" data-ct="defs" title="Damage resistances, immunities and vulnerabilities, and senses">🛡 ${(() => { const d = (f.defenses || {})[u.charId] || {}; const n = (d.resist || []).length + (d.immune || []).length + (d.vuln || []).length; return n ? `Defences (${n})` : 'Defences'; })()}</button></div>`;
@@ -394,7 +394,7 @@
         const lim = !u.charId && a.res && ((f.npcRes || {})[u.id] || []).find((r) => r.key === a.res);
         const slotSpent = (bud && slot !== 'free' && !bud[slot] && !a.offhand && !(slot === 'action' && !a.power && a.maneuver !== 'help' && bud.attacks)) || (lim && lim.used >= lim.max);   // a weapon attack: also the rest of an Attack action (#139)
         const pool = a.power && Object.entries(a.power.cost || {})[0];
-        const poorly = pool && (!u.pools[pool[0]] || u.pools[pool[0]].max - u.pools[pool[0]].used < pool[1]);
+        const poorly = pool && (!u.pools[pool[0]] || E.poolLeft(u.pools[pool[0]]) < pool[1]);   // temporary points count (#190)
         // a Reload weapon's shots (6.6, #179): a volley needs its burst or rapid number of them
         const gunKey = a.power && a.power.kind === 'volley' ? String(a.power.weapon) : a.reload ? String(a.base || a.key) : null;
         const shots = gunKey != null && u.shots && u.shots[gunKey] != null ? +u.shots[gunKey] : null, needs = a.power && a.power.shots ? +a.power.shots : 1;

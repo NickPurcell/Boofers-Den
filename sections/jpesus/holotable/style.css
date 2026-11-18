@@ -634,6 +634,8 @@ table.t td:first-child input { min-width: 140px; }
 .ship-lv { font-size: 12px; display: inline-flex; flex-direction: row; align-items: center; gap: 4px; }
 .ship-lv select { width: auto; min-width: 0; font-size: 13px; padding: 2px 4px; }
 .ship-fight .btn:disabled { opacity: .45; cursor: default; }
+.ship-build summary { cursor: pointer; font-size: 13px; }
+.ship-build .t td:first-child { color: var(--muted); }
 .ship-power { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
 .ship-pool { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; }
 .ship-pool .dpip, .ship-power .dpip { display: inline-block; width: 9px; height: 9px; border: 1px solid currentColor; border-radius: 50%; }
@@ -763,3 +765,8 @@ table.t td.n { width: 56px; }
 .draw-col { width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(0,0,0,.5); padding: 0; cursor: pointer; }
 .draw-col.on { border-color: #fff; }
 canvas.drawing { cursor: crosshair; }
+
+/* the in-game clock in the top bar (audit 9.18) */
+.topbar .clock { margin-left: 10px; padding: 2px 10px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel); color: var(--text); font-size: 12px; white-space: nowrap; cursor: pointer; }
+.topbar .clock:disabled { cursor: default; opacity: 1; }
+.topbar .clock.ghost { color: var(--muted); border-style: dashed; }
