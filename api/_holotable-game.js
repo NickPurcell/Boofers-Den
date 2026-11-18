@@ -180,8 +180,10 @@ function cleanChar(ch) {
     hp: nums(ch.hp, ["max", "current", "temp"], 0), hitDiceUsed: Fight.cleanHitDiceUsed(ch.hitDiceUsed),   // per die size (audit 7.2), or an old single number
     deathSaves: { s: clamp(int((ch.deathSaves || {}).s), 0, 3), f: clamp(int((ch.deathSaves || {}).f), 0, 3) },
     initMisc: numOr(ch.initMisc, 0), profOverride: optNum(ch.profOverride),
-    force: Object.assign({ max: optNum((ch.force || {}).max), used: numOr((ch.force || {}).used, 0) }, Fight.cleanHigh((ch.force || {}).high)),   // high: levels cast once per long rest (#160)
-    tech: Object.assign({ max: optNum((ch.tech || {}).max), used: numOr((ch.tech || {}).used, 0) }, Fight.cleanHigh((ch.tech || {}).high)),
+    // temporary points (audit 4.9) are kept only when there are some
+    force: Object.assign({ max: optNum((ch.force || {}).max), used: numOr((ch.force || {}).used, 0) }, Fight.cleanHigh((ch.force || {}).high), tempPts((ch.force || {}).temp)),   // high: levels cast once per long rest (#160)
+    tech: Object.assign({ max: optNum((ch.tech || {}).max), used: numOr((ch.tech || {}).used, 0) }, Fight.cleanHigh((ch.tech || {}).high), tempPts((ch.tech || {}).temp)),
+    ...(R.SIZES.includes(ch.size) ? { size: ch.size } : {}),   // size (audit 5.12), from the species or the GM
     // the combat view's resource tracker (audit 3.1): kept only on a sheet that has some, so other sheets are as before
     ...(Array.isArray(ch.resources) && ch.resources.length ? { resources: Fight.cleanResources(ch.resources) } : {}),
     ...(Array.isArray(ch.senses) && R.cleanSenses(ch.senses).length ? { senses: R.cleanSenses(ch.senses) } : {}),
@@ -728,8 +730,10 @@ function applyAction(camp, cid, gm, type, p) {
       const ch = charId ? charById(camp, charId) || {} : {};
       mp.tokens.push({
         id: rid(), name: str(p.name || ch.name || "Token", 40), color: validColor(p.color || ch.color),
-        x: clamp(int(p.x, 1), -500, 1000), y: clamp(int(p.y, 1), -500, 1000), size: clamp(int(p.size, 1), 1, 4),
+        // a character's token takes the sheet's size (audit 5.12) unless the request says otherwise
+        x: clamp(int(p.x, 1), -500, 1000), y: clamp(int(p.y, 1), -500, 1000), size: clamp(int(p.size === undefined && ch.size ? R.tokenSquares(ch.size) : p.size, 1), 1, 4),
         charId, owner: cid, hidden: !!p.hidden && gm, img: validImg(p.img), nameHidden: !!p.nameHidden && gm,
+        ...(p.size === undefined && ch.size === "Tiny" ? { tiny: true } : {}),   // a Tiny character's token is drawn small (8.15)
       });
       return {};
     }
@@ -1070,6 +1074,7 @@ function propSightSegments(map) {
   return out;
 }
 
+const tempPts = (v) => (clamp(int(v), 0, 999) ? { temp: clamp(int(v), 0, 999) } : {});   // temporary force/tech points (4.9)
 // The GM's own NPCs (audit 9.9): saved templates that go into initiative like an SW5e creature. GM-only.
 // attacks: { n: name, hit: attack bonus, dmg: a damage expression and type }, rolled GM-only from the tracker's card.
 function cleanNpc(t) {

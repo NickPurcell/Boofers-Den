@@ -2013,6 +2013,35 @@ test("AC from armor, Unarmored Defense and misc (audit 5.3), crit range, misc bo
   assert.equal(c.ac, 17, "an old sheet (or an import) filled from the blank keeps its typed AC");
 });
 
+test("temporary force/tech points are spent first (audit 4.9); size from the sheet sizes the token (audit 5.12)", async () => {
+  require("../sections/jpesus/holotable/rules.js");
+  const R = globalThis.SW5E;
+  assert.deepEqual(R.pointsSpend({ used: 2, temp: 3 }, 4, 10), { temp: 0, used: 3, fromTemp: 3 }, "3 temp, then 1 of their own");
+  assert.deepEqual(R.pointsSpend({ used: 0, temp: 5 }, 2, 10), { temp: 3, used: 0, fromTemp: 2 });
+  assert.equal(R.pointsSpend({ used: 9, temp: 1 }, 3, 10), null, "only 2 left in all");
+  assert.equal(R.pointsSpend({ used: 9 }, 1, 10).used, 10, "no temp: as before");
+  assert.equal(R.tokenSquares("Huge"), 3);
+  assert.equal(R.tokenSquares("Small"), 1);
+
+  const { gm, p1 } = await table();
+  const id = (await p1.act("char.save", { char: { name: "Grok", size: "Large", force: { used: 1, temp: 4 }, tech: { temp: -3 } } })).data.id;
+  let c = (await gm.poll()).data.state.characters[id];
+  assert.equal(c.size, "Large");
+  assert.equal(c.force.temp, 4);
+  assert.equal(c.tech.temp, undefined, "none kept when there are none");
+  const id2 = (await p1.act("char.save", { char: { name: "Odd", size: "Colossal" } })).data.id;
+  assert.equal((await gm.poll()).data.state.characters[id2].size, undefined, "only SW5e's sizes");
+  await p1.act("token.add", { charId: id, x: 1, y: 1 });
+  await gm.act("token.add", { charId: id2, x: 5, y: 1 });
+  const toks = (await gm.poll()).data.state.map.tokens;
+  assert.equal(toks.find((t) => t.charId === id).size, 2, "a Large character's token takes 2 squares");
+  assert.equal(toks.find((t) => t.charId === id2).size, 1);
+  const id3 = (await p1.act("char.save", { char: { name: "Mouse", size: "Tiny" } })).data.id;
+  await p1.act("token.add", { charId: id3, x: 8, y: 1 });
+  const mt = (await gm.poll()).data.state.map.tokens.find((t) => t.charId === id3);
+  assert.deepEqual([mt.size, mt.tiny], [1, true], "a Tiny character's token is Tiny");
+});
+
 test("the GM awards XP after an encounter, split evenly; levelling stays the GM's grant (audit 9.8)", async () => {
   const { gm, p1, p2 } = await table();
   const kira = (await p1.act("char.save", { char: { name: "Kira", xp: 250, classes: [{ name: "Operative", level: 1 }] } })).data.id;
