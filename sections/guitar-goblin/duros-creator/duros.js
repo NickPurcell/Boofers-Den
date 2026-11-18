@@ -1,6 +1,6 @@
 // Duros character creator: the page. The figure is sculpted from signed distance shapes and meshed in workers
-// (sdf.js, anatomy.js, kit.js, outfits.js, jobs.js, pool.js); the head is its own module (head.js) behind a small
-// contract. This file builds the scene and the lights, puts the figure together, runs the panel and saves pictures.
+// (sdf.js, anatomy.js, kit.js, outfits.js, jobs.js, pool.js); the head is its own module (head-sculpt.js and
+// head-b-field.js, by jpesus's agent) behind the small contract written down in head.js. This file builds the scene and the lights, puts the figure together, runs the panel and saves pictures.
 // three.js is the copy vendored in ../vendor/three (r185), loaded through the page's import map.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -8,18 +8,11 @@ import { makeTextures, skinMaterial, clothMaterial, leatherMaterial, metalMateri
 import { OUTFITS } from './outfits.js';
 import { HEAD_AT } from './anatomy.js';
 import { cached, mesh, poolSize, cache_ } from './pool.js';
-import { makeHead, paintSkin, geometryFrom, smoothNoise } from './head.js';
-
-/* ---------------- the heads ---------------- */
-// Two heads to the same contract while we compare them (#65): A, sculpted from signed distance shapes (head.js), and
-// B, jpesus's agent's sculpted sphere (head-sculpt.js). The switch goes once one is chosen, or the best of each merged.
-const HEADS = { a: { name: 'Head A', make: makeHead } };
-try { const m = await import('./head-sculpt.js'); if (typeof m.makeHead === 'function') HEADS.b = { name: 'Head B', make: m.makeHead }; }
-catch (e) { /* only head A */ }
+import { paintSkin, geometryFrom, smoothNoise } from './head.js';
+import { makeHead } from './head-sculpt.js';   // the head: jpesus's agent's, to the contract in head.js
 
 /* ---------------- the options ---------------- */
 export const OPTIONS = {
-  ...(HEADS.b ? { hv: { label: 'Sculpt (comparing two heads)', type: 'seg', items: Object.entries(HEADS).map(([key, h]) => ({ key, name: h.name })) } } : {}),
   // skin and eye colours as the references show the species: muted blues, teals, greens and greys; red to orange eyes
   skin: { label: 'Skin', type: 'swatch', items: [
     { key: 'duro', name: 'Duro blue', c: '#4f7397' }, { key: 'slate', name: 'Slate grey-blue', c: '#5d7186' },
@@ -40,7 +33,7 @@ export const OPTIONS = {
   marks: { label: 'Markings', type: 'seg', items: [{ key: 'none', name: 'None' }, { key: 'freckles', name: 'Freckles' }, { key: 'cheeks', name: 'Cheek bars' }, { key: 'scar', name: 'Scar' }] },
   outfit: { label: 'Outfit', type: 'seg', items: OUTFITS.map((o) => ({ key: o.key, name: o.name })) },
 };
-const DEFAULT = { hv: 'a', skin: 'duro', eyes: 'red', head: 'round', build: 'average', age: 'adult', expr: 'neutral', marks: 'none', outfit: 'scout' };
+const DEFAULT = { skin: 'duro', eyes: 'red', head: 'round', build: 'average', age: 'adult', expr: 'neutral', marks: 'none', outfit: 'scout' };
 const pick = (opt, key) => OPTIONS[opt].items.find((o) => o.key === key) || OPTIONS[opt].items[0];
 function readHash() {
   const st = Object.assign({}, DEFAULT), q = new URLSearchParams(location.hash.slice(1));
@@ -114,7 +107,7 @@ const redraw = () => { dirty = true; };
 const camera = new THREE.PerspectiveCamera(30, 1, 0.05, 30);
 const controls = new OrbitControls(camera, canvas);
 const VIEWS = {
-  portrait: { target: [0, 1.62, 0.02], pos: [0.36, 1.69, 1.02] },
+  portrait: { target: [0, 1.665, 0.02], pos: [0.4, 1.73, 1.18] },
   body: { target: [0, 1.32, 0.02], pos: [0.7, 1.45, 2.3] },
 };
 function frameView(which = 'portrait') {
@@ -159,7 +152,7 @@ async function rebuild(what) {
   status.hidden = false;
   const s = pick('build', state.build).s, age = pick('age', state.age).a;
   const jobs = [];
-  if (what.head) jobs.push((HEADS[state.hv] || HEADS.a).make(THREE, { shape: state.head, expr: state.expr, age, marks: state.marks, skin: pick('skin', state.skin).c, eyes: pick('eyes', state.eyes).c }).then((h) => ['head', h]));
+  if (what.head) jobs.push(makeHead(THREE, { shape: state.head, expr: state.expr, age, marks: state.marks, skin: pick('skin', state.skin).c, eyes: pick('eyes', state.eyes).c }).then((h) => ['head', h]));
   if (what.body) jobs.push(Promise.all([cached(`hand:1:${s}`, 'hand', { side: 1, build: s }), cached(`hand:-1:${s}`, 'hand', { side: -1, build: s })]).then((r) => ['hands', r]));
   if (what.outfit) {
     // the outfit's pieces shared out between the workers, then put back in order
@@ -196,7 +189,7 @@ async function rebuild(what) {
 /* ---------------- the panel ---------------- */
 function summary() {
   const s = (k) => pick(k, state[k]).name.toLowerCase();
-  document.getElementById('summary').textContent = `${HEADS.b ? (HEADS[state.hv] || HEADS.a).name + ': ' : ''}${pick('age', state.age).name} Duros, ${s('build')} build, ${s('skin')} skin, ${s('eyes')} eyes, ${s('head')} head, ${s('expr')}${state.marks !== 'none' ? ', ' + s('marks') : ''}, in a ${s('outfit')}.`;
+  document.getElementById('summary').textContent = `${pick('age', state.age).name} Duros, ${s('build')} build, ${s('skin')} skin, ${s('eyes')} eyes, ${s('head')} head, ${s('expr')}${state.marks !== 'none' ? ', ' + s('marks') : ''}, in a ${s('outfit')}.`;
 }
 function paint() {
   for (const el of document.querySelectorAll('[data-opt]')) for (const b of el.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.key === state[el.dataset.opt]));
@@ -205,7 +198,7 @@ function paint() {
 function set(opt, k) {
   if (state[opt] === k) return;
   state[opt] = k;
-  if (opt === 'head' || opt === 'expr' || opt === 'age' || opt === 'marks' || opt === 'hv') rebuild({ head: true });
+  if (opt === 'head' || opt === 'expr' || opt === 'age' || opt === 'marks') rebuild({ head: true });
   else if (opt === 'build') rebuild({ body: true, outfit: true });
   else if (opt === 'outfit') rebuild({ outfit: true });
   else if (opt === 'eyes') { if (head) head.setEyes(pick('eyes', state.eyes).c); redraw(); }
@@ -230,7 +223,6 @@ document.getElementById('random').addEventListener('click', () => {
   const before = Object.assign({}, state);
   for (const k of Object.keys(OPTIONS)) { const it = OPTIONS[k].items; state[k] = it[Math.floor(Math.random() * it.length)].key; }
   if (Math.random() < 0.6) state.marks = 'none';
-  state.hv = before.hv;   // randomising doesn't swap the head being compared
   const headChanged = ['head', 'expr', 'age', 'marks'].some((k) => before[k] !== state[k]);
   rebuild({ head: headChanged, body: before.build !== state.build, outfit: before.outfit !== state.outfit || before.build !== state.build });
   if (!headChanged && head) head.setEyes(pick('eyes', state.eyes).c);
@@ -260,12 +252,12 @@ document.getElementById('save').addEventListener('click', () => {
   const cam = camera.clone(); cam.aspect = 1; cam.fov = fovFor(1); cam.updateProjectionMatrix();
   download(snapshot(1024, bgChoice(), cam), `duros-${state.skin}-${state.outfit}.png`);
 });
-// the token: 512 px, head and shoulders from the front and a little to the side, the eyes on the upper third, so it
+// the token: 512 px, the whole head and the shoulders from the front and a little to the side, so it
 // still reads at 20 px on a map (jpesus's agent's test on #65); plain by default
 const tokenCam = new THREE.PerspectiveCamera(30, 1, 0.05, 30);
 document.getElementById('token').addEventListener('click', () => {
   const eyeY = HEAD_AT[1];
-  tokenCam.position.set(0.14, eyeY + 0.005, 0.98); tokenCam.lookAt(0, eyeY - 0.05, 0); tokenCam.updateProjectionMatrix();
+  tokenCam.position.set(0.15, eyeY, 1.04); tokenCam.lookAt(0, eyeY - 0.015, 0); tokenCam.updateProjectionMatrix();
   const bg = bgChoice() === 'studio' ? 'plain' : bgChoice();
   download(snapshot(512, bg, tokenCam), `duros-token-${state.skin}.png`);
 });

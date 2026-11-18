@@ -1,20 +1,13 @@
 // What the mesher worker does: turn one part of the figure into triangle arrays. Also imported directly as a
 // fallback when a browser can't start a module worker.
 import { mesh, project, cast } from './sdf.js';
-import { headField, bodyField, handField, HEAD_AT } from './anatomy.js';
+import { bodyField, handField, HEAD_AT } from './anatomy.js';
 import { headBField } from './head-b-field.js';   // head B (head-sculpt.js), on the same toolkit
 import { outfitPieces } from './outfits.js';
 
-export const RES = { headB: 0.0041, head: 0.0034, body: 0.008, hand: 0.003, cloth: 0.005, gear: 0.0028 };
+export const RES = { headB: 0.0041, body: 0.008, hand: 0.003, cloth: 0.005, gear: 0.0028 };
 
 export function run(job, a) {
-  if (job === 'head') {
-    const h = headField(a.shape, a.expr, a.age);
-    const m = mesh(h.field, h.bounds, RES.head, { aoStep: 0.004, uvScale: 0.04 });
-    // the mouth line settled into the crease between the lips (pushed in a hair so it reads as a line, not a cord)
-    const mouth = h.mouthLine.map((p) => { const r = project(h.field, [p[0], p[1], p[2] + 0.004], 10); return [r.p[0] - r.n[0] * 0.0004, r.p[1] - r.n[1] * 0.0004, r.p[2] - r.n[2] * 0.0004]; });
-    return { mesh: m, eye: h.eye, lid: h.lid, earAt: h.earAt, at: HEAD_AT, mouth };
-  }
   if (job === 'headB') {   // head B: the same meshing and mouth line as A's, from its own field
     const h = headBField(a.shape, a.expr, a.age);
     const m = mesh(h.field, h.bounds, RES.headB, { aoStep: 0.004, uvScale: 0.04 });

@@ -1,4 +1,4 @@
-// The head: one module behind a small contract, so a different head can be dropped in.
+// The head's contract, and the skin helpers every part of the figure shares.
 //
 //   makeHead(THREE, opts) -> Promise<{ object, setSkin(hex), setEyes(hex), dispose() }>
 //   opts: { shape: 'round'|'tall'|'narrow', age: 0..1, expr: 'neutral'|'smile'|'stern'|'wary',
@@ -7,11 +7,11 @@
 // Metres, y up, facing +z, the figure's left is +x. `object`'s origin is the point between the eyes; the page puts it
 // at (0, 1.715, 0). The neck reaches 0.29 m below the eyes, inside the collar. Clothes are fitted to a neck running
 // from (0, -0.07, -0.032) radius 0.044 to (0, -0.25, -0.03) radius 0.051 in this frame, so a head's neck should stay
-// within a few millimetres of that. Meshes cast and receive shadows; the page provides the lights and environment.
+// within a few millimetres of that below -0.17. Meshes cast and receive shadows; the page provides the lights and
+// the environment.
 //
-// This one is sculpted from signed distance shapes (anatomy.js), meshed in a worker (jobs.js).
-import { cached } from './pool.js';
-import { skinMaterial, eyeTexture } from './materials.js';
+// The head on the page is head-sculpt.js (its shapes in head-b-field.js), by jpesus's agent, shaped to a study of
+// reference pictures of the species. This file keeps what the head, the hands and the page all use.
 
 const noise3 = (x, y, z) => { const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453; return s - Math.floor(s); };
 export function smoothNoise(x, y, z) {
@@ -79,52 +79,4 @@ export function geometryFrom(THREE, m) {
   g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(m.ao.length * 3), 3));
   g.computeBoundingSphere();
   return g;
-}
-
-export async function makeHead(THREE, opts) {
-  const age = opts.age || 0;
-  const r = await cached(`head:${opts.shape}:${opts.expr}:${age}`, 'head', { shape: opts.shape, expr: opts.expr, age });
-  const object = new THREE.Group();
-  const skin = skinMaterial();
-  const lidMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.5, sheen: 0.4, sheenRoughness: 0.5, sheenColor: new THREE.Color(0x9ec8ff), clearcoat: 0.25, clearcoatRoughness: 0.35 });
-  const eyeMat = new THREE.MeshPhysicalMaterial({ roughness: 0.32, clearcoat: 1, clearcoatRoughness: 0.03, emissive: 0xffffff, emissiveIntensity: 0.05 });
-  const mouthMat = new THREE.MeshStandardMaterial({ color: 0x14202c, roughness: 0.7 });
-  // the head and neck (a fresh geometry each time: its colours are painted per head)
-  const geo = geometryFrom(THREE, { position: r.mesh.position.slice(), normal: r.mesh.normal.slice(), uv: r.mesh.uv.slice(), index: r.mesh.index.slice(), ao: r.mesh.ao });
-  paintSkin(geo, { head: true, marks: opts.marks, age, eye: r.eye });
-  const headMesh = new THREE.Mesh(geo, skin); headMesh.castShadow = headMesh.receiveShadow = true;
-  object.add(headMesh);
-  // the eyes, set in their sockets with lids, and the mouth line
-  const e = r.eye;
-  for (const sx of [-1, 1]) {
-    const eye = new THREE.Group();
-    eye.position.set(sx * e.x, e.y, e.z);
-    eye.lookAt(new THREE.Vector3(sx * e.x + sx * 0.22, e.y - 0.02, e.z + 1));   // a little outward, as wide-set eyes look
-    const ballGeo = new THREE.SphereGeometry(e.r, 48, 32); ballGeo.rotateX(Math.PI / 2);   // the texture's pole to the front
-    eye.add(new THREE.Mesh(ballGeo, eyeMat));
-    const rl = e.r + 0.0017;
-    const up = new THREE.Mesh(new THREE.SphereGeometry(rl, 48, 18, 0, Math.PI * 2, 0, r.lid.upper), lidMat);
-    up.rotation.x = -0.18; up.castShadow = true; eye.add(up);
-    const upEdge = new THREE.Mesh(new THREE.TorusGeometry(rl * Math.sin(r.lid.upper), 0.0021, 8, 48), lidMat);
-    upEdge.position.y = rl * Math.cos(r.lid.upper); upEdge.rotation.x = Math.PI / 2; up.add(upEdge);
-    const lo = new THREE.Mesh(new THREE.SphereGeometry(rl, 48, 14, 0, Math.PI * 2, Math.PI - r.lid.lower, r.lid.lower), lidMat);
-    lo.rotation.x = 0.12; eye.add(lo);
-    const loEdge = new THREE.Mesh(new THREE.TorusGeometry(rl * Math.sin(r.lid.lower), 0.0018, 8, 48), lidMat);
-    loEdge.position.y = -rl * Math.cos(r.lid.lower); loEdge.rotation.x = Math.PI / 2; lo.add(loEdge);
-    object.add(eye);
-  }
-  if (r.mouth && r.mouth.length > 2) {
-    const curve = new THREE.CatmullRomCurve3(r.mouth.map((p) => new THREE.Vector3(...p)));
-    object.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 40, 0.00085, 6, false), mouthMat));
-  }
-  const setSkin = (hex) => {
-    const c = new THREE.Color(hex);
-    skin.color.copy(c); skin.sheenColor.copy(c).lerp(new THREE.Color(0xffffff), 0.45);
-    lidMat.color.copy(c).multiplyScalar(0.86); lidMat.sheenColor.copy(skin.sheenColor);
-    mouthMat.color.copy(c).multiplyScalar(0.18);
-  };
-  const setEyes = (hex) => { const t = eyeTexture(hex); if (eyeMat.map) eyeMat.map.dispose(); eyeMat.map = t; eyeMat.emissiveMap = t; eyeMat.needsUpdate = true; };
-  setSkin(opts.skin || '#4f86b6'); setEyes(opts.eyes || '#cf1f2a');
-  const dispose = () => { object.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); for (const m of [skin, lidMat, eyeMat, mouthMat]) m.dispose(); if (eyeMat.map) eyeMat.map.dispose(); };
-  return { object, setSkin, setEyes, dispose };
 }
