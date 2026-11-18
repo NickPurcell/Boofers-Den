@@ -288,6 +288,7 @@ function viewFor(camp, cid, gm, online) {
     ...(gm && camp.levelUndo && Object.keys(camp.levelUndo).length ? { levelUndo: Object.fromEntries(Object.entries(camp.levelUndo).map(([id, u]) => [id, u.level])) } : {}),   // 2.15
     variants: camp.variants || [],
     hpMax: camp.hpMax !== false,
+    ...(camp.stash ? { stash: camp.stash } : {}),   // the party stash (6.9): everyone sees it
     ...(camp.clock ? { clock: camp.clock } : {}),   // in-game time (9.18)
     ...(camp.sheetLock ? { sheetLock: true } : {}), ...(camp.statBlocksHidden ? { statBlocksHidden: true } : {}),   // the GM's table rules (12.6, 9.17)
     audio: camp.audio ? Object.assign({}, camp.audio, { now: now() }) : null,   // "now" lets each screen line its clock up
@@ -1039,6 +1040,55 @@ function applyAction(camp, cid, gm, type, p) {
     }
     case "chat.clear": need(gm); camp.chat = []; return {};
 
+    // ---- the party stash (6.9) and loot (9.10)
+    case "stash.add": {   // the GM puts items and/or credits in: loot rolled from SW5e's list, or anything by hand
+      need(gm);
+      const st = cleanStash(camp.stash) || { credits: 0, items: [] };
+      const add = (Array.isArray(p.items) ? p.items : []).slice(0, 50).map((x) => cleanStashItem(Object.assign({}, x, { id: undefined }))).filter(Boolean);
+      const cr = clamp(int(p.credits), 0, 1e9);
+      if (!add.length && !cr) throw new Invalid("Nothing to put in.");
+      if (st.items.length + add.length > 200) throw new Invalid("The stash holds 200 items at most.");
+      st.items.push(...add); st.credits = clamp(st.credits + cr, 0, 1e9);
+      camp.stash = st;
+      if (!p.quiet) addChat(camp, { system: true, text: `🎒 Into the party stash: ${[...add.map(itemLabel), ...(cr ? [`${cr.toLocaleString("en-US")} credits`] : [])].join(", ")}.` });
+      return { added: add.length };
+    }
+    case "stash.take": {   // an item onto a character's sheet: a player onto their own, the GM onto anyone
+      const st = cleanStash(camp.stash), ch = charById(camp, p.charId);
+      const at = st ? st.items.findIndex((x) => x.id === String(p.id || "")) : -1;
+      if (at < 0) throw new Invalid("That's no longer in the stash.");
+      if (!ch) throw new Invalid("No such character.");
+      need(gm || ch.owner === cid, "not your character");
+      const [it] = st.items.splice(at, 1);
+      const notes = [it.rar && `${it.rar}${it.att ? ", requires attunement" : ""}`, it.notes].filter(Boolean).join(" · ").slice(0, 200);
+      chars[ch.id] = cleanChar(Object.assign({}, ch, { equipment: [...(ch.equipment || []), Object.assign({}, it, { id: undefined, equipped: false, notes })] }));
+      Object.assign(chars[ch.id], { owner: ch.owner, image: ch.image || "", tokenImage: ch.tokenImage || "", updated: now() });
+      camp.stash = cleanStash(st); if (!camp.stash) delete camp.stash;
+      addChat(camp, { system: true, text: `🎒 ${shownName(camp, { charId: ch.id, name: ch.name })} takes ${itemLabel(it)} from the party stash.` });
+      return {};
+    }
+    case "stash.split": {   // the GM shares the stash's credits evenly among the characters picked; what's left stays
+      need(gm);
+      const st = cleanStash(camp.stash);
+      const ids = [...new Set((Array.isArray(p.chars) ? p.chars : []).map(String))].filter((id) => /^[a-z0-9]{6,20}$/.test(id) && charById(camp, id)).slice(0, 30);
+      if (!st || !st.credits) throw new Invalid("No credits in the stash.");
+      if (!ids.length) throw new Invalid("Pick who gets a share.");
+      const each = Math.floor(st.credits / ids.length);
+      if (!each) throw new Invalid("Not enough credits for a share each.");
+      for (const id of ids) { const c = charById(camp, id); c.credits = clamp(num(c.credits, 0) + each, 0, 1e9); }
+      st.credits -= each * ids.length;
+      camp.stash = cleanStash(st); if (!camp.stash) delete camp.stash;
+      addChat(camp, { system: true, text: `🎒 The stash's credits are shared out: ${each.toLocaleString("en-US")} each.` });
+      return { each };
+    }
+    case "stash.remove": {
+      need(gm);
+      const st = cleanStash(camp.stash);
+      if (st) { st.items = st.items.filter((x) => x.id !== String(p.id || "")); if (p.credits) st.credits = 0; }
+      camp.stash = cleanStash(st); if (!camp.stash) delete camp.stash;
+      return {};
+    }
+
     // ---- in-game time (audit 9.18): a day count and the time of day, the GM's to set and move on; everyone sees it
     case "clock.set": {
       need(gm);
@@ -1157,6 +1207,28 @@ function cleanDrawings(list) {
     pts: d.pts.slice(0, 600).map((v) => Math.round(clamp(Number.isFinite(+v) ? +v : 0, -50, 300) * 100) / 100).slice(0, d.pts.length - (d.pts.length % 2)),
   })).filter((d) => d.pts.length >= 4);
 }
+// The party stash (audit 6.9) and loot (9.10): items in the sheet's own shape (#167) plus the rarity and attunement
+// SW5e gives an enhanced item, each with an id so two people moving things at once can't take the wrong one.
+const RARITIES = ["Standard", "Premium", "Prototype", "Advanced", "Legendary", "Artifact"];
+function cleanStashItem(e) {
+  if (!e || typeof e !== "object") return null;
+  const name = str(e.name, 80).trim();
+  if (!name) return null;
+  return {
+    id: /^[a-z0-9]{4,20}$/.test(String(e.id || "")) ? String(e.id) : rid(),
+    name, qty: clamp(int(e.qty, 1), 1, 999), notes: str(e.notes, 200),
+    ...(RARITIES.includes(e.rar) ? { rar: e.rar } : {}), ...(e.att ? { att: true } : {}),
+    ...(e.armor && R.ARMOR_KINDS.includes(e.armor.kind) ? { armor: { kind: e.armor.kind, ac: clamp(int(e.armor.ac), 0, 30) } } : {}),
+  };
+}
+function cleanStash(st) {
+  if (!st || typeof st !== "object") return null;
+  const items = (Array.isArray(st.items) ? st.items : []).slice(0, 200).map(cleanStashItem).filter(Boolean)
+    .filter((t, i, a) => a.findIndex((x) => x.id === t.id) === i);
+  const credits = clamp(int(st.credits), 0, 1e9);
+  return items.length || credits ? { credits, items } : null;
+}
+const itemLabel = (it) => `${it.qty > 1 ? it.qty + "× " : ""}${it.name}${it.rar ? ` (${it.rar})` : ""}`;
 // in-game time (9.18): day 1 and up, minutes into the day 0-1439
 function cleanClock(c) {
   if (!c || typeof c !== "object") return null;
@@ -1203,6 +1275,7 @@ function cleanGame(g) {
   g.audio = au && /^au[a-f0-9]{12}$/.test(String(au.track || "")) ? { track: au.track, name: str(au.name, 80) || "Track", playing: !!au.playing,
     pos: clamp(num(au.pos), 0, 86400), at: num(au.at, now()), loop: !!au.loop, vol: clamp(num(au.vol, 1), 0, 1) } : null;
   g.hpMax = g.hpMax !== false;
+  if (g.stash) g.stash = cleanStash(g.stash); if (!g.stash) delete g.stash;
   if (g.clock) g.clock = cleanClock(g.clock); if (!g.clock) delete g.clock;
   if (g.sheetLock !== true) delete g.sheetLock;
   if (g.statBlocksHidden !== true) delete g.statBlocksHidden;
