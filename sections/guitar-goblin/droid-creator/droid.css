@@ -54,7 +54,8 @@ h1 span { color: var(--cool); }
 .seg button[aria-pressed="true"] { border-color: var(--cool); background: #213654; }
 
 .actions { display: flex; gap: 8px; margin: 4px 0 4px; flex-wrap: wrap; }
-.actions .btn { min-width: 30%; }
+.actions .btn { min-width: 30%; white-space: nowrap; }
+.actions #random { flex: 1 1 100%; }   /* Randomise on its own row, so no label wraps under its icon */
 .btn { flex: 1; min-height: 44px; border-radius: 12px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .check { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--dim); }
