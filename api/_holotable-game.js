@@ -148,7 +148,7 @@ function cleanShip(sh, chars) {
       range: s(w.range, 40), props: s(w.props, 300) })),
     equipment: list(sh.equipment, 60, (e) => ({ name: s(e.name, 80), notes: s(e.notes, 300) })),
     mods: list(sh.mods, 80, (e) => ({ name: s(e.name, 80), notes: s(e.notes, 300) })),
-    notes: s(sh.notes, 10000), status: Ships.cleanStatus(sh.status), updated: now(),
+    notes: s(sh.notes, 10000), ...Ships.cleanFields(sh), updated: now(),
   };
 }
 const cleanVariants = (v) => [...new Set((Array.isArray(v) ? v : []).slice(0, 80).map((x) => str(x, 80).trim()).filter(Boolean))];

@@ -11,21 +11,39 @@
 // Helpers from _holotable-game.js are passed in (no circular require).
 
 const SR = require("../sections/jpesus/holotable/starships.js");
+require("../sections/jpesus/holotable/rules.js");   // the sheet's rules (proficiency bonus by level), as globalThis.SW5E
+const R = globalThis.SW5E;
 
 const str = (v, n) => String(v == null ? "" : v).slice(0, n);
 const int = (v, d = 0) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : d; };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-const TYPES = new Set(["ship.damage", "ship.restore", "ship.dsave", "ship.stabilize", "ship.condition", "ship.reset"]);
+// A ship's Strength (Boost) bonus, worked out here from the ship sheet: the ship's Strength modifier, plus the
+// proficiency bonus of the crew member making the check (their character's, else the number on the crew row) times the
+// ship's Boost equipment (0, 1 proficiently, 2 expertly). The request only says which crew row is rolling.
+function boostBonus(camp, ship, crewIndex) {
+  const crew = Array.isArray(ship.crew) ? ship.crew : [], c = crew[clamp(int(crewIndex), 0, Math.max(0, crew.length - 1))];
+  const chars = camp.characters || {};
+  const ch = c && typeof c.charId === "string" && Object.prototype.hasOwnProperty.call(chars, c.charId) ? chars[c.charId] : null;
+  const pb = ch && R ? R.profBonus(ch) : (c && int(c.pb)) || 2;
+  const str = Math.floor((int((ship.abilities || {}).str, 10) - 10) / 2), lv = clamp(int((ship.skills || {}).boost), 0, 2);
+  return str + lv * pb;
+}
+
+const TYPES = new Set(["ship.damage", "ship.restore", "ship.points", "ship.dsave", "ship.stabilize", "ship.condition", "ship.reset",
+  "ship.turn", "ship.power", "ship.poweruse", "ship.dice", "ship.boost", "ship.regen"]);
 const handles = (type) => TYPES.has(type);
 
-// On a sheet save: the fight state stays as stored, points stay inside the (possibly halved) maximums, and hull
-// typed back up from 0 brings the ship back (destruction saves reset, no longer disabled by it).
+// On a sheet save: the fight state and the current hull and shield points stay as stored (they change only through
+// the actions below, so a stale copy of the sheet in someone's browser can't undo a hit), and points stay inside the
+// (possibly halved) maximums. A new ship takes the points it is made with.
 function keepStatus(clean, old) {
   clean.status = SR.cleanStatus(old ? old.status : null);
-  SR.capPoints(clean);
-  if (old) SR.revive(clean, (old.hull || {}).current);
-  return clean;
+  if (old) {
+    clean.hull.current = Math.max(0, int((old.hull || {}).current));
+    clean.shield.current = Math.max(0, int((old.shield || {}).current));
+  }
+  return SR.capPoints(clean);
 }
 
 function apply(camp, cid, gm, type, p, h) {
@@ -58,6 +76,16 @@ function apply(camp, cid, gm, type, p, h) {
       if (r.gained) say([`${ship.name} ${p.what === "shield" ? "restores" : "repairs"} ${r.gained} ${p.what === "shield" ? "shield" : "hull"} point${r.gained === 1 ? "" : "s"}.`]);
       return { gained: r.gained };
     }
+    case "ship.points": {   // current hull or shield points typed on the sheet: up to the maximum; hull up from 0 brings it back
+      const key = p.what === "shield" ? "shield" : "hull";
+      if (SR.isLost(SR.statusOf(ship))) throw new Invalid(`${ship.name} is lost; the GM can undo that.`);
+      const s = SR.capPoints(JSON.parse(JSON.stringify(ship))), was = int(s[key].current);
+      s[key].current = clamp(int(p.current), 0, 100000);
+      SR.capPoints(s);
+      if (key === "hull") SR.revive(s, was);
+      put(s);
+      return {};
+    }
     case "ship.dsave": {    // a destruction saving throw, rolled here
       if (!SR.dying(ship)) throw new Invalid(`${ship.name} doesn't need a destruction save (it needs 0 hull points and not to be stable).`);
       const roll = rollDice("1d20");
@@ -86,6 +114,48 @@ function apply(camp, cid, gm, type, p, h) {
       else if (before.cond.includes(name) !== after.cond.includes(name)) say([`${ship.name} is ${after.cond.includes(name) ? "now" : "no longer"} ${name.toLowerCase()}.`]);
       return {};
     }
+    case "ship.turn": {     // the start of the ship's turn: power dice back, shields regenerate, boosts end, a destruction save at 0 hull
+      const dying = SR.dying(ship);
+      const r = SR.startTurn(ship, (e) => rollDice(e), { regen: p.regen !== false });
+      put(r.ship); say([`${ship.name}'s turn starts.`, ...r.log]);
+      if (dying) return apply(camp, cid, gm, "ship.dsave", { id: ship.id }, h);
+      return {};
+    }
+    case "ship.power": {    // the sheet's + and - on a power store
+      const pool = str(p.pool, 20);
+      if (!SR.POOLS.includes(pool)) throw new Invalid("No such power store.");
+      put(SR.setPower(ship, pool, int(p.n)));
+      return {};
+    }
+    case "ship.poweruse": { // spend a power die from a store, rolled here
+      const pool = str(p.pool, 20);
+      if (!SR.POOLS.includes(pool)) throw new Invalid("No such power store.");
+      const r = SR.usePower(ship, pool, (e) => rollDice(e));
+      if (r.value === null) throw new Invalid(`No power dice in ${SR.SYSTEM_NAMES[pool].toLowerCase()}.`);
+      put(r.ship);
+      say([`${playerName(camp, cid)} spends a ${SR.SYSTEM_NAMES[pool].toLowerCase()} power die on ${ship.name}: ${r.value}.`]);
+      return { value: r.value };
+    }
+    case "ship.dice": {     // shield or hull dice spent, set on the sheet
+      put(SR.setDiceUsed(ship, p.kind === "hull" ? "hull" : "shield", int(p.used)));
+      return {};
+    }
+    case "ship.boost": case "ship.regen": {   // Boost Engines / Shields / Weapons, or Regenerate Shields: a Strength (Boost) check rolled here
+      const what = type === "ship.regen" ? "regen" : str(p.what, 10);
+      if (what !== "regen" && !["engines", "shields", "weapons"].includes(what)) throw new Invalid("Boost engines, shields or weapons.");
+      if (SR.isDisabled(SR.statusOf(ship)) || SR.isLost(SR.statusOf(ship))) throw new Invalid(`${ship.name} can't take actions.`);
+      // the Boost bonus comes from the ship sheet, worked out here; the ship's conditions set the mode
+      const bonus = boostBonus(camp, ship, p.crew), fx = SR.rollEffects(ship, "check", "str"), mode = SR.rollMode(fx, ["adv", "dis"].includes(p.mode) ? p.mode : "normal");
+      const expr = (mode === "adv" ? "2d20kh1" : mode === "dis" ? "2d20kl1" : "1d20") + (bonus >= 0 ? "+" : "") + bonus;
+      const roll = rollDice(expr);
+      const label = what === "regen" ? `${ship.name}: Regenerate Shields (DC ${SR.regenDC(ship)})` : `${ship.name}: Boost ${what} (DC ${SR.boostDC(ship)})`;
+      const r = what === "regen" ? SR.regenerateShields(ship, roll.total, (e) => rollDice(e)) : SR.boost(ship, what, roll.total, (e) => rollDice(e));
+      if (r.already || r.done === false) throw new Invalid(r.log[0] || "Not now.");
+      const msg = { from: playerName(camp, cid), fromId: cid, roll: Object.assign({}, roll, { expr, label: str(label + ([...fx.adv, ...fx.dis].length ? ` [${[...fx.adv, ...fx.dis].join(", ")}]` : ""), 120), kind: "boost" }) };
+      if (ship.hidden) Object.assign(msg, { to: ["@gm", cid], private: true });
+      put(r.ship); addChat(camp, msg); say(r.log);
+      return { ok: !!r.ok, total: roll.total };
+    }
     case "ship.reset": {    // the GM undoes a destruction (a mistake, or a story reason): saves cleared, not destroyed
       if (!gm) throw new Forbidden("GM only");
       const s = JSON.parse(JSON.stringify(ship));
@@ -99,4 +169,9 @@ function apply(camp, cid, gm, type, p, h) {
   return {};
 }
 
-module.exports = { handles, apply, keepStatus, cleanStatus: SR.cleanStatus };
+// the ship sheet fields this subsystem owns, cleaned for cleanShip: its fight state, and the reactor, power coupling and
+// shields the crew picked ("" means: from its equipment or role)
+const pick = (v, table) => (Object.prototype.hasOwnProperty.call(table, v) ? v : "");
+const cleanFields = (sh) => ({ status: SR.cleanStatus(sh.status), reactor: pick(sh.reactor, SR.REACTORS), coupling: pick(sh.coupling, SR.COUPLINGS), shieldType: pick(sh.shieldType, SR.SHIELD_TYPES) });
+
+module.exports = { handles, apply, keepStatus, cleanStatus: SR.cleanStatus, cleanFields, boostBonus };
