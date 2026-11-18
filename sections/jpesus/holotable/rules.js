@@ -521,6 +521,19 @@
   }
   Object.assign(SW5E, { CHASSIS_KINDS, MOD_KINDS, MOD_DC, MOD_TOOL, chassisKind, modSlots, modDC, installBlocked, chassisBonus, cleanChassis, cleanMod, rechassis, installMod, removeMod });
 
+  // Upgrading a chassis (Wretched Hives, "Upgrading Modifiable Item Chassis"): one rarity step at a time, eight hours, a
+  // check with the item's tool at the new rarity's DC, and a rare material. Its name follows its rarity when it carries it
+  // ("Blaster Chassis (Premium)" becomes "... (Prototype)"); what's installed stays. The next rarity, or null at the top.
+  const nextRarity = it => (it && it.chassis ? RARITIES[RARITIES.indexOf(RARITIES.includes(it.rar) ? it.rar : 'Standard') + 1] || null : null);
+  function upgradeChassis(it) {
+    const next = nextRarity(it), was = RARITIES.includes(it && it.rar) ? it.rar : 'Standard';
+    if (!next) return null;
+    it.name = String(it.name || '').replace(`(${was})`, `(${next})`);
+    it.rar = next;
+    return next;
+  }
+  Object.assign(SW5E, { nextRarity, upgradeChassis });
+
   // Cybernetic augmentations and droid customizations (audit 6.4's second part; Wretched Hives, chapter 7). In the
   // inventory such an item carries `implant: { kind }`: enhancement or replacement (cybernetics), part or protocol (droids).
   // Installed, it moves into the character's own `implants` list, as a modification moves into its chassis.

@@ -269,6 +269,17 @@ test("installing and removing a modification (audit 6.4, #236's review): the lis
   assert.match(R.removeMod(g, 0, 0, true), /gone/);
 });
 
+test("upgrading a chassis one rarity step (audit 6.4): the name follows, what's installed stays, none past artifact", () => {
+  const it = { name: "Blaster Chassis (Premium)", rar: "Premium", chassis: { kind: "blaster", mods: [{ name: "Barrel Mod", rar: "Standard" }] } };
+  assert.equal(R.nextRarity(it), "Prototype");
+  assert.equal(R.upgradeChassis(it), "Prototype");
+  assert.deepEqual([it.name, it.rar, it.chassis.mods.length, R.modSlots(it.rar).aug], ["Blaster Chassis (Prototype)", "Prototype", 1, 1]);
+  const plain = { name: "Old blaster frame", chassis: { kind: "blaster", mods: [] } };   // no rarity: Standard, and a name without one stays
+  assert.deepEqual([R.upgradeChassis(plain), plain.name, plain.rar], ["Premium", "Old blaster frame", "Premium"]);
+  assert.equal(R.nextRarity({ name: "X", rar: "Artifact", chassis: { kind: "armor", mods: [] } }), null);
+  assert.equal(R.upgradeChassis({ name: "Rock", rar: "Premium" }), null, "not a chassis");
+});
+
 test("cybernetic augmentations and droid customizations (audit 6.4): limits, side effects, install and remove", () => {
   const aug = (name, kind, rar = "Standard") => ({ name, qty: 1, rar, implant: { kind } });
   // a level-5 human: proficiency +3, so three augmentations
