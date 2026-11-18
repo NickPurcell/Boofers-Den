@@ -288,6 +288,7 @@ function viewFor(camp, cid, gm, online) {
     variants: camp.variants || [],
     hpMax: camp.hpMax !== false,
     ...(camp.clock ? { clock: camp.clock } : {}),   // in-game time (9.18)
+    ...(camp.sheetLock ? { sheetLock: true } : {}), ...(camp.statBlocksHidden ? { statBlocksHidden: true } : {}),   // the GM's table rules (12.6, 9.17)
     audio: camp.audio ? Object.assign({}, camp.audio, { now: now() }) : null,   // "now" lets each screen line its clock up
     ships: (camp.ships || []).filter((x) => gm || !x.hidden),
     ...(camp.space ? { space: Space.view(camp, gm) } : {}),   // the space map (#146)
@@ -524,6 +525,13 @@ function applyAction(camp, cid, gm, type, p) {
       // senses shape what a player is shown under fog and lighting, so they're the GM's (jpesus's ruling on #92).
       // A player's save keeps the sheet's senses; choosing a different species takes that species' own senses,
       // which the server looks up itself (p[SPECIES_SENSES], set by holotable.js from SW5e's list, never by a client).
+      // the GM's lock (audit 12.6): with it on, a player's save keeps the class levels, XP and hit point maximum the
+      // sheet had. Those move by the GM's grant (levelup.apply) and the GM's own edits; an archetype pick still goes through.
+      if (!gm && old && camp.sheetLock) {
+        clean.classes = (old.classes || []).map((k, i) => Object.assign({}, k, { archetype: ((clean.classes || [])[i] || {}).archetype || k.archetype || "" }));
+        clean.xp = old.xp;
+        clean.hp = Object.assign({}, clean.hp, { max: (old.hp || {}).max });
+      }
       if (!gm) {
         const lc = (v) => String(v || "").trim().toLowerCase();
         const newSpecies = !old || lc(old.species) !== lc(clean.species);
@@ -1053,6 +1061,8 @@ function applyAction(camp, cid, gm, type, p) {
     case "audio.stop": need(gm); camp.audio = null; return {};
     // whether players may take the hit die's maximum when levelling (the GM's table rule)
     case "settings.hpMax": need(gm); camp.hpMax = !!p.on; return {};
+    case "settings.sheetLock": need(gm); if (p.on) camp.sheetLock = true; else delete camp.sheetLock; return {};   // 12.6
+    case "settings.statBlocks": need(gm); if (p.hidden) camp.statBlocksHidden = true; else delete camp.statBlocksHidden; return {};   // 9.17
 
     // ---- starships: the party's ships can be edited by anyone at the table; hidden (enemy) ships only by the GM
     case "ship.save": {
@@ -1168,6 +1178,8 @@ function cleanGame(g) {
     pos: clamp(num(au.pos), 0, 86400), at: num(au.at, now()), loop: !!au.loop, vol: clamp(num(au.vol, 1), 0, 1) } : null;
   g.hpMax = g.hpMax !== false;
   if (g.clock) g.clock = cleanClock(g.clock); if (!g.clock) delete g.clock;
+  if (g.sheetLock !== true) delete g.sheetLock;
+  if (g.statBlocksHidden !== true) delete g.statBlocksHidden;
   if (Array.isArray(g.npcs) && g.npcs.length) g.npcs = cleanNpcs(g.npcs); else delete g.npcs;
   g.ask = Ask.clean(g.ask, g.characters);
   g.ships = (Array.isArray(g.ships) ? g.ships : []).slice(0, MAX_SHIPS).filter((x) => x && typeof x === "object").map((x) => cleanShip(x, g.characters));

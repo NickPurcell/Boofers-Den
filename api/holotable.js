@@ -412,6 +412,8 @@ async function handleGet(req, res, q, ses) {
     const name = String(q.list || "");
     if (!Object.prototype.hasOwnProperty.call(SW5E_LISTS, name) || ["powers", "standard", "enhanced"].includes(name)) return fail(res, 404, "No such SW5e list.");
     if (!SW5E_BOOKS.on) return fail(res, 503, "The SW5e books aren't switched on for this table.");
+    // creature stat blocks are the GM's to share (audit 9.17): with the GM's switch on, a player isn't sent them
+    if (name === "monsters" && !gm && (await loadGame().catch(() => ({}))).statBlocksHidden) return fail(res, 403, "The GM keeps creature stat blocks to themselves at this table.");
     const raw = await sw5eList(r, name);
     if (!raw) return fail(res, 503, "Couldn't reach SW5e for that list right now. Try again in a minute.");
     res.setHeader("Content-Type", "application/json");
