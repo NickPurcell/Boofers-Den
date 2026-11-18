@@ -75,3 +75,17 @@ test("buildLevel1: species, class, scores and background make one level-1 charac
   const noAsi = B.buildLevel1({ species, asi: false, cls: fighter, scores: { str: 15, dex: 13, con: 14, int: 8, wis: 12, cha: 10 } });
   assert.equal(noAsi.abilities.con, 14, "an increase the player chooses isn't applied"); assert.equal(noAsi.hp.max, 12);
 });
+
+test("changing an archetype takes the old one's added features off the sheet, and nothing typed by hand", () => {
+  const B = loadBooks();
+  const c = { features: [
+    { name: "Forcecasting", text: "Archetype feature (Adept Specialist, level 3)\nYou learn..." },
+    { name: "Growing Momentum", text: "Archetype feature (Adept Specialist, level 3)\n..." },
+    { name: "Second Wind", text: "Class feature (Fighter, level 1)\n..." },
+    { name: "My note", text: "Archetype feature (Adept Specialist is cool)" },
+    { name: "Other", text: "Archetype feature (Adept Specialist Two, level 3)" },
+  ] };
+  assert.equal(B.dropArchetypeFeatures(c, "Adept Specialist"), 2);
+  assert.deepEqual(c.features.map((f) => f.name), ["Second Wind", "My note", "Other"]);
+  assert.equal(B.dropArchetypeFeatures({}, "X"), 0);
+});

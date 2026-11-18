@@ -558,8 +558,8 @@
 
   // The way into the archetype picker (audit 2.7): SW5e's classes take their archetype at 3rd level. A class at 3+ with
   // none (an import, a missed pick) gets a button; one that has it gets a small ◈ to change it. Needs the SW5e books.
-  function archetypeButton(ch, k, i, ro) {
-    const cls = R.CLASSES[k.name];
+  function archetypeButton(k, i, ro) {
+    const cls = Object.prototype.hasOwnProperty.call(R.CLASSES, k.name) ? R.CLASSES[k.name] : null;   // a class named "constructor" is no class
     if (ro || !cls || n0(k.level) < 3 || !window.HTB || S.st.sw5eBooks === false) return '';
     return k.archetype ? `<button class="btn tiny ghost" data-act="pick-archetype" data-i="${i}" title="Change the ${esc(cls.arch)}">◈</button>`
       : `<button class="btn tiny amber" data-act="pick-archetype" data-i="${i}" title="${esc(k.name)} ${n0(k.level)} has no ${esc(cls.arch)} yet">◈ Choose ${esc(cls.arch)}</button>`;
@@ -618,7 +618,7 @@
           <span class="row">${inp(`classes.${i}.name`, k.name, { ro, list: 'dlClasses', w: '110px' })}
           ${inp(`classes.${i}.level`, +k.level || 1, { ro, type: 'number', w: '58px' })}
           ${k.archetype ? `<span class="muted class-arch" title="${esc((R.CLASSES[k.name] || {}).arch || 'Archetype')}">${esc(k.archetype)}</span>` : ''}
-          ${archetypeButton(ch, k, i, ro)}
+          ${archetypeButton(k, i, ro)}
           ${!ro && ch.classes.length > 1 ? `<button class="btn tiny ghost" data-act="del-class" data-i="${i}">✕</button>` : ''}</span>`).join('')}
         </div>
       </div>

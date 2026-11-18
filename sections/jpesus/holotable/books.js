@@ -424,6 +424,13 @@
     const all = await list('features');
     return all.filter(f => f.k === kind && lc(f.of) === lc(of) && f.lvl >= fromLvl && f.lvl <= toLvl && lc(f.n) !== 'ability score improvement');
   }
+  // Changing an archetype takes the old one's features off the sheet: the ones this picker and the level-up wizard
+  // added, whose text starts "Archetype feature (Old name, level n)". Anything typed by hand stays. Returns how many went.
+  function dropArchetypeFeatures(c, name) {
+    const mark = `Archetype feature (${name},`, before = (c.features || []).length;
+    c.features = (c.features || []).filter(f => !String((f && f.text) || '').startsWith(mark));
+    return before - c.features.length;
+  }
   function openArchetypePicker(charId, classIdx) {
     const k = charOf(charId).classes[classIdx]; if (!k) return;
     picker({
@@ -434,13 +441,15 @@
       detail: x => md(x.text), detailLabel: 'About',
       action: (x, i) => pickBtn(i, lc(k.archetype) === lc(x.n) ? 'Re-apply' : 'Choose'), pickedLabel: '✓ Chosen',
       onPick: x => {
+        let gone = 0;
         featuresFor(x.n, 'archetype', 0, n0(k.level)).then(feats => {
           mutateChar(charId, c => {
             const kk = c.classes[classIdx]; if (!kk) return;
+            if (kk.archetype && lc(kk.archetype) !== lc(x.n)) gone = dropArchetypeFeatures(c, kk.archetype);
             kk.archetype = x.n.slice(0, 60);
             for (const f of feats) if (!hasFeature(c, f.n)) c.features.push({ name: f.n, text: `Archetype feature (${x.n}, level ${f.lvl})\n${f.text}`.slice(0, 4000) });
           });
-          H.toast(`${x.n}: ${feats.length} feature${feats.length === 1 ? '' : 's'} added`);
+          H.toast(`${x.n}: ${feats.length} feature${feats.length === 1 ? '' : 's'} added${gone ? `, ${gone} from the old archetype removed` : ''}`);
         }).catch(err => H.toast(err.message, true));
         H.closeModal();
       },
@@ -900,7 +909,7 @@
   window.HTB = {
     list, mdBlock, libraryBar, openBook, openSpeciesPicker, openBackgroundPicker, openArchetypePicker, openFeaturePicker,
     guidedBuild, buildLevel1, skillChoice,
-    levelFeatures, archetypesOf, featNamed, featNames, openMonsterPicker, openStatBlock, rollCreatureSave, bonuses, saveBonus, difficulty, xpMultiplier, renderEncounter, renderShips, renderShipsSafe,
+    levelFeatures, dropArchetypeFeatures, archetypesOf, featNamed, featNames, openMonsterPicker, openStatBlock, rollCreatureSave, bonuses, saveBonus, difficulty, xpMultiplier, renderEncounter, renderShips, renderShipsSafe,
   };
   // the rules tab and ships tab were drawn before this file loaded
   if (!LIB.book) H.renderRules();
