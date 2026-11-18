@@ -2342,3 +2342,17 @@ test("between fights (section 11): factions and renown, rivals and complications
   await gm.act("faction.remove", { id: f });
   assert.equal((await p1.poll()).data.state.factions, undefined);
 });
+
+test("renown and lifestyle lines don't name a character whose name the GM hides (#199 review)", async () => {
+  const { gm, p1 } = await table();
+  const id = (await gm.act("char.save", { char: { name: "Darth Secret", credits: 100, lifestyle: "Wealthy" } })).data.id;
+  await gm.act("token.add", { charId: id, x: 2, y: 2 });
+  const tok = (await gm.poll()).data.state.map.tokens.find((t) => t.charId === id);
+  await gm.act("token.update", { id: tok.id, fields: { nameHidden: true } });
+  const f = (await gm.act("faction.save", { item: { name: "Sith", shown: true, members: { [id]: { rank: 1 } } } })).data.id;
+  await gm.act("faction.renown", { id: f, charId: id, delta: 1 });
+  await gm.act("lifestyle.charge", { days: 1, chars: [id] });
+  const chat = JSON.stringify((await p1.poll()).data.state.chat);
+  assert.ok(!chat.includes("Darth Secret"), chat);
+  assert.ok(chat.includes("??? earns 1 renown with Sith"));
+});

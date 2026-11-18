@@ -63,7 +63,7 @@ function apply(camp, cid, gm, type, p, G) {
     const m = f.members[id] || { rank: 0, renown: 0 };
     m.renown = clamp(m.renown + d, 0, 100000); f.members[id] = m;
     f.renown = clamp(f.renown + d, 0, 1000000);
-    if (d && f.shown && p.announce !== false) G.addChat(camp, { system: true, text: `⚑ ${chars[id].name} ${d > 0 ? "earns" : "loses"} ${Math.abs(d)} renown with ${f.name}${d > 0 ? "" : ""}.` });
+    if (d && f.shown && p.announce !== false) G.addChat(camp, { system: true, text: `⚑ ${G.shownName(camp, { charId: id, name: chars[id].name })} ${d > 0 ? "earns" : "loses"} ${Math.abs(d)} renown with ${f.name}${d > 0 ? "" : ""}.` });
     return { renown: m.renown };
   }
   if (type === "lifestyle.charge") {   // N days of each character's lifestyle, taken from their credits (it can't go below 0)
@@ -76,8 +76,9 @@ function apply(camp, cid, gm, type, p, G) {
       if (perDay == null) continue;
       const cost = perDay * days, had = Math.max(0, int(c.credits));
       c.credits = Math.max(0, had - cost);
-      lines.push(`${c.name} ${cost} cr (${c.lifestyle})`);
-      if (had < cost) short.push(c.name);
+      const nm = G.shownName(camp, { charId: id, name: c.name });   // a name the GM hides stays hidden (#199 review)
+      lines.push(`${nm} ${cost} cr (${c.lifestyle})`);
+      if (had < cost) short.push(nm);
     }
     if (!lines.length) throw new G.Invalid("None of them has a lifestyle set (Bio & Notes on the sheet).");
     G.addChat(camp, { system: true, text: `🏠 ${days} day${days === 1 ? "" : "s"} of living: ${lines.join(", ")}.${short.length ? ` ${short.join(", ")} couldn't cover it all.` : ""}` });

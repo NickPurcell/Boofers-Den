@@ -516,7 +516,7 @@ function applyAction(camp, cid, gm, type, p) {
   const chars = camp.characters, ini = camp.initiative, mp = camp.map;
   mp.props = mp.props || [];
   const need = (ok, why = "GM only") => { if (!ok) throw new Forbidden(why); };
-  if (Story.handles(type)) return Story.apply(camp, cid, gm, type, p, { addChat, Forbidden, Invalid });
+  if (Story.handles(type)) return Story.apply(camp, cid, gm, type, p, { addChat, shownName, Forbidden, Invalid });
   if (type.startsWith("ask.")) return Ask.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
   if (type.startsWith("fight.")) return Fight.apply(camp, cid, gm, type, p, fightHelpers());
   if (Ships.handles(type)) return Ships.apply(camp, cid, gm, type, p, { rollDice, addChat, playerName, Forbidden, Invalid });
