@@ -331,6 +331,21 @@ test("a power's SW5e duration in rounds (audit 4.10), from the note the sheet wr
   assert.equal(R.durationRounds("1 action · Range Self · 999 days"), 432000, "at most 30 days");
 });
 
+test("speed (5.11, #254): a Monk's Unarmored Movement from its table column, only with no armor or shield on", () => {
+  const monk = (level, equipment = [], o = {}) => Object.assign({ speed: 30, abilities: { str: 10, dex: 16 }, classes: [{ name: "Monk", level }], equipment }, o);
+  assert.deepEqual([2, 3, 9, 20].map((l) => R.speedOf(monk(l)).speed), [30, 40, 50, 60]);
+  const sp = R.speedOf(monk(5));
+  assert.deepEqual([sp.speed, sp.bonus, sp.parts], [45, 15, ["Unarmored Movement: +15 ft"]]);
+  assert.equal(R.speedOf(monk(5, [{ name: "Combat suit", equipped: true, armor: { kind: "light", ac: 11 } }])).speed, 30, "in armor");
+  assert.equal(R.speedOf(monk(5, [{ name: "Light shield", equipped: true, armor: { kind: "shield", ac: 1 } }])).speed, 30, "with a shield");
+  assert.equal(R.speedOf(monk(5, [{ name: "Combat suit", equipped: false, armor: { kind: "light", ac: 11 } }])).speed, 45, "armor in the pack");
+  assert.equal(R.speedOf(monk(5, [], { classes: [{ name: "Fighter", level: 5 }] })).speed, 30, "not a monk");
+  const sentry = { features: [{ name: "Vow of the Sentry", text: "" }] };
+  assert.equal(R.speedOf(monk(5, [{ name: "Battle armor", equipped: true, armor: { kind: "medium", ac: 14 } }], sentry)).speed, 45, "the Vow of the Sentry: medium armor allowed");
+  assert.equal(R.speedOf(monk(5, [{ name: "Light shield", equipped: true, armor: { kind: "shield", ac: 1 } }], sentry)).speed, 30, "but not a shield");
+  assert.equal(R.speedOf(monk(5, [], { features: [{ name: "Wings", text: "You have a flying speed equal to your walking speed." }] })).other.fly, 45, "a speed equal to walking follows it");
+});
+
 test("speed (audit 5.11): SW5e's strength and cumbersome armor properties, the encumbrance variant, other movement from traits", () => {
   assert.deepEqual(R.armorFromItem({ accl: "Heavy", ac: "17", props: ["Bulky", "cumbersome", "strength 15"] }), { kind: "heavy", ac: 17, str: 15, cumbersome: true });
   assert.deepEqual(R.armorFromItem({ accl: "Light", ac: "11", props: [] }), { kind: "light", ac: 11 });
