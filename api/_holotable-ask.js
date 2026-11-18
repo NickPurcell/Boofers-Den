@@ -114,9 +114,16 @@ function view(camp, cid, gm) {
   if (gm) return req;
   const mine = req.chars.filter((id) => own(camp.characters, id) && camp.characters[id].owner === cid);
   if (!mine.length) return null;
+  // the GM's own NPC sheets aren't named or scored for players; a success or failure is sent only when the DC is
+  // shown (each verdict would otherwise bracket a hidden DC); a secret request sends only that one's own roll is in
+  const shown = req.chars.filter((id) => own(camp.characters, id) && !gmOwned(camp, camp.characters[id]));
   const results = {};
-  for (const [id, r] of Object.entries(req.results)) if (!req.secret || mine.includes(id)) results[id] = req.secret ? { done: true } : r;
-  return { id: req.id, check: req.check, chars: req.chars, mine, group: req.group, secret: req.secret,
+  for (const id of shown) {
+    if (!own(req.results, id) || (req.secret && !mine.includes(id))) continue;
+    const r = req.results[id];
+    results[id] = req.secret ? { done: true } : Object.assign({ total: r.total }, req.showDc ? { ok: r.ok } : {});
+  }
+  return { id: req.id, check: req.check, chars: shown, mine, group: req.group, secret: req.secret,
     ...(req.showDc ? { dc: req.dc, showDc: true } : {}), results };
 }
 

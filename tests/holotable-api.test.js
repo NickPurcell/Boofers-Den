@@ -1943,3 +1943,25 @@ test("ask: a player not asked sees nothing of the request", async () => {
   assert.equal((await p2.poll()).data.state.ask, undefined);
   assert.equal((await p1.poll()).data.state.ask.check.name, "Wisdom save");
 });
+
+test("ask: a hidden DC isn't bracketed by verdicts, and the GM's NPC isn't in a player's view (#170 review)", async () => {
+  const { gm, p1, p2 } = await table();
+  const kira = (await p1.act("char.save", { char: askSheet("Kira", 16) })).data.id;
+  const rex = (await p2.act("char.save", { char: askSheet("Rex", 8) })).data.id;
+  const npc = (await gm.act("char.save", { char: askSheet("Darth Secret", 20) })).data.id;
+  const id = (await gm.act("ask.open", { what: "skill", key: "perception", dc: 15, chars: [kira, rex, npc] })).data.id;
+  await p1.act("ask.answer", { id, charId: kira });
+  await p2.act("ask.answer", { id, charId: rex });
+  await gm.act("ask.answer", { id, charId: npc });
+  const a = (await p1.poll()).data.state.ask;
+  assert.deepEqual(a.chars.sort(), [kira, rex].sort(), "the GM's NPC isn't listed");
+  assert.equal(a.results[npc], undefined, "nor its result");
+  assert.ok(Object.values(a.results).every((r) => r.ok === undefined && Number.isFinite(r.total)), "totals, no verdicts, while the DC is hidden");
+  assert.equal(a.dc, undefined, "the DC isn't there");
+  await gm.act("ask.close", {});
+  const id2 = (await gm.act("ask.open", { what: "skill", key: "perception", dc: 12, showDc: true, chars: [kira] })).data.id;
+  await p1.act("ask.answer", { id: id2, charId: kira });
+  const b = (await p1.poll()).data.state.ask;
+  assert.equal(typeof b.results[kira].ok, "boolean", "with the DC shown, the verdict is too");
+  assert.ok(Object.keys((await gm.poll()).data.state.ask.results).length === 1);
+});
