@@ -157,7 +157,7 @@
     if (!s) return;
     // zones that are on: difficult terrain in the weapon's arc and normal range, shaded square by square
     for (const t of s.tok) for (const z of t.zones || []) {
-      g.fillStyle = 'rgba(79, 195, 247, 0.13)';
+      g.fillStyle = 'rgba(79, 195, 247, 0.2)';
       for (let y = 0; y < rows; y++) for (let x = 0; x < cols; x++) if (SR.inZone(z, t, sizeOfTok(t), { x, y }, 1)) g.fillRect(x * cell + 1, y * cell + 1, cell - 1, cell - 1);
     }
     for (const t of s.tok) {
