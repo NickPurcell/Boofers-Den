@@ -1928,8 +1928,9 @@
         hp: ch ? +hp.current : e.hp == null || e.hp === '' ? null : +e.hp, maxHp: ch ? +hp.max : e.maxHp == null ? null : +e.maxHp,
         temp: ch ? +hp.temp || 0 : 0,
         // the table's encumbrance variant (audit 6.5, rules.js carrying): a character's load slows it, and a heavy one tilts its rolls
-        ...(() => { const cw = ch && rules && rules.carrying ? rules.carrying(ch, table.variants) : null;
-          return { speed: ch ? Math.max(0, (+ch.speed || 30) - (cw ? cw.slow : 0)) : +((table.npcSpeed || {})[e.id]) || 30,
+        // and its armor (5.11, rules.js speedOf): SW5e's "strength N" and "cumbersome" armor properties slow it too
+        ...(() => { const cw = ch && rules && rules.carrying ? rules.carrying(ch, table.variants) : null, sp = ch && rules && rules.speedOf ? rules.speedOf(ch, table.variants) : null;
+          return { speed: ch ? (sp ? sp.speed : Math.max(0, (+ch.speed || 30) - (cw ? cw.slow : 0))) : +((table.npcSpeed || {})[e.id]) || 30,
             encumbered: cw && cw.slow >= 20 ? 'heavy' : cw && cw.slow ? 'encumbered' : '' }; })(),
         // its classes' own pools (#108's presets) are there even before the sheet has added them; the server stores one on
         // the sheet the first time it's spent (writeBack), so Action Surge, maneuvers and the rest work on any sheet
