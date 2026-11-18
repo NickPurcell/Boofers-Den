@@ -2282,3 +2282,29 @@ test("the GM's table rules: only the GM changes levels, XP and max HP (12.6); st
   await gm.act("settings.statBlocks", { hidden: false });
   assert.equal((await p1.poll()).data.state.statBlocksHidden, undefined);
 });
+
+test("a record of sheet changes (12.5): who changed what, read by the GM, and the GM's undo of one change", async () => {
+  const { gm, p1 } = await table();
+  const id = (await p1.act("char.save", { char: { name: "Kira", xp: 100, credits: 50, abilities: { str: 10 }, hp: { max: 20, current: 20, temp: 0 } } })).data.id;
+  let c = (await p1.poll()).data.state.characters[id];
+  await p1.act("char.save", { char: Object.assign({}, c, { xp: 9000, credits: 99999, abilities: Object.assign({}, c.abilities, { str: 20 }), equipment: [{ name: "Medpac", qty: 2 }] }) });
+  c = (await p1.poll()).data.state.characters[id];
+  await p1.act("char.save", { char: Object.assign({}, c, { hp: Object.assign({}, c.hp, { current: 12 }) }) });
+  assert.equal((await p1.call("GET", { op: "history", char: id })).code, 403, "the GM's");
+  assert.equal((await gm.poll()).data.state.sheetLog, undefined, "not sent with every update");
+  const log = (await gm.call("GET", { op: "history", char: id })).data.log;
+  assert.equal(log.length, 2, "the first save (a new sheet) isn't a change");
+  assert.equal(log[0].by, "Sam");
+  assert.deepEqual(log[0].changes.filter((x) => !x.view).map((x) => [x.k, x.from, x.to]).sort(), [["abilities.str", 10, 20], ["credits", 50, 99999], ["xp", 100, 9000]]);
+  assert.ok(log[0].changes.some((x) => x.k === "equipment" && x.view && x.to === "2× Medpac"), "lists are shown");
+  assert.deepEqual(log[1].changes.map((x) => [x.k, x.from, x.to]), [["hp.current", 20, 12]]);
+  assert.equal((await p1.act("sheet.revert", { charId: id, entry: log[0].id })).code, 403);
+  await gm.act("sheet.revert", { charId: id, entry: log[0].id });
+  c = (await gm.poll()).data.state.characters[id];
+  assert.deepEqual([c.xp, c.credits, c.abilities.str, c.hp.current], [100, 50, 10, 12], "that change's numbers back; the later HP change kept");
+  assert.equal(c.equipment.length, 1, "lists aren't undone");
+  const log2 = (await gm.call("GET", { op: "history", char: id })).data.log;
+  assert.equal(log2.at(-1).by, "GM (undo)");
+  assert.equal((await gm.act("sheet.revert", { charId: id, entry: "nope" })).code, 400);
+  assert.deepEqual((await gm.call("GET", { op: "history", char: "__proto__" })).data.log, []);
+});
