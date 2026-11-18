@@ -173,7 +173,8 @@ function startTurn(camp, cid, gm, h) {
   sp.moved[e.id] = 0;
   const s = camp.ships.find((x) => x && x.id === e.id);
   if (!s) return {};
-  return Ships.apply(camp, cid, true, "ship.turn", { id: s.id, regen: true }, h);   // the turn belongs to the table, not to whoever pressed Next
+  Ships.apply(camp, cid, true, "ship.turn", { id: s.id, regen: true }, h);   // the turn belongs to the table, not to whoever pressed Next
+  return {};   // nothing of the next ship's turn (an enemy's save) goes back to whoever pressed Next
 }
 
 module.exports = { handles, apply, clean, view };

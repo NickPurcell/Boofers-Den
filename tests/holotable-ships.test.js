@@ -488,8 +488,10 @@ test("space map: initiative, the order, a ship's turn starting its power and shi
   // a player's Next can start an enemy ship's turn: its destruction save at 0 hull stays the GM's (no sender id on it)
   await gm.act("ship.damage", { id: enemy, amount: 25, type: "kinetic" });
   if ((await gm.state()).space.turnId !== party) await gm.act("space.next", {});
-  assert.equal((await p1.act("space.next", {})).code, 200, "the party ends its turn; the enemy's starts");
-  assert.ok((await gm.state()).chat.some((m) => m.roll && m.roll.label === "Black Lance: destruction save"), "the enemy's turn rolled its save");
+  const nx = await p1.act("space.next", {});
+  assert.equal(nx.code, 200, "the party ends its turn; the enemy's starts");
+  assert.deepEqual(nx.data, { ok: true }, "nothing of the enemy's turn comes back to the player");
+  assert.ok((await gm.state()).chat.some((m) => m.roll && m.roll.label === "Black Lance: destruction save" && m.from === "Ship combat (GM only)" && !m.fromId), "the enemy's turn rolled its save, the GM's alone");
   for (const who of [p1, p2]) assert.ok(!JSON.stringify((await who.state()).chat).includes("Black Lance"), "not even the player who pressed Next reads it");
   assert.equal((await gm.act("space.end", {})).code, 200);
   st = await p1.state();
