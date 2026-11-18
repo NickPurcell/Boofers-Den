@@ -68,6 +68,10 @@
       <button class="btn tiny" data-spx="helm" data-what="evade" ${helmUsed ? 'disabled' : ''} title="Attacks against it have disadvantage and its Dexterity saves advantage until its next turn; its own checks and attacks have disadvantage through that turn">Evade</button>
       <button class="btn tiny" data-spx="helm" data-what="fly" ${helmUsed ? 'disabled' : ''} title="Twice its speed this turn; disadvantage on its checks and attacks through its next turn">Fly</button>
       <button class="btn tiny" data-spx="helm" data-what="hardturn" ${helmUsed ? 'disabled' : ''} title="Its next turn of up to 90° this turn costs no movement">Hard turn</button>
+      ${targets.length ? `<button class="btn tiny" data-spx="dogfight" ${helmUsed ? 'disabled' : ''} title="Opposed Dexterity (Maneuvering): the target's next attack on you has disadvantage, another ship's next has advantage, and your forward primary weapons fire at it without the helm's disadvantage">Dogfight</button>
+      <button class="btn tiny" data-spx="harass" ${helmUsed ? 'disabled' : ''} title="With the selected forward primary weapon (it can't fire this turn), at a target within one size and in normal range: opposed Dexterity (Maneuvering); if it leaves its square before your next turn, it takes that weapon's critical hit">Harass</button>
+      <button class="btn tiny" data-spx="run" ${helmUsed || !((s.moved || {})[t.id] >= 150) || s.turnId !== t.id ? 'disabled' : ''} title="After moving 150 ft or more toward the target this turn: your next forward shot at it has no helm disadvantage (tertiary: + feet/50 damage, up to Strength), or ram it with advantage (+ feet/50, up to Constitution)">Attack run</button>` : ''}
+      <button class="btn tiny" data-spx="conceal" ${helmUsed || st.fx.concealed ? 'disabled' : ''} title="Dexterity (Hide) against the other side's passive Wisdom (Scan): unseen until you attack">${st.fx.concealed ? 'Concealed' : 'Conceal'}</button>
       ${targets.length ? `<button class="btn tiny" data-spx="ram" ${helmUsed ? 'disabled' : ''} title="Within 50 ft: Strength (Ram) against the target's Dexterity (Maneuvering); both take two hull dice + Strength in kinetic damage, the rammer half while its shields hold">Ram the target</button>` : ''}</div>
       <div class="row wrap" style="gap:4px;margin-top:4px"><span class="muted" style="font-size:12px">Crew</span>
       ${targets.length ? '<button class="btn tiny" data-spx="interfere" title="Within 1,000 ft: Charisma (Interfere) against the target\'s Wisdom (Scan); its next check or attack roll has disadvantage">Interfere with the target</button>' : ''}
@@ -103,7 +107,7 @@
     const el = $('#spPreview'); if (!el) return;
     const t = tokById(V.sel), ship = t && shipById(t.id), tt = tokById(V.target), w = ship && (ship.weapons || [])[V.weapon];
     if (!t || !ship || !tt || !w) { el.textContent = ''; return; }
-    const target = shipById(tt.id) || { size: tt.size }, c = SR.fireCheck(ship, t, w, target, tt);
+    const row = (ship.crew || [])[V.crew], target = shipById(tt.id) || { id: tt.id, size: tt.size }, c = SR.fireCheck(ship, t, w, target, tt, { fromHelm: !!row && row.deployment === 'Pilot' });
     const crew = (ship.crew || [])[V.crew], pb = crew && crew.charId && H.S.st.characters[crew.charId] ? H.R.profBonus(H.S.st.characters[crew.charId]) : (crew && +crew.pb) || 2;
     const sign = (n) => (n >= 0 ? '+' : '') + n;
     if (!c.ok) { el.textContent = `Can't fire: ${c.why}.`; return; }
@@ -188,7 +192,9 @@
     if (a === 'fire') return H.act('space.fire', { id: t.id, target: V.target, weapon: V.weapon, crew: V.crew, fireMode: V.mode, mode: H.rollModeFromEvent(e) });
     if (a === 'cool' || a === 'reload') return H.act('ship.' + a, { id: t.id, weapon: V.weapon });
     if (a === 'helm') return H.act('ship.helm', { id: t.id, what: b.dataset.what });
-    if (a === 'ram' || a === 'interfere') return H.act('space.' + a, { id: t.id, target: V.target, crew: V.crew });
+    if (a === 'ram' || a === 'interfere' || a === 'dogfight' || a === 'run') return H.act('space.' + a, { id: t.id, target: V.target, crew: V.crew });
+    if (a === 'harass') return H.act('space.harass', { id: t.id, target: V.target, weapon: V.weapon, crew: V.crew });
+    if (a === 'conceal') return H.act('space.conceal', { id: t.id, crew: V.crew });
     if (a === 'direct') return H.act('ship.direct', { id: t.id });
     if (a === 'remove') { if (confirm(`Take ${t.name} off the space map?`)) { await H.act('space.remove', { id: t.id }); V.sel = null; } return; }
     if (a === 'sheet') { H.setTab('ships'); const sel = document.querySelector(`#ships [data-sa="sel"][data-id="${t.id}"]`); if (sel) sel.click(); return; }
