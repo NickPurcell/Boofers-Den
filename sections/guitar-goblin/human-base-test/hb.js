@@ -17,7 +17,9 @@ stage.scene.add(fig);
 const loadMs = Math.round(performance.now() - t0);
 
 /* ---------------- looks ---------------- */
-const SKINS = { pale: '#ecd2c2', light: '#d9b49c', medium: '#b98e72', tan: '#9a7357', brown: '#6f4d39', deep: '#45302a', orangered: '#a63a24', scarlet: '#952a22', crimson: '#7c1f1e', brick: '#8a3a2c', maroon: '#5c1b1c', wine: '#3a1216', grey: '#8d949b' };
+const SKINS = { pale: '#ecd2c2', light: '#d9b49c', medium: '#b98e72', tan: '#9a7357', brown: '#6f4d39', deep: '#45302a', grey: '#8d949b',
+  // the Pureblood's: ember, scarlet, crimson, brick, dusk rose, maroon, oxblood, dark wine, red umber
+  ember: '#b84a2a', scarlet: '#a8302a', crimson: '#8e2226', brick: '#7e3326', rose: '#9a4a46', maroon: '#62202a', oxblood: '#521820', wine: '#3e121a', umber: '#5e2a1e' };
 const LOOK0 = { skin: 'medium', eyes: 'brown', glow: 0, brows: 0.85, species: 'human', white: '#e6dfd6', iris: 1, lips: null, sockets: 0.4 };
 const LOOK = { ...LOOK0 };
 const PBDEF = Object.fromEntries(Object.entries(PUREBLOOD.options).map(([k, v]) => [k, v.def]));
@@ -29,7 +31,7 @@ const PRESETS = {
     shape: { gender: 1, age: 0.08, muscle: 0.82, weight: 0.86, height: 0.2, shoulders: 0.9, chest: 0.55, pecs: 0.45, lats: 0.6, belly: 0.45, heavyset: 0.55, arms: 0.45, armMuscle: 0.5,
       neck: 0.9, neckDepth: 0.6, doubleChin: 0.1, browh: -0.3, browr: 0.6, browa: -0.35, lids: -0.35, forehead: 0.1, eyesize: -0.2, eyebags: 0.15, nosew: 0.35, nosel: 0.1, nosehump: 0.3,
       nostrils: 0.2, mouthw: 0.15, lips: -0.1, corners: -0.2, cheekbones: 0.65, cheeks: -0.2, chinw: 0.55, chinjut: 0.3, chinh: 0.15, jaw: 0.9, headfat: 0.1, headage: 0.25, square: 0.45 },
-    look: { skin: 'crimson', eyes: 'ember', glow: 0.35, brows: 0, species: 'pureblood', white: '#9a6a48', iris: 1.3, lips: '#2a0c0c', sockets: 0.6 },
+    look: { skin: 'crimson', eyes: 'amber', glow: 0.35, brows: 0, species: 'pureblood', white: '#9a6a48', iris: 1.3, lips: '#2a0c0c', sockets: 0.6 },
   },
 };
 const shape = { ...DEFAULTS };
@@ -37,7 +39,7 @@ const pb = pureblood(fig, base); fig.features = pb;
 
 function apply() {
   fig.set(shape);
-  fig.skin.userData.set({ tone: SKINS[LOOK.skin], browAmount: LOOK.brows, lips: LOOK.lips, sockets: LOOK.sockets, suitCover: { torso: shape.gender < 0.75, arms: 0, legs: 0 } });
+  fig.skin.userData.set({ tone: SKINS[LOOK.skin], browAmount: LOOK.brows, lips: LOOK.lips, sockets: LOOK.glow > 0.1 ? LOOK.sockets : Math.min(LOOK.sockets, 0.32), suitCover: { torso: shape.gender < 0.75, arms: 0, legs: 0 } });
   fig.eyes.set({ colour: LOOK.eyes, glow: LOOK.glow, white: LOOK.white, iris: LOOK.iris });
   pb.set({ ...PB, on: LOOK.species === 'pureblood' });
   fig.update();
@@ -57,24 +59,24 @@ function slider(parent, obj, k, label, lo, hi) {
   row.append(name, r, out); parent.appendChild(row); inputs[obj === shape ? k : `${k}@${panel.children.length}`] = [r, out, obj, k];
 }
 const choices = [];
-function choice(parent, label, obj, key, items, swatch) {
+function choice(parent, label, obj, key, items, swatch, multi = false) {
   const fs = document.createElement('fieldset'); fs.className = 'opt'; const lg = document.createElement('legend'); lg.textContent = label; fs.appendChild(lg);
   const box = document.createElement('div'); box.className = swatch ? 'swatches' : 'seg wrap';
   for (const [k, v] of Object.entries(items)) {
     const b = document.createElement('button'); b.type = 'button'; b.dataset.key = k;
     if (swatch) { b.className = 'sw'; b.style.setProperty('--c', v); b.title = k; b.setAttribute('aria-label', k); } else b.textContent = v;
-    b.addEventListener('click', () => { obj[key] = k; paint(); schedule(); }); box.appendChild(b);
+    b.addEventListener('click', () => { if (multi) { const on = new Set(String(obj[key] || '').split('.').filter(Boolean)); if (on.has(k)) on.delete(k); else on.add(k); obj[key] = [...on].join('.'); } else obj[key] = k; paint(); schedule(); }); box.appendChild(b);
   }
   fs.appendChild(box); parent.appendChild(fs); choices.push([box, obj, key]);
 }
-function paint() { for (const [box, obj, key] of choices) for (const b of box.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.key === obj[key])); }
+function paint() { for (const [box, obj, key] of choices) for (const b of box.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.key === obj[key] || String(obj[key] || '').split('.').includes(b.dataset.key))); }
 const gl = group('Look', true);
 choice(gl, 'Species', LOOK, 'species', { human: 'Human', pureblood: 'Sith Pureblood' });
 choice(gl, 'Skin', LOOK, 'skin', SKINS, true);
 choice(gl, 'Eyes', LOOK, 'eyes', EYE_COLOURS, true);
 slider(gl, LOOK, 'glow', 'Eye glow', 0, 1); slider(gl, LOOK, 'brows', 'Brows', 0, 1);
 const gp = group('Pureblood features', true);
-for (const [k, v] of Object.entries(PUREBLOOD.options)) if (v.items) choice(gp, v.label, PB, k, v.items); else slider(gp, PB, k, v.label, v.min, v.max);
+for (const [k, v] of Object.entries(PUREBLOOD.options)) if (v.items) choice(gp, v.label, PB, k, v.items, false, !!v.multi); else slider(gp, PB, k, v.label, v.min, v.max);
 const gb = group('Body', false); for (const [k, l, lo, hi] of SLIDERS.body) slider(gb, shape, k, l, lo, hi);
 const gf = group('Face', false); for (const [k, l, lo, hi] of SLIDERS.face) slider(gf, shape, k, l, lo, hi);
 const gh = group('Head shape', false); for (const [k, l, lo, hi] of SLIDERS.head) slider(gh, shape, k, l, lo, hi);

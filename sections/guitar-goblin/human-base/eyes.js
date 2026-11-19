@@ -5,7 +5,7 @@ import * as THREE from 'three';
 
 export const EYE_COLOURS = {
   brown: '#5a3418', hazel: '#7a6a2c', green: '#4f7a3a', blue: '#4a7fb8', grey: '#8a949c',
-  amber: '#d0901c', gold: '#e8b630', ember: '#ff9c14', red: '#d8321c', pale: '#e8e2c8',
+  amber: '#f09a1a', yellow: '#efc222', gold: '#d6a636', orange: '#e8641a', ember: '#ff7a1e', red: '#d32a1a', pale: '#e8e2c8',
 };
 
 function eyeTexture(hex, glow, white = '#e6dfd6', irisK = 1) {
