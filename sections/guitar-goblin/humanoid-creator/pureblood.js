@@ -24,9 +24,21 @@ const hash = (i, j = 0) => { const s = Math.sin(i * 127.1 + j * 311.7 + 7.7) * 4
 const norm = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
 // a run of capsules through points, exact at any distance (so a soft join with the face stays a smooth fold)
 const rope = (pts, r) => {
-  const segs = []; for (let i = 0; i + 1 < pts.length; i++) segs.push(capsule(pts[i], pts[i + 1], typeof r === 'function' ? r(i, pts.length - 1) : r));
-  return (x, y, z) => { let d = Infinity; for (const f of segs) { const v = f(x, y, z); if (v < d) d = v; } return d; };
+  const segs = []; let rm = 0;
+  for (let i = 0; i + 1 < pts.length; i++) { const rr = typeof r === 'function' ? r(i, pts.length - 1) : r; rm = Math.max(rm, rr); segs.push(capsule(pts[i], pts[i + 1], rr)); }
+  const f = (x, y, z) => { let d = Infinity; for (const g of segs) { const v = g(x, y, z); if (v < d) d = v; } return d; };
+  return boxed(f, pts, rm);
 };
+// a shape with a box round it: far outside the box only the distance to the box is worked out (the head is sampled
+// hundreds of thousands of times, and most samples are nowhere near a fold or a spur)
+function boxed(f, pts, r) {
+  const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+  for (const p of pts) for (let k = 0; k < 3; k++) { lo[k] = Math.min(lo[k], p[k] - r); hi[k] = Math.max(hi[k], p[k] + r); }
+  return (x, y, z) => {
+    const out = Math.hypot(Math.max(lo[0] - x, x - hi[0], 0), Math.max(lo[1] - y, y - hi[1], 0), Math.max(lo[2] - z, z - hi[2], 0));
+    return out > 0.012 ? out : f(x, y, z);
+  };
+}
 const both = (f) => mirrorX(f);
 // a smooth curve through points, a point added between each pair
 function smooth(pts) {
@@ -145,7 +157,7 @@ export function purebloodExtra(o) {
         const b = [p[0] + u[0] * len * 0.5 + out(len * stand * 0.45)[0], p[1] + u[1] * len * 0.5 + out(len * stand * 0.45)[1], p[2] + u[2] * len * 0.5 + out(len * stand * 0.45)[2]];
         const c = [p[0] + u[0] * len + out(len * stand * 0.6)[0], p[1] + u[1] * len + out(len * stand * 0.6)[1], p[2] + u[2] * len + out(len * stand * 0.6)[2]];
         const s1 = roundCone(a, b, r0, r0 * 0.55), s2 = roundCone(b, c, r0 * 0.55, 0.001);
-        return both((x, y, z) => Math.min(s1(x, y, z), s2(x, y, z)));
+        return both(boxed((x, y, z) => Math.min(s1(x, y, z), s2(x, y, z)), [a, b, c], r0));
       };
       // the brow's end sweeps back over the temple; the cheekbone's back toward the ear; the jaw's down and back
       if (sp >= 1) out.push([0.008, horn([0.054 * fw, 0.022, 0.072], [0.35, 0.12, -1], 0.024 + 0.012 * sz, 0.0082 * sz, 1.15)]);
@@ -172,7 +184,10 @@ export function purebloodExtra(o) {
       // tendrils: they grow from the face with a short, tight join, so the jaw above them keeps its shape
       const tl = tendrilsOn(P, head);
       if (tl.length) out.push([0.005, tubes(tl)]);
-      return out;
+      // joined in a few groups of like blends rather than one by one: the same shapes, and far fewer steps per sample
+      const groups = new Map();
+      for (const [k, f] of out) { const kk = Math.round(k * 1000) / 1000; if (!groups.has(kk)) groups.set(kk, []); groups.get(kk).push(f); }
+      return [...groups].sort((x, y) => y[0] - x[0]).map(([k, fs]) => [k, fs.length === 1 ? fs[0] : (x, y, z) => { let d = Infinity; for (const f of fs) { const v = f(x, y, z); if (v < d) d = v; } return d; }]);
     },
     cut(P, head) {
       const Y = (y) => y * P.L, fw = P.fw;

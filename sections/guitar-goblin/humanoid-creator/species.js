@@ -29,7 +29,20 @@ export const SPECIES = {
     // hair that suits: worn back, tied or cropped, or none at all
     styles: ['swept', 'knot', 'tail', 'braid', 'crop', 'long', 'shaved', 'bald'].map((key) => ({ key, name: STYLES[key].name })),
     look: { white: '#dcc7a6', flush: '#5a1216', lips: '#2c0b10', shade: 0.35, deep: true, shadeK: 1.6, contour: true },
-    outfits: ['plate', 'robe', 'coat', 'armour'],
+    outfits: ['plate', 'cloak', 'robe', 'armour', 'coat'],
+    // the dice, steered: a few pieces of jewellery in one metal rather than all of them, tendrils nearly always, dark
+    // Sith colours for the clothes, the hood up more often with the cloak, and spurs and folds that go together
+    randomise(st, rnd) {
+      const pick = (list) => list[Math.floor(rnd() * list.length)];
+      st.tendrils = rnd() < 0.05 ? 'none' : pick(['chin', 'fringe', 'beard', 'beard', 'cheek']);
+      st.jewel = rnd() < 0.15 ? '' : [...new Set([pick(['rings', 'cuffs']), ...(rnd() < 0.45 ? [pick(['circlet', 'studs', 'brow', 'chains'])] : [])])].join('.');
+      st.spurs = st.frame === 'fem' ? pick(['brow', 'brow', 'brow_cheek', 'none']) : pick(['brow', 'brow_cheek', 'brow_cheek', 'full']);
+      st.ridges = st.frame === 'fem' ? pick(['smooth', 'brow', 'brow', 'cheek']) : st.age === 'elder' ? pick(['cheek', 'corded']) : pick(['brow', 'cheek', 'cheek', 'corded']);
+      st.main = pick(['charcoal', 'black', 'black', 'slate', 'wine', 'umber']);
+      do st.second = pick(['black', 'wine', 'wine', 'crimson', 'charcoal', 'umber']); while (st.second === st.main);
+      if (st.outfit === 'cloak') st.hood = rnd() < 0.6 ? 'up' : 'down';
+      if (st.style === 'bald' && st.ridges === 'smooth') st.ridges = 'brow';
+    },
     defaults: { frame: 'masc', build: 'strong', face: 'square', age: 'adult', skin: 'crimson', eyes: 'amber', style: 'swept', hair: 'black', liner: 'none', spurs: 'brow_cheek', ridges: 'cheek', tendrils: 'beard', tlength: 'short', jewel: 'cuffs', metal: 'gold', outfit: 'plate', hood: 'none', gear: 'hilt', main: 'charcoal', second: 'wine' },
     groups: {
       spurs: { label: 'Bone spurs', items: named(SPURS) }, ridges: { label: 'Folds', items: named(RIDGES) },

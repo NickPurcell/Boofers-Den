@@ -281,6 +281,7 @@ document.getElementById('random').addEventListener('click', () => {
   do state.second = any('second'); while (state.second === state.main);
   chosen.add('second');
   if (Math.random() < 0.6) state.hood = 'none';
+  if (sp().randomise) sp().randomise(state, Math.random);   // a species can steer its own dice toward looks that suit it
   go(); paintPanel(); writeHash();
 });
 for (const b of document.querySelectorAll('[data-view]')) b.addEventListener('click', () => stage.view(VIEWS[b.dataset.view].target, VIEWS[b.dataset.view].pos));

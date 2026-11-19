@@ -175,6 +175,30 @@ function jacketOutfit(k) {
 }
 // Armour over a close undersuit: light (a fitted breastplate, shoulder caps, bracers, greaves) or heavy (a gorget,
 // layered pauldrons and tassets added, over a long skirt of cloth)
+// A mantle that hangs from the shoulders: a cape down the back, or a cloak that also comes round the front and stays
+// open there. Over the shoulders it lies on the figure; below them it hangs free on a curve wide enough to clear the
+// arms, flaring toward the hem, with folds that deepen as it falls. It is a sheet with both faces meshed, so its
+// edges and inside show where they are seen.
+function mantle(k, o = {}) {
+  const S = k.S, hem = o.hem ?? 0.22, front = !!o.front, top = o.top ?? 1.455, T = 0.0095, sx = S.sx, off = o.off ?? 0.02;   // T: half the cloth's thickness, kept near a mesh cell so the sheet never breaks up
+  const k2 = 0.03, sminv = (a, b) => { const h = Math.max(k2 - Math.abs(a - b), 0) / k2; return Math.min(a, b) - h * h * k2 * 0.25; };
+  const field = (x, y, z) => {
+    // a cone widening from the shoulders, so the cloth falls from them without a shelf, flaring toward the hem
+    const below = Math.max(0, 1.42 - y), t = Math.max(0, Math.min(1, (top - y) / (top - hem)));
+    // it starts inside the shoulders at the neck (so up there the cloth lies on them) and widens down and out
+    const up = Math.max(0, 1.475 - y), rx = Math.min(sx + 0.135, sx * 0.55 + up * 1.45) + 0.07 * t, rz = Math.min(0.16, 0.055 + up * 0.62) + 0.04 * t + (front ? 0.015 : 0), cz = front ? -0.01 : -0.004;
+    const ang = Math.atan2(x, -(z - cz)), fold = (0.008 * Math.sin(ang * 9 + 0.6) + 0.003 * Math.sin(ang * 23)) * Math.min(1, below * 2.5);
+    const free = (Math.hypot(x / rx, (z - cz) / rz) - 1) * Math.min(rx, rz) - fold;
+    // the outer envelope of the cone and the figure (with whatever it wears on its shoulders), rounded where they meet
+    const d = sminv(free, k.skin(x, y, z) - off);
+    // where it is: from the shoulders down to the hem; a cape only behind, a cloak all round but open in front
+    const opening = front ? (z > 0.02 ? 0.04 + 0.07 * Math.max(0, Math.min(1, (1.32 - y) / 0.9)) - Math.abs(x) : -1) : z + 0.01;
+    return Math.max(Math.abs(d) - T, y - top, hem - y, opening);
+  };
+  // one piece, meshed whole: meshed in two, its halves would not quite meet
+  return { name: front ? 'cloak' : 'cape', material: 'cloth', role: o.role || 'second', field, bounds: [[-(sx + 0.25), hem - 0.02, -0.26], [sx + 0.25, top + 0.03, front ? 0.25 : 0.06]], res: 0.0105 };
+}
+
 function armourOutfit(k, heavy) {
   const S = k.S, P = [], T = heavy ? 0.021 : 0.016, top = 1.432, low = heavy ? S.waistY + 0.02 : S.waistY + 0.045;
   P.push(undersuit(k, heavy ? 'dark' : 'second'));
@@ -207,6 +231,13 @@ function armourOutfit(k, heavy) {
     P.push(pouches(k, k.skin, 0.008, S.waistY - 0.06, [[0.11, 0.2, 0.024, 0.03]]));
   }
   P.push(boots(k, heavy ? 0.24 : 0.2));
+  if (heavy) P.push(mantle(k, { hem: 0.2, top: 1.43, off: 0.045 }));   // a Guardian's cape, hung behind the pauldrons
+  return P;
+}
+// Sith robes: the belted robe under a long cloak, open in front, with its hood (worn up by those who choose it)
+function cloakOutfit(k) {
+  const P = robeOutfit(k);
+  P.push(mantle(k, { front: true, hem: 0.16, role: 'second' }));
   return P;
 }
 
@@ -218,6 +249,7 @@ export const OUTFITS = {
   jacket: { name: "Operative's jacket", make: jacketOutfit, colours: { main: 'umber', second: 'slate' } },
   coat: { name: 'Long coat', make: coatOutfit, colours: { main: 'slate', second: 'bone' } },
   robe: { name: 'Belted robe', make: robeOutfit, colours: { main: 'umber', second: 'sand' } },
+  cloak: { name: 'Hooded cloak', make: cloakOutfit, colours: { main: 'charcoal', second: 'black' } },
 };
 export const HOODS = { none: { name: 'None' }, down: { name: 'Down' }, up: { name: 'Up' } };
 // the pieces of an outfit, and the hood if one is worn (it takes the outfit's second colour, or the robe's own)
