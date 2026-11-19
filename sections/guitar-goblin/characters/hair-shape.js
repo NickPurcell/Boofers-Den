@@ -34,12 +34,12 @@ export const STYLES = {
   bald: { name: 'Bald' },
   // shaved: a shadow of hair a fraction of a millimetre off the scalp (drawn see-through, as stubble is)
   shaved: { name: 'Shaved', line: capLine, ramp: 0.004, floor: 0.7, depth: 0, thick: () => 0.0008, stubble: true },
-  // a crest: a strip over the top of the head from the brow to the nape, standing up along the middle and combed back,
-  // the sides shaved
+  // a crest: a strip over the top of the head from the brow to the nape, the sides shaved; on it a thin base, and short
+  // locks rising off it and leaning back, lowest at the front and tallest over the crown
   crest: { name: 'Crest', line: (a) => { const sa = Math.abs(Math.sin(a)), w = 0.03, R = 0.095; return sa * R > w ? Math.max(hairline(a, 0.3), 0.03 + Math.sqrt(Math.max(0, R * R - (w / Math.max(sa, 1e-3)) ** 2))) : hairline(a, 0.3); },
-    ramp: 0.008, floor: 0.3, depth: 0.007, under: 'shaved',
-    // (standing up along the middle, tapering to the sides; combed into tufts from front to back)
-    thick: (x, y, z) => 0.004 + 0.026 * Math.pow(Math.max(0, 1 - (x / 0.032) ** 2), 0.7) * sstep(-0.04, 0.05, y), groove: (x, y, z) => 0.6 * strands(Math.atan2(z + 0.012, y - 0.03) / (2 * Math.PI) + 0.5, 16) + 0.4 * strands(x * 8 + 0.5, 3) },
+    ramp: 0.006, floor: 0.5, depth: 0, under: 'shaved', locks: true, crest: true, comb: [0, -0.1, -1],
+    thick: (x, y, z) => 0.0035 * Math.max(0.3, 1 - (x / 0.034) ** 2),
+    stand: (x, y, z) => 0.026 * (1 - 0.65 * sstep(0.02, 0.085, z)) * sstep(-0.05, 0.03, y) * Math.max(0, 1 - (x / 0.036) ** 2) },
   crop: { name: 'Short crop', line: capLine, ramp: 0.022, floor: 0.16, depth: 0.0022,
     thick: (x, y, z) => 0.0065 + 0.006 * sstep(0.03, 0.09, y) + 0.004 * sstep(0.02, 0.07, z) * sstep(0.05, 0.08, y), groove: (x, y) => locksOf(backU(x, y), 54) / 1.27 },
   swept: { name: 'Swept back', line: capLine, ramp: 0.022, floor: 0.16, depth: 0.0034,
@@ -158,30 +158,38 @@ export function bindStyle(style, rest) {
   const flow = (h) => { const n = nrmAt(h), g = S.comb, k = g[0] * n[0] + g[1] * n[1] + g[2] * n[2]; return norm([g[0] - n[0] * k, g[1] - n[1] * k, g[2] - n[2] * k]); };
   const onSkin = (p) => cast(norm([p[0] - C[0], p[1] - C[1], p[2] - C[2]]));
   const inHair = (p) => { const q = local(p); return q[1] > S.line(Math.atan2(q[0], q[2])) - 0.001; };
+  const inHairC = (p) => { const q = local(p); return q[1] > S.line(Math.atan2(q[0], q[2])) + 0.006; };
   const seeds = [];
-  for (let k = 0, n = 34; k < n; k++) { const a = -1.95 + 3.9 * (k + 0.5) / n + (hash(k, 1) - 0.5) * 0.04, h = lineAt(a, 0.006).h; if (h) seeds.push({ h, row: 0, id: k }); }
-  for (let k = 0, n = 18; k < n; k++) { const a = -0.95 + 1.9 * (k + 0.5) / n, h = lineAt(a, 0.03 + 0.012 * hash(k, 2)).h; if (h) seeds.push({ h, row: 1, id: 100 + k }); }
-  for (let k = 0, n = 12; k < n; k++) { const a = -0.8 + 1.6 * (k + 0.5) / n, h = lineAt(a, 0.065 + 0.01 * hash(k, 3)).h; if (h) seeds.push({ h, row: 2, id: 200 + k }); }
+  if (S.crest) {   // along the strip, front to back, three across, staggered
+    for (let k = 0, n = 26; k < n; k++) for (const xo of [-0.014, 0, 0.014]) {
+      const ph = 1.0 - 2.9 * ((k + (xo ? 0.5 : 0)) / n), d = norm([xo * 7, Math.cos(ph), Math.sin(ph)]), h = cast(d);
+      if (h && inHairC(h.p)) seeds.push({ h, row: 3, id: 300 + k * 3 + Math.round(xo / 0.014) + 1 });
+    }
+  } else for (let k = 0, n = 34; k < n; k++) { const a = -1.95 + 3.9 * (k + 0.5) / n + (hash(k, 1) - 0.5) * 0.04, h = lineAt(a, 0.006).h; if (h) seeds.push({ h, row: 0, id: k }); }
+  if (!S.crest) for (let k = 0, n = 18; k < n; k++) { const a = -0.95 + 1.9 * (k + 0.5) / n, h = lineAt(a, 0.03 + 0.012 * hash(k, 2)).h; if (h) seeds.push({ h, row: 1, id: 100 + k }); }
+  if (!S.crest) for (let k = 0, n = 12; k < n; k++) { const a = -0.8 + 1.6 * (k + 0.5) / n, h = lineAt(a, 0.065 + 0.01 * hash(k, 3)).h; if (h) seeds.push({ h, row: 2, id: 200 + k }); }
   const locks = [];
   for (const sd of seeds) {
-    const pts = [sd.h]; let h = sd.h, len = 0; const step = 0.006, Lmax = (sd.row ? 0.17 : 0.24) * (0.85 + 0.3 * hash(sd.id, 8)) * F.s;
+    const pts = [sd.h]; let h = sd.h, len = 0; const step = S.crest ? 0.004 : 0.006, Lmax = (S.crest ? 0.05 : sd.row ? 0.17 : 0.24) * (0.85 + 0.3 * hash(sd.id, 8)) * F.s;
     // back over the head, ending behind it at different places, above the nape: the combed lines would all meet low on
     // the back of the head, and the base covers it there
     while (len < Lmax) {
       const f = flow(h), nh = onSkin([h.p[0] + f[0] * step, h.p[1] + f[1] * step, h.p[2] + f[2] * step]);
       if (!nh || !inHair(nh.p)) break;
-      const q = local(nh.p); if (q[2] < -0.035 && q[1] < 0.01 + 0.02 * hash(sd.id, 9)) break;
+      const q = local(nh.p); if (!S.crest && q[2] < -0.035 && q[1] < 0.01 + 0.02 * hash(sd.id, 9)) break;
       len += Math.hypot(nh.p[0] - h.p[0], nh.p[1] - h.p[1], nh.p[2] - h.p[2]); pts.push(nh); h = nh;
     }
     if (pts.length < 4) continue;
-    const n = pts.length, w0 = (0.022 + 0.008 * hash(sd.id, 5)) * F.s, t0 = (0.0036 + 0.0016 * hash(sd.id, 6)) * F.s, w = [], th = [], lift = [];
+    const n = pts.length, w0 = (S.crest ? 0.016 + 0.006 * hash(sd.id, 5) : 0.022 + 0.008 * hash(sd.id, 5)) * F.s, t0 = (S.crest ? 0.0045 + 0.0015 * hash(sd.id, 6) : 0.0036 + 0.0016 * hash(sd.id, 6)) * F.s, w = [], th = [], lift = [];
+    const top = S.crest ? S.stand(...local(sd.h.p)) * (0.85 + 0.3 * hash(sd.id, 10)) : 0;   // how far a crest's lock rises off the scalp by its tip
     pts.forEach((p, i) => {
       const s = i / (n - 1), q = local(p.p), root = sstep(0, 0.12, s);
       const taper = (a) => (s < 0.5 ? 1 - (1 - a[1]) * (s / 0.5) : s < 0.85 ? a[1] - (a[1] - a[2]) * ((s - 0.5) / 0.35) : a[2] - (a[2] - a[3]) * ((s - 0.85) / 0.15));
       w.push(w0 * taper([1, 0.8, 0.4, 0.05]) * (0.4 + 0.6 * root));
       th.push(t0 * taper([1, 0.75, 0.35, 0.08]) * root);
       // it lies on the base, sunk into it a little (the root deeper); rows further back ride a little higher
-      lift.push(Math.max(0.0004, height(q, BASE) * F.s - t0 * (0.35 + 0.4 * (1 - root)) + (sd.row === 2 ? 0.0008 : sd.row === 1 ? 0.0004 : 0)));
+      lift.push(S.crest ? (0.002 + top * Math.pow(s, 0.7)) * F.s   // rising off the scalp along its length: standing up, leaning back
+        : Math.max(0.0004, height(q, BASE) * F.s - t0 * (0.35 + 0.4 * (1 - root)) + (sd.row === 2 ? 0.0008 : sd.row === 1 ? 0.0004 : 0)));
     });
     locks.push({ tri: Uint32Array.from(pts.map((p) => p.t)), w: Float32Array.from(pts.flatMap((p) => [p.u, p.v])), width: Float32Array.from(w), th: Float32Array.from(th), lift: Float32Array.from(lift), shade: 0.85 + 0.3 * hash(sd.id, 7) });
   }

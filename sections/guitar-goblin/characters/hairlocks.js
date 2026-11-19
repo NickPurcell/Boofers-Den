@@ -68,16 +68,21 @@ export function hairLocks(a) {
     };
     let p = pts[pts.length - 1], t0 = norm([p[0] - pts[pts.length - 3][0], p[1] - pts[pts.length - 3][1], p[2] - pts[pts.length - 3][2]]), dir = t0;
     const lean = 0.04 + 0.06 * hash(id, 3), ey = endY - (long ? 0.035 : 0.01) * hash(id, 4) + (kind === 'back' ? 0 : long ? 0.02 : 0.006), seg = 0.016 * k, fall = [];
-    let fb = 0;   // below the jaw a lock falls to the front of the shoulder or down the back, decided once
+    let fb = 0, xj = 0;   // below the jaw a lock falls to the front of the shoulder or down the back, decided once (and how far out it was then)
     for (let n = 0; n < 50 && !atBrow; n++) {
       const ql = toL(p); if (ql[1] < ey) break;
-      if (!fb && ql[1] < -0.12) fb = ql[2] > -0.02 ? 1 : -1;
+      if (!fb && ql[1] < -0.12) { fb = ql[2] > -0.02 ? 1 : -1; xj = Math.abs(ql[0]); }
+      const toEnd = Math.max(0, Math.min(1, (ql[1] - ey) / 0.055));   // near its end (for a bob, which curls in there)
       // (past the shoulders it is drawn in toward the body's middle, so it drapes down the back or the chest instead of
       // fanning out along the shoulders)
       const out = norm(dirW(norm([ql[0], 0, ql[2] + 0.012]))), fz = dirW([0, 0, fb * 0.55]), lw = fb ? -0.35 * sstep(-0.12, -0.2, ql[1]) : lean;
-      const down = norm([-F.up[0] + out[0] * lw + fz[0], -F.up[1] + out[1] * lw + fz[1], -F.up[2] + out[2] * lw + fz[2]]);
+      const curl = long ? 0 : -1.8 * (1 - toEnd);   // a bob's ends turn in toward the neck
+      const down = norm([-F.up[0] + out[0] * (lw + curl) + fz[0], -F.up[1] + out[1] * (lw + curl) + fz[1], -F.up[2] + out[2] * (lw + curl) + fz[2]]);
       dir = norm([dir[0] * 0.6 + down[0] * 0.4, dir[1] * 0.6 + down[1] * 0.4, dir[2] * 0.6 + down[2] * 0.4]);
       const np = clearOf([p[0] + dir[0] * seg, p[1] + dir[1] * seg, p[2] + dir[2] * seg], (0.004 + 0.0012 * layer) * k);
+      if (fb === -1) {   // down the back: never further out than where it crossed the jaw line (it fanned out along the shoulders like wings)
+        const qn = toL(np), lim = xj + 0.012; if (Math.abs(qn[0]) > lim) { qn[0] = Math.sign(qn[0]) * lim; const w = toW(qn); np[0] = w[0]; np[1] = w[1]; np[2] = w[2]; clearOf(np, (0.004 + 0.0012 * layer) * k); }
+      }
       dir = norm([np[0] - p[0], np[1] - p[1], np[2] - p[2]]); p = np; fall.push(np);
     }
     // thin the scalp part to every other point, join, and smooth (twice: no elbows where it leaves the scalp)
