@@ -242,8 +242,8 @@ export function cowl(ctx, role = 'second') {
   // the roll is full behind and over the shoulders, thinning toward the front, where it parts under the chin in a V
   // (so whatever hangs from the chin falls through it)
   const roll = (x, y, z) => {
-    const fz = sstep(M.neckZ - 0.02, M.neckZ + 0.06, z), q = Math.hypot(x, z - M.neckZ - 0.005) - R - 0.012, r = 0.017 - 0.008 * fz;   // a flat fold lying on the shoulders, not a tyre
-    const open = z > M.neckZ ? 0.04 + 0.03 * sstep(ny - 0.07, ny, y) - Math.abs(x) : -1;
+    const fz = sstep(M.neckZ - 0.03, M.neckZ + 0.05, z), q = Math.hypot(x, z - M.neckZ - 0.005) - R - 0.012, r = 0.017 - 0.012 * fz;   // a flat fold lying on the shoulders, not a tyre, thinning to little in front
+    const open = z > M.neckZ - 0.01 ? 0.062 + 0.03 * sstep(ny - 0.07, ny, y) - Math.abs(x) : -1;   // (as wide as the jaw: the outer tendrils fall through too)
     return Math.max(Math.hypot(q + 0.01 * fz, (y - ny + 0.02 + 0.03 * fz) * 1.6) - r, open);   // flattened, lower, and further out in front, clear of the jaw
   };
   const fold = (x, z) => 0.0025 * Math.sin(Math.atan2(x, z - M.neckZ) * 8);
