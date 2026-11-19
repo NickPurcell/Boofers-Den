@@ -42,6 +42,7 @@ export const SLIDERS = {
     ['lips', 'Lips', -1, 1, 0, 'lips-decr', 'lips-incr'], ['corners', 'Mouth corners', -1, 1, 0, 'mouthcorners-down', 'mouthcorners-up'], ['cheekbones', 'Cheekbones', -1, 1, 0, 'cheekbones-decr', 'cheekbones-incr'],
     ['cheeks', 'Cheeks', -1, 1, 0, 'cheeks-decr', 'cheeks-incr'], ['chinw', 'Chin width', -1, 1, 0, 'chinwidth-decr', 'chinwidth-incr'], ['chinjut', 'Chin forward', -1, 1, 0, 'chinjut-decr', 'chinjut-incr'],
     ['chinh', 'Chin height', -1, 1, 0, 'chinheight-decr', 'chinheight-incr'], ['jaw', 'Jaw', -1, 1, 0, 'jaw-decr', 'jaw-incr'],
+    ['earsize', 'Ear size', -1, 1, 0, 'earsize-decr', 'earsize-incr'], ['earflap', 'Ears out', -1, 1, 0, 'earflap-decr', 'earflap-incr'], ['earlobe', 'Ear lobes', -1, 1, 0, 'earlobe-decr', 'earlobe-incr'], ['earpoint', 'Pointed ears', 0, 1, 0, null, 'earpoint'],
   ],
   head: [
     ['headfat', 'Head fullness', -1, 1, 0, 'headfat-decr', 'headfat-incr'], ['headage', 'Head age', -1, 1, 0, 'headage-decr', 'headage-incr'],

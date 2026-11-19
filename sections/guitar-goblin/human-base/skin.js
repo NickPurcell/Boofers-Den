@@ -107,7 +107,12 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
   // the undersuit, in the base mesh's frame (decimetres); the arms hang out past |x| = 2.6 in the base pose, bare
   float waist = mix(1.05 - 0.12 * smoothstep(0.0, 1.2, abs(vRest.x)), uJoints.w, uSuitTop), hem = mix(-2.35 + 0.18 * smoothstep(0.4, 1.6, abs(vRest.x)), uJoints.z, uSuitLegs);
   float armK = smoothstep(0.25, 0.6, vArm.x);   // how much of this point is arm
-  float body = smoothstep(hem - 0.02, hem + 0.02, vRest.y) * (1.0 - smoothstep(waist - 0.02, waist + 0.02, vRest.y)) * (1.0 - armK);
+  // the shorts stop where the arm begins; the top is cut square at the armpit, in the base pose's own frame where the
+  // arms stand well clear of the chest
+  float shortsTop = 1.05 - 0.12 * smoothstep(0.0, 1.2, abs(vRest.x));
+  float shorts = smoothstep(hem - 0.02, hem + 0.02, vRest.y) * (1.0 - smoothstep(shortsTop - 0.02, shortsTop + 0.02, vRest.y)) * (1.0 - armK);
+  float top = uSuitTop * step(shortsTop - 0.03, vRest.y) * (1.0 - smoothstep(waist - 0.02, waist + 0.02, vRest.y)) * (1.0 - smoothstep(1.66, 1.72, abs(vRest.x))) * (1.0 - smoothstep(0.55, 0.7, vArm.x));
+  float body = max(shorts, top);
   float sleeveEnd = mix(uJoints.x + 0.2, uJoints.y - 0.25, step(0.75, uSuitArms)), sleeve = step(0.01, uSuitArms) * armK * (1.0 - smoothstep(sleeveEnd - 0.02, sleeveEnd + 0.02, abs(vRest.x)));
   sSuit = uSuitOn * max(body, sleeve);
   float rib = (smoothstep(waist - 0.16, waist - 0.12, vRest.y) + (1.0 - smoothstep(hem + 0.1, hem + 0.14, vRest.y))) * (1.0 - armK);

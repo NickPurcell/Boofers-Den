@@ -6,6 +6,7 @@ import { makeStage } from '../creator-kit/stage.js';
 import { loadBase, SLIDERS, DEFAULTS } from '../human-base/base.js';
 import { EYE_COLOURS } from '../human-base/eyes.js';
 import { pureblood, PUREBLOOD } from '../human-base/species/pureblood.js';
+import { CONTROLS, CONTROL_DEFAULTS, PRESETS as PEOPLE, toShape, randomControls } from '../human-base/controls.js';
 
 const $ = (id) => document.getElementById(id);
 const stage = makeStage($('scene'), { tall: 1.8, minDistance: 0.22, maxDistance: 6, environment: 0.55 });
@@ -24,17 +25,13 @@ const LOOK0 = { skin: 'medium', eyes: 'brown', glow: 0, brows: 0.85, species: 'h
 const LOOK = { ...LOOK0 };
 const PBDEF = Object.fromEntries(Object.entries(PUREBLOOD.options).map(([k, v]) => [k, v.def]));
 const PB = { ...PBDEF };
-// his build: about 180 cm, heavy and powerful, wide shoulders, a thick neck, a strong brow and jaw
+// species looks; the body and face come from the people presets (../human-base/controls.js)
 const PRESETS = {
-  neutral: { shape: {}, look: {} },
-  pureblood: {
-    shape: { gender: 1, age: 0.08, muscle: 0.82, weight: 0.86, height: 0.2, shoulders: 0.9, chest: 0.55, pecs: 0.45, lats: 0.6, belly: 0.45, heavyset: 0.55, arms: 0.45, armMuscle: 0.5,
-      neck: 0.9, neckDepth: 0.6, doubleChin: 0.1, browh: -0.3, browr: 0.6, browa: -0.35, lids: -0.35, forehead: 0.1, eyesize: -0.2, eyebags: 0.15, nosew: 0.35, nosel: 0.1, nosehump: 0.3,
-      nostrils: 0.2, mouthw: 0.15, lips: -0.1, corners: -0.2, cheekbones: 0.65, cheeks: -0.2, chinw: 0.55, chinjut: 0.3, chinh: 0.15, jaw: 0.9, headfat: 0.1, headage: 0.25, square: 0.45 },
-    look: { skin: 'crimson', eyes: 'amber', glow: 0.35, brows: 0, species: 'pureblood', white: '#9a6a48', iris: 1.3, lips: '#2a0c0c', sockets: 0.6 },
-  },
+  neutral: { person: null, look: {} },
+  pureblood: { person: 'powerful', look: { skin: 'crimson', eyes: 'amber', glow: 0.35, brows: 0, species: 'pureblood', white: '#9a6a48', iris: 1.3, lips: '#2a0c0c', sockets: 0.6 } },
 };
-const shape = { ...DEFAULTS };
+const ctrl = { ...CONTROL_DEFAULTS };
+const shape = toShape(ctrl);
 const pb = pureblood(fig, base); fig.features = pb;
 
 function apply() {
@@ -49,14 +46,15 @@ function apply() {
 
 /* ---------------- the panel ---------------- */
 const panel = $('options'), inputs = {};
+let nIn = 0;
 function group(title, open) { const d = document.createElement('details'); d.className = 'group'; d.open = open; const s = document.createElement('summary'); s.textContent = title; d.appendChild(s); panel.appendChild(d); return d; }
 function slider(parent, obj, k, label, lo, hi) {
   const row = document.createElement('label'); row.className = 'slide';
   const name = document.createElement('span'); name.textContent = label;
   const r = document.createElement('input'); r.type = 'range'; r.min = lo; r.max = hi; r.step = 0.01; r.value = obj[k];
   const out = document.createElement('output'); out.textContent = Number(obj[k]).toFixed(2);
-  r.addEventListener('input', () => { obj[k] = Number(r.value); out.textContent = Number(r.value).toFixed(2); schedule(); });
-  row.append(name, r, out); parent.appendChild(row); inputs[obj === shape ? k : `${k}@${panel.children.length}`] = [r, out, obj, k];
+  r.addEventListener('input', () => { obj[k] = Number(r.value); out.textContent = Number(r.value).toFixed(2); if (obj === ctrl) { Object.assign(shape, toShape(ctrl)); sync(); } schedule(); });
+  row.append(name, r, out); parent.appendChild(row); inputs[`${k}@${nIn++}`] = [r, out, obj, k];
 }
 const choices = [];
 function choice(parent, label, obj, key, items, swatch, multi = false) {
@@ -77,9 +75,13 @@ choice(gl, 'Eyes', LOOK, 'eyes', EYE_COLOURS, true);
 slider(gl, LOOK, 'glow', 'Eye glow', 0, 1); slider(gl, LOOK, 'brows', 'Brows', 0, 1);
 const gp = group('Pureblood features', true);
 for (const [k, v] of Object.entries(PUREBLOOD.options)) if (v.items) choice(gp, v.label, PB, k, v.items, false, !!v.multi); else slider(gp, PB, k, v.label, v.min, v.max);
-const gb = group('Body', false); for (const [k, l, lo, hi] of SLIDERS.body) slider(gb, shape, k, l, lo, hi);
-const gf = group('Face', false); for (const [k, l, lo, hi] of SLIDERS.face) slider(gf, shape, k, l, lo, hi);
-const gh = group('Head shape', false); for (const [k, l, lo, hi] of SLIDERS.head) slider(gh, shape, k, l, lo, hi);
+// the controls a person uses: plain names, safe ranges (controls.js); the raw morphs are below, for checking
+const gpp = group('People', true);
+{ const box = document.createElement('div'); box.className = 'seg wrap'; for (const [k, p] of Object.entries(PEOPLE)) { const b = document.createElement('button'); b.type = 'button'; b.textContent = p.name; b.addEventListener('click', () => person(k)); box.appendChild(b); } gpp.appendChild(box); }
+const gcb = group('Build', true); for (const c of CONTROLS.build) slider(gcb, ctrl, c.key, c.label, c.min, c.max);
+const gcf = group('Face', true); for (const c of CONTROLS.head) slider(gcf, ctrl, c.key, c.label, c.min, c.max);
+const graw = group('All morphs (raw)', false);
+for (const [k, l, lo, hi] of [...SLIDERS.body, ...SLIDERS.face, ...SLIDERS.head]) slider(graw, shape, k, l, lo, hi);
 { const gt = group('Test', false), row = document.createElement('label'); row.className = 'slide';
   const cb = document.createElement('input'); cb.type = 'checkbox'; cb.addEventListener('change', () => { marks.visible = cb.checked; stage.changed(); });
   const t = document.createElement('span'); t.textContent = 'Show landmarks'; t.style.gridColumn = '2 / 4'; row.append(cb, t); gt.appendChild(row); }
@@ -87,19 +89,18 @@ function sync() { for (const [r, out, obj, k] of Object.values(inputs)) { r.valu
 let pending = 0;
 function schedule() { if (pending) return; pending = requestAnimationFrame(() => { pending = 0; apply(); }); }
 function showStats() {
-  const ft = fig.height / 0.3048, f = Math.floor(ft), inch = Math.round((ft - f) * 12), g = fig.geometry;
+  const tin = Math.round(fig.height / 0.0254), f = Math.floor(tin / 12), inch = tin % 12, g = fig.geometry;
   $('stats').textContent = `${g.attributes.position.count.toLocaleString()} vertices, ${(g.index.count / 3).toLocaleString()} triangles (one level of subdivision). Loaded in ${loadMs} ms; a reshape takes ${fig.ms} ms. Height ${fig.height.toFixed(2)} m (${f}'${inch}").`;
 }
+function person(name) { Object.assign(ctrl, CONTROL_DEFAULTS, (PEOPLE[name] || {}).controls || {}); Object.assign(shape, toShape(ctrl)); sync(); apply(); }
 function preset(name) {
   const P = PRESETS[name] || PRESETS.neutral;
-  Object.assign(shape, DEFAULTS, P.shape); Object.assign(LOOK, LOOK0, P.look); Object.assign(PB, PBDEF);
+  Object.assign(ctrl, CONTROL_DEFAULTS, P.person ? PEOPLE[P.person].controls : {}); Object.assign(shape, toShape(ctrl)); Object.assign(LOOK, LOOK0, P.look); Object.assign(PB, PBDEF);
   sync(); apply();
 }
 for (const b of document.querySelectorAll('[data-preset]')) b.addEventListener('click', () => preset(b.dataset.preset));
 $('random').addEventListener('click', () => {
-  const r = (a) => (Math.random() * 2 - 1) * a;
-  for (const [k, , lo, hi] of [...SLIDERS.body, ...SLIDERS.face, ...SLIDERS.head]) shape[k] = Math.min(hi, Math.max(lo, (lo + hi) / 2 + r(((hi - lo) / 2) * 0.6)));
-  shape.age = Math.random() * 0.6; for (const k of ['square', 'oval', 'round', 'heavyset']) shape[k] = Math.random() < 0.4 ? Math.random() * 0.7 : 0;
+  Object.assign(ctrl, randomControls()); Object.assign(shape, toShape(ctrl));
   const sk = Object.keys(SKINS), ey = Object.keys(EYE_COLOURS); LOOK.skin = sk[Math.floor(Math.random() * sk.length)]; LOOK.eyes = ey[Math.floor(Math.random() * ey.length)];
   sync(); apply();
 });
@@ -133,4 +134,4 @@ preset(location.hash.includes('pureblood') ? 'pureblood' : 'neutral'); view('ful
 stage.controls.addEventListener('start', () => $('hint').classList.add('gone'));
 $('status').classList.add('gone');
 stage.start();
-window.__hb = { THREE, stage, base, fig, pb, shape, LOOK, PB, apply, preset, view, VIEWS, marks, get height() { return fig.height; }, loadMs };
+window.__hb = { THREE, stage, base, fig, pb, shape, ctrl, LOOK, PB, apply, preset, person, toShape, randomControlsFn: randomControls, view, VIEWS, marks, get height() { return fig.height; }, loadMs };

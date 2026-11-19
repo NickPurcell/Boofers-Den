@@ -4,10 +4,10 @@
 
 - repository: https://github.com/makehumancommunity/makehuman
 - commit: a8bc2d54ff0ac92e78ff71431b1023eda42bf482
-- files: `makehuman/data/3dobjs/base.obj`, and 132 morph targets under `makehuman/data/targets/`:
+- files: `makehuman/data/3dobjs/base.obj`, and 146 morph targets under `makehuman/data/targets/`:
   `macrodetails/` (the gender and age shapes, the muscle and weight shapes for young adults), `macrodetails/height/`,
   `eyebrows/`, `forehead/`, `eyes/`, `nose/`, `mouth/`, `cheek/`, `chin/`, `head/`, `neck/`, `torso/`, `stomach/`,
-  `armslegs/` (upper and lower arm fat and muscle) and `bodyshapes/` (one heavy male shape); 12 eyelid targets under
+  `armslegs/` (upper and lower arm fat and muscle) and `bodyshapes/` (one heavy male shape); 14 ear targets under `ears/`; 12 eyelid targets under
   `eyes/`; and the skeleton weights `makehuman/data/rigs/default_weights.mhw` (its own header: "license": "CC0"), from
   which `skin.bin` keeps, per vertex, how much follows the upper arm and how much the forearm.
 
