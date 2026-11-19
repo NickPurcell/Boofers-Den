@@ -2,7 +2,7 @@
 // a: { key, surface: { position, normal, index }, J (joints), L (landmarks), part, of }
 import { mesh } from '../duros-creator/sdf.js';
 import { fieldFor } from './bodyfield.js';
-import { OUTFITS } from './outfit-shape.js';
+import { OUTFITS, cowl, hood } from './outfit-shape.js';
 
 // which triangles are the arms: near the line from the shoulder joint through the elbow to past the hand, and past the
 // top of the shoulder (the shoulder's cap stays with the body, for the cuirass and the pauldrons)
@@ -60,7 +60,9 @@ export function run(job, a) {
     // the body without the arms: the distance to its own skin, negative wherever the whole figure is inside
     const body = (x, y, z) => { const u = bodyU(x, y, z); return all(x, y, z) < 0 ? -u : u; };
     const ctx = { all, body, arms, torso: torsoField(P, I, arm, a.J), hips: hipsOf(P, I, arm, a.J), J: a.J, L: a.L };
-    const pieces = (OUTFITS[a.key] || OUTFITS.none).make(ctx), mine = a.of ? pieces.filter((p, i) => i % a.of === a.part) : pieces;
+    const pieces = (OUTFITS[a.key] || OUTFITS.none).make(ctx);
+    if (a.key !== 'none' && a.hood === 'down') pieces.push(cowl(ctx, a.key === 'robe' ? 'main' : 'second')); else if (a.key !== 'none' && a.hood === 'up') pieces.push(hood(ctx, a.key === 'robe' ? 'main' : 'second'));
+    const mine = a.of ? pieces.filter((p, i) => i % a.of === a.part) : pieces;
     return { count: pieces.length, pieces: mine.map((p) => {
       const list = p.parts || [{ field: p.field, bounds: p.bounds }];
       const ms = list.map((q) => mesh(q.field, q.bounds, p.res || 0.008, { aoStep: 0.006, uvScale: 0.03 })).filter((m) => m.index.length);

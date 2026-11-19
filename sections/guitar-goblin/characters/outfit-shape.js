@@ -150,11 +150,77 @@ export function mantle(ctx, M, o = {}) {
     const rx = Math.min(sx + 0.135, sx * 0.55 + up * 1.45) + 0.07 * t, rz = Math.min(0.17, 0.06 + up * 0.62) + 0.04 * t + (front ? 0.015 : 0);
     const ang = Math.atan2(x, -(z - cz)), fold = (0.008 * Math.sin(ang * 9 + 0.6) + 0.003 * Math.sin(ang * 23)) * Math.min(1, below * 2.5);
     const free = (Math.hypot(x / rx, (z - cz) / rz) - 1) * Math.min(rx, rz) - fold;
-    const d = sminv(free, ctx.body(x, y, z) - off);
+    const d = sminv(free, (front ? ctx.all : ctx.body)(x, y, z) - off);   // a cloak falls over the arms; a cape hangs behind them
     const opening = front ? (z > cz + 0.02 ? 0.04 + 0.07 * Math.max(0, Math.min(1, (ny - 0.15 - y) / 0.9)) - Math.abs(x) : -1) : z - cz + 0.01;
     return Math.max(Math.abs(d) - T, y - top, hem - y, opening);
   };
   return { name: front ? 'cloak' : 'cape', material: 'cloth', role: o.role || 'second', field, bounds: [[-(sx + 0.26), hem - 0.02, cz - 0.27], [sx + 0.26, top + 0.03, front ? cz + 0.26 : cz + 0.06]], res: 0.0105 };
 }
 
-export const OUTFITS = { none: { name: 'None', make: () => [] }, plate: { name: "Guardian's plate", make: plate, suit: { torso: true, arms: 1, legs: 1 } } };
+// A belted robe to the ankles: a full skirt on a bell from the waist with folds that deepen as it falls, sleeves over
+// the hanging arms that widen toward the wrists, a V at the throat, a belt, and boots under it
+export function robe(ctx) {
+  const M = measures(ctx), P = [], J = ctx.J, H = M.hips, top = M.waistY - 0.01, hem = 0.09, T = 0.014;
+  const bell = belled(ctx, M, top, hem, H.rx * 1.3 + 0.03, H.rz * 1.45 + 0.04);
+  const fore = ['l', 'r'].map((sd) => M.limb(J[sd + '-elbow'], J[sd + '-hand'])), up = ['l', 'r'].map((sd) => M.limb(J[sd + '-shoulder'], J[sd + '-elbow']));
+  // the robe lies on the bell below the waist and on the whole figure above it (so it has sleeves); the hands stay out
+  const base = ctx.torso ? (x, y, z) => Math.min(bell(x, y, z), ctx.all(x, y, z), ctx.torso(x, y, z)) : (x, y, z) => Math.min(bell(x, y, z), ctx.all(x, y, z));   // cloth bridges the chest
+  const sleeve = (x, y, z) => { const f = x > 0 ? fore[0] : fore[1], px = x - f.A[0], py = y - f.A[1], pz = z - f.A[2], t = (px * f.u[0] + py * f.u[1] + pz * f.u[2]) / f.l; return { t, wide: 0.032 * sstep(0.1, 0.95, t) * (f.near(x, y, z, 0.13, -0.2, 1.1) < 0 ? 1 : 0) }; };
+  const fold = (x, z) => 0.008 * Math.sin(Math.atan2(x, z - H.zc) * 9 + 0.5);
+  const vee = (x, y, z) => { if (z < M.cz) return -1; const t = Math.max(0, Math.min(1, (M.neckY + 0.01 - y) / (M.neckY + 0.01 - (M.chestY - 0.06)))); return 0.05 * (1 - t) + 0.004 * t - Math.abs(x) + (y > M.neckY + 0.2 ? 1 : 0); };
+  const field = (x, y, z) => {
+    const sl = sleeve(x, y, z), cuff = Math.max(-1, (x > 0 ? fore[0] : fore[1]).near(x, y, z, 0.16, 0.97, 2.0) < 0 ? 0.02 : -1);
+    return Math.max(base(x, y, z) - T - sl.wide - fold(x, z) * sstep(top - 0.04, hem + 0.1, y), hem - y, y - M.neckY - 0.012, Math.min(vee(x, y, z), 0.06) > 0 && y > M.chestY - 0.06 ? 0.01 : -1, cuff);
+  };
+  const W = M.sx + 0.22, D = Math.max(H.rz * 1.45 + 0.1, 0.3);
+  P.push({ name: 'robe', material: 'cloth', role: 'main', parts: [{ field, bounds: [[-W, hem - 0.02, H.zc - D], [W, M.hipY, H.zc + D]] }, { field, bounds: [[-W, M.hipY, H.zc - D], [W, M.neckY + 0.04, H.zc + D]] }], res: 0.0095 });
+  const yc = top - 0.005, bh = 0.024, band = (x, y, z) => Math.max(bell(x, y, z) - T - 0.008, yc - bh - y, y - yc - bh);
+  P.push({ name: 'belt', material: 'leather', role: 'leather', field: band, bounds: [[-(H.rx + 0.12), yc - bh - 0.02, H.zc - D], [H.rx + 0.12, yc + bh + 0.02, H.zc + D]], res: 0.006 });
+  P.push(boots(ctx, 0.18));
+  return P;
+}
+// boots alone: the foot and ankle covered to `top` above the ankle, a cuff, a thicker sole
+function boots(ctx, rise = 0.13) {
+  const J = ctx.J, foot = ['l', 'r'].map((sd) => ({ A: J[sd + '-ankle'], T: J[sd + '-foot-1'] })), btop = foot[0].A[1] + rise;
+  const near = (x, y, z) => { const f = x > 0 ? foot[0] : foot[1]; return Math.hypot(x - f.A[0], z - (f.A[2] + f.T[2]) / 2) - 0.16; };
+  const boot = (x, y, z) => { const a = ctx.all(x, y, z), n = near(x, y, z); return Math.min(Math.max(a - 0.009, y - btop, n), Math.max(a - 0.013, y - btop, btop - 0.028 - y, n), Math.max(a - 0.016, y - 0.022, n)); };
+  return { name: 'boots', material: 'leather', role: 'leather', parts: foot.map((f) => ({ field: boot, bounds: [[f.A[0] - 0.11, -0.01, Math.min(f.A[2], f.T[2]) - 0.12], [f.A[0] + 0.11, btop + 0.02, Math.max(f.A[2], f.T[2]) + 0.12]] })), res: 0.0062 };
+}
+// Sith robes: the robe under a long cloak, open in front (the hood is chosen apart)
+export function cloak(ctx) { const M = measures(ctx), P = robe(ctx); P.push(mantle(ctx, M, { front: true, hem: 0.15, role: 'second', off: 0.035 })); return P; }
+
+// the head as the hood sees it: its middle, and a size against the earlier head (eyes 64.4 mm apart)
+function headOf(ctx) {
+  const J = ctx.J, e = [(J['l-eye'][0] + J['r-eye'][0]) / 2, (J['l-eye'][1] + J['r-eye'][1]) / 2, (J['l-eye'][2] + J['r-eye'][2]) / 2], k = Math.abs(J['l-eye'][0] - J['r-eye'][0]) / 0.0644;
+  return { e, k, c: [0, e[1] + 0.03 * k, e[2] - 0.075 * k] };
+}
+// a hood worn down: a roll of cloth round the neck and a short drape over the collarbones and the back of the neck
+export function cowl(ctx, role = 'second') {
+  const M = measures(ctx), ny = M.neckY + 0.025, R = M.neckR + 0.03;
+  const roll = (x, y, z) => { const q = Math.hypot(x, z - M.neckZ - 0.005) - R; return Math.hypot(q, y - ny) - 0.026; };
+  const fold = (x, z) => 0.0025 * Math.sin(Math.atan2(x, z - M.neckZ) * 8);
+  const edge = (x, z) => ny - 0.06 + 0.03 * sstep(0.02, 0.12, Math.abs(x)) - (z < M.neckZ ? 0.05 : 0);
+  const drape = (x, y, z) => Math.max(ctx.body(x, y, z) - 0.02 - fold(x, z) * sstep(ny, ny - 0.08, y), edge(x, z) - y, y - ny - 0.01, Math.abs(x) - R - 0.06);
+  const k2 = 0.016, f = (x, y, z) => { const a = roll(x, y, z), b = drape(x, y, z), h = Math.max(k2 - Math.abs(a - b), 0) / k2; return Math.min(a, b) - h * h * k2 * 0.25; };
+  return { name: 'cowl', material: 'cloth', role, field: f, bounds: [[-(R + 0.12), ny - 0.16, M.neckZ - R - 0.12], [R + 0.12, ny + 0.06, M.neckZ + R + 0.12]], res: 0.0058 };
+}
+// a hood worn up: a smooth shell over the head (ears and hair do not show through), open round the face and down the
+// throat, running into the same drape
+export function hood(ctx, role = 'second') {
+  const M = measures(ctx), { e, k, c } = headOf(ctx), cw = cowl(ctx, role);
+  const ell = (x, y, z) => { const rx = 0.1 * k, ry = 0.118 * k, rz = 0.122 * k, q = Math.hypot(x / rx, (y - c[1]) / ry, (z - c[2]) / rz); return (q - 1) * Math.min(rx, ry, rz); };
+  const neck = (x, y, z) => { const t = Math.max(0, Math.min(1, (c[1] - 0.05 - y) / (c[1] - 0.05 - M.neckY))); return Math.max(Math.hypot(x, z - (c[2] + (M.neckZ - c[2]) * t)) - (0.09 * k + 0.01 * t), M.neckY - y, y - c[1]); };
+  const k2 = 0.02, shell = (x, y, z) => { const a = ell(x, y, z), b = neck(x, y, z), h = Math.max(k2 - Math.abs(a - b), 0) / k2; return Math.min(a, b) - h * h * k2 * 0.25; };
+  const open = (x, y, z) => (z < e[2] - 0.06 * k ? -1 : Math.max(1 - Math.hypot(x / (0.074 * k), (y - e[1] + 0.016) / (0.12 * k)), y < e[1] - 0.07 * k ? 1 - Math.abs(x) / (0.05 * k) : -1) * 0.07);
+  const over = (x, y, z) => Math.max(shell(x, y, z), open(x, y, z), M.neckY - 0.01 - y);
+  const k3 = 0.014, f = (x, y, z) => { const a = cw.field(x, y, z), b = over(x, y, z), h = Math.max(k3 - Math.abs(a - b), 0) / k3; return Math.min(a, b) - h * h * k3 * 0.25; };
+  return { name: 'hood', material: 'cloth', role, field: f, bounds: [[-(M.sx + 0.04), M.neckY - 0.16, c[2] - 0.2], [M.sx + 0.04, c[1] + 0.16 * k, c[2] + 0.2]], res: 0.0068 };
+}
+
+export const OUTFITS = {
+  none: { name: 'None', make: () => [] },
+  plate: { name: "Guardian's plate", make: plate, suit: { torso: true, arms: 1, legs: 1 } },
+  robe: { name: 'Belted robe', make: robe, suit: { torso: true, arms: 1, legs: 1 } },
+  cloak: { name: 'Hooded cloak', make: cloak, suit: { torso: true, arms: 1, legs: 1 } },
+};
+export const HOODS = { none: { name: 'None' }, down: { name: 'Down' }, up: { name: 'Up' } };

@@ -24,8 +24,8 @@ const SHAPE = { gender: 1, age: 0.08, muscle: 0.82, weight: 0.86, height: 0.2, s
   nostrils: 0.2, mouthw: 0.15, lips: -0.1, corners: -0.2, cheekbones: 0.65, cheeks: -0.2, chinw: 0.55, chinjut: 0.3, chinh: 0.15, jaw: 0.9, headfat: 0.1, headage: 0.25, square: 0.45 };
 const LOOK = { skin: '#952a22', eyes: 'ember', glow: 0.35, brows: 0, white: '#9a6a48', iris: 1.3, lips: '#2a0c0c', sockets: 0.6 };
 const HAIRS = { black: '#16110e', dkbrown: '#2a1d14', redbrown: '#4a1a14', grey: '#8a8684', white: '#d8d4d0' };
-const state = { style: 'slick', hair: 'black', outfit: 'plate', main: '#34373e', second: '#6a2229' };
-{ const q = new URLSearchParams(location.hash.slice(1)); if (STYLES[q.get('style')]) state.style = q.get('style'); if (HAIRS[q.get('hair')]) state.hair = q.get('hair'); if (OUTFITS[q.get('outfit')]) state.outfit = q.get('outfit'); }
+const state = { style: 'slick', hair: 'black', outfit: 'plate', hood: 'none', main: '#34373e', second: '#6a2229' };
+{ const q = new URLSearchParams(location.hash.slice(1)); if (STYLES[q.get('style')]) state.style = q.get('style'); if (HAIRS[q.get('hair')]) state.hair = q.get('hair'); if (OUTFITS[q.get('outfit')]) state.outfit = q.get('outfit'); if (['none', 'down', 'up'].includes(q.get('hood'))) state.hood = q.get('hood'); }
 
 function apply() {
   fig.set({ ...DEFAULTS, ...SHAPE });
@@ -35,7 +35,7 @@ function apply() {
   fig.eyes.set({ colour: LOOK.eyes, glow: LOOK.glow, white: LOOK.white, iris: LOOK.iris });
   const on = Object.fromEntries(Object.entries(PUREBLOOD.options).map(([k, o]) => [k, o.def])); pb.set({ ...on, jewellery: 'gold', on: true });
   fig.update();
-  hair.set(state.style, HAIRS[state.hair]);
+  hair.set(state.hood === 'up' ? 'bald' : state.style, HAIRS[state.hair]);   // a raised hood covers the hair
   stage.changed();
 }
 
@@ -60,7 +60,7 @@ async function dress() {
   if (!OUTFITS[key] || key === 'none') return;
   const J = Object.fromEntries(Object.keys(base.info.joints).map((k) => [k, fig.joint(k)]));
   const L = Object.fromEntries(['neckSideL', 'neckSideR', 'chestMid', 'backMid'].map((k) => { const l = fig.landmark(k); return [k, { p: l.p, n: l.n }]; }));
-  const args = { key, surface: { position: fig.p0.slice(), normal: fig.n0.slice(), index: tris }, J, L }, n = pool.size(), t0 = performance.now();
+  const args = { key, hood: state.hood, surface: { position: fig.p0.slice(), normal: fig.n0.slice(), index: tris }, J, L }, n = pool.size(), t0 = performance.now();
   $('status').hidden = false; $('status').textContent = 'Dressing…';
   const rs = await Promise.all(Array.from({ length: n }, (_, part) => pool.mesh('outfit', { ...args, part, of: n })));
   if (my !== dressTicket) return;
