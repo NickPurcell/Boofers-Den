@@ -35,7 +35,7 @@ const carried = carry(fig);
 function apply() {
   const P = lookParams(LOOK.species, { ...LOOK, gender: shape.gender });
   fig.set(shape);
-  fig.skin.userData.set({ ...P.skin, suitCover: { torso: shape.gender < 0.75, arms: 0, legs: 0 } });
+  fig.skin.userData.set({ ...P.skin, suitCover: { torso: shape.gender < 0.75 || !!window.__suit, arms: window.__suit ? 1 : 0, legs: window.__suit ? 1 : 0 } });
   fig.eyes.set(P.eyes);
   pb.set({ ...PB, on: LOOK.species === 'pureblood' });
   carried.set({ item: CARRY.item });

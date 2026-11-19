@@ -150,9 +150,9 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
   // arms stand well clear of the chest
   float shortsTop = 1.05 - 0.12 * smoothstep(0.0, 1.2, abs(vRest.x));
   float shorts = smoothstep(hem - 0.02, hem + 0.02, vRest.y) * (1.0 - smoothstep(shortsTop - 0.02, shortsTop + 0.02, vRest.y)) * (1.0 - armK);
-  float top = uSuitTop * step(shortsTop - 0.03, vRest.y) * (1.0 - smoothstep(waist - 0.02, waist + 0.02, vRest.y)) * (1.0 - smoothstep(1.66, 1.72, abs(vRest.x))) * (1.0 - smoothstep(0.55, 0.7, vArm.x));
+  float top = uSuitTop * step(shortsTop - 0.03, vRest.y) * (1.0 - smoothstep(waist - 0.02, waist + 0.02, vRest.y)) * mix(1.0, 1.0 - smoothstep(1.66, 1.72, abs(vRest.x)), smoothstep(shortsTop + 0.6, shortsTop + 0.9, vRest.y)) * (1.0 - smoothstep(0.55, 0.7, vArm.x));
   float body = max(shorts, top);
-  float sleeveEnd = mix(uJoints.x + 0.2, uJoints.y - 0.25, step(0.75, uSuitArms)), sleeve = step(0.01, uSuitArms) * armK * (1.0 - smoothstep(sleeveEnd - 0.02, sleeveEnd + 0.02, abs(vRest.x)));
+  float sleeveEnd = mix(uJoints.x + 0.2, uJoints.y - 0.25, step(0.75, uSuitArms)), sleeve = step(0.01, uSuitArms) * armK * (uSuitArms >= 0.75 ? 1.0 - smoothstep(0.35, 0.65, vArm.y) : 1.0 - smoothstep(sleeveEnd - 0.02, sleeveEnd + 0.02, abs(vRest.x)));   // to the wrist: everything but the hand
   sSuit = uSuitOn * max(body, sleeve);
   float rib = (smoothstep(waist - 0.16, waist - 0.12, vRest.y) + (1.0 - smoothstep(hem + 0.1, hem + 0.14, vRest.y))) * (1.0 - armK);
   col = mix(col, uSuit * mix(0.92, 1.05, nF.b) * (1.0 - 0.18 * rib) * mix(1.0, sAo, 0.6), sSuit);
@@ -171,6 +171,6 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
            vec3 lit = mix( vec3( dotNL ), vec3( wr * wr ), uScatter );
            reflectedLight.directDiffuse += lit * directLight.color * BRDF_Lambert( material.diffuseColor ); }`));
   };
-  m.customProgramCacheKey = () => 'human-skin-6';
+  m.customProgramCacheKey = () => 'human-skin-7';
   return m;
 }

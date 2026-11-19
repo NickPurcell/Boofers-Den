@@ -257,7 +257,16 @@ class Figure extends THREE.Group {
     geo.setAttribute('aLip', new THREE.BufferAttribute(up(B.lip, 1), 1));
     geo.setAttribute('aCav', new THREE.BufferAttribute(new Float32Array(M * 2), 2));
     geo.setAttribute('aMark', new THREE.BufferAttribute(new Float32Array(M * 2), 2));   // painted marks a species sets: x, a lit bone crest
-    { const aw = new Float32Array(B.N * 2); for (let i = 0; i < B.N; i++) { aw[i * 2] = B.armW[i] / 255; aw[i * 2 + 1] = B.foreW[i] / 255; } geo.setAttribute('aArm', new THREE.BufferAttribute(up(aw, 2), 2)); }   // how much of each vertex is arm, and forearm
+    // how much of each vertex is arm (x), and whether it is the hand (y: past the wrist along the forearm, in the rest
+    // pose), so a sleeve can stop at the wrist whatever the fingers and thumb do
+    { const aw = new Float32Array(B.N * 2), J = (n) => { const l = B.info.joints[n], c = [0, 0, 0]; for (const i of l) for (let k = 0; k < 3; k++) c[k] += B.rest[i * 3 + k] / l.length; return c; }, R = B.rest;
+      const arms = ['l', 'r'].map((m) => { const E = J(m + '-elbow'), W = J(m + '-hand'), d = [W[0] - E[0], W[1] - E[1], W[2] - E[2]], L = Math.hypot(...d); return { E, W, d: d.map((v) => v / L), L, sx: Math.sign(W[0]) }; });
+      for (let i = 0; i < B.N; i++) {
+        aw[i * 2] = B.armW[i] / 255; if (!B.armW[i]) continue;
+        const a = arms.find((q) => Math.sign(R[i * 3]) === q.sx) || arms[0], s2 = ((R[i * 3] - a.W[0]) * a.d[0] + (R[i * 3 + 1] - a.W[1]) * a.d[1] + (R[i * 3 + 2] - a.W[2]) * a.d[2]) / a.L;
+        aw[i * 2 + 1] = Math.max(B.fingW[i] > 20 || B.thumbW[i] > 20 ? 1 : 0, Math.min(1, Math.max(0, (s2 + 0.06) / 0.06)));
+      }
+      geo.setAttribute('aArm', new THREE.BufferAttribute(up(aw, 2), 2)); }
     this.geometry = geo;
     this.skin = skinMaterial(B, o.skin);
     this.body = new THREE.Mesh(geo, this.skin); this.body.castShadow = this.body.receiveShadow = true; this.body.frustumCulled = false;
