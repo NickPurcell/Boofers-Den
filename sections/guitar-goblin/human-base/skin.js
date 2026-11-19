@@ -33,6 +33,8 @@ export function skinMaterial(B, o = {}) {
   const u = {
     uSkin: { value: new THREE.Color(0xb98e72) }, uLip: { value: new THREE.Color(0x9a6a5a) }, uNoise: { value: shared },
     uWrap: { value: 0.32 }, uScatter: { value: new THREE.Vector3(0.55, 0.24, 0.15) },
+    // a look's own shading: the tint in creases, the tint the painted light lifts toward, how the painted dark darkens each channel
+    uCrease: { value: new THREE.Vector3(1.04, 0.9, 0.87) }, uHiTint: { value: new THREE.Vector3(1, 1, 1) }, uShadeDark: { value: new THREE.Vector3(1, 1, 1) },
     uSuit: { value: new THREE.Color(0x2b3038) }, uSuitOn: { value: 1 }, uCav: { value: 1 },
     // how much the undersuit covers: a top to the collarbones (0/1), sleeves (0 none, 0.5 to the elbow, 1 to the wrist),
     // and where the legs end (0 mid-thigh, 1 the ankle); the joints' places in the base frame say where those are
@@ -60,6 +62,12 @@ export function skinMaterial(B, o = {}) {
     if (s.suitOn !== undefined || s.suitCover) m.userData.cover = { on: u.uSuitOn.value > 0.5, torso: u.uSuitTop.value > 0.5, arms: u.uSuitArms.value, legs: u.uSuitLegs.value, ...(s.suitCover || {}), ...(s.suitOn !== undefined ? { on: !!s.suitOn } : {}) };
     if (s.suitCover) { const c = s.suitCover; if (c.torso !== undefined) u.uSuitTop.value = c.torso ? 1 : 0; if (c.arms !== undefined) u.uSuitArms.value = c.arms; if (c.legs !== undefined) u.uSuitLegs.value = c.legs; }
     if (s.cavity !== undefined) u.uCav.value = s.cavity;
+    if (s.scatter) u.uScatter.value.set(...s.scatter);
+    if (s.crease) u.uCrease.value.set(...s.crease);
+    if (s.hiTint) u.uHiTint.value.set(...s.hiTint);
+    if (s.shadeDark) u.uShadeDark.value.set(...s.shadeDark);
+    if (s.sheenColor) m.sheenColor.set(s.sheenColor);
+    if (s.sheen !== undefined) m.sheen = s.sheen;
     if (s.paint !== undefined) u.uPaint.value = s.paint;
     if (s.sockets !== undefined) u.uSocket.value = s.sockets;
     if (s.bone !== undefined) u.uBone.value = s.bone;
@@ -102,9 +110,9 @@ export function skinMaterial(B, o = {}) {
       .replace('#include <common>', 'attribute float aLip; attribute vec3 aRest; attribute vec2 aCav; attribute vec2 aMark; attribute vec2 aArm; varying float vLip; varying vec3 vOP; varying vec3 vON; varying vec3 vRest; varying vec2 vCav; varying vec2 vMark; varying vec2 vArm;\n#include <common>')
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLip = aLip; vOP = position; vON = normal; vRest = aRest; vCav = aCav; vMark = aMark; vArm = aArm;');
     sh.fragmentShader = sh.fragmentShader
-      .replace('#include <common>', `uniform vec3 uSkin; uniform vec3 uLip; uniform sampler2D uNoise; uniform float uWrap; uniform vec3 uScatter; uniform vec3 uSuit; uniform float uSuitOn; uniform float uCav;
+      .replace('#include <common>', `uniform vec3 uSkin; uniform vec3 uLip; uniform sampler2D uNoise; uniform float uWrap; uniform vec3 uScatter; uniform vec3 uCrease; uniform vec3 uHiTint; uniform vec3 uShadeDark; uniform vec3 uSuit; uniform float uSuitOn; uniform float uCav;
 uniform vec3 uBrow; uniform float uBrowAmt; uniform vec2 uBrowX; uniform vec3 uBrowY; uniform vec2 uBrowT; uniform float uFaceZ; uniform vec3 uEyeC; uniform float uD; uniform float uPaint; uniform float uSocket; uniform float uBone; varying vec2 vMark; uniform float uSuitTop; uniform float uSuitArms; uniform float uSuitLegs; uniform vec4 uJoints; varying vec2 vArm; uniform sampler2D uMarkTex; uniform vec4 uMarkBox; uniform float uMarkZ;
-varying float vLip; varying vec3 vOP; varying vec3 vON; varying vec3 vRest; varying vec2 vCav; float sHeight; float sSuit; float sAo;
+varying float vLip; varying vec3 vOP; varying vec3 vON; varying vec3 vRest; varying vec2 vCav; float sHeight; float sSuit; float sAo; float sKeep;   // sKeep: how much is paint or lip, kept from the lifts and the sheen
 vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x + texture2D(uNoise, p.xz * s) * bw.y + texture2D(uNoise, p.xy * s) * bw.z; }
 #include <common>`)
       .replace('#include <color_fragment>', `
@@ -113,7 +121,7 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
   float poreK = 1.0 - smoothstep(0.00025, 0.0007, length(fwidth(vOP)));   // pores only where a pixel can hold them
   nF = mix(vec4(0.5), nF, poreK);
   vec3 col = uSkin * mix(0.95, 1.03, nB.g) * mix(0.985, 1.01, nF.b);
-  float lipK = smoothstep(0.15, 0.7, vLip);
+  float lipK = smoothstep(0.15, 0.7, vLip); sKeep = lipK;
   col = mix(col, uLip, lipK * 0.75);
   // the face is never one colour: lighter on the forehead, the bridge of the nose and the top of the cheek; darker in the
   // sockets, under the cheekbones, beside the nose and under the lower lip; warmer on the cheeks and nose
@@ -123,12 +131,12 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
     float beside = exp(-((cx - 0.42) * (cx - 0.42) / 0.03 + (fy + 0.75) * (fy + 0.75) / 0.12)), underLip = exp(-(cx * cx / 0.25 + (fy + 1.45) * (fy + 1.45) / 0.02));
     float light = 0.07 * smoothstep(0.45, 0.9, fy) * (1.0 - smoothstep(0.6, 1.1, cx)) * (1.0 - smoothstep(1.8, 2.4, fy)) + 0.09 * exp(-(cx * cx / 0.03 + (fy + 0.35) * (fy + 0.35) / 0.25)) + 0.06 * exp(-((cx - 1.15) * (cx - 1.15) / 0.06 + (fy + 0.45) * (fy + 0.45) / 0.03));
     float dark = uSocket * socket + 0.16 * hollow + 0.1 * beside + 0.12 * underLip;
-    col *= 1.0 + uPaint * front * (light - dark);
+    col *= vec3(1.0) + uPaint * front * (light * uHiTint * (1.0 - lipK) - dark * uShadeDark);
     float warm = exp(-((cx - 0.95) * (cx - 0.95) / 0.12 + (fy + 0.75) * (fy + 0.75) / 0.12)) + exp(-(cx * cx / 0.04 + (fy + 0.75) * (fy + 0.75) / 0.06));
     col = mix(col, col * vec3(1.06, 0.93, 0.92), uPaint * front * 0.6 * clamp(warm, 0.0, 1.0)); }
   // painted marks, from the front: faded out where the surface turns away to the side
   { vec2 muv = (vRest.xy - uMarkBox.xy) / uMarkBox.zw;
-    if (muv.x > 0.0 && muv.x < 1.0 && muv.y > 0.0 && muv.y < 1.0 && vRest.z > uMarkZ) { vec4 mk = texture2D(uMarkTex, muv); col = mix(col, mk.rgb, mk.a * smoothstep(-0.05, 0.3, normalize(vON).z)); } }
+    if (muv.x > 0.0 && muv.x < 1.0 && muv.y > 0.0 && muv.y < 1.0 && vRest.z > uMarkZ) { vec4 mk = texture2D(uMarkTex, muv); float ma = mk.a * smoothstep(-0.05, 0.3, normalize(vON).z); col = mix(col, mk.rgb, ma); sKeep = max(sKeep, ma); } }
   // a bone crest a species has raised: lit along its top
   col *= (1.0 + uBone * 0.32 * smoothstep(0.25, 0.95, vMark.x)) * (1.0 - uBone * 0.3 * vMark.y);
   // the brows: a band along a gentle arch from the inner end to the outer, thick at the head and thin at the tail,
@@ -141,8 +149,8 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
   // light and shade from the form: creases and hollows darken (a touch warmer, where blood shows), proud forms lift
   float cf = vCav.x * 9.0, cb = vCav.y * 16.0;
   sAo = 1.0 - uCav * (0.14 * smoothstep(0.2, 1.6, cb) + 0.28 * smoothstep(0.1, 1.0, cf));
-  col *= sAo; col = mix(col, col * vec3(1.04, 0.9, 0.87), uCav * 0.35 * smoothstep(0.2, 1.2, cf + cb));
-  col *= 1.0 + uCav * (0.06 * smoothstep(0.0, 0.8, -cb) + 0.08 * smoothstep(0.05, 0.6, -cf));
+  col *= vec3(1.0) - (1.0 - sAo) * uShadeDark; col = mix(col, col * uCrease, uCav * 0.35 * smoothstep(0.2, 1.2, cf + cb));   // the shade, per channel
+  col *= vec3(1.0) + (1.0 - sKeep) * uHiTint * uCav * (0.06 * smoothstep(0.0, 0.8, -cb) + 0.08 * smoothstep(0.05, 0.6, -cf));
   // the undersuit, in the base mesh's frame (decimetres); the arms hang out past |x| = 2.6 in the base pose, bare
   float waist = mix(1.05 - 0.12 * smoothstep(0.0, 1.2, abs(vRest.x)), uJoints.w, uSuitTop), hem = mix(-2.35 + 0.18 * smoothstep(0.4, 1.6, abs(vRest.x)), uJoints.z, uSuitLegs);
   float armK = smoothstep(0.25, 0.6, vArm.x);   // how much of this point is arm
@@ -156,6 +164,7 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
   sSuit = uSuitOn * max(body, sleeve);
   float rib = (smoothstep(waist - 0.16, waist - 0.12, vRest.y) + (1.0 - smoothstep(hem + 0.1, hem + 0.14, vRest.y))) * (1.0 - armK);
   col = mix(col, uSuit * mix(0.92, 1.05, nF.b) * (1.0 - 0.18 * rib) * mix(1.0, sAo, 0.6), sSuit);
+  sKeep = max(sKeep, sSuit);   // no skin sheen on the cloth
   diffuseColor.rgb = col;
   // the pores only where a pixel is small enough to hold them; further off they would only sparkle
   sHeight = (nF.r * 0.7 + nF.b * 0.3) * 0.00012 * (1.0 - sSuit) * poreK;`)
@@ -164,6 +173,7 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
   { vec3 sp = -vViewPosition, dpx = dFdx(sp), dpy = dFdy(sp); float hx = dFdx(sHeight), hy = dFdy(sHeight);
     vec3 r1 = cross(dpy, normal), r2 = cross(normal, dpx); float det = dot(dpx, r1);
     normal = normalize(abs(det) * normal - sign(det) * (hx * r1 + hy * r2)); }`)
+      .replace('#include <lights_physical_fragment>', '#include <lights_physical_fragment>\n#ifdef USE_SHEEN\nmaterial.sheenColor *= 1.0 - sKeep;\n#endif')
       .replace('#include <aomap_fragment>', '#include <aomap_fragment>\nreflectedLight.indirectDiffuse *= mix(1.0, sAo, 0.7); reflectedLight.indirectSpecular *= sAo;')
       .replace('#include <lights_physical_pars_fragment>', THREE.ShaderChunk.lights_physical_pars_fragment.replace(
         'reflectedLight.directDiffuse += irradiance * BRDF_Lambert( material.diffuseColor );',
@@ -171,6 +181,6 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
            vec3 lit = mix( vec3( dotNL ), vec3( wr * wr ), uScatter );
            reflectedLight.directDiffuse += lit * directLight.color * BRDF_Lambert( material.diffuseColor ); }`));
   };
-  m.customProgramCacheKey = () => 'human-skin-7';
+  m.customProgramCacheKey = () => 'human-skin-9';
   return m;
 }
