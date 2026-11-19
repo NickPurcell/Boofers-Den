@@ -1,0 +1,42 @@
+/* Humanoid 3D models research: night-block's layout in a clay-and-ink palette, plus the report's tables. */
+:root { --yellow: #f2c38b; --cyan: #8fd3c7; --pink: #e58a8a; --grass: #9fd88f; }
+
+.hr-hero { min-height: 340px; }
+.hr-hero .hero-text { padding-top: 5rem; }
+.hr-hero h1 { text-transform: none; }
+.hr-hero .h1b { font-size: .5em; }
+
+/* the top section: what we did with the report */
+.did { border-color: rgba(143, 211, 199, .55); box-shadow: inset 0 0 0 1px rgba(143, 211, 199, .15); }
+.did::before { background: var(--cyan); }
+.did p + p { margin-top: .6rem; }
+.did .did-tag { font: 700 .74rem/1 var(--pixel); letter-spacing: .08em; text-transform: uppercase; color: var(--cyan); margin: 0 0 .7rem; }
+
+.intro p { color: var(--dim); }
+p.ran { border-left: 4px solid var(--cyan); background: linear-gradient(90deg, rgba(143, 211, 199, .1), transparent); padding: .6rem .9rem; }
+
+.doc h3 { margin: 2rem 0 .8rem; font: 700 1rem/1.25 var(--pixel); letter-spacing: .03em; color: var(--cyan); }
+.doc ol, .doc ul { padding-left: 1.3rem; }
+.doc li { margin-bottom: .35rem; }
+.doc li > ul, .doc li > ol { margin-top: .35rem; }
+.doc li > p { margin: .5rem 0; }
+.doc hr { border: 0; border-top: 1px solid var(--line); margin: 2rem 0; }
+/* long file names and identifiers wrap instead of pushing the page sideways on a phone */
+.doc code { white-space: normal; overflow-wrap: anywhere; line-height: 1.5; }
+.doc a { overflow-wrap: anywhere; }
+
+/* tables: a grid on a wide screen, one card per row on a phone */
+.tbl-wrap { margin: .8rem 0 1.2rem; }
+.rt { width: 100%; border-collapse: collapse; font-size: .88rem; line-height: 1.5; background: var(--panel); }
+.rt th { text-align: left; font: 700 .64rem/1.25 var(--pixel); letter-spacing: .05em; text-transform: uppercase; color: var(--dim); padding: .55rem .6rem; border-bottom: 2px solid var(--cyan); vertical-align: bottom; }
+.rt td { padding: .6rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+.rt td:first-child { font-weight: 600; color: #fff; }
+@media (max-width: 720px) {
+  .rt, .rt tbody, .rt tr, .rt td { display: block; width: 100%; }
+  .rt thead { display: none; }
+  .rt tr { border: 1px solid var(--line); border-left: 3px solid var(--cyan); margin-bottom: .8rem; }
+  .rt td { border-bottom: 1px solid rgba(255, 255, 255, .05); padding: .45rem .7rem; }
+  .rt td::before { content: attr(data-label); display: block; font: 700 .6rem/1.3 var(--pixel); letter-spacing: .05em; text-transform: uppercase; color: var(--dim); margin-bottom: .15rem; }
+  .rt td[data-label="#"] { display: inline-block; width: auto; border: 0; }
+  .rt td[data-label="#"]::before { display: inline; margin-right: .4rem; }
+}

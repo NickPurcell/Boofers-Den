@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#07070c" />
+  <title>Making our agents better at humanoid 3D models, faces first</title>
+  <meta name="description" content="A research report on skills and tools that could make our agents better at humanoid 3D models, faces first: what exists, what each licence allows, and what we did with it." />
+  <link rel="preload" href="../night-block/fonts/silkscreen-700.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="stylesheet" href="../night-block/night-block.css" />
+  <link rel="stylesheet" href="research.css" />
+</head>
+<body>
+  <a class="back" href="../">&larr; Guitar Goblin</a>
+
+  <header class="hero hr-hero">
+    <div class="hero-text">
+      <p class="kicker"><span class="tag">RESEARCH</span> 18 Nov 2026</p>
+      <h1><span class="h1a">Making our agents better</span> <span class="h1b">at humanoid 3D models, faces first</span></h1>
+    </div>
+  </header>
+
+  <nav class="toc" aria-label="Sections">
+    <a href="#what-we-did">What we did</a><a href="#s1">The answer</a><a href="#s2">Why our faces melt</a><a href="#s3">Ranking</a><a href="#s4">Candidates in detail</a><a href="#s5">Method</a><a href="#s6">The first experiments</a><a href="#s7">Hype and unverified claims</a>
+  </nav>
+
+  <main class="doc">
+<section id="what-we-did">
+  <div class="verdict did">
+    <p class="did-tag">What we did with it</p>
+    <p>We tried both leads the same evening. The public-domain base won on the first pictures, so the humanoid creator is moving onto MakeHuman&rsquo;s CC0 base mesh with our own loader, starting with the Sith Pureblood.</p>
+    <p>From the sculpting skill we kept its way of judging renders: a long lens; front, three-quarter, profile and from below; and one weakest link named per render.</p>
+    <p>The test page is at <a href="../human-base-test/">human-base-test</a>, and the current creator is at <a href="../humanoid-creator/">humanoid-creator</a>.</p>
+  </div>
+</section>
+
+<section id="report" class="intro">
+<p>Research report by clawcius-researcher15 for the coordinator, 18 Nov 2026 (PST). It answers Nick's question of 19:39 PST: "can you kick off some research to see if there is a skill or some other sort of tool for agents that make them better at generating humanoid 3d models?"</p>
+<p>This was research only. Nothing was installed, signed up for or paid for, and none of our names or files went to an outside service. "Verified" below means I read the primary file myself, usually raw from GitHub. Anything else is a claim the page made.</p>
+</section>
+
+<section id="s1">
+<h2><span class="n">01</span>The answer</h2>
+<p><strong>Yes, there is one thing that fits us exactly, and it needs no policy change.</strong> Scenario Labs publishes an MIT-licensed agent skill, <code>scenario-blender-sculpting</code>, for sculpting heads in code. Its blockout uses our own technique: signed-distance primitives joined with the same polynomial smooth-min we use. Two things are different. First, it <em>states the planes of the head</em>: it clips primitives with half-spaces and builds the jaw as a rounded box with a corner. Second, it lists our failures by name, with the fix and the numbers for each. It also ships three checks we can port: a numeric "is the lower face one ball" test, a profile test, and a fixed order for looking at renders. Our own <code>sdf.js</code> already has every operator the recipe needs (<code>plane</code>, <code>roundBox</code>, <code>sintersect</code>), and the droids use them. The human head uses none of them; it is about 25 ellipsoids and capsules. That is the most likely reason the droids look sculpted and the faces look melted. The skill's evidence is its own evaluation with unpublished renders, so the first experiment is to try it on one Pureblood head (section 6).</p>
+<p><strong>The bigger jump in face quality needs a policy decision: start from an openly licensed base head and deform it with numbers.</strong> MakeHuman's base mesh and its 1,258 hand-made morph targets are CC0 (verified in the files). The targets have plain names such as <code>nose-hump-incr</code> and <code>mouth-cupidsbow-width-decr</code>. They are plain-text vertex offsets, so they need no Blender, no GPU and no account, and the licence asks for no credit. Google's GNM Head v3 is Apache-2.0 (verified). It is far more realistic, built from scans, with eyes, teeth and tongue. Google already ships a plain-JavaScript version of it running on three.js. Either would end our "melted" faces for near-human species, but neither is our own geometry, and that is Nick's call. Text-to-3D services, Blender bridges (MCP servers) and the other skill collections do not help with faces in our setup (sections 4 and 5). Every published account of an agent building a face from primitives, ours included, ends the same way: seams, balloons and robots.</p>
+</section>
+<section id="s2">
+<h2><span class="n">02</span>Why our faces melt (what I read in the code, read-only)</h2>
+<ul>
+<li><code>humanoid-creator/head-field.js</code> builds the head from ellipsoids, capsules, round cones and capsule chains, joined with <code>smin</code> and carved with <code>ssub</code>. It never calls <code>plane</code>, <code>roundBox</code> or <code>sintersect</code>, though <code>duros-creator/sdf.js</code> exports all three and the droid heads use them. A shape language with no flat planes cannot show the front plane of the face against its side planes, the corner of the cheekbone, the flat side of the jaw, or the underside of the brow. Everything turns into one smooth balloon.</li>
+<li>In <code>pureblood.js</code> the ridges are cut in (<code>ssub</code>), so they read as grooves, not as bone pushing out. The tendrils are capsule tubes, which read as rods. The elder's cheek hollows are subtracted ellipsoids, which read as caved-in cheeks. These match the symptoms the coordinator listed.</li>
+<li><strong>Resolution:</strong> the head is meshed with cells of 2.7 mm (<code>RES.head</code> in <code>jobs.js</code>, times the quality factor). That is about head height ÷ 85. The Scenario skill puts secondary detail (lines, creases) at head height ÷ 130 to ÷ 235 and wants at least 3 to 4 vertices across a crease's radius. Our mouth line is a rope of radius 0.6 to 0.9 mm, a third of one cell. Detail that small can only come out as noise or vanish. It has to be meshed finer near the face, or moved into the painted textures and normals.</li>
+</ul>
+</section>
+<section id="s3">
+<h2><span class="n">03</span>Ranking</h2>
+<div class="tbl-wrap"><table class="rt">
+<thead><tr><th scope="col">#</th><th scope="col">Candidate</th><th scope="col">Policy change?</th><th scope="col">Why here</th></tr></thead>
+<tbody>
+<tr><td data-label="#">1</td><td data-label="Candidate"><strong>A face-sculpting skill of our own, built from Scenario Labs' <code>scenario-blender-sculpting</code> (MIT), plus img2threejs's hair guide (Apache-2.0) and a review sheet of fixed views (front, profile, top, three-quarter, from below, plus checks)</strong></td><td data-label="Policy change?">No (we take ideas, numbers and maths; credit kept)</td><td data-label="Why here">Same SDF technique as ours, our symptoms named, numbers given; cheapest to try</td></tr>
+<tr><td data-label="#">2</td><td data-label="Candidate"><strong>MakeHuman <code>hm08</code> base mesh plus CC0 morph targets</strong></td><td data-label="Policy change?"><strong>Yes</strong>: CC0 base mesh</td><td data-label="Why here">Named, agent-friendly sliders; CC0 with no attribution; no Blender; CC0 animal packs show the topology survives non-human heads</td></tr>
+<tr><td data-label="#">3</td><td data-label="Candidate"><strong>Google GNM Head v3</strong> (Apache-2.0)</td><td data-label="Policy change?"><strong>Yes</strong>: Apache base mesh, notice must ship</td><td data-label="Why here">Best realistic head available under a permissive licence; Google's own JS/three.js port proves it runs in a page; but photoreal, and its controls are statistical rather than named</td></tr>
+<tr><td data-label="#">4</td><td data-label="Candidate">ICT-FaceKit "light" model (MIT)</td><td data-label="Policy change?">Yes</td><td data-label="Why here">A realistic fallback to GNM; ARKit-named expressions</td></tr>
+<tr><td data-label="#">5</td><td data-label="Candidate">A base head used <strong>only as a measuring stick at design time</strong>, never shipped: compare our SDF head's landmarks against MakeHuman or GNM</td><td data-label="Policy change?">A smaller one (nothing ships; still worth Nick knowing)</td><td data-label="Why here">Gives the critique loop numbers to aim for instead of eyeballing</td></tr>
+<tr><td data-label="#">6</td><td data-label="Candidate">threejs-devtools-mcp (MIT)</td><td data-label="Policy change?">No</td><td data-label="Why here">The only tool bridge built for three.js; helps agents <em>see</em>, adds no modelling skill</td></tr>
+<tr><td data-label="#">7</td><td data-label="Candidate">Text/image-to-3D services and open models</td><td data-label="Policy change?">Yes, plus accounts and money</td><td data-label="Why here">See section 4.4</td></tr>
+<tr><td data-label="#">8</td><td data-label="Candidate">Blender MCP servers, headless Blender</td><td data-label="Policy change?">No, but heavy installs</td><td data-label="Why here">Mechanically possible, adds nothing for faces; anything Blender makes would still have to be transcribed into our code</td></tr>
+</tbody></table></div>
+</section>
+<section id="s4">
+<h2><span class="n">04</span>Candidates in detail</h2>
+<h3 id="4-1-skills">4.1 Skills</h3>
+<p><strong>Scenario Labs, <code>scenario-blender-sculpting</code></strong> (rank 1)</p>
+<ul>
+<li><em>What and who:</em> one of about 35 "DCC" agent skills for Blender, ZBrush and Maya, from Scenario Inc., the company behind scenario.com. Its files are SKILL.md, references for critique, expert notes, procedures and sources (27 sculpting videos cited by timestamp), and <code>scripts/bx_sculpt.py</code>.</li>
+<li><em>Link:</em> <a href="https://github.com/scenario-labs/skills/tree/main/skills/dcc/blender/scenario-blender-sculpting" rel="noopener">https://github.com/scenario-labs/skills/tree/main/skills/dcc/blender/scenario-blender-sculpting</a> (repo has about 3.9k stars, last push 16 Nov 2026).</li>
+<li><em>Licence (verified):</em> LICENSE "MIT License / Copyright (c) 2026 Scenario Inc."; SKILL.md frontmatter <code>license: MIT</code>. <code>bx_sculpt.py</code> has no header of its own, so the repo licence covers it. Public hobby site: yes. Copied text or code needs the MIT notice kept.</li>
+<li><em>Cost, GPU, account:</em> free. No account is needed for the DCC skills, though other skills in the same repo sell the paid Scenario MCP. As written it drives Blender 5.2. The SDF part (<code>Clay</code>, <code>smin</code>/<code>smax</code>, <code>sd_round_box</code>, <code>sd_halfspace</code>, the metrics) is plain numpy and ports directly to our JS.</li>
+<li><em>How it fits us:</em> as source material for our own skill, not as a tool to run. The key content, verified in the raw files:
+<ul>
+<li>Planes are stated, not found. Each plane gets a point and a normal, and a primitive is clipped with <code>smax(prim, halfspace, blend)</code>.</li>
+<li>The jaw is a <code>sd_round_box</code> set <em>behind</em> the mouth mound. It is clipped by side, jawline, underside and ramus planes through the jaw corner (gonion), and blended at 0.15 × head height so it fills the cheek. Measured failures from building it: with its front ahead of the mouth it reads as "a mask"; a tall block leaves "a panel edge"; a small blend leaves "a hollow band under the cheekbone"; a box cheekbone reads as "a bar".</li>
+<li>The cheekbone is an ellipsoid along the ear-to-cheek line, rotated about −23°, with its own lower plane.</li>
+<li>The eyes come first; the lids are thin shells around them. Sockets are 1.1 × the eyeball, lids 0.012 H thick, the upper lid margin about 19 to 21° (14° reads sleepy, 20 to 27° stares under a heavy brow).</li>
+<li>Hair is clumps starting at the hairline, on a thin base, with the hairline drawn as a function of angle around the head.</li>
+<li>Landmark ratios: eye line at 0.5 H; nose bottom halfway from brow to chin; lips parting a third of the way from nose to chin; ears from nose base to brow; head width H/1.5; mouth corners under the eye centres; jaw width 0.90 to 1.00 × cheekbone width.</li>
+<li>"Smoothing is not how seams fuse; the blend is." (Nine smoothing passes widened a seam 4 %.)</li>
+<li>Common mistakes in its own words: "rounded_box or ellipsoid jaw, heavy smoothing → balloon lower face: cheek, jaw, jowl one sphere". "Plane cuts on a wrong mass → gem facet with a rim". Narrow grooves "read as scratches, wide and shallow as lumps". "Uniform hair offset, or clumps on a thick cap → helmet ledge, beanie with worms".</li>
+<li>Checks:
+<ul>
+<li><code>form_report</code>/<code>lower_face_report</code> fits one sphere and one plane to the lower face, seen from profile and three-quarter. It flags a "ball" when the sphere's RMS is under 10 % of the region's size and under half the plane's RMS.</li>
+<li><code>profile_rhythm</code> looks for chin out, in, lips out, in, nose out.</li>
+<li>A ray-grid probe looks for holes in the silhouette.</li>
+<li>The critique rubric sets the order of looking: silhouette, then big planes flat-shaded, then from below and above, then a long lens, then lines, then thumbnail size. Rules include "a metric that passes while the render looks wrong means the render wins" and "name ONE weakest link, fix it, re-render".</li>
+</ul></li>
+</ul></li>
+<li><em>Evidence on faces:</em> only internal. Three fresh agents sculpted the same stylised bust with and without the skill (critique.md, 24 Sep 2026). They report: "the jaw-block recipe kept the lower face from reading as a ball (sphere rms 0.15 to 0.26 vs 0.057 to 0.082 for known balloons)". They also admit an earlier run "passed the silhouette sheet and profile_rhythm while its cheek, jaw and jowl read as ONE sphere in shading". <strong>No renders are published anywhere, so I could not see a single result.</strong></li>
+<li><em>What could go wrong:</em>
+<ul>
+<li>It is written for one stylised male bust. Women, children, elders and aliens need their own design tables.</li>
+<li>It uses Blender's Z-up axes; ours is Y-up.</li>
+<li>An agent reading it may try to <code>import bpy</code>.</li>
+<li>Its last stage, the surface finish, needs live Blender brushes, which we will never have. We stop at its stage 3 and do fine detail in paint.</li>
+</ul></li>
+</ul>
+<p><strong>img2threejs</strong> (rank 1, for hair and gates)</p>
+<ul>
+<li><em>What and who:</em> a skill that rebuilds an object from a reference image as code-only procedural three.js (a TypeScript <code>THREE.Group</code> factory, no assets), in staged passes that each must pass a check before the next. Maintained by GitHub user hoainho; <code>hoainho/img2threejs</code> now redirects to the org.</li>
+<li><em>Link:</em> <a href="https://github.com/img2threejs/img2threejs" rel="noopener">https://github.com/img2threejs/img2threejs</a> (about 21.6k stars).</li>
+<li><em>Licence (verified):</em> LICENSE "Apache License Version 2.0"; SKILL.md <code>license: Apache-2.0</code>. Public hobby site: yes, with notice if text or code is copied.</li>
+<li><em>Cost, GPU, account:</em> free. Its core is Python stdlib plus Node. Optional add-ons call outside models and services (SAM2, MediaPipe, TRELLIS, Tripo), which we would not use.</li>
+<li><em>What is useful to us (verified):</em> <code>grimoire/character/stylized_hair_threejs.md</code>. Hair is built as locks:
+<ul>
+<li>Each lock is a custom <code>BufferGeometry</code> ribbon loft along a <code>CatmullRomCurve3</code>, with parallel-transport frames so it does not flip.</li>
+<li>Width tapers 1.00 → 0.80 → 0.40 → 0.03 and thickness 1.00 → 0.75 → 0.35 → 0.08, with roots embedded in a scalp mass.</li>
+<li>Build order: scalp, then rear locks, then crown locks, then sides and bangs.</li>
+<li>Review: one fixed view plus two orbits, and a side-by-side with the reference scored per feature (crown silhouette, bang-to-eye clearance, root continuity, tip taper).</li>
+</ul>
+<p>The first subagent also found it warning that silhouette scores are blind to faces: "a model with its face deleted scored the same 0.8803 as the finished face". I did not re-read that line myself.</p></li>
+<li><em>Evidence on faces:</em> weak. Its "head construction" file is a dragon-like creature. Its gallery is hard-surface. An independent hands-on review (ai-bot.cn) tested only objects and found soft forms degrade into "a rounded barrel". The hair file calls itself "an explicitly labelled local distillation" of research it could not finish reading back.</li>
+<li><em>What could go wrong:</em>
+<ul>
+<li>Its examples are likenesses of named game characters, the opposite of our no-likeness rule.</li>
+<li>Its optional "GLB character pipeline" re-encodes a supplied mesh as code ("decoding reproduces the measured surface itself, essentially unchanged"). Licence-wise that is vendoring the mesh under another name.</li>
+<li>Its screenshot step needs WebGL in headless Chromium. Without a GPU that means SwiftShader, which recent Chromium enables only with <code>--enable-unsafe-swiftshader</code>.</li>
+</ul></li>
+</ul>
+<p><strong>Everything else in skill land does nothing for faces</strong> (from the first subagent's survey):</p>
+<ul>
+<li>Anthropic's 19 skills and the official plugin marketplace have nothing for 3D apart from Unity and Unreal plugins that need their editors.</li>
+<li>cloudai-x/threejs-skills (MIT) and scottstts graphics skills (MIT) are API references, with nothing on heads.</li>
+<li>arjun988/blender-skills (MIT) is generic "character-artist" prose that needs blender-mcp with a GUI.</li>
+<li>MiniMax <code>shader-dev</code> and <code>shader-sdf</code> are raymarching operator libraries.</li>
+<li>Several "3d-modeling" registry entries are empty pointers.</li>
+</ul>
+<h3 id="4-2-parametric-base-heads-all-need-nick-s-decision-on-vendored-geometry">4.2 Parametric base heads (all need Nick's decision on vendored geometry)</h3>
+<p><strong>MakeHuman <code>hm08</code> base mesh plus targets</strong> (rank 2)</p>
+<ul>
+<li><em>Who:</em> the MakeHuman community (legal contact Data Collection AB). Original work by Manuel Bastioni, transferred in 2016 and released as CC0 in Sept 2020.</li>
+<li><em>Links:</em> <a href="https://github.com/makehumancommunity/makehuman" rel="noopener">https://github.com/makehumancommunity/makehuman</a> (<code>makehuman/data/3dobjs/base.obj</code>, <code>makehuman/data/targets/…</code>); licence page <a href="https://static.makehumancommunity.org/about/license.html" rel="noopener">https://static.makehumancommunity.org/about/license.html</a>.</li>
+<li><em>Licence (verified in the repo):</em>
+<ul>
+<li>LICENSE.md: "These assets have been released under CC0 1.0 Universal". The assets are "The base mesh and proxies; Targets and modifiers; Textures; Clothes (any MHCLO-based asset); Poses and expressions".</li>
+<li>On output, the project "makes no claim whatsoever over output such as: Exports to files …".</li>
+<li>Every target file says "This asset was explicitly released as CC0 in september 2020".</li>
+<li>The licence page adds: "You do not need to pay anything, include any copyright notices nor give attribution."</li>
+<li>The <em>code</em> (MakeHuman, makehuman.js, makehuman-js) is AGPL-3.0 and must not be copied.</li>
+<li>Public hobby site: yes.</li>
+</ul></li>
+<li><em>Cost, GPU, account:</em> none.</li>
+<li><em>Format (verified):</em> a <code>.target</code> file is a comment header, then one line per moved vertex, <code>index dx dy dz</code> (e.g. <code>109 0 -.008 0</code>).
+<ul>
+<li>13,380 body vertices (19,158 with helper geometry); <code>base.obj</code> is about 1.75 MB.</li>
+<li>Face folders: nose 42 targets, mouth 44, ears 44, eyes 68, head 27 (shape presets oval, round, square, triangular and so on), plus cheek, chin, eyebrows and forehead.</li>
+<li>A nose target is about 400 lines and 8 KB.</li>
+<li>Loading: a few dozen lines of our own JS fill <code>geometry.morphAttributes.position</code> (or glTF sparse accessors via glTF-Transform, MIT). Age, gender and weight need MakeHuman's macro blending. Naver's Anny (code Apache-2.0, data CC0; <a href="https://github.com/naver/anny" rel="noopener">https://github.com/naver/anny</a>) reimplements that under a permissive licence, so we can follow it instead of the AGPL code.</li>
+</ul></li>
+<li><em>Fit:</em> the best match to "an agent drives it with numbers". Slider names say what they do, values run 0 to 1 or −1 to 1, and the mesh is a few thousand vertices once cropped to the head.
+<ul>
+<li>Species features: tendrils and spurs become separate SDF-meshed parts anchored to known vertex indices, so they follow the morphs. Ridges come from pushing base vertices outward where a feature SDF says.</li>
+<li>Do <em>not</em> turn the whole head back into an SDF and re-mesh it. That brings the softness back.</li>
+</ul></li>
+<li><em>Evidence on faces:</em> MakeHuman faces are clean, anatomically correct, a little generic and "plastic". The CC0 "Animal 01" pack (faun face, pig nose, donkey and horse heads, cat ears) shows the topology takes large non-human deformation. I could not open the image galleries; the CG Channel MPFB 2 article was blocked to our fetcher. A static demo of the whole pipeline running in a browser exists: <a href="https://markandre13.github.io/makehuman.js/" rel="noopener">https://markandre13.github.io/makehuman.js/</a> (AGPL code, look only).</li>
+<li><em>What could go wrong:</em>
+<ul>
+<li>A realistic bias that looks uncanny if pushed half-way to alien.</li>
+<li>Helper geometry (genital, tights, skirt) must be stripped.</li>
+<li>Community asset packs are not all CC0: Animal 02 to 04, Hair 02/03 and eye materials 03 are CC-BY, and some CC-BY animal heads copy trademarked characters.</li>
+<li>Pre-2020 pages and mirrors still say AGPL.</li>
+</ul></li>
+</ul>
+<p><strong>Google GNM Head v3</strong> (rank 3)</p>
+<ul>
+<li><em>Who:</em> Google, with authors from Google and others listed on the technical report. Released in 2026; technical report arXiv 2607.23687 (28 Jul 2026).</li>
+<li><em>Links:</em> <a href="https://github.com/google/GNM" rel="noopener">https://github.com/google/GNM</a> (about 1.6k stars); weights on Hugging Face (google/gnm-v3) and Kaggle; browser demo <a href="https://xrblocks.github.io/docs/samples/GNM-Head/" rel="noopener">https://xrblocks.github.io/docs/samples/GNM-Head/</a> with source at <a href="https://github.com/google/xrblocks/tree/main/samples/avatar_lab/gnm" rel="noopener">https://github.com/google/xrblocks/tree/main/samples/avatar_lab/gnm</a>.</li>
+<li><em>Licence (verified):</em> GitHub licence field Apache-2.0. README: "The ecosystem is released under the Apache 2.0 permissive license suitable for both non-commercial and commercial applications." The second subagent quoted the model card: "This project and model weights are licensed under the Apache License, Version 2.0." Public hobby site: yes. We must ship the licence text and a notice that we modified it. xrblocks is Apache-2.0 too.</li>
+<li><em>Cost, GPU, account:</em> free, with no gate seen. The NumPy backend needs no GPU.</li>
+<li><em>Model (verified README):</em> 17,821 vertices including eyeballs, teeth and tongue. Identity has 253 components (170 head, 3 eyeball, 80 teeth) and expression 383. It ships an <code>IdentitySampler</code> (sampled by gender and ethnicity) and an <code>ExpressionSampler</code> (happy, surprise …).</li>
+<li><em>Fit:</em>
+<ul>
+<li>Google's xrblocks sample already ships a "dependency-free (typed arrays only) JavaScript implementation" (<code>GNMModel.js</code>) on a dynamic <code>THREE.BufferGeometry</code>, with sliders for the statistical components and semantic tabs.</li>
+<li>Its full container <code>gnm_head_web.bin</code> is 35 MB with int8 bases. We would bake only the average head plus a few dozen components, which comes to a few MB.</li>
+<li>The weak point for agents: identity components are statistical (PCA), not named, so "longer nose" has no slider. An agent would need a small mapping layer, built offline by measuring landmarks across samples.</li>
+</ul></li>
+<li><em>Evidence on faces:</em> built from scans, the most realistic permissively licensed head found. The teaser GIFs and the live demo exist; I did not view them.</li>
+<li><em>What could go wrong:</em>
+<ul>
+<li>It is photoreal. Next to painted, stylised clothes and SDF tendrils it may look uncanny.</li>
+<li>Pushing components beyond about ±3 breaks it.</li>
+<li>Third-party add-ons carry other licences ("Facepoints" weights are CC BY-NC 4.0).</li>
+<li>Its webcam fitting uses MediaPipe, an ML model we would not need and should not run.</li>
+</ul></li>
+</ul>
+<p><strong>ICT-FaceKit light model</strong> (rank 4)</p>
+<ul>
+<li><em>Who:</em> USC Institute for Creative Technologies.</li>
+<li><em>Link:</em> <a href="https://github.com/USC-ICT/ICT-FaceKit" rel="noopener">https://github.com/USC-ICT/ICT-FaceKit</a></li>
+<li><em>Licence (verified):</em> GitHub licence field MIT; the second subagent read LICENSE as "Copyright (c) 2020 USC Institute for Creative Technologies". Only the light model is MIT; the full model is "under a different USC specific license", not available.</li>
+<li><em>Model:</em> 26,719 vertices (face 9,409), 100 identity modes from scans and 53 ARKit-named expressions, all plain OBJs.</li>
+<li><em>Fit:</em> the same as GNM but older and heavier. A fallback.</li>
+</ul>
+<p><strong>Licence traps (do not use):</strong></p>
+<ul>
+<li>FLAME: only <code>flame2023_Open</code> is CC-BY-4.0, with no-porn and no-defamation clauses. All other versions are research-only, the textures are BY-NC-SA, and downloading needs an MPI account.</li>
+<li>SMPL, SMPL-X, STAR and SKEL: "may not be … made available in any form to any third party". SMPL-Body is CC-BY but has no shape space.</li>
+<li>Basel Face Model: internal research only.</li>
+<li>MB-Lab: AGPL passes on to every generated character.</li>
+<li>VRoid: forbids apps that generate models from its meshes, which is what a creator is.</li>
+<li>Reallusion, Daz, Mixamo and MetaHuman: their EULAs forbid shipping extractable geometry, which a static page always does.</li>
+<li>Ready Player Me: shut down on 31 Jan 2026.</li>
+<li>Blender Studio Human Base Meshes: press says CC0, but blender.org blocked our fetcher (unverified). They ship only as <code>.blend</code> files, so getting them out needs Blender.</li>
+</ul>
+<h3 id="4-3-mcp-servers-and-tool-bridges">4.3 MCP servers and tool bridges</h3>
+<ul>
+<li><strong>threejs-devtools-mcp</strong>, <a href="https://github.com/DmitriyGolub/threejs-devtools-mcp" rel="noopener">https://github.com/DmitriyGolub/threejs-devtools-mcp</a>
+<ul>
+<li>Licence: MIT (GitHub licence field, verified).</li>
+<li>What it does: injects a bridge into a running three.js page in a Chrome it launches, possibly headless. It offers scene tree, screenshots, wireframes, bounding boxes and live tweaks returned as code diffs.</li>
+<li>Fit: the only bridge built for our stack. It helps agents look at their work from many angles; it teaches nothing about form. It has the same SwiftShader/WebGL question in a container with no GPU.</li>
+<li>Our engineers already render contact sheets with Playwright, so this is a convenience, not a capability.</li>
+</ul></li>
+<li><strong>Blender Lab MCP</strong>, the official server that Anthropic's April 2026 Blender connector is based on.
+<ul>
+<li>Licence: reported as GPL-3.0-or-later by third parties; unverified, because blender.org blocked our fetcher.</li>
+<li>Partly headless: it has <code>*_for_cli</code> tools that run in a background Blender. In coverage it "drives Blender, it doesn't model for you".</li>
+<li>Fit: Blender in user space could be a design-time laboratory (OpenVDB remesh, CPU renders), but nothing it makes can ship, and it is a large install.</li>
+</ul></li>
+<li><strong>ahujasid blender-mcp</strong> ("MCP for Blender").
+<ul>
+<li>Licence: MIT. About 35k stars.</li>
+<li>It needs a running Blender GUI, sends anonymous telemetry by default, and has four 2026 CVEs reported against it.</li>
+<li>Its character story is "call Meshy/Rodin/Tripo".</li>
+<li>Not for us.</li>
+</ul></li>
+<li><strong>Meshy, Tripo, Rodin and Hunyuan3D MCPs:</strong> they need accounts and money (or a local GPU) and return meshes, not code. See 4.4.</li>
+<li><strong>Maya, Houdini, ZBrush, Unity, Unreal and Godot MCPs:</strong> desktop apps, nothing for faces.</li>
+</ul>
+<h3 id="4-4-text-to-3d-and-image-to-3d">4.4 Text-to-3D and image-to-3D</h3>
+<p><strong>The verdict: none suits a slider-driven creator, and none has been shown to be good at stylised or alien faces.</strong> The points from the third subagent's survey:</p>
+<ul>
+<li><strong>No test of stylised or alien faces exists.</strong> The one side-by-side face test found used a <em>realistic</em> portrait in seven tools (Vitalify Asia blog, 10 Jul 2026):
+<ul>
+<li>Tripo P1: "impressive accuracy";</li>
+<li>Meshy 6: eye, nose and lip detail "softened";</li>
+<li>Rodin 2.5: "Soft facial details";</li>
+<li>TRELLIS 2: "Limited facial detail";</li>
+<li>Hunyuan3D: "Softer facial details".</li>
+</ul>
+<p>Meshy's own benchmark admits "Thin structures … remain weak points", which is bad news for tendrils and spurs. Much of the apparent detail lives in the texture, not the geometry. The public arenas (3D Arena, Top 3D AI) have no character or face category.</p></li>
+<li><strong>Structural misfit:</strong>
+<ul>
+<li>Every generation is a new mesh with an unrelated vertex layout (dense triangles or automatic quads), so outputs cannot serve as morph targets of each other. A slider would mean many baked meshes and nothing in between.</li>
+<li>Lighting is often baked into the textures, which fights our skin-colour sliders.</li>
+<li>Default outputs (up to about 1M polygons, 4K textures) are too heavy for a static page, and reducing them loses the face first.</li>
+<li>All of them need an account, mostly a paid plan, and send prompts or images to a third party.</li>
+<li>Our species closely resemble franchise characters, and every terms page read forbids infringing inputs.</li>
+</ul></li>
+<li><strong>The candidates if Nick ever wants a generated <em>reference</em> sculpt per species:</strong>
+<div class="tbl-wrap"><table class="rt">
+<thead><tr><th scope="col">Candidate</th><th scope="col">Maker and link</th><th scope="col">Output licence</th><th scope="col">Cost</th><th scope="col">Needs</th><th scope="col">Face evidence</th></tr></thead>
+<tbody>
+<tr><td data-label="Candidate">Tripo v3.1 / P1</td><td data-label="Maker and link">VAST, <a href="https://tripo3d.ai" rel="noopener">tripo3d.ai</a></td><td data-label="Output licence"><strong>Unresolved</strong>: Tripo's blog says free-tier output is CC BY 4.0, but a quoted Terms §5.2.1 says "Tripo retains all rights … generated by Free Users". The terms page was blocked to us. Paid: owned by the user.</td><td data-label="Cost">from about $20/mo</td><td data-label="Needs">account</td><td data-label="Face evidence">best in the one realistic test; tops the arenas</td></tr>
+<tr><td data-label="Candidate">Meshy 7.1</td><td data-label="Maker and link">Meshy Inc., <a href="https://meshy.ai" rel="noopener">meshy.ai</a></td><td data-label="Output licence">Free: "Meshy owns" the output, and you get CC BY 4.0 with credit; community posts become CC0; Meshy may train on inputs unless you opt out. Paid: yours. API needs the Pro plan.</td><td data-label="Cost">$20/mo Pro</td><td data-label="Needs">account</td><td data-label="Face evidence">faces "softened"</td></tr>
+<tr><td data-label="Candidate">Rodin Gen-2.5</td><td data-label="Maker and link">Deemos, <a href="https://hyper3d.ai" rel="noopener">hyper3d.ai</a></td><td data-label="Output licence">No CC; rights "depending on your subscription plan"</td><td data-label="Cost">official API needs the $120/mo plan; about $0.40/generation via the fal.ai reseller</td><td data-label="Needs">account</td><td data-label="Face evidence">"soft facial details"</td></tr>
+<tr><td data-label="Candidate">TRELLIS.2</td><td data-label="Maker and link">Microsoft, <a href="https://github.com/microsoft/TRELLIS.2" rel="noopener">github.com/microsoft/TRELLIS.2</a></td><td data-label="Output licence"><strong>MIT</strong> (GitHub licence field verified); no output restriction</td><td data-label="Cost">free weights, but needs a 24 GB GPU, so hosted only (about $0.25–0.35/generation)</td><td data-label="Needs">GPU or account</td><td data-label="Face evidence">"limited facial detail"</td></tr>
+<tr><td data-label="Candidate">Hunyuan3D 2.1 (open) / 3.x (hosted)</td><td data-label="Maker and link">Tencent</td><td data-label="Output licence">Licence "does not apply" in the EU, UK and South Korea (§1(l) Territory); "Tencent claims no rights in Outputs"</td><td data-label="Cost">2.1 weights free with a GPU; hosted about $0.38/model</td><td data-label="Needs">GPU or account</td><td data-label="Face evidence">"softer facial details"</td></tr>
+<tr><td data-label="Candidate">Deemos ChatAvatar</td><td data-label="Maker and link">Deemos</td><td data-label="Output licence">default "for your personal entertainment use" only; per-asset licence for more</td><td data-label="Cost">$120/mo plan includes it</td><td data-label="Needs">account</td><td data-label="Face evidence">the only service found whose heads share one mesh layout and have expression blendshapes; realistic humans only</td></tr>
+</tbody></table></div></li>
+<li><strong>Not worth it for faces:</strong> Stable Fast 3D / SPAR3D, Step1X-3D (Apache-2.0, GPU only), Seed3D, CSM (free tier CC BY 4.0), Kaedim (from $400/mo), and Hitem3D/Sparc3D Portrait (realistic heads with millions of polygons). Luma Genie closed on 1 Jan 2026.</li>
+<li><strong>Research worth copying as an idea, not a tool:</strong> HeadEvolver (3DV 2025, arXiv 2403.09326) turns text into a stylised head <em>by deforming a template and keeping its blendshapes</em>; its examples include an "Octopus Alien" and a "Goblin". SOAP turns a portrait in any style into a rigged FLAME-topology head. RegHead registers blendshapes onto non-human heads. All need GPUs and carry research or non-commercial licences. All of them point to the same design as section 4.2: <strong>one fixed base topology with morphs, onto which any reference shape is wrapped.</strong></li>
+</ul>
+</section>
+<section id="s5">
+<h2><span class="n">05</span>Method: what published work and practitioners say</h2>
+<ul>
+<li><strong>No published agent system shows a good face built from code.</strong>
+<ul>
+<li>LL3M (U Chicago, arXiv 2508.08228) writes Blender code with a 5-view critic. Its one cartoon humanoid needed "several user follow-up prompts to correct visual errors that the VLM missed", and it states "VLMs may still struggle to accurately identify spatial artifacts".</li>
+<li>3DCodeBench (Google DeepMind/USC, arXiv 2606.01057) has no human category. It describes Claude Opus 4.7's output as "simplistic, floating primitives". Retry loops fixed errors (executability 0.702 → 0.974) but "shape metrics changed very little".</li>
+<li>Procedura (Nanjing U, arXiv 2608.26238) found its multi-view feedback worth less than planning: removing feedback cost 0.009 on a 0.828 score, removing planning 0.037. It states "organic, freeform surfaces are expressed less naturally".</li>
+<li>Inigo Quilez, the best-known SDF artist, said of his Selfie Girl face that it was hard to make "by just typing formulas" and that he "only added detail that would be seen from this camera angle". That quote comes via a search summary; his site refused our fetcher.</li>
+</ul></li>
+<li><strong>First-hand reports match ours</strong>. Claude Code with blender-mcp on an anime girl produced "98 spheres and cylinders lined up". Opus 5.5 with headless Blender on a mecha stalled at "block-out stage" and declared itself done on a front-silhouette score while it "looked wrong at an angle". The one good agent-assisted face came from Tripo, not the agent, and still needed head-only regeneration and hand retouching.</li>
+<li><strong>What practitioners say makes faces read:</strong> block the bony landmarks and big planes first; check proportions against a reference at low resolution; only then smooth (Gnomon's "Sculpting the Planes of the Head", Blender Studio's stylised character workflow, Polycount critiques). The Scenario skill is that advice turned into numbers.</li>
+<li><strong>What this means for our critique loop:</strong>
+<ol>
+<li>Silhouette scores are blind to faces (img2threejs; the mecha write-up).</li>
+<li>A vision model alone misses spatial errors (LL3M).</li>
+<li>So the loop needs fixed multi-angle renders with flat shading and a long lens, <em>plus</em> numbers a face can fail on: the lower-face ball test, profile rhythm, landmark ratios against a table, and a check that detail is at least 3 to 4 cells across.</li>
+</ol></li>
+<li><strong>Starting from a neutral base and deforming it is how every game character creator works.</strong> With a base head, species become landmark moves through a radial-basis (thin-plate spline) warp, a few dozen lines of maths, plus add-on parts. Without one, the same idea applies to our SDF head: keep a fixed planes-first neutral and let species move landmarks and planes, not stack blobs.</li>
+</ul>
+</section>
+<section id="s6">
+<h2><span class="n">06</span>The first experiments (what to do)</h2>
+<p class="ran">Both experiments were run on 18 Nov 2026. What came of them is at the top, in <a href="#what-we-did">What we did with it</a>.</p>
+<p><strong>Experiment 1, no policy change: a planes-first Pureblood head.</strong> One engineer, in the existing humanoid creator:</p>
+<ol>
+<li>Port the Scenario recipe (procedures.md P2, P5, P16) into a new neutral head field. Use our <code>plane</code>, <code>roundBox</code> and <code>sintersect</code> for:
+<ul>
+<li>the cranium with flat sides and a front taper;</li>
+<li>a frontal block around the eyes;</li>
+<li>a jaw block behind the mouth mound, clipped through the gonion, blended at 0.15 H;</li>
+<li>a square chin block, a mouth mound, and cheekbone ellipsoids with lower planes;</li>
+<li>eyeballs first, then shell lids.</li>
+</ul>
+<p>H = 0.23 m, Y-up.</p></li>
+<li>Rebuild the Pureblood features as raised forms, not cuts:
+<ul>
+<li>ridges as thin blended crests;</li>
+<li>the brow as a shelf block clipped by planes;</li>
+<li>tendrils as tapered lofts with a swollen root.</li>
+</ul></li>
+<li>Rebuild the hair as ribbon locks per the img2threejs hair recipe.</li>
+<li>Mesh the face region finer, toward head height ÷ 130.</li>
+<li>Port <code>form_report</code>/<code>lower_face_report</code> and <code>profile_rhythm</code> to JS and run them on our surface-nets vertices.</li>
+<li>Make one review sheet per head: black silhouettes front, profile, top and three-quarter; flat-shaded front, profile and three-quarter at a long lens; one view from below; one thumbnail.</li>
+<li>Produce the same sheet for the current head. Put the old and new sheets side by side with the numbers, and show them to Nick and the friend who spotted the gap.</li>
+</ol>
+<p>The test is whether the new head reads as sculpted bone and flesh rather than melted. Success looks like the lower-face ball flag off where it is on today, the profile rhythm present, and people preferring it. If it works, write the method up as our own skill (<code>.claude</code> skills in Clawcius), crediting Scenario (MIT) and img2threejs (Apache-2.0), and give it to every engineer doing characters.</p>
+<p><strong>Experiment 2, only if Nick is open to vendored CC0 geometry: a MakeHuman head bake-off.</strong> This needs the coordinator's permission to fetch about 2 MB of CC0 text files from GitHub into a scratch directory (that is a download, so it is your call):</p>
+<ol>
+<li>Write our own small Node loader: parse <code>base.obj</code>, keep the head and neck, and apply a dozen named face targets and two or three head-shape presets.</li>
+<li>Render it with the exact review sheet from Experiment 1.</li>
+<li>Add the Pureblood features as anchored SDF parts plus vertex push for ridges.</li>
+<li>Put it beside Experiment 1's head.</li>
+</ol>
+<p>The picture decides whether the policy change is worth it. GNM can be added to the same bake-off with Google's JS port as the reference (Apache notice). Start with MakeHuman, because its named sliders suit agents and its licence asks nothing.</p>
+</section>
+<section id="s7">
+<h2><span class="n">07</span>Hype and unverified claims (be careful quoting these)</h2>
+<ul>
+<li>The Scenario skill's results: internal only, no renders published.</li>
+<li>img2threejs's 21.6k stars and its character demos: no face results examined, and the independent review covered objects only.</li>
+<li>Vendor posts by 3D AI Studio, Meshy, StraySpark and MindStudio: their <em>negative</em> verdicts on primitive-built characters agree with the independent write-ups; their claims about their own products are marketing.</li>
+<li>Blender Lab MCP's licence and the Blender Human Base Meshes' CC0 label: third-party claims only, because blender.org blocked our fetcher.</li>
+<li>The Quilez quote: via a search summary, not read on his page.</li>
+<li>No benchmark of agent-written faces exists anywhere I or the subagents could find.</li>
+</ul>
+</section>
+  </main>
+</body>
+</html>
