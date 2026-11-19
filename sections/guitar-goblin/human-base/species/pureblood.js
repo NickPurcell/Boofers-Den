@@ -11,8 +11,11 @@
 // - jewellery in four metals: tendril cuffs and rings, spur rings, piercings, a chain, a circlet.
 //
 // const pb = pureblood(fig, base); fig.features = pb;
-// pb.set({ on, folds, ridges: 0..1, spurs, tendrils, tlength, jewel: 'cuffs.rings...', metal }) before fig.update();
-// pb.anchors() after it. The option lists are PUREBLOOD.options (keys as on the old page).
+// pb.set({ on, folds, ridges: 0..1, spurs, tendrils, tlength, jewel: 'cuffs.rings...', metal, worn, wornKey }) before
+// fig.update(), and pb.anchors() after it. The option lists are PUREBLOOD.options (keys as on the old page).
+// worn(x, y, z) is the signed distance in metres to the outside of what is worn (positive outside); the tendrils drape over
+// it and over the body, and a new wornKey re-drapes. Listen for fig's 'redraw' event: a re-drape made once the sliders
+// rest lands after update().
 import * as THREE from 'three';
 
 export const PUREBLOOD = {
@@ -86,6 +89,60 @@ function path(p, n, sweep, len, steps, bend, wob, seed, sink = 0.003, dir0 = nul
 }
 const geom = (tb, extra = {}) => { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(tb.P, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(tb.Nn, 3)); for (const [k, [a, n]] of Object.entries(extra)) g.setAttribute(k, new THREE.BufferAttribute(a, n)); g.setIndex(tb.I); g.computeVertexNormals(); return g; };
 
+/* ---------------- draping: tendrils that lie over what is worn ---------------- */
+// The body near the neck and chest as a signed distance, from the posed base mesh (metres): the distance along the
+// nearest vertex's normal. Good close to the surface, which is where it is asked.
+function bodyCollider(fig, y0, y1) {
+  const B = fig.B, P = fig.p0, Nn = fig.n0, cell = 0.02, grid = new Map(), K = (a, b, c) => ((a + 512) * 1024 + (b + 512)) * 1024 + (c + 512);
+  for (let i = 0; i < B.N; i++) { if (!B.inBody[i] || B.armW[i] > 60) continue; const y = P[i * 3 + 1]; if (y < y0 || y > y1) continue; const k = K(Math.floor(P[i * 3] / cell), Math.floor(y / cell), Math.floor(P[i * 3 + 2] / cell)); let a = grid.get(k); if (!a) grid.set(k, (a = [])); a.push(i); }
+  return (x, y, z) => {
+    const cx = Math.floor(x / cell), cy = Math.floor(y / cell), cz = Math.floor(z / cell); let best = -1, bd = Infinity;
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) { const arr = grid.get(K(cx + a, cy + b, cz + c)); if (!arr) continue; for (const i of arr) { const dx = x - P[i * 3], dy = y - P[i * 3 + 1], dz = z - P[i * 3 + 2], d2 = dx * dx + dy * dy + dz * dz; if (d2 < bd) { bd = d2; best = i; } } }
+    if (best < 0) return 1;
+    return (x - P[best * 3]) * Nn[best * 3] + (y - P[best * 3 + 1]) * Nn[best * 3 + 1] + (z - P[best * 3 + 2]) * Nn[best * 3 + 2];
+  };
+}
+// Hang a chain of points from pts[0]: gravity, its own length kept (each link pulled after the one before), a little
+// stiffness, and kept out of the body and out of what is worn by its radius. A point caught in the worn layer always
+// leaves by its outer face, away from the body, so a tendril lies over a collar's rim and never threads under it. A
+// tendril whose root is already tucked under the garment (between it and the body) hangs inside it instead, slimmer,
+// hidden. `free` points nearest the root ignore the body (the root is sunk into the jaw on purpose). Returns
+// 'free' (nothing in the way: the free shape stands), 'draped' or 'tucked'.
+function drape(pts, radii, worn, body, free) {
+  const n = pts.length, seg = [], e = 0.0015, mg = 0.0018;
+  for (let j = 1; j < n; j++) seg.push(Math.hypot(pts[j][0] - pts[j - 1][0], pts[j][1] - pts[j - 1][1], pts[j][2] - pts[j - 1][2]));
+  const grad = (f, p) => { const gx = f(p[0] + e, p[1], p[2]) - f(p[0] - e, p[1], p[2]), gy = f(p[0], p[1] + e, p[2]) - f(p[0], p[1] - e, p[2]), gz = f(p[0], p[1], p[2] + e) - f(p[0], p[1], p[2] - e), l = Math.hypot(gx, gy, gz) || 1; return [gx / l, gy / l, gz / l]; };
+  const root = pts[0];
+  // tucked: the root is outside the material but the garment lies between it and the open air
+  let tucked = false;
+  if (worn && worn(...root) > 0) { const g = grad(body, root); for (let k = 1; k <= 16 && !tucked; k++) if (worn(root[0] + g[0] * 0.0025 * k, root[1] + g[1] * 0.0025 * k, root[2] + g[2] * 0.0025 * k) < 0) tucked = true; }
+  const W = tucked ? null : worn;
+  if (tucked) for (let j = 0; j < n; j++) radii[j] *= 0.55;
+  const push = (j) => {
+    const p = pts[j], m = radii[j] + mg;
+    if (W) {
+      const dw = W(p[0], p[1], p[2]) - m;
+      if (dw < 0) {
+        const gw = grad(W, p), gb = grad(body, p);
+        if (gw[0] * gb[0] + gw[1] * gb[1] + gw[2] * gb[2] > -0.2) { p[0] -= gw[0] * dw; p[1] -= gw[1] * dw; p[2] -= gw[2] * dw; }
+        else for (let k = 0; k < 30 && W(p[0], p[1], p[2]) < m; k++) { p[0] += gb[0] * 0.0025; p[1] += gb[1] * 0.0025; p[2] += gb[2] * 0.0025; }   // out through the outer face
+      }
+    }
+    if (j >= free) { const db = body(p[0], p[1], p[2]) - m; if (db < 0) { const gb = grad(body, p); p[0] -= gb[0] * db; p[1] -= gb[1] * db; p[2] -= gb[2] * db; } }
+  };
+  const blocked = (j) => { const p = pts[j], m = radii[j] + mg; return (W && W(p[0], p[1], p[2]) < m) || (j >= free && body(p[0], p[1], p[2]) < m); };
+  let hit = false; for (let j = 1; j < n && !hit; j++) hit = blocked(j);
+  if (!hit) return tucked ? 'tucked' : 'free';
+  const link = () => { for (let j = 1; j < n; j++) { const a = pts[j - 1], p = pts[j], dx = p[0] - a[0], dy = p[1] - a[1], dz = p[2] - a[2], l = Math.hypot(dx, dy, dz) || 1, k = seg[j - 1] / l; p[0] = a[0] + dx * k; p[1] = a[1] + dy * k; p[2] = a[2] + dz * k; push(j); } };
+  link();
+  for (let it = 0; it < 60; it++) {
+    for (let j = 1; j < n; j++) pts[j][1] -= 0.001;   // gravity
+    for (let j = 1; j < n - 1; j++) for (let q = 0; q < 3; q++) pts[j][q] += 0.35 * ((pts[j - 1][q] + pts[j + 1][q]) / 2 - pts[j][q]);   // stiffness
+    link();
+  }
+  return tucked ? 'tucked' : 'draped';
+}
+
 export function pureblood(fig, base) {
   const B = base, L = B.marks.L, R = B.rest, { d, ey, ez } = B.marks, side = B.marks.side, at = (i) => [R[i * 3], R[i * 3 + 1], R[i * 3 + 2]];
   const lerp = (a, b, t) => a.map((v, k) => v + (b[k] - v) * t);
@@ -131,6 +188,11 @@ export function pureblood(fig, base) {
   const spurRoot = {};
   for (const S of ['L', 'R']) { spurRoot['brow' + S] = L['browOuter' + S]; spurRoot['cheek' + S] = nearest(lerp(at(L['cheek' + S]), at(L['earFront' + S]), 0.62)); spurRoot['jaw' + S] = L['jaw' + S]; }
   let built = { tendrils: [], spurs: {} };
+  // draping state: what is worn (a signed distance in metres, or null), the key of the last solve, the cached shapes
+  let wornFn = null, wornKey = '', solvedKey = null, solveNow = false, timer = 0, bodyC = null;
+  const drapeCache = new Map();
+  const bodyFor = () => { if (!bodyC) { const c = vtx(L.chin)[0]; bodyC = bodyCollider(fig, c[1] - 0.45, c[1] + 0.06); } return bodyC; };
+  function resolve() { timer = 0; const t0 = performance.now(); solveNow = true; bodyC = null; build(); solveNow = false; api.drapeMs = Math.round(performance.now() - t0); fig.dispatchEvent({ type: 'redraw' }); }
 
   function build() {
     for (const c of [...group.children]) { group.remove(c); c.geometry.dispose(); }
@@ -162,6 +224,15 @@ export function pureblood(fig, base) {
       const steps = long ? 34 : 24, pts = path(p, n, sweep, len, steps, long ? 0.2 : 0.26, long ? 0.12 : 0.07, 200 + vi, 0.007);
       // a swelling at the root, then a slow taper to a rounded end about half the root's width
       const tipL = Math.min(0.2, (r0 * 0.55) / len), radii = pts.map((_, j) => { const t = j / steps, swell = 1 + 0.75 * Math.exp(-(t * t) / 0.006) + 0.18 * Math.exp(-((t - 0.12) ** 2) / 0.004), taper = 1 - 0.45 * t ** 1.15, tip = Math.max(0, (t - (1 - tipL)) / tipL); return r0 * swell * taper * Math.sqrt(Math.max(0, 1 - tip * tip)) + (j === steps ? 0 : 0.0002); });
+      // draped over the body and what is worn: solved now when the outfit or the options changed, else the last solve's
+      // shape is carried along with the root and a fresh solve follows once the sliders rest
+      const ck = `${vi}|${len.toFixed(4)}`, cached = drapeCache.get(ck);
+      if (solveNow) { const how = drape(pts, radii, wornFn, bodyFor(), Math.ceil(steps * Math.min(0.5, 0.03 / len))); drapeCache.set(ck, how === 'free' ? null : { how, off: pts.map((q) => [q[0] - p[0], q[1] - p[1], q[2] - p[2]]) }); }
+      else if (cached) { for (let j = 0; j < pts.length; j++) pts[j] = [p[0] + cached.off[j][0], p[1] + cached.off[j][1], p[2] + cached.off[j][2]]; if (cached.how === 'tucked') for (let j = 0; j < radii.length; j++) radii[j] *= 0.55; }
+      // a draped tendril leaves the jaw over a rim rather than straight out of the skin: its root swelling, made to blend
+      // into the jaw, would sit on the rim as a knob, so it is eased
+      const how = solveNow ? drapeCache.get(ck)?.how : cached?.how;
+      if (how === 'draped') for (let j = 0; j < radii.length; j++) { const t = j / steps, g = Math.exp(-(t * t) / 0.006); radii[j] *= (1 + 0.25 * g) / (1 + 0.75 * g); }
       const tb = tube(pts, radii, 14, 0.9), m = tb.P.length / 3, rest = new Float32Array(m * 3), lip = new Float32Array(m), cav = new Float32Array(m * 2), mark = new Float32Array(m * 2);
       const rp = [R[vi * 3], R[vi * 3 + 1], R[vi * 3 + 2]];
       for (let j = 0; j < m; j++) { rest.set(rp, j * 3); const t = tb.T[j]; cav[j * 2] = 0.05 * (1 - Math.min(1, t / 0.08)); cav[j * 2 + 1] = 0.03 * (1 - Math.min(1, t / 0.15)); }
@@ -201,10 +272,17 @@ export function pureblood(fig, base) {
       const f = ring[0], [, n0] = vtx(nearest([0, ey + 0.8 * d, ez + d])); put(new THREE.CylinderGeometry(0.006, 0.006, 0.0025, 6).rotateX(Math.PI / 2), [f.x, f.y, f.z], new THREE.Vector3(...n0));
     }
   }
-  fig.addEventListener('shaped', build);
+  fig.addEventListener('shaped', () => {
+    const key = `${wornKey}|${opt.on}|${opt.tendrils}|${opt.tlength}`;
+    if (key !== solvedKey) { const t0 = performance.now(); solvedKey = key; drapeCache.clear(); solveNow = true; bodyC = null; build(); solveNow = false; api.drapeMs = Math.round(performance.now() - t0); return; }
+    build();
+    if (opt.on && opt.tendrils !== 'none') { clearTimeout(timer); timer = setTimeout(resolve, 150); }   // re-drape once the sliders rest
+  });
   const api = {
     group, options: PUREBLOOD.options,
     set(o = {}) {
+      if ('worn' in o) { wornFn = o.worn || null; wornKey = o.wornKey ?? (o.worn ? String(Math.random()) : ''); }
+      const { worn, wornKey: _k, ...rest } = o; o = rest;
       Object.assign(opt, o);
       const on = FOLDS[opt.folds] || [];
       for (const k of Object.keys(G)) fig.state['pbFold_' + k] = opt.on && on.includes(k) ? opt.ridges : 0;

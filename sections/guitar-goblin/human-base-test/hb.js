@@ -86,6 +86,9 @@ for (const [k, l, lo, hi] of [...SLIDERS.body, ...SLIDERS.face, ...SLIDERS.head]
 { const gt = group('Test', false), row = document.createElement('label'); row.className = 'slide';
   const cb = document.createElement('input'); cb.type = 'checkbox'; cb.addEventListener('change', () => { marks.visible = cb.checked; stage.changed(); });
   const t = document.createElement('span'); t.textContent = 'Show landmarks'; t.style.gridColumn = '2 / 4'; row.append(cb, t); gt.appendChild(row); }
+{ const gt = group('Test: something worn', false), row = document.createElement('label'); row.className = 'slide';
+  const cb = document.createElement('input'); cb.type = 'checkbox'; cb.addEventListener('change', () => { collar(cb.checked); apply(); });
+  const t = document.createElement('span'); t.textContent = 'A collar round the neck'; t.style.gridColumn = '2 / 4'; row.append(cb, t); gt.appendChild(row); }
 function sync() { for (const [r, out, obj, k] of Object.values(inputs)) { r.value = obj[k]; out.textContent = Number(obj[k]).toFixed(2); } paint(); }
 let pending = 0;
 function schedule() { if (pending) return; pending = requestAnimationFrame(() => { pending = 0; apply(); }); }
@@ -106,6 +109,29 @@ $('random').addEventListener('click', () => {
   LOOK.skin = pickKey(S.skins); LOOK.eyes = pickKey(S.eyes);
   sync(); apply();
 });
+
+/* ---------------- a test collar, for the tendrils to drape over ---------------- */
+// A flared ring round the neck, like a gorget's: drawn, and handed to the features as what is worn.
+const collarMat = new THREE.MeshStandardMaterial({ color: 0x2a2c31, metalness: 0.7, roughness: 0.38 }); let collarMesh = null, collarOn = false;
+function collarShape() {
+  const nk = fig.joint('neck'), nf = fig.landmark('neckFront').p, ch = fig.landmark('chin').p, rN = Math.hypot(nf[0] - nk[0], nf[2] - nk[2]);
+  return { cx: nk[0], cz: nk[2] - 0.004, rIn: rN + 0.008, t: 0.014, flare: 0.03, y1: ch[1] - 0.018, y0: ch[1] - 0.11 };
+}
+function collarSdf(c) {
+  return (x, y, z) => { const rho = Math.hypot(x - c.cx, z - c.cz), tt = Math.min(1, Math.max(0, (y - c.y0) / (c.y1 - c.y0))), rc = c.rIn + c.t / 2 + c.flare * tt * tt;
+    return Math.max(Math.abs(rho - rc) - c.t / 2, c.y0 - y, y - c.y1); };
+}
+function collar(on) {
+  collarOn = on; if (collarMesh) { fig.remove(collarMesh); collarMesh.geometry.dispose(); collarMesh = null; }
+  if (!on) { pb.set({ worn: null, wornKey: '' }); return; }
+  const c = collarShape(), prof = [];
+  for (let i = 0; i <= 10; i++) { const tt = i / 10, y = c.y0 + (c.y1 - c.y0) * tt; prof.push(new THREE.Vector2(c.rIn + c.flare * tt * tt, y)); }
+  for (let i = 10; i >= 0; i--) { const tt = i / 10, y = c.y0 + (c.y1 - c.y0) * tt; prof.push(new THREE.Vector2(c.rIn + c.t + c.flare * tt * tt, y)); }
+  prof.push(prof[0].clone());
+  collarMesh = new THREE.Mesh(new THREE.LatheGeometry(prof, 48).translate(c.cx, 0, c.cz), collarMat); collarMesh.castShadow = collarMesh.receiveShadow = true; fig.add(collarMesh);
+  pb.set({ worn: collarSdf(c), wornKey: 'test-collar|' + [c.cx, c.cz, c.rIn, c.y0, c.y1].map((v) => v.toFixed(3)).join(',') });
+}
+fig.addEventListener('redraw', () => stage.changed());
 
 /* ---------------- landmarks, for checking ---------------- */
 const marks = new THREE.Group(); marks.visible = false; fig.add(marks);
@@ -136,4 +162,4 @@ preset(location.hash.includes('pureblood') ? 'pureblood' : 'neutral'); view('ful
 stage.controls.addEventListener('start', () => $('hint').classList.add('gone'));
 $('status').classList.add('gone');
 stage.start();
-window.__hb = { THREE, stage, base, fig, pb, shape, ctrl, LOOK, PB, apply, preset, person, toShape, speciesLook, lookPanel, randomControlsFn: randomControls, view, VIEWS, marks, get height() { return fig.height; }, loadMs };
+window.__hb = { THREE, stage, base, fig, pb, collar, get collarOn() { return collarOn; }, shape, ctrl, LOOK, PB, apply, preset, person, toShape, speciesLook, lookPanel, randomControlsFn: randomControls, view, VIEWS, marks, get height() { return fig.height; }, loadMs };
