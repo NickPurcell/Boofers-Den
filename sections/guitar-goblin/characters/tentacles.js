@@ -40,6 +40,9 @@ export function mikkianTendrils(a) {
       }
     }
     for (let i = 0; i + 1 < n; i++) for (let j = 0; j < R; j++) { const p0 = v0 + i * R + j, p1 = v0 + i * R + ((j + 1) % R); idx.push(p0, p1, p0 + R, p1, p1 + R, p0 + R); }
+    // the root closed too (an open end shows as a dark ring where the root stands out from the scalp)
+    { const t0 = norm([pts[1][0] - pts[0][0], pts[1][1] - pts[0][1], pts[1][2] - pts[0][2]]), r0 = rad(0), c = pos.length / 3; pos.push(pts[0][0] - t0[0] * r0 * 0.5, pts[0][1] - t0[1] * r0 * 0.5, pts[0][2] - t0[2] * r0 * 0.5); nrm.push(-t0[0], -t0[1], -t0[2]); T.push(0); D.push(L);
+      for (let j = 0; j < R; j++) idx.push(c, v0 + ((j + 1) % R), v0 + j); }
     // a rounded tip: a ring a little past the end, closing to a point
     const e = pts[n - 1], tv = tan, rt = rad(n - 1), ring = pos.length / 3;
     for (let j = 0; j < R; j++) { const an = (j / R) * Math.PI * 2, bx = cross(tv, nx), d = [nx[0] * Math.cos(an) + bx[0] * Math.sin(an), nx[1] * Math.cos(an) + bx[1] * Math.sin(an), nx[2] * Math.cos(an) + bx[2] * Math.sin(an)];
@@ -47,6 +50,16 @@ export function mikkianTendrils(a) {
     const tip = pos.length / 3; pos.push(e[0] + tv[0] * rt, e[1] + tv[1] * rt, e[2] + tv[2] * rt); nrm.push(...tv); T.push(1); D.push(0);
     const last = v0 + (n - 1) * R;
     for (let j = 0; j < R; j++) { const a0 = last + j, a1 = last + ((j + 1) % R), b0 = ring + j, b1 = ring + ((j + 1) % R); idx.push(a0, a1, b0, a1, b1, b0, b0, b1, tip); }
+  }
+  // bound: the band round the bundle behind the head, a flattened ring (painted as the band: t 1.5)
+  if (a.style === 'bound') {
+    const c = toWorld([0, 0.004, -0.142]), RX = 0.036 * k, RZ = 0.032 * k, TH = 0.008 * k, N = 32, M = 10, b0 = pos.length / 3;
+    for (let i = 0; i <= N; i++) { const u = (i / N) * Math.PI * 2, cu = Math.cos(u), su = Math.sin(u);
+      for (let j = 0; j <= M; j++) { const v = (j / M) * Math.PI * 2, cv = Math.cos(v), sv = Math.sin(v), rx = RX + TH * cv, rz = RZ + TH * cv;
+        const w = [rx * cu, TH * 1.4 * sv, rz * su], wn = norm([cv * cu, sv, cv * su]);
+        pos.push(c[0] + w[0] * F.x[0] + w[1] * F.up[0] + w[2] * F.fw[0], c[1] + w[0] * F.x[1] + w[1] * F.up[1] + w[2] * F.fw[1], c[2] + w[0] * F.x[2] + w[1] * F.up[2] + w[2] * F.fw[2]);
+        nrm.push(wn[0] * F.x[0] + wn[1] * F.up[0] + wn[2] * F.fw[0], wn[0] * F.x[1] + wn[1] * F.up[1] + wn[2] * F.fw[1], wn[0] * F.x[2] + wn[1] * F.up[2] + wn[2] * F.fw[2]); T.push(1.5); D.push(1); } }
+    for (let i = 0; i < N; i++) for (let j = 0; j < M; j++) { const q = b0 + i * (M + 1) + j, r = q + M + 1; idx.push(q, r, q + 1, r, r + 1, q + 1); }
   }
   return { position: Float32Array.from(pos), normal: Float32Array.from(nrm), index: Uint32Array.from(idx), t: Float32Array.from(T), d: Float32Array.from(D), count: list.length };
 }

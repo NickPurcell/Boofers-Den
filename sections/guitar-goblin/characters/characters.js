@@ -190,7 +190,7 @@ function paintTendrils() {
   const col = mane.mesh.geometry.attributes.color, nrm = mane.mesh.geometry.attributes.normal, pos = mane.mesh.geometry.attributes.position, c = new THREE.Color(pick('skin').c), acc = new THREE.Color(accent || '#1b2f6e'), k = new THREE.Color(), white = new THREE.Color(1, 1, 1);
   const hf = headFrame(), smooth = state.surface !== 'locked', ring = (dd) => (dd < 0.014 || dd > 0.27 ? 0 : Math.pow((Math.cos((dd / 0.042) * 2 * Math.PI) + 1) / 2, 7));
   for (let i = 0; i < mane.t.length; i++) {
-    const u = mane.t[i], w = state.pattern === 'tips' ? Math.pow(Math.min(1, Math.max(0, (u - 0.4) / 0.4)), 0.8) : state.pattern === 'bands' ? ring(mane.d[i]) : state.pattern === 'roots' ? 1 - Math.min(1, Math.max(0, (u - 0.04) / 0.34)) : 0;
+    const u = mane.t[i], w = u > 1.2 ? 1 : state.pattern === 'tips' ? Math.pow(Math.min(1, Math.max(0, (u - 0.4) / 0.4)), 0.8) : state.pattern === 'bands' ? ring(mane.d[i]) : state.pattern === 'roots' ? 1 - Math.min(1, Math.max(0, (u - 0.04) / 0.34)) : 0;
     k.copy(c).lerp(acc, w);
     if (smooth) { const px = pos.getX(i) - hf.origin[0], pz = pos.getZ(i) - hf.origin[2], l = Math.hypot(px, pz) || 1; k.lerp(white, 0.13 * Math.max(0, -(nrm.getX(i) * px + nrm.getZ(i) * pz) / l)); }
     col.setXYZ(i, k.r, k.g, k.b);
