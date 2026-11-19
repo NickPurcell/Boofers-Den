@@ -6,11 +6,16 @@
 // (for tips, bands and roots in the accent colour). Pure: the workers build these.
 import { tendrilPaths } from '../humanoid-creator/mikkian.js';
 import { fieldFor } from './bodyfield.js';
+import { hairline } from '../humanoid-creator/hair.js';
+
+// the hairline brought forward: lower across the forehead and coming round the temples (the earlier creator's, raised)
+const forward = (a) => hairline(a) - 0.024 * Math.max(0, 1 - (Math.abs(a) / 1.4) ** 2);
 
 const norm = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 
-// a: { mesh: { position, normal, index } (the live figure), frame: { origin, x, up, fw, k }, style, thick, length, surface (smooth or locked) }
+// a: { mesh: { position, normal, index } (the live figure), frame: { origin, x, up, fw, k }, style, thick, length, surface (smooth or locked),
+//   front: 'forward' (the hairline brought forward; the default) or 'high' }
 export function mikkianTendrils(a) {
   const { position: P, normal: N, index: I } = a.mesh, F = a.frame, all = fieldFor(P, N, I, null, 0.08), k = F.k;
   const toWorld = (p) => [F.origin[0] + k * (p[0] * F.x[0] + p[1] * F.up[0] + p[2] * F.fw[0]), F.origin[1] + k * (p[0] * F.x[1] + p[1] * F.up[1] + p[2] * F.fw[1]), F.origin[2] + k * (p[0] * F.x[2] + p[1] * F.up[2] + p[2] * F.fw[2])];
@@ -19,8 +24,10 @@ export function mikkianTendrils(a) {
   const obstacle = (x, y, z) => { const d = head(x, y, z); return y < -0.14 ? d - 0.026 * Math.min(1, (-0.14 - y) / 0.04) : d; };
   // (the dreads rooted right at the front of the hairline climb back over the skull and show from the front as a row of
   // knobs on the brow; their neighbours cover the scalp there, so they are left out)
-  const list = tendrilPaths(a.style || 'dreads', a.thick || 'thick', head, { length: a.length, surface: a.surface === 'locked' ? 'locked' : 'smooth', obstacle })
-    .filter((t) => (a.style || 'dreads') !== 'dreads' || !(t.pts[0][2] > 0.03 && Math.abs(t.pts[0][0]) < 0.06));
+  // (swept back shows the forehead by its nature, and a lock rooted low on it falls over the face: it keeps the higher line)
+  const fwd = a.front !== 'high' && a.style !== 'swept';
+  const list = tendrilPaths(a.style || 'dreads', a.thick || 'thick', head, { length: a.length, surface: a.surface === 'locked' ? 'locked' : 'smooth', obstacle, line: fwd ? forward : undefined })
+    .filter((t) => fwd || (a.style || 'dreads') !== 'dreads' || !(t.pts[0][2] > 0.03 && Math.abs(t.pts[0][0]) < 0.06));
   // tubes
   const R = 12, pos = [], nrm = [], idx = [], T = [], D = [];
   for (const t of list) {

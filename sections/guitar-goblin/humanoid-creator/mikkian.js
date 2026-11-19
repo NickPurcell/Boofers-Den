@@ -5,7 +5,8 @@
 //
 // Interface: tendrils(style, thick, head, o) -> { field, bounds, param(positions) }
 //   style: a key of ARRANGE; thick: a key of THICK; head: the head's own field (metres from between the eyes);
-//   o.length: a key of LENGTHS; o.surface: a key of SURFACES (dreads only); o.obstacle: what the locks must lie on and not pass through (the head, and the
+//   o.length: a key of LENGTHS; o.surface: a key of SURFACES (dreads only); o.line: a lower hairline (a height for each
+//   angle round the head) to root them from, its front locks going to the sides at once (the characters page's choice); o.obstacle: what the locks must lie on and not pass through (the head, and the
 //   shoulders and back in their clothes), in the same frame; the head alone if not given.
 //   param(positions) gives, for each vertex of the mesh, how far along its tendril it is (0 at the scalp, 1 at the
 //   tip; 1.5 on the band that binds them), so the page can paint tips, bands and roots; for dreads, fromTip(positions)
@@ -37,17 +38,18 @@ function smooth(pts) {
 }
 
 // where the roots are: rings round the skull, kept to the scalp behind the hairline; `k` thins them out for thick locks
-function roots(head, k = 1) {
-  const C = [0, 0.03, -0.012], out = [];
+// (line: the hairline as a height for each angle round the head; a lower one adds a ring of roots across the front)
+function roots(head, k = 1, line = hairline) {
+  const C = [0, 0.03, -0.012], out = [], front = line !== hairline;
   let id = 0;
-  for (const [elDeg, n0] of [[-8, 13], [10, 13], [26, 13], [42, 11], [58, 8], [74, 5], [90, 1]]) {
-    const n = Math.max(1, Math.round(n0 * k));
+  for (const [elDeg, n0] of [[-8, 13], [10, 13], [26, 13], [42, 11], [58, 8], [74, 5], [90, 1], ...(front ? [[17, 9]] : [])]) {
+    const n = Math.max(1, Math.round(n0 * k)), arc = front && elDeg === 17;   // (the added rings run across the front only)
     for (let j = 0; j < n; j++) {
       id++;
-      const el = (elDeg * Math.PI) / 180, az = ((j + (elDeg === 26 || elDeg === 58 ? 0.5 : 0)) / n) * 2 * Math.PI - Math.PI + (hash(id, 1) - 0.5) * 0.22;
+      const el = (elDeg * Math.PI) / 180, az = arc ? -1.3 + 2.6 * (j + 0.5) / n + (hash(id, 1) - 0.5) * 0.12 : ((j + (elDeg === 26 || elDeg === 58 ? 0.5 : 0)) / n) * 2 * Math.PI - Math.PI + (hash(id, 1) - 0.5) * 0.22;
       const d = [Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)];
       const hit = cast(head, [C[0] + d[0] * 0.25, C[1] + d[1] * 0.25, C[2] + d[2] * 0.25], [-d[0], -d[1], -d[2]], 0.3);
-      if (!hit || hit.p[1] < hairline(Math.atan2(hit.p[0], hit.p[2])) + 0.006) continue;   // only behind the hairline
+      if (!hit || hit.p[1] < line(Math.atan2(hit.p[0], hit.p[2])) + 0.006) continue;   // only behind the hairline
       out.push({ id, p: hit.p, n: hit.n });
     }
   }
@@ -58,7 +60,7 @@ function roots(head, k = 1) {
 // on the skull and slides off it (away from the crown, and never forward over the face), hangs straight down past
 // the ears, and drapes over whatever it meets lower down, the shoulders front or back, until it ends at yEnd. A lock
 // cut to the shoulders (rest) ends where it comes to rest on them.
-function dreadPath(p, n0, id, r, obstacle, yEnd, rest) {
+function dreadPath(p, n0, id, r, obstacle, yEnd, rest, fwd = false) {
   const seg = 0.018, pts = [[p[0] - n0[0] * 0.005, p[1] - n0[1] * 0.005, p[2] - n0[2] * 0.005]];
   // which way it slides off the head: out from the head's upright axis, turned back where that would be forward
   let rx = p[0], rz = p[2] + 0.012; const rl = Math.hypot(rx, rz) || 1; rx /= rl; rz /= rl;
@@ -75,7 +77,8 @@ function dreadPath(p, n0, id, r, obstacle, yEnd, rest) {
       const g = gradient(obstacle, q[0], q[1], q[2]), m = r + 0.0015 - d; q[0] += g[0] * m; q[1] += g[1] * m; q[2] += g[2] * m; nrm = g;
     }
     // and off the face: nothing hangs across the eyes, nose or mouth
-    if (q[2] > -0.008 && q[1] > -0.17 && q[1] < 0.072 && Math.abs(q[0]) < 0.083 + r) { q[0] = side * (0.083 + r); nrm = nrm || [side, 0, 0]; }
+    // (with a hairline brought forward, locks lie across the forehead above the brows on their way to the sides)
+    if (q[2] > -0.008 && q[1] > -0.17 && q[1] < (fwd ? 0.032 : 0.072) && Math.abs(q[0]) < 0.083 + r) { q[0] = side * (0.083 + r); nrm = nrm || [side, 0, 0]; }
     return nrm;
   };
   let q = [p[0] + n0[0] * r * 0.7, p[1] + n0[1] * r * 0.7, p[2] + n0[2] * r * 0.7];   // the short lift at the root
@@ -91,8 +94,11 @@ function dreadPath(p, n0, id, r, obstacle, yEnd, rest) {
     const lean = low ? [-0.25 * Math.sign(q[0]), 0, 1.3 * fall] : off, w = touching ? (low ? 0.8 : 0.6) : 0.12;
     // one from the front of the scalp first climbs back over the skull, as hair pushed back does, and only then falls;
     // falling at once it would come down over the brow and be shoved aside by the guard over the face
-    const climb = p[2] > 0.035 && Math.abs(p[0]) < 0.058 && q[2] > -0.015 && q[1] > 0.0;   // rooted on the forehead, and not yet past the crown
-    const want = climb ? norm([p[0] * 2, 0.15, -1]) : norm([lean[0] * w + sway[0], -1, lean[2] * w + sway[2]]), s = i < 1 ? 0.5 : 0.22;
+    const climb = !fwd && p[2] > 0.035 && Math.abs(p[0]) < 0.058 && q[2] > -0.015 && q[1] > 0.0;   // rooted on the forehead, and not yet past the crown
+    // or, with the hairline brought forward, one from the front of the head goes to the side at once, lying along the
+    // skull above the brow, and falls at the temple in front of the ear
+    const fringe = fwd && p[2] > -0.01 && Math.abs(p[0]) < 0.07 && Math.abs(q[0]) < 0.074 && q[1] > 0.03;
+    const want = fringe ? norm([side, -0.32, -0.3]) : climb ? norm([p[0] * 2, 0.15, -1]) : norm([lean[0] * w + sway[0], -1, lean[2] * w + sway[2]]), s = i < 1 ? 0.5 : 0.22;
     dir = norm([dir[0] * s + want[0] * (1 - s), dir[1] * s + want[1] * (1 - s), dir[2] * s + want[2] * (1 - s)]);
     const nq = [q[0] + dir[0] * seg, q[1] + dir[1] * seg, q[2] + dir[2] * seg];
     const nrm = clear(nq); touching = !!nrm;
@@ -208,8 +214,8 @@ export function tendrilPaths(style, thick, head, o = {}) {
   const obstacle = o.obstacle || head, out = [], N = 6;
   if (style === 'dreads') {
     const r0 = DREAD_R[thick] || DREAD_R.medium, yEnd0 = o.length === 'long' ? -0.4 : -0.215;
-    const fallen = roots(head, Math.max(0.55, Math.min(1, 0.0084 / r0))).map(({ id, p, n }) => {
-      const r = r0 * (0.86 + 0.26 * hash(id, 7)), { pts, clear } = dreadPath(p, n, id, r, obstacle, yEnd0 - 0.045 * hash(id, 2), o.length !== 'long');
+    const fallen = roots(head, Math.max(0.55, Math.min(1, 0.0084 / r0)), o.line).map(({ id, p, n }) => {
+      const r = r0 * (0.86 + 0.26 * hash(id, 7)), { pts, clear } = dreadPath(p, n, id, r, obstacle, yEnd0 - 0.045 * hash(id, 2), o.length !== 'long', !!o.line);
       return { id, r, pts, clear };
     });
     // smoothed first, so the points are close enough together that two locks cannot cross between them unseen; then
@@ -228,7 +234,7 @@ export function tendrilPaths(style, thick, head, o = {}) {
     return out;
   }
   const r0 = (THICK[thick] || THICK.medium).r, lenK = o.length === 'long' ? 1.45 : 1;
-  for (const { id, p, n: n0 } of roots(head)) {
+  for (const { id, p, n: n0 } of roots(head, 1, o.line)) {
     const L = (LEN[style] || LEN.swept) * (style === 'short' ? 1 : lenK) * (0.78 + 0.44 * hash(id, 2)), rad = (i) => Math.max(0.003, r0 * (style === 'bound' ? (i < 3.5 ? 0.7 : i < 5.5 ? 0.92 : 0.6) : 1 - 0.55 * (i / N)) * (0.9 + 0.2 * hash(id, 7)));   // bound ones are pulled thin over the skull, full again where they hang together behind it
     const pts = [[p[0] - n0[0] * 0.004, p[1] - n0[1] * 0.004, p[2] - n0[2] * 0.004]];
     // keep a point outside the head by the tendril's own thickness, so tendrils lie on the skull and never in it
