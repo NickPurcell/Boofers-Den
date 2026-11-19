@@ -63,3 +63,9 @@ h1 span#title { color: var(--text); }
 .note { margin: 8px 0 0; font-size: 13px; color: var(--dim); }
 
 .foot { max-width: 1120px; margin: 0 auto; padding: 0 16px calc(20px + env(safe-area-inset-bottom)); color: var(--dim); font-size: 13px; }
+
+/* the new page: grouped sliders for build and face, and the dressing note */
+.group { margin: 4px 0 12px; }
+.group > summary { cursor: pointer; font: 600 12px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); padding: 6px 0; }
+.slide { display: grid; grid-template-columns: 8.4em 1fr; align-items: center; gap: 10px; min-height: 36px; font-size: 14px; }
+.slide input[type=range] { width: 100%; accent-color: var(--cool); }

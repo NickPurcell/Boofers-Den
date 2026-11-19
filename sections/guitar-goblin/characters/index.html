@@ -16,7 +16,7 @@
   <header class="hero">
     <p class="kicker">3D &middot; character creator &middot; in progress</p>
     <h1><span id="title">Sith Pureblood</span> <span>character creator</span></h1>
-    <p class="sub">The next version of the character creator, on a sculpted human base. Not finished: the current one is <a href="../humanoid-creator/">here</a>.</p>
+    <p class="sub">The next version of the character creator, on a sculpted human base: pick a species and a person to start from, shape the build and face, then hair and what they wear. Not finished: the current one is <a href="../humanoid-creator/">here</a>.</p>
   </header>
   <main class="stage">
     <div class="viewport" id="viewport">
@@ -31,7 +31,19 @@
       <p class="nogl" id="nogl" hidden>The 3D view needs WebGL, which this browser has turned off.</p>
     </div>
     <div class="panel">
+      <div class="actions">
+        <button type="button" class="btn" id="random">🎲 Randomise</button>
+        <button type="button" class="btn primary" id="save">⬇ Portrait</button>
+        <button type="button" class="btn primary" id="token">⬇ Token</button>
+      </div>
       <div id="options"></div>
+      <p class="note">Portrait: this view, 1024 px. Token: head and shoulders, 512 px, made to read at map size.</p>
+      <fieldset class="opt bgopt">
+        <legend>Background</legend>
+        <label><input type="radio" name="bg" value="studio" checked /> Studio</label>
+        <label><input type="radio" name="bg" value="plain" /> Plain</label>
+        <label><input type="radio" name="bg" value="none" /> Transparent</label>
+      </fieldset>
       <p class="note" id="summary" aria-live="polite"></p>
     </div>
   </main>
