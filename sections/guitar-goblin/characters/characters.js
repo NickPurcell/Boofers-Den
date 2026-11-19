@@ -30,6 +30,8 @@ const state = { style: 'slick', hair: 'black', outfit: 'plate', main: '#34373e',
 function apply() {
   fig.set({ ...DEFAULTS, ...SHAPE });
   fig.skin.userData.set({ tone: LOOK.skin, browAmount: LOOK.brows, lips: LOOK.lips, sockets: LOOK.sockets });
+  // under armour, a dark close undersuit painted on the skin: the body, sleeves to the wrists, legs to the ankles
+  const suit = OUTFITS[state.outfit]?.suit; fig.skin.userData.set(suit ? { suit: '#1f2126', suitOn: true, suitCover: suit } : { suitOn: false });
   fig.eyes.set({ colour: LOOK.eyes, glow: LOOK.glow, white: LOOK.white, iris: LOOK.iris });
   const on = Object.fromEntries(Object.entries(PUREBLOOD.options).map(([k, o]) => [k, o.def])); pb.set({ ...on, jewellery: 'gold', on: true });
   fig.update();

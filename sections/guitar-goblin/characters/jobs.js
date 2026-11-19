@@ -21,8 +21,8 @@ export function armTriangles(P, I, J) {
 }
 // The torso smoothed: at each height (1.5 cm apart, from the hips to the neck) the body without its arms measured
 // across and front to back, and a rounded box (a superellipse) of those sizes; its field, for plate to lie on
-function torsoField(P, I, arm, J) {
-  const y0 = J.pelvis[1] - 0.05, y1 = J.neck[1] + 0.01, B = 0.015, n = Math.ceil((y1 - y0) / B) + 1;
+export function torsoField(P, I, arm, J) {
+  const y0 = J['spine-3'][1] - 0.06, y1 = J.neck[1] + 0.01, B = 0.015, n = Math.ceil((y1 - y0) / B) + 1;   // from just below the waist (the hips' width stays out of it)
   const xm = new Float32Array(n), z0 = new Float32Array(n).fill(Infinity), z1 = new Float32Array(n).fill(-Infinity), onArm = new Uint8Array(P.length / 3);
   for (let t = 0; t < I.length; t += 3) if (arm[t / 3]) { onArm[I[t]] = onArm[I[t + 1]] = onArm[I[t + 2]] = 1; }
   const sx = Math.abs(J['l-shoulder'][0]) + 0.01;

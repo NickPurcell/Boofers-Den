@@ -22,10 +22,18 @@ export function measures(ctx) {
     // past the shoulder joint along the arm and within reach of its line (smooth, where the fields' boundary is ragged)
     noArms: (x, y, z) => ctx.body(x, y, z) - ctx.arms(x, y, z), armsOnly: (x, y, z) => ctx.arms(x, y, z) - ctx.body(x, y, z),
     armBone: (() => {
-      const sides = ['l', 'r'].map((sd) => { const S = J[sd + '-shoulder'], E = J[sd + '-elbow'], a = [E[0] - S[0], E[1] - S[1], E[2] - S[2]], l = Math.hypot(...a); return { S, u: a.map((v) => v / l) }; });
+      // each arm as two segments, shoulder to elbow and elbow to past the hand
+      const seg = (A, B) => { const a = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], l = Math.hypot(...a); return { A, u: a.map((v) => v / l), l }; };
+      const sides = ['l', 'r'].map((sd) => { const S = J[sd + '-shoulder'], E = J[sd + '-elbow'], H = J[sd + '-hand'], X = [H[0] + (H[0] - E[0]) * 0.6, H[1] + (H[1] - E[1]) * 0.6, H[2] + (H[2] - E[2]) * 0.6]; return [seg(S, E), seg(E, X)]; });
       return (x, y, z, past = 0.03, reach = 0.11) => {
         let best = -1;
-        for (const { S, u } of sides) { const px = x - S[0], py = y - S[1], pz = z - S[2], t = px * u[0] + py * u[1] + pz * u[2], perp = Math.hypot(px - u[0] * t, py - u[1] * t, pz - u[2] * t); best = Math.max(best, Math.min(t - past, reach - perp)); }
+        for (const [up, low] of sides) {
+          for (const [g, r, first] of [[up, reach, true], [low, reach * 0.85, false]]) {
+            const px = x - g.A[0], py = y - g.A[1], pz = z - g.A[2], t = px * g.u[0] + py * g.u[1] + pz * g.u[2], tc = Math.max(0, Math.min(g.l, t));
+            const perp = Math.hypot(px - g.u[0] * tc, py - g.u[1] * tc, pz - g.u[2] * tc);
+            best = Math.max(best, first ? Math.min(t - past, r - perp) : r - perp);
+          }
+        }
         return best;   // > 0 on the arm
       };
     })(),
@@ -46,15 +54,15 @@ export function plate(ctx) {
   const M = measures(ctx), P = [], T = 0.02, top = M.neckY + 0.03, low = M.waistY - 0.03, J = ctx.J;
   // plate does not follow muscle: over the chest and belly it lies on the smooth torso (ctx.torso) where that stands
   // out from the skin, so the hollows between the muscles are bridged
-  const hull = ctx.torso ? (x, y, z) => Math.min(ctx.all(x, y, z), ctx.torso(x, y, z)) : ctx.all;
+  const hull = ctx.torso ? (x, y, z) => Math.min(ctx.body(x, y, z), ctx.torso(x, y, z)) : ctx.body;   // (the body without its arms)
   // the cuirass: a breastplate rising to the neck, with a crest down the middle of the breast, and over the belly three
   // lames, each lower one standing a little proud of the one above (steps a mesh can show, rather than thin lines)
   const scoop = (x, y, z) => M.neckR + 0.018 - Math.hypot(x, (y - (M.neckY + 0.045)) * 1.1);
   const belly = M.chestY - 0.07, lame = Math.max(0.03, (belly - low) / 3);
   const shape = (x, y, z) => {
     const front = z > M.cz ? 1 : 0, crest = 0.006 * Math.max(0, 1 - Math.abs(x) / 0.035) * sstep(M.neckY - 0.02, M.neckY - 0.1, y) * sstep(low, belly, y) * front;
-    const step = y < belly ? 0.0045 * Math.min(3, Math.ceil((belly - y) / lame)) : 0;
-    return hull(x, y, z) - crest - step;
+    const step = y < belly ? 0.003 * Math.min(3, Math.ceil((belly - y) / lame)) : 0, roll = 0.007 * sstep(low + 0.018, low - 0.004, y);   // the lower edge rolled in
+    return hull(x, y, z) - crest - step + roll;
   };
   // the top: up the front of the neck's sides to the scoop, lower behind (under the cape) and over the shoulders (under the pauldrons)
   const topAt = (x, z) => top - 0.035 * sstep(M.cz + 0.02, M.cz - 0.06, z) - 0.03 * sstep(M.neckR + 0.03, M.neckR + 0.09, Math.abs(x));
@@ -90,4 +98,4 @@ export function mantle(ctx, M, o = {}) {
   return { name: front ? 'cloak' : 'cape', material: 'cloth', role: o.role || 'second', field, bounds: [[-(sx + 0.26), hem - 0.02, cz - 0.27], [sx + 0.26, top + 0.03, front ? cz + 0.26 : cz + 0.06]], res: 0.0105 };
 }
 
-export const OUTFITS = { none: { name: 'None', make: () => [] }, plate: { name: "Guardian's plate", make: plate } };
+export const OUTFITS = { none: { name: 'None', make: () => [] }, plate: { name: "Guardian's plate", make: plate, suit: { torso: true, arms: 1, legs: 1 } } };
