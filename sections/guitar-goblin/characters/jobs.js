@@ -44,6 +44,14 @@ export function torsoField(P, I, arm, J) {
     return Math.max(e * Math.min(rx, rz), y0 - y, y - y1);
   };
 }
+// the hips' half-width and half-depth, and their middle front to back: the body (not the arms) at the hip joints' height
+function hipsOf(P, I, arm, J) {
+  const y = J['l-upper-leg'][1] + 0.02, onArm = new Uint8Array(P.length / 3);
+  for (let t = 0; t < I.length; t += 3) if (arm[t / 3]) { onArm[I[t]] = onArm[I[t + 1]] = onArm[I[t + 2]] = 1; }
+  let rx = 0, z0 = Infinity, z1 = -Infinity;
+  for (let i = 0; i < P.length / 3; i++) { if (onArm[i] || Math.abs(P[i * 3 + 1] - y) > 0.02) continue; rx = Math.max(rx, Math.abs(P[i * 3])); z0 = Math.min(z0, P[i * 3 + 2]); z1 = Math.max(z1, P[i * 3 + 2]); }
+  return { rx, rz: (z1 - z0) / 2, zc: (z0 + z1) / 2 };
+}
 export function run(job, a) {
   if (job === 'outfit') {
     // (the base mesh before subdivision: a quarter of the triangles, and clothes stand clear of the 1-2 mm difference)
@@ -51,7 +59,7 @@ export function run(job, a) {
     const all = fieldFor(P, N, I), bodyU = fieldFor(P, N, I, (t) => !arm[t / 3], 0.06, true), arms = fieldFor(P, N, I, (t) => !!arm[t / 3], 0.06, true);
     // the body without the arms: the distance to its own skin, negative wherever the whole figure is inside
     const body = (x, y, z) => { const u = bodyU(x, y, z); return all(x, y, z) < 0 ? -u : u; };
-    const ctx = { all, body, arms, torso: torsoField(P, I, arm, a.J), J: a.J, L: a.L };
+    const ctx = { all, body, arms, torso: torsoField(P, I, arm, a.J), hips: hipsOf(P, I, arm, a.J), J: a.J, L: a.L };
     const pieces = (OUTFITS[a.key] || OUTFITS.none).make(ctx), mine = a.of ? pieces.filter((p, i) => i % a.of === a.part) : pieces;
     return { count: pieces.length, pieces: mine.map((p) => {
       const list = p.parts || [{ field: p.field, bounds: p.bounds }];

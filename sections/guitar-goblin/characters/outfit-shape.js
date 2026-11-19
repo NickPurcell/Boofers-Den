@@ -18,6 +18,10 @@ export function measures(ctx) {
   return {
     sh, sx: Math.abs(sh[0]), neckY: nk[1], neckZ: nk[2], neckR: nw / 2, chestY: ch[1], waistY: wa[1], hipY: pv[1],
     cz: (L.chestMid.p[2] + L.backMid.p[2]) / 2,   // the middle of the chest, front to back
+    hips: ctx.hips || { rx: 0.17, rz: 0.12, zc: pv[2] },   // the hips' half-width and half-depth, and their middle front to back
+    // a limb between two joints: near(x, y, z, r, t0, t1) is a region round it, from t0 to t1 of its length (negative inside)
+    limb: (A, B) => { const a = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], l = Math.hypot(...a), u = a.map((v) => v / l);
+      return { A, B, u, l, near: (x, y, z, r, t0 = 0, t1 = 1) => { const px = x - A[0], py = y - A[1], pz = z - A[2], t = px * u[0] + py * u[1] + pz * u[2], tc = Math.max(0, Math.min(l, t)); return Math.max(Math.hypot(px - u[0] * tc, py - u[1] * tc, pz - u[2] * tc) - r, t0 * l - t, t - t1 * l); } }; },
     // regions: nearer the body than the arms (from the body's own fields), and the same said by the arms' bones alone:
     // past the shoulder joint along the arm and within reach of its line (smooth, where the fields' boundary is ragged)
     noArms: (x, y, z) => ctx.body(x, y, z) - ctx.arms(x, y, z), armsOnly: (x, y, z) => ctx.arms(x, y, z) - ctx.body(x, y, z),
@@ -77,8 +81,63 @@ export function plate(ctx) {
   const L = capFor('l'), R = capFor('r'), caps = (x, y, z) => (x > 0 ? L(x, y, z) : R(x, y, z));
   P.push({ name: 'pauldrons', material: 'metal', role: 'second', parts: ['l', 'r'].map((sd) => { const S = J[sd + '-shoulder']; return { field: caps, bounds: [[S[0] - 0.17, S[1] - 0.2, S[2] - 0.17], [S[0] + 0.17, S[1] + 0.15, S[2] + 0.17]] }; }), res: 0.006 });
   P.push(mantle(ctx, M, { hem: 0.2, off: 0.05 }));
+  P.push(...lowerPlate(ctx, M));
   return P;
 }
+
+// a bell hung from the waist for a skirt or a robe to lie on: from inside the body at the top to (rx1, rz1) at the hem,
+// round the hips' middle; joined softly to the body (without its arms, so hands hanging at the sides do not dent it)
+export function belled(ctx, M, y0, y1, rx1, rz1) {
+  const H = M.hips, rx0 = H.rx * 0.6, rz0 = H.rz * 0.6, k2 = 0.03;
+  const bell = (x, y, z) => {
+    const t = Math.max(0, Math.min(1, (y0 - y) / (y0 - y1))), e = t * (2 - t) * 0.35 + t * 0.65, rx = rx0 + (rx1 - rx0) * e, rz = rz0 + (rz1 - rz0) * e;
+    return Math.max((Math.hypot(x / rx, (z - H.zc) / rz) - 1) * Math.min(rx, rz), y - y0 - 0.05, y1 - 0.03 - y);
+  };
+  return (x, y, z) => { const a = ctx.body(x, y, z), b = bell(x, y, z), h = Math.max(k2 - Math.abs(a - b), 0) / k2; return Math.min(a, b) - h * h * k2 * 0.25; };
+}
+// The plate's lower half: a cloth skirt to the shins, open in front, with two tassets over the hips and a belt with a
+// buckle over it; bracers on the forearms; greaves on the shins with a knee cap; boots
+function lowerPlate(ctx, M) {
+  const P = [], J = ctx.J, H = M.hips, top = M.waistY - 0.03, hem = 0.2, garment2 = (t, region, base) => (x, y, z) => Math.max(base(x, y, z) - t, region(x, y, z));
+  const base = belled(ctx, M, top, hem, H.rx * 1.18 + 0.02, H.rz * 1.25 + 0.035), fold = (x, z) => 0.005 * Math.sin(Math.atan2(x, z - H.zc) * 10);
+  const skirt = (x, y, z) => Math.max(base(x, y, z) - 0.009 - fold(x, z) * sstep(top - 0.05, hem + 0.1, y), hem - y, y - top, z > H.zc ? 0.02 + 0.05 * sstep(top - 0.07, hem, y) - Math.abs(x) : -1);
+  const W = H.rx * 1.18 + 0.06, D = H.rz * 1.25 + 0.07;
+  P.push({ name: 'skirt', material: 'cloth', role: 'second', field: skirt, bounds: [[-W, hem - 0.02, H.zc - D], [W, top + 0.03, H.zc + D]], res: 0.011 });
+  const tx = H.rx * 0.6, tw = H.rx * 0.38;
+  const tasset = garment2(0.02, (x, y, z) => Math.max(top - 0.24 - y + 0.05 * Math.abs(Math.abs(x) - tx) / tw, y - top + 0.005, Math.abs(Math.abs(x) - tx) - tw, H.zc - 0.01 - z), base);
+  P.push({ name: 'tassets', material: 'metal', role: 'main', field: tasset, bounds: [[-W, top - 0.3, H.zc - 0.02], [W, top + 0.02, H.zc + D]], res: 0.006 });
+  const yc = top + 0.008, bh = 0.026;
+  const band = garment2(0.022, (x, y, z) => Math.max(yc - bh - y, y - yc - bh), base);
+  P.push({ name: 'belt', material: 'leather', role: 'leather', field: band, bounds: [[-W, yc - bh - 0.02, H.zc - D], [W, yc + bh + 0.02, H.zc + D]], res: 0.006 });
+  // the buckle: a rounded plate on the belt's front
+  { let z0 = H.zc + 0.4; for (let i = 0; i < 80; i++) { const d = base(0, yc, z0) - 0.022; if (d < 0.0005) break; z0 -= Math.max(d * 0.8, 0.0005); }
+    const bx = 0.026, by = bh * 0.95, bz = 0.006, c = [0, yc, z0 + 0.004];
+    const box = (x, y, z) => { const qx = Math.abs(x - c[0]) - bx + 0.004, qy = Math.abs(y - c[1]) - by + 0.004, qz = Math.abs(z - c[2]) - bz + 0.003; return Math.hypot(Math.max(qx, 0), Math.max(qy, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qy, qz), 0) - 0.003; };
+    P.push({ name: 'buckle', material: 'metal', role: 'metal', field: box, bounds: [[c[0] - 0.05, c[1] - 0.045, c[2] - 0.03], [c[0] + 0.05, c[1] + 0.045, c[2] + 0.03]], res: 0.003 }); }
+  // bracers: stiff cuffs from below the elbow to the wrist
+  const fore = ['l', 'r'].map((sd) => M.limb(J[sd + '-elbow'], J[sd + '-hand']));
+  const bracer = garment2(0.012, (x, y, z) => { const f = x > 0 ? fore[0] : fore[1]; return f.near(x, y, z, 0.085, 0.3, 0.94); }, ctx.all);
+  P.push({ name: 'bracers', material: 'metal', role: 'main', parts: fore.map((f) => ({ field: bracer, bounds: boxAround([f.A, f.B], 0.09) })), res: 0.0055 });
+  // greaves on the front of the shins, with a cap over each knee
+  const shin = ['l', 'r'].map((sd) => M.limb(J[sd + '-knee'], J[sd + '-ankle']));
+  const greave = garment2(0.013, (x, y, z) => {
+    const g = x > 0 ? shin[0] : shin[1], front = g.A[2] + (g.B[2] - g.A[2]) * Math.max(0, Math.min(1, (g.A[1] - y) / (g.A[1] - g.B[1]))) - 0.015 - z;
+    const knee = Math.hypot(x - g.A[0], y - g.A[1] - 0.01, z - g.A[2] - 0.03) - 0.07;
+    return Math.min(Math.max(g.near(x, y, z, 0.11, 0.1, 0.82), front), knee);
+  }, ctx.all);
+  P.push({ name: 'greaves', material: 'metal', role: 'main', parts: shin.map((g) => ({ field: greave, bounds: boxAround([[g.A[0], g.A[1] + 0.08, g.A[2]], g.B], 0.1) })), res: 0.006 });
+  // boots: the foot and ankle covered to just below the greaves, a cuff at the top, and a thicker sole
+  const foot = ['l', 'r'].map((sd) => ({ A: J[sd + '-ankle'], T: J[sd + '-foot-1'] }));
+  const btop = Math.max(foot[0].A[1] + 0.13, 0.2);
+  const near = (x, y, z) => { const f = x > 0 ? foot[0] : foot[1]; return Math.hypot(x - f.A[0], z - (f.A[2] + f.T[2]) / 2) - 0.16; };
+  const boot = (x, y, z) => {
+    const a = ctx.all(x, y, z), upper = Math.max(a - 0.009, y - btop, near(x, y, z)), cuff = Math.max(a - 0.013, y - btop, btop - 0.028 - y, near(x, y, z)), sole = Math.max(a - 0.016, y - 0.022, near(x, y, z));
+    return Math.min(upper, cuff, sole);
+  };
+  P.push({ name: 'boots', material: 'leather', role: 'leather', parts: foot.map((f) => ({ field: boot, bounds: [[f.A[0] - 0.11, -0.01, Math.min(f.A[2], f.T[2]) - 0.12], [f.A[0] + 0.11, btop + 0.02, Math.max(f.A[2], f.T[2]) + 0.12]] })), res: 0.0062 });
+  return P;
+}
+const boxAround = (pts, m) => [[Math.min(...pts.map((p) => p[0])) - m, Math.min(...pts.map((p) => p[1])) - m, Math.min(...pts.map((p) => p[2])) - m], [Math.max(...pts.map((p) => p[0])) + m, Math.max(...pts.map((p) => p[1])) + m, Math.max(...pts.map((p) => p[2])) + m]];
 
 // A cape hung from the shoulders (or a cloak, open in front): a sheet over the envelope of a cone widening from the
 // neck and the body itself (without the arms, so it does not wrap round them), flaring and folding toward the hem.
