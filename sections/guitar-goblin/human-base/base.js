@@ -16,6 +16,7 @@
 // arms out at about 45 degrees.
 import * as THREE from 'three';
 import { skinMaterial } from './skin.js';
+import { decode, deriveAll, unpack, fingerprint, quadNormals } from './derive.js';
 import { makeEyes } from './eyes.js';
 
 const DATA = new URL('./data/', import.meta.url);
@@ -125,120 +126,19 @@ export function loadBase() { return (loading ||= load()); }
 async function load() {
   const t0 = performance.now();
   const get = (f, as) => fetch(new URL(f, DATA)).then((r) => { if (!r.ok) throw new Error(`human-base: ${f} ${r.status}`); return r[as](); });
-  const [info, meshBuf, tBuf, skinBuf] = await Promise.all([get('mesh.json', 'json'), get('mesh.bin', 'arrayBuffer'), get('targets.bin', 'arrayBuffer'), get('skin.bin', 'arrayBuffer')]);
-  const N = info.vertices, rest = new Float32Array(meshBuf, 0, N * 3), quads = new Uint16Array(meshBuf, N * 12, info.quads * 4);
-  const targets = new Map();
-  for (const [name, m] of Object.entries(info.targets)) {
-    const q = new Int16Array(tBuf, m.at, m.n * 3), d = new Float32Array(m.n * 3);
-    for (let k = 0; k < d.length; k++) d[k] = q[k] * m.scale;
-    targets.set(name, { d, idx: new Uint16Array(tBuf, m.at + m.n * 6, m.n) });
-  }
-  const T = topology(N, quads);
-  const inBody = new Uint8Array(N); for (let i = 0; i < quads.length; i++) inBody[quads[i]] = 1;
-  const restN = quadNormals(rest, quads, N);
-  // the lips: where the lip-fullness morph moves most
-  const lip = new Float32Array(N); { const t = targets.get('lips-incr'); let big = 0; for (let k = 0; k < t.idx.length; k++) big = Math.max(big, Math.hypot(t.d[k * 3], t.d[k * 3 + 1], t.d[k * 3 + 2])); for (let k = 0; k < t.idx.length; k++) lip[t.idx[k]] = Math.hypot(t.d[k * 3], t.d[k * 3 + 1], t.d[k * 3 + 2]) / big; }
-  const B = { info, N, rest, restN, quads, targets, T, inBody, lip, loadMs: 0, armW: new Uint8Array(skinBuf, 0, N), foreW: new Uint8Array(skinBuf, N, N), fingW: new Uint8Array(skinBuf, 2 * N, N), thumbW: new Uint8Array(skinBuf, 3 * N, N) };
-  B.marks = findLandmarks(B);
-  B.regions = findRegions(B);
-  B.loadMs = Math.round(performance.now() - t0);
+  const [info, meshBuf, tBuf, skinBuf, derived] = await Promise.all([get('mesh.json', 'json'), get('mesh.bin', 'arrayBuffer'), get('targets.bin', 'arrayBuffer'), get('skin.bin', 'arrayBuffer'), get('derived.json', 'json').catch(() => null)]);
+  const tm = {}; let tl = performance.now(); const lap = (k) => { const t = performance.now(); tm[k] = Math.round(t - tl); tl = t; }; tm.fetch = Math.round(tl - t0);   // where the load's time goes, after the data arrives
+  const B = decode(info, meshBuf, tBuf, skinBuf); lap('decode');
+  B.T = topology(B.N, B.quads); lap('topology');
+  // the landmarks, regions and the rest come with the data (derive.js, baked by scripts/mh/bake.mjs); worked out here
+  // only if they are missing or were made from another mesh
+  let D = derived ? unpack(derived) : null;
+  if (!D || D.fingerprint !== fingerprint(B)) { if (derived) console.warn('human-base: derived.json does not match the mesh; deriving it here'); D = deriveAll(B); tm.derivedLive = true; }
+  lap('derived');
+  B.marks = { ...D.marks, J: info.joints }; B.regions = D.regions; B.derived = D;
+  B.loadMs = Math.round(performance.now() - t0); B.timing = tm;
   B.figure = (o) => new Figure(B, o);
   return B;
-}
-function quadNormals(p, quads, N, out = new Float32Array(N * 3)) {
-  out.fill(0);
-  for (let f = 0; f < quads.length; f += 4) {
-    const a = quads[f] * 3, b = quads[f + 1] * 3, c = quads[f + 2] * 3, d = quads[f + 3] * 3;
-    const ux = p[c] - p[a], uy = p[c + 1] - p[a + 1], uz = p[c + 2] - p[a + 2], vx = p[d] - p[b], vy = p[d + 1] - p[b + 1], vz = p[d + 2] - p[b + 2];
-    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
-    for (const i of [a, b, c, d]) { out[i] += nx; out[i + 1] += ny; out[i + 2] += nz; }
-  }
-  for (let i = 0; i < N * 3; i += 3) { const l = Math.sqrt(out[i] * out[i] + out[i + 1] * out[i + 1] + out[i + 2] * out[i + 2]) || 1; out[i] /= l; out[i + 1] /= l; out[i + 2] /= l; }
-  return out;
-}
-
-/* ---------------- landmarks: named vertices, found once on the unmorphed mesh ---------------- */
-// The vertex order never changes, so a landmark is a vertex number and every morph carries it along. Head points are
-// found by simple rules relative to the eyes; body points from the joint helpers the targets also move.
-function findLandmarks(B) {
-  const { rest: p, N, inBody, info } = B, L = {};
-  const centre = (list) => { const c = [0, 0, 0]; for (const i of list) for (let k = 0; k < 3; k++) c[k] += p[i * 3 + k] / list.length; return c; };
-  const eL = centre(info.eyes.l), eR = centre(info.eyes.r), side = Math.sign(eL[0]) || 1;   // the base's "l" side, in x
-  const ey = (eL[1] + eR[1]) / 2, ez = (eL[2] + eR[2]) / 2, d = Math.abs(eL[0] - eR[0]), ax = d / 2;
-  const each = (ok, f) => { let best = -1, bv = -Infinity; for (let i = 0; i < N; i++) { if (!inBody[i]) continue; const x = p[i * 3], y = p[i * 3 + 1], z = p[i * 3 + 2]; if (ok(x, y, z)) { const v = f(x, y, z); if (v > bv) { bv = v; best = i; } } } return best; };
-  const nearest = (c) => each(() => true, (x, y, z) => -((x - c[0]) ** 2 + (y - c[1]) ** 2 + (z - c[2]) ** 2));
-  const mid = (x) => Math.abs(x) < 0.08 * d;
-  const J = (n) => centre(info.joints[n]);
-  L.noseTip = each((x, y) => mid(x) && y < ey && y > ey - d, (x, y, z) => z);
-  L.chin = each((x, y, z) => mid(x) && y < ey - 1.5 * d && y > ey - 2.3 * d && z > ez - 0.5 * d, (x, y, z) => z);
-  L.crown = each((x) => mid(x), (x, y) => y);
-  L.browMid = nearest([0, ey + 0.32 * d, ez + 0.6 * d]);
-  L.nape = each((x, y) => mid(x) && Math.abs(y - (ey - 1.3 * d)) < 0.15 * d, (x, y, z) => -z);
-  L.neckFront = each((x, y) => mid(x) && Math.abs(y - J('neck')[1]) < 0.12 * d, (x, y, z) => z);
-  L.neckBack = each((x, y) => mid(x) && Math.abs(y - J('neck')[1]) < 0.12 * d, (x, y, z) => -z);
-  // (the base's spine joints count from the top: spine-1 is at the chest, spine-4 just above the pelvis)
-  L.chestMid = each((x, y) => mid(x) && Math.abs(y - (J('spine-1')[1] - 0.3)) < 0.15 * d, (x, y, z) => z);
-  L.navel = each((x, y) => mid(x) && Math.abs(y - (J('spine-3')[1] - 0.3)) < 0.15 * d, (x, y, z) => z);
-  for (const [S, mh] of [['L', 'l'], ['R', 'r']]) {
-    const s = mh === 'l' ? side : -side;   // +1 toward this side, in x
-    L['eye' + S] = info.eyes[mh][0];
-    L['browInner' + S] = nearest([s * ax * 0.45, ey + 0.3 * d, ez + 0.6 * d]);
-    L['brow' + S] = nearest([s * ax, ey + 0.32 * d, ez + 0.6 * d]);
-    L['browOuter' + S] = each((x, y, z) => Math.abs(y - (ey + 0.22 * d)) < 0.1 * d && s * x > ax * 1.4 && s * x < ax * 1.9, (x, y, z) => z + s * x * 0.2);
-    L['cheek' + S] = each((x, y, z) => Math.abs(y - (ey - 0.42 * d)) < 0.12 * d && s * x > ax * 1.15 && s * x < ax * 1.9, (x, y, z) => s * x * 0.75 + z * 0.66);
-    L['temple' + S] = each((x, y, z) => Math.abs(y - (ey + 0.3 * d)) < 0.12 * d && z < ez - 0.15 * d && z > ez - 0.9 * d, (x, y, z) => s * x);
-    L['jaw' + S] = each((x, y, z) => y < ey - 1.15 * d && y > ey - 1.55 * d && z < ez - 0.35 * d && z > ez - 1.2 * d, (x, y, z) => s * x);
-    L['jawMid' + S] = each((x, y, z) => y < ey - 1.5 * d && y > ey - 1.85 * d && s * x > ax * 0.9 && s * x < ax * 1.45 && z > ez - 0.9 * d, (x, y, z) => s * x * 0.45 + z * 0.9);   // the jawline, halfway from the angle to the chin
-    L['earTop' + S] = each((x, y, z) => s * x > ax * 2.2 && z < ez - 0.6 * d && z > ez - 1.6 * d, (x, y) => y);
-    const sh = J(mh + '-shoulder'), r2 = (c, x, y, z, r) => (x - c[0]) ** 2 + (y - c[1]) ** 2 + (z - c[2]) ** 2 < r * r;
-    L['shoulder' + S] = each((x, y, z) => r2(sh, x, y, z, 1.3), (x, y) => y);
-    L['armpit' + S] = each((x, y, z) => r2(sh, x, y, z, 1.4) && s * x < s * sh[0], (x, y) => -y);
-    const hip = J(mh + '-upper-leg'); L['hip' + S] = each((x, y, z) => r2(hip, x, y, z, 1.6), (x) => s * x);
-    for (const [nm, j] of [['elbow', 'elbow'], ['wrist', 'hand'], ['knee', 'knee'], ['ankle', 'ankle']]) L[nm + S] = nearest(J(mh + '-' + j));
-    L['kneeFront' + S] = each((x, y, z) => r2(J(mh + '-knee'), x, y, z, 0.9), (x, y, z) => z);
-    L['shoulderTop' + S] = L['shoulder' + S];
-    L['neckSide' + S] = each((x, y) => Math.abs(y - J('neck')[1]) < 0.12 * d && Math.abs(x) < 2.4 * d, (x) => s * x);
-    L['earFront' + S] = each((x, y, z) => s * x > ax * 1.9 && s * x < ax * 2.7 && y > ey - 0.75 * d && y < ey - 0.05 * d && z < ez - 0.55 * d, (x, y, z) => z);
-    const an = J(mh + '-ankle');
-    L['heel' + S] = each((x, y, z) => Math.abs(x - an[0]) < 0.5 && y < an[1] + 0.2, (x, y, z) => -z);
-    L['toe' + S] = each((x, y, z) => Math.abs(x - an[0]) < 0.9 && y < an[1], (x, y, z) => z);
-  }
-  L.backMid = each((x, y) => mid(x) && Math.abs(y - (J('spine-1')[1] - 0.2)) < 0.15 * d, (x, y, z) => -z);   // between the shoulder blades
-  L.backLow = each((x, y) => mid(x) && Math.abs(y - (J('spine-3')[1] - 0.2)) < 0.15 * d, (x, y, z) => -z);   // the small of the back
-  L.crotch = each((x) => Math.abs(x) < 0.12, (x, y) => -y);
-  // the mouth corners: the lip vertices furthest out to each side
-  for (const [S, mh] of [['L', 'l'], ['R', 'r']]) { const s = mh === 'l' ? side : -side; let best = -1, bv = -Infinity; for (let i = 0; i < N; i++) if (inBody[i] && B.lip[i] > 0.25 && s * p[i * 3] > bv) { bv = s * p[i * 3]; best = i; } L['mouth' + S] = best; }
-  return { L, side, ey, ez, d, J: Object.fromEntries(Object.keys(info.joints).map((k) => [k, info.joints[k]])) };
-}
-// regions: sets of base vertices by rule, in the unmorphed mesh (decimetres)
-function findRegions(B) {
-  const { rest: p, N, inBody, marks } = B, { ey, ez, d } = marks, R = {};
-  const neckY = p[marks.L.chin * 3 + 1] - 0.35 * d;
-  const pick = (ok) => { const out = []; for (let i = 0; i < N; i++) if (inBody[i] && ok(p[i * 3], p[i * 3 + 1], p[i * 3 + 2])) out.push(i); return Uint32Array.from(out); };
-  R.head = pick((x, y) => y > neckY);
-  R.scalp = pick((x, y, z) => y > neckY && (y > ey + 0.62 * d - Math.max(0, ez - 0.7 * d - z) * 0.9) && Math.abs(x) < 2.4 * d);
-  R.face = pick((x, y, z) => y > neckY && z > ez - 0.55 * d && y < ey + 0.62 * d);
-  R.ears = pick((x, y, z) => y > neckY && Math.abs(x) > 2.1 * d && z < ez - 0.5 * d && y < ey + 0.3 * d && y > ey - 1.2 * d);
-  // body parts: each vertex goes to the nearest bone, a segment between joint centres (the joints ride every morph)
-  const J = (n) => { const l = B.info.joints[n], c = [0, 0, 0]; for (const i of l) for (let k = 0; k < 3; k++) c[k] += p[i * 3 + k] / l.length; return c; };
-  const bones = [['torso', J('pelvis'), J('neck')], ['torso', J('neck'), J('l-shoulder')], ['torso', J('neck'), J('r-shoulder')], ['head', J('neck'), J('head-2')]];
-  for (const [S, s] of [['L', 'l'], ['R', 'r']]) {
-    const sh = J(s + '-shoulder'), el = J(s + '-elbow'), wr = J(s + '-hand'), tip = wr.map((v, k) => v + (wr[k] - el[k]) * 0.5);
-    const hp = J(s + '-upper-leg'), kn = J(s + '-knee'), an = J(s + '-ankle'), ft = J(s + '-foot-1');
-    bones.push(['upperArm' + S, sh, el], ['forearm' + S, el, wr], ['hand' + S, wr, tip], ['thigh' + S, hp, kn], ['shin' + S, kn, an], ['foot' + S, an, ft], ['torso', J('pelvis'), hp]);
-  }
-  const segD = (x, y, z, a, b) => { const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], t = Math.max(0, Math.min(1, ((x - a[0]) * ab[0] + (y - a[1]) * ab[1] + (z - a[2]) * ab[2]) / (ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2))); return Math.hypot(x - a[0] - ab[0] * t, y - a[1] - ab[1] * t, z - a[2] - ab[2] * t); };
-  const parts = {};
-  for (let i = 0; i < N; i++) {
-    if (!inBody[i]) continue;
-    const x = p[i * 3], y = p[i * 3 + 1], z = p[i * 3 + 2]; let best = Infinity, who = 'torso';
-    for (const [name, a, b] of bones) { const dd = segD(x, y, z, a, b); if (dd < best) { best = dd; who = name; } }
-    (parts[who] ||= []).push(i);
-  }
-  for (const [k, v] of Object.entries(parts)) R[k] = Uint32Array.from(v);
-  R.arms = Uint32Array.from(['upperArmL', 'forearmL', 'handL', 'upperArmR', 'forearmR', 'handR'].flatMap((k) => [...(R[k] || [])]));
-  R.legs = Uint32Array.from(['thighL', 'shinL', 'footL', 'thighR', 'shinR', 'footR'].flatMap((k) => [...(R[k] || [])]));
-  return R;
 }
 
 /* ---------------- a figure ---------------- */
@@ -257,16 +157,8 @@ class Figure extends THREE.Group {
     geo.setAttribute('aLip', new THREE.BufferAttribute(up(B.lip, 1), 1));
     geo.setAttribute('aCav', new THREE.BufferAttribute(new Float32Array(M * 2), 2));
     geo.setAttribute('aMark', new THREE.BufferAttribute(new Float32Array(M * 2), 2));   // painted marks a species sets: x, a lit bone crest
-    // how much of each vertex is arm (x), and whether it is the hand (y: past the wrist along the forearm, in the rest
-    // pose), so a sleeve can stop at the wrist whatever the fingers and thumb do
-    { const aw = new Float32Array(B.N * 2), J = (n) => { const l = B.info.joints[n], c = [0, 0, 0]; for (const i of l) for (let k = 0; k < 3; k++) c[k] += B.rest[i * 3 + k] / l.length; return c; }, R = B.rest;
-      const arms = ['l', 'r'].map((m) => { const E = J(m + '-elbow'), W = J(m + '-hand'), d = [W[0] - E[0], W[1] - E[1], W[2] - E[2]], L = Math.hypot(...d); return { E, W, d: d.map((v) => v / L), L, sx: Math.sign(W[0]) }; });
-      for (let i = 0; i < B.N; i++) {
-        aw[i * 2] = B.armW[i] / 255; if (!B.armW[i]) continue;
-        const a = arms.find((q) => Math.sign(R[i * 3]) === q.sx) || arms[0], s2 = ((R[i * 3] - a.W[0]) * a.d[0] + (R[i * 3 + 1] - a.W[1]) * a.d[1] + (R[i * 3 + 2] - a.W[2]) * a.d[2]) / a.L;
-        aw[i * 2 + 1] = Math.max(B.fingW[i] > 20 || B.thumbW[i] > 20 ? 1 : 0, Math.min(1, Math.max(0, (s2 + 0.06) / 0.06)));
-      }
-      geo.setAttribute('aArm', new THREE.BufferAttribute(up(aw, 2), 2)); }
+    // how much of each vertex is arm (x), and whether it is the hand (y, derive.js), so a sleeve can stop at the wrist
+    { const aw = new Float32Array(B.N * 2), hand = B.derived.hand; for (let i = 0; i < B.N; i++) { aw[i * 2] = B.armW[i] / 255; aw[i * 2 + 1] = hand[i]; } geo.setAttribute('aArm', new THREE.BufferAttribute(up(aw, 2), 2)); }
     this.geometry = geo;
     this.skin = skinMaterial(B, o.skin);
     this.body = new THREE.Mesh(geo, this.skin); this.body.castShadow = this.body.receiveShadow = true; this.body.frustumCulled = false;

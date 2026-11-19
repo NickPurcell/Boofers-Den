@@ -33,30 +33,8 @@ const METALS = { gold: [0xd8a83a, 0.28], silver: [0xd6d8dc, 0.25], bronze: [0xa8
 const rng = (seed) => { let a = (seed * 2654435761) >>> 0 || 1; return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
 
 /* ---------------- bone ridges: our own morph targets ---------------- */
-// Each ridge is a polyline snapped to the surface (base frame, decimetres). Vertices within w of it rise along their
-// normal in a rounded crest of height h, tapering at both ends. Returns the target, and a 0..1 crest value per vertex.
-function ridges(B, lines) {
-  const { rest: p, restN: n, N, inBody } = B, lift = new Float32Array(N), beside = new Float32Array(N);
-  for (const { pts, w, h } of lines) {
-    let total = 0; const seg = []; for (let k = 0; k < pts.length - 1; k++) { const a = pts[k], b = pts[k + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]); seg.push([a, b, L, total]); total += L; }
-    for (let i = 0; i < N; i++) {
-      if (!inBody[i]) continue;
-      const x = p[i * 3], y = p[i * 3 + 1], z = p[i * 3 + 2]; let best = Infinity, along = 0;
-      for (const [a, b, L, s0] of seg) {
-        const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], t = Math.max(0, Math.min(1, ((x - a[0]) * ab[0] + (y - a[1]) * ab[1] + (z - a[2]) * ab[2]) / (L * L || 1)));
-        const dd = Math.hypot(x - a[0] - ab[0] * t, y - a[1] - ab[1] * t, z - a[2] - ab[2] * t); if (dd < best) { best = dd; along = (s0 + t * L) / total; }
-      }
-      if (best >= w) { if (best < w * 1.7) beside[i] = Math.max(beside[i], Math.sin(Math.PI * ((best - w) / (0.7 * w))) * Math.sin(Math.PI * along) ** 0.5); continue; }
-      const q = best / w, crest = (1 - q * q) ** 2 * (0.6 + 0.4 * (1 - q)), ends = Math.sin(Math.PI * along) ** 0.5;
-      lift[i] = Math.max(lift[i], h * crest * ends);
-    }
-  }
-  const idx = [], d = [], mark = new Float32Array(N * 2); let top = 0;
-  for (let i = 0; i < N; i++) mark[i * 2 + 1] = beside[i];
-  for (let i = 0; i < N; i++) if (lift[i] > 0) { idx.push(i); d.push(n[i * 3] * lift[i], n[i * 3 + 1] * lift[i], n[i * 3 + 2] * lift[i]); top = Math.max(top, lift[i]); }
-  for (let i = 0; i < N; i++) mark[i * 2] = lift[i] / (top || 1);
-  return { target: { idx: Uint16Array.from(idx), d: Float32Array.from(d) }, mark };
-}
+// Worked out once from the rest shape (derive.js, shipped in data/derived.json): per group, how high each vertex rises
+// and how much it is shaded beside a crest. Here they become a morph target along the rest normals, and the marks.
 
 /* ---------------- tubes: spurs, tendrils ---------------- */
 // a tube along points with a radius at each, the root closed; wound so its outside faces out
@@ -145,39 +123,18 @@ function drape(pts, radii, worn, body, free) {
 
 export function pureblood(fig, base) {
   const B = base, L = B.marks.L, R = B.rest, { d, ey, ez } = B.marks, side = B.marks.side, at = (i) => [R[i * 3], R[i * 3 + 1], R[i * 3 + 2]];
-  const lerp = (a, b, t) => a.map((v, k) => v + (b[k] - v) * t);
-  // the nearest body vertex to a point in the base frame; a point on the front of the face at (x, y)
-  const nearest = (c) => { let best = -1, bd = Infinity; for (let i = 0; i < B.N; i++) { if (!B.inBody[i]) continue; const q = (R[i * 3] - c[0]) ** 2 + (R[i * 3 + 1] - c[1]) ** 2 + (R[i * 3 + 2] - c[2]) ** 2; if (q < bd) { bd = q; best = i; } } return best; };
-  const onFace = (x, y) => { let best = -1, bz = -Infinity; for (let i = 0; i < B.N; i++) { if (!B.inBody[i] || Math.abs(R[i * 3] - x) > 0.05 * d || Math.abs(R[i * 3 + 1] - y) > 0.05 * d) continue; if (R[i * 3 + 2] > bz) { bz = R[i * 3 + 2]; best = i; } } return best < 0 ? at(nearest([x, y, ez + d])) : at(best); };
-  const line = (x0, y0, x1, y1, k = 6) => Array.from({ length: k + 1 }, (_, j) => onFace(x0 + (x1 - x0) * (j / k), y0 + (y1 - y0) * (j / k)));
-  const ax = d / 2;
-
-  // folds: three up the forehead from between the brows; two across each cheek from under the cheekbone toward the
-  // mouth; "corded" adds two more on the forehead, a third on each cheek and one along each side of the chin
-  const brow = [{ pts: line(0, ey + 0.42 * d, 0, ey + 1.5 * d), w: 0.17 * d, h: 0.15 * d }], cheek = [], cord = [];
-  for (const s of [1, -1]) {
-    brow.push({ pts: line(s * 0.3 * d, ey + 0.4 * d, s * 0.62 * d, ey + 1.4 * d), w: 0.16 * d, h: 0.135 * d });
-    cheek.push({ pts: line(s * 1.62 * ax, ey - 0.62 * d, s * 1.0 * ax, ey - 1.18 * d), w: 0.2 * d, h: 0.2 * d });
-    cheek.push({ pts: line(s * 1.82 * ax, ey - 0.86 * d, s * 1.28 * ax, ey - 1.38 * d), w: 0.18 * d, h: 0.17 * d });
-    cord.push({ pts: line(s * 0.62 * d, ey + 0.38 * d, s * 1.0 * d, ey + 1.15 * d), w: 0.13 * d, h: 0.1 * d });
-    cord.push({ pts: line(s * 1.95 * ax, ey - 1.12 * d, s * 1.5 * ax, ey - 1.55 * d), w: 0.14 * d, h: 0.12 * d });
-    cord.push({ pts: line(s * 0.42 * d, ey - 1.55 * d, s * 0.3 * d, ey - 1.95 * d, 4), w: 0.11 * d, h: 0.09 * d });
+  const DP = B.derived.pureblood;
+  const G = {};
+  for (const [k, { lift, beside }] of Object.entries(DP.folds)) {
+    const idx = [], dd = [], mark = new Float32Array(B.N * 2); let top = 0;
+    for (let i = 0; i < B.N; i++) if (lift[i] > 0) { idx.push(i); dd.push(B.restN[i * 3] * lift[i], B.restN[i * 3 + 1] * lift[i], B.restN[i * 3 + 2] * lift[i]); top = Math.max(top, lift[i]); }
+    for (let i = 0; i < B.N; i++) { mark[i * 2] = lift[i] / (top || 1); mark[i * 2 + 1] = beside[i]; }
+    G[k] = { target: { idx: Uint16Array.from(idx), d: Float32Array.from(dd) }, mark };
+    fig.addTarget('pbFold_' + k, G[k].target);
   }
-  const G = { brow: ridges(B, brow), cheek: ridges(B, cheek), cord: ridges(B, cord) };
-  for (const [k, g] of Object.entries(G)) fig.addTarget('pbFold_' + k, g.target);
   const markOf = (keys) => { const m = new Float32Array(B.N * 2); for (const k of keys) { const a = G[k].mark; for (let i = 0; i < m.length; i++) m[i] = Math.max(m[i], a[i]); } return m; };
   const FOLDS = { smooth: [], brow: ['brow'], cheek: ['cheek'], both: ['brow', 'cheek'], corded: ['brow', 'cheek', 'cord'] };
-
-  // tendril roots on the jaw's lower edge and the chin (vertex numbers, found once)
-  const under = (c, k = 0.14) => nearest([c[0], c[1] - k * d, c[2] - 0.08 * d]);
-  const chin = at(L.chin), R0 = { chin: [], jaw: [], jaw2: [], cheek: [], mid: [under(chin, 0.2)] };
-  for (const S of ['L', 'R']) {
-    const jm = at(L['jawMid' + S]), ja = at(L['jaw' + S]), mo = at(L['mouth' + S]);
-    R0.chin.push(under(lerp(chin, jm, 0.16)));
-    R0.jaw.push(under(lerp(chin, jm, 0.7), 0.05), under(lerp(jm, ja, 0.4), 0.03));
-    R0.jaw2.push(under(lerp(jm, ja, 0.7), 0.03));
-    R0.cheek.push(nearest(lerp(lerp(mo, jm, 0.55), ja, 0.2)));
-  }
+  const R0 = { chin: Array.from(DP.roots.chin), jaw: Array.from(DP.roots.jaw), jaw2: Array.from(DP.roots.jaw2), cheek: Array.from(DP.roots.cheek), mid: Array.from(DP.roots.mid) };
   const SETS = { none: [], chin: R0.chin, fringe: [...R0.chin, ...R0.jaw], cheek: [...R0.cheek, ...R0.chin], beard: [...R0.mid, ...R0.chin, ...R0.jaw, ...R0.jaw2, ...R0.cheek] };
 
   const group = new THREE.Group(); group.name = 'pureblood'; fig.add(group);
@@ -185,8 +142,7 @@ export function pureblood(fig, base) {
   const metal = new THREE.MeshStandardMaterial({ color: 0xd8a83a, metalness: 1, roughness: 0.3 });
   const opt = { on: false, folds: 'both', ridges: 0.8, spurs: 'brow', tendrils: 'fringe', tlength: 'short', jewel: 'cuffs.brow', metal: 'gold' };
   const vtx = (i) => { const g = fig.geometry, P = g.attributes.position.array, Nn = g.attributes.normal.array; return [[P[i * 3], P[i * 3 + 1], P[i * 3 + 2]], [Nn[i * 3], Nn[i * 3 + 1], Nn[i * 3 + 2]]]; };
-  const spurRoot = {};
-  for (const S of ['L', 'R']) { spurRoot['brow' + S] = L['browOuter' + S]; spurRoot['cheek' + S] = nearest(lerp(at(L['cheek' + S]), at(L['earFront' + S]), 0.62)); spurRoot['jaw' + S] = L['jaw' + S]; }
+  const spurRoot = DP.spur;
   let built = { tendrils: [], spurs: {} };
   // draping state: what is worn (a signed distance in metres, or null), the key of the last solve, the cached shapes
   let wornFn = null, wornKey = '', solvedKey = null, solveNow = false, timer = 0, bodyC = null;
@@ -256,8 +212,8 @@ export function pureblood(fig, base) {
     if (J.has('brow')) for (const S of ['L', 'R']) { const s = built.spurs['brow' + S]; if (!s) continue; const [j, a, dir] = along(s.pts, 0.62); put(new THREE.TorusGeometry(s.r[j] * 1.1 + 0.002, 0.0011, 8, 22), a, dir); }
     if (J.has('studs')) {
       const at3 = (i, lift = 0.0015) => { const [p, n] = vtx(i); return [p.map((v, k) => v + n[k] * lift), new THREE.Vector3(...n)]; };
-      for (const i of [nearest(lerp(at(L.chin), at(L.noseTip), 0.08)), nearest(lerp(at(L.chin), at(L.noseTip), 0.4))]) { const [p, n] = at3(i); put(new THREE.SphereGeometry(0.0024, 12, 8), p, n); }
-      const [np, nn] = at3(nearest([at(L.noseTip)[0] + 0.12 * d * side, at(L.noseTip)[1] - 0.12 * d, at(L.noseTip)[2] - 0.08 * d]), 0.003);
+      for (const i of DP.studs) { const [p, n] = at3(i); put(new THREE.SphereGeometry(0.0024, 12, 8), p, n); }
+      const [np, nn] = at3(DP.noseRing, 0.003);
       put(new THREE.TorusGeometry(0.0045, 0.0007, 6, 18), np, new THREE.Vector3(side, 0, 0));
     }
     if (J.has('chains') && cuffAt.length === 2) {   // beads on a slack line between the two front tendrils
@@ -265,11 +221,11 @@ export function pureblood(fig, base) {
       for (let k = 0; k <= n; k++) { const t = k / n, sag = 0.022 * Math.sin(Math.PI * t); put(new THREE.SphereGeometry(0.0011, 6, 4), [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t - sag, a[2] + (b[2] - a[2]) * t + sag * 0.35], null); }
     }
     if (J.has('circlet')) {   // a thin band round the forehead and over the ears, a small plate at the front
-      const ring = []; for (let k = 0; k <= 36; k++) { const a = (k / 36) * Math.PI * 2, i = nearest([Math.sin(a) * 3 * ax, ey + (0.8 - 0.3 * (1 - Math.cos(a)) * 0.5) * d, ez - 1.3 * d + Math.cos(a) * 2.2 * d]); const [p, n2] = vtx(i); ring.push(new THREE.Vector3(p[0] + n2[0] * 0.0035, p[1] + n2[1] * 0.0035, p[2] + n2[2] * 0.0035)); }
+      const ring = []; for (let k = 0; k <= 36; k++) { const a = (k / 36) * Math.PI * 2, i = DP.circlet[k]; const [p, n2] = vtx(i); ring.push(new THREE.Vector3(p[0] + n2[0] * 0.0035, p[1] + n2[1] * 0.0035, p[2] + n2[2] * 0.0035)); }
       ring.pop();   // the loop closes on itself
       for (let it = 0; it < 4; it++) { const c = ring.map((v) => v.clone()); for (let k = 0; k < ring.length; k++) ring[k].copy(c[(k + ring.length - 1) % ring.length]).add(c[(k + 1) % ring.length]).multiplyScalar(0.25).addScaledVector(c[k], 0.5); }   // smooth out the vertex-by-vertex wobble
       const curve = new THREE.CatmullRomCurve3(ring, true); group.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 160, 0.0016, 8, true), metal));
-      const f = ring[0], [, n0] = vtx(nearest([0, ey + 0.8 * d, ez + d])); put(new THREE.CylinderGeometry(0.006, 0.006, 0.0025, 6).rotateX(Math.PI / 2), [f.x, f.y, f.z], new THREE.Vector3(...n0));
+      const f = ring[0], [, n0] = vtx(DP.circletFront); put(new THREE.CylinderGeometry(0.006, 0.006, 0.0025, 6).rotateX(Math.PI / 2), [f.x, f.y, f.z], new THREE.Vector3(...n0));
     }
   }
   fig.addEventListener('shaped', () => {
@@ -293,8 +249,8 @@ export function pureblood(fig, base) {
     // where jewellery and other things can sit, after the morphs (metres)
     anchors() {
       const pn = (i) => { const [p, n] = vtx(i); return { p, n }; };
-      const circlet = []; for (let k = -6; k <= 6; k++) circlet.push(vtx(nearest([Math.sin(k * 0.22) * 2.3 * ax, ey + 0.95 * d, ez + d * (Math.cos(k * 0.22) - 1.25)]))[0]);
-      return { tendrils: built.tendrils.map((t) => ({ pts: t.pts, r: t.r })), spurs: built.spurs, chin: pn(L.chin), nose: pn(L.noseTip), lip: pn(nearest(lerp(at(L.chin), at(L.noseTip), 0.42))), brow: { L: pn(spurRoot.browL), R: pn(spurRoot.browR) }, circlet };
+      const circlet = []; for (const i of DP.anchorCirclet) circlet.push(vtx(i)[0]);
+      return { tendrils: built.tendrils.map((t) => ({ pts: t.pts, r: t.r })), spurs: built.spurs, chin: pn(L.chin), nose: pn(L.noseTip), lip: pn(DP.lipStud), brow: { L: pn(spurRoot.browL), R: pn(spurRoot.browR) }, circlet };
     },
   };
   return api;

@@ -16,6 +16,9 @@ says the base mesh, proxies, targets and modifiers are released under CC0 1.0, a
 text. Each converted file's own header reads "This asset was explicitly released as CC0 in september 2020". The
 copyright holders named at the time of release were Data Collection AB, Joel Palmius and Jonas Hauquier.
 
+`derived.json` holds tables worked out from that data by our own code (`../derive.js`, run at build time by our
+`scripts/mh/bake.mjs`): the landmarks, the regions, the hand mask, the eye rings and the Pureblood's ridges and roots.
+
 What was done to them:
 - Only the `body` group of the base mesh is kept (all quads), with the two eye helper spheres (used to place our own
   eyes) and 33 of the joint helper cubes (used as landmarks).

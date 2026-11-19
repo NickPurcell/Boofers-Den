@@ -86,18 +86,7 @@ export function skinMaterial(B, o = {}) {
     // the base's landmarks in the same frame (metres), for placing marks on real features: lm.noseTip, lm.chin, lm.mouthL ...
     lm: Object.fromEntries(Object.entries(B.marks.L).map(([k, i]) => [k, [(R[i * 3] - ec[0]) / 10, (R[i * 3 + 1] - ec[1]) / 10]])),
     // each eye opening's edge (the mesh's hole round the eye), in the same frame, ordered round it: [[x, y], ...]
-    holes: ['l', 'r'].map((k) => {
-      const c = [0, 0, 0]; for (const i of B.info.eyes[k]) for (let q = 0; q < 3; q++) c[q] += R[i * 3 + q] / B.info.eyes[k].length;
-      // the lid's edge: the skin that lies against the front of the eyeball (the mesh is closed, so there is no hole edge)
-      let r = 0; { const l = B.info.eyes[k]; for (const i of l) r += Math.hypot(R[i * 3] - c[0], R[i * 3 + 1] - c[1], R[i * 3 + 2] - c[2]) / l.length; }
-      const pts = []; for (let i = 0; i < B.N; i++) { if (!B.inBody[i]) continue; const dx = R[i * 3] - c[0], dy = R[i * 3 + 1] - c[1], dz = R[i * 3 + 2] - c[2], dd = Math.hypot(dx, dy, dz); if (dz > r * 0.35 && dd < r * 1.12) pts.push([(R[i * 3] - ec[0]) / 10, (R[i * 3 + 1] - ec[1]) / 10]); }
-      const cx = (c[0] - ec[0]) / 10, cy = (c[1] - ec[1]) / 10, NB = 36, best = new Array(NB).fill(null);
-      // in each direction round the eye, the nearest skin point is the lid's edge; then smooth the ring a little
-      for (const p of pts) { const a = Math.atan2(p[1] - cy, p[0] - cx), k = Math.floor(((a + Math.PI) / (2 * Math.PI)) * NB) % NB, rr = Math.hypot(p[0] - cx, p[1] - cy); if (!best[k] || rr < best[k][2]) best[k] = [p[0], p[1], rr]; }
-      const ring = []; for (let k = 0; k < NB; k++) { const a = -Math.PI + ((k + 0.5) / NB) * 2 * Math.PI; let rr = best[k]?.[2]; if (rr === undefined) { const prev = best[(k + NB - 1) % NB], next = best[(k + 1) % NB]; rr = ((prev?.[2] ?? 0.008) + (next?.[2] ?? 0.008)) / 2; } ring.push([a, rr]); }
-      for (let it = 0; it < 2; it++) { const r0 = ring.map((q) => q[1]); for (let k = 0; k < NB; k++) ring[k][1] = 0.25 * r0[(k + NB - 1) % NB] + 0.5 * r0[k] + 0.25 * r0[(k + 1) % NB]; }
-      return { c: [cx, cy], pts: ring.map(([a, rr]) => [cx + Math.cos(a) * rr, cy + Math.sin(a) * rr]) };
-    }),
+    holes: B.derived.eyeRings,   // the lid edges as rings of points (derive.js)
   };
   m.userData.marks = ctx;
   let painters = [];
