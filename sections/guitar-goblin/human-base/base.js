@@ -284,6 +284,8 @@ class Figure extends THREE.Group {
       const { d, idx } = tg;
       for (let k = 0; k < idx.length; k++) { const i = idx[k] * 3, j = k * 3; w[i] += wt * d[j]; w[i + 1] += wt * d[j + 1]; w[i + 2] += wt * d[j + 2]; }
     }
+    { const cov = this.skin.userData.cover || {}, t = B.targets.get('nipples-flat'); if (cov.on && cov.torso && t) { const k = 1.0; for (let j = 0; j < t.idx.length; j++) { const i = t.idx[j] * 3; w[i] += k * t.d[j * 3]; w[i + 1] += k * t.d[j * 3 + 1]; w[i + 2] += k * t.d[j * 3 + 2]; } } }
+    this.clothe(w);
     if ((this.state.armsDown ?? 0) > 0) this.pose(w, this.state.armsDown);
     // decimetres to metres, feet on the floor
     let lo = Infinity, hi = -Infinity; for (let i = 0; i < N; i++) if (B.inBody[i]) { const y = w[i * 3 + 1]; if (y < lo) lo = y; if (y > hi) hi = y; }
@@ -298,6 +300,58 @@ class Figure extends THREE.Group {
     this.ms = Math.round(performance.now() - t0);
     this.dispatchEvent({ type: 'shaped' });
     return this;
+  }
+  // Under the undersuit the body reads as cloth, not paint: the covered skin is smoothed so small modelled detail does
+  // not show through, and stands a hair proud of the body. The
+  // covered region follows the skin's coverage (skin.set({ suitOn, suitCover })), with a soft edge.
+  clothe(w) {
+    const B = this.B, T = B.T, cov = this.skin.userData.cover || {}, N = B.N, R = B.rest, J = this.skin.userData.u.uJoints.value;
+    if (!cov.on) return;
+    const mask = (this._mask ||= new Float32Array(N)), key = `${cov.torso}|${cov.arms}|${cov.legs}`;
+    if (this._maskKey !== key) {
+      this._maskKey = key;
+      const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+      for (let i = 0; i < N; i++) {
+        if (!B.inBody[i]) { mask[i] = 0; continue; }
+        const x = Math.abs(R[i * 3]), y = R[i * 3 + 1], arm = B.armW[i] / 255;
+        const top = 1.05 - 0.12 * ss(0, 1.2, x), hem = cov.legs >= 1 ? J.z : -2.35 + 0.18 * ss(0.4, 1.6, x);
+        let m = ss(hem - 0.1, hem + 0.1, y) * (1 - ss(top - 0.1, top + 0.1, y)) * (1 - ss(0.25, 0.6, arm));
+        if (cov.torso) m = Math.max(m, ss(top - 0.15, top, y) * (1 - ss(J.w - 0.1, J.w + 0.05, y)) * (1 - ss(1.6, 1.78, x)) * (1 - ss(0.5, 0.7, arm)));
+        if (cov.arms > 0) { const end = cov.arms >= 0.75 ? J.y - 0.25 : J.x + 0.2; m = Math.max(m, ss(0.25, 0.6, arm) * (1 - ss(end - 0.1, end + 0.05, x))); }
+        mask[i] = m;
+      }
+      // reach: only vertices with some cover are worked; collect them once
+      const list = []; for (let i = 0; i < N; i++) if (mask[i] > 0.01) list.push(i); this._maskList = Uint32Array.from(list);
+    }
+    // Smooth over a fixed reach in the body's own units, not over mesh neighbours: an average of the surface round each
+    // covered point, every point weighted by the area it stands for and by a Gaussian of its distance, applied along the
+    // normal only. Mesh density then makes no difference (neighbour smoothing shrinks coarse areas faster than fine
+    // ones, which leaves fine detail standing proud). Details a few centimetres across go; bigger forms stay.
+    const list = this._maskList, sig = cov.torso ? 0.17 : 0.13, reach = sig * 2.2, cell = reach;   // decimetres
+    for (let pass = 0; pass < (cov.torso ? 2 : 1); pass++) {
+    const nrm = quadNormals(w, B.quads, N, this.n0), area = (this._area ||= new Float32Array(N));
+    area.fill(0);
+    for (let f = 0; f < B.quads.length; f += 4) { const a = B.quads[f] * 3, b2 = B.quads[f + 1] * 3, c = B.quads[f + 2] * 3, d2 = B.quads[f + 3] * 3; const ux = w[c] - w[a], uy = w[c + 1] - w[a + 1], uz = w[c + 2] - w[a + 2], vx = w[d2] - w[b2], vy = w[d2 + 1] - w[b2 + 1], vz = w[d2 + 2] - w[b2 + 2]; const A = 0.5 * Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 4; area[B.quads[f]] += A; area[B.quads[f + 1]] += A; area[B.quads[f + 2]] += A; area[B.quads[f + 3]] += A; }
+    const grid = new Map(), K = (a, b, c) => ((a + 512) * 1024 + (b + 512)) * 1024 + (c + 512), keyOf = (x, y, z) => K(Math.floor(x / cell), Math.floor(y / cell), Math.floor(z / cell));
+    for (let i = 0; i < N; i++) if (B.inBody[i] && B.armW[i] < 140) { const k = keyOf(w[i * 3], w[i * 3 + 1], w[i * 3 + 2]); let a = grid.get(k); if (!a) grid.set(k, (a = [])); a.push(i); }
+    const out = (this._out ||= new Float32Array(N));
+    for (const v of list) {
+      const px = w[v * 3], py = w[v * 3 + 1], pz = w[v * 3 + 2], nx = nrm[v * 3], ny = nrm[v * 3 + 1], nz = nrm[v * 3 + 2], cx = Math.floor(px / cell), cy = Math.floor(py / cell), cz = Math.floor(pz / cell);
+      let sw = 0, sh = 0;
+      for (let a = -1; a <= 1; a++) for (let b3 = -1; b3 <= 1; b3++) for (let c = -1; c <= 1; c++) {
+        const arr = grid.get(K(cx + a, cy + b3, cz + c)); if (!arr) continue;
+        for (const u of arr) {
+          const dx = w[u * 3] - px, dy = w[u * 3 + 1] - py, dz = w[u * 3 + 2] - pz, r2 = dx * dx + dy * dy + dz * dz; if (r2 > reach * reach) continue;
+          if (nx * nrm[u * 3] + ny * nrm[u * 3 + 1] + nz * nrm[u * 3 + 2] < 0.2) continue;   // not the far side of a thin part
+          const wt = area[u] * Math.exp(-r2 / (2 * sig * sig)); sw += wt; sh += wt * (dx * nx + dy * ny + dz * nz);
+        }
+      }
+      out[v] = sw > 0 ? sh / sw : 0;   // how far the smoothed surface lies along the normal from this point
+    }
+    for (const v of list) { const a = mask[v] * out[v]; w[v * 3] += nrm[v * 3] * a; w[v * 3 + 1] += nrm[v * 3 + 1] * a; w[v * 3 + 2] += nrm[v * 3 + 2] * a; }
+    }
+    const n = quadNormals(w, B.quads, N, this.n0);
+    for (const v of list) { const a = 0.012 * mask[v]; w[v * 3] += n[v * 3] * a; w[v * 3 + 1] += n[v * 3 + 1] * a; w[v * 3 + 2] += n[v * 3 + 2] * a; }   // about 1 mm proud
   }
   // Lower the arms from the base's A-pose: our own two-joint skinning on the CC0 skeleton weights (data/skin.bin says
   // how much of each vertex follows the upper arm, and how much the forearm). The upper arm swings down about the

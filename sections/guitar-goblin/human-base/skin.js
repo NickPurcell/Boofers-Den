@@ -48,7 +48,7 @@ export function skinMaterial(B, o = {}) {
     // in the base pose's frame, so the marks ride every morph. uMarkBox: x0, y0, width, height in decimetres
     uMarkTex: { value: null }, uMarkBox: { value: new THREE.Vector4() }, uMarkZ: { value: 0 },
   };
-  m.userData.u = u;
+  m.userData.u = u; m.userData.cover = { on: true, torso: false, arms: 0, legs: 0 };
   m.userData.set = (s = {}) => {
     if (s.tone) { u.uSkin.value.set(s.tone); const lip = new THREE.Color(s.tone), hsl = {}; lip.getHSL(hsl); lip.setHSL(hsl.h * 0.96, Math.min(1, hsl.s * 1.1 + 0.05), hsl.l * 0.8); u.uLip.value.copy(lip); }
     if (s.lips) u.uLip.value.set(s.lips);
@@ -57,6 +57,7 @@ export function skinMaterial(B, o = {}) {
     if (s.browAmount !== undefined) u.uBrowAmt.value = s.browAmount;
     if (s.suit) u.uSuit.value.set(s.suit);
     if (s.suitOn !== undefined) u.uSuitOn.value = s.suitOn ? 1 : 0;
+    if (s.suitOn !== undefined || s.suitCover) m.userData.cover = { on: u.uSuitOn.value > 0.5, torso: u.uSuitTop.value > 0.5, arms: u.uSuitArms.value, legs: u.uSuitLegs.value, ...(s.suitCover || {}), ...(s.suitOn !== undefined ? { on: !!s.suitOn } : {}) };
     if (s.suitCover) { const c = s.suitCover; if (c.torso !== undefined) u.uSuitTop.value = c.torso ? 1 : 0; if (c.arms !== undefined) u.uSuitArms.value = c.arms; if (c.legs !== undefined) u.uSuitLegs.value = c.legs; }
     if (s.cavity !== undefined) u.uCav.value = s.cavity;
     if (s.paint !== undefined) u.uPaint.value = s.paint;
