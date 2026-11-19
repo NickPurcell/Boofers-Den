@@ -12,11 +12,12 @@ import { skinGeometry, skinMaterial, eyeTexture, eyeGeometries, hairMaterial, lo
 import { HEAD_AT } from './anatomy.js';
 import { FACES } from './head-field.js';
 import { facePainter, WRAP } from './face-paint.js';
-import { STYLES } from './hair.js';
+import { STYLES, lineFor } from './hair.js';
 import { OUTFITS, HOODS } from './outfits.js';
-import { SPECIES, CLOTH, FRAMES, BUILDS, AGES, MARKS, LINERS } from './species.js';
+import { SPECIES, CLOTH, FRAMES, BUILDS, SHOULDERS, AGES, MARKS, LINERS } from './species.js';
 import { tattooMarks } from './tattoos.js';
 import { GEAR, makeGear, gearMaterial } from './gear.js';
+import { ridgeMarks } from './pureblood.js';
 
 /* ---------------- the options ---------------- */
 const named = (o) => Object.entries(o).map(([key, v]) => ({ key, name: v.name }));
@@ -25,7 +26,7 @@ const sp = () => SPECIES[state.species] || SPECIES.echani;
 function options() {
   const S = sp(), o = {
     species: { label: 'Species', items: named(SPECIES) },
-    frame: { label: 'Frame', items: FRAMES }, build: { label: 'Build', items: BUILDS }, face: { label: 'Face', items: named(FACES) }, age: { label: 'Age', items: AGES },
+    frame: { label: 'Frame', items: FRAMES }, build: { label: 'Build', items: BUILDS }, shoulders: { label: 'Shoulders', items: SHOULDERS }, face: { label: 'Face', items: named(FACES) }, age: { label: 'Age', items: AGES },
     skin: { label: 'Skin', swatch: true, items: S.skins }, eyes: { label: 'Eyes', swatch: true, items: S.eyes },
     style: { label: S.styleLabel || 'Hair', items: S.styles || named(STYLES) }, hair: { label: S.hairLabel || 'Hair colour', swatch: true, items: S.hairs },
     ...S.groups,
@@ -77,10 +78,10 @@ const KEEP = new Set([skin, bodySkin, hairMat, lidMat, eyeMat, lashMat, glintMat
 let built = null, cloth = [], info = {}, ticket = 0, current = Promise.resolve(), eyeKey = '';
 
 function args() {
-  const base = { face: state.face, masc: val(FRAMES, state.frame), age: val(AGES, state.age), build: val(BUILDS, state.build), coarse: stage.phone ? 1.2 : 1 };
+  const base = { face: state.face, masc: val(FRAMES, state.frame), age: val(AGES, state.age), build: val(BUILDS, state.build), shoulders: val(SHOULDERS, state.shoulders), coarse: stage.phone ? 1.2 : 1 };
   const feat = state.species === 'pureblood' ? { species: 'pureblood', spurs: state.spurs, tendrils: state.tendrils, ridges: state.ridges, tlength: state.tlength } : {};
-  const body = { face: 'oval', masc: base.masc, age: 0.3, build: base.build, coarse: base.coarse };
-  return { head: { ...base, ...feat }, bust: base, body, hair: { face: base.face, masc: base.masc, age: 0.3, build: 0.5, coarse: base.coarse, style: state.style, ...(state.species === 'mikkian' ? { species: 'mikkian', thick: state.thick, length: state.length, surface: state.surface, bodyBuild: base.build } : {}) } };
+  const body = { face: 'oval', masc: base.masc, age: 0.3, build: base.build, shoulders: base.shoulders, coarse: base.coarse };
+  return { head: { ...base, ...feat }, bust: base, body, hair: { face: base.face, masc: base.masc, age: 0.3, build: 0.5, coarse: base.coarse, style: state.style, ...(state.species === 'mikkian' ? { species: 'mikkian', thick: state.thick, length: state.length, surface: state.surface, bodyBuild: base.build, bodyShoulders: base.shoulders } : {}) } };
 }
 // mesher outputs as one (a head meshed in slices)
 function joinMeshes(ms) {
@@ -200,12 +201,17 @@ function recolour() {
   bodySkin.color.copy(c); for (const m of [skin, bodySkin]) m.sheenColor.copy(c).lerp(new THREE.Color(0xffffff), 0.5);
   lidMat.color.copy(c).lerp(new THREE.Color(S.look.flush), 0.14).multiplyScalar(0.8 - 0.34 * liner);   // lids are a little darker and warmer than the face
   hairMat.color.set(hairHex); hairMat.sheenColor.set(hairHex).lerp(new THREE.Color(0xffffff), 0.35);
-  const ek = pick('eyes').c + S.look.white;
-  if (ek !== eyeKey) { eyeKey = ek; if (eyeMat.map) eyeMat.map.dispose(); eyeMat.map = eyeTexture(pick('eyes').c, { white: S.look.white }); eyeMat.needsUpdate = true; }
+  const ek = pick('eyes').c + S.look.white + S.look.iris;
+  if (ek !== eyeKey) {
+    eyeKey = ek; if (eyeMat.map) { eyeMat.map.glow.dispose(); eyeMat.map.dispose(); }
+    eyeMat.map = eyeTexture(pick('eyes').c, { white: S.look.white, iris: S.look.iris }); eyeMat.emissiveMap = eyeMat.map.glow; eyeMat.needsUpdate = true;
+  }
+  eyeMat.emissive.set(0xffffff); eyeMat.emissiveIntensity = { faint: 0.45, burning: 1.3 }[state.glow] || 0;   // eyes that burn: only the iris is lit
+  hairMat.roughness = (STYLES[state.style] || {}).gloss ? 0.3 : 0.46; hairMat.sheen = (STYLES[state.style] || {}).gloss ? 0.75 : 0.55;
   face.paint({
-    mesh: built.fresh ? built.head.mesh : null, at: HEAD_AT, P: built.head.P, skin: skinHex, hair: hairHex, scalp: state.species === 'mikkian' ? (state.pattern === 'roots' ? 0.5 : 0) : (STYLES[state.style] || {}).roots ?? 0.9, brows: S.look.brows,
+    mesh: built.fresh ? built.head.mesh : null, at: HEAD_AT, P: built.head.P, skin: skinHex, hair: hairHex, scalp: state.species === 'mikkian' ? (state.pattern === 'roots' ? 0.5 : 0) : (STYLES[state.style] || {}).roots ?? 0.9, hairline: lineFor(state.style), brows: S.look.brows,
     stubble: state.marks === 'stubble' ? 1 : 0, freckles: state.marks === 'freckles', liner, flush: S.look.flush, shadeK: S.look.shadeK, contour: S.look.contour, lips: S.look.accentLips ? c.clone().lerp(new THREE.Color(hairHex), S.look.accentLips) : S.look.lips ? c.clone().lerp(new THREE.Color(S.look.lips), 0.6) : null,
-    marks: state.species === 'mirialan' && state.tattoo ? tattooMarks(setOf(state.tattoo, options().tattoo), state.shape, pick('ink').c) : null,
+    marks: state.species === 'mirialan' && state.tattoo ? tattooMarks(setOf(state.tattoo, options().tattoo), state.shape, pick('ink').c) : state.species === 'pureblood' ? ridgeMarks({ ridges: state.ridges }) : null,
   });
   built.fresh = false;
   if (built.mane) {   // the tendrils: the skin's colour, with the accent on their tips, in bands or at their roots
@@ -233,11 +239,11 @@ function recolour() {
 const go = () => { current = rebuild(); return current; };
 
 /* ---------------- the panel ---------------- */
-const GEOMETRY = new Set(['frame', 'build', 'face', 'age', 'style', 'thick', 'length', 'surface', 'spurs', 'tendrils', 'ridges', 'tlength', 'jewel', 'outfit', 'hood', 'gear']);
+const GEOMETRY = new Set(['frame', 'build', 'shoulders', 'face', 'age', 'style', 'thick', 'length', 'surface', 'spurs', 'tendrils', 'ridges', 'tlength', 'jewel', 'outfit', 'hood', 'gear']);
 function summary() {
   const n = (k) => pick(k).name.toLowerCase(), S = sp();
   document.getElementById('title').textContent = S.name; document.getElementById('blurb').textContent = S.blurb;
-  document.getElementById('summary').textContent = `${S.name}: ${n('frame')} frame, ${n('build')} build, ${n('face')} face, ${n('age')}; ${n('skin')} skin, ${n('eyes')} eyes, ${state.species === 'mikkian' ? (state.style === 'dreads' ? `${state.length === 'long' ? 'long' : 'shoulder-length'} ${state.surface === 'locked' ? 'locked' : 'smooth'} dreads with ${n('hair')} accents` : `head-tendrils ${n('style')} with ${n('hair')} accents`) : `${n('hair')} hair worn ${n('style')}`}; in ${pick('outfit').name.toLowerCase()}, ${n('main')} and ${n('second')}${state.hood !== 'none' ? ', hood ' + n('hood') : ''}${state.gear !== 'none' ? ', carrying a ' + n('gear') : ''}.`;
+  document.getElementById('summary').textContent = `${S.name}: ${n('frame')} frame, ${n('build')} build, ${n('shoulders')} shoulders, ${n('face')} face, ${n('age')}; ${n('skin')} skin, ${n('eyes')} eyes, ${state.species === 'mikkian' ? (state.style === 'dreads' ? `${state.length === 'long' ? 'long' : 'shoulder-length'} ${state.surface === 'locked' ? 'locked' : 'smooth'} dreads with ${n('hair')} accents` : `head-tendrils ${n('style')} with ${n('hair')} accents`) : `${n('hair')} hair worn ${n('style')}`}; in ${pick('outfit').name.toLowerCase()}, ${n('main')} and ${n('second')}${state.hood !== 'none' ? ', hood ' + n('hood') : ''}${state.gear !== 'none' ? ', carrying a ' + n('gear') : ''}.`;
 }
 function paintPanel() {
   const opts = options();

@@ -51,7 +51,7 @@ function belt(k, base, t, y = null, h = 0.02, role = 'leather') {
   const S = k.S, yc = y ?? S.waistY - 0.02;
   const band = k.garment(t + 0.007, (x, yy, z) => Math.max(yc - h - yy, yy - yc - h, k.noArms(x, yy)), base);
   const buckle = k.boxOn([0, yc, 0.25], [0.02, h * 0.95, 0.006], 0.004, [0, 1, 0], t + 0.007, base);
-  return [{ name: 'belt', material: 'leather', role, field: band, bounds: [[-0.24, yc - h - 0.02, -0.2], [0.24, yc + h + 0.02, 0.21]], res: 0.006 },
+  return [{ name: 'belt', material: 'leather', role, field: band, bounds: [[-0.26, yc - h - 0.02, -0.21], [0.26, yc + h + 0.02, 0.22]], res: 0.006 },
     { name: 'buckle', material: 'metal', role: 'metal', field: buckle, bounds: k.around(buckle.centre, 0.04), res: 0.003 }];
 }
 // pouches on the belt: [x, z, half width, half height] each
@@ -115,7 +115,7 @@ function wrapsOutfit(k) {
   // the sash: wide, ridged where it is wound, its ends hanging flat down the left hip
   const sy = S.waistY - 0.012, sash = k.garment(T + 0.0055, (x, y, z) => Math.max(sy - 0.044 - y, y - sy - 0.044, k.noArms(x, y)), base), ridge = (x, y, z) => sash(x, y, z) - 0.0022 * Math.max(0, Math.sin((y - sy) * 110));
   const tailPath = k.path([[0.15, sy - 0.02, 0.07], [0.165, sy - 0.12, 0.075], [0.175, sy - 0.23, 0.08]], T + 0.009, 0.02, base);
-  P.push({ name: 'sash', material: 'cloth', role: 'second', parts: [{ field: ridge, bounds: [[-0.24, sy - 0.07, -0.2], [0.24, sy + 0.07, 0.2]] }, { field: k.band(tailPath, 0.05, 0.009, base, 0.003), bounds: k.boundsOf(tailPath, 0.04) }], res: 0.0058 });
+  P.push({ name: 'sash', material: 'cloth', role: 'second', parts: [{ field: ridge, bounds: [[-0.26, sy - 0.07, -0.21], [0.26, sy + 0.07, 0.22]] }, { field: k.band(tailPath, 0.05, 0.009, base, 0.003), bounds: k.boundsOf(tailPath, 0.04) }], res: 0.0058 });
   P.push(boots(k, 0.31));
   return P;
 }
@@ -145,7 +145,7 @@ function coatOutfit(k) {
   const collar = k.garment(0.021, (x, y, z) => Math.max(1.437 - y, y - 1.49, z > 0.02 ? 0.024 - Math.abs(x) : -1));
   P.push({ name: 'collar', material: 'cloth', role: 'main', field: collar, bounds: [[-0.11, 1.42, -0.11], [0.11, 1.51, 0.11]], res: 0.005 });
   // under it: a tunic to the hip, a belt, trousers and boots
-  P.push({ name: 'tunic', material: 'cloth', role: 'second', field: k.garment(0.0065, (x, y, z) => Math.max(0.84 - y, y - NECK - 0.004, k.noArms(x, y), z < -0.02 ? 1 : -1)), bounds: [[-0.22, 0.82, -0.03], [0.22, 1.5, 0.2]], res: 0.0085 });
+  P.push({ name: 'tunic', material: 'cloth', role: 'second', field: k.garment(0.0065, (x, y, z) => Math.max(0.84 - y, y - NECK - 0.004, k.noArms(x, y), z < -0.02 ? 1 : -1)), bounds: [[-(S.sx + 0.02), 0.82, -0.03], [S.sx + 0.02, 1.5, 0.21]], res: 0.0085 });
   P.push(...belt(k, k.skin, 0.0065, S.waistY - 0.03, 0.02));
   P.push(trousers(k, 'dark', 0.0055, 0.87));
   P.push(boots(k, 0.4));
@@ -207,7 +207,7 @@ function armourOutfit(k, heavy) {
   let plate = k.garment(T, (x, y, z) => Math.max(low - y - 0.025 * sstep(0.03, 0.0, Math.abs(x)) * (z > 0 ? 1 : 0), y - top, k.noArms(x, y) + 0.012, scoop(x, y, z)));
   const lines = k.union(k.both(seam(k, [[0.03, 1.4, 0.2], [0.09, 1.3, 0.2], [0.11, 1.2, 0.2]], T, k.skin)), seam(k, [[-0.12, 1.21, 0.2], [0, 1.19, 0.2], [0.12, 1.21, 0.2]], T, k.skin), k.both(seam(k, [[S.sx - 0.045, 1.3, 0.0], [S.sx - 0.04, 1.2, 0.0], [S.sx - 0.045, low + 0.01, 0.0]], T, k.skin)));
   plate = ssub(0.003, plate, lines);
-  P.push({ name: 'cuirass', material: 'plastic', role: 'main', field: plate, bounds: [[-0.24, low - 0.05, -0.2], [0.24, top + 0.02, 0.21]], res: 0.0062 });
+  P.push({ name: 'cuirass', material: 'plastic', role: 'main', field: plate, bounds: [[-(S.sx + 0.045), low - 0.05, -0.2], [S.sx + 0.045, top + 0.02, 0.21]], res: 0.0062 });
   // shoulder caps (and on heavy armour a second, larger plate under each)
   const sh = S.shoulder, cap = (r, t, y0) => k.garment(t, (x, y, z) => Math.max(Math.hypot(Math.abs(x) - sh[0] - 0.004, y - sh[1] - 0.012, z - sh[2]) - r, y0 - y, k.armsOnly(x, y) - 0.035));
   const caps = heavy ? smin(0.004, cap(0.084, 0.022, sh[1] - 0.04), cap(0.112, 0.016, sh[1] - 0.1)) : cap(0.07, 0.0125, sh[1] - 0.035);
@@ -222,7 +222,7 @@ function armourOutfit(k, heavy) {
     P.push({ name: 'gorget', material: 'plastic', role: 'second', field: gorget, bounds: [[-0.14, 1.38, -0.12], [0.14, 1.51, 0.13]], res: 0.0055 });
     const hem = 0.2, base = k.belled(S.waistY - 0.03, hem, 0.215, 0.18), fold = (x, z) => 0.005 * Math.sin(Math.atan2(x, z) * 10);
     const skirt = (x, y, z) => Math.max(base(x, y, z) - 0.009 - fold(x, z) * sstep(S.waistY - 0.08, hem + 0.1, y), hem - y, y - S.waistY - 0.03, z > 0 ? 0.02 + 0.05 * sstep(S.waistY - 0.1, hem, y) - Math.abs(x) : -1);
-    P.push({ name: 'skirt', material: 'cloth', role: 'second', field: skirt, bounds: [[-0.26, hem - 0.02, -0.22], [0.26, S.waistY + 0.05, 0.22]], res: 0.011 });
+    P.push({ name: 'skirt', material: 'cloth', role: 'second', field: skirt, bounds: [[-0.27, hem - 0.02, -0.23], [0.27, S.waistY + 0.05, 0.23]], res: 0.011 });
     const tasset = k.garment(0.02, (x, y, z) => Math.max(S.waistY - 0.26 - y + 0.05 * Math.abs(Math.abs(x) - 0.105) / 0.07, y - S.waistY + 0.03, Math.abs(Math.abs(x) - 0.105) - 0.07, 0.0 - z), base);
     P.push({ name: 'tassets', material: 'plastic', role: 'main', field: tasset, bounds: [[-0.2, S.waistY - 0.3, -0.01], [0.2, S.waistY, 0.22]], res: 0.006 });
     P.push(...belt(k, base, 0.014, S.waistY - 0.02, 0.026));

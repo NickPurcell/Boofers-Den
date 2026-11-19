@@ -7,9 +7,11 @@ import { sphere, ellipsoid, capsule, roundCone, smin, ssub } from '../duros-crea
 // The hairline, as a height for each angle round the head (0 the front, positive toward the figure's left): across
 // the forehead, down the temple to the sideburn, up behind the ear, and down to the nape. The face's paint draws the
 // roots to the same line.
-export function hairline(a) {
+// wob: how uneven it is (a little, as hair grows: a deeper wobble meshes as a ragged edge; a style combed flat back
+// shows a cleaner line still)
+export function hairline(a, wob = 0.5) {
   const b = Math.abs(a);
-  const w = b < 1.3 ? 0.0026 * Math.sin(a * 19 + 0.7) + 0.0019 * Math.sin(a * 37 + 1.3) : 0;   // no hairline is a clean line
+  const w = b < 1.3 ? wob * (0.0026 * Math.sin(a * 19 + 0.7) + 0.0019 * Math.sin(a * 37 + 1.3)) : 0;   // no hairline is a clean line
   if (b < 0.75) return 0.071 - 0.012 * (b / 0.75) ** 2 + w;
   if (b < 1.2) return 0.059 - 0.05 * ((b - 0.75) / 0.45) + w;
   if (b < 1.42) return 0.009 - 0.04 * ((b - 1.2) / 0.22);
@@ -33,6 +35,8 @@ export const STYLES = {
   shaved: { name: 'Shaved', roots: 0.5 },
   crop: { name: 'Short crop', roots: 0.9 },
   swept: { name: 'Swept back', roots: 0.9 },
+  // slicked back shows a clean line: short sideburns that stop level with the eyes, and a rounded nape
+  slick: { name: 'Slicked back', roots: 0.95, gloss: true, line: (a) => { const b = Math.abs(a); return b < 1.9 ? Math.max(hairline(a, 0.12), -0.004) : 0.014 - 0.058 * Math.sin(Math.min(1, (b - 1.9) / 1.24) * Math.PI / 2); } },
   bob: { name: 'Bob', roots: 0.9 },
   tail: { name: 'Tail', roots: 0.9 },
   knot: { name: 'Topknot', roots: 0.9 },
@@ -40,6 +44,9 @@ export const STYLES = {
   long: { name: 'Long', roots: 0.9 },
   crest: { name: 'Crest', roots: 0.45 },
 };
+
+// the hairline a style shows, for the face's paint to draw the roots to
+export const lineFor = (style) => (STYLES[style] || {}).line || hairline;
 
 // head: the head's own field (this frame). Returns null for a style with no sculpted hair.
 export function hairField(style, head) {
@@ -50,10 +57,10 @@ export function hairField(style, head) {
   const back = (x, y) => Math.atan2(x, y - C[1]) / (2 * Math.PI) + 0.5, fall = (x, z) => Math.atan2(x, -(z - C[2])) / (2 * Math.PI) + 0.5;
   const line = (x, y, z) => hairline(Math.atan2(x, z)) - y;   // negative above the hairline
   // a cap of hair: thickness t(x, y, z) over the scalp, grooved by g (0..1), kept above the hairline (or `edge`)
-  const cap = (t, groove, depth, edge = line) => (x, y, z) => {
+  const cap = (t, groove, depth, edge = line, ramp = 0.022, floor = 0.16) => (x, y, z) => {
     const d = head(x, y, z);
     if (d > 0.07) return d - 0.05;
-    const e = edge(x, y, z), th = t(x, y, z) * (0.16 + 0.84 * sstep(0, 0.022, -e));   // hair rises out of the scalp at the hairline; it does not stand there like the rim of a helmet
+    const e = edge(x, y, z), th = t(x, y, z) * (floor + (1 - floor) * sstep(0, ramp, -e));   // hair rises out of the scalp at the hairline; it does not stand there like the rim of a helmet
     return Math.max(d - th + depth * groove(x, y, z) * Math.min(1, th / 0.008), e * 0.7);
   };
   let f, bounds = [[-0.12, -0.1, -0.14], [0.12, 0.16, 0.12]];
@@ -61,6 +68,12 @@ export function hairField(style, head) {
     f = cap((x, y, z) => 0.0065 + 0.006 * sstep(0.03, 0.09, y) + 0.004 * sstep(0.02, 0.07, z) * sstep(0.05, 0.08, y), (x, y, z) => locks(back(x, y), 54), 0.0022);
   } else if (style === 'swept') {
     f = cap((x, y, z) => 0.009 + 0.011 * sstep(0.035, 0.1, y) + 0.008 * sstep(0.03, 0.075, z) * sstep(0.05, 0.085, y) - 0.003 * sstep(0.04, 0.075, Math.abs(x)) * (1 - sstep(0.06, 0.1, y)), (x, y, z) => locks(back(x, y), 38), 0.0034);
+  } else if (style === 'slick') {
+    // slicked back: one smooth mass combed straight back from a clean hairline, fullest on top and a little raised at
+    // the front, close at the sides and the nape; broad comb lines with finer ones inside them
+    const edge = (x, y, z) => STYLES.slick.line(Math.atan2(x, z)) - y;
+    f = cap((x, y, z) => 0.0042 + 0.0125 * sstep(0.035, 0.1, y) * (1 - 0.55 * sstep(0.03, 0.065, Math.abs(x))) + 0.004 * sstep(0.03, 0.07, z) * sstep(0.055, 0.09, y) + 0.0025 * sstep(-0.02, -0.08, z) * sstep(-0.03, 0.04, y),
+      (x, y, z) => 0.6 * strands(back(x, y), 16) + 0.4 * strands(back(x, y) + 0.013, 58), 0.0022, edge, 0.009, 0.35);
   } else if (style === 'crest') {
     // a strip over the top from brow to nape, the sides shaved to the roots
     const strip = (x, y, z) => Math.max(line(x, y, z), Math.abs(x) - 0.03 - 0.008 * sstep(0.0, -0.08, z));

@@ -42,9 +42,11 @@ export function run(job, a) {
     // what hangs below the head's own box (a Pureblood's longer tendrils), meshed on its own and joined on
     const X = h.extra, low = X && X.below ? X.below(h.P) : null;   // the same extra the head was built with: it knows its tendrils
     if (low && !a.part) {   // (in the first slice only)
-      const lf = (x, y, z) => Math.max(low.field(x - hx, y - hy, z - hz), y - (hy + CUT));
-      const lm = mesh(lf, [[low.bounds[0][0], hy + low.bounds[0][1], low.bounds[0][2]], [low.bounds[1][0], hy + CUT + 0.003, low.bounds[1][2]]], RES.head * Q, { aoStep: 0.006, uvScale: 0.035 });
-      if (lm.index.length) m = join([m, refine(lm, lf)]);
+      // closed by a flat cap a little above the head mesh's open lower edge, so the cap is hidden inside the tendril
+      // there; its shading comes from the tendrils and the skin round them, not from the cap, so no band shows at the join
+      const tf = (x, y, z) => low.field(x - hx, y - hy, z - hz), lf = (x, y, z) => Math.max(tf(x, y, z), y - (hy + CUT + hh * 0.6));
+      const lm = mesh(lf, [[low.bounds[0][0], hy + low.bounds[0][1], low.bounds[0][2]], [low.bounds[1][0], hy + CUT + hh * 2, low.bounds[1][2]]], hh, { aoStep: 0.006, uvScale: 0.035 });
+      if (lm.index.length) m = join([m, refine(lm, (x, y, z) => Math.min(tf(x, y, z), s.field(x, y, z)))]);
     }
     return { mesh: m, eye: h.eye, lid: h.lid, P: h.P, at: HEAD_AT, anchors: X && X.anchors && !a.part ? X.anchors(h.P, h.field) : null };
   }
@@ -59,7 +61,7 @@ export function run(job, a) {
   if (job === 'hair' && a.species === 'mikkian') {   // a Mikkian's head-tendrils, with how far along its tendril each vertex is
     const head = headField(a).field, dreads = a.style === 'dreads';
     // dreads hang to the shoulders and below, so they lie on the body in its clothes as well as on the head
-    const bf = dreads ? bodyField({ masc: a.masc, build: a.bodyBuild ?? 0.5 }).field : null, hy = HEAD_AT[1];
+    const bf = dreads ? bodyField({ masc: a.masc, build: a.bodyBuild ?? 0.5, shoulders: a.bodyShoulders || 0 }).field : null, hy = HEAD_AT[1];
     const obstacle = bf ? (x, y, z) => Math.min(head(x, y, z), bf(x, y + hy, z) - 0.026) : head;
     const T = tendrils(a.style, a.thick, head, { length: a.length, surface: a.surface, obstacle });
     // dreads are thick enough for a coarser mesh; their uvs are stretched so the fibres show at the size of a lock's strands

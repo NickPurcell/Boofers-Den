@@ -44,7 +44,7 @@ export function landmarks(o = {}) {
 export function headField(o = {}) {
   const F = FACES[o.face] || FACES.oval, P = landmarks(o), { L, fw, jw, cw, masc: m } = P;
   const age = clamp01(o.age ?? 0.3), old = Math.max(0, (age - 0.5) / 0.5), Y = (y) => y * L;
-  const eye = { x: P.eye[0], y: 0, z: P.eye[2], r: P.eyeR }, es = P.eyeR / 0.013;
+  const eye = { x: P.eye[0], y: 0, z: P.eye[2] - ((o.extra && o.extra.eyeInset) || 0), r: P.eyeR }, es = P.eyeR / 0.013;   // a species may set its eyes deeper
 
   /* ---- the skull ---- */
   const cranium = ellipsoid(0, 0.038, -0.012, 0.0755 * fw, 0.077, 0.093);
@@ -87,6 +87,9 @@ export function headField(o = {}) {
   h = smin(0.01, h, brow, glabella);
   h = smin(0.0065, h, bridge, noseSide);
   h = smin(0.0055, h, tip, alae, colum);   // soft where the wings of the nose meet the cheek
+  // and a fillet in the corner under the nose, where its base meets the lip: a crease tighter than the mesh's cells
+  // meshes as a row of pinched triangles that catch the light
+  h = smin(0.004, h, ellipsoid(0, Y(-0.0505), 0.0862, 0.0125 * ns, 0.0036, 0.0046));
   h = smin(0.0055, h, upperLip, lowerLip);   // and where the lips meet the skin: an edge, not a step
 
   /* ---- carved in ---- */
@@ -96,7 +99,8 @@ export function headField(o = {}) {
   h = ssub(0.012, h, orbit);
   const almond = rotate(ellipsoid(0, 0, 0, 0.0156 * es, 0.0069 * es, 0.0098 * es), rotZ(0.09));
   h = ssub(0.0025, h, mirrorX((x, y, z) => almond(x - eye.x, y + 0.0006, z - eye.z - 0.0058)));
-  h = ssub(0.0035, h, mirrorX(ellipsoid(0.0062 * ns, Y(-0.0486), 0.0872, 0.003, 0.0026, 0.0046)));                // nostrils, opening downward
+  // (no nostrils are cut: at this mesh's size a hollow there meshes as a pair of pinched notches under the tip that
+  // catch the light; the paint's shadow under the nose is enough, as the nostrils hardly show on a real face)
   h = ssub(0.006, h, sunk(capsule([0, Y(-0.0505), 0.092], [0, Y(-0.0575), 0.0945], 0.0032), 0.0016));           // the dip under the nose
   h = ssub(0.012, h, sunk(ellipsoid(0, Y(-0.0868), 0.0905, 0.021, 0.0058, 0.0065), 0.003));                     // the crease above the chin
   // the mouth line, laid on the face as built so it is never in the air
@@ -129,9 +133,9 @@ export function headField(o = {}) {
   h = smin(0.0045, h, ear);
 
   /* ---- the neck, with its two long muscles and (on a man) the throat ---- */
-  const nw = 0.8 + 0.3 * m;
+  const heavy = Math.max(0, (+o.build || 0.5) - 0.5), nw = (0.8 + 0.3 * m) * (1 + 0.24 * heavy);   // a strongly built neck is a thick one
   const neck = roundCone([0, Y(-0.075), -0.022], [0, -0.215, -0.012], 0.049 * nw, 0.0545 * nw);
-  const cords = mirrorX(capsule([0.052 * fw, Y(-0.05), -0.03], [0.013, -0.21, 0.036], 0.0085));
+  const cords = mirrorX(capsule([0.052 * fw, Y(-0.05), -0.03], [0.013, -0.21, 0.036], 0.0085 * (1 + 0.4 * heavy)));
   const under = ellipsoid(0, Y(-0.092), 0.028, 0.034 * jw, 0.018, 0.038);   // the floor of the mouth, from chin back to the neck
   h = smin(0.02, h, under);
   h = smin(0.028, h, neck);
@@ -147,7 +151,7 @@ export function headField(o = {}) {
     field: h, eye, P, extra: X,
     // the lids: how far each comes over the eye, in radians from the top and from the bottom; older lids hang lower
     // the upper lid comes down over the top of the iris and the lower touches its bottom: white shows only at the sides
-    lid: { upper: 1.35 + 0.08 * old - 0.05 * (1 - m), lower: 1.27, tilt: 0.09 },
+    lid: X && X.lid ? X.lid(old) : { upper: 1.35 + 0.08 * old - 0.05 * (1 - m), lower: 1.27, tilt: 0.09 },   // a species may set its own
     bounds: [[-0.105, -0.23, -0.115], [0.105, 0.13, 0.125]],
   };
 }

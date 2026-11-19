@@ -62,6 +62,16 @@ export function eyeTexture(irisHex, o = {}) {
   }
   g.putImageData(img, 0, 0);
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  // the same eye with only the iris lit, brightest toward the pupil: for eyes that burn (a species may ask for it)
+  const gc = document.createElement('canvas'); gc.width = W; gc.height = H;
+  const gg = gc.getContext('2d'), gi = gg.createImageData(W, H), hot = iris.clone().lerp(new THREE.Color(1, 0.9, 0.55), 0.35);
+  for (let y = 0; y < H; y++) {
+    const th = (y / H) * 180, k = th < PU ? 0 : th < IR ? Math.pow(1 - (th - PU) / (IR - PU), 0.6) * 0.9 + 0.1 : 0;
+    col.copy(hot).multiplyScalar(k).convertLinearToSRGB();
+    for (let x = 0; x < W; x++) { const o2 = (x + y * W) * 4; gi.data[o2] = col.r * 255; gi.data[o2 + 1] = col.g * 255; gi.data[o2 + 2] = col.b * 255; gi.data[o2 + 3] = 255; }
+  }
+  gg.putImageData(gi, 0, 0);
+  t.glow = new THREE.CanvasTexture(gc); t.glow.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
 

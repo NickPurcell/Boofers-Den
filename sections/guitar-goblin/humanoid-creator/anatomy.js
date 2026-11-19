@@ -1,7 +1,8 @@
 // The humanoid figure below the head, as signed distance shapes: torso, arms, legs and hands, in metres, y up,
-// facing +z, the floor at y = 0 and the eyes at y = 1.63. Two numbers shape it: how masculine the frame is (0 to 1:
-// narrower shoulders, a bust and wider hips at 0; broad shoulders and a flat chest at 1) and how strongly built
-// (0 slight to 1 strong). Pure: a worker can import it.
+// facing +z, the floor at y = 0 and the eyes at y = 1.63. Three numbers shape it: how masculine the frame is (0 to 1:
+// narrower shoulders, a bust and wider hips at 0; broad shoulders and a flat chest at 1), how strongly built (0 slight,
+// 1 strong, up to 1.3 heavy: a big man's deep chest, thick neck and arms, and some belly) and how much wider the
+// shoulders are than the frame and build make them (metres, either way). Pure: a worker can import it.
 import { sphere, ellipsoid, capsule, roundCone, roundBox, smin, mirrorX, chain } from '../duros-creator/sdf.js';
 import { headField } from './head-field.js';
 import { extraFor } from './features.js';
@@ -11,9 +12,9 @@ const c01 = (v, d) => Math.max(0, Math.min(1, v ?? d));
 
 // the joints and landmarks of a frame, on the figure's left (mirror x for the right)
 export function skeleton(o = {}) {
-  const m = c01(o.masc, 0.5), b = c01(o.build, 0.5), sx = 0.166 + 0.032 * m + 0.01 * b;
+  const m = c01(o.masc, 0.5), b = Math.max(0, Math.min(1.4, o.build ?? 0.5)), hv = Math.max(0, b - 1) / 0.3, sx = 0.166 + 0.032 * m + 0.01 * Math.min(b, 1) + 0.012 * hv + (+o.shoulders || 0);
   return {
-    m, b, sx,
+    m, b, hv, sx,
     shoulder: [sx + 0.006, 1.37, -0.008], elbow: [sx + 0.046, 1.1, -0.02], wrist: [sx + 0.073, 0.865, 0.02],
     hip: [0.088 + 0.006 * (1 - m), 0.86, 0], knee: [0.094, 0.49, 0.012], ankle: [0.1, 0.09, -0.014],
     neckBase: [0, 1.44, -0.014], throat: [0, 1.425, 0.05], sternum: [0, 1.36, 0.085 + 0.012 * m + 0.012 * b], chest: [0, 1.29, 0.1],
@@ -22,16 +23,16 @@ export function skeleton(o = {}) {
 }
 
 export function bodyField(o = {}) {
-  const S = skeleton(o), { m, b, sx } = S, f = 1 - m;
-  const chest = ellipsoid(0, 1.3, -0.004, 0.127 + 0.027 * m + 0.012 * b, 0.135, 0.087 + 0.014 * m + 0.014 * b);
-  const belly = ellipsoid(0, 1.13, 0.002, 0.108 + 0.022 * m + 0.018 * b - 0.01 * f, 0.15, 0.082 + 0.01 * m + 0.018 * b);
-  const pelvis = ellipsoid(0, 0.95, -0.006, 0.143 - 0.004 * m + 0.008 * b + 0.016 * f, 0.115, 0.098 + 0.008 * b + 0.006 * f);
+  const S = skeleton(o), { m, b, hv, sx } = S, f = 1 - m, nk = 1 + 0.18 * Math.max(0, b - 0.5);   // hv: how far past strong toward heavy
+  const chest = ellipsoid(0, 1.3, -0.004, 0.127 + 0.027 * m + 0.012 * b + 0.012 * hv, 0.135 + 0.005 * hv, 0.087 + 0.014 * m + 0.014 * b + 0.016 * hv);
+  const belly = ellipsoid(0, 1.13, 0.002, 0.108 + 0.022 * m + 0.018 * b - 0.01 * f + 0.018 * hv, 0.15, 0.082 + 0.01 * m + 0.018 * b + 0.026 * hv);
+  const pelvis = ellipsoid(0, 0.95, -0.006, 0.143 - 0.004 * m + 0.008 * b + 0.016 * f + 0.008 * hv, 0.115, 0.098 + 0.008 * b + 0.006 * f + 0.01 * hv);
   const glutes = mirrorX(ellipsoid(0.07, 0.905, -0.062, 0.074, 0.082, 0.058 + 0.01 * f + 0.006 * b));
   // shoulders slope from the neck down to the point of the shoulder, which is 23 cm below the eyes
-  const traps = mirrorX(capsule([0.035, 1.452, -0.03], [sx - 0.035, 1.392, -0.012], 0.026 + 0.008 * m + 0.006 * b));
-  const delt = mirrorX(sphere(sx, 1.376, -0.006, 0.044 + 0.012 * m + 0.01 * b));
+  const traps = mirrorX(capsule([0.035, 1.452 + 0.006 * hv, -0.03], [sx - 0.035, 1.392, -0.012], 0.026 + 0.008 * m + 0.006 * b + 0.012 * hv));
+  const delt = mirrorX(sphere(sx, 1.376, -0.006, 0.044 + 0.012 * m + 0.01 * b + 0.012 * hv));
   const clav = mirrorX(capsule([0.02, 1.43, 0.05], [sx - 0.035, 1.404, 0.02], 0.0085));
-  const neckBase = roundCone([0, 1.4, -0.018], [0, 1.47, -0.022], 0.063 + 0.006 * m, 0.052 + 0.005 * m);
+  const neckBase = roundCone([0, 1.4, -0.018], [0, 1.47, -0.022], (0.063 + 0.006 * m) * nk, (0.052 + 0.005 * m) * nk);
   let body = smin(0.05, chest, belly, pelvis);
   body = smin(0.04, body, glutes);
   if (m > 0.3) body = smin(0.025, body, mirrorX(ellipsoid(0.06 + 0.006 * m, 1.33, 0.046, 0.066, 0.045, 0.024 + 0.012 * m * (0.5 + b * 0.6))));          // a man's flat chest muscles
@@ -40,11 +41,11 @@ export function bodyField(o = {}) {
   body = smin(0.04, body, traps, neckBase);
   body = smin(0.035, body, delt);
   // relaxed arms, a little out from the sides, elbows soft
-  const sh = S.shoulder, el = S.elbow, wr = S.wrist, ar = 0.008 * m + 0.01 * b;
+  const sh = S.shoulder, el = S.elbow, wr = S.wrist, ar = 0.008 * m + 0.01 * b + 0.012 * hv;
   body = smin(0.03, body, mirrorX(roundCone(sh, el, 0.042 + ar, 0.033 + ar * 0.6)), mirrorX(ellipsoid(sx + 0.022, 1.25, 0.008, 0.026 + ar * 0.5, 0.07, 0.027 + ar * 0.5)));
   body = smin(0.025, body, mirrorX(roundCone(el, wr, 0.034 + ar * 0.6, 0.0235 + 0.003 * m)), mirrorX(ellipsoid(sx + 0.055, 1.03, -0.004, 0.03 + ar * 0.4, 0.07, 0.029)));
   // legs standing a little apart, and a foot for a boot to be built round
-  const hp = S.hip, kn = S.knee, an = S.ankle, lr = 0.008 * b;
+  const hp = S.hip, kn = S.knee, an = S.ankle, lr = 0.008 * b + 0.012 * hv;
   body = smin(0.045, body, mirrorX(roundCone(hp, kn, 0.084 + lr + 0.007 * f, 0.056 + lr * 0.6)));
   body = smin(0.03, body, mirrorX(roundCone(kn, an, 0.055 + lr * 0.6, 0.037)), mirrorX(ellipsoid(0.097, 0.36, -0.03, 0.045 + lr * 0.5, 0.1, 0.045)));
   body = smin(0.02, body, mirrorX(roundCone([0.1, 0.045, -0.035], [0.104, 0.03, 0.14], 0.043, 0.03)));

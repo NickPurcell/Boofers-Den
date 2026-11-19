@@ -18,7 +18,7 @@ export const SPECIES = {
     hairs: sw(['white', 'White', '#e4e4e8'], ['silver', 'Silver', '#bfc4cb'], ['ash', 'Ash', '#a6a6a2'], ['gold', 'Pale gold', '#d6cdaa'], ['steel', 'Steel', '#8b939c']),
     look: { white: '#ebe8e4', flush: '#b65a54' },
     outfits: ['armour', 'wraps', 'coat', 'robe'],   // what fits the people, their own first
-    defaults: { frame: 'masc', build: 'strong', face: 'oval', age: 'adult', skin: 'ivory', eyes: 'silver', style: 'swept', hair: 'white', marks: 'none', liner: 'none', outfit: 'armour', hood: 'none', gear: 'double', main: 'ash', second: 'slate' },
+    defaults: { frame: 'masc', build: 'strong', shoulders: 'average', face: 'oval', age: 'adult', skin: 'ivory', eyes: 'silver', style: 'swept', hair: 'white', marks: 'none', liner: 'none', outfit: 'armour', hood: 'none', gear: 'double', main: 'ash', second: 'slate' },
     groups: {},
   },
   pureblood: {
@@ -27,8 +27,9 @@ export const SPECIES = {
     eyes: sw(['amber', 'Amber', '#f09a1a'], ['yellow', 'Yellow', '#efc222'], ['gold', 'Gold', '#d6a636'], ['orange', 'Orange', '#e8641a'], ['red', 'Red', '#d32a1a'], ['ember', 'Ember', '#ff5a1e']),
     hairs: sw(BLACK, DKBROWN, ['redbrown', 'Red-brown', '#4a1a14'], ['grey', 'Iron grey', '#8a8684'], ['white', 'White', '#d8d4d0']),
     // hair that suits: worn back, tied or cropped, or none at all
-    styles: ['swept', 'knot', 'tail', 'braid', 'crop', 'long', 'shaved', 'bald'].map((key) => ({ key, name: STYLES[key].name })),
-    look: { white: '#dcc7a6', flush: '#5a1216', lips: '#2c0b10', shade: 0.35, deep: true, shadeK: 1.6, contour: true },
+    styles: ['slick', 'swept', 'knot', 'tail', 'braid', 'crop', 'long', 'shaved', 'bald'].map((key) => ({ key, name: STYLES[key].name })),
+    // no eyebrow hair (the brow is bone), a large iris with little white, and the white itself warm and dark
+    look: { white: '#9a6a48', iris: 38, brows: false, flush: '#5a1216', lips: '#2c0b10', shade: 0.35, deep: true, shadeK: 1.6, contour: true },
     outfits: ['plate', 'cloak', 'robe', 'armour', 'coat'],
     // the dice, steered: a few pieces of jewellery in one metal rather than all of them, tendrils nearly always, dark
     // Sith colours for the clothes, the hood up more often with the cloak, and spurs and folds that go together
@@ -43,10 +44,11 @@ export const SPECIES = {
       if (st.outfit === 'cloak') st.hood = rnd() < 0.6 ? 'up' : 'down';
       if (st.style === 'bald' && st.ridges === 'smooth') st.ridges = 'brow';
     },
-    defaults: { frame: 'masc', build: 'strong', face: 'square', age: 'adult', skin: 'crimson', eyes: 'amber', style: 'swept', hair: 'black', liner: 'none', spurs: 'brow_cheek', ridges: 'cheek', tendrils: 'beard', tlength: 'short', jewel: 'cuffs', metal: 'gold', outfit: 'plate', hood: 'none', gear: 'hilt', main: 'charcoal', second: 'wine' },
+    defaults: { frame: 'masc', build: 'heavy', shoulders: 'broad', face: 'square', age: 'adult', skin: 'scarlet', eyes: 'amber', glow: 'faint', style: 'slick', hair: 'black', liner: 'none', spurs: 'brow_cheek', ridges: 'cheek', tendrils: 'fringe', tlength: 'short', jewel: 'cuffs', metal: 'gold', outfit: 'plate', hood: 'none', gear: 'hilt', main: 'charcoal', second: 'wine' },
     groups: {
       spurs: { label: 'Bone spurs', items: named(SPURS) }, ridges: { label: 'Folds', items: named(RIDGES) },
       tendrils: { label: 'Tendrils', items: named(TENDRILS) }, tlength: { label: 'Tendril length', items: named(TLENGTHS) },
+      glow: { label: 'Eye glow', items: [{ key: 'none', name: 'None' }, { key: 'faint', name: 'Faint' }, { key: 'burning', name: 'Burning' }] },
       jewel: { label: 'Jewellery', multi: true, items: [{ key: 'rings', name: 'Tendril rings' }, { key: 'cuffs', name: 'Tendril cuffs' }, { key: 'chains', name: 'Chains' }, { key: 'studs', name: 'Piercings' }, { key: 'brow', name: 'Spur rings' }, { key: 'circlet', name: 'Circlet' }] },
       metal: { label: 'Metal', items: [{ key: 'gold', name: 'Gold' }, { key: 'silver', name: 'Silver' }, { key: 'bronze', name: 'Bronze' }, { key: 'iron', name: 'Dark iron' }] },
     },
@@ -58,7 +60,7 @@ export const SPECIES = {
     hairs: sw(BLACK, ['blueblack', 'Blue-black', '#131928'], DKBROWN, ['redbrown', 'Red-brown', '#5a2a1a'], ['grey', 'Grey', '#8c8c8c']),
     look: { white: '#e8e4da', flush: '#7a6a2a' },
     outfits: ['jacket', 'robe', 'coat', 'wraps'],
-    defaults: { frame: 'fem', build: 'average', face: 'heart', age: 'adult', skin: 'olive', eyes: 'blue', style: 'tail', hair: 'black', marks: 'none', liner: 'soft', tattoo: 'brow.eyes', shape: 'triangle', ink: 'black', outfit: 'jacket', hood: 'down', gear: 'none', main: 'navy', second: 'sand' },
+    defaults: { frame: 'fem', build: 'average', shoulders: 'average', face: 'heart', age: 'adult', skin: 'olive', eyes: 'blue', style: 'tail', hair: 'black', marks: 'none', liner: 'soft', tattoo: 'brow.eyes', shape: 'triangle', ink: 'black', outfit: 'jacket', hood: 'down', gear: 'none', main: 'navy', second: 'sand' },
     groups: { tattoo: { label: 'Tattoos', multi: true, items: named(PLACES) }, shape: { label: 'Tattoo shape', items: named(SHAPES) }, ink: { label: 'Tattoo ink', swatch: true, items: INKS } },
   },
   mikkian: {
@@ -73,7 +75,7 @@ export const SPECIES = {
     look: { white: '#e9e6e2', flush: '#7a4a9a', brows: false, scalp: 0, accentLips: 0.55 },
     outfits: ['coat', 'robe', 'jacket', 'wraps', 'armour'],
     // opens on the look its first player asked for: mostly medium blue with dark blue accents
-    defaults: { frame: 'andro', build: 'average', face: 'oval', age: 'adult', skin: 'blue', eyes: 'dark', style: 'dreads', hair: 'dkblue', thick: 'thick', length: 'shoulder', surface: 'smooth', pattern: 'tips', marks: 'none', liner: 'none', outfit: 'coat', hood: 'none', gear: 'none', main: 'charcoal', second: 'steel' },
+    defaults: { frame: 'andro', build: 'average', shoulders: 'average', face: 'oval', age: 'adult', skin: 'blue', eyes: 'dark', style: 'dreads', hair: 'dkblue', thick: 'thick', length: 'shoulder', surface: 'smooth', pattern: 'tips', marks: 'none', liner: 'none', outfit: 'coat', hood: 'none', gear: 'none', main: 'charcoal', second: 'steel' },
     groups: { thick: { label: 'Tendril thickness', items: named(THICK) }, length: { label: 'Tendril length', items: named(LENGTHS) }, surface: { label: 'Tendril surface', items: named(SURFACES) }, pattern: { label: 'Tendril pattern', items: named(PATTERNS) } },
   },
   human: {
@@ -83,7 +85,7 @@ export const SPECIES = {
     hairs: sw(BLACK, DKBROWN, ['brown', 'Brown', '#4a3020'], ['auburn', 'Auburn', '#6a2e1a'], ['blond', 'Blond', '#b89858'], ['grey', 'Grey', '#8c8c8c'], ['white', 'White', '#dcdcdc']),
     look: { white: '#e9e4de', flush: '#b0453c' },
     outfits: ['coat', 'jacket', 'wraps', 'armour', 'plate', 'robe'],
-    defaults: { frame: 'andro', build: 'average', face: 'oval', age: 'adult', skin: 's4', eyes: 'brown', style: 'crop', hair: 'dkbrown', marks: 'none', liner: 'none', outfit: 'coat', hood: 'none', gear: 'none', main: 'umber', second: 'sand' },
+    defaults: { frame: 'andro', build: 'average', shoulders: 'average', face: 'oval', age: 'adult', skin: 's4', eyes: 'brown', style: 'crop', hair: 'dkbrown', marks: 'none', liner: 'none', outfit: 'coat', hood: 'none', gear: 'none', main: 'umber', second: 'sand' },
     groups: {},
   },
 };
@@ -91,7 +93,8 @@ export const CLOTH = sw(['bone', 'Bone white', '#e4e0d6'], ['ash', 'Ash grey', '
   ['umber', 'Umber', '#4d3a2c'], ['sand', 'Sand', '#b9a47c'], ['ochre', 'Ochre', '#b0812c'], ['rust', 'Rust', '#8a4324'], ['wine', 'Wine', '#5e1f26'], ['crimson', 'Crimson', '#8f1f22'],
   ['forest', 'Forest', '#2f4a34'], ['teal', 'Teal', '#22585a'], ['navy', 'Navy', '#1e2f52'], ['violet', 'Violet', '#473462']);
 export const FRAMES = [{ key: 'fem', name: 'Feminine', v: 0.08 }, { key: 'andro', name: 'Between', v: 0.5 }, { key: 'masc', name: 'Masculine', v: 0.92 }];
-export const BUILDS = [{ key: 'slight', name: 'Slight', v: 0.15 }, { key: 'average', name: 'Average', v: 0.5 }, { key: 'strong', name: 'Strong', v: 0.9 }];
+export const BUILDS = [{ key: 'slight', name: 'Slight', v: 0.15 }, { key: 'average', name: 'Average', v: 0.5 }, { key: 'strong', name: 'Strong', v: 0.9 }, { key: 'heavy', name: 'Heavy', v: 1.3 }];
+export const SHOULDERS = [{ key: 'narrow', name: 'Narrow', v: -0.014 }, { key: 'average', name: 'Average', v: 0 }, { key: 'broad', name: 'Broad', v: 0.016 }, { key: 'massive', name: 'Massive', v: 0.03 }];
 export const AGES = [{ key: 'young', name: 'Young', v: 0.1 }, { key: 'adult', name: 'Adult', v: 0.36 }, { key: 'elder', name: 'Elder', v: 0.95 }];
 export const MARKS = [{ key: 'none', name: 'None' }, { key: 'freckles', name: 'Freckles' }, { key: 'stubble', name: 'Stubble' }];
 export const LINERS = [{ key: 'none', name: 'None', v: 0.12 }, { key: 'soft', name: 'Soft', v: 0.45 }, { key: 'dark', name: 'Dark', v: 0.9 }];
