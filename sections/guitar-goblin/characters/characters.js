@@ -67,7 +67,7 @@ function options() {
     o.style = { label: 'Head-tendrils', items: asItems(ARRANGE) }; o.thick = { label: 'Tendril thickness', items: asItems(THICK) };
     o.length = { label: 'Tendril length', items: asItems(LENGTHS) }; o.surface = { label: 'Tendril surface', items: asItems(SURFACES) }; o.pattern = { label: 'Tendril pattern', items: asItems(PATTERNS) };
   } else {
-    o.style = { label: 'Hair', items: ['slick', 'swept', 'crop', 'tail', 'knot', 'braid', 'bald'].map((k) => ({ key: k, name: STYLES[k].name })) };
+    o.style = { label: 'Hair', items: [...['slick', 'swept', 'crop', 'tail', 'knot', 'braid'].map((k) => ({ key: k, name: STYLES[k].name })), { key: 'bob', name: 'Bob' }, { key: 'long', name: 'Long' }, { key: 'bald', name: STYLES.bald.name }] };
     o.hair = { label: 'Hair colour', swatch: true, items: P.hairs };
   }
   if (sp === 'pureblood') for (const [k, d] of Object.entries(PUREBLOOD.options)) if (d.items) o[k] = { label: d.label, multi: d.multi, items: asItems(d.items) };
@@ -124,7 +124,11 @@ function apply() {
   const pbo = { on: sp() === 'pureblood' }; if (pbo.on) for (const k of Object.keys(PUREBLOOD.options)) pbo[k] = state[k];
   pb.set(pbo);
   fig.update();
-  hair.set(state.hood === 'up' || sp() === 'mikkian' ? 'bald' : state.style, pick('hair')?.c);   // a raised hood covers the hair; a Mikkian has none
+  const down = DOWN.has(state.style) && state.hood !== 'up' && sp() !== 'mikkian';
+  // a raised hood covers the hair; a Mikkian has none; hair worn down has a close cap bound like the rest, and its fall
+  // worked out in a worker (fall())
+  hair.set(state.hood === 'up' || sp() === 'mikkian' ? 'bald' : down ? 'crop' : state.style, pick('hair')?.c);
+  if (fallen) { fallMat.color.set(pick('hair')?.c || '#16110e'); fallen.visible = down; }
   carried.set({ item: state.gear || 'none', accent: pick('second').c });
   paintTendrils();
   stage.changed();
@@ -163,6 +167,25 @@ function clothGeometry(m) {   // mesher arrays -> geometry, with its occlusion a
   g.setAttribute('position', new THREE.BufferAttribute(m.position, 3)); g.setAttribute('normal', new THREE.BufferAttribute(m.normal, 3)); g.setAttribute('uv', new THREE.BufferAttribute(m.uv, 2));
   g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setIndex(new THREE.BufferAttribute(m.index, 1)); g.computeBoundingSphere(); return g;
 }
+/* ---------------- hair worn down: worked out in a worker from the live figure, like the clothes ---------------- */
+const DOWN = new Set(['bob', 'long']);
+const fallMat = new THREE.MeshPhysicalMaterial({ color: 0x16110e, roughness: 0.46, metalness: 0, normalMap: fibreTexture(), normalScale: new THREE.Vector2(0.6, 0.6), sheen: 0.5, sheenRoughness: 0.4, side: THREE.DoubleSide });
+let fallen = null, fallTicket = 0;
+async function fall() {
+  const my = ++fallTicket, clear = () => { if (fallen) { fig.remove(fallen); fallen.geometry.dispose(); fallen = null; } };
+  if (!DOWN.has(state.style) || state.hood === 'up' || sp() === 'mikkian') { clear(); return; }
+  const args = { mesh: { position: fig.p0.slice(), normal: fig.n0.slice(), index: tris }, frame: headFrame(), style: state.style };
+  for (const coarse of [2, 1]) {   // a coarse pass first, then the fine one, each replacing the last whole
+    let r; try { r = await pool.mesh('hairdown', { ...args, coarse }); } catch (e) { if (!(e && e.cancelled)) console.error(e); return; }
+    if (my !== fallTicket || !r.mesh) return;
+    clear(); const g = new THREE.BufferGeometry(), m = r.mesh, n = m.ao.length, col = new Float32Array(n * 3);
+    for (let i = 0; i < n; i++) { const v = 0.3 + 0.7 * Math.pow(m.ao[i], 2); col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = v; }   // darker between the locks
+    g.setAttribute('position', new THREE.BufferAttribute(m.position, 3)); g.setAttribute('normal', new THREE.BufferAttribute(m.normal, 3)); g.setAttribute('uv', new THREE.BufferAttribute(m.uv, 2)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setIndex(new THREE.BufferAttribute(m.index, 1)); g.computeBoundingSphere();
+    fallMat.vertexColors = true; fallMat.color.set(pick('hair')?.c || '#16110e');
+    fallen = new THREE.Mesh(g, fallMat); fallen.castShadow = fallen.receiveShadow = true; fallen.name = 'hair-down'; fig.add(fallen); stage.changed();
+  }
+}
+
 /* ---------------- a Mikkian's head-tendrils: worked out in a worker from the live figure, like the clothes ---------------- */
 const tentMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.36, metalness: 0, clearcoat: 0.45, clearcoatRoughness: 0.3, sheen: 0.3, sheenRoughness: 0.45 });   // smooth, like a tentacle
 const lockMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, normalMap: fibreTexture(), normalScale: new THREE.Vector2(1.15, 1.15), sheen: 0.3, sheenRoughness: 0.75 });   // or locked: matte and fibrous
@@ -201,7 +224,7 @@ function paintTendrils() {
 async function dress() {
   const my = ++dressTicket, key = state.outfit;
   pool.cancelQueued();   // whatever was waiting for an older choice is no longer wanted
-  grow();   // (a Mikkian's tendrils, alongside)
+  grow(); fall();   // (a Mikkian's tendrils, or hair worn down, alongside)
   const clear = () => { for (const c of [...clothes.children]) { clothes.remove(c); c.geometry.dispose(); c.material.dispose(); } };
   if (!OUTFITS[key] || key === 'none') { clear(); wear(my); return; }
   const J = Object.fromEntries(Object.keys(base.info.joints).map((k) => [k, fig.joint(k)]));
@@ -283,8 +306,8 @@ function paintPanel() {
     for (const b of el.querySelectorAll('button')) b.setAttribute('aria-pressed', String(def.multi ? on.has(b.dataset.key) : b.dataset.key === state[el.dataset.opt]));
   }
   for (const r of panelEl.querySelectorAll('input[data-ctrl]')) r.value = r.dataset.ctrl === 'ridges' ? state.ridges : ctrl[r.dataset.ctrl];
-  $('title').textContent = LOOKS[sp()].name;
-  $('summary').textContent = `${LOOKS[sp()].name}: ${pick('skin').name.toLowerCase()} skin, ${pick('eyes').name.toLowerCase()} eyes, ${state.hood === 'up' ? 'hood up' : sp() === 'mikkian' ? `${pick('length').name.toLowerCase()} ${pick('surface').name.toLowerCase()} head-tendrils (${pick('style').name.toLowerCase()}) with ${pick('accent').name.toLowerCase()} ${pick('pattern').name.toLowerCase()}` : `${pick('hair').name.toLowerCase()} hair ${STYLES[state.style].name.toLowerCase()}`}; in ${OUTFITS[state.outfit].name.toLowerCase()}, ${pick('main').name.toLowerCase()} and ${pick('second').name.toLowerCase()}${state.gear && state.gear !== 'none' ? `, carrying a ${pick('gear').name.toLowerCase()}` : ''}.`;
+  $('title').textContent = LOOKS[sp()].name; $('blurb').textContent = LOOKS[sp()].blurb || '';
+  $('summary').textContent = `${LOOKS[sp()].name}: ${pick('skin').name.toLowerCase()} skin, ${pick('eyes').name.toLowerCase()} eyes, ${state.hood === 'up' ? 'hood up' : sp() === 'mikkian' ? `${pick('length').name.toLowerCase()} ${pick('surface').name.toLowerCase()} head-tendrils (${pick('style').name.toLowerCase()}) with ${pick('accent').name.toLowerCase()} ${pick('pattern').name.toLowerCase()}` : `${pick('hair').name.toLowerCase()} hair ${pick('style').name.toLowerCase()}`}; in ${OUTFITS[state.outfit].name.toLowerCase()}, ${pick('main').name.toLowerCase()} and ${pick('second').name.toLowerCase()}${state.gear && state.gear !== 'none' ? `, carrying a ${pick('gear').name.toLowerCase()}` : ''}.`;
 }
 let raf = 0, dressTimer = 0;
 const live = () => { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; apply(); }); };   // reshape at once while a slider moves
@@ -295,7 +318,7 @@ function choose(k, v) {
   if (k === 'species') { for (const q of Object.keys(state)) if (q !== 'species') delete state[q]; settle(); people(state.people); panel(); }
   if (k === 'people') people(v);
   apply(); paintPanel(); writeHash();
-  if (SHAPE_OPTS.has(k) || (sp() === 'mikkian' && k === 'style')) redress(); else recolourClothes();
+  if (SHAPE_OPTS.has(k) || (sp() === 'mikkian' && k === 'style') || (k === 'style' && (DOWN.has(v) || fallen))) redress(); else recolourClothes();
 }
 function recolourClothes() { const cols = colours(); for (const m of clothes.children) m.material.color.set(cols[m.userData.role] || '#777777'); stage.redraw(); }
 $('random').addEventListener('click', () => {
