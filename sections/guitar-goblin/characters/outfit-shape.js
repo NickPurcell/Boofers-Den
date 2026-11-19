@@ -170,8 +170,8 @@ export function mantle(ctx, M, o = {}) {
     const free = (Math.hypot(x / rx, (z - cz) / rz) - 1) * Math.min(rx, rz) - fold;
     const d = sminv(free, (front ? ctx.all : ctx.body)(x, y, z) - off);   // a cloak falls over the arms; a cape hangs behind them
     // a cloak's opening: wide at the throat (what hangs from the chin falls in front of what is under it), closer over
-    // the chest, widening again toward the hem
-    const opening = front ? (z > cz + 0.02 ? 0.045 + 0.045 * sstep(ny - 0.17, ny - 0.03, y) + 0.07 * Math.max(0, Math.min(1, (ny - 0.15 - y) / 0.9)) - Math.abs(x) : -1) : z - cz + 0.01;
+    // the chest
+    const opening = front ? (z > cz + 0.02 ? 0.045 + 0.045 * sstep(ny - 0.17, ny - 0.03, y) + 0.3 * sstep(ny - 0.14, ny - 0.6, y) - Math.abs(x) : -1) : z - cz + 0.01;   // and parting over the arms below the chest, so the hands and what is under it show
     return Math.max(Math.abs(d) - T, y - top, hem - y, opening);
   };
   return { name: front ? 'cloak' : 'cape', material: 'cloth', role: o.role || 'second', field, bounds: [[-(sx + 0.26), hem - 0.02, cz - 0.27], [sx + 0.26, top + 0.03, front ? cz + 0.26 : cz + 0.06]], res: 0.0105 };
@@ -191,8 +191,10 @@ export function robe(ctx) {
   const fold = (x, z) => 0.008 * Math.sin(Math.atan2(x, z - H.zc) * 9 + 0.5);
   const vee = (x, y, z) => { if (z < M.cz) return -1; const t = Math.max(0, Math.min(1, (M.neckY + 0.01 - y) / (M.neckY + 0.01 - (M.chestY - 0.06)))); return 0.05 * (1 - t) + 0.004 * t - Math.abs(x) + (y > M.neckY + 0.2 ? 1 : 0); };
   const field = (x, y, z) => {
-    const sl = sleeve(x, y, z);
-    return Math.max(base(x, y, z) - T - sl.wide - fold(x, z) * sstep(top - 0.04, hem + 0.1, y), hem - y, y - M.neckY - 0.012, Math.min(vee(x, y, z), 0.06) > 0 && y > M.chestY - 0.06 ? 0.01 : -1);
+    const sl = sleeve(x, y, z), f = x > 0 ? fore[0] : fore[1];
+    // an open cuff: over the last few centimetres the sleeve is hollow round the arm, so it hangs open at the wrist
+    const cuff = f.near(x, y, z, 0.15, 0.72, 0.97) < 0 ? 0.008 + 0.012 * sstep(0.72, 0.97, sl.t) - ctx.arms(x, y, z) : -1;
+    return Math.max(base(x, y, z) - T - sl.wide - fold(x, z) * sstep(top - 0.04, hem + 0.1, y), hem - y, y - M.neckY - 0.012, Math.min(vee(x, y, z), 0.06) > 0 && y > M.chestY - 0.06 ? 0.01 : -1, cuff);
   };
   const W = M.sx + 0.22, D = Math.max(H.rz * 1.45 + 0.1, 0.3);
   P.push({ name: 'robe', material: 'cloth', role: 'main', parts: [{ field, bounds: [[-W, hem - 0.02, H.zc - D], [W, M.hipY, H.zc + D]] }, { field, bounds: [[-W, M.hipY, H.zc - D], [W, M.neckY + 0.04, H.zc + D]] }], res: 0.0095 });
@@ -222,9 +224,9 @@ export function cowl(ctx, role = 'second') {
   // the roll is full behind and over the shoulders, thinning toward the front, where it parts under the chin in a V
   // (so whatever hangs from the chin falls through it)
   const roll = (x, y, z) => {
-    const fz = sstep(M.neckZ - 0.02, M.neckZ + 0.06, z), q = Math.hypot(x, z - M.neckZ - 0.005) - R, r = 0.026 - 0.014 * fz;
+    const fz = sstep(M.neckZ - 0.02, M.neckZ + 0.06, z), q = Math.hypot(x, z - M.neckZ - 0.005) - R - 0.012, r = 0.017 - 0.008 * fz;   // a flat fold lying on the shoulders, not a tyre
     const open = z > M.neckZ ? 0.04 + 0.03 * sstep(ny - 0.07, ny, y) - Math.abs(x) : -1;
-    return Math.max(Math.hypot(q + 0.01 * fz, y - ny + 0.04 * fz) - r, open);   // lower and further out in front, clear of the jaw
+    return Math.max(Math.hypot(q + 0.01 * fz, (y - ny + 0.02 + 0.03 * fz) * 1.6) - r, open);   // flattened, lower, and further out in front, clear of the jaw
   };
   const fold = (x, z) => 0.0025 * Math.sin(Math.atan2(x, z - M.neckZ) * 8);
   const edge = (x, z) => ny - 0.06 + 0.03 * sstep(0.02, 0.12, Math.abs(x)) - (z < M.neckZ ? 0.05 : 0);
