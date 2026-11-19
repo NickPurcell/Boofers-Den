@@ -17,7 +17,10 @@ export function mikkianTendrils(a) {
   const head = (x, y, z) => all(...toWorld([x, y, z])) / k;
   // below the jaw the dreads lie on the body in its clothes: allow for cloth there
   const obstacle = (x, y, z) => { const d = head(x, y, z); return y < -0.14 ? d - 0.026 * Math.min(1, (-0.14 - y) / 0.04) : d; };
-  const list = tendrilPaths(a.style || 'dreads', a.thick || 'thick', head, { length: a.length, surface: a.surface === 'locked' ? 'locked' : 'smooth', obstacle });
+  // (the dreads rooted right at the front of the hairline climb back over the skull and show from the front as a row of
+  // knobs on the brow; their neighbours cover the scalp there, so they are left out)
+  const list = tendrilPaths(a.style || 'dreads', a.thick || 'thick', head, { length: a.length, surface: a.surface === 'locked' ? 'locked' : 'smooth', obstacle })
+    .filter((t) => (a.style || 'dreads') !== 'dreads' || !(t.pts[0][2] > 0.03 && Math.abs(t.pts[0][0]) < 0.06));
   // tubes
   const R = 12, pos = [], nrm = [], idx = [], T = [], D = [];
   for (const t of list) {
