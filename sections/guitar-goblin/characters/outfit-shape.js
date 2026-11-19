@@ -367,7 +367,8 @@ export function coatOutfit(ctx) {
   const coat = (x, y, z) => { const armNear = ctx.arms(x, y, z) < ctx.body(x, y, z); return Math.max(base(x, y, z) - T + (armNear ? 0 : M.handDent(x, y, z, 0.45)), hem - y, y - M.neckY + 0.004, gap(x, y, z)); };
   const W = M.sx + 0.2, D = Math.max(H.rz * 1.32 + 0.1, 0.28);
   P.push({ name: 'coat', material: 'cloth', role: 'main', parts: [{ field: coat, bounds: [[-W, hem - 0.02, H.zc - D], [W, M.neckY + 0.04, H.zc + D]] }], res: 0.009 });
-  const collar = (x, y, z) => { const r = Math.max(M.neckY - 0.012 - y, y - M.neckY - 0.05, z > M.neckZ + 0.02 ? 0.026 - Math.abs(x) : -1); if (r > 0.02) return r; return Math.max(ctx.all(x, y, z) - 0.021, r); };
+  // a low stand collar: a finger's height above the coat's neckline, lying close to the neck, open in front under the chin
+  const collar = (x, y, z) => { const r = Math.max(M.neckY - 0.012 - y, y - M.neckY - 0.026 + 0.012 * sstep(M.neckZ, M.neckZ + 0.06, z), z > M.neckZ + 0.015 ? 0.042 - Math.abs(x) : -1); if (r > 0.02) return r; return Math.max(ctx.all(x, y, z) - 0.013, r); };
   P.push({ name: 'collar', material: 'cloth', role: 'main', field: collar, bounds: [[-(M.neckR + 0.08), M.neckY - 0.03, M.neckZ - M.neckR - 0.09], [M.neckR + 0.08, M.neckY + 0.07, M.neckZ + M.neckR + 0.09]], res: 0.005 });
   // under it, showing down the front: a tunic to the hip in the second colour, and a belt
   const tunic = (x, y, z) => { const r = Math.max(M.hipY - 0.06 - y, y - M.neckY - 0.004, M.cz - 0.02 - z); if (r > 0.02) return r; return Math.max(ctx.body(x, y, z) - 0.0065, r, ctx.arms(x, y, z) < ctx.body(x, y, z) ? 1 : -1); };
