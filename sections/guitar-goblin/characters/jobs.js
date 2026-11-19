@@ -57,7 +57,7 @@ function hipsOf(P, I, arm, J) {
 }
 export function run(job, a) {
   if (job === 'outfit') {
-    const t0 = performance.now();
+    const t0 = performance.now(), began = Date.now();
     // (the base mesh before subdivision: a quarter of the triangles, and clothes stand clear of the 1-2 mm difference)
     const { position: P, normal: N, index: I } = a.surface, arm = armTriangles(P, I, a.J);
     // the whole figure, the body without its arms (negative inside where its own skin is nearer than the arms', so a hand
@@ -77,7 +77,7 @@ export function run(job, a) {
     return { count: items.length, setup: Math.round(tSetup), pieces: mine.map(({ p, q }) => {
       const m = mesh(q.field, q.bounds, res(p), { aoStep: 0.006, uvScale: 0.03 });
       return { name: p.name, material: p.material, role: p.role, mesh: m.index.length ? m : null };
-    }).filter((p) => p.mesh), ms: Math.round(performance.now() - t0) };
+    }).filter((p) => p.mesh), ms: Math.round(performance.now() - t0), began, ended: Date.now() };
   }
   if (job === 'mikkian') return mikkianTendrils(a);   // a Mikkian's head-tendrils (tentacles.js)
   throw new Error('unknown job ' + job);

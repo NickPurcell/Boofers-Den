@@ -18,6 +18,8 @@ import { fieldFor } from './bodyfield.js';
 const $ = (id) => document.getElementById(id);
 const stage = makeStage($('scene'), { tall: 1.8, minDistance: 0.22, maxDistance: 6, onNoGL: () => { $('nogl').hidden = false; } });
 stage.key && stage.key.shadow && Object.assign(stage.key.shadow, { normalBias: 0.012, bias: -0.0006 });   // (the base's own advice for this figure)
+// the workers first: they load their modules while the base mesh downloads (started later, the first outfit waited ~7 s for them)
+const pool = createPool(new URL('./jobs.js', import.meta.url));
 const base = await loadBase();
 const fig = base.figure(); stage.scene.add(fig);
 const pb = pureblood(fig, base);
@@ -127,7 +129,6 @@ let accent = null;
 
 /* ---------------- clothes: meshed in workers from the live body ---------------- */
 makeTextures();
-const pool = createPool(new URL('./jobs.js', import.meta.url));
 const tris = (() => { const q = base.quads, out = new Uint32Array(q.length / 4 * 6); for (let f = 0, o = 0; f < q.length; f += 4, o += 6) { out[o] = q[f]; out[o + 1] = q[f + 1]; out[o + 2] = q[f + 2]; out[o + 3] = q[f]; out[o + 4] = q[f + 2]; out[o + 5] = q[f + 3]; } return out; })();
 // armour plate: painted steel, not mirror: some metal, a satin finish, a thin clear coat over it
 const plateMaterial = (hex) => new THREE.MeshPhysicalMaterial({ color: hex, metalness: 0.45, roughness: 0.5, clearcoat: 0.35, clearcoatRoughness: 0.45, normalMap: metalMaterial(hex).normalMap || null, normalScale: new THREE.Vector2(0.15, 0.15) });
@@ -200,7 +201,7 @@ async function dress() {
   if (!OUTFITS[key] || key === 'none') { clear(); wear(my); return; }
   const J = Object.fromEntries(Object.keys(base.info.joints).map((k) => [k, fig.joint(k)]));
   const L = Object.fromEntries(['neckSideL', 'neckSideR', 'chestMid', 'backMid'].map((k) => { const l = fig.landmark(k); return [k, { p: l.p, n: l.n }]; }));
-  const args = { key, hood: state.hood, surface: { position: fig.p0.slice(), normal: fig.n0.slice(), index: tris }, J, L }, n = pool.size(), t0 = performance.now();
+  const args = { key, hood: state.hood, surface: { position: fig.p0.slice(), normal: fig.n0.slice(), index: tris }, J, L }, n = pool.size(), t0 = performance.now(), T0 = Date.now();
   $('status').hidden = false; $('status').textContent = 'Dressing…';
   // two passes: a coarse one (cells twice the size, several times quicker) put on as soon as it is whole, then the fine
   // one in the background, replacing it whole; a newer choice drops whatever is still waiting
@@ -215,10 +216,10 @@ async function dress() {
   let rs;
   try { rs = await pass(2); } catch (e) { fail(e); return; }
   if (my !== dressTicket) return;
-  put(rs); $('status').hidden = true; info.dress = Math.round(performance.now() - t0); info.coarseJobs = rs.map((r) => `${r.setup}+${r.ms - r.setup}`).join(' ');
+  put(rs); $('status').hidden = true; info.dress = Math.round(performance.now() - t0); info.coarseJobs = rs.map((r) => `start ${r.began - T0} end ${r.ended - T0} (${r.setup}+${r.ms - r.setup})`).join(' | ');
   try { rs = await pass(1); } catch (e) { fail(e); return; }
   if (my !== dressTicket) return;
-  put(rs); info.fine = Math.round(performance.now() - t0); info.fineJobs = rs.map((r) => `${r.setup}+${r.ms - r.setup}`).join(' ');
+  put(rs); info.fine = Math.round(performance.now() - t0); info.fineJobs = rs.map((r) => `start ${r.began - T0} end ${r.ended - T0}`).join(' | ');
 }
 
 /* ---------------- views ---------------- */
