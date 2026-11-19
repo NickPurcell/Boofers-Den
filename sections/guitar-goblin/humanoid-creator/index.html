@@ -2,58 +2,21 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <meta name="theme-color" content="#0e1420" />
-  <title>Character creator: Echani, Sith Pureblood, Mirialan, Mikkian, human</title>
-  <meta name="description" content="A 3D character creator for Echani, Sith Purebloods, Mirialans, Mikkians and humans: face, build, hair, markings and outfit, then save a portrait or a token." />
-  <link rel="stylesheet" href="humanoid.css" />
-  <script type="importmap">
-    { "imports": { "three": "../vendor/three/three.module.min.js", "three/addons/": "../vendor/three/jsm/" } }
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex" />
+  <title>Character creator: moved</title>
+  <link rel="canonical" href="../characters/" />
+  <script>
+    // The character creator now lives at ../characters/. A link to this page keeps its species (#species=...); the
+    // other choices in an old link were the earlier page's and do not carry over. The earlier page is at classic.html.
+    (function () {
+      var q = new URLSearchParams(location.hash.slice(1)), sp = q.get('species'), ok = ['pureblood', 'human', 'echani', 'mirialan', 'mikkian'];
+      location.replace('../characters/' + (sp && ok.indexOf(sp) >= 0 ? '#species=' + sp : ''));
+    })();
   </script>
+  <style>body { background: #0e1420; color: #edf2f8; font: 16px/1.5 system-ui, sans-serif; padding: 2rem; } a { color: #5fa8d8; }</style>
 </head>
 <body>
-  <a class="back" href="../">&larr; Guitar Goblin</a>
-
-  <header class="hero">
-    <p class="kicker">3D &middot; character creator</p>
-    <h1><span id="title">Echani</span> <span>character creator</span></h1>
-    <p class="sub"><span id="blurb"></span> Pick a species, then the face, the build, the hair and what they wear; turn them round, and save a portrait or a token for your character sheet.</p>
-  </header>
-
-  <main class="stage">
-    <div class="viewport" id="viewport">
-      <canvas id="scene" aria-label="3D view of your character. Drag to turn, pinch or scroll to zoom."></canvas>
-      <p class="hint" id="hint">Drag to turn &middot; pinch or scroll to zoom</p>
-      <p class="status" id="status" hidden>Sculpting&hellip;</p>
-      <div class="views" role="group" aria-label="View">
-        <button type="button" data-view="whole">Whole</button>
-        <button type="button" data-view="head">Face</button>
-      </div>
-      <p class="nogl" id="nogl" hidden>The 3D view needs WebGL, which this browser has turned off.</p>
-    </div>
-
-    <div class="panel">
-      <div class="actions">
-        <button type="button" class="btn" id="random">🎲 Randomise</button>
-        <button type="button" class="btn primary" id="save">⬇ Portrait</button>
-        <button type="button" class="btn primary" id="token">⬇ Token</button>
-      </div>
-      <div id="options"></div>
-      <p class="note">Portrait: this view, 1024 px. Token: head and shoulders, 512 px, made to read at map size.</p>
-      <fieldset class="opt bgopt">
-        <legend>Background</legend>
-        <label><input type="radio" name="bg" value="studio" checked /> Studio</label>
-        <label><input type="radio" name="bg" value="plain" /> Plain</label>
-        <label><input type="radio" name="bg" value="none" /> Transparent</label>
-      </fieldset>
-      <p class="note" id="summary" aria-live="polite"></p>
-    </div>
-  </main>
-
-  <footer class="foot">
-    <p>Sculpted in code for this page from smooth mathematical shapes, with every texture and tattoo made the same way; no art from any game or film, and no likeness of any one character. The link to this page keeps your choices, so you can share a look.</p>
-  </footer>
-
-  <script type="module" src="humanoid.js"></script>
+  <p>The character creator has moved to <a href="../characters/">its new page</a>. The earlier version is still <a href="classic.html">here</a> for a while.</p>
 </body>
 </html>
