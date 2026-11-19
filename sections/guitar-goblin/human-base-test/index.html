@@ -17,7 +17,7 @@
   <header class="hero">
     <p class="kicker">Test page &middot; not linked</p>
     <h1>Human <span>base test</span></h1>
-    <p class="sub">A sculpted human base mesh with hand-made morphs from the MakeHuman project (public domain, CC0), shaped here by numbers. A test of whether a face built this way holds up.</p>
+    <p class="sub">The workbench for the human base: a sculpted base mesh with hand-made morphs from the MakeHuman project (public domain, CC0), shaped here by numbers, with our own skin, eyes and species features.</p>
   </header>
   <main class="stage">
     <div class="viewport" id="viewport">
@@ -25,6 +25,7 @@
       <p class="hint" id="hint">Drag to turn &middot; pinch or scroll to zoom</p>
       <div class="views" role="group" aria-label="View">
         <button type="button" data-view="full">Whole</button>
+        <button type="button" data-view="bust">Bust</button>
         <button type="button" data-view="face">Face</button>
         <button type="button" data-view="profile">Profile</button>
       </div>
@@ -33,7 +34,7 @@
     <div class="panel">
       <div class="actions">
         <button type="button" class="btn" data-preset="neutral">Neutral</button>
-        <button type="button" class="btn" data-preset="heavy">Heavy, red</button>
+        <button type="button" class="btn" data-preset="pureblood">Pureblood</button>
         <button type="button" class="btn" id="random">🎲 Random</button>
       </div>
       <div id="options"></div>
@@ -41,7 +42,7 @@
     </div>
   </main>
   <footer class="foot">
-    <p>The base mesh and its morph targets are from the MakeHuman project, released under CC0 1.0 (see data/NOTICE.md). The loader, the blending, the skin and the eyes are made for this page.</p>
+    <p>The base mesh and its morph targets are from the MakeHuman project, released under CC0 1.0 (see ../human-base/data/NOTICE.md). The loader, the blending, the subdivision, the skin, the eyes and the species features are our own.</p>
   </footer>
   <script type="module" src="hb.js"></script>
 </body>
