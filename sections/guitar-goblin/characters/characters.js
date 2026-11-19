@@ -202,16 +202,24 @@ async function dress() {
   const L = Object.fromEntries(['neckSideL', 'neckSideR', 'chestMid', 'backMid'].map((k) => { const l = fig.landmark(k); return [k, { p: l.p, n: l.n }]; }));
   const args = { key, hood: state.hood, surface: { position: fig.p0.slice(), normal: fig.n0.slice(), index: tris }, J, L }, n = pool.size(), t0 = performance.now();
   $('status').hidden = false; $('status').textContent = 'Dressing…';
+  // two passes: a coarse one (cells twice the size, several times quicker) put on as soon as it is whole, then the fine
+  // one in the background, replacing it whole; a newer choice drops whatever is still waiting
+  const pass = (coarse) => Promise.all(Array.from({ length: n }, (_, part) => pool.mesh('outfit', { ...args, part, of: n, coarse })));
+  const put = (rs) => {
+    clear();   // the old clothes stay on until the new ones are whole
+    const cols = colours();
+    for (const p of rs.flatMap((r) => r.pieces)) { const m = new THREE.Mesh(clothGeometry(p.mesh), (MATS[p.material] || clothMaterial)(cols[p.role] || '#777777')); m.material.vertexColors = true; m.castShadow = m.receiveShadow = true; m.name = p.name; m.userData.role = p.role; clothes.add(m); }
+    wear(my); stage.changed();
+  };
+  const fail = (e) => { if (my === dressTicket && !(e && e.cancelled)) { console.error(e); $('status').textContent = 'Something went wrong dressing the figure.'; } };
   let rs;
-  try { rs = await Promise.all(Array.from({ length: n }, (_, part) => pool.mesh('outfit', { ...args, part, of: n }))); } catch (e) { if (my === dressTicket && !(e && e.cancelled)) { console.error(e); $('status').textContent = 'Something went wrong dressing the figure.'; } return; }
+  try { rs = await pass(2); } catch (e) { fail(e); return; }
   if (my !== dressTicket) return;
-  clear();   // the old clothes stay on until the new ones are ready
-  const cols = colours();
-  for (const p of rs.flatMap((r) => r.pieces)) { const m = new THREE.Mesh(clothGeometry(p.mesh), (MATS[p.material] || clothMaterial)(cols[p.role] || '#777777')); m.material.vertexColors = true; m.castShadow = m.receiveShadow = true; m.name = p.name; m.userData.role = p.role; clothes.add(m); }
-  wear(my);
-  $('status').hidden = true; info.dress = Math.round(performance.now() - t0); stage.changed();
+  put(rs); $('status').hidden = true; info.dress = Math.round(performance.now() - t0); info.coarseJobs = rs.map((r) => `${r.setup}+${r.ms - r.setup}`).join(' ');
+  try { rs = await pass(1); } catch (e) { fail(e); return; }
+  if (my !== dressTicket) return;
+  put(rs); info.fine = Math.round(performance.now() - t0); info.fineJobs = rs.map((r) => `${r.setup}+${r.ms - r.setup}`).join(' ');
 }
-
 
 /* ---------------- views ---------------- */
 const headAt = () => new THREE.Vector3().addVectors(fig.eyes.l.position, fig.eyes.r.position).multiplyScalar(0.5);

@@ -66,8 +66,9 @@ export function plate(ctx) {
   const smax = (a, b, k) => { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.max(a, b) + h * h * k * 0.25; };   // rounded where two edges meet
   const edges = (x, y, z) => Math.max(low - y - 0.03 * sstep(0.04, 0.0, Math.abs(x)) * (z > M.cz ? 1 : 0), smax(y - topAt(x, z), scoop(x, y, z), 0.03), M.armBone(x, y, z, 0.035));
   const cuirass = (x, y, z) => {
+    const e = edges(x, y, z); if (e > 0.02) return e;   // (the cheap shape first: beyond its edges the body is not asked)
     const a = hull(x, y, z); if (a > 0.05) return a - T;
-    const e = edges(x, y, z), front = z > M.cz ? 1 : 0;
+    const front = z > M.cz ? 1 : 0;
     const keel = 0.007 * Math.max(0, 1 - Math.abs(x) / 0.026) * sstep(M.neckY - 0.03, M.neckY - 0.1, y) * sstep(low + 0.02, belly, y) * front;
     const step = y < belly ? 0.003 * Math.min(3, Math.ceil((belly - y) / lame)) : 0, roll = 0.006 * sstep(low + 0.016, low - 0.004, y);
     const rim = 0.0035 * sstep(-0.014, -0.004, e) * (1 - sstep(-0.004, 0, e));   // the rolled rim, just inside each edge
@@ -75,7 +76,7 @@ export function plate(ctx) {
   };
   P.push({ name: 'cuirass', material: 'metal', role: 'main', field: cuirass, bounds: [[-(M.sx + 0.08), low - 0.05, M.cz - 0.24], [M.sx + 0.08, top + 0.03, M.cz + 0.26]], res: 0.0055 });
   // trim: a band in the second colour along every edge of the breastplate, standing just proud of its rim
-  const trim = (x, y, z) => { const a = hull(x, y, z); if (a > 0.05) return a - T; const e = edges(x, y, z), roll = 0.006 * sstep(low + 0.016, low - 0.004, y); return Math.max(a - T - 0.0048 + roll, e, -0.011 - e); };
+  const trim = (x, y, z) => { const e = edges(x, y, z); if (e > 0.012 || -0.011 - e > 0.012) return Math.max(e, -0.011 - e); const a = hull(x, y, z); if (a > 0.05) return a - T; const roll = 0.006 * sstep(low + 0.016, low - 0.004, y); return Math.max(a - T - 0.0048 + roll, e, -0.011 - e); };
   P.push({ name: 'trim', material: 'metal', role: 'second', field: trim, bounds: [[-(M.sx + 0.08), low - 0.05, M.cz - 0.24], [M.sx + 0.08, top + 0.03, M.cz + 0.26]], res: 0.0045 });
   // a gorget: a plate collar standing round the base of the neck, over the breastplate's top
   // (lower than a knight's, and open in front in a V that widens upward, so tendrils hanging from the chin pass through)

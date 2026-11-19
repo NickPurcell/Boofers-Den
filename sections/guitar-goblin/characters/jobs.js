@@ -1,7 +1,7 @@
 // What the worker pool does for the characters page: turn an outfit on the live body into triangle arrays.
 // a: { key, surface: { position, normal, index }, J (joints), L (landmarks), part, of }
 import { mesh } from '../duros-creator/sdf.js';
-import { fieldFor } from './bodyfield.js';
+import { bodyFields } from './bodyfield.js';
 import { OUTFITS, cowl, hood } from './outfit-shape.js';
 import { mikkianTendrils } from './tentacles.js';
 
@@ -57,21 +57,27 @@ function hipsOf(P, I, arm, J) {
 }
 export function run(job, a) {
   if (job === 'outfit') {
+    const t0 = performance.now();
     // (the base mesh before subdivision: a quarter of the triangles, and clothes stand clear of the 1-2 mm difference)
     const { position: P, normal: N, index: I } = a.surface, arm = armTriangles(P, I, a.J);
-    const all = fieldFor(P, N, I), bodyU = fieldFor(P, N, I, (t) => !arm[t / 3], 0.06, true), arms = fieldFor(P, N, I, (t) => !!arm[t / 3], 0.06, true);
-    // the body without the arms: the distance to its own skin, negative inside the figure where the body's skin is nearer
-    // than the arms' (inside a hand or an arm it is outside the body)
-    const body = (x, y, z) => { const u = bodyU(x, y, z); return all(x, y, z) < 0 && u <= arms(x, y, z) ? -u : u; };
+    // the whole figure, the body without its arms (negative inside where its own skin is nearer than the arms', so a hand
+    // is not body) and the arms, all three from one search per point (bodyfield.js)
+    const { all, body, arms } = bodyFields(P, N, I, arm);
     const ctx = { all, body, arms, torso: torsoField(P, I, arm, a.J), hips: hipsOf(P, I, arm, a.J), J: a.J, L: a.L };
     const pieces = (OUTFITS[a.key] || OUTFITS.none).make(ctx);
     if (a.key !== 'none' && a.hood === 'down') pieces.push(cowl(ctx, a.key === 'robe' ? 'main' : 'second')); else if (a.key !== 'none' && a.hood === 'up') pieces.push(hood(ctx, a.key === 'robe' ? 'main' : 'second'));
-    const mine = a.of ? pieces.filter((p, i) => i % a.of === a.part) : pieces;
-    return { count: pieces.length, pieces: mine.map((p) => {
-      const list = p.parts || [{ field: p.field, bounds: p.bounds }];
-      const ms = list.map((q) => mesh(q.field, q.bounds, p.res || 0.008, { aoStep: 0.006, uvScale: 0.03 })).filter((m) => m.index.length);
-      return { name: p.name, material: p.material, role: p.role, mesh: ms.length ? join(ms) : null };
-    }).filter((p) => p.mesh) };
+    // shared between the workers part by part (a piece in several parts may be split), each part's cost guessed from
+    // its box and cell size, the largest first to whichever worker has least so far: every worker gets the same deal
+    const res = (p) => (p.res || 0.008) * (a.coarse || 1);
+    const items = pieces.flatMap((p) => (p.parts || [{ field: p.field, bounds: p.bounds }]).map((q) => ({ p, q, cost: ((q.bounds[1][0] - q.bounds[0][0]) * (q.bounds[1][1] - q.bounds[0][1]) * (q.bounds[1][2] - q.bounds[0][2])) / res(p) ** 3 })));
+    const load = new Array(a.of || 1).fill(0), bin = new Map();
+    for (const it of [...items].sort((x, y) => y.cost - x.cost)) { let k = 0; for (let j = 1; j < load.length; j++) if (load[j] < load[k]) k = j; load[k] += it.cost; bin.set(it, k); }
+    const mine = items.filter((it) => (bin.get(it) || 0) === (a.of ? a.part : 0));
+    const tSetup = performance.now() - t0;
+    return { count: items.length, setup: Math.round(tSetup), pieces: mine.map(({ p, q }) => {
+      const m = mesh(q.field, q.bounds, res(p), { aoStep: 0.006, uvScale: 0.03 });
+      return { name: p.name, material: p.material, role: p.role, mesh: m.index.length ? m : null };
+    }).filter((p) => p.mesh), ms: Math.round(performance.now() - t0) };
   }
   if (job === 'mikkian') return mikkianTendrils(a);   // a Mikkian's head-tendrils (tentacles.js)
   throw new Error('unknown job ' + job);
