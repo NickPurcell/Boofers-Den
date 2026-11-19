@@ -144,7 +144,7 @@ export function headField(o = {}) {
   if (X && X.cut) for (const [k, f] of X.cut(P, h)) h = ssub(k, h, f);
 
   return {
-    field: h, eye, P,
+    field: h, eye, P, extra: X,
     // the lids: how far each comes over the eye, in radians from the top and from the bottom; older lids hang lower
     // the upper lid comes down over the top of the iris and the lower touches its bottom: white shows only at the sides
     lid: { upper: 1.35 + 0.08 * old - 0.05 * (1 - m), lower: 1.27, tilt: 0.09 },

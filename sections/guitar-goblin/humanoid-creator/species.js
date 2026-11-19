@@ -1,7 +1,8 @@
 // The peoples this page can make, on one shared figure: what each offers (its skin, eye and hair colours, and the
 // choices only it has) and the look it opens in. Colours and features are from a study of many individuals of each
 // species; no default is any one named person's look.
-import { SPURS, TENDRILS, RIDGES } from './pureblood.js';
+import { SPURS, TENDRILS, RIDGES, TLENGTHS } from './pureblood.js';
+import { STYLES } from './hair.js';
 import { PLACES, SHAPES, INKS } from './tattoos.js';
 import { ARRANGE, THICK, LENGTHS, SURFACES, PATTERNS } from './mikkian.js';
 
@@ -21,16 +22,20 @@ export const SPECIES = {
     groups: {},
   },
   pureblood: {
-    name: 'Sith Pureblood', blurb: 'Red skin, bone spurs at brow and cheek, tendrils along the jaw, burning eyes.',
-    skins: sw(['ember', 'Ember', '#b24a2b'], ['scarlet', 'Scarlet', '#a32a23'], ['crimson', 'Crimson', '#8a1f22'], ['brick', 'Brick', '#7b3024'], ['rose', 'Dusk rose', '#974943'], ['maroon', 'Maroon', '#5c1a1e'], ['wine', 'Dark wine', '#431318']),
-    eyes: sw(['amber', 'Amber', '#f09a1a'], ['yellow', 'Yellow', '#efc222'], ['gold', 'Gold', '#d6a636'], ['orange', 'Orange', '#e8641a'], ['red', 'Red', '#d32a1a']),
+    name: 'Sith Pureblood', blurb: 'Red skin over a heavy brow, bone spurs and folds, fleshy tendrils at the jaw, burning eyes.',
+    skins: sw(['ember', 'Ember', '#b84a2a'], ['scarlet', 'Scarlet', '#a8302a'], ['crimson', 'Crimson', '#8e2226'], ['brick', 'Brick', '#7e3326'], ['rose', 'Dusk rose', '#9a4a46'], ['maroon', 'Maroon', '#62202a'], ['oxblood', 'Oxblood', '#521820'], ['wine', 'Dark wine', '#3e121a'], ['umber', 'Red umber', '#5e2a1e']),
+    eyes: sw(['amber', 'Amber', '#f09a1a'], ['yellow', 'Yellow', '#efc222'], ['gold', 'Gold', '#d6a636'], ['orange', 'Orange', '#e8641a'], ['red', 'Red', '#d32a1a'], ['ember', 'Ember', '#ff5a1e']),
     hairs: sw(BLACK, DKBROWN, ['redbrown', 'Red-brown', '#4a1a14'], ['grey', 'Iron grey', '#8a8684'], ['white', 'White', '#d8d4d0']),
-    look: { white: '#dcc7a6', flush: '#5a1216', lips: '#2c0b10', shade: 0.35 },
+    // hair that suits: worn back, tied or cropped, or none at all
+    styles: ['swept', 'knot', 'tail', 'braid', 'crop', 'long', 'shaved', 'bald'].map((key) => ({ key, name: STYLES[key].name })),
+    look: { white: '#dcc7a6', flush: '#5a1216', lips: '#2c0b10', shade: 0.35, deep: true, shadeK: 1.6, contour: true },
     outfits: ['plate', 'robe', 'coat', 'armour'],
-    defaults: { frame: 'masc', build: 'strong', face: 'square', age: 'adult', skin: 'crimson', eyes: 'amber', style: 'knot', hair: 'black', liner: 'none', spurs: 'large', tendrils: 'jaw', ridges: 'light', jewel: 'gold', outfit: 'plate', hood: 'none', gear: 'hilt', main: 'charcoal', second: 'wine' },
+    defaults: { frame: 'masc', build: 'strong', face: 'square', age: 'adult', skin: 'crimson', eyes: 'amber', style: 'swept', hair: 'black', liner: 'none', spurs: 'brow_cheek', ridges: 'cheek', tendrils: 'beard', tlength: 'short', jewel: 'cuffs', metal: 'gold', outfit: 'plate', hood: 'none', gear: 'hilt', main: 'charcoal', second: 'wine' },
     groups: {
-      spurs: { label: 'Bone spurs', items: named(SPURS) }, tendrils: { label: 'Tendrils', items: named(TENDRILS) }, ridges: { label: 'Ridges', items: named(RIDGES) },
-      jewel: { label: 'Tendril rings', items: [{ key: 'none', name: 'None' }, { key: 'gold', name: 'Gold' }, { key: 'silver', name: 'Silver' }] },
+      spurs: { label: 'Bone spurs', items: named(SPURS) }, ridges: { label: 'Folds', items: named(RIDGES) },
+      tendrils: { label: 'Tendrils', items: named(TENDRILS) }, tlength: { label: 'Tendril length', items: named(TLENGTHS) },
+      jewel: { label: 'Jewellery', multi: true, items: [{ key: 'rings', name: 'Tendril rings' }, { key: 'cuffs', name: 'Tendril cuffs' }, { key: 'chains', name: 'Chains' }, { key: 'studs', name: 'Piercings' }, { key: 'brow', name: 'Spur rings' }, { key: 'circlet', name: 'Circlet' }] },
+      metal: { label: 'Metal', items: [{ key: 'gold', name: 'Gold' }, { key: 'silver', name: 'Silver' }, { key: 'bronze', name: 'Bronze' }, { key: 'iron', name: 'Dark iron' }] },
     },
   },
   mirialan: {

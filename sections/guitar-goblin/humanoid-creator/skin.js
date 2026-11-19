@@ -14,8 +14,8 @@ export function skinGeometry(m, o = {}) {
   for (let i = 0; i < n; i++) {
     if (o.cloth) { const v = 0.32 + 0.68 * Math.pow(m.ao[i], 1.4); col[i * 3] = v; col[i * 3 + 1] = v; col[i * 3 + 2] = v; continue; }
     if (o.hair) { const v = 0.3 + 0.7 * Math.pow(m.ao[i], 2); col[i * 3] = v; col[i * 3 + 1] = v; col[i * 3 + 2] = v; continue; }   // hair: darker between the locks
-    const a = Math.pow(m.ao[i], 1.5), v = 0.36 + 0.64 * a;   // creases and hollows are properly dark
-    col[i * 3] = v * (1 + (1 - a) * 0.2); col[i * 3 + 1] = v * (1 - (1 - a) * 0.1); col[i * 3 + 2] = v * (1 - (1 - a) * 0.06);
+    const D = o.deep ? 1 : 0, a = Math.pow(m.ao[i], 1.5 + 0.6 * D), v = 0.36 - 0.12 * D + (0.64 + 0.12 * D) * a;   // creases and hollows are properly dark (and deeper on a folded face)
+    col[i * 3] = v * (1 + (1 - a) * (0.2 + 0.1 * D)); col[i * 3 + 1] = v * (1 - (1 - a) * (0.1 + 0.12 * D)); col[i * 3 + 2] = v * (1 - (1 - a) * (0.06 + 0.04 * D));
   }
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
   if (o.wrap) {   // u round the head from the back (0) by the figure's right, the front (0.5) and its left, to the back (1); v up

@@ -40,13 +40,13 @@ export function run(job, a) {
       m = slab(refine(mesh(s.field, sb, hh, { aoStep: 0.006, uvScale: 0.035 }), s.field), a.part === 0 ? -Infinity : x0 + c0 * hh, a.part === a.of - 1 ? Infinity : x0 + c1 * hh);
     } else m = refine(mesh(s.field, bounds, hh, { aoStep: 0.006, uvScale: 0.035 }), s.field);
     // what hangs below the head's own box (a Pureblood's longer tendrils), meshed on its own and joined on
-    const X = extraFor(a), low = X && X.below ? X.below(h.P) : null;
+    const X = h.extra, low = X && X.below ? X.below(h.P) : null;   // the same extra the head was built with: it knows its tendrils
     if (low && !a.part) {   // (in the first slice only)
       const lf = (x, y, z) => Math.max(low.field(x - hx, y - hy, z - hz), y - (hy + CUT));
       const lm = mesh(lf, [[low.bounds[0][0], hy + low.bounds[0][1], low.bounds[0][2]], [low.bounds[1][0], hy + CUT + 0.003, low.bounds[1][2]]], RES.head * Q, { aoStep: 0.006, uvScale: 0.035 });
       if (lm.index.length) m = join([m, refine(lm, lf)]);
     }
-    return { mesh: m, eye: h.eye, lid: h.lid, P: h.P, at: HEAD_AT, tendrils: X && X.tendrils ? X.tendrils(h.P) : [] };
+    return { mesh: m, eye: h.eye, lid: h.lid, P: h.P, at: HEAD_AT, anchors: X && X.anchors && !a.part ? X.anchors(h.P, h.field) : null };
   }
   if (job === 'bust') {   // the lower neck, shoulders and upper chest, for open collars
     const s = skinField(a), sx = s.body.S.sx;

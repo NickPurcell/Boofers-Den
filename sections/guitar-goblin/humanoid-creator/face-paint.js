@@ -55,15 +55,25 @@ export function facePainter(size = 2048) {
     g.globalAlpha = 1; g.fillStyle = css(skin); g.fillRect(0, 0, W, H);
     // Skin is never one colour. Light where the face turns up to it: the forehead, down the nose, the top of each
     // cheek. Shade where it turns away: under the cheekbones, at the temples, beside the nose, under the lower lip.
-    const lightC = css(mix(skin, '#ffffff', 0.3)), darkC = css(skin.clone().multiplyScalar(0.48));
-    soft(14, lightC, () => { g.globalAlpha = 0.27; path([[-0.03, 0.03], [0.03, 0.03], [0.034, 0.055], [-0.034, 0.055]]); g.fill(); });
-    soft(4, lightC, () => { g.globalAlpha = 0.3; path([[-0.0035, 0.004], [0.0035, 0.004], [0.004, Y(-0.032)], [-0.004, Y(-0.032)]]); g.fill(); });
-    both((s) => soft(7, lightC, () => { g.globalAlpha = 0.24; path([[s * 0.026, Y(-0.014)], [s * 0.05, Y(-0.014)], [s * 0.047, Y(-0.026)], [s * 0.028, Y(-0.026)]]); g.fill(); }));
-    both((s) => soft(9, darkC, () => { g.globalAlpha = 0.27; path([[s * 0.04, Y(-0.04)], [s * 0.062, Y(-0.034)], [s * 0.058, Y(-0.07)], [s * 0.04, Y(-0.075)]]); g.fill(); }));
-    both((s) => soft(8, darkC, () => { g.globalAlpha = 0.22; path([[s * 0.052, 0.02], [s * 0.066, 0.02], [s * 0.066, 0.05], [s * 0.055, 0.05]]); g.fill(); }));
-    both((s) => soft(3, darkC, () => { g.globalAlpha = 0.24; path([[s * 0.009, Y(-0.012)], [s * 0.014, Y(-0.012)], [s * 0.017, Y(-0.04)], [s * 0.012, Y(-0.04)]]); g.fill(); }));
-    soft(4, darkC, () => { g.globalAlpha = 0.2; path([[-0.014, Y(-0.083)], [0.014, Y(-0.083)], [0.012, Y(-0.089)], [-0.012, Y(-0.089)]]); g.fill(); });
+    const lightC = css(mix(skin, '#ffffff', 0.3)), darkC = css(skin.clone().multiplyScalar(0.48)), K = o.shadeK ?? 1;   // K: how strongly this face is modelled in paint
+    soft(14, lightC, () => { g.globalAlpha = Math.min(0.9, 0.27 * K); path([[-0.03, 0.03], [0.03, 0.03], [0.034, 0.055], [-0.034, 0.055]]); g.fill(); });
+    soft(4, lightC, () => { g.globalAlpha = Math.min(0.9, 0.3 * K); path([[-0.0035, 0.004], [0.0035, 0.004], [0.004, Y(-0.032)], [-0.004, Y(-0.032)]]); g.fill(); });
+    both((s) => soft(7, lightC, () => { g.globalAlpha = Math.min(0.9, 0.24 * K); path([[s * 0.026, Y(-0.014)], [s * 0.05, Y(-0.014)], [s * 0.047, Y(-0.026)], [s * 0.028, Y(-0.026)]]); g.fill(); }));
+    both((s) => soft(9, darkC, () => { g.globalAlpha = Math.min(0.9, 0.27 * K); path([[s * 0.04, Y(-0.04)], [s * 0.062, Y(-0.034)], [s * 0.058, Y(-0.07)], [s * 0.04, Y(-0.075)]]); g.fill(); }));
+    both((s) => soft(8, darkC, () => { g.globalAlpha = Math.min(0.9, 0.22 * K); path([[s * 0.052, 0.02], [s * 0.066, 0.02], [s * 0.066, 0.05], [s * 0.055, 0.05]]); g.fill(); }));
+    both((s) => soft(3, darkC, () => { g.globalAlpha = Math.min(0.9, 0.24 * K); path([[s * 0.009, Y(-0.012)], [s * 0.014, Y(-0.012)], [s * 0.017, Y(-0.04)], [s * 0.012, Y(-0.04)]]); g.fill(); }));
+    soft(4, darkC, () => { g.globalAlpha = Math.min(0.9, 0.2 * K); path([[-0.014, Y(-0.083)], [0.014, Y(-0.083)], [0.012, Y(-0.089)], [-0.012, Y(-0.089)]]); g.fill(); });
     soft(2.5, darkC, () => { g.globalAlpha = 0.34; path([[-0.0125, Y(-0.0445)], [0.0125, Y(-0.0445)], [0.0105, Y(-0.0515)], [-0.0105, Y(-0.0515)]]); g.fill(); });   // the underside of the nose is in shadow
+    if (o.contour) {   // a face of folds and bone: shade along the jaw and round the sockets, light along the brow shelf and the cheekbones
+      both((s) => soft(10, darkC, () => { g.globalAlpha = 0.3; path([[s * 0.03, Y(-0.08)], [s * 0.055, Y(-0.07)], [s * 0.05, Y(-0.1)], [s * 0.02, Y(-0.108)]]); g.fill(); }));
+      both((s) => soft(5, darkC, () => { g.globalAlpha = 0.3; const e = P.eye; path([[s * (e[0] - 0.02), 0.006], [s * (e[0] + 0.022), 0.008], [s * (e[0] + 0.02), -0.012], [s * (e[0] - 0.018), -0.012]]); g.fill(); }));
+      both((s) => soft(4, lightC, () => { g.globalAlpha = 0.3; path([[s * 0.008, 0.025], [s * 0.05, 0.028], [s * 0.052, 0.022], [s * 0.008, 0.019]]); g.fill(); }));
+      both((s) => soft(5, lightC, () => { g.globalAlpha = 0.28; path([[s * 0.04, Y(-0.013)], [s * 0.06, Y(-0.012)], [s * 0.058, Y(-0.022)], [s * 0.042, Y(-0.024)]]); g.fill(); }));
+      for (let k = 0; k < 120; k++) {   // a mottle, stronger than a human's
+        const p = round((hash(k, 191) - 0.5) * 3.2, -0.12 + 0.24 * hash(k, 193));
+        soft(6, hash(k, 195) > 0.55 ? lightC : darkC, () => { g.globalAlpha = 0.07; g.beginPath(); g.arc(p[0], p[1], (2 + 6 * hash(k, 197)) * mm, 0, 7); g.fill(); });
+      }
+    }
     for (let k = 0; k < 70; k++) {   // and a faint unevenness all over
       const p = round((hash(k, 91) - 0.5) * 3.0, -0.11 + 0.2 * hash(k, 93));
       soft(5, hash(k, 95) > 0.5 ? lightC : darkC, () => { g.globalAlpha = 0.05; g.beginPath(); g.arc(p[0], p[1], (2 + 4 * hash(k, 97)) * mm, 0, 7); g.fill(); });

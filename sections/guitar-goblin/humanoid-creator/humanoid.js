@@ -78,7 +78,7 @@ let built = null, cloth = [], info = {}, ticket = 0, current = Promise.resolve()
 
 function args() {
   const base = { face: state.face, masc: val(FRAMES, state.frame), age: val(AGES, state.age), build: val(BUILDS, state.build), coarse: stage.phone ? 1.2 : 1 };
-  const feat = state.species === 'pureblood' ? { species: 'pureblood', spurs: state.spurs, tendrils: state.tendrils, ridges: state.ridges } : {};
+  const feat = state.species === 'pureblood' ? { species: 'pureblood', spurs: state.spurs, tendrils: state.tendrils, ridges: state.ridges, tlength: state.tlength } : {};
   const body = { face: 'oval', masc: base.masc, age: 0.3, build: base.build, coarse: base.coarse };
   return { head: { ...base, ...feat }, bust: base, body, hair: { face: base.face, masc: base.masc, age: 0.3, build: 0.5, coarse: base.coarse, style: state.style, ...(state.species === 'mikkian' ? { species: 'mikkian', thick: state.thick, length: state.length, surface: state.surface, bodyBuild: base.build } : {}) } };
 }
@@ -95,6 +95,51 @@ function joinMeshes(ms) {
     v += m.ao.length; i += m.index.length;
   }
   return out;
+}
+// A Pureblood's jewellery, as one geometry in the head's frame, from the places the head said it can go (anchors):
+// rings and cuffs round the tendrils, chains slung between neighbouring tendrils, studs and rings in the chin, lip and
+// nose, rings through the brow spurs' roots, and a thin circlet across the brow with a small setting at the front.
+function jewellery(A, on) {
+  const parts = [], V = (p) => new THREE.Vector3(p[0], p[1], p[2]), Z = new THREE.Vector3(0, 0, 1);
+  // a point along a tendril, a fraction of the way from root to tip: where, which way it runs, and how thick it is there
+  const along = (t, f) => {
+    const L = []; let s = 0; for (let i = 0; i < t.pts.length; i++) { if (i) s += V(t.pts[i]).distanceTo(V(t.pts[i - 1])); L.push(s); }
+    const want = f * s; let i = 1; while (i < L.length - 1 && L[i] < want) i++;
+    const u = (want - L[i - 1]) / ((L[i] - L[i - 1]) || 1), p = V(t.pts[i - 1]).lerp(V(t.pts[i]), u), d = V(t.pts[i]).sub(V(t.pts[i - 1])).normalize(), r = t.r[i - 1] + (t.r[i] - t.r[i - 1]) * u;
+    return { p, d, r };
+  };
+  const place = (g, p, d) => { g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(Z, d)); g.translate(p.x, p.y, p.z); parts.push(g); };
+  // which tendrils carry rings and cuffs: the ones nearest the front, and every other one besides
+  const front = A.tendrils.map((t, i) => [i, -t.pts[0][2] + Math.abs(t.pts[0][0]) * 0.6]).sort((a, b) => a[1] - b[1]).map((x) => x[0]);
+  for (const [ti, t] of A.tendrils.entries()) {
+    const rank = front.indexOf(ti);
+    if (on.has('rings') && (rank < 3 || rank % 2 === 1)) for (const f of rank < 3 ? [0.32, 0.46] : [0.38]) { const a = along(t, f); place(new THREE.TorusGeometry(a.r + 0.0011, 0.0013, 8, 20), a.p, a.d); }
+    if (on.has('cuffs') && rank < 3) {
+      const a = along(t, 0.28), c = new THREE.CylinderGeometry(a.r + 0.0012, a.r + 0.0014, 0.011, 20, 1, true); c.rotateX(Math.PI / 2); place(c, a.p, a.d);
+      for (const e of [-0.0055, 0.0055]) { const b = new THREE.TorusGeometry(a.r + 0.0016, 0.0009, 6, 20); b.translate(0, 0, e); place(b, a.p, a.d); }
+    }
+  }
+  if (on.has('chains') && A.tendrils.length > 1) {   // between each tendril and the next one round the jaw, sagging
+    const ts = A.tendrils.map((t) => ({ t, a: along(t, 0.45) })).sort((x, y) => Math.atan2(x.a.p.x, x.a.p.z + 0.02) - Math.atan2(y.a.p.x, y.a.p.z + 0.02));
+    for (let i = 0; i + 1 < ts.length; i++) {
+      const a = ts[i].a.p, b = ts[i + 1].a.p; if (a.distanceTo(b) > 0.05) continue;
+      const mid = a.clone().lerp(b, 0.5); mid.y -= 0.004 + a.distanceTo(b) * 0.35; mid.z += 0.003;
+      parts.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([a, mid, b]), 16, 0.0007, 5, false));
+    }
+  }
+  if (on.has('studs')) {
+    if (A.chin) { const s = new THREE.SphereGeometry(0.0024, 10, 8); const p = V(A.chin.p).addScaledVector(V(A.chin.n), 0.0012); s.translate(p.x, p.y, p.z); parts.push(s); }
+    if (A.lip) place(new THREE.TorusGeometry(0.0034, 0.0007, 6, 16), V(A.lip.p).addScaledVector(V(A.lip.n), 0.0006), new THREE.Vector3(1, 0.15, 0).normalize());
+    if (A.nose) place(new THREE.TorusGeometry(0.0038, 0.0007, 6, 16), V(A.nose.p).addScaledVector(V(A.nose.n), 0.0008), new THREE.Vector3(0.2, 1, 0.3).normalize());
+  }
+  if (on.has('brow') && A.brow) for (const s of [1, -1]) { const p = V(A.brow.p); p.x *= s; place(new THREE.TorusGeometry(0.0042, 0.0008, 6, 16), p.addScaledVector(V([A.brow.n[0] * s, A.brow.n[1], A.brow.n[2]]), 0.002), new THREE.Vector3(0, 0.3, 1).normalize()); }
+  if (on.has('circlet') && A.circlet.length > 3) {
+    parts.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(A.circlet.map(V)), 48, 0.0013, 6, false));
+    const front = A.circlet[Math.floor(A.circlet.length / 2)], gem = new THREE.OctahedronGeometry(0.0042, 0); gem.scale(0.8, 1.3, 0.5); gem.translate(front[0], front[1] - 0.001, front[2] + 0.0015); parts.push(gem);
+  }
+  if (!parts.length) return null;
+  for (const g of parts) { if (g.index === null) { const idx = []; for (let i = 0; i < g.attributes.position.count; i++) idx.push(i); g.setIndex(idx); } }
+  return merge(parts);
 }
 const copy = (m) => ({ position: m.position.slice(), normal: m.normal.slice(), uv: m.uv.slice(), index: m.index.slice(), ao: m.ao });
 async function rebuild() {
@@ -124,11 +169,12 @@ async function rebuild() {
   figure.traverse((o) => { if (o.geometry) o.geometry.dispose(); if (o.material && !KEEP.has(o.material)) o.material.dispose(); });
   figure.clear(); cloth = [];
   const add = (g, mat, to = figure) => { const m = new THREE.Mesh(g, mat); m.castShadow = m.receiveShadow = true; to.add(m); return m; };
-  add(skinGeometry(copy(head.mesh), { wrap: [WRAP[0], HEAD_AT[1] + WRAP[1], WRAP[2], WRAP[3]] }), skin);
+  const deep = !!sp().look.deep;   // a face of folds and bone is shaded deeper in its creases
+  add(skinGeometry(copy(head.mesh), { wrap: [WRAP[0], HEAD_AT[1] + WRAP[1], WRAP[2], WRAP[3]], deep }), skin);
   // where the bust runs up under the head's mesh, tuck it in a hair so the two never fight for the same pixels
   const bm = copy(bust.mesh); for (let i = 0; i < bm.ao.length; i++) if (bm.position[i * 3 + 1] > bust.seamY - 0.004) for (let k = 0; k < 3; k++) bm.position[i * 3 + k] -= bm.normal[i * 3 + k] * 0.0007;
-  add(skinGeometry(bm), bodySkin);
-  for (const h of [hl, hr]) add(skinGeometry(copy(h.mesh)), bodySkin);
+  add(skinGeometry(bm, { deep }), bodySkin);
+  for (const h of [hl, hr]) add(skinGeometry(copy(h.mesh), { deep }), bodySkin);
   const hg = new THREE.Group(); hg.position.set(...HEAD_AT); figure.add(hg);
   const eg = eyeGeometries(head.eye, head.lid);
   add(eg.balls, eyeMat, hg).receiveShadow = false; add(eg.lids, lidMat, hg); add(eg.lashes, lashMat, hg);
@@ -138,13 +184,7 @@ async function rebuild() {
     if (hair.t) mane = { mesh: add(skinGeometry(copy(hair.mesh)), state.style === 'dreads' ? (state.surface === 'locked' ? lockMat : tentMat) : tendrilMat, hg), t: hair.t, d: hair.d, ao: hair.mesh.ao };
     else add(skinGeometry(copy(hair.mesh), { hair: true }), hairMat, hg);
   }
-  if (state.jewel && state.jewel !== 'none' && head.tendrils.length) {   // a ring on each tendril
-    const rings = head.tendrils.map((t) => {
-      const a = new THREE.Vector3(...t.a), b = new THREE.Vector3(...t.b), f = 0.42, at = a.clone().lerp(b, f), rad = t.r0 + (t.r1 - t.r0) * f + 0.0012;
-      const g = new THREE.TorusGeometry(rad, 0.0017, 8, 20); g.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), b.clone().sub(a).normalize())); g.translate(at.x, at.y, at.z); return g;
-    });
-    add(merge(rings), ringMat, hg);
-  }
+  if (state.species === 'pureblood' && head.anchors) { const jg = jewellery(head.anchors, setOf(state.jewel, options().jewel)); if (jg) add(jg, ringMat, hg); }
   for (const p of outfit.pieces) { const m = add(skinGeometry(copy(p.mesh), { cloth: true }), (CLOTHS[p.material] || clothMaterial)('#777777')); m.name = p.name; cloth.push({ mesh: m, role: p.role }); }
   const gear = makeGear(state.gear, A.body, state.outfit); if (gear) figure.add(gear);
   built = { head, fresh: true, mane };
@@ -164,7 +204,7 @@ function recolour() {
   if (ek !== eyeKey) { eyeKey = ek; if (eyeMat.map) eyeMat.map.dispose(); eyeMat.map = eyeTexture(pick('eyes').c, { white: S.look.white }); eyeMat.needsUpdate = true; }
   face.paint({
     mesh: built.fresh ? built.head.mesh : null, at: HEAD_AT, P: built.head.P, skin: skinHex, hair: hairHex, scalp: state.species === 'mikkian' ? (state.pattern === 'roots' ? 0.5 : 0) : (STYLES[state.style] || {}).roots ?? 0.9, brows: S.look.brows,
-    stubble: state.marks === 'stubble' ? 1 : 0, freckles: state.marks === 'freckles', liner, flush: S.look.flush, lips: S.look.accentLips ? c.clone().lerp(new THREE.Color(hairHex), S.look.accentLips) : S.look.lips ? c.clone().lerp(new THREE.Color(S.look.lips), 0.6) : null,
+    stubble: state.marks === 'stubble' ? 1 : 0, freckles: state.marks === 'freckles', liner, flush: S.look.flush, shadeK: S.look.shadeK, contour: S.look.contour, lips: S.look.accentLips ? c.clone().lerp(new THREE.Color(hairHex), S.look.accentLips) : S.look.lips ? c.clone().lerp(new THREE.Color(S.look.lips), 0.6) : null,
     marks: state.species === 'mirialan' && state.tattoo ? tattooMarks(setOf(state.tattoo, options().tattoo), state.shape, pick('ink').c) : null,
   });
   built.fresh = false;
@@ -186,14 +226,14 @@ function recolour() {
   }
   const cols = { main: pick('main').c, second: pick('second').c, dark: '#25272d', leather: '#46321f', metal: '#a4a9b0', trim: '#c9a24a' };
   for (const p of cloth) p.mesh.material.color.set(cols[p.role] || '#777777');
-  ringMat.color.set(state.jewel === 'silver' ? '#c3c7cd' : '#c9a24a'); ringMat.emissive.copy(ringMat.color);
+  ringMat.color.set({ gold: '#c9a24a', silver: '#c3c7cd', bronze: '#a8703c', iron: '#4a4c52' }[state.metal] || '#c9a24a'); ringMat.emissive.copy(ringMat.color).multiplyScalar(state.metal === 'iron' ? 0.4 : 1); ringMat.roughness = state.metal === 'iron' ? 0.45 : 0.28;
   gearMaterial().userData.u.uPrimary.value.set('#3a2c20'); gearMaterial().userData.u.uSecondary.value.set(cols.second);   // a staff's wood, and its grip in the wearer's second colour
   stage.redraw();
 }
 const go = () => { current = rebuild(); return current; };
 
 /* ---------------- the panel ---------------- */
-const GEOMETRY = new Set(['frame', 'build', 'face', 'age', 'style', 'thick', 'length', 'surface', 'spurs', 'tendrils', 'ridges', 'jewel', 'outfit', 'hood', 'gear']);
+const GEOMETRY = new Set(['frame', 'build', 'face', 'age', 'style', 'thick', 'length', 'surface', 'spurs', 'tendrils', 'ridges', 'tlength', 'jewel', 'outfit', 'hood', 'gear']);
 function summary() {
   const n = (k) => pick(k).name.toLowerCase(), S = sp();
   document.getElementById('title').textContent = S.name; document.getElementById('blurb').textContent = S.blurb;
