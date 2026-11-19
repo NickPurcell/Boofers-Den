@@ -3,6 +3,7 @@
 import { mesh } from '../duros-creator/sdf.js';
 import { fieldFor } from './bodyfield.js';
 import { OUTFITS, cowl, hood } from './outfit-shape.js';
+import { mikkianTendrils } from './tentacles.js';
 
 // which triangles are the arms: near the line from the shoulder joint through the elbow to past the hand, and past the
 // top of the shoulder (the shoulder's cap stays with the body, for the cuirass and the pauldrons)
@@ -72,9 +73,10 @@ export function run(job, a) {
       return { name: p.name, material: p.material, role: p.role, mesh: ms.length ? join(ms) : null };
     }).filter((p) => p.mesh) };
   }
+  if (job === 'mikkian') return mikkianTendrils(a);   // a Mikkian's head-tendrils (tentacles.js)
   throw new Error('unknown job ' + job);
 }
-export function transferables(out) { const list = []; for (const p of out.pieces || []) for (const k of ['position', 'normal', 'ao', 'uv', 'index']) if (p.mesh[k]) list.push(p.mesh[k].buffer); return list; }
+export function transferables(out) { const list = []; if (out.t) for (const k of ['position', 'normal', 'index', 't', 'd']) list.push(out[k].buffer); for (const p of out.pieces || []) for (const k of ['position', 'normal', 'ao', 'uv', 'index']) if (p.mesh[k]) list.push(p.mesh[k].buffer); return list; }
 function join(ms) {
   if (ms.length === 1) return ms[0];
   let nv = 0, ni = 0; for (const m of ms) { nv += m.ao.length; ni += m.index.length; }

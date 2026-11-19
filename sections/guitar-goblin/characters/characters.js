@@ -5,9 +5,10 @@ import * as THREE from 'three';
 import { makeStage } from '../creator-kit/stage.js';
 import { loadBase } from '../human-base/base.js';
 import { CONTROLS, CONTROL_DEFAULTS, PRESETS, toShape, randomControls } from '../human-base/controls.js';
-import { SPECIES as LOOKS, LINERS, MARKS, GLOWS, painters } from '../human-base/species/looks.js';
+import { SPECIES as LOOKS, LINERS, MARKS, GLOWS, lookParams } from '../human-base/species/looks.js';
+import { ARRANGE, THICK, LENGTHS, SURFACES, PATTERNS } from '../humanoid-creator/mikkian.js';
 import { pureblood, PUREBLOOD } from '../human-base/species/pureblood.js';
-import { makeHair } from './hair.js';
+import { makeHair, fibreTexture } from './hair.js';
 import { STYLES } from './hair-shape.js';
 import { createPool } from '../creator-kit/pool.js';
 import { makeTextures, clothMaterial, leatherMaterial, metalMaterial, plasticMaterial } from '../duros-creator/materials.js';
@@ -38,8 +39,12 @@ const PAGE = {
     outfits: ['robe', 'plate', 'cloak'], defaults: { style: 'slick', hair: 'white', outfit: 'robe', hood: 'none', main: 'bone', second: 'ash' } },
   mirialan: { people: 'woman', hairs: sw(BLACK, ['blueblack', 'Blue-black', '#131928'], DKBROWN, ['redbrown', 'Red-brown', '#5a2a1a'], ['grey', 'Grey', '#8c8c8c']),
     outfits: ['robe', 'cloak', 'plate'], defaults: { style: 'slick', hair: 'black', outfit: 'robe', hood: 'down', main: 'navy', second: 'sand' } },
+  // opens on the look its first player asked for: medium blue with dark blue accents, heavy smooth dreads to the shoulders
+  mikkian: { people: 'between', outfits: ['robe', 'cloak', 'plate'], defaults: { style: 'dreads', thick: 'thick', length: 'shoulder', surface: 'smooth', pattern: 'tips', outfit: 'robe', hood: 'none', main: 'charcoal', second: 'steel' } },
 };
-const ORDER = ['pureblood', 'human', 'echani', 'mirialan'];
+const ORDER = ['pureblood', 'human', 'echani', 'mirialan', 'mikkian'];
+// the people to start from: the base's presets, and one between the two (the controls' own middle)
+const PEOPLE = { ...PRESETS, between: { name: 'In between', controls: { gender: 0.5 } } };
 const asItems = (o) => Object.entries(o).map(([key, v]) => ({ key, name: typeof v === 'string' ? v : v.name, c: v.c }));
 
 /* ---------------- the state: choices, and the body and face as the base's control values ---------------- */
@@ -47,15 +52,20 @@ const state = {}, ctrl = { ...CONTROL_DEFAULTS };
 function options() {
   const sp = state.species, L = LOOKS[sp], P = PAGE[sp], o = {
     species: { label: 'Species', items: ORDER.map((k) => ({ key: k, name: LOOKS[k].name })) },
-    people: { label: 'Start from', items: asItems(PRESETS) },
+    people: { label: 'Start from', items: asItems(PEOPLE) },
     skin: { label: 'Skin', swatch: true, items: asItems(L.skins) }, eyes: { label: 'Eyes', swatch: true, items: asItems(L.eyes) },
   };
   if (sp === 'pureblood') o.glow = { label: 'Eye glow', items: asItems(GLOWS) };
   o.liner = { label: 'Lined eyes', items: asItems(LINERS) };
   if (sp !== 'pureblood') o.marks = { label: 'Face detail', items: asItems(MARKS) };
   for (const [k, d] of Object.entries(L.options || {})) o[k] = { label: d.label, multi: d.multi, swatch: d.swatch, items: asItems(d.items) };
-  o.style = { label: 'Hair', items: ['slick', 'swept', 'crop', 'tail', 'knot', 'braid', 'bald'].map((k) => ({ key: k, name: STYLES[k].name })) };
-  o.hair = { label: 'Hair colour', swatch: true, items: P.hairs };
+  if (sp === 'mikkian') {   // head-tendrils in place of hair
+    o.style = { label: 'Head-tendrils', items: asItems(ARRANGE) }; o.thick = { label: 'Tendril thickness', items: asItems(THICK) };
+    o.length = { label: 'Tendril length', items: asItems(LENGTHS) }; o.surface = { label: 'Tendril surface', items: asItems(SURFACES) }; o.pattern = { label: 'Tendril pattern', items: asItems(PATTERNS) };
+  } else {
+    o.style = { label: 'Hair', items: ['slick', 'swept', 'crop', 'tail', 'knot', 'braid', 'bald'].map((k) => ({ key: k, name: STYLES[k].name })) };
+    o.hair = { label: 'Hair colour', swatch: true, items: P.hairs };
+  }
   if (sp === 'pureblood') for (const [k, d] of Object.entries(PUREBLOOD.options)) if (d.items) o[k] = { label: d.label, multi: d.multi, items: asItems(d.items) };
   o.outfit = { label: 'Outfit', items: P.outfits.map((k) => ({ key: k, name: OUTFITS[k].name })) };
   o.hood = { label: 'Hood', items: asItems(HOODS) };
@@ -83,7 +93,7 @@ function settle(from = {}) {
 }
 const sp = () => state.species;
 const ALLC = [...CONTROLS.build, ...CONTROLS.head];
-function people(key) { Object.assign(ctrl, CONTROL_DEFAULTS, (PRESETS[key] || PRESETS.man).controls); }
+function people(key) { Object.assign(ctrl, CONTROL_DEFAULTS, (PEOPLE[key] || PRESETS.man).controls); }
 // the link: the choices, and the controls that differ from the person they started from
 {
   const q = Object.fromEntries(new URLSearchParams(location.hash.slice(1)));
@@ -91,7 +101,7 @@ function people(key) { Object.assign(ctrl, CONTROL_DEFAULTS, (PRESETS[key] || PR
   for (const c of ALLC) if (q['c.' + c.key] !== undefined) ctrl[c.key] = Math.min(c.max, Math.max(c.min, +q['c.' + c.key] || 0));
 }
 function writeHash() {
-  const q = new URLSearchParams(), base0 = { ...CONTROL_DEFAULTS, ...(PRESETS[state.people] || PRESETS.man).controls };
+  const q = new URLSearchParams(), base0 = { ...CONTROL_DEFAULTS, ...(PEOPLE[state.people] || PRESETS.man).controls };
   for (const [k, v] of Object.entries(state)) q.set(k, v);
   for (const c of ALLC) if (Math.abs(ctrl[c.key] - base0[c.key]) > 0.004) q.set('c.' + c.key, ctrl[c.key].toFixed(2));
   history.replaceState(null, '', '#' + q.toString());
@@ -101,20 +111,19 @@ const colours = () => ({ main: pick('main').c, second: pick('second').c, dark: '
 
 /* ---------------- the figure from the state ---------------- */
 function apply() {
-  const L = LOOKS[sp()], look = L.look, glow = (GLOWS[state.glow] || GLOWS.none).v, shape = toShape(ctrl);
+  const shape = toShape(ctrl), look = lookParams(sp(), { ...state, gender: shape.gender });   // the base's own way to set a look
   fig.set(shape);
   const suit = OUTFITS[state.outfit]?.suit;
-  fig.skin.userData.set({ tone: pick('skin').c, browAmount: look.brows ?? 0.85, browThick: 0.62 + 0.38 * shape.gender, brow: look.brow || '#231a16', lips: look.lips || null,
-    sockets: glow > 0.1 ? look.sockets ?? 0.4 : Math.min(look.sockets ?? 0.4, 0.32),
-    suit: '#1f2126', suitOn: !!suit, suitCover: suit || { torso: shape.gender < 0.75, arms: 0, legs: 0 },
-    marks: painters({ liner: state.liner, marks: state.marks, tattoo: sp() === 'mirialan' ? state.tattoo : '', shape: state.shape, ink: L.options?.ink?.items[state.ink]?.c }) });
-  fig.eyes.set({ colour: pick('eyes').c, glow, white: look.white || '#e6dfd6', iris: look.iris || 1 });
+  fig.skin.userData.set({ ...look.skin, suit: '#1f2126', suitOn: !!suit, suitCover: suit || { torso: shape.gender < 0.75, arms: 0, legs: 0 } });
+  fig.eyes.set(look.eyes); accent = look.accent;
   const pbo = { on: sp() === 'pureblood' }; if (pbo.on) for (const k of Object.keys(PUREBLOOD.options)) pbo[k] = state[k];
   pb.set(pbo);
   fig.update();
-  hair.set(state.hood === 'up' ? 'bald' : state.style, pick('hair').c);   // a raised hood covers the hair
+  hair.set(state.hood === 'up' || sp() === 'mikkian' ? 'bald' : state.style, pick('hair')?.c);   // a raised hood covers the hair; a Mikkian has none
+  paintTendrils();
   stage.changed();
 }
+let accent = null;
 
 /* ---------------- clothes: meshed in workers from the live body ---------------- */
 makeTextures();
@@ -148,9 +157,45 @@ function clothGeometry(m) {   // mesher arrays -> geometry, with its occlusion a
   g.setAttribute('position', new THREE.BufferAttribute(m.position, 3)); g.setAttribute('normal', new THREE.BufferAttribute(m.normal, 3)); g.setAttribute('uv', new THREE.BufferAttribute(m.uv, 2));
   g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setIndex(new THREE.BufferAttribute(m.index, 1)); g.computeBoundingSphere(); return g;
 }
+/* ---------------- a Mikkian's head-tendrils: worked out in a worker from the live figure, like the clothes ---------------- */
+const tentMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.36, metalness: 0, clearcoat: 0.45, clearcoatRoughness: 0.3, sheen: 0.3, sheenRoughness: 0.45 });   // smooth, like a tentacle
+const lockMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, normalMap: fibreTexture(), normalScale: new THREE.Vector2(1.15, 1.15), sheen: 0.3, sheenRoughness: 0.75 });   // or locked: matte and fibrous
+let mane = null, maneTicket = 0;
+function headFrame() {   // the earlier head's frame on this figure: upright, level with the eyes, 67 mm behind them, scaled by the eyes' spacing
+  const F = fig.headFrame(), x = new THREE.Vector3(...F.x), up = new THREE.Vector3(0, 1, 0).addScaledVector(x, -x.y).normalize(), fw = new THREE.Vector3().crossVectors(x, up), k = F.scale / 0.0644;
+  return { origin: new THREE.Vector3(...F.origin).addScaledVector(fw, -0.0672 * k).toArray(), x: x.toArray(), up: up.toArray(), fw: fw.toArray(), k };
+}
+async function grow() {
+  const my = ++maneTicket;
+  const clear = () => { if (mane) { fig.remove(mane.mesh); mane.mesh.geometry.dispose(); mane = null; } };
+  if (sp() !== 'mikkian' || state.hood === 'up') { clear(); return; }
+  let r; try { r = await pool.mesh('mikkian', { mesh: { position: fig.p0.slice(), normal: fig.n0.slice(), index: tris }, frame: headFrame(), style: state.style, thick: state.thick, length: state.length, surface: state.surface }); } catch (e) { if (!(e && e.cancelled)) console.error(e); return; }
+  if (my !== maneTicket) return;
+  clear();
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(r.position, 3)); g.setAttribute('normal', new THREE.BufferAttribute(r.normal, 3)); g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(r.t.length * 3), 3)); g.setIndex(new THREE.BufferAttribute(r.index, 1)); g.computeBoundingSphere();
+  const m = new THREE.Mesh(g, state.surface === 'locked' ? lockMat : tentMat); m.castShadow = m.receiveShadow = true; m.name = 'tendrils'; fig.add(m);
+  mane = { mesh: m, t: r.t, d: r.d }; paintTendrils(); stage.changed();
+}
+// the tendrils' colours: the skin's, with the accent on the tips, in rings toward the tips, or at the roots; a smooth one a
+// little paler on the side toward the head
+function paintTendrils() {
+  if (!mane) return;
+  const col = mane.mesh.geometry.attributes.color, nrm = mane.mesh.geometry.attributes.normal, pos = mane.mesh.geometry.attributes.position, c = new THREE.Color(pick('skin').c), acc = new THREE.Color(accent || '#1b2f6e'), k = new THREE.Color(), white = new THREE.Color(1, 1, 1);
+  const hf = headFrame(), smooth = state.surface !== 'locked', ring = (dd) => (dd < 0.014 || dd > 0.27 ? 0 : Math.pow((Math.cos((dd / 0.042) * 2 * Math.PI) + 1) / 2, 7));
+  for (let i = 0; i < mane.t.length; i++) {
+    const u = mane.t[i], w = state.pattern === 'tips' ? Math.pow(Math.min(1, Math.max(0, (u - 0.4) / 0.4)), 0.8) : state.pattern === 'bands' ? ring(mane.d[i]) : state.pattern === 'roots' ? 1 - Math.min(1, Math.max(0, (u - 0.04) / 0.34)) : 0;
+    k.copy(c).lerp(acc, w);
+    if (smooth) { const px = pos.getX(i) - hf.origin[0], pz = pos.getZ(i) - hf.origin[2], l = Math.hypot(px, pz) || 1; k.lerp(white, 0.13 * Math.max(0, -(nrm.getX(i) * px + nrm.getZ(i) * pz) / l)); }
+    col.setXYZ(i, k.r, k.g, k.b);
+  }
+  col.needsUpdate = true; tentMat.sheenColor.copy(c).lerp(white, 0.5); lockMat.sheenColor.copy(c).lerp(white, 0.3);
+}
+
 async function dress() {
   const my = ++dressTicket, key = state.outfit;
   pool.cancelQueued();   // whatever was waiting for an older choice is no longer wanted
+  grow();   // (a Mikkian's tendrils, alongside)
   const clear = () => { for (const c of [...clothes.children]) { clothes.remove(c); c.geometry.dispose(); c.material.dispose(); } };
   if (!OUTFITS[key] || key === 'none') { clear(); wear(my); return; }
   const J = Object.fromEntries(Object.keys(base.info.joints).map((k) => [k, fig.joint(k)]));
@@ -182,7 +227,8 @@ stage.controls.addEventListener('start', () => $('hint').classList.add('gone'));
 
 /* ---------------- the panel ---------------- */
 const panelEl = $('options');
-const SHAPE_OPTS = new Set(['species', 'people', 'outfit', 'hood', 'folds', 'spurs', 'tendrils', 'tlength']);   // these change what is worn or its fit
+const SHAPE_OPTS = new Set(['species', 'people', 'outfit', 'hood', 'folds', 'spurs', 'tendrils', 'tlength', 'thick', 'length', 'surface']);   // these change what is worn or its fit
+const MANE_OPTS = new Set(['style', 'surface', 'pattern', 'accent', 'skin']);   // these change what is worn or its fit
 function panel() {
   panelEl.textContent = '';
   const field = (k, def, parent = panelEl) => {
@@ -224,7 +270,7 @@ function paintPanel() {
   }
   for (const r of panelEl.querySelectorAll('input[data-ctrl]')) r.value = r.dataset.ctrl === 'ridges' ? state.ridges : ctrl[r.dataset.ctrl];
   $('title').textContent = LOOKS[sp()].name;
-  $('summary').textContent = `${LOOKS[sp()].name}: ${pick('skin').name.toLowerCase()} skin, ${pick('eyes').name.toLowerCase()} eyes, ${state.hood === 'up' ? 'hood up' : `${pick('hair').name.toLowerCase()} hair ${STYLES[state.style].name.toLowerCase()}`}; in ${OUTFITS[state.outfit].name.toLowerCase()}, ${pick('main').name.toLowerCase()} and ${pick('second').name.toLowerCase()}.`;
+  $('summary').textContent = `${LOOKS[sp()].name}: ${pick('skin').name.toLowerCase()} skin, ${pick('eyes').name.toLowerCase()} eyes, ${state.hood === 'up' ? 'hood up' : sp() === 'mikkian' ? `${pick('length').name.toLowerCase()} ${pick('surface').name.toLowerCase()} head-tendrils (${pick('style').name.toLowerCase()}) with ${pick('accent').name.toLowerCase()} ${pick('pattern').name.toLowerCase()}` : `${pick('hair').name.toLowerCase()} hair ${STYLES[state.style].name.toLowerCase()}`}; in ${OUTFITS[state.outfit].name.toLowerCase()}, ${pick('main').name.toLowerCase()} and ${pick('second').name.toLowerCase()}.`;
 }
 let raf = 0, dressTimer = 0;
 const live = () => { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; apply(); }); };   // reshape at once while a slider moves
@@ -235,15 +281,15 @@ function choose(k, v) {
   if (k === 'species') { for (const q of Object.keys(state)) if (q !== 'species') delete state[q]; settle(); people(state.people); panel(); }
   if (k === 'people') people(v);
   apply(); paintPanel(); writeHash();
-  if (SHAPE_OPTS.has(k)) redress(); else recolourClothes();
+  if (SHAPE_OPTS.has(k) || (sp() === 'mikkian' && k === 'style')) redress(); else recolourClothes();
 }
 function recolourClothes() { const cols = colours(); for (const m of clothes.children) m.material.color.set(cols[m.userData.role] || '#777777'); stage.redraw(); }
 $('random').addEventListener('click', () => {
   const rnd = Math.random, opts = options(), any = (k) => { const it = opts[k].items; return it[Math.floor(rnd() * it.length)].key; };
   Object.assign(ctrl, randomControls(rnd));
-  for (const k of ['skin', 'eyes', 'hair', 'outfit', 'main']) state[k] = any(k);
+  for (const k of ['skin', 'eyes', 'outfit', 'main', ...(sp() === 'mikkian' ? ['thick', 'length', 'surface', 'pattern', 'accent'] : ['hair'])]) state[k] = any(k);
   do state.second = any('second'); while (state.second === state.main);
-  state.hood = rnd() < 0.6 ? 'none' : any('hood'); state.style = any('style');
+  state.hood = rnd() < 0.6 ? 'none' : any('hood'); state.style = sp() === 'mikkian' && rnd() < 0.6 ? 'dreads' : any('style');
   if (sp() === 'pureblood') {   // steered: tendrils nearly always, a few pieces of jewellery in one metal, eyes that burn now and then
     for (const k of ['folds', 'spurs', 'tlength', 'metal']) state[k] = any(k);
     state.tendrils = rnd() < 0.05 ? 'none' : ['chin', 'fringe', 'beard', 'beard', 'cheek'][Math.floor(rnd() * 5)];

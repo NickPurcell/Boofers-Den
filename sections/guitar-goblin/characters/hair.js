@@ -5,7 +5,7 @@ import { STYLES, restShape, bindStyle, placeBase, placeLocks, lockCounts, lockIn
 
 // fine fibres running along v, as a normal map: the strands inside a lock
 let fibres = null;
-function fibreTexture() {
+export function fibreTexture() {
   if (fibres) return fibres;
   const S = 256, data = new Uint8Array(S * S * 4), h = (i, j) => { const s = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return s - Math.floor(s); }, hgt = new Float32Array(S * S);
   for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) { const yy = Math.floor(y / 48), f = y / 48 - yy; hgt[x + y * S] = 0.6 * h(x, 1) + 0.25 * h(Math.floor(x / 3), 7) + 0.15 * (h(x, yy + 9) * (1 - f) + h(x, ((yy + 1) % Math.ceil(S / 48)) + 9) * f); }
