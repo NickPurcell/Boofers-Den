@@ -30,9 +30,9 @@ for (const [k] of SHAPE) DEFAULT[k] = 0;
 const PRESETS = {
   neutral: {},
   // a heavy, wide-shouldered man with a strong brow and jaw, red skin and orange-yellow eyes
-  heavy: { gender: 1, age: 0.06, muscle: 0.88, weight: 0.92, height: 0.22, shoulders: 0.85, neck: 0.7, browh: -0.35, browr: 1, browa: -0.3, forehead: -0.25, eyesize: -0.25,
+  heavy: { gender: 1, age: 0.06, muscle: 0.88, weight: 0.92, height: 0.22, shoulders: 0.85, neck: 0.7, browh: -0.2, browr: 0.45, browa: -0.2, forehead: 0.1, eyesize: -0.2,
     eyebags: 0.2, nosew: 0.35, nosel: 0.1, nosehump: 0.35, nostrils: 0.25, mouthw: 0.15, lips: -0.15, corners: -0.25, cheekbones: 0.7, cheeks: -0.25, chinw: 0.55, chinjut: 0.35,
-    chinh: 0.15, jaw: 0.9, headfat: 0.1, headage: 0.35, square: 0.75, skin: 'red', eyes: 'ember' },
+    chinh: 0.15, jaw: 0.9, headfat: 0.1, headage: 0.3, square: 0.45, skin: 'red', eyes: 'ember' },
 };
 const state = { ...DEFAULT };
 const num = (k, v) => { const b = BODY.find((x) => x[0] === k); const lo = b ? b[2] : SHAPE.some((x) => x[0] === k) ? 0 : -1, hi = b ? b[3] : 1; return Math.min(hi, Math.max(lo, Number(v) || 0)); };
@@ -77,16 +77,16 @@ function noiseTexture(size = 256) {
 }
 function skinMaterial(noise) {
   const m = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.56, metalness: 0, specularIntensity: 0.45, sheen: 0.18, sheenRoughness: 0.5, sheenColor: new THREE.Color(0xffe6dc) });
-  const u = { uSkin: { value: new THREE.Color() }, uLip: { value: new THREE.Color() }, uNoise: { value: noise }, uWrap: { value: 0.32 }, uScatter: { value: new THREE.Vector3(0.55, 0.24, 0.15) } };
+  const u = { uSkin: { value: new THREE.Color() }, uLip: { value: new THREE.Color() }, uNoise: { value: noise }, uSuit: { value: new THREE.Color(0x2b3038) }, uWrap: { value: 0.32 }, uScatter: { value: new THREE.Vector3(0.55, 0.24, 0.15) } };
   m.userData.u = u;
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', 'attribute float aLip; varying float vLip; varying vec3 vOP; varying vec3 vON;\n#include <common>')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLip = aLip; vOP = position; vON = normal;');
+      .replace('#include <common>', 'attribute float aLip; attribute vec3 aRest; varying float vLip; varying vec3 vOP; varying vec3 vON; varying vec3 vRest;\n#include <common>')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLip = aLip; vOP = position; vON = normal; vRest = aRest;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `uniform vec3 uSkin; uniform vec3 uLip; uniform sampler2D uNoise; uniform float uWrap; uniform vec3 uScatter;
-varying float vLip; varying vec3 vOP; varying vec3 vON; float sHeight;
+varying float vLip; varying vec3 vOP; varying vec3 vON; varying vec3 vRest; uniform vec3 uSuit; float sHeight; float sSuit;
 vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x + texture2D(uNoise, p.xz * s) * bw.y + texture2D(uNoise, p.xy * s) * bw.z; }
 #include <common>`)
       .replace('#include <color_fragment>', `
@@ -94,9 +94,15 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
   vec4 nF = tri(vOP, bw, 3.2), nB = tri(vOP, bw, 0.9);
   vec3 col = uSkin * mix(0.94, 1.04, nB.g) * mix(0.97, 1.02, nF.b);
   col = mix(col, uLip, smoothstep(0.15, 0.7, vLip) * 0.75);
+  // a plain undersuit from the waist to mid-thigh, placed in the base mesh's own coordinates so it follows every morph
+  // (decimetres; the arms hang out past |x| = 2.6 in the base pose, so they stay bare)
+  float waist = 1.05 - 0.12 * smoothstep(0.0, 1.2, abs(vRest.x)), hem = -2.35 + 0.18 * smoothstep(0.4, 1.6, abs(vRest.x));
+  sSuit = smoothstep(hem - 0.02, hem + 0.02, vRest.y) * (1.0 - smoothstep(waist - 0.02, waist + 0.02, vRest.y)) * (1.0 - smoothstep(2.5, 2.6, abs(vRest.x)));
+  float rib = smoothstep(waist - 0.16, waist - 0.12, vRest.y) + (1.0 - smoothstep(hem + 0.1, hem + 0.14, vRest.y));
+  col = mix(col, uSuit * mix(0.92, 1.05, nF.b) * (1.0 - 0.18 * rib), sSuit);
   diffuseColor.rgb = col;
   sHeight = (nF.r * 0.7 + nF.b * 0.3) * 0.00012;`)
-      .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = roughness * mix(0.9, 1.12, nF.r) * mix(1.0, 0.82, smoothstep(0.15, 0.7, vLip));')
+      .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = mix(roughness * mix(0.9, 1.12, nF.r) * mix(1.0, 0.82, smoothstep(0.15, 0.7, vLip)), 0.86, sSuit);')
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
   { vec3 sp = -vViewPosition, dpx = dFdx(sp), dpy = dFdy(sp); float hx = dFdx(sHeight), hy = dFdy(sHeight);
     vec3 r1 = cross(dpy, normal), r2 = cross(normal, dpx); float det = dot(dpx, r1);
@@ -109,7 +115,7 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
            vec3 lit = mix( vec3( dotNL ), vec3( wr * wr ), uScatter );
            reflectedLight.directDiffuse += lit * directLight.color * BRDF_Lambert( material.diffuseColor ); }`));
   };
-  m.customProgramCacheKey = () => 'hb-skin-1';
+  m.customProgramCacheKey = () => 'hb-skin-2';
   return m;
 }
 
@@ -163,11 +169,47 @@ geo.setIndex(new THREE.BufferAttribute(index, 1));
   for (let k = 0; k < t.idx.length; k++) lip[t.idx[k]] = Math.hypot(t.d[k * 3], t.d[k * 3 + 1], t.d[k * 3 + 2]) / big;
   geo.setAttribute('aLip', new THREE.BufferAttribute(lip, 1));
 }
+geo.setAttribute('aRest', new THREE.BufferAttribute(base.slice(), 3));
 const noise = noiseTexture();
 const skin = skinMaterial(noise);
 const body = new THREE.Mesh(geo, skin); body.castShadow = body.receiveShadow = true;
 for (const e of Object.values(eyes)) { e.castShadow = false; stage.scene.add(e); }
 stage.scene.add(body);
+
+/* ---------------- landmarks: named vertices of the base mesh ---------------- */
+// The base's vertex order never changes, so a landmark is just a vertex number. These are found once, from the
+// unmorphed mesh, by simple rules relative to the eyes; after that every morph carries them along.
+const LANDMARK = {};
+{
+  const ctr = (s) => { const c = [0, 0, 0]; for (const i of info.eyes[s]) for (let k = 0; k < 3; k++) c[k] += base[i * 3 + k] / info.eyes[s].length; return c; };
+  const L = ctr('l'), R = ctr('r'), ey = (L[1] + R[1]) / 2, ez = (L[2] + R[2]) / 2, d = Math.abs(L[0] - R[0]), xl = L[0];
+  const inFace = new Uint8Array(N); for (let k = 0; k < index.length; k++) inFace[index[k]] = 1;   // vertices of the body, not the eye helpers
+  const nearest = (x, y, z) => { let best = -1, bd = Infinity; for (let i = 0; i < N; i++) { if (!inFace[i]) continue; const dx = base[i * 3] - x, dy = base[i * 3 + 1] - y, dz = base[i * 3 + 2] - z, q = dx * dx + dy * dy + dz * dz; if (q < bd) { bd = q; best = i; } } return best; };
+  const extreme = (ok, f) => { let best = -1, bv = -Infinity; for (let i = 0; i < N; i++) { if (!inFace[i]) continue; const x = base[i * 3], y = base[i * 3 + 1], z = base[i * 3 + 2]; if (ok(x, y, z) && f(x, y, z) > bv) { bv = f(x, y, z); best = i; } } return best; };
+  const mid = (x) => Math.abs(x) < 0.08 * d;
+  LANDMARK.noseTip = extreme((x, y) => mid(x) && y < ey && y > ey - d, (x, y, z) => z);
+  LANDMARK.chin = extreme((x, y, z) => mid(x) && y < ey - 1.5 * d && y > ey - 2.3 * d && z > ez - 0.5 * d, (x, y, z) => z);
+  LANDMARK.crown = extreme((x) => mid(x), (x, y) => y);
+  LANDMARK.browMid = nearest(0, ey + 0.32 * d, ez + 0.6 * d);
+  for (const [s, sx] of [['L', 1], ['R', -1]]) {
+    LANDMARK['brow' + s] = nearest(sx * Math.abs(xl), ey + 0.3 * d, ez + 0.6 * d);
+    const ax = Math.abs(xl);
+    // the cheekbone: the point that stands out furthest forward-and-sideways a little below and outside the eye
+    LANDMARK['cheek' + s] = extreme((x, y, z) => Math.abs(y - (ey - 0.42 * d)) < 0.12 * d && sx * x > ax * 1.15 && sx * x < ax * 1.9, (x, y, z) => sx * x * 0.75 + z * 0.66);
+    // the temple: furthest out to the side, level with the brow, behind the eye
+    LANDMARK['temple' + s] = extreme((x, y, z) => Math.abs(y - (ey + 0.3 * d)) < 0.12 * d && z < ez - 0.15 * d && z > ez - 0.9 * d, (x, y, z) => sx * x);
+    // the angle of the jaw: furthest out to the side, low on the face, below the ear
+    LANDMARK['jaw' + s] = extreme((x, y, z) => y < ey - 1.15 * d && y > ey - 1.55 * d && z < ez - 0.35 * d && z > ez - 1.2 * d, (x, y, z) => sx * x);
+  }
+}
+// a marker on each landmark, and a test spur standing out of the surface on a few of them (meshed on its own, joined on)
+const marks = new THREE.Group(); marks.visible = false; stage.scene.add(marks);
+const dotGeo = new THREE.SphereGeometry(0.0042, 12, 8), dotMat = new THREE.MeshBasicMaterial({ color: 0x35f58a, toneMapped: false });
+const spurGeo = new THREE.ConeGeometry(0.0055, 0.028, 14, 1).translate(0, 0.014, 0), spurMat = new THREE.MeshStandardMaterial({ color: 0xd9cbb0, roughness: 0.55 });
+const SPURS = ['cheekL', 'cheekR', 'chin', 'templeL', 'templeR'];
+const markObjs = Object.keys(LANDMARK).map((k) => { const o = new THREE.Group(); o.add(new THREE.Mesh(dotGeo, dotMat)); if (SPURS.includes(k)) { const sp = new THREE.Mesh(spurGeo, spurMat); sp.castShadow = true; o.add(sp); } marks.add(o); return [k, o]; });
+const _n = new THREE.Vector3(), _up = new THREE.Vector3(0, 1, 0);
+function placeMarks(p, nrm) { for (const [k, o] of markObjs) { const i = LANDMARK[k]; o.position.set(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]); _n.set(nrm[i * 3], nrm[i * 3 + 1], nrm[i * 3 + 2]).normalize(); o.quaternion.setFromUnitVectors(_up, _n); } }
 
 /* ---------------- shape it ---------------- */
 const work = new Float32Array(N * 3), eyeAt = { l: new THREE.Vector3(), r: new THREE.Vector3() };
@@ -186,6 +228,7 @@ function morph() {
   for (let i = 0; i < work.length; i += 3) { p[i] = work[i] * 0.1; p[i + 1] = (work[i + 1] - lo) * 0.1; p[i + 2] = work[i + 2] * 0.1; }
   figureHeight = (hi - lo) * 0.1;
   geo.attributes.position.needsUpdate = true; geo.computeVertexNormals(); geo.computeBoundingSphere();
+  placeMarks(p, geo.attributes.normal.array);
   for (const s of ['l', 'r']) {   // each eye where its helper sphere is, at its size
     const b = new THREE.Box3(); for (const i of info.eyes[s]) b.expandByPoint(new THREE.Vector3(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]));
     const c = b.getCenter(new THREE.Vector3()), sz = b.getSize(new THREE.Vector3());
@@ -226,6 +269,12 @@ const gb = group('Body', true); for (const [k, l, lo, hi] of BODY) slider(gb, k,
 const gc = group('Colour', true); swatches(gc, 'Skin', 'skin', SKINS); swatches(gc, 'Eyes', 'eyes', EYES);
 const gf = group('Face', true); for (const [k, l] of FACE) slider(gf, k, l, -1, 1);
 const gs = group('Head shape', false); for (const [k, l] of SHAPE) slider(gs, k, l, 0, 1);
+{ // a test of attaching things at named vertices
+  const gt = group('Test', false), row = document.createElement('label'); row.className = 'slide';
+  const cb = document.createElement('input'); cb.type = 'checkbox'; cb.addEventListener('change', () => { marks.visible = cb.checked; stage.changed(); });
+  const t = document.createElement('span'); t.textContent = 'Show landmarks and test spurs'; t.style.gridColumn = '2 / 4';
+  row.append(cb, t); gt.appendChild(row);
+}
 function syncPanel() { for (const [k, [r, out]] of Object.entries(inputs)) { r.value = state[k]; out.textContent = Number(state[k]).toFixed(2); } paintSwatches(); }
 let pending = 0;
 function schedule() { if (pending) return; pending = requestAnimationFrame(() => { pending = 0; const ms = morph(); showStats(ms); writeHash(); }); }
@@ -261,4 +310,4 @@ readHash(); syncPanel(); colours(); showStats(morph()); view('full');
 stage.controls.addEventListener('start', () => $('hint').classList.add('gone'));
 $('status').classList.add('gone');
 stage.start();
-window.__hb = { THREE, stage, state, morph, colours, preset, view, VIEWS, eyes, eyeAt, info, get height() { return figureHeight; }, loadMs, set(k, v) { state[k] = v; syncPanel(); colours(); return morph(); } };
+window.__hb = { THREE, stage, state, morph, marks, LANDMARK, colours, preset, view, VIEWS, eyes, eyeAt, info, get height() { return figureHeight; }, loadMs, set(k, v) { state[k] = v; syncPanel(); colours(); return morph(); } };
