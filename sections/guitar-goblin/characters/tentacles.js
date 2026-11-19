@@ -26,7 +26,7 @@ export function mikkianTendrils(a) {
   // knobs on the brow; their neighbours cover the scalp there, so they are left out)
   // (swept back shows the forehead by its nature, and a lock rooted low on it falls over the face: it keeps the higher line)
   const fwd = a.front !== 'high' && a.style !== 'swept';
-  const list = tendrilPaths(a.style || 'dreads', a.thick || 'thick', head, { length: a.length, surface: a.surface === 'locked' ? 'locked' : 'smooth', obstacle, line: fwd ? forward : undefined, lanes: true })
+  const list = tendrilPaths(a.style || 'dreads', a.thick || 'thick', head, { length: a.length, surface: a.surface === 'locked' ? 'locked' : 'smooth', obstacle, line: fwd ? forward : undefined, lanes: true, back: true })   // (relaxed, they lie back: SES Stallion, 19 Nov)
     .filter((t) => fwd || (a.style || 'dreads') !== 'dreads' || !(t.pts[0][2] > 0.03 && Math.abs(t.pts[0][0]) < 0.06));
   // tubes
   const R = 12, pos = [], nrm = [], idx = [], T = [], D = [];
