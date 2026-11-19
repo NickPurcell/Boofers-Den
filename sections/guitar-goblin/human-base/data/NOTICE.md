@@ -7,7 +7,7 @@
 - files: `makehuman/data/3dobjs/base.obj`, and 146 morph targets under `makehuman/data/targets/`:
   `macrodetails/` (the gender and age shapes, the muscle and weight shapes for young adults), `macrodetails/height/`,
   `eyebrows/`, `forehead/`, `eyes/`, `nose/`, `mouth/`, `cheek/`, `chin/`, `head/`, `neck/`, `torso/`, `stomach/`,
-  `armslegs/` (upper and lower arm fat and muscle) and `bodyshapes/` (one heavy male shape); 14 ear targets under `ears/` 12 eyelid targets under
+  `armslegs/` (upper and lower arm fat and muscle) and `bodyshapes/` (one heavy male shape); 14 ear targets under `ears/`; 12 eyelid targets under
   `eyes/`; and the skeleton weights `makehuman/data/rigs/default_weights.mhw` (its own header: "license": "CC0"), from
   which `skin.bin` keeps, per vertex, how much follows the upper arm, the forearm, the fingers and the thumb.
 
@@ -24,6 +24,8 @@ What was done to them:
 - Every target is stored as 16-bit offsets with one scale each.
 
 The converter is our own script.
+
+The carried things (`../carry.js`) use no MakeHuman data: they are our own shapes, built with the droid page's kit.
 
 MakeHuman's program code is under the AGPL; none of it is used, copied or adapted here. Everything that reads and uses
 this data is our own: the loader, the morph blending, the subdivision, the landmarks, the skin, the eyes and the species

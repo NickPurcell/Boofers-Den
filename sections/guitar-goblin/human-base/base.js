@@ -176,8 +176,9 @@ function findLandmarks(B) {
   L.nape = each((x, y) => mid(x) && Math.abs(y - (ey - 1.3 * d)) < 0.15 * d, (x, y, z) => -z);
   L.neckFront = each((x, y) => mid(x) && Math.abs(y - J('neck')[1]) < 0.12 * d, (x, y, z) => z);
   L.neckBack = each((x, y) => mid(x) && Math.abs(y - J('neck')[1]) < 0.12 * d, (x, y, z) => -z);
-  L.chestMid = each((x, y) => mid(x) && Math.abs(y - J('spine-3')[1]) < 0.15 * d, (x, y, z) => z);
-  L.navel = each((x, y) => mid(x) && Math.abs(y - J('spine-1')[1]) < 0.15 * d, (x, y, z) => z);
+  // (the base's spine joints count from the top: spine-1 is at the chest, spine-4 just above the pelvis)
+  L.chestMid = each((x, y) => mid(x) && Math.abs(y - (J('spine-1')[1] - 0.3)) < 0.15 * d, (x, y, z) => z);
+  L.navel = each((x, y) => mid(x) && Math.abs(y - (J('spine-3')[1] - 0.3)) < 0.15 * d, (x, y, z) => z);
   for (const [S, mh] of [['L', 'l'], ['R', 'r']]) {
     const s = mh === 'l' ? side : -side;   // +1 toward this side, in x
     L['eye' + S] = info.eyes[mh][0];
@@ -202,7 +203,8 @@ function findLandmarks(B) {
     L['heel' + S] = each((x, y, z) => Math.abs(x - an[0]) < 0.5 && y < an[1] + 0.2, (x, y, z) => -z);
     L['toe' + S] = each((x, y, z) => Math.abs(x - an[0]) < 0.9 && y < an[1], (x, y, z) => z);
   }
-  L.backMid = each((x, y) => mid(x) && Math.abs(y - J('spine-3')[1]) < 0.15 * d, (x, y, z) => -z);
+  L.backMid = each((x, y) => mid(x) && Math.abs(y - (J('spine-1')[1] - 0.2)) < 0.15 * d, (x, y, z) => -z);   // between the shoulder blades
+  L.backLow = each((x, y) => mid(x) && Math.abs(y - (J('spine-3')[1] - 0.2)) < 0.15 * d, (x, y, z) => -z);   // the small of the back
   L.crotch = each((x) => Math.abs(x) < 0.12, (x, y) => -y);
   // the mouth corners: the lip vertices furthest out to each side
   for (const [S, mh] of [['L', 'l'], ['R', 'r']]) { const s = mh === 'l' ? side : -side; let best = -1, bv = -Infinity; for (let i = 0; i < N; i++) if (inBody[i] && B.lip[i] > 0.25 && s * p[i * 3] > bv) { bv = s * p[i * 3]; best = i; } L['mouth' + S] = best; }

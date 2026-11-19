@@ -7,6 +7,7 @@ import { loadBase, SLIDERS, DEFAULTS } from '../human-base/base.js';
 import { SPECIES, LINERS, MARKS, GLOWS, lookParams } from '../human-base/species/looks.js';
 import { pureblood, PUREBLOOD } from '../human-base/species/pureblood.js';
 import { CONTROLS, CONTROL_DEFAULTS, PRESETS as PEOPLE, toShape, randomControls } from '../human-base/controls.js';
+import { carry, ITEMS } from '../human-base/carry.js';
 
 const $ = (id) => document.getElementById(id);
 const stage = makeStage($('scene'), { tall: 1.8, minDistance: 0.22, maxDistance: 6, environment: 0.55 });
@@ -17,15 +18,19 @@ const fig = base.figure();
 stage.scene.add(fig);
 const loadMs = Math.round(performance.now() - t0);
 
+const CARRY = { item: 'none' }, CARRY_DEFAULT = { pureblood: 'hilt', echani: 'double' };   // what is carried, and what each species opens with on the old page
 /* ---------------- looks: by species (../human-base/species/looks.js) ---------------- */
 const LOOK = { species: 'human' }, PBDEF = Object.fromEntries(Object.entries(PUREBLOOD.options).map(([k, v]) => [k, v.def])), PB = { ...PBDEF };
-function speciesLook(sp) { const S = SPECIES[sp]; for (const k of Object.keys(LOOK)) delete LOOK[k]; Object.assign(LOOK, { species: sp, glow: 'none', liner: 'none', marks: 'none', tattoo: '', shape: 'diamond', ink: 'black' }, S.defaults); }
+function speciesLook(sp) { CARRY.item = CARRY_DEFAULT[sp] || 'none';
+  speciesLook0(sp); }
+function speciesLook0(sp) { const S = SPECIES[sp]; for (const k of Object.keys(LOOK)) delete LOOK[k]; Object.assign(LOOK, { species: sp, glow: 'none', liner: 'none', marks: 'none', tattoo: '', shape: 'diamond', ink: 'black' }, S.defaults); }
 speciesLook('human');
 // presets: a person (controls.js) in a species' look
 const PRESETS = { neutral: { person: null, species: 'human' }, pureblood: { person: 'powerful', species: 'pureblood' } };
 const ctrl = { ...CONTROL_DEFAULTS };
 const shape = toShape(ctrl);
 const pb = pureblood(fig, base); fig.features = pb;
+const carried = carry(fig);
 
 function apply() {
   const P = lookParams(LOOK.species, { ...LOOK, gender: shape.gender });
@@ -33,6 +38,7 @@ function apply() {
   fig.skin.userData.set({ ...P.skin, suitCover: { torso: shape.gender < 0.75, arms: 0, legs: 0 } });
   fig.eyes.set(P.eyes);
   pb.set({ ...PB, on: LOOK.species === 'pureblood' });
+  carried.set({ item: CARRY.item });
   fig.update();
   showStats();
   stage.changed();
@@ -76,6 +82,7 @@ function lookPanel() {
   gp.style.display = LOOK.species === 'pureblood' ? '' : 'none'; gm.style.display = LOOK.species === 'mirialan' ? '' : 'none'; gk.style.display = LOOK.species === 'mikkian' ? '' : 'none';
   paint();
 }
+{ const gcar = group('Carries', true); choice(gcar, 'Carries', CARRY, 'item', Object.fromEntries(Object.entries(ITEMS).map(([k, v]) => [k, v.name]))); }
 // the controls a person uses: plain names, safe ranges (controls.js); the raw morphs are below, for checking
 const gpp = group('People', true);
 { const box = document.createElement('div'); box.className = 'seg wrap'; for (const [k, p] of Object.entries(PEOPLE)) { const b = document.createElement('button'); b.type = 'button'; b.textContent = p.name; b.addEventListener('click', () => person(k)); box.appendChild(b); } gpp.appendChild(box); }
@@ -123,13 +130,13 @@ function collarSdf(c) {
 }
 function collar(on) {
   collarOn = on; if (collarMesh) { fig.remove(collarMesh); collarMesh.geometry.dispose(); collarMesh = null; }
-  if (!on) { pb.set({ worn: null, wornKey: '' }); return; }
+  if (!on) { pb.set({ worn: null, wornKey: '' }); carried.set({ worn: null }); return; }
   const c = collarShape(), prof = [];
   for (let i = 0; i <= 10; i++) { const tt = i / 10, y = c.y0 + (c.y1 - c.y0) * tt; prof.push(new THREE.Vector2(c.rIn + c.flare * tt * tt, y)); }
   for (let i = 10; i >= 0; i--) { const tt = i / 10, y = c.y0 + (c.y1 - c.y0) * tt; prof.push(new THREE.Vector2(c.rIn + c.t + c.flare * tt * tt, y)); }
   prof.push(prof[0].clone());
   collarMesh = new THREE.Mesh(new THREE.LatheGeometry(prof, 48).translate(c.cx, 0, c.cz), collarMat); collarMesh.castShadow = collarMesh.receiveShadow = true; fig.add(collarMesh);
-  pb.set({ worn: collarSdf(c), wornKey: 'test-collar|' + [c.cx, c.cz, c.rIn, c.y0, c.y1].map((v) => v.toFixed(3)).join(',') });
+  pb.set({ worn: collarSdf(c), wornKey: 'test-collar|' + [c.cx, c.cz, c.rIn, c.y0, c.y1].map((v) => v.toFixed(3)).join(',') }); carried.set({ worn: collarSdf(c) });
 }
 fig.addEventListener('redraw', () => stage.changed());
 
@@ -162,4 +169,4 @@ preset(location.hash.includes('pureblood') ? 'pureblood' : 'neutral'); view('ful
 stage.controls.addEventListener('start', () => $('hint').classList.add('gone'));
 $('status').classList.add('gone');
 stage.start();
-window.__hb = { THREE, stage, base, fig, pb, collar, get collarOn() { return collarOn; }, shape, ctrl, LOOK, PB, apply, preset, person, toShape, speciesLook, lookPanel, randomControlsFn: randomControls, view, VIEWS, marks, get height() { return fig.height; }, loadMs };
+window.__hb = { THREE, stage, base, fig, pb, carried, CARRY, collar, get collarOn() { return collarOn; }, shape, ctrl, LOOK, PB, apply, preset, person, toShape, speciesLook, lookPanel, randomControlsFn: randomControls, view, VIEWS, marks, get height() { return fig.height; }, loadMs };
