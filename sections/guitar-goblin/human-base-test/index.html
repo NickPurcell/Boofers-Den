@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0e1420" />
+  <meta name="robots" content="noindex" />
+  <title>Human base test</title>
+  <link rel="stylesheet" href="../droid-creator/droid.css" />
+  <link rel="stylesheet" href="hb.css" />
+  <script type="importmap">
+    { "imports": { "three": "../vendor/three/three.module.min.js", "three/addons/": "../vendor/three/jsm/" } }
+  </script>
+</head>
+<body>
+  <a class="back" href="../">&larr; Guitar Goblin</a>
+  <header class="hero">
+    <p class="kicker">Test page &middot; not linked</p>
+    <h1>Human <span>base test</span></h1>
+    <p class="sub">A sculpted human base mesh with hand-made morphs from the MakeHuman project (public domain, CC0), shaped here by numbers. A test of whether a face built this way holds up.</p>
+  </header>
+  <main class="stage">
+    <div class="viewport" id="viewport">
+      <canvas id="scene" aria-label="3D view of the figure. Drag to turn, pinch or scroll to zoom."></canvas>
+      <p class="hint" id="hint">Drag to turn &middot; pinch or scroll to zoom</p>
+      <div class="views" role="group" aria-label="View">
+        <button type="button" data-view="full">Whole</button>
+        <button type="button" data-view="face">Face</button>
+        <button type="button" data-view="profile">Profile</button>
+      </div>
+      <p class="status" id="status">Loading the mesh&hellip;</p>
+    </div>
+    <div class="panel">
+      <div class="actions">
+        <button type="button" class="btn" data-preset="neutral">Neutral</button>
+        <button type="button" class="btn" data-preset="heavy">Heavy, red</button>
+        <button type="button" class="btn" id="random">🎲 Random</button>
+      </div>
+      <div id="options"></div>
+      <p class="note" id="stats"></p>
+    </div>
+  </main>
+  <footer class="foot">
+    <p>The base mesh and its morph targets are from the MakeHuman project, released under CC0 1.0 (see data/NOTICE.md). The loader, the blending, the skin and the eyes are made for this page.</p>
+  </footer>
+  <script type="module" src="hb.js"></script>
+</body>
+</html>

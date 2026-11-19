@@ -1,0 +1,10 @@
+/* Human base test: what the shared creator stylesheet (../droid-creator/droid.css) doesn't have. */
+.actions #random { flex: 1 1 100%; }
+.actions .btn { white-space: nowrap; }
+.status { position: absolute; left: 0; right: 0; bottom: 40%; text-align: center; color: var(--dim); font-size: 14px; pointer-events: none; }
+.status.gone { display: none; }
+.group { margin: 4px 0 10px; }
+.group > summary { cursor: pointer; font: 600 12px/1.4 var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--dim); padding: 6px 0; }
+.slide { display: grid; grid-template-columns: 7.2em 1fr 2.6em; align-items: center; gap: 8px; min-height: 34px; font-size: 14px; }
+.slide input[type=range] { width: 100%; accent-color: var(--cool); }
+.slide output { text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; font-size: 12px; }
