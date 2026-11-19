@@ -182,17 +182,19 @@ export function robe(ctx) {
   const bell = belled(ctx, M, top, hem, H.rx * 1.3 + 0.03, H.rz * 1.45 + 0.04);
   const fore = ['l', 'r'].map((sd) => M.limb(J[sd + '-elbow'], J[sd + '-hand'])), up = ['l', 'r'].map((sd) => M.limb(J[sd + '-shoulder'], J[sd + '-elbow']));
   // the robe lies on the bell below the waist and on the whole figure above it (so it has sleeves); the hands stay out
-  const base = ctx.torso ? (x, y, z) => Math.min(bell(x, y, z), ctx.all(x, y, z), ctx.torso(x, y, z)) : (x, y, z) => Math.min(bell(x, y, z), ctx.all(x, y, z));   // cloth bridges the chest
-  const sleeve = (x, y, z) => { const f = x > 0 ? fore[0] : fore[1], px = x - f.A[0], py = y - f.A[1], pz = z - f.A[2], t = (px * f.u[0] + py * f.u[1] + pz * f.u[2]) / f.l; return { t, wide: 0.032 * sstep(0.1, 0.95, t) * (f.near(x, y, z, 0.13, -0.2, 1.1) < 0 ? 1 : 0) }; };
+  // the figure with its hands taken off at the wrists: the sleeves end there, and the skirt beside the hands stays whole
+  const handless = (x, y, z) => { const n = (x > 0 ? fore[0] : fore[1]).near(x, y, z, 0.16, 0.97, 2.0), a = ctx.all(x, y, z); return n < 0 ? Math.max(a, -n) : a; };
+  const base = ctx.torso ? (x, y, z) => Math.min(bell(x, y, z), handless(x, y, z), ctx.torso(x, y, z)) : (x, y, z) => Math.min(bell(x, y, z), handless(x, y, z));   // cloth bridges the chest
+  const sleeve = (x, y, z) => { const f = x > 0 ? fore[0] : fore[1], px = x - f.A[0], py = y - f.A[1], pz = z - f.A[2], t = (px * f.u[0] + py * f.u[1] + pz * f.u[2]) / f.l; return { t, wide: f.near(x, y, z, 0.13, -0.2, 0.97) < 0 && ctx.arms(x, y, z) < ctx.body(x, y, z) - 0.008 ? 0.032 * sstep(0.1, 0.95, t) : 0 }; };   // (stopping at the wrist, or it reaches over the hand)   // only where the arm is the nearest skin: no web to the waist
   const fold = (x, z) => 0.008 * Math.sin(Math.atan2(x, z - H.zc) * 9 + 0.5);
   const vee = (x, y, z) => { if (z < M.cz) return -1; const t = Math.max(0, Math.min(1, (M.neckY + 0.01 - y) / (M.neckY + 0.01 - (M.chestY - 0.06)))); return 0.05 * (1 - t) + 0.004 * t - Math.abs(x) + (y > M.neckY + 0.2 ? 1 : 0); };
   const field = (x, y, z) => {
-    const sl = sleeve(x, y, z), cuff = Math.max(-1, (x > 0 ? fore[0] : fore[1]).near(x, y, z, 0.16, 0.97, 2.0) < 0 ? 0.02 : -1);
-    return Math.max(base(x, y, z) - T - sl.wide - fold(x, z) * sstep(top - 0.04, hem + 0.1, y), hem - y, y - M.neckY - 0.012, Math.min(vee(x, y, z), 0.06) > 0 && y > M.chestY - 0.06 ? 0.01 : -1, cuff);
+    const sl = sleeve(x, y, z);
+    return Math.max(base(x, y, z) - T - sl.wide - fold(x, z) * sstep(top - 0.04, hem + 0.1, y), hem - y, y - M.neckY - 0.012, Math.min(vee(x, y, z), 0.06) > 0 && y > M.chestY - 0.06 ? 0.01 : -1);
   };
   const W = M.sx + 0.22, D = Math.max(H.rz * 1.45 + 0.1, 0.3);
   P.push({ name: 'robe', material: 'cloth', role: 'main', parts: [{ field, bounds: [[-W, hem - 0.02, H.zc - D], [W, M.hipY, H.zc + D]] }, { field, bounds: [[-W, M.hipY, H.zc - D], [W, M.neckY + 0.04, H.zc + D]] }], res: 0.0095 });
-  const yc = top - 0.005, bh = 0.024, band = (x, y, z) => Math.max(bell(x, y, z) - T - 0.008, yc - bh - y, y - yc - bh);
+  const yc = top - 0.005, bh = 0.024, band = (x, y, z) => Math.max(base(x, y, z) - T - 0.008, yc - bh - y, y - yc - bh, ctx.arms(x, y, z) < ctx.body(x, y, z) ? 1 : -1);   // on the robe itself, not round the arms
   P.push({ name: 'belt', material: 'leather', role: 'leather', field: band, bounds: [[-(H.rx + 0.12), yc - bh - 0.02, H.zc - D], [H.rx + 0.12, yc + bh + 0.02, H.zc + D]], res: 0.006 });
   P.push(boots(ctx, 0.18));
   return P;

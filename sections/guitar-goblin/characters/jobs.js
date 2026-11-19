@@ -13,8 +13,8 @@ export function armTriangles(P, I, J) {
     const S = J[s + '-shoulder'], E = J[s + '-elbow'], H = J[s + '-hand'], X = [H[0] + (H[0] - E[0]) * 0.6, H[1] + (H[1] - E[1]) * 0.6, H[2] + (H[2] - E[2]) * 0.6];
     for (let t = 0; t < I.length; t += 3) {
       const c = [0, 1, 2].map((k) => (P[I[t] * 3 + k] + P[I[t + 1] * 3 + k] + P[I[t + 2] * 3 + k]) / 3);
-      const [d1, a1] = seg(c, S, E), [d2] = seg(c, E, X);
-      if ((d1 < 0.1 && a1 > 0.05) || d2 < 0.085) out[t / 3] = 1;
+      const [d1, a1] = seg(c, S, E), [d2] = seg(c, E, H), [d3] = seg(c, H, X);
+      if ((d1 < 0.1 && a1 > 0.05) || d2 < 0.085 || d3 < 0.12) out[t / 3] = 1;   // (the hand wider: spread fingers are arm too)
     }
   }
   return out;
@@ -59,8 +59,9 @@ export function run(job, a) {
     // (the base mesh before subdivision: a quarter of the triangles, and clothes stand clear of the 1-2 mm difference)
     const { position: P, normal: N, index: I } = a.surface, arm = armTriangles(P, I, a.J);
     const all = fieldFor(P, N, I), bodyU = fieldFor(P, N, I, (t) => !arm[t / 3], 0.06, true), arms = fieldFor(P, N, I, (t) => !!arm[t / 3], 0.06, true);
-    // the body without the arms: the distance to its own skin, negative wherever the whole figure is inside
-    const body = (x, y, z) => { const u = bodyU(x, y, z); return all(x, y, z) < 0 ? -u : u; };
+    // the body without the arms: the distance to its own skin, negative inside the figure where the body's skin is nearer
+    // than the arms' (inside a hand or an arm it is outside the body)
+    const body = (x, y, z) => { const u = bodyU(x, y, z); return all(x, y, z) < 0 && u <= arms(x, y, z) ? -u : u; };
     const ctx = { all, body, arms, torso: torsoField(P, I, arm, a.J), hips: hipsOf(P, I, arm, a.J), J: a.J, L: a.L };
     const pieces = (OUTFITS[a.key] || OUTFITS.none).make(ctx);
     if (a.key !== 'none' && a.hood === 'down') pieces.push(cowl(ctx, a.key === 'robe' ? 'main' : 'second')); else if (a.key !== 'none' && a.hood === 'up') pieces.push(hood(ctx, a.key === 'robe' ? 'main' : 'second'));
