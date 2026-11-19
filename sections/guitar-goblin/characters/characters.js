@@ -15,19 +15,20 @@ const pb = pureblood(fig, base);
 const hair = makeHair(base, fig);
 
 // his character's look by default (a heavy, broad-shouldered man, red skin, orange-yellow eyes, black hair slicked back):
-// the build numbers are the base's own Pureblood preset
+// the build and look are the base's own Pureblood preset (human-base-test), until the library exports one
 const SHAPE = { gender: 1, age: 0.08, muscle: 0.82, weight: 0.86, height: 0.2, shoulders: 0.9, chest: 0.55, pecs: 0.45, lats: 0.6, belly: 0.45, heavyset: 0.55, arms: 0.45, armMuscle: 0.5,
-  neck: 0.9, neckDepth: 0.6, doubleChin: 0.1, browh: -0.2, browr: 0.4, browa: -0.15, forehead: 0.1, eyesize: -0.2, eyebags: 0.15, nosew: 0.35, nosel: 0.1, nosehump: 0.3,
+  neck: 0.9, neckDepth: 0.6, doubleChin: 0.1, browh: -0.3, browr: 0.6, browa: -0.35, lids: -0.35, forehead: 0.1, eyesize: -0.2, eyebags: 0.15, nosew: 0.35, nosel: 0.1, nosehump: 0.3,
   nostrils: 0.2, mouthw: 0.15, lips: -0.1, corners: -0.2, cheekbones: 0.65, cheeks: -0.2, chinw: 0.55, chinjut: 0.3, chinh: 0.15, jaw: 0.9, headfat: 0.1, headage: 0.25, square: 0.45 };
+const LOOK = { skin: '#952a22', eyes: 'ember', glow: 0.35, brows: 0, white: '#9a6a48', iris: 1.3, lips: '#2a0c0c', sockets: 0.6 };
 const HAIRS = { black: '#16110e', dkbrown: '#2a1d14', redbrown: '#4a1a14', grey: '#8a8684', white: '#d8d4d0' };
-const state = { style: 'slick', hair: 'black', skin: '#a8302a', eyes: 'ember', glow: 0.35 };
+const state = { style: 'slick', hair: 'black' };
 { const q = new URLSearchParams(location.hash.slice(1)); if (STYLES[q.get('style')]) state.style = q.get('style'); if (HAIRS[q.get('hair')]) state.hair = q.get('hair'); }
 
 function apply() {
   fig.set({ ...DEFAULTS, ...SHAPE });
-  fig.skin.userData.set?.({ tone: state.skin, browAmount: 0 });
-  fig.eyes.set({ colour: state.eyes, glow: state.glow });
-  const on = Object.fromEntries(Object.entries(PUREBLOOD.options).map(([k, o]) => [k, o.def])); pb.set({ ...on, on: true });
+  fig.skin.userData.set({ tone: LOOK.skin, browAmount: LOOK.brows, lips: LOOK.lips, sockets: LOOK.sockets });
+  fig.eyes.set({ colour: LOOK.eyes, glow: LOOK.glow, white: LOOK.white, iris: LOOK.iris });
+  const on = Object.fromEntries(Object.entries(PUREBLOOD.options).map(([k, o]) => [k, o.def])); pb.set({ ...on, jewellery: 'gold', on: true });
   fig.update();
   hair.set(state.style, HAIRS[state.hair]);
   stage.changed();
