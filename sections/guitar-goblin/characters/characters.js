@@ -44,7 +44,7 @@ const PAGE = {
   mirialan: { people: 'woman', hairs: sw(BLACK, ['blueblack', 'Blue-black', '#131928'], DKBROWN, ['redbrown', 'Red-brown', '#5a2a1a'], ['grey', 'Grey', '#8c8c8c']),
     outfits: ['jacket', 'robe', 'coat', 'wraps', 'cloak'], defaults: { style: 'tail', hair: 'black', outfit: 'jacket', hood: 'none', main: 'navy', second: 'sand' } },
   // opens on the look its first player asked for: medium blue with dark blue accents, heavy smooth dreads to the shoulders
-  mikkian: { people: 'between', outfits: ['coat', 'robe', 'jacket', 'wraps', 'armour', 'cloak'], defaults: { style: 'dreads', thick: 'thick', length: 'shoulder', surface: 'smooth', pattern: 'tips', outfit: 'coat', hood: 'none', main: 'charcoal', second: 'steel' } },
+  mikkian: { people: 'between', outfits: ['coat', 'robe', 'jacket', 'wraps', 'armour', 'cloak'], defaults: { style: 'dreads', thick: 'thick', length: 'shoulder', surface: 'smooth', pattern: 'fade', outfit: 'coat', hood: 'none', main: 'charcoal', second: 'steel' } },
 };
 const ORDER = ['pureblood', 'human', 'echani', 'mirialan', 'mikkian'];
 // the people to start from: the base's presets, and one between the two (the controls' own middle)
@@ -65,7 +65,7 @@ function options() {
   for (const [k, d] of Object.entries(L.options || {})) o[k] = { label: d.label, multi: d.multi, swatch: d.swatch, items: asItems(d.items) };
   if (sp === 'mikkian') {   // head-tendrils in place of hair
     o.style = { label: 'Head-tendrils', items: asItems(ARRANGE) }; o.thick = { label: 'Tendril thickness', items: asItems(THICK) };
-    o.length = { label: 'Tendril length', items: asItems(LENGTHS) }; o.surface = { label: 'Tendril surface', items: asItems(SURFACES) }; o.pattern = { label: 'Tendril pattern', items: asItems(PATTERNS) };
+    o.length = { label: 'Tendril length', items: asItems(LENGTHS) }; o.surface = { label: 'Tendril surface', items: asItems(SURFACES) }; o.pattern = { label: 'Tendril pattern', items: asItems({ fade: { name: 'Paler tips' }, ...PATTERNS }) };
   } else {
     o.style = { label: 'Hair', items: [...['slick', 'swept', 'crop', 'tail', 'knot', 'braid'].map((k) => ({ key: k, name: STYLES[k].name })), { key: 'bob', name: 'Bob' }, { key: 'long', name: 'Long' }, { key: 'bald', name: STYLES.bald.name }] };
     o.hair = { label: 'Hair colour', swatch: true, items: P.hairs };
@@ -206,19 +206,23 @@ async function grow() {
   const m = new THREE.Mesh(g, state.surface === 'locked' ? lockMat : tentMat); m.castShadow = m.receiveShadow = true; m.name = 'tendrils'; fig.add(m);
   mane = { mesh: m, t: r.t, d: r.d }; paintTendrils(); stage.changed();
 }
-// the tendrils' colours: the skin's, with the accent on the tips, in rings toward the tips, or at the roots; a smooth one a
-// little paler on the side toward the head
+// the tendrils' colours: the skin's, with the accent on the tips, in rings toward the tips, or at the roots; or (paler
+// tips) the skin's own blue lightening toward the tips; a smooth one catches light pale on its lit side and goes violet
+// in its shade, as the skin does
 function paintTendrils() {
   if (!mane) return;
-  const col = mane.mesh.geometry.attributes.color, nrm = mane.mesh.geometry.attributes.normal, pos = mane.mesh.geometry.attributes.position, c = new THREE.Color(pick('skin').c), acc = new THREE.Color(accent || '#1b2f6e'), k = new THREE.Color(), white = new THREE.Color(1, 1, 1);
-  const hf = headFrame(), smooth = state.surface !== 'locked', ring = (dd) => (dd < 0.014 || dd > 0.27 ? 0 : Math.pow((Math.cos((dd / 0.042) * 2 * Math.PI) + 1) / 2, 7));
+  const col = mane.mesh.geometry.attributes.color, nrm = mane.mesh.geometry.attributes.normal, c = new THREE.Color(pick('skin').c), acc = new THREE.Color(accent || '#1b2f6e'), k = new THREE.Color();
+  const pale = c.clone().lerp(new THREE.Color('#8fd2ff'), 0.5), lit = c.clone().lerp(new THREE.Color('#7fe0ff'), 0.45), shade = c.clone().lerp(new THREE.Color('#3a2190'), 0.6), L = new THREE.Vector3(0.35, 0.85, 0.4).normalize();   // (staying blue: pale cyan, never white)
+  const smooth = state.surface !== 'locked', ring = (dd) => (dd < 0.014 || dd > 0.27 ? 0 : Math.pow((Math.cos((dd / 0.042) * 2 * Math.PI) + 1) / 2, 7));
   for (let i = 0; i < mane.t.length; i++) {
-    const u = mane.t[i], w = u > 1.2 ? 1 : state.pattern === 'tips' ? Math.pow(Math.min(1, Math.max(0, (u - 0.4) / 0.4)), 0.8) : state.pattern === 'bands' ? ring(mane.d[i]) : state.pattern === 'roots' ? 1 - Math.min(1, Math.max(0, (u - 0.04) / 0.34)) : 0;
-    k.copy(c).lerp(acc, w);
-    if (smooth) { const px = pos.getX(i) - hf.origin[0], pz = pos.getZ(i) - hf.origin[2], l = Math.hypot(px, pz) || 1; k.lerp(white, 0.13 * Math.max(0, -(nrm.getX(i) * px + nrm.getZ(i) * pz) / l)); }
+    const u = mane.t[i];
+    if (state.pattern === 'fade') k.copy(c).lerp(pale, u > 1.2 ? 0 : Math.pow(Math.min(1, Math.max(0, (u - 0.25) / 0.7)), 1.2));
+    else { const w = u > 1.2 ? 1 : state.pattern === 'tips' ? Math.pow(Math.min(1, Math.max(0, (u - 0.4) / 0.4)), 0.8) : state.pattern === 'bands' ? ring(mane.d[i]) : state.pattern === 'roots' ? 1 - Math.min(1, Math.max(0, (u - 0.04) / 0.34)) : 0; k.copy(c).lerp(acc, w); }
+    if (u > 1.2 && state.pattern === 'fade') k.copy(acc);   // (the bound arrangement's band, in the accent)
+    if (smooth) { const s2 = nrm.getX(i) * L.x + nrm.getY(i) * L.y + nrm.getZ(i) * L.z; if (s2 > 0) k.lerp(lit, 0.3 * s2); else k.lerp(shade, 0.55 * -s2); }
     col.setXYZ(i, k.r, k.g, k.b);
   }
-  col.needsUpdate = true; tentMat.sheenColor.copy(c).lerp(white, 0.5); lockMat.sheenColor.copy(c).lerp(white, 0.3);
+  col.needsUpdate = true; tentMat.sheenColor.copy(lit); lockMat.sheenColor.copy(c).lerp(new THREE.Color(1, 1, 1), 0.3);
 }
 
 async function dress() {
