@@ -9,6 +9,7 @@ import { pureblood, PUREBLOOD } from '../human-base/species/pureblood.js';
 
 const $ = (id) => document.getElementById(id);
 const stage = makeStage($('scene'), { tall: 1.8, minDistance: 0.22, maxDistance: 6, environment: 0.55 });
+stage.key.shadow.normalBias = 0.012; stage.key.shadow.bias = -0.0006;   // a bigger figure than the kit's default; keeps the chest clear of acne
 const t0 = performance.now();
 const base = await loadBase();
 const fig = base.figure();

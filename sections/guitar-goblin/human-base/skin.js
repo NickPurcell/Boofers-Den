@@ -69,7 +69,9 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
       .replace('#include <color_fragment>', `
   vec3 bw = pow(abs(normalize(vON)), vec3(4.0)); bw /= (bw.x + bw.y + bw.z);
   vec4 nF = tri(vOP, bw, 3.2), nB = tri(vOP, bw, 0.9);
-  vec3 col = uSkin * mix(0.94, 1.04, nB.g) * mix(0.97, 1.02, nF.b);
+  float poreK = 1.0 - smoothstep(0.00025, 0.0007, length(fwidth(vOP)));   // pores only where a pixel can hold them
+  nF = mix(vec4(0.5), nF, poreK);
+  vec3 col = uSkin * mix(0.95, 1.03, nB.g) * mix(0.985, 1.01, nF.b);
   float lipK = smoothstep(0.15, 0.7, vLip);
   col = mix(col, uLip, lipK * 0.75);
   // the face is never one colour: lighter on the forehead, the bridge of the nose and the top of the cheek; darker in the
@@ -84,7 +86,7 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
     float warm = exp(-((cx - 0.95) * (cx - 0.95) / 0.12 + (fy + 0.75) * (fy + 0.75) / 0.12)) + exp(-(cx * cx / 0.04 + (fy + 0.75) * (fy + 0.75) / 0.06));
     col = mix(col, col * vec3(1.06, 0.93, 0.92), uPaint * front * 0.6 * clamp(warm, 0.0, 1.0)); }
   // a bone crest a species has raised: lit along its top
-  col *= 1.0 + uBone * 0.24 * smoothstep(0.2, 0.9, vMark.x);
+  col *= (1.0 + uBone * 0.32 * smoothstep(0.25, 0.95, vMark.x)) * (1.0 - uBone * 0.3 * vMark.y);
   // the brows: a band along a gentle arch from the inner end to the outer, thick at the head and thin at the tail,
   // broken into hairs that run outward
   { float ax = abs(vRest.x), t = (ax - uBrowX.x) / (uBrowX.y - uBrowX.x);
@@ -94,7 +96,7 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
     col = mix(col, uBrow * mix(0.8, 1.2, nF.r), band * smoothstep(0.25, 0.65, hairs + 0.25 * (1.0 - t)) * uBrowAmt); }
   // light and shade from the form: creases and hollows darken (a touch warmer, where blood shows), proud forms lift
   float cf = vCav.x * 9.0, cb = vCav.y * 16.0;
-  sAo = 1.0 - uCav * (0.2 * smoothstep(0.15, 1.4, cb) + 0.3 * smoothstep(0.08, 1.0, cf));
+  sAo = 1.0 - uCav * (0.14 * smoothstep(0.2, 1.6, cb) + 0.28 * smoothstep(0.1, 1.0, cf));
   col *= sAo; col = mix(col, col * vec3(1.04, 0.9, 0.87), uCav * 0.35 * smoothstep(0.2, 1.2, cf + cb));
   col *= 1.0 + uCav * (0.06 * smoothstep(0.0, 0.8, -cb) + 0.08 * smoothstep(0.05, 0.6, -cf));
   // the undersuit, in the base mesh's frame (decimetres); the arms hang out past |x| = 2.6 in the base pose, bare
@@ -103,7 +105,8 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
   float rib = smoothstep(waist - 0.16, waist - 0.12, vRest.y) + (1.0 - smoothstep(hem + 0.1, hem + 0.14, vRest.y));
   col = mix(col, uSuit * mix(0.92, 1.05, nF.b) * (1.0 - 0.18 * rib) * mix(1.0, sAo, 0.6), sSuit);
   diffuseColor.rgb = col;
-  sHeight = (nF.r * 0.7 + nF.b * 0.3) * 0.00012 * (1.0 - sSuit);`)
+  // the pores only where a pixel is small enough to hold them; further off they would only sparkle
+  sHeight = (nF.r * 0.7 + nF.b * 0.3) * 0.00012 * (1.0 - sSuit) * poreK;`)
       .replace('#include <roughnessmap_fragment>', 'float roughnessFactor = mix(roughness * mix(0.9, 1.12, nF.r) * mix(1.0, 0.82, lipK) * mix(1.08, 0.94, smoothstep(-0.5, 0.5, -vCav.y * 16.0)), 0.86, sSuit);')
       .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
   { vec3 sp = -vViewPosition, dpx = dFdx(sp), dpy = dFdy(sp); float hx = dFdx(sHeight), hy = dFdy(sHeight);
@@ -116,6 +119,6 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
            vec3 lit = mix( vec3( dotNL ), vec3( wr * wr ), uScatter );
            reflectedLight.directDiffuse += lit * directLight.color * BRDF_Lambert( material.diffuseColor ); }`));
   };
-  m.customProgramCacheKey = () => 'human-skin-2';
+  m.customProgramCacheKey = () => 'human-skin-4';
   return m;
 }

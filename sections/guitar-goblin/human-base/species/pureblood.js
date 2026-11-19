@@ -20,7 +20,7 @@ export const PUREBLOOD = {
     spurs: { label: 'Spurs', def: 'temple', items: { none: 'None', temple: 'Temples', templeCheek: 'Temples and cheeks', templeJaw: 'Temples and jaw', all: 'All three' } },
     tendrils: { label: 'Tendrils', def: 'chinJaw', items: { none: 'None', chin: 'Chin pair', chinJaw: 'Chin and jaw', cheekChin: 'Cheeks and chin', beard: 'Full beard' } },
     tlength: { label: 'Tendril length', def: 'short', items: { short: 'Short', long: 'Long' } },
-    jewellery: { label: 'Jewellery', def: 'none', items: { none: 'None', gold: 'Gold', silver: 'Silver', bronze: 'Bronze', iron: 'Dark iron' } },
+    jewellery: { label: 'Jewellery', def: 'gold', items: { none: 'None', gold: 'Gold', silver: 'Silver', bronze: 'Bronze', iron: 'Dark iron' } },
   },
 };
 const METALS = { gold: [0xd8a83a, 0.28], silver: [0xd6d8dc, 0.25], bronze: [0xa8683a, 0.35], iron: [0x34363b, 0.45] };
@@ -30,7 +30,7 @@ const rng = (seed) => { let a = (seed * 2654435761) >>> 0 || 1; return () => { a
 // Each ridge is a polyline snapped to the surface (base frame, decimetres). Vertices within w of it rise along their
 // normal in a rounded crest of height h, tapering at both ends. Returns the target, and a 0..1 crest value per vertex.
 function ridges(B, lines) {
-  const { rest: p, restN: n, N, inBody } = B, lift = new Float32Array(N);
+  const { rest: p, restN: n, N, inBody } = B, lift = new Float32Array(N), beside = new Float32Array(N);
   for (const { pts, w, h } of lines) {
     let total = 0; const seg = []; for (let k = 0; k < pts.length - 1; k++) { const a = pts[k], b = pts[k + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]); seg.push([a, b, L, total]); total += L; }
     for (let i = 0; i < N; i++) {
@@ -40,12 +40,13 @@ function ridges(B, lines) {
         const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], t = Math.max(0, Math.min(1, ((x - a[0]) * ab[0] + (y - a[1]) * ab[1] + (z - a[2]) * ab[2]) / (L * L || 1)));
         const dd = Math.hypot(x - a[0] - ab[0] * t, y - a[1] - ab[1] * t, z - a[2] - ab[2] * t); if (dd < best) { best = dd; along = (s0 + t * L) / total; }
       }
-      if (best >= w) continue;
+      if (best >= w) { if (best < w * 1.7) beside[i] = Math.max(beside[i], Math.sin(Math.PI * ((best - w) / (0.7 * w))) * Math.sin(Math.PI * along) ** 0.5); continue; }
       const q = best / w, crest = (1 - q * q) ** 2 * (0.6 + 0.4 * (1 - q)), ends = Math.sin(Math.PI * along) ** 0.5;
       lift[i] = Math.max(lift[i], h * crest * ends);
     }
   }
   const idx = [], d = [], mark = new Float32Array(N * 2); let top = 0;
+  for (let i = 0; i < N; i++) mark[i * 2 + 1] = beside[i];
   for (let i = 0; i < N; i++) if (lift[i] > 0) { idx.push(i); d.push(n[i * 3] * lift[i], n[i * 3 + 1] * lift[i], n[i * 3 + 2] * lift[i]); top = Math.max(top, lift[i]); }
   for (let i = 0; i < N; i++) mark[i * 2] = lift[i] / (top || 1);
   return { target: { idx: Uint16Array.from(idx), d: Float32Array.from(d) }, mark };
@@ -92,11 +93,11 @@ export function pureblood(fig, base) {
   const ax = d / 2;
 
   // ridges: three up the forehead from between the brows, two across each cheek toward the mouth
-  const lines = [{ pts: line(0, ey + 0.42 * d, 0, ey + 1.5 * d), w: 0.17 * d, h: 0.13 * d }];
+  const lines = [{ pts: line(0, ey + 0.42 * d, 0, ey + 1.5 * d), w: 0.17 * d, h: 0.15 * d }];
   for (const s of [1, -1]) {
-    lines.push({ pts: line(s * 0.3 * d, ey + 0.4 * d, s * 0.62 * d, ey + 1.4 * d), w: 0.16 * d, h: 0.115 * d });
-    lines.push({ pts: line(s * 1.62 * ax, ey - 0.62 * d, s * 1.0 * ax, ey - 1.18 * d), w: 0.18 * d, h: 0.13 * d });
-    lines.push({ pts: line(s * 1.82 * ax, ey - 0.86 * d, s * 1.28 * ax, ey - 1.38 * d), w: 0.16 * d, h: 0.11 * d });
+    lines.push({ pts: line(s * 0.3 * d, ey + 0.4 * d, s * 0.62 * d, ey + 1.4 * d), w: 0.16 * d, h: 0.135 * d });
+    lines.push({ pts: line(s * 1.62 * ax, ey - 0.62 * d, s * 1.0 * ax, ey - 1.18 * d), w: 0.2 * d, h: 0.19 * d });
+    lines.push({ pts: line(s * 1.82 * ax, ey - 0.86 * d, s * 1.28 * ax, ey - 1.38 * d), w: 0.18 * d, h: 0.16 * d });
   }
   const rg = ridges(B, lines);
   fig.addTarget('pbRidges', rg.target);
@@ -107,9 +108,9 @@ export function pureblood(fig, base) {
   const chin = at(L.chin), R0 = { chin: [], jaw: [], jaw2: [], cheek: [], mid: [under(chin, 0.2)] };
   for (const S of ['L', 'R']) {
     const jm = at(L['jawMid' + S]), ja = at(L['jaw' + S]), mo = at(L['mouth' + S]);
-    R0.chin.push(under(lerp(chin, jm, 0.2)));
-    R0.jaw.push(under(lerp(chin, jm, 0.58)), under(lerp(jm, ja, 0.22)));
-    R0.jaw2.push(under(lerp(jm, ja, 0.55)));
+    R0.chin.push(under(lerp(chin, jm, 0.16)));
+    R0.jaw.push(under(lerp(chin, jm, 0.7), 0.05), under(lerp(jm, ja, 0.4), 0.03));
+    R0.jaw2.push(under(lerp(jm, ja, 0.7), 0.03));
     R0.cheek.push(nearest(lerp(lerp(mo, jm, 0.55), ja, 0.2)));
   }
   const SETS = { none: [], chin: R0.chin, chinJaw: [...R0.chin, ...R0.jaw], cheekChin: [...R0.cheek, ...R0.chin], beard: [...R0.mid, ...R0.chin, ...R0.jaw, ...R0.jaw2, ...R0.cheek] };
@@ -117,7 +118,7 @@ export function pureblood(fig, base) {
   const group = new THREE.Group(); group.name = 'pureblood'; fig.add(group);
   const spurMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.5, specularIntensity: 0.45, sheen: 0.2, sheenRoughness: 0.5 });
   const metal = new THREE.MeshStandardMaterial({ color: 0xd8a83a, metalness: 1, roughness: 0.3 });
-  const opt = { on: false, ridges: 0.8, spurs: 'temple', tendrils: 'chinJaw', tlength: 'short', jewellery: 'none' };
+  const opt = { on: false, ridges: 0.8, spurs: 'temple', tendrils: 'chinJaw', tlength: 'short', jewellery: 'gold' };
   const vtx = (i) => { const g = fig.geometry, P = g.attributes.position.array, Nn = g.attributes.normal.array; return [[P[i * 3], P[i * 3 + 1], P[i * 3 + 2]], [Nn[i * 3], Nn[i * 3 + 1], Nn[i * 3 + 2]]]; };
   const spurRoot = {};
   for (const S of ['L', 'R']) { spurRoot['temple' + S] = L['browOuter' + S]; spurRoot['cheek' + S] = nearest(lerp(at(L['cheek' + S]), at(L['earFront' + S]), 0.62)); spurRoot['jaw' + S] = L['jaw' + S]; }
@@ -145,24 +146,26 @@ export function pureblood(fig, base) {
     // tendrils: flesh in the body's own skin material, so the root joins without a seam
     const long = opt.tlength === 'long';
     SETS[opt.tendrils].forEach((vi) => {
-      const [p, n] = vtx(vi), r = rng(101 + vi), len = (long ? 0.12 : 0.05) * (0.84 + 0.32 * r()), r0 = 0.0072 * (0.9 + 0.2 * r());
-      const sx = Math.sign(p[0]) || 1, sweep = [-sx * (0.06 + 0.08 * r()), -1, (long ? 0.16 : 0.07) + 0.06 * r()];
-      const steps = long ? 30 : 18, pts = path(p, n, sweep, len, steps, long ? 0.2 : 0.3, long ? 0.12 : 0.06, 200 + vi, 0.004);
+      // the front ones longest and thickest, shorter and thinner back along the jaw, each a little different
+      const front = R0.chin.includes(vi) || R0.mid.includes(vi), back = R0.jaw2.includes(vi) || R0.cheek.includes(vi);
+      const [p, n] = vtx(vi), r = rng(101 + vi), len = (long ? 0.13 : 0.07) * (front ? 1.2 : back ? 0.62 : 0.85) * (0.8 + 0.4 * r()), r0 = (front ? 0.0088 : back ? 0.0072 : 0.008) * (0.92 + 0.16 * r());
+      const sx = Math.sign(p[0]) || 1, sweep = [sx * (front ? -0.04 : 0.05) + sx * 0.06 * (r() - 0.5), -1, (long ? 0.16 : 0.08) + 0.06 * r()];
+      const steps = long ? 30 : 20, pts = path(p, n, sweep, len, steps, long ? 0.2 : 0.26, long ? 0.12 : 0.07, 200 + vi, 0.007);
       // a swelling at the root, then a slow taper to a rounded end about half the root's width
-      const radii = pts.map((_, j) => { const t = j / steps, swell = 1 + 0.35 * Math.exp(-((t - 0.06) ** 2) / 0.004), taper = 1 - 0.5 * t ** 1.2, tip = Math.max(0, (t - 0.88) / 0.12); return r0 * swell * taper * Math.sqrt(Math.max(0, 1 - tip * tip)) + (j === steps ? 0 : 0.0002); });
+      const radii = pts.map((_, j) => { const t = j / steps, swell = 1 + 0.75 * Math.exp(-(t * t) / 0.006) + 0.18 * Math.exp(-((t - 0.12) ** 2) / 0.004), taper = 1 - 0.5 * t ** 1.15, tip = Math.max(0, (t - 0.88) / 0.12); return r0 * swell * taper * Math.sqrt(Math.max(0, 1 - tip * tip)) + (j === steps ? 0 : 0.0002); });
       const tb = tube(pts, radii, 14, 0.9), m = tb.P.length / 3, rest = new Float32Array(m * 3), lip = new Float32Array(m), cav = new Float32Array(m * 2), mark = new Float32Array(m * 2);
       const rp = [R[vi * 3], R[vi * 3 + 1], R[vi * 3 + 2]];
       for (let j = 0; j < m; j++) { rest.set(rp, j * 3); const t = tb.T[j]; cav[j * 2] = 0.05 * (1 - Math.min(1, t / 0.08)); cav[j * 2 + 1] = 0.03 * (1 - Math.min(1, t / 0.15)); }
-      const mesh = new THREE.Mesh(geom(tb, { aRest: [rest, 3], aLip: [lip, 1], aCav: [cav, 2], aMark: [mark, 2] }), fig.skin); mesh.castShadow = true; group.add(mesh);
+      const mesh = new THREE.Mesh(geom(tb, { aRest: [rest, 3], aLip: [lip, 1], aCav: [cav, 2], aMark: [mark, 2] }), fig.skin); mesh.castShadow = false; mesh.receiveShadow = true; group.add(mesh);
       built.tendrils.push({ pts, r: radii, root: vi });
     });
     // jewellery: cuffs on the two front tendrils, a ring through each temple spur near its tip
     if (opt.jewellery !== 'none') {
       const [hex, rough] = METALS[opt.jewellery] || METALS.gold; metal.color.set(hex); metal.roughness = rough;
       for (const t of built.tendrils.filter((q) => R0.chin.includes(q.root))) {
-        const j = Math.round(t.pts.length * 0.42), a = t.pts[j], b = t.pts[j + 1], dir = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]).normalize();
+        const j = Math.round(t.pts.length * 0.38), a = t.pts[j], b = t.pts[j + 1], dir = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]).normalize();
         const cuff = new THREE.Mesh(new THREE.CylinderGeometry(t.r[j] + 0.0016, t.r[j] + 0.0016, 0.011, 20, 1, true).rotateX(Math.PI / 2), metal);
-        cuff.position.set(...a); cuff.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir); cuff.castShadow = true; group.add(cuff);
+        cuff.position.set(...a); cuff.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir); group.add(cuff);
         for (const dz of [-0.0055, 0.0055]) { const lipR = new THREE.Mesh(new THREE.TorusGeometry(t.r[j] + 0.0018, 0.0009, 6, 20), metal); lipR.position.set(...a.map((v, q) => v + dir.getComponent(q) * dz)); lipR.quaternion.copy(cuff.quaternion); group.add(lipR); }
       }
       for (const S of ['L', 'R']) {

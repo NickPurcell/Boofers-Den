@@ -213,6 +213,25 @@ function findRegions(B) {
   R.scalp = pick((x, y, z) => y > neckY && (y > ey + 0.62 * d - Math.max(0, ez - 0.7 * d - z) * 0.9) && Math.abs(x) < 2.4 * d);
   R.face = pick((x, y, z) => y > neckY && z > ez - 0.55 * d && y < ey + 0.62 * d);
   R.ears = pick((x, y, z) => y > neckY && Math.abs(x) > 2.1 * d && z < ez - 0.5 * d && y < ey + 0.3 * d && y > ey - 1.2 * d);
+  // body parts: each vertex goes to the nearest bone, a segment between joint centres (the joints ride every morph)
+  const J = (n) => { const l = B.info.joints[n], c = [0, 0, 0]; for (const i of l) for (let k = 0; k < 3; k++) c[k] += p[i * 3 + k] / l.length; return c; };
+  const bones = [['torso', J('pelvis'), J('neck')], ['torso', J('neck'), J('l-shoulder')], ['torso', J('neck'), J('r-shoulder')], ['head', J('neck'), J('head-2')]];
+  for (const [S, s] of [['L', 'l'], ['R', 'r']]) {
+    const sh = J(s + '-shoulder'), el = J(s + '-elbow'), wr = J(s + '-hand'), tip = wr.map((v, k) => v + (wr[k] - el[k]) * 0.5);
+    const hp = J(s + '-upper-leg'), kn = J(s + '-knee'), an = J(s + '-ankle'), ft = J(s + '-foot-1');
+    bones.push(['upperArm' + S, sh, el], ['forearm' + S, el, wr], ['hand' + S, wr, tip], ['thigh' + S, hp, kn], ['shin' + S, kn, an], ['foot' + S, an, ft], ['torso', J('pelvis'), hp]);
+  }
+  const segD = (x, y, z, a, b) => { const ab = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], t = Math.max(0, Math.min(1, ((x - a[0]) * ab[0] + (y - a[1]) * ab[1] + (z - a[2]) * ab[2]) / (ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2))); return Math.hypot(x - a[0] - ab[0] * t, y - a[1] - ab[1] * t, z - a[2] - ab[2] * t); };
+  const parts = {};
+  for (let i = 0; i < N; i++) {
+    if (!inBody[i]) continue;
+    const x = p[i * 3], y = p[i * 3 + 1], z = p[i * 3 + 2]; let best = Infinity, who = 'torso';
+    for (const [name, a, b] of bones) { const dd = segD(x, y, z, a, b); if (dd < best) { best = dd; who = name; } }
+    (parts[who] ||= []).push(i);
+  }
+  for (const [k, v] of Object.entries(parts)) R[k] = Uint32Array.from(v);
+  R.arms = Uint32Array.from(['upperArmL', 'forearmL', 'handL', 'upperArmR', 'forearmR', 'handR'].flatMap((k) => [...(R[k] || [])]));
+  R.legs = Uint32Array.from(['thighL', 'shinL', 'footL', 'thighR', 'shinR', 'footR'].flatMap((k) => [...(R[k] || [])]));
   return R;
 }
 
@@ -284,7 +303,7 @@ class Figure extends THREE.Group {
       c[v * 2] = k1 > k0 ? s / (k1 - k0) : 0;
     }
     for (let v = 0; v < N; v++) tmp[v] = c[v * 2];
-    for (let it = 0; it < 6; it++) {   // the broad one: the fine one, spread out
+    for (let it = 0; it < 12; it++) {   // the broad one: the fine one, spread out
       for (let v = 0; v < N; v++) { let s = tmp[v], m = 1; for (let k = T.veo[v]; k < T.veo[v + 1]; k++) { const e = T.ve[k]; s += tmp[T.EV[e * 2] === v ? T.EV[e * 2 + 1] : T.EV[e * 2]]; m++; } c[v * 2 + 1] = s / m; }
       for (let v = 0; v < N; v++) tmp[v] = c[v * 2 + 1];
     }
@@ -301,6 +320,7 @@ class Figure extends THREE.Group {
   }
   joint(name) { const list = this.B.marks.J[name]; if (!list) return null; const c = [0, 0, 0]; for (const i of list) for (let k = 0; k < 3; k++) c[k] += this.p0[i * 3 + k] / list.length; return c; }
   get landmarks() { return Object.keys(this.B.marks.L); }
+  get regions() { return Object.keys(this.B.regions); }
   // the vertex numbers of a region on the live mesh (subdivided: a new vertex belongs when all its parents do)
   region(name) {
     const base = this.B.regions[name]; if (!base) return null;
