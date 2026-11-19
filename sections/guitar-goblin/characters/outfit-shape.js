@@ -51,7 +51,7 @@ const garment = (t, cheap, costly, base) => (x, y, z) => {
   return Math.max(r, costly(x, y, z));
 };
 export function plate(ctx) {
-  const M = measures(ctx), P = [], T = 0.02, top = M.neckY + 0.03, low = M.waistY - 0.03, J = ctx.J;
+  const M = measures(ctx), P = [], T = 0.02, top = M.neckY + 0.008, low = M.waistY - 0.03, J = ctx.J;
   // plate does not follow muscle: over the chest and belly it lies on the smooth torso (ctx.torso) where that stands
   // out from the skin, so the hollows between the muscles are bridged
   const hull = ctx.torso ? (x, y, z) => Math.min(ctx.body(x, y, z), ctx.torso(x, y, z)) : ctx.body;   // (the body without its arms)
