@@ -44,7 +44,7 @@ const PAGE = {
   mirialan: { people: 'woman', hairs: sw(BLACK, ['blueblack', 'Blue-black', '#131928'], DKBROWN, ['redbrown', 'Red-brown', '#5a2a1a'], ['grey', 'Grey', '#8c8c8c']),
     outfits: ['jacket', 'robe', 'coat', 'wraps', 'cloak'], defaults: { style: 'tail', hair: 'black', outfit: 'jacket', hood: 'none', main: 'navy', second: 'sand' } },
   // opens on the look its first player asked for: medium blue with dark blue accents, heavy smooth dreads to the shoulders
-  mikkian: { people: 'between', outfits: ['coat', 'robe', 'jacket', 'wraps', 'armour', 'cloak'], defaults: { style: 'dreads', front: 'forward', thick: 'thick', length: 'shoulder', surface: 'smooth', pattern: 'deepen', outfit: 'coat', hood: 'none', main: 'charcoal', second: 'steel' } },
+  mikkian: { people: 'between', outfits: ['coat', 'robe', 'jacket', 'wraps', 'armour', 'cloak'], defaults: { style: 'dreads', front: 'forward', thick: 'thick', length: 'shoulder', surface: 'smooth', pattern: 'deepen', tpose: 'rest', outfit: 'coat', hood: 'none', main: 'charcoal', second: 'steel' } },
 };
 const ORDER = ['pureblood', 'human', 'echani', 'mirialan', 'mikkian'];
 // the people to start from: the base's presets, and one between the two (the controls' own middle)
@@ -65,6 +65,7 @@ function options() {
   for (const [k, d] of Object.entries(L.options || {})) o[k] = { label: d.label, multi: d.multi, swatch: d.swatch, items: asItems(d.items) };
   if (sp === 'mikkian') {   // head-tendrils in place of hair
     o.style = { label: 'Head-tendrils', items: asItems(ARRANGE) }; o.front = { label: 'Tendril line', items: [{ key: 'forward', name: 'Forward' }, { key: 'high', name: 'High' }] }; o.thick = { label: 'Tendril thickness', items: asItems(THICK) };
+    o.tpose = { label: 'Tendrils held', items: [{ key: 'rest', name: 'Relaxed, lying back' }, { key: 'flare', name: 'Flared, standing out' }] };
     o.length = { label: 'Tendril length', items: asItems(LENGTHS) }; o.surface = { label: 'Tendril surface', items: asItems(SURFACES) }; o.pattern = { label: 'Tendril pattern', items: asItems({ deepen: { name: 'Deepening to the lips' }, fade: { name: 'Paler tips' }, ...PATTERNS }) };
   } else {
     o.style = { label: 'Hair', items: [...['slick', 'swept', 'crop', 'tail', 'knot', 'braid'].map((k) => ({ key: k, name: STYLES[k].name })), { key: 'bob', name: 'Bob' }, { key: 'long', name: 'Long' }, ...['crest', 'shaved', 'bald'].map((k) => ({ key: k, name: STYLES[k].name }))] };
@@ -200,7 +201,7 @@ async function grow() {
   const my = ++maneTicket;
   const clear = () => { if (mane) { fig.remove(mane.mesh); mane.mesh.geometry.dispose(); mane = null; } };
   if (sp() !== 'mikkian' || state.hood === 'up') { clear(); return; }
-  let r; try { r = await pool.mesh('mikkian', { mesh: { position: fig.p0.slice(), normal: fig.n0.slice(), index: tris }, frame: headFrame(), style: state.style, front: state.front, thick: state.thick, length: state.length, surface: state.surface }); } catch (e) { if (!(e && e.cancelled)) console.error(e); return; }
+  let r; try { r = await pool.mesh('mikkian', { mesh: { position: fig.p0.slice(), normal: fig.n0.slice(), index: tris }, frame: headFrame(), style: state.style, front: state.front, thick: state.thick, length: state.length, surface: state.surface, tpose: state.tpose }); } catch (e) { if (!(e && e.cancelled)) console.error(e); return; }
   if (my !== maneTicket) return;
   clear();
   const g = new THREE.BufferGeometry();
@@ -274,7 +275,7 @@ stage.controls.addEventListener('start', () => $('hint').classList.add('gone'));
 
 /* ---------------- the panel ---------------- */
 const panelEl = $('options');
-const SHAPE_OPTS = new Set(['species', 'people', 'outfit', 'hood', 'gear', 'folds', 'spurs', 'tendrils', 'tlength', 'thick', 'length', 'surface', 'front']);   // these change what is worn or its fit
+const SHAPE_OPTS = new Set(['species', 'people', 'outfit', 'hood', 'gear', 'folds', 'spurs', 'tendrils', 'tlength', 'thick', 'length', 'surface', 'front', 'tpose']);   // these change what is worn or its fit
 const MANE_OPTS = new Set(['style', 'surface', 'pattern', 'accent', 'skin']);   // these change what is worn or its fit
 function panel() {
   panelEl.textContent = '';

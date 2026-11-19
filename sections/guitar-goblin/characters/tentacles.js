@@ -14,8 +14,37 @@ const forward = (a) => hairline(a) - 0.024 * Math.max(0, 1 - (Math.abs(a) / 1.4)
 const norm = (v) => { const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0] / l, v[1] / l, v[2] / l]; };
 const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
 
+// Flared: under stress a Mikkian stands its tendrils straight out from the head, in every direction (SES Stallion,
+// 19 Nov: "minor muscular control of them with the ability to stick them strait out during times of intense stress").
+// Each keeps its root, thickness and surface; from the root it leaves the scalp square, straight out along the
+// head's outward normal there, and only its outer part sags a little under its own weight. Out from a rounded head
+// they spread apart, so they need no pushing apart; the lowest, at the nape, are lifted clear of the neck.
+const hash = (i, k) => { const x = Math.sin(i * 127.1 + k * 311.7) * 43758.5453; return x - Math.floor(x); };
+function flared(t, head, long, style) {
+  const P0 = t.pts, root = P0[0], e = 0.002;
+  let Lr = 0; for (let i = 1; i < P0.length; i++) Lr += Math.hypot(P0[i][0] - P0[i - 1][0], P0[i][1] - P0[i - 1][1], P0[i][2] - P0[i - 1][2]);
+  const g = (q) => norm([head(q[0] + e, q[1], q[2]) - head(q[0] - e, q[1], q[2]), head(q[0], q[1] + e, q[2]) - head(q[0], q[1] - e, q[2]), head(q[0], q[1], q[2] + e) - head(q[0], q[1], q[2] - e)]);
+  const id = Math.round((root[0] * 997 + root[1] * 577 + root[2] * 331) * 1000), h = hash(id, 1);
+  let n = g(root); if (n[1] < -0.25) n = norm([n[0], -0.25, n[2] + (n[2] < 0 ? -0.2 : 0)]);   // (none down into the neck)
+  const fore = Math.max(0, n[2]); if (fore > 0.2) n = norm([n[0], n[1] + 0.6 * fore, n[2]]);   // (the front ones up off the brow, and they hold, not sag over the face)
+  // (a set length: lying back some ended early where they came to rest)
+  const L = (style === 'short' ? 0.07 : long ? 0.26 : 0.16) * (0.85 + 0.3 * h), sag = (long ? 0.55 : 0.3) * (0.8 + 0.4 * hash(id, 2)) * (1 - 0.8 * fore), step = 0.008;
+  const side = norm([(hash(id, 3) - 0.5), (hash(id, 4) - 0.5), (hash(id, 5) - 0.5)]), curl = 0.12 * (hash(id, 6) - 0.5);
+  const pts = [root.slice()]; let q = root.slice();
+  for (let s = step; s <= L + 1e-6; s += step) {
+    const u = s / L, droop = sag * u * u, d = norm([n[0] + side[0] * curl * u, n[1] - droop, n[2] + side[2] * curl * u]);
+    q = [q[0] + d[0] * step, q[1] + d[1] * step, q[2] + d[2] * step];
+    // clear of the head and body by its own thickness
+    const r = (t.radAt ? t.radAt(Math.min(Lr, s * Lr / L)) : 0.008) + 0.002, dd = head(q[0], q[1], q[2]);
+    if (s > 0.02 && dd < r) { const gg = g(q); q = [q[0] + gg[0] * (r - dd), q[1] + gg[1] * (r - dd), q[2] + gg[2] * (r - dd)]; }
+    pts.push(q);
+  }
+  if (t.radAt) return { pts, radAt: (s) => t.radAt(s * Lr / L) };
+  const m = P0.length - 1; return { pts, rad: (i) => t.rad((i / Math.max(1, pts.length - 1)) * m) };
+}
+
 // a: { mesh: { position, normal, index } (the live figure), frame: { origin, x, up, fw, k }, style, thick, length, surface (smooth or locked),
-//   front: 'forward' (the hairline brought forward; the default) or 'high' }
+//   front: 'forward' (the hairline brought forward; the default) or 'high', tpose: 'rest' (lying back; the default) or 'flare' }
 export function mikkianTendrils(a) {
   const { position: P, normal: N, index: I } = a.mesh, F = a.frame, all = fieldFor(P, N, I, null, 0.08), k = F.k;
   const toWorld = (p) => [F.origin[0] + k * (p[0] * F.x[0] + p[1] * F.up[0] + p[2] * F.fw[0]), F.origin[1] + k * (p[0] * F.x[1] + p[1] * F.up[1] + p[2] * F.fw[1]), F.origin[2] + k * (p[0] * F.x[2] + p[1] * F.up[2] + p[2] * F.fw[2])];
@@ -26,8 +55,9 @@ export function mikkianTendrils(a) {
   // knobs on the brow; their neighbours cover the scalp there, so they are left out)
   // (swept back shows the forehead by its nature, and a lock rooted low on it falls over the face: it keeps the higher line)
   const fwd = a.front !== 'high' && a.style !== 'swept';
-  const list = tendrilPaths(a.style || 'dreads', a.thick || 'thick', head, { length: a.length, surface: a.surface === 'locked' ? 'locked' : 'smooth', obstacle, line: fwd ? forward : undefined, lanes: true, back: true })   // (relaxed, they lie back: SES Stallion, 19 Nov)
-    .filter((t) => fwd || (a.style || 'dreads') !== 'dreads' || !(t.pts[0][2] > 0.03 && Math.abs(t.pts[0][0]) < 0.06));
+  const list = tendrilPaths(a.style || 'dreads', a.thick || 'thick', head, { length: a.length, surface: a.surface === 'locked' ? 'locked' : 'smooth', obstacle, line: fwd ? forward : undefined, lanes: true, back: true, nape: a.tpose === 'flare' && (a.style || 'dreads') === 'dreads' })   // (relaxed, they lie back: SES Stallion, 19 Nov)
+    .filter((t) => fwd || (a.style || 'dreads') !== 'dreads' || !(t.pts[0][2] > 0.03 && Math.abs(t.pts[0][0]) < 0.06))
+    .map((t) => (a.tpose === 'flare' && a.style !== 'bound' ? flared(t, head, a.length === 'long', a.style || 'dreads') : t));
   // tubes
   const R = 12, pos = [], nrm = [], idx = [], T = [], D = [];
   for (const t of list) {

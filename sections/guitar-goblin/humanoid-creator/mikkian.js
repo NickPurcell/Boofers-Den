@@ -41,14 +41,14 @@ function smooth(pts) {
 
 // where the roots are: rings round the skull, kept to the scalp behind the hairline; `k` thins them out for thick locks
 // (line: the hairline as a height for each angle round the head; a lower one adds a ring of roots across the front)
-function roots(head, k = 1, line = hairline) {
+function roots(head, k = 1, line = hairline, nape = false) {
   const C = [0, 0.03, -0.012], out = [], front = line !== hairline;
   let id = 0;
-  for (const [elDeg, n0] of [[-8, 13], [10, 13], [26, 13], [42, 11], [58, 8], [74, 5], [90, 1], ...(front ? [[17, 9]] : [])]) {
-    const n = Math.max(1, Math.round(n0 * k)), arc = front && elDeg === 17;   // (the added rings run across the front only)
+  for (const [elDeg, n0] of [[-8, 13], [10, 13], [26, 13], [42, 11], [58, 8], [74, 5], [90, 1], ...(front ? [[17, 9]] : []), ...(nape ? [[-21, 8], [-33, 7]] : [])]) {
+    const n = Math.max(1, Math.round(n0 * k)), arc = front && elDeg === 17, low = elDeg < -10;   // (the added rings run across the front only, or the back of the head only: down to the nape, where tendrils standing out leave it bare)
     for (let j = 0; j < n; j++) {
       id++;
-      const el = (elDeg * Math.PI) / 180, az = arc ? -1.3 + 2.6 * (j + 0.5) / n + (hash(id, 1) - 0.5) * 0.12 : ((j + (elDeg === 26 || elDeg === 58 ? 0.5 : 0)) / n) * 2 * Math.PI - Math.PI + (hash(id, 1) - 0.5) * 0.22;
+      const el = (elDeg * Math.PI) / 180, az = low ? Math.PI - 1.15 + 2.3 * (j + 0.5) / n + (hash(id, 1) - 0.5) * 0.12 : arc ? -1.3 + 2.6 * (j + 0.5) / n + (hash(id, 1) - 0.5) * 0.12 : ((j + (elDeg === 26 || elDeg === 58 ? 0.5 : 0)) / n) * 2 * Math.PI - Math.PI + (hash(id, 1) - 0.5) * 0.22;
       const d = [Math.cos(el) * Math.sin(az), Math.sin(el), Math.cos(el) * Math.cos(az)];
       const hit = cast(head, [C[0] + d[0] * 0.25, C[1] + d[1] * 0.25, C[2] + d[2] * 0.25], [-d[0], -d[1], -d[2]], 0.3);
       if (!hit || hit.p[1] < line(Math.atan2(hit.p[0], hit.p[2])) + 0.006) continue;   // only behind the hairline
@@ -236,7 +236,7 @@ export function tendrilPaths(style, thick, head, o = {}) {
   const obstacle = o.obstacle || head, out = [], N = 6;
   if (style === 'dreads') {
     const r0 = DREAD_R[thick] || DREAD_R.medium, yEnd0 = o.length === 'long' ? -0.4 : -0.215;
-    const fallen = roots(head, Math.max(0.55, Math.min(1, 0.0084 / r0)), o.line).map(({ id, p, n }) => {
+    const fallen = roots(head, Math.max(0.55, Math.min(1, 0.0084 / r0)), o.line, !!o.nape).map(({ id, p, n }) => {
       const r = r0 * (0.86 + 0.26 * hash(id, 7)), { pts, clear } = dreadPath(p, n, id, r, obstacle, yEnd0 - 0.045 * hash(id, 2), o.length !== 'long', !!o.line, !!o.lanes && o.length === 'long', !!o.back);   // (lanes for the long length only: the shorter already lands right)
       return { id, r, pts, clear };
     });
