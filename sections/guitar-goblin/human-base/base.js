@@ -284,7 +284,6 @@ class Figure extends THREE.Group {
       const { d, idx } = tg;
       for (let k = 0; k < idx.length; k++) { const i = idx[k] * 3, j = k * 3; w[i] += wt * d[j]; w[i + 1] += wt * d[j + 1]; w[i + 2] += wt * d[j + 2]; }
     }
-    { const cov = this.skin.userData.cover || {}, t = B.targets.get('nipples-flat'); if (cov.on && cov.torso && t) { const k = 1.0; for (let j = 0; j < t.idx.length; j++) { const i = t.idx[j] * 3; w[i] += k * t.d[j * 3]; w[i + 1] += k * t.d[j * 3 + 1]; w[i + 2] += k * t.d[j * 3 + 2]; } } }
     this.clothe(w);
     if ((this.state.armsDown ?? 0) > 0) this.pose(w, this.state.armsDown);
     // decimetres to metres, feet on the floor
@@ -334,21 +333,25 @@ class Figure extends THREE.Group {
     for (let f = 0; f < B.quads.length; f += 4) { const a = B.quads[f] * 3, b2 = B.quads[f + 1] * 3, c = B.quads[f + 2] * 3, d2 = B.quads[f + 3] * 3; const ux = w[c] - w[a], uy = w[c + 1] - w[a + 1], uz = w[c + 2] - w[a + 2], vx = w[d2] - w[b2], vy = w[d2 + 1] - w[b2 + 1], vz = w[d2 + 2] - w[b2 + 2]; const A = 0.5 * Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 4; area[B.quads[f]] += A; area[B.quads[f + 1]] += A; area[B.quads[f + 2]] += A; area[B.quads[f + 3]] += A; }
     const grid = new Map(), K = (a, b, c) => ((a + 512) * 1024 + (b + 512)) * 1024 + (c + 512), keyOf = (x, y, z) => K(Math.floor(x / cell), Math.floor(y / cell), Math.floor(z / cell));
     for (let i = 0; i < N; i++) if (B.inBody[i] && B.armW[i] < 140) { const k = keyOf(w[i * 3], w[i * 3 + 1], w[i * 3 + 2]); let a = grid.get(k); if (!a) grid.set(k, (a = [])); a.push(i); }
-    const out = (this._out ||= new Float32Array(N));
+    const out = (this._out ||= new Float32Array(N)), sn = (this._sn ||= new Float32Array(N * 3));
     for (const v of list) {
       const px = w[v * 3], py = w[v * 3 + 1], pz = w[v * 3 + 2], nx = nrm[v * 3], ny = nrm[v * 3 + 1], nz = nrm[v * 3 + 2], cx = Math.floor(px / cell), cy = Math.floor(py / cell), cz = Math.floor(pz / cell);
-      let sw = 0, sh = 0;
+      let sw = 0, qx = 0, qy = 0, qz = 0, mx = 0, my = 0, mz = 0;
       for (let a = -1; a <= 1; a++) for (let b3 = -1; b3 <= 1; b3++) for (let c = -1; c <= 1; c++) {
         const arr = grid.get(K(cx + a, cy + b3, cz + c)); if (!arr) continue;
         for (const u of arr) {
           const dx = w[u * 3] - px, dy = w[u * 3 + 1] - py, dz = w[u * 3 + 2] - pz, r2 = dx * dx + dy * dy + dz * dz; if (r2 > reach * reach) continue;
           if (nx * nrm[u * 3] + ny * nrm[u * 3 + 1] + nz * nrm[u * 3 + 2] < 0.2) continue;   // not the far side of a thin part
-          const wt = area[u] * Math.exp(-r2 / (2 * sig * sig)); sw += wt; sh += wt * (dx * nx + dy * ny + dz * nz);
+          const wt = area[u] * Math.exp(-r2 / (2 * sig * sig)); sw += wt; qx += wt * dx; qy += wt * dy; qz += wt * dz; mx += wt * nrm[u * 3]; my += wt * nrm[u * 3 + 1]; mz += wt * nrm[u * 3 + 2];
         }
       }
-      out[v] = sw > 0 ? sh / sw : 0;   // how far the smoothed surface lies along the normal from this point
+      // project onto the local plane: through the weighted centroid, square to the weighted normal (a tiny feature's
+      // faces all land on one plane, so nothing folds)
+      const ml = Math.hypot(mx, my, mz) || 1; mx /= ml; my /= ml; mz /= ml;
+      const dd = sw > 0 ? (qx * mx + qy * my + qz * mz) / sw : 0;
+      out[v] = dd; sn[v * 3] = mx; sn[v * 3 + 1] = my; sn[v * 3 + 2] = mz;
     }
-    for (const v of list) { const a = mask[v] * out[v]; w[v * 3] += nrm[v * 3] * a; w[v * 3 + 1] += nrm[v * 3 + 1] * a; w[v * 3 + 2] += nrm[v * 3 + 2] * a; }
+    for (const v of list) { const a = mask[v] * out[v]; w[v * 3] += sn[v * 3] * a; w[v * 3 + 1] += sn[v * 3 + 1] * a; w[v * 3 + 2] += sn[v * 3 + 2] * a; }
     }
     const n = quadNormals(w, B.quads, N, this.n0);
     for (const v of list) { const a = 0.012 * mask[v]; w[v * 3] += n[v * 3] * a; w[v * 3 + 1] += n[v * 3 + 1] * a; w[v * 3 + 2] += n[v * 3 + 2] * a; }   // about 1 mm proud
