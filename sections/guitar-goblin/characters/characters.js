@@ -36,15 +36,15 @@ const CLOTH = sw(['bone', 'Bone white', '#e4e0d6'], ['ash', 'Ash grey', '#9aa0a8
 // the opening person (a preset of the base's controls), hair colours, the outfits that suit (their own first), and the look it opens in
 const PAGE = {
   pureblood: { people: 'powerful', hairs: sw(BLACK, DKBROWN, ['redbrown', 'Red-brown', '#4a1a14'], ['grey', 'Iron grey', '#8a8684'], ['white', 'White', '#d8d4d0']),
-    outfits: ['plate', 'cloak', 'robe'], defaults: { style: 'slick', hair: 'black', outfit: 'plate', hood: 'none', gear: 'hilt', main: 'charcoal', second: 'wine' } },
+    outfits: ['plate', 'cloak', 'robe', 'armour', 'coat'], defaults: { style: 'slick', hair: 'black', outfit: 'plate', hood: 'none', gear: 'hilt', main: 'charcoal', second: 'wine' } },
   human: { people: 'man', hairs: sw(BLACK, DKBROWN, ['brown', 'Brown', '#4a3020'], ['auburn', 'Auburn', '#6a2e1a'], ['blond', 'Blond', '#b89858'], ['grey', 'Grey', '#8c8c8c'], ['white', 'White', '#dcdcdc']),
-    outfits: ['robe', 'cloak', 'plate'], defaults: { style: 'slick', hair: 'dkbrown', outfit: 'robe', hood: 'none', main: 'umber', second: 'sand' } },
+    outfits: ['coat', 'jacket', 'wraps', 'armour', 'plate', 'robe', 'cloak'], defaults: { style: 'crop', hair: 'dkbrown', outfit: 'coat', hood: 'none', main: 'umber', second: 'sand' } },
   echani: { people: 'athlete', hairs: sw(['white', 'White', '#e4e4e8'], ['silver', 'Silver', '#bfc4cb'], ['ash', 'Ash', '#a6a6a2'], ['gold', 'Pale gold', '#d6cdaa'], ['steel', 'Steel', '#8b939c']),
-    outfits: ['robe', 'plate', 'cloak'], defaults: { style: 'slick', hair: 'white', outfit: 'robe', hood: 'none', gear: 'double', main: 'bone', second: 'ash' } },
+    outfits: ['armour', 'wraps', 'coat', 'robe', 'cloak'], defaults: { style: 'swept', hair: 'white', outfit: 'armour', hood: 'none', gear: 'double', main: 'ash', second: 'slate' } },
   mirialan: { people: 'woman', hairs: sw(BLACK, ['blueblack', 'Blue-black', '#131928'], DKBROWN, ['redbrown', 'Red-brown', '#5a2a1a'], ['grey', 'Grey', '#8c8c8c']),
-    outfits: ['robe', 'cloak', 'plate'], defaults: { style: 'slick', hair: 'black', outfit: 'robe', hood: 'down', main: 'navy', second: 'sand' } },
+    outfits: ['jacket', 'robe', 'coat', 'wraps', 'cloak'], defaults: { style: 'tail', hair: 'black', outfit: 'jacket', hood: 'none', main: 'navy', second: 'sand' } },
   // opens on the look its first player asked for: medium blue with dark blue accents, heavy smooth dreads to the shoulders
-  mikkian: { people: 'between', outfits: ['robe', 'cloak', 'plate'], defaults: { style: 'dreads', thick: 'thick', length: 'shoulder', surface: 'smooth', pattern: 'tips', outfit: 'robe', hood: 'none', main: 'charcoal', second: 'steel' } },
+  mikkian: { people: 'between', outfits: ['coat', 'robe', 'jacket', 'wraps', 'armour', 'cloak'], defaults: { style: 'dreads', thick: 'thick', length: 'shoulder', surface: 'smooth', pattern: 'tips', outfit: 'coat', hood: 'none', main: 'charcoal', second: 'steel' } },
 };
 const ORDER = ['pureblood', 'human', 'echani', 'mirialan', 'mikkian'];
 // the people to start from: the base's presets, and one between the two (the controls' own middle)
@@ -241,7 +241,7 @@ stage.controls.addEventListener('start', () => $('hint').classList.add('gone'));
 
 /* ---------------- the panel ---------------- */
 const panelEl = $('options');
-const SHAPE_OPTS = new Set(['species', 'people', 'outfit', 'hood', 'folds', 'spurs', 'tendrils', 'tlength', 'thick', 'length', 'surface']);   // these change what is worn or its fit
+const SHAPE_OPTS = new Set(['species', 'people', 'outfit', 'hood', 'gear', 'folds', 'spurs', 'tendrils', 'tlength', 'thick', 'length', 'surface']);   // these change what is worn or its fit
 const MANE_OPTS = new Set(['style', 'surface', 'pattern', 'accent', 'skin']);   // these change what is worn or its fit
 function panel() {
   panelEl.textContent = '';
