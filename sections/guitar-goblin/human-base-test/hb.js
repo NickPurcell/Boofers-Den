@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { makeStage } from '../creator-kit/stage.js';
 import { loadBase, SLIDERS, DEFAULTS } from '../human-base/base.js';
-import { EYE_COLOURS } from '../human-base/eyes.js';
+import { SPECIES, LINERS, MARKS, GLOWS, painters } from '../human-base/species/looks.js';
 import { pureblood, PUREBLOOD } from '../human-base/species/pureblood.js';
 import { CONTROLS, CONTROL_DEFAULTS, PRESETS as PEOPLE, toShape, randomControls } from '../human-base/controls.js';
 
@@ -17,27 +17,23 @@ const fig = base.figure();
 stage.scene.add(fig);
 const loadMs = Math.round(performance.now() - t0);
 
-/* ---------------- looks ---------------- */
-const SKINS = { pale: '#ecd2c2', light: '#d9b49c', medium: '#b98e72', tan: '#9a7357', brown: '#6f4d39', deep: '#45302a', grey: '#8d949b',
-  // the Pureblood's: ember, scarlet, crimson, brick, dusk rose, maroon, oxblood, dark wine, red umber
-  ember: '#b84a2a', scarlet: '#a8302a', crimson: '#8e2226', brick: '#7e3326', rose: '#9a4a46', maroon: '#62202a', oxblood: '#521820', wine: '#3e121a', umber: '#5e2a1e' };
-const LOOK0 = { skin: 'medium', eyes: 'brown', glow: 0, brows: 0.85, species: 'human', white: '#e6dfd6', iris: 1, lips: null, sockets: 0.4 };
-const LOOK = { ...LOOK0 };
-const PBDEF = Object.fromEntries(Object.entries(PUREBLOOD.options).map(([k, v]) => [k, v.def]));
-const PB = { ...PBDEF };
-// species looks; the body and face come from the people presets (../human-base/controls.js)
-const PRESETS = {
-  neutral: { person: null, look: {} },
-  pureblood: { person: 'powerful', look: { skin: 'crimson', eyes: 'amber', glow: 0.35, brows: 0, species: 'pureblood', white: '#9a6a48', iris: 1.3, lips: '#2a0c0c', sockets: 0.6 } },
-};
+/* ---------------- looks: by species (../human-base/species/looks.js) ---------------- */
+const LOOK = { species: 'human' }, PBDEF = Object.fromEntries(Object.entries(PUREBLOOD.options).map(([k, v]) => [k, v.def])), PB = { ...PBDEF };
+function speciesLook(sp) { const S = SPECIES[sp]; for (const k of Object.keys(LOOK)) delete LOOK[k]; Object.assign(LOOK, { species: sp, glow: 'none', liner: 'none', marks: 'none', tattoo: '', shape: 'diamond', ink: 'black' }, S.defaults); }
+speciesLook('human');
+// presets: a person (controls.js) in a species' look
+const PRESETS = { neutral: { person: null, species: 'human' }, pureblood: { person: 'powerful', species: 'pureblood' } };
 const ctrl = { ...CONTROL_DEFAULTS };
 const shape = toShape(ctrl);
 const pb = pureblood(fig, base); fig.features = pb;
 
 function apply() {
+  const S = SPECIES[LOOK.species], L = S.look, glow = (GLOWS[LOOK.glow] || GLOWS.none).v, ink = S.options?.ink?.items[LOOK.ink]?.c;
   fig.set(shape);
-  fig.skin.userData.set({ tone: SKINS[LOOK.skin], browAmount: LOOK.brows, lips: LOOK.lips, sockets: LOOK.glow > 0.1 ? LOOK.sockets : Math.min(LOOK.sockets, 0.32), suitCover: { torso: shape.gender < 0.75, arms: 0, legs: 0 } });
-  fig.eyes.set({ colour: LOOK.eyes, glow: LOOK.glow, white: LOOK.white, iris: LOOK.iris });
+  fig.skin.userData.set({ tone: (S.skins[LOOK.skin] || Object.values(S.skins)[0]).c, browAmount: L.brows ?? 0.85, browThick: 0.62 + 0.38 * shape.gender, brow: L.brow || '#231a16', lips: L.lips || null,
+    sockets: glow > 0.1 ? L.sockets ?? 0.4 : Math.min(L.sockets ?? 0.4, 0.32), suitCover: { torso: shape.gender < 0.75, arms: 0, legs: 0 },
+    marks: painters({ liner: LOOK.liner, marks: LOOK.marks, tattoo: LOOK.species === 'mirialan' ? LOOK.tattoo : '', shape: LOOK.shape, ink }) });
+  fig.eyes.set({ colour: (S.eyes[LOOK.eyes] || Object.values(S.eyes)[0]).c, glow, white: L.white || '#e6dfd6', iris: L.iris || 1 });
   pb.set({ ...PB, on: LOOK.species === 'pureblood' });
   fig.update();
   showStats();
@@ -63,18 +59,24 @@ function choice(parent, label, obj, key, items, swatch, multi = false) {
   for (const [k, v] of Object.entries(items)) {
     const b = document.createElement('button'); b.type = 'button'; b.dataset.key = k;
     if (swatch) { b.className = 'sw'; b.style.setProperty('--c', v); b.title = k; b.setAttribute('aria-label', k); } else b.textContent = v;
-    b.addEventListener('click', () => { if (multi) { const on = new Set(String(obj[key] || '').split('.').filter(Boolean)); if (on.has(k)) on.delete(k); else on.add(k); obj[key] = [...on].join('.'); } else obj[key] = k; paint(); schedule(); }); box.appendChild(b);
+    b.addEventListener('click', () => { if (obj === LOOK && key === 'species') { speciesLook(k); lookPanel(); schedule(); return; } if (multi) { const on = new Set(String(obj[key] || '').split('.').filter(Boolean)); if (on.has(k)) on.delete(k); else on.add(k); obj[key] = [...on].join('.'); } else obj[key] = k; paint(); schedule(); }); box.appendChild(b);
   }
   fs.appendChild(box); parent.appendChild(fs); choices.push([box, obj, key]);
 }
 function paint() { for (const [box, obj, key] of choices) for (const b of box.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.key === obj[key] || String(obj[key] || '').split('.').includes(b.dataset.key))); }
-const gl = group('Look', true);
-choice(gl, 'Species', LOOK, 'species', { human: 'Human', pureblood: 'Sith Pureblood' });
-choice(gl, 'Skin', LOOK, 'skin', SKINS, true);
-choice(gl, 'Eyes', LOOK, 'eyes', EYE_COLOURS, true);
-slider(gl, LOOK, 'glow', 'Eye glow', 0, 1); slider(gl, LOOK, 'brows', 'Brows', 0, 1);
-const gp = group('Pureblood features', true);
+// the look: species, then its palettes and marks; groups that belong to one species show only for it
+const gl = group('Look', true), lookBox = document.createElement('div'); gl.appendChild(lookBox);
+const gp = group('Pureblood features', true), gm = group('Mirialan tattoos', true);
 for (const [k, v] of Object.entries(PUREBLOOD.options)) if (v.items) choice(gp, v.label, PB, k, v.items, false, !!v.multi); else slider(gp, PB, k, v.label, v.min, v.max);
+for (const [k, v] of Object.entries(SPECIES.mirialan.options)) choice(gm, v.label, LOOK, k, v.swatch ? Object.fromEntries(Object.entries(v.items).map(([q, o]) => [q, o.c])) : v.items, !!v.swatch, !!v.multi);
+function lookPanel() {
+  lookBox.textContent = ''; for (let i = choices.length - 1; i >= 0; i--) if (lookBox.contains(choices[i][0]) || !choices[i][0].isConnected) choices.splice(i, 1);
+  const S = SPECIES[LOOK.species], names = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v.name])), cols = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v.c]));
+  choice(lookBox, 'Species', LOOK, 'species', names(SPECIES)); choice(lookBox, 'Skin', LOOK, 'skin', cols(S.skins), true); choice(lookBox, 'Eyes', LOOK, 'eyes', cols(S.eyes), true);
+  choice(lookBox, 'Eye glow', LOOK, 'glow', names(GLOWS)); choice(lookBox, 'Liner', LOOK, 'liner', names(LINERS)); choice(lookBox, 'Marks', LOOK, 'marks', names(MARKS));
+  gp.style.display = LOOK.species === 'pureblood' ? '' : 'none'; gm.style.display = LOOK.species === 'mirialan' ? '' : 'none';
+  paint();
+}
 // the controls a person uses: plain names, safe ranges (controls.js); the raw morphs are below, for checking
 const gpp = group('People', true);
 { const box = document.createElement('div'); box.className = 'seg wrap'; for (const [k, p] of Object.entries(PEOPLE)) { const b = document.createElement('button'); b.type = 'button'; b.textContent = p.name; b.addEventListener('click', () => person(k)); box.appendChild(b); } gpp.appendChild(box); }
@@ -95,13 +97,14 @@ function showStats() {
 function person(name) { Object.assign(ctrl, CONTROL_DEFAULTS, (PEOPLE[name] || {}).controls || {}); Object.assign(shape, toShape(ctrl)); sync(); apply(); }
 function preset(name) {
   const P = PRESETS[name] || PRESETS.neutral;
-  Object.assign(ctrl, CONTROL_DEFAULTS, P.person ? PEOPLE[P.person].controls : {}); Object.assign(shape, toShape(ctrl)); Object.assign(LOOK, LOOK0, P.look); Object.assign(PB, PBDEF);
-  sync(); apply();
+  Object.assign(ctrl, CONTROL_DEFAULTS, P.person ? PEOPLE[P.person].controls : {}); Object.assign(shape, toShape(ctrl)); speciesLook(P.species); Object.assign(PB, PBDEF);
+  lookPanel(); sync(); apply();
 }
 for (const b of document.querySelectorAll('[data-preset]')) b.addEventListener('click', () => preset(b.dataset.preset));
 $('random').addEventListener('click', () => {
   Object.assign(ctrl, randomControls()); Object.assign(shape, toShape(ctrl));
-  const sk = Object.keys(SKINS), ey = Object.keys(EYE_COLOURS); LOOK.skin = sk[Math.floor(Math.random() * sk.length)]; LOOK.eyes = ey[Math.floor(Math.random() * ey.length)];
+  const S = SPECIES[LOOK.species], pickKey = (o) => { const k = Object.keys(o); return k[Math.floor(Math.random() * k.length)]; };
+  LOOK.skin = pickKey(S.skins); LOOK.eyes = pickKey(S.eyes);
   sync(); apply();
 });
 
@@ -134,4 +137,4 @@ preset(location.hash.includes('pureblood') ? 'pureblood' : 'neutral'); view('ful
 stage.controls.addEventListener('start', () => $('hint').classList.add('gone'));
 $('status').classList.add('gone');
 stage.start();
-window.__hb = { THREE, stage, base, fig, pb, shape, ctrl, LOOK, PB, apply, preset, person, toShape, randomControlsFn: randomControls, view, VIEWS, marks, get height() { return fig.height; }, loadMs };
+window.__hb = { THREE, stage, base, fig, pb, shape, ctrl, LOOK, PB, apply, preset, person, toShape, speciesLook, lookPanel, randomControlsFn: randomControls, view, VIEWS, marks, get height() { return fig.height; }, loadMs };

@@ -44,12 +44,16 @@ export function skinMaterial(B, o = {}) {
     // the face, for painted light and shade: one eye's centre (|x|, y, z) and the eye spacing, in the base's frame
     uEyeC: { value: (() => { const c = [0, 0, 0], l = B.info.eyes.l; for (const i of l) for (let k = 0; k < 3; k++) c[k] += R[i * 3 + k] / l.length; return new THREE.Vector3(Math.abs(c[0]), c[1], c[2]); })() },
     uD: { value: d }, uPaint: { value: 1 }, uSocket: { value: 0.4 }, uBone: { value: 0 },
+    // painted marks (liner, freckles, stubble, tattoos, anything a page draws): a canvas laid on the face from the front,
+    // in the base pose's frame, so the marks ride every morph. uMarkBox: x0, y0, width, height in decimetres
+    uMarkTex: { value: null }, uMarkBox: { value: new THREE.Vector4() }, uMarkZ: { value: 0 },
   };
   m.userData.u = u;
   m.userData.set = (s = {}) => {
     if (s.tone) { u.uSkin.value.set(s.tone); const lip = new THREE.Color(s.tone), hsl = {}; lip.getHSL(hsl); lip.setHSL(hsl.h * 0.96, Math.min(1, hsl.s * 1.1 + 0.05), hsl.l * 0.8); u.uLip.value.copy(lip); }
     if (s.lips) u.uLip.value.set(s.lips);
     if (s.brow) u.uBrow.value.set(s.brow);
+    if (s.browThick !== undefined) u.uBrowT.value.set(0.075 * d * s.browThick, 0.032 * d * s.browThick);
     if (s.browAmount !== undefined) u.uBrowAmt.value = s.browAmount;
     if (s.suit) u.uSuit.value.set(s.suit);
     if (s.suitOn !== undefined) u.uSuitOn.value = s.suitOn ? 1 : 0;
@@ -58,7 +62,38 @@ export function skinMaterial(B, o = {}) {
     if (s.paint !== undefined) u.uPaint.value = s.paint;
     if (s.sockets !== undefined) u.uSocket.value = s.sockets;
     if (s.bone !== undefined) u.uBone.value = s.bone;
+    if (s.marks) m.userData.paint(s.marks);   // a list of functions (ctx) => draw on ctx.g
   };
+  // the paint canvas: 1024 x 1280 px over 2.4 x 3 dm round the point between the eyes (rest pose)
+  const ec = (() => { const c = [0, 0, 0]; for (const k of ['l', 'r']) for (const i of B.info.eyes[k]) for (let q = 0; q < 3; q++) c[q] += R[i * 3 + q] / (B.info.eyes[k].length * 2); return c; })();
+  const MW = 2.4, MH = 3.0, canvas = document.createElement('canvas'); canvas.width = 1024; canvas.height = 1280;
+  const g = canvas.getContext('2d'), tex = new THREE.CanvasTexture(canvas); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = 4;
+  u.uMarkTex.value = tex; u.uMarkBox.value.set(ec[0] - MW / 2, ec[1] - MH * 0.62, MW, MH); u.uMarkZ.value = ec[2] - 0.9;
+  // ctx.at(x, y): a point in the head frame (metres from the point between the eyes, x to the figure's left, y up) to
+  // canvas pixels; ctx.mm(v): millimetres to pixels; ctx.eye: the eye centres' x and y in that frame
+  const eyeX = Math.abs(B.marks.d / 2) / 10, ctx = {
+    g, canvas, at: (x, y) => [((x * 10 + MW / 2) / MW) * canvas.width, (1 - (y * 10 + MH * 0.62) / MH) * canvas.height], mm: (v) => (v / 1000) * 10 / MW * canvas.width,
+    eye: [eyeX, 0], d: B.marks.d / 10,
+    // the base's landmarks in the same frame (metres), for placing marks on real features: lm.noseTip, lm.chin, lm.mouthL ...
+    lm: Object.fromEntries(Object.entries(B.marks.L).map(([k, i]) => [k, [(R[i * 3] - ec[0]) / 10, (R[i * 3 + 1] - ec[1]) / 10]])),
+    // each eye opening's edge (the mesh's hole round the eye), in the same frame, ordered round it: [[x, y], ...]
+    holes: ['l', 'r'].map((k) => {
+      const c = [0, 0, 0]; for (const i of B.info.eyes[k]) for (let q = 0; q < 3; q++) c[q] += R[i * 3 + q] / B.info.eyes[k].length;
+      // the lid's edge: the skin that lies against the front of the eyeball (the mesh is closed, so there is no hole edge)
+      let r = 0; { const l = B.info.eyes[k]; for (const i of l) r += Math.hypot(R[i * 3] - c[0], R[i * 3 + 1] - c[1], R[i * 3 + 2] - c[2]) / l.length; }
+      const pts = []; for (let i = 0; i < B.N; i++) { if (!B.inBody[i]) continue; const dx = R[i * 3] - c[0], dy = R[i * 3 + 1] - c[1], dz = R[i * 3 + 2] - c[2], dd = Math.hypot(dx, dy, dz); if (dz > r * 0.35 && dd < r * 1.12) pts.push([(R[i * 3] - ec[0]) / 10, (R[i * 3 + 1] - ec[1]) / 10]); }
+      const cx = (c[0] - ec[0]) / 10, cy = (c[1] - ec[1]) / 10, NB = 36, best = new Array(NB).fill(null);
+      // in each direction round the eye, the nearest skin point is the lid's edge; then smooth the ring a little
+      for (const p of pts) { const a = Math.atan2(p[1] - cy, p[0] - cx), k = Math.floor(((a + Math.PI) / (2 * Math.PI)) * NB) % NB, rr = Math.hypot(p[0] - cx, p[1] - cy); if (!best[k] || rr < best[k][2]) best[k] = [p[0], p[1], rr]; }
+      const ring = []; for (let k = 0; k < NB; k++) { const a = -Math.PI + ((k + 0.5) / NB) * 2 * Math.PI; let rr = best[k]?.[2]; if (rr === undefined) { const prev = best[(k + NB - 1) % NB], next = best[(k + 1) % NB]; rr = ((prev?.[2] ?? 0.008) + (next?.[2] ?? 0.008)) / 2; } ring.push([a, rr]); }
+      for (let it = 0; it < 2; it++) { const r0 = ring.map((q) => q[1]); for (let k = 0; k < NB; k++) ring[k][1] = 0.25 * r0[(k + NB - 1) % NB] + 0.5 * r0[k] + 0.25 * r0[(k + 1) % NB]; }
+      return { c: [cx, cy], pts: ring.map(([a, rr]) => [cx + Math.cos(a) * rr, cy + Math.sin(a) * rr]) };
+    }),
+  };
+  m.userData.marks = ctx;
+  let painters = [];
+  m.userData.paint = (list = painters) => { painters = list; g.clearRect(0, 0, canvas.width, canvas.height); for (const f of painters) if (f) { g.save(); f(ctx); g.restore(); } tex.needsUpdate = true; };
+  m.userData.paint([]);
   m.userData.set(o);
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
@@ -67,7 +102,7 @@ export function skinMaterial(B, o = {}) {
       .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLip = aLip; vOP = position; vON = normal; vRest = aRest; vCav = aCav; vMark = aMark; vArm = aArm;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `uniform vec3 uSkin; uniform vec3 uLip; uniform sampler2D uNoise; uniform float uWrap; uniform vec3 uScatter; uniform vec3 uSuit; uniform float uSuitOn; uniform float uCav;
-uniform vec3 uBrow; uniform float uBrowAmt; uniform vec2 uBrowX; uniform vec3 uBrowY; uniform vec2 uBrowT; uniform float uFaceZ; uniform vec3 uEyeC; uniform float uD; uniform float uPaint; uniform float uSocket; uniform float uBone; varying vec2 vMark; uniform float uSuitTop; uniform float uSuitArms; uniform float uSuitLegs; uniform vec4 uJoints; varying vec2 vArm;
+uniform vec3 uBrow; uniform float uBrowAmt; uniform vec2 uBrowX; uniform vec3 uBrowY; uniform vec2 uBrowT; uniform float uFaceZ; uniform vec3 uEyeC; uniform float uD; uniform float uPaint; uniform float uSocket; uniform float uBone; varying vec2 vMark; uniform float uSuitTop; uniform float uSuitArms; uniform float uSuitLegs; uniform vec4 uJoints; varying vec2 vArm; uniform sampler2D uMarkTex; uniform vec4 uMarkBox; uniform float uMarkZ;
 varying float vLip; varying vec3 vOP; varying vec3 vON; varying vec3 vRest; varying vec2 vCav; float sHeight; float sSuit; float sAo;
 vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x + texture2D(uNoise, p.xz * s) * bw.y + texture2D(uNoise, p.xy * s) * bw.z; }
 #include <common>`)
@@ -90,6 +125,9 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
     col *= 1.0 + uPaint * front * (light - dark);
     float warm = exp(-((cx - 0.95) * (cx - 0.95) / 0.12 + (fy + 0.75) * (fy + 0.75) / 0.12)) + exp(-(cx * cx / 0.04 + (fy + 0.75) * (fy + 0.75) / 0.06));
     col = mix(col, col * vec3(1.06, 0.93, 0.92), uPaint * front * 0.6 * clamp(warm, 0.0, 1.0)); }
+  // painted marks, from the front: faded out where the surface turns away to the side
+  { vec2 muv = (vRest.xy - uMarkBox.xy) / uMarkBox.zw;
+    if (muv.x > 0.0 && muv.x < 1.0 && muv.y > 0.0 && muv.y < 1.0 && vRest.z > uMarkZ) { vec4 mk = texture2D(uMarkTex, muv); col = mix(col, mk.rgb, mk.a * smoothstep(-0.05, 0.3, normalize(vON).z)); } }
   // a bone crest a species has raised: lit along its top
   col *= (1.0 + uBone * 0.32 * smoothstep(0.25, 0.95, vMark.x)) * (1.0 - uBone * 0.3 * vMark.y);
   // the brows: a band along a gentle arch from the inner end to the outer, thick at the head and thin at the tail,
@@ -132,6 +170,6 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
            vec3 lit = mix( vec3( dotNL ), vec3( wr * wr ), uScatter );
            reflectedLight.directDiffuse += lit * directLight.color * BRDF_Lambert( material.diffuseColor ); }`));
   };
-  m.customProgramCacheKey = () => 'human-skin-5';
+  m.customProgramCacheKey = () => 'human-skin-6';
   return m;
 }

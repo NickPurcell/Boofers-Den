@@ -156,7 +156,8 @@ export function pureblood(fig, base) {
     SETS[opt.tendrils].forEach((vi) => {
       // the front ones longest and thickest, shorter and thinner back along the jaw, each a little different
       const front = R0.chin.includes(vi) || R0.mid.includes(vi), back = R0.jaw2.includes(vi) || R0.cheek.includes(vi);
-      const [p, n] = vtx(vi), r = rng(101 + vi), len = (long ? 0.13 : 0.07) * (front ? 1.2 : back ? 0.62 : 0.85) * (0.8 + 0.4 * r()), r0 = (front ? 0.0088 : back ? 0.0072 : 0.008) * (0.92 + 0.16 * r());
+      // women's are shorter and finer (the references agree); they scale with how masculine the build is
+      const gk = fig.state.gender ?? 1, [p, n] = vtx(vi), r = rng(101 + vi), len = (long ? 0.13 : 0.07) * (front ? 1.2 : back ? 0.62 : 0.85) * (0.8 + 0.4 * r()) * (0.62 + 0.38 * gk), r0 = (front ? 0.0088 : back ? 0.0072 : 0.008) * (0.92 + 0.16 * r()) * (0.72 + 0.28 * gk);
       const sx = Math.sign(p[0]) || 1, sweep = [sx * (front ? -0.04 : 0.05) + sx * 0.06 * (r() - 0.5), -1, (long ? 0.16 : 0.08) + 0.06 * r()];
       const steps = long ? 34 : 24, pts = path(p, n, sweep, len, steps, long ? 0.2 : 0.26, long ? 0.12 : 0.07, 200 + vi, 0.007);
       // a swelling at the root, then a slow taper to a rounded end about half the root's width
