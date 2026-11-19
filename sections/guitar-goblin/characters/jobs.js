@@ -3,8 +3,6 @@
 import { mesh } from '../duros-creator/sdf.js';
 import { bodyFields } from './bodyfield.js';
 import { OUTFITS, cowl, hood } from './outfit-shape.js';
-import { mikkianTendrils } from './tentacles.js';
-import { hairLocks } from './hairlocks.js';
 
 // which triangles are the arms: near the line from the shoulder joint through the elbow to past the hand, and past the
 // top of the shoulder (the shoulder's cap stays with the body, for the cuirass and the pauldrons)
@@ -80,8 +78,9 @@ export function run(job, a) {
       return { name: p.name, material: p.material, role: p.role, mesh: m.index.length ? m : null };
     }).filter((p) => p.mesh), ms: Math.round(performance.now() - t0), began, ended: Date.now() };
   }
-  if (job === 'hairlocks') return hairLocks(a);   // hair worn down, as locks (hairlocks.js)
-  if (job === 'mikkian') return mikkianTendrils(a);   // a Mikkian's head-tendrils (tentacles.js)
+  // these load their code only when first asked for, so a worker that only dresses starts sooner
+  if (job === 'hairlocks') return import('./hairlocks.js').then((m) => m.hairLocks(a));   // hair worn down, as locks
+  if (job === 'mikkian') return import('./tentacles.js').then((m) => m.mikkianTendrils(a));   // a Mikkian's head-tendrils
   throw new Error('unknown job ' + job);
 }
 export function transferables(out) { const list = []; if (out.shade) for (const k of ['position', 'normal', 'index', 'shade', 'uv']) list.push(out[k].buffer); else if (out.t) for (const k of ['position', 'normal', 'index', 't', 'd']) list.push(out[k].buffer); for (const p of out.pieces || []) for (const k of ['position', 'normal', 'ao', 'uv', 'index']) if (p.mesh[k]) list.push(p.mesh[k].buffer); return list; }
