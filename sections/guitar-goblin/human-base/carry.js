@@ -97,7 +97,7 @@ export function carry(fig) {
     let m;
     if (opt.item === 'hilt') {
       // at the left hip, a little forward of the side, hung from the belt by its clip, emitter down and tipped forward
-      const yb = J('l-upper-leg').y + 0.075 * (H / 1.75), i = extreme(yb, side * Math.cos(0.85), Math.sin(0.85)), [p, n] = pn(i);
+      const yb = J('l-upper-leg').y + 0.075 * (H / 1.75), i = extreme(yb, side * Math.cos(0.68), Math.sin(0.68)), [p, n] = pn(i);
       const axis = new THREE.Vector3(side * 0.1, 1, -0.22).normalize(), out = new THREE.Vector3(n.x, 0, n.z).normalize(), centre = new THREE.Vector3(...p).addScaledVector(axis, -0.27 / 2 + 0.05);
       centre.addScaledVector(out, clearance(centre, axis, out, 0.135, 0.022));
       m = frame(axis.clone().negate(), out, centre);   // emitter (+y) down
