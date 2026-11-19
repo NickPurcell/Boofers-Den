@@ -82,17 +82,42 @@ function args() {
   const body = { face: 'oval', masc: base.masc, age: 0.3, build: base.build, coarse: base.coarse };
   return { head: { ...base, ...feat }, bust: base, body, hair: { face: base.face, masc: base.masc, age: 0.3, build: 0.5, coarse: base.coarse, style: state.style, ...(state.species === 'mikkian' ? { species: 'mikkian', thick: state.thick, length: state.length, surface: state.surface, bodyBuild: base.build } : {}) } };
 }
+// mesher outputs as one (a head meshed in slices)
+function joinMeshes(ms) {
+  if (ms.length === 1) return ms[0];
+  let nv = 0, ni = 0;
+  for (const m of ms) { nv += m.ao.length; ni += m.index.length; }
+  const out = { position: new Float32Array(nv * 3), normal: new Float32Array(nv * 3), ao: new Float32Array(nv), uv: new Float32Array(nv * 2), index: nv > 65535 ? new Uint32Array(ni) : new Uint16Array(ni) };
+  let v = 0, i = 0;
+  for (const m of ms) {
+    out.position.set(m.position, v * 3); out.normal.set(m.normal, v * 3); out.ao.set(m.ao, v); out.uv.set(m.uv, v * 2);
+    for (let k = 0; k < m.index.length; k++) out.index[i + k] = m.index[k] + v;
+    v += m.ao.length; i += m.index.length;
+  }
+  return out;
+}
 const copy = (m) => ({ position: m.position.slice(), normal: m.normal.slice(), uv: m.uv.slice(), index: m.index.slice(), ao: m.ao });
 async function rebuild() {
   const my = ++ticket; status.hidden = false; status.textContent = 'Sculpting…';
   pool.cancelQueued();   // whatever was waiting to be meshed for an older choice is no longer wanted
   const A = args(), kB = JSON.stringify(A.body), n = pool.size(), ok = `outfit:${state.outfit}:${state.hood}:${kB}`;
+  // the head first, being the longest to mesh, in upright slices shared between the workers, then joined
+  const hk = 'head:' + JSON.stringify(A.head), hs = Math.min(3, n);
+  if (!pool.cache.has(hk)) pool.keep(hk, Promise.all(Array.from({ length: hs }, (_, part) => pool.mesh('head', { ...A.head, part, of: hs }, hk)))
+    .then((rs) => ({ ...rs[0], mesh: joinMeshes(rs.map((x) => x.mesh)) })));
+  // a Mikkian's dreads are the next longest: in slices too, joined with their per-vertex values in the same order
+  const fk = 'hair:' + JSON.stringify(A.hair), fs = A.hair.species === 'mikkian' && A.hair.style === 'dreads' ? Math.min(3, n) : 1;
+  if (!pool.cache.has(fk)) pool.keep(fk, Promise.all(Array.from({ length: fs }, (_, part) => pool.mesh('hair', fs > 1 ? { ...A.hair, part, of: fs } : A.hair, fk))).then((rs) => {
+    if (rs.length === 1) return rs[0];
+    const cat = (k) => { const arrs = rs.map((x) => x[k]); if (arrs.some((v) => !v)) return null; const out = new Float32Array(arrs.reduce((s, v) => s + v.length, 0)); let o = 0; for (const v of arrs) { out.set(v, o); o += v.length; } return out; };
+    return { mesh: joinMeshes(rs.map((x) => x.mesh)), t: cat('t'), d: cat('d') };
+  }));
   if (!pool.cache.has(ok)) pool.keep(ok, Promise.all(Array.from({ length: n }, (_, part) => pool.mesh('outfit', { ...A.body, key: state.outfit, hood: state.hood, part, of: n }, ok)))
     .then((rs) => ({ pieces: rs.flatMap((r) => r.pieces).sort((x, y) => x.index - y.index) })));
   let r; const t0 = performance.now();
   try {
-    r = await Promise.all([pool.cached('head:' + JSON.stringify(A.head), 'head', A.head), pool.cached('bust:' + JSON.stringify(A.bust), 'bust', A.bust), pool.cached('handL:' + kB, 'hand', { ...A.body, side: 1 }), pool.cached('handR:' + kB, 'hand', { ...A.body, side: -1 }),
-      pool.cached('hair:' + JSON.stringify(A.hair), 'hair', A.hair), pool.cache.get(ok)]);
+    r = await Promise.all([pool.cache.get(hk), pool.cached('bust:' + JSON.stringify(A.bust), 'bust', A.bust), pool.cached('handL:' + kB, 'hand', { ...A.body, side: 1 }), pool.cached('handR:' + kB, 'hand', { ...A.body, side: -1 }),
+      pool.cache.get(fk), pool.cache.get(ok)]);
   } catch (e) { if (my !== ticket) return; if (e && e.cancelled) return rebuild(); console.error(e); status.textContent = 'Something went wrong building the figure. Try another choice.'; return; }
   if (my !== ticket) return;   // a newer choice is on its way
   const [head, bust, hl, hr, hair, outfit] = r;

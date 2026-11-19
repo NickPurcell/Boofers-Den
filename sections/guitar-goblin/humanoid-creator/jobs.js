@@ -27,12 +27,21 @@ function refine(m, f) {
 export function run(job, a) {
   const Q = a.coarse || 1;   // a phone asks for coarser meshes
   if (job === 'head') {   // the head and upper neck, finely; also what the page needs to place eyes, lids and paint
-    const s = skinField(a), h = s.head, [hx, hy, hz] = HEAD_AT;
+    const s = skinField(a), h = s.head, [hx, hy, hz] = HEAD_AT, hh = RES.head * Q;
     const bounds = [[h.bounds[0][0], hy + CUT, h.bounds[0][2]], [h.bounds[1][0], hy + h.bounds[1][1], h.bounds[1][2]]];
-    let m = refine(mesh(s.field, bounds, RES.head * Q, { aoStep: 0.006, uvScale: 0.035 }), s.field);
+    let m;
+    if (a.of > 1) {
+      // One upright slice of the head, so several workers can mesh it at once. Every slice lies on the same grid; each
+      // is meshed one cell past its own edges and keeps exactly the triangles whose middle falls inside it, so the
+      // slices meet without a seam and without a triangle twice.
+      const x0 = bounds[0][0], cells = Math.ceil((bounds[1][0] - x0) / hh), c0 = Math.floor((a.part * cells) / a.of), c1 = Math.floor(((a.part + 1) * cells) / a.of);
+      const g0 = Math.max(0, c0 - 1), g1 = Math.min(cells, c1 + 1);
+      const sb = [[x0 + g0 * hh, bounds[0][1], bounds[0][2]], [x0 + (g1 - 0.5) * hh, bounds[1][1], bounds[1][2]]];
+      m = slab(refine(mesh(s.field, sb, hh, { aoStep: 0.006, uvScale: 0.035 }), s.field), a.part === 0 ? -Infinity : x0 + c0 * hh, a.part === a.of - 1 ? Infinity : x0 + c1 * hh);
+    } else m = refine(mesh(s.field, bounds, hh, { aoStep: 0.006, uvScale: 0.035 }), s.field);
     // what hangs below the head's own box (a Pureblood's longer tendrils), meshed on its own and joined on
     const X = extraFor(a), low = X && X.below ? X.below(h.P) : null;
-    if (low) {
+    if (low && !a.part) {   // (in the first slice only)
       const lf = (x, y, z) => Math.max(low.field(x - hx, y - hy, z - hz), y - (hy + CUT));
       const lm = mesh(lf, [[low.bounds[0][0], hy + low.bounds[0][1], low.bounds[0][2]], [low.bounds[1][0], hy + CUT + 0.003, low.bounds[1][2]]], RES.head * Q, { aoStep: 0.006, uvScale: 0.035 });
       if (lm.index.length) m = join([m, refine(lm, lf)]);
@@ -54,8 +63,16 @@ export function run(job, a) {
     const obstacle = bf ? (x, y, z) => Math.min(head(x, y, z), bf(x, y + hy, z) - 0.026) : head;
     const T = tendrils(a.style, a.thick, head, { length: a.length, surface: a.surface, obstacle });
     // dreads are thick enough for a coarser mesh; their uvs are stretched so the fibres show at the size of a lock's strands
-    let m = mesh(T.field, T.bounds, (dreads ? 0.0048 : RES.hair) * Q, { aoStep: dreads ? 0.009 : 0.006, uvScale: dreads ? 0.2 : 0.03 });
-    if (dreads) m = refine(m, T.field);   // smooth tendrils catch the light: their normals must come from the shapes, not the grid
+    const hh = (dreads ? 0.0048 : RES.hair) * Q, opts = { aoStep: dreads ? 0.009 : 0.006, uvScale: dreads ? 0.2 : 0.03 };
+    let m;
+    if (dreads && a.of > 1) {   // in upright slices, as the head is (see the head job): the paths are worked out in every slice, the costly meshing only once
+      const b = T.bounds, x0 = b[0][0], cells = Math.ceil((b[1][0] - x0) / hh), c0 = Math.floor((a.part * cells) / a.of), c1 = Math.floor(((a.part + 1) * cells) / a.of);
+      const g0 = Math.max(0, c0 - 1), g1 = Math.min(cells, c1 + 1);
+      m = slab(refine(mesh(T.field, [[x0 + g0 * hh, b[0][1], b[0][2]], [x0 + (g1 - 0.5) * hh, b[1][1], b[1][2]]], hh, opts), T.field), a.part === 0 ? -Infinity : x0 + c0 * hh, a.part === a.of - 1 ? Infinity : x0 + c1 * hh);
+    } else {
+      m = mesh(T.field, T.bounds, hh, opts);
+      if (dreads) m = refine(m, T.field);   // smooth tendrils catch the light: their normals must come from the shapes, not the grid
+    }
     return { mesh: m, t: T.param(m.position), d: T.fromTip ? T.fromTip(m.position) : null };
   }
   if (job === 'hair') {   // in the head's own frame; the page sets it on the head
@@ -86,8 +103,25 @@ export function transferables(out) {
   return list;
 }
 
+// keep the triangles whose middle lies at x0 <= x < x1, and only the vertices they use
+function slab(m, x0, x1) {
+  const P = m.position, I = m.index, keep = [], used = new Int32Array(m.ao.length).fill(-1);
+  let nv = 0;
+  for (let t = 0; t < I.length; t += 3) {
+    const cx = (P[I[t] * 3] + P[I[t + 1] * 3] + P[I[t + 2] * 3]) / 3;
+    if (cx < x0 || cx >= x1) continue;
+    for (let k = 0; k < 3; k++) { if (used[I[t + k]] < 0) used[I[t + k]] = nv++; keep.push(used[I[t + k]]); }
+  }
+  const out = { position: new Float32Array(nv * 3), normal: new Float32Array(nv * 3), ao: new Float32Array(nv), uv: new Float32Array(nv * 2), index: nv > 65535 ? new Uint32Array(keep) : new Uint16Array(keep) };
+  for (let i = 0; i < used.length; i++) {
+    const j = used[i]; if (j < 0) continue;
+    out.position.set(P.subarray(i * 3, i * 3 + 3), j * 3); out.normal.set(m.normal.subarray(i * 3, i * 3 + 3), j * 3); out.ao[j] = m.ao[i]; out.uv.set(m.uv.subarray(i * 2, i * 2 + 2), j * 2);
+  }
+  return out;
+}
+
 // several meshes as one
-function join(ms) {
+export function join(ms) {
   if (ms.length === 1) return ms[0];
   let nv = 0, ni = 0;
   for (const m of ms) { nv += m.ao.length; ni += m.index.length; }
