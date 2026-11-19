@@ -62,8 +62,9 @@ export function plate(ctx) {
   // mesh can show rather than a thin line), a lower edge rolled in, and a rolled rim round every edge
   const scoop = (x, y, z) => M.neckR + 0.012 - Math.hypot(x, (y - (M.neckY + 0.03)) * 1.1);
   const belly = M.chestY - 0.07, lame = Math.max(0.03, (belly - low) / 3);
-  const topAt = (x, z) => top - 0.035 * sstep(M.cz + 0.02, M.cz - 0.06, z) - 0.03 * sstep(M.neckR, M.neckR + 0.07, Math.abs(x));   // falling away from the gorget over the shoulders
-  const edges = (x, y, z) => Math.max(low - y - 0.03 * sstep(0.04, 0.0, Math.abs(x)) * (z > M.cz ? 1 : 0), y - topAt(x, z), scoop(x, y, z), M.armBone(x, y, z, 0.035));
+  const topAt = (x, z) => top - 0.035 * sstep(M.cz + 0.02, M.cz - 0.06, z) - 0.035 * sstep(M.neckR - 0.025, M.neckR + 0.06, Math.abs(x));   // falling away from the gorget over the shoulders, from the scoop's own edge
+  const smax = (a, b, k) => { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.max(a, b) + h * h * k * 0.25; };   // rounded where two edges meet
+  const edges = (x, y, z) => Math.max(low - y - 0.03 * sstep(0.04, 0.0, Math.abs(x)) * (z > M.cz ? 1 : 0), smax(y - topAt(x, z), scoop(x, y, z), 0.03), M.armBone(x, y, z, 0.035));
   const cuirass = (x, y, z) => {
     const a = hull(x, y, z); if (a > 0.05) return a - T;
     const e = edges(x, y, z), front = z > M.cz ? 1 : 0;
@@ -73,8 +74,15 @@ export function plate(ctx) {
     return Math.max(a - T - keel - step - rim + roll, e);
   };
   P.push({ name: 'cuirass', material: 'metal', role: 'main', field: cuirass, bounds: [[-(M.sx + 0.08), low - 0.05, M.cz - 0.24], [M.sx + 0.08, top + 0.03, M.cz + 0.26]], res: 0.0055 });
+  // trim: a band in the second colour along every edge of the breastplate, standing just proud of its rim
+  const trim = (x, y, z) => { const a = hull(x, y, z); if (a > 0.05) return a - T; const e = edges(x, y, z), roll = 0.006 * sstep(low + 0.016, low - 0.004, y); return Math.max(a - T - 0.0048 + roll, e, -0.011 - e); };
+  P.push({ name: 'trim', material: 'metal', role: 'second', field: trim, bounds: [[-(M.sx + 0.08), low - 0.05, M.cz - 0.24], [M.sx + 0.08, top + 0.03, M.cz + 0.26]], res: 0.0045 });
   // a gorget: a plate collar standing round the base of the neck, over the breastplate's top
-  const gorget = (x, y, z) => { const a = ctx.all(x, y, z), r = Math.hypot(x, (z - M.neckZ) * 1.1); return Math.max(a - 0.017 - 0.004 * sstep(M.neckY + 0.04, M.neckY + 0.005, y), M.neckY - 0.03 + 0.02 * sstep(M.neckR, M.neckR + 0.06, Math.abs(x)) - y, y - M.neckY - 0.05, r - M.neckR - 0.065); };
+  // (lower than a knight's, and open in front in a V that widens upward, so tendrils hanging from the chin pass through)
+  const gorget = (x, y, z) => {
+    const a = ctx.all(x, y, z), r = Math.hypot(x, (z - M.neckZ) * 1.1), front = z > M.neckZ + 0.01 ? 0.016 + 0.035 * sstep(M.neckY - 0.03, M.neckY + 0.04, y) - Math.abs(x) : -1;
+    return Math.max(a - 0.016 - 0.004 * sstep(M.neckY + 0.03, M.neckY + 0.005, y), M.neckY - 0.03 + 0.02 * sstep(M.neckR, M.neckR + 0.06, Math.abs(x)) - y, y - M.neckY - 0.035, r - M.neckR - 0.065, front);
+  };
   P.push({ name: 'gorget', material: 'metal', role: 'second', field: gorget, bounds: [[-(M.neckR + 0.1), M.neckY - 0.06, M.neckZ - M.neckR - 0.11], [M.neckR + 0.1, M.neckY + 0.07, M.neckZ + M.neckR + 0.11]], res: 0.005 });
   // pauldrons: three lames over each shoulder, each a little larger, lower and further out than the one above, so their
   // lower edges step down the arm; each with a rim along its lower edge
