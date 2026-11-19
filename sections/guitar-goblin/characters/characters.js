@@ -12,6 +12,7 @@ import { STYLES } from './hair-shape.js';
 import { createPool } from '../creator-kit/pool.js';
 import { makeTextures, clothMaterial, leatherMaterial, metalMaterial, plasticMaterial } from '../duros-creator/materials.js';
 import { OUTFITS, HOODS } from './outfit-shape.js';
+import { fieldFor } from './bodyfield.js';
 
 const $ = (id) => document.getElementById(id);
 const stage = makeStage($('scene'), { tall: 1.8, minDistance: 0.22, maxDistance: 6, onNoGL: () => { $('nogl').hidden = false; } });
@@ -124,6 +125,22 @@ const plateMaterial = (hex) => new THREE.MeshPhysicalMaterial({ color: hex, meta
 const MATS = { cloth: clothMaterial, leather: leatherMaterial, metal: plateMaterial, plastic: (hex) => { const m = plasticMaterial(hex); m.roughness = 0.46; m.clearcoat = 0.25; return m; } };
 const clothes = new THREE.Group(); clothes.name = 'clothes'; fig.add(clothes);
 const info = {};
+// What is worn round the neck and chest, for the Pureblood's tendrils to drape over (human-base/species/pureblood.js
+// `worn`): the signed distance to the clothes' own surfaces within 32 cm of the chin, positive outside them
+function wear(key) {
+  const chin = fig.landmark('chin').p, P = [], N = [], I = [];
+  for (const m of clothes.children) {
+    const g = m.geometry, p = g.attributes.position.array, n = g.attributes.normal.array, ix = g.index.array, v0 = P.length / 3, keep = new Map();
+    for (let t = 0; t < ix.length; t += 3) {
+      if (![0, 1, 2].some((k) => { const i = ix[t + k] * 3; return Math.hypot(p[i] - chin[0], p[i + 1] - chin[1], p[i + 2] - chin[2]) < 0.32; })) continue;
+      for (let k = 0; k < 3; k++) { const i = ix[t + k]; if (!keep.has(i)) { keep.set(i, v0 + keep.size); P.push(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]); N.push(n[i * 3], n[i * 3 + 1], n[i * 3 + 2]); } I.push(keep.get(i)); }
+    }
+  }
+  const worn = I.length ? fieldFor(Float32Array.from(P), Float32Array.from(N), Uint32Array.from(I)) : null;
+  pb.set({ worn, wornKey: worn ? `${state.outfit}|${state.hood}|${key}` : '' });
+  fig.update();
+}
+fig.addEventListener('redraw', () => stage.changed());   // a re-drape lands a moment after the sliders rest
 let dressTicket = 0;
 function clothGeometry(m) {   // mesher arrays -> geometry, with its occlusion as vertex colour
   const g = new THREE.BufferGeometry(), n = m.ao.length, col = new Float32Array(n * 3);
@@ -135,7 +152,7 @@ async function dress() {
   const my = ++dressTicket, key = state.outfit;
   pool.cancelQueued();   // whatever was waiting for an older choice is no longer wanted
   const clear = () => { for (const c of [...clothes.children]) { clothes.remove(c); c.geometry.dispose(); c.material.dispose(); } };
-  if (!OUTFITS[key] || key === 'none') { clear(); return; }
+  if (!OUTFITS[key] || key === 'none') { clear(); wear(my); return; }
   const J = Object.fromEntries(Object.keys(base.info.joints).map((k) => [k, fig.joint(k)]));
   const L = Object.fromEntries(['neckSideL', 'neckSideR', 'chestMid', 'backMid'].map((k) => { const l = fig.landmark(k); return [k, { p: l.p, n: l.n }]; }));
   const args = { key, hood: state.hood, surface: { position: fig.p0.slice(), normal: fig.n0.slice(), index: tris }, J, L }, n = pool.size(), t0 = performance.now();
@@ -146,6 +163,7 @@ async function dress() {
   clear();   // the old clothes stay on until the new ones are ready
   const cols = colours();
   for (const p of rs.flatMap((r) => r.pieces)) { const m = new THREE.Mesh(clothGeometry(p.mesh), (MATS[p.material] || clothMaterial)(cols[p.role] || '#777777')); m.material.vertexColors = true; m.castShadow = m.receiveShadow = true; m.name = p.name; m.userData.role = p.role; clothes.add(m); }
+  wear(my);
   $('status').hidden = true; info.dress = Math.round(performance.now() - t0); stage.changed();
 }
 
