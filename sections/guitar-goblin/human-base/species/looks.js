@@ -34,9 +34,23 @@ export const SPECIES = {
       ink: { label: 'Tattoo ink', swatch: true, items: sw(['black', 'Black', '#0e0e11'], ['blue', 'Deep blue', '#122340'], ['green', 'Deep green', '#0d2c20'], ['rust', 'Rust', '#4a1b12'], ['white', 'Chalk', '#d9d6cc']) },
     },
   },
+  mikkian: {
+    name: 'Mikkian', blurb: 'Bright skin and, in place of hair, a mane of slim head-tendrils.',
+    skins: sw(['blue', 'Medium blue', '#3d6fc0'], ['sky', 'Sky blue', '#6fa3d8'], ['teal', 'Teal', '#2f9a98'], ['green', 'Green', '#6aa84a'], ['yellowgreen', 'Yellow-green', '#b3be4a'], ['yellow', 'Yellow', '#dfc040'],
+      ['coral', 'Coral pink', '#e07a78'], ['rose', 'Rose', '#d2577a'], ['red', 'Red', '#c8443c'], ['magenta', 'Magenta', '#b2459a'], ['violet', 'Violet', '#7a55b8'], ['lavender', 'Lavender', '#b9a6dc']),
+    eyes: sw(['blue', 'Blue', '#3f78c8'], ['dark', 'Dark', '#2a2230'], ['violet', 'Violet', '#7a5ac0'], ['green', 'Green', '#3f9a6a'], ['amber', 'Amber', '#e0a030'], ['silver', 'Silver', '#b0bac8']),
+    // no hair, so no brows: the brow is only its own shape. The accent colour belongs to the head-tendrils (their tips,
+    // bands or roots, engineer7's) and tints the lips
+    look: { white: '#e9e6e2', brows: 0, accentLips: 0.55 },
+    defaults: { skin: 'blue', eyes: 'dark', accent: 'dkblue', liner: 'none', marks: 'none' },
+    options: {
+      accent: { label: 'Accent colour', swatch: true, items: sw(['dkblue', 'Dark blue', '#1b2f6e'], ['navy', 'Navy', '#141c44'], ['teal', 'Deep teal', '#0f5a5c'], ['forest', 'Forest', '#1f5a2c'], ['gold', 'Gold', '#d8b030'], ['white', 'Pale', '#e8e4dc'],
+        ['pink', 'Pink', '#e88aa8'], ['crimson', 'Crimson', '#8c1c2c'], ['purple', 'Purple', '#4a2a78'], ['black', 'Black', '#18161c']) },
+    },
+  },
   pureblood: {
     name: 'Sith Pureblood', blurb: 'Red skin over a heavy brow, bone spurs and folds, fleshy tendrils at the jaw, burning eyes.',
-    skins: sw(['ember', 'Ember', '#b84a2a'], ['scarlet', 'Scarlet', '#a8302a'], ['crimson', 'Crimson', '#8e2226'], ['brick', 'Brick', '#7e3326'], ['rose', 'Dusk rose', '#9a4a46'], ['maroon', 'Maroon', '#62202a'], ['oxblood', 'Oxblood', '#521820'], ['wine', 'Dark wine', '#3e121a'], ['umber', 'Red umber', '#5e2a1e']),
+    skins: sw(['ember', 'Ember', '#b84a2a'], ['scarlet', 'Scarlet', '#a8302a'], ['crimson', 'Crimson', '#7c1f1e'], ['brick', 'Brick', '#7e3326'], ['rose', 'Dusk rose', '#9a4a46'], ['maroon', 'Maroon', '#62202a'], ['oxblood', 'Oxblood', '#521820'], ['wine', 'Dark wine', '#3e121a'], ['umber', 'Red umber', '#5e2a1e']),
     eyes: sw(['amber', 'Amber', '#f09a1a'], ['yellow', 'Yellow', '#efc222'], ['gold', 'Gold', '#d6a636'], ['orange', 'Orange', '#e8641a'], ['red', 'Red', '#d32a1a'], ['ember', 'Ember', '#ff5a1e']),
     look: { white: '#9a6a48', iris: 1.3, brows: 0, lips: '#2a0c0c', sockets: 0.6 },
     defaults: { skin: 'crimson', eyes: 'amber', glow: 'faint', liner: 'none', marks: 'none' },
@@ -116,6 +130,24 @@ function tattoos(places, shape, ink) {
     g.globalAlpha = 1;
   };
 }
+// A whole look, as the settings for the skin and the eyes: lookParams('mirialan', { skin: 'olive', eyes: 'blue',
+// liner: 'soft', tattoo: 'brow.eyes', shape, ink, accent, glow: 'faint', gender: 0..1 }) ->
+// { skin: { ... for fig.skin.userData.set }, eyes: { ... for fig.eyes.set }, accent: '#hex' or null }
+export function lookParams(sp, c = {}) {
+  const S = SPECIES[sp] || SPECIES.human, L = S.look, d = { ...S.defaults, ...c }, pick = (o, k) => (o[k] || Object.values(o)[0]).c;
+  const tone = pick(S.skins, d.skin), glow = (GLOWS[d.glow] || GLOWS.none).v, g = d.gender ?? 0.5;
+  const accent = S.options?.accent ? pick(S.options.accent.items, d.accent) : null;
+  const mixHex = (a, b, t) => { const p = (h) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)), x = p(a), y = p(b); return '#' + x.map((v, i) => Math.round(v + (y[i] - v) * t).toString(16).padStart(2, '0')).join(''); };
+  const lips = L.lips || (accent && L.accentLips ? mixHex(tone, accent, L.accentLips) : null);
+  const ink = S.options?.ink ? pick(S.options.ink.items, d.ink) : undefined;
+  return {
+    skin: { tone, lips, browAmount: L.brows ?? 0.85, brow: L.brow || '#231a16', browThick: 0.62 + 0.38 * g, sockets: glow > 0.1 ? L.sockets ?? 0.4 : Math.min(L.sockets ?? 0.4, 0.32),
+      marks: painters({ liner: d.liner, marks: d.marks, tattoo: sp === 'mirialan' ? d.tattoo : '', shape: d.shape, ink, seed: d.seed }) },
+    eyes: { colour: pick(S.eyes, d.eyes), glow, white: L.white || '#e6dfd6', iris: L.iris || 1 },
+    accent,
+  };
+}
+
 // the painters for a look: { liner, marks, tattoo: 'brow.eyes', shape, ink (hex) }
 export function painters(o = {}) {
   const list = [liner((LINERS[o.liner] || LINERS.none).v)];

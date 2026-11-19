@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { makeStage } from '../creator-kit/stage.js';
 import { loadBase, SLIDERS, DEFAULTS } from '../human-base/base.js';
-import { SPECIES, LINERS, MARKS, GLOWS, painters } from '../human-base/species/looks.js';
+import { SPECIES, LINERS, MARKS, GLOWS, lookParams } from '../human-base/species/looks.js';
 import { pureblood, PUREBLOOD } from '../human-base/species/pureblood.js';
 import { CONTROLS, CONTROL_DEFAULTS, PRESETS as PEOPLE, toShape, randomControls } from '../human-base/controls.js';
 
@@ -28,12 +28,10 @@ const shape = toShape(ctrl);
 const pb = pureblood(fig, base); fig.features = pb;
 
 function apply() {
-  const S = SPECIES[LOOK.species], L = S.look, glow = (GLOWS[LOOK.glow] || GLOWS.none).v, ink = S.options?.ink?.items[LOOK.ink]?.c;
+  const P = lookParams(LOOK.species, { ...LOOK, gender: shape.gender });
   fig.set(shape);
-  fig.skin.userData.set({ tone: (S.skins[LOOK.skin] || Object.values(S.skins)[0]).c, browAmount: L.brows ?? 0.85, browThick: 0.62 + 0.38 * shape.gender, brow: L.brow || '#231a16', lips: L.lips || null,
-    sockets: glow > 0.1 ? L.sockets ?? 0.4 : Math.min(L.sockets ?? 0.4, 0.32), suitCover: { torso: shape.gender < 0.75, arms: 0, legs: 0 },
-    marks: painters({ liner: LOOK.liner, marks: LOOK.marks, tattoo: LOOK.species === 'mirialan' ? LOOK.tattoo : '', shape: LOOK.shape, ink }) });
-  fig.eyes.set({ colour: (S.eyes[LOOK.eyes] || Object.values(S.eyes)[0]).c, glow, white: L.white || '#e6dfd6', iris: L.iris || 1 });
+  fig.skin.userData.set({ ...P.skin, suitCover: { torso: shape.gender < 0.75, arms: 0, legs: 0 } });
+  fig.eyes.set(P.eyes);
   pb.set({ ...PB, on: LOOK.species === 'pureblood' });
   fig.update();
   showStats();
@@ -66,7 +64,8 @@ function choice(parent, label, obj, key, items, swatch, multi = false) {
 function paint() { for (const [box, obj, key] of choices) for (const b of box.querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.key === obj[key] || String(obj[key] || '').split('.').includes(b.dataset.key))); }
 // the look: species, then its palettes and marks; groups that belong to one species show only for it
 const gl = group('Look', true), lookBox = document.createElement('div'); gl.appendChild(lookBox);
-const gp = group('Pureblood features', true), gm = group('Mirialan tattoos', true);
+const gp = group('Pureblood features', true), gm = group('Mirialan tattoos', true), gk = group('Mikkian', true);
+for (const [k, v] of Object.entries(SPECIES.mikkian.options)) choice(gk, v.label, LOOK, k, Object.fromEntries(Object.entries(v.items).map(([q, o]) => [q, o.c])), true);
 for (const [k, v] of Object.entries(PUREBLOOD.options)) if (v.items) choice(gp, v.label, PB, k, v.items, false, !!v.multi); else slider(gp, PB, k, v.label, v.min, v.max);
 for (const [k, v] of Object.entries(SPECIES.mirialan.options)) choice(gm, v.label, LOOK, k, v.swatch ? Object.fromEntries(Object.entries(v.items).map(([q, o]) => [q, o.c])) : v.items, !!v.swatch, !!v.multi);
 function lookPanel() {
@@ -74,7 +73,7 @@ function lookPanel() {
   const S = SPECIES[LOOK.species], names = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v.name])), cols = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v.c]));
   choice(lookBox, 'Species', LOOK, 'species', names(SPECIES)); choice(lookBox, 'Skin', LOOK, 'skin', cols(S.skins), true); choice(lookBox, 'Eyes', LOOK, 'eyes', cols(S.eyes), true);
   choice(lookBox, 'Eye glow', LOOK, 'glow', names(GLOWS)); choice(lookBox, 'Liner', LOOK, 'liner', names(LINERS)); choice(lookBox, 'Marks', LOOK, 'marks', names(MARKS));
-  gp.style.display = LOOK.species === 'pureblood' ? '' : 'none'; gm.style.display = LOOK.species === 'mirialan' ? '' : 'none';
+  gp.style.display = LOOK.species === 'pureblood' ? '' : 'none'; gm.style.display = LOOK.species === 'mirialan' ? '' : 'none'; gk.style.display = LOOK.species === 'mikkian' ? '' : 'none';
   paint();
 }
 // the controls a person uses: plain names, safe ranges (controls.js); the raw morphs are below, for checking

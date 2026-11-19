@@ -50,6 +50,7 @@ export const SLIDERS = {
   ],
 };
 const ALL = [...SLIDERS.body, ...SLIDERS.face, ...SLIDERS.head];
+const FACE_KEYS = new Set([...SLIDERS.face, ...SLIDERS.head].map((x) => x[0]));
 export const DEFAULTS = Object.fromEntries(ALL.map((s) => [s[0], s[4]]));
 
 // muscle and weight each run min .. average .. max; a value between two gives each its share
@@ -152,7 +153,7 @@ function quadNormals(p, quads, N, out = new Float32Array(N * 3)) {
     const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
     for (const i of [a, b, c, d]) { out[i] += nx; out[i + 1] += ny; out[i + 2] += nz; }
   }
-  for (let i = 0; i < N * 3; i += 3) { const l = Math.hypot(out[i], out[i + 1], out[i + 2]) || 1; out[i] /= l; out[i + 1] /= l; out[i + 2] /= l; }
+  for (let i = 0; i < N * 3; i += 3) { const l = Math.sqrt(out[i] * out[i] + out[i + 1] * out[i + 1] + out[i + 2] * out[i + 2]) || 1; out[i] /= l; out[i + 1] /= l; out[i + 2] /= l; }
   return out;
 }
 
@@ -277,27 +278,43 @@ class Figure extends THREE.Group {
   // our own targets (species bone, for instance): offsets in decimetres in the base mesh's frame, weighted by state[key]
   addTarget(key, t) { this.extra.set(key, t); return this; }
   update() {
-    const t0 = performance.now(), B = this.B, w = this.work, N = B.N;
+    const t0 = performance.now(), B = this.B, w = this.work, N = B.N, tm = (this.timing = {}), lap = (k) => { const t = performance.now(); tm[k] = Math.round((t - (lap.t ?? t0)) * 10) / 10; lap.t = t; };
     w.set(B.rest);
     for (const [name, wt] of weights(this.state, this.extra)) {
       const tg = B.targets.get(name) || this.extra.get(name); if (!tg) continue;
       const { d, idx } = tg;
       for (let k = 0; k < idx.length; k++) { const i = idx[k] * 3, j = k * 3; w[i] += wt * d[j]; w[i + 1] += wt * d[j + 1]; w[i + 2] += wt * d[j + 2]; }
     }
-    this.clothe(w);
-    if ((this.state.armsDown ?? 0) > 0) this.pose(w, this.state.armsDown);
+    lap('morphs');
+    // the cloth under the undersuit and the arms' pose depend only on the body: when only a face or head slider has
+    // moved, the covered and posed vertices are where they were, so their last result is reused
+    const cov = this.skin.userData.cover || {}, bodyKey = JSON.stringify([...Object.entries(this.state).filter(([k]) => !FACE_KEYS.has(k)), cov.on, cov.torso, cov.arms, cov.legs]);
+    const keep = (this._keep ||= { key: null, idx: null, pos: null });
+    if (keep.key === bodyKey && keep.idx) { const { idx, pos } = keep; for (let j = 0; j < idx.length; j++) { const i = idx[j] * 3; w[i] = pos[j * 3]; w[i + 1] = pos[j * 3 + 1]; w[i + 2] = pos[j * 3 + 2]; } lap('cloth'); lap('pose'); }
+    else {
+      this.clothe(w); lap('cloth');
+      if ((this.state.armsDown ?? 0) > 0) this.pose(w, this.state.armsDown); lap('pose');
+      if (!keep.idx) { const hs = this._headSet(), ids = []; for (let i = 0; i < N; i++) if (!hs.has(i)) ids.push(i); keep.idx = Uint32Array.from(ids); keep.pos = new Float32Array(keep.idx.length * 3); }
+      for (let j = 0; j < keep.idx.length; j++) { const i = keep.idx[j] * 3; keep.pos[j * 3] = w[i]; keep.pos[j * 3 + 1] = w[i + 1]; keep.pos[j * 3 + 2] = w[i + 2]; }
+      keep.key = bodyKey;
+    }
     // decimetres to metres, feet on the floor
     let lo = Infinity, hi = -Infinity; for (let i = 0; i < N; i++) if (B.inBody[i]) { const y = w[i * 3 + 1]; if (y < lo) lo = y; if (y > hi) hi = y; }
     const p0 = this.p0; for (let i = 0; i < N * 3; i += 3) { p0[i] = w[i] * 0.1; p0[i + 1] = (w[i + 1] - lo) * 0.1; p0[i + 2] = w[i + 2] * 0.1; }
     this.height = (hi - lo) * 0.1;
-    this.cavity();
+    this.cavity(); lap('cavity');
     const g = this.geometry, pos = g.attributes.position.array;
     if (this.sub) { subdivide(B.T, p0, 3, pos); subdivide(B.T, this.cav0, 2, g.attributes.aCav.array); } else { pos.set(p0); g.attributes.aCav.array.set(this.cav0); }
     g.attributes.position.needsUpdate = true; g.attributes.aCav.needsUpdate = true;
-    g.computeVertexNormals(); g.computeBoundingSphere();
+    lap('subdivide');
+    // normals: the base mesh's, carried through the same subdivision and renormalised (far cheaper than recomputing
+    // them over the subdivided triangles, and just as smooth)
+    if (this.sub) { const nb = quadNormals(p0, B.quads, N, this.n0), na = g.attributes.normal.array; subdivide(B.T, nb, 3, na); for (let i = 0; i < na.length; i += 3) { const l = Math.sqrt(na[i] * na[i] + na[i + 1] * na[i + 1] + na[i + 2] * na[i + 2]) || 1; na[i] /= l; na[i + 1] /= l; na[i + 2] /= l; } g.attributes.normal.needsUpdate = true; }
+    else g.computeVertexNormals();
+    g.computeBoundingSphere(); lap('normals');
     this.eyes.place(B.info.eyes, p0);
     this.ms = Math.round(performance.now() - t0);
-    this.dispatchEvent({ type: 'shaped' });
+    this.dispatchEvent({ type: 'shaped' }); lap('listeners');
     return this;
   }
   // Under the undersuit the body reads as cloth, not paint: the covered skin is smoothed so small modelled detail does
@@ -330,7 +347,7 @@ class Figure extends THREE.Group {
     for (let pass = 0; pass < (cov.torso ? 2 : 1); pass++) {
     const nrm = quadNormals(w, B.quads, N, this.n0), area = (this._area ||= new Float32Array(N));
     area.fill(0);
-    for (let f = 0; f < B.quads.length; f += 4) { const a = B.quads[f] * 3, b2 = B.quads[f + 1] * 3, c = B.quads[f + 2] * 3, d2 = B.quads[f + 3] * 3; const ux = w[c] - w[a], uy = w[c + 1] - w[a + 1], uz = w[c + 2] - w[a + 2], vx = w[d2] - w[b2], vy = w[d2 + 1] - w[b2 + 1], vz = w[d2 + 2] - w[b2 + 2]; const A = 0.5 * Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx) / 4; area[B.quads[f]] += A; area[B.quads[f + 1]] += A; area[B.quads[f + 2]] += A; area[B.quads[f + 3]] += A; }
+    for (let f = 0; f < B.quads.length; f += 4) { const a = B.quads[f] * 3, b2 = B.quads[f + 1] * 3, c = B.quads[f + 2] * 3, d2 = B.quads[f + 3] * 3; const ux = w[c] - w[a], uy = w[c + 1] - w[a + 1], uz = w[c + 2] - w[a + 2], vx = w[d2] - w[b2], vy = w[d2 + 1] - w[b2 + 1], vz = w[d2 + 2] - w[b2 + 2]; const cxx = uy * vz - uz * vy, cyy = uz * vx - ux * vz, czz = ux * vy - uy * vx, A = 0.125 * Math.sqrt(cxx * cxx + cyy * cyy + czz * czz); area[B.quads[f]] += A; area[B.quads[f + 1]] += A; area[B.quads[f + 2]] += A; area[B.quads[f + 3]] += A; }
     const grid = new Map(), K = (a, b, c) => ((a + 512) * 1024 + (b + 512)) * 1024 + (c + 512), keyOf = (x, y, z) => K(Math.floor(x / cell), Math.floor(y / cell), Math.floor(z / cell));
     for (let i = 0; i < N; i++) if (B.inBody[i] && B.armW[i] < 140) { const k = keyOf(w[i * 3], w[i * 3 + 1], w[i * 3 + 2]); let a = grid.get(k); if (!a) grid.set(k, (a = [])); a.push(i); }
     const out = (this._out ||= new Float32Array(N)), sn = (this._sn ||= new Float32Array(N * 3));
@@ -347,7 +364,7 @@ class Figure extends THREE.Group {
       }
       // project onto the local plane: through the weighted centroid, square to the weighted normal (a tiny feature's
       // faces all land on one plane, so nothing folds)
-      const ml = Math.hypot(mx, my, mz) || 1; mx /= ml; my /= ml; mz /= ml;
+      const ml = Math.sqrt(mx * mx + my * my + mz * mz) || 1; mx /= ml; my /= ml; mz /= ml;
       const dd = sw > 0 ? (qx * mx + qy * my + qz * mz) / sw : 0;
       out[v] = dd; sn[v * 3] = mx; sn[v * 3 + 1] = my; sn[v * 3 + 2] = mz;
     }
@@ -417,12 +434,14 @@ class Figure extends THREE.Group {
       }
     }
   }
+  // the head's vertices (anything a face or head target moves), found once
+  _headSet() { if (!this.__head) { const h = new Set(); for (const [, , , , , lo, hi] of [...SLIDERS.face, ...SLIDERS.head]) for (const n of [lo, hi]) { const t = n && this.B.targets.get(n); if (t) for (const i of t.idx) h.add(i); } for (const t of this.extra.values()) for (const i of t.idx) h.add(i); for (const i of this.B.regions.head) h.add(i); this.__head = h; } return this.__head; }
   // how hollow or proud the surface is round each vertex, fine and broad: creases and hollows shade, ridges catch light
   cavity() {
     const B = this.B, T = B.T, p = this.p0, n = quadNormals(p, B.quads, B.N, this.n0), c = this.cav0, N = B.N, tmp = this.tmp;
     for (let v = 0; v < N; v++) {
       let s = 0, k0 = T.veo[v], k1 = T.veo[v + 1];
-      for (let k = k0; k < k1; k++) { const e = T.ve[k], u = T.EV[e * 2] === v ? T.EV[e * 2 + 1] : T.EV[e * 2]; const dx = p[u * 3] - p[v * 3], dy = p[u * 3 + 1] - p[v * 3 + 1], dz = p[u * 3 + 2] - p[v * 3 + 2]; s += (n[v * 3] * dx + n[v * 3 + 1] * dy + n[v * 3 + 2] * dz) / (Math.hypot(dx, dy, dz) || 1); }
+      for (let k = k0; k < k1; k++) { const e = T.ve[k], u = T.EV[e * 2] === v ? T.EV[e * 2 + 1] : T.EV[e * 2]; const dx = p[u * 3] - p[v * 3], dy = p[u * 3 + 1] - p[v * 3 + 1], dz = p[u * 3 + 2] - p[v * 3 + 2]; s += (n[v * 3] * dx + n[v * 3 + 1] * dy + n[v * 3 + 2] * dz) / (Math.sqrt(dx * dx + dy * dy + dz * dz) || 1); }
       c[v * 2] = k1 > k0 ? s / (k1 - k0) : 0;
     }
     for (let v = 0; v < N; v++) tmp[v] = c[v * 2];
