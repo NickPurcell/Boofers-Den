@@ -9,7 +9,7 @@
   `eyebrows/`, `forehead/`, `eyes/`, `nose/`, `mouth/`, `cheek/`, `chin/`, `head/`, `neck/`, `torso/`, `stomach/`,
   `armslegs/` (upper and lower arm fat and muscle) and `bodyshapes/` (one heavy male shape); 14 ear targets under `ears/` 12 eyelid targets under
   `eyes/`; and the skeleton weights `makehuman/data/rigs/default_weights.mhw` (its own header: "license": "CC0"), from
-  which `skin.bin` keeps, per vertex, how much follows the upper arm and how much the forearm.
+  which `skin.bin` keeps, per vertex, how much follows the upper arm, the forearm, the fingers and the thumb.
 
 Licence: **Creative Commons CC0 1.0 Universal** (public domain dedication). The repository's `LICENSE.md` (section C)
 says the base mesh, proxies, targets and modifiers are released under CC0 1.0, and `LICENSE.ASSETS.md` holds the CC0

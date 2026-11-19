@@ -19,7 +19,7 @@ import { skinMaterial } from './skin.js';
 import { makeEyes } from './eyes.js';
 
 const DATA = new URL('./data/', import.meta.url);
-const ARM_DEG = 10, ELBOW_DEG = 14;   // the arms-down pose: the upper arm this far out from the side, the elbow bent this much
+const ARM_DEG = 9, ELBOW_DEG = 10, CURL = 1.15;   // the arms-down pose: the upper arm this far out from the side, the elbow bent this much, the fingers curled this far (radians at the tips)
 
 /* ---------------- what can be set ---------------- */
 // Each slider: [key, label, min, max, default, low target, high target]. Macro sliders (no targets) are blended below.
@@ -137,7 +137,7 @@ async function load() {
   const restN = quadNormals(rest, quads, N);
   // the lips: where the lip-fullness morph moves most
   const lip = new Float32Array(N); { const t = targets.get('lips-incr'); let big = 0; for (let k = 0; k < t.idx.length; k++) big = Math.max(big, Math.hypot(t.d[k * 3], t.d[k * 3 + 1], t.d[k * 3 + 2])); for (let k = 0; k < t.idx.length; k++) lip[t.idx[k]] = Math.hypot(t.d[k * 3], t.d[k * 3 + 1], t.d[k * 3 + 2]) / big; }
-  const B = { info, N, rest, restN, quads, targets, T, inBody, lip, loadMs: 0, armW: new Uint8Array(skinBuf, 0, N), foreW: new Uint8Array(skinBuf, N, N) };
+  const B = { info, N, rest, restN, quads, targets, T, inBody, lip, loadMs: 0, armW: new Uint8Array(skinBuf, 0, N), foreW: new Uint8Array(skinBuf, N, N), fingW: new Uint8Array(skinBuf, 2 * N, N), thumbW: new Uint8Array(skinBuf, 3 * N, N) };
   B.marks = findLandmarks(B);
   B.regions = findRegions(B);
   B.loadMs = Math.round(performance.now() - t0);
@@ -356,23 +356,64 @@ class Figure extends THREE.Group {
     const n = quadNormals(w, B.quads, N, this.n0);
     for (const v of list) { const a = 0.012 * mask[v]; w[v * 3] += n[v * 3] * a; w[v * 3 + 1] += n[v * 3 + 1] * a; w[v * 3 + 2] += n[v * 3 + 2] * a; }   // about 1 mm proud
   }
-  // Lower the arms from the base's A-pose: our own two-joint skinning on the CC0 skeleton weights (data/skin.bin says
-  // how much of each vertex follows the upper arm, and how much the forearm). The upper arm swings down about the
-  // shoulder to hang `ARM_DEG` from the side; the elbow bends a little forward. k blends from the A-pose (0) to that (1).
+  // Lower the arms from the base's A-pose: our own skinning on the CC0 skeleton weights (data/skin.bin says how much of
+  // each vertex follows the upper arm, the forearm, the fingers and the thumb). The upper arm swings down about the
+  // shoulder to hang ARM_DEG from the side; the forearm hangs with the elbow soft (ELBOW_DEG forward) and turns so the
+  // palm faces the thigh, the turn spread along the forearm; the fingers curl loosely toward the palm. k blends from
+  // the A-pose (0) to that (1).
   pose(w, k) {
     const B = this.B, ctr = (n) => { const l = B.info.joints[n], c = new THREE.Vector3(); for (const i of l) c.x += w[i * 3] / l.length, c.y += w[i * 3 + 1] / l.length, c.z += w[i * 3 + 2] / l.length; return c; };
-    const q1 = new THREE.Quaternion(), q2 = new THREE.Quaternion(), I = new THREE.Quaternion(), v = new THREE.Vector3(), p1 = new THREE.Vector3(), p2 = new THREE.Vector3();
+    const I = new THREE.Quaternion(), v = new THREE.Vector3(), p1 = new THREE.Vector3(), p2 = new THREE.Vector3(), rad = Math.PI / 180;
     for (const [mh, sx] of [['l', B.marks.side], ['r', -B.marks.side]]) {
       const S = ctr(mh + '-shoulder'), E = ctr(mh + '-elbow'), Wr = ctr(mh + '-hand'), u = E.clone().sub(S).normalize();
-      const a = (ARM_DEG * Math.PI) / 180, t = new THREE.Vector3(sx * Math.sin(a), -Math.cos(a), u.z * 0.6).normalize();
-      q1.slerpQuaternions(I, new THREE.Quaternion().setFromUnitVectors(u, t), k);
+      const t = new THREE.Vector3(sx * Math.sin(ARM_DEG * rad), -Math.cos(ARM_DEG * rad), 0.04).normalize();
+      const q1 = new THREE.Quaternion().slerpQuaternions(I, new THREE.Quaternion().setFromUnitVectors(u, t), k);
       const E1 = E.clone().sub(S).applyQuaternion(q1).add(S), W1 = Wr.clone().sub(S).applyQuaternion(q1).add(S), f = W1.clone().sub(E1).normalize();
-      const axis = new THREE.Vector3().crossVectors(f, new THREE.Vector3(0, 0, 1)).normalize(); q2.setFromAxisAngle(axis, ((ELBOW_DEG * Math.PI) / 180) * k);
+      const ft = new THREE.Vector3(sx * Math.sin(3 * rad), -Math.cos(ELBOW_DEG * rad), Math.sin(ELBOW_DEG * rad)).normalize();
+      const q2 = new THREE.Quaternion().slerpQuaternions(I, new THREE.Quaternion().setFromUnitVectors(f, ft), k);
+      const Lf = E.distanceTo(Wr), W2 = E1.clone().addScaledVector(ft.clone().lerp(f, 1 - k).normalize(), Lf);
+      // the palm: the flat direction of the hand in the rest pose (palm down there), carried through the two turns
+      // (measured on the current shape, before posing, so it holds for every build)
+      const hp = (() => {
+        const pts = []; for (let i = 0; i < B.N; i++) if (B.foreW[i] > 250 && B.rest[i * 3] * sx > 0) { const dx = w[i * 3] - Wr.x, dy = w[i * 3 + 1] - Wr.y, dz = w[i * 3 + 2] - Wr.z; if (dx * (Wr.x - E.x) + dy * (Wr.y - E.y) + dz * (Wr.z - E.z) > 0) pts.push([w[i * 3], w[i * 3 + 1], w[i * 3 + 2]]); }
+        const c = [0, 0, 0]; for (const q of pts) for (let j = 0; j < 3; j++) c[j] += q[j] / pts.length;
+        const C = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]; for (const q of pts) for (let a = 0; a < 3; a++) for (let b2 = 0; b2 < 3; b2++) C[a][b2] += (q[a] - c[a]) * (q[b2] - c[b2]);
+        const tr = C[0][0] + C[1][1] + C[2][2]; let x = [0.3, 1, 0.2];   // the smallest axis: the largest of (tr - C)
+        for (let it = 0; it < 60; it++) { const y = [0, 1, 2].map((a) => tr * x[a] - (C[a][0] * x[0] + C[a][1] * x[1] + C[a][2] * x[2])); const l = Math.hypot(...y); x = y.map((q) => q / l); }
+        const n = new THREE.Vector3(...x); if (n.y > 0) n.negate(); return n;   // palm down in the rest pose
+      })();
+      const n1 = hp.clone().applyQuaternion(q1).applyQuaternion(q2), axisT = ft.clone().lerp(f, 1 - k).normalize();
+      const want = new THREE.Vector3(-sx, 0, 0.15).normalize(), tw0 = this.state.twist ?? 1, proj = (a) => a.clone().addScaledVector(axisT, -a.dot(axisT)).normalize();
+      const a0 = proj(n1), a1 = proj(want), twist = Math.atan2(new THREE.Vector3().crossVectors(a0, a1).dot(axisT), a0.dot(a1)) * k * tw0;
+      const palmN = n1.clone().applyAxisAngle(axisT, twist); palmN.addScaledVector(axisT, -palmN.dot(axisT)).normalize();
+      // the knuckle line: where the fingers begin along the hand
+      // the knuckle line, measured on the current shape: a little way into the fingers' own vertices (their first tenth)
+      const sf = []; for (let i = 0; i < B.N; i++) if (B.fingW[i] > 200 && B.rest[i * 3] * sx > 0) sf.push(((w[i * 3] - Wr.x) * (Wr.x - E.x) + (w[i * 3 + 1] - Wr.y) * (Wr.y - E.y) + (w[i * 3 + 2] - Wr.z) * (Wr.z - E.z)) / Lf);
+      sf.sort((a, b2) => a - b2); const s0 = sf.length ? sf[Math.floor(sf.length * 0.1)] : 0.9;
+      const K = W2.clone().addScaledVector(axisT, s0), kap = (CURL * (this.state.curl ?? 1)) / 0.75;   // curvature, per decimetre past the knuckles
+      const tq = new THREE.Quaternion();
       for (let i = 0; i < B.N; i++) {
         const aw = B.armW[i]; if (!aw || B.rest[i * 3] * sx <= 0) continue;
         const A = aw / 255, F = B.foreW[i] / 255; v.set(w[i * 3], w[i * 3 + 1], w[i * 3 + 2]);
         p1.copy(v).sub(S).applyQuaternion(q1).add(S); p2.copy(p1).sub(E1).applyQuaternion(q2).add(E1);
-        w[i * 3] = v.x * (1 - A) + p1.x * (A - F) + p2.x * F; w[i * 3 + 1] = v.y * (1 - A) + p1.y * (A - F) + p2.y * F; w[i * 3 + 2] = v.z * (1 - A) + p1.z * (A - F) + p2.z * F;
+        let x = v.x * (1 - A) + p1.x * (A - F) + p2.x * F, y = v.y * (1 - A) + p1.y * (A - F) + p2.y * F, z = v.z * (1 - A) + p1.z * (A - F) + p2.z * F;
+        if (F > 0) {   // the forearm's turn, growing from the elbow to the wrist
+          const along = Math.min(1, Math.max(0, ((x - E1.x) * axisT.x + (y - E1.y) * axisT.y + (z - E1.z) * axisT.z) / Lf)), ang = twist * F * Math.min(1, along * 1.15);
+          if (Math.abs(ang) > 1e-4) { tq.setFromAxisAngle(axisT, ang); p1.set(x - E1.x, y - E1.y, z - E1.z).applyQuaternion(tq); x = p1.x + E1.x; y = p1.y + E1.y; z = p1.z + E1.z; }
+        }
+        const cw = (B.fingW[i] + 0.35 * B.thumbW[i]) / 255;
+        if (cw > 0 && k > 0) {   // the fingers bend toward the palm, more the further past the knuckles
+          const dx = x - K.x, dy = y - K.y, dz = z - K.z, s = dx * axisT.x + dy * axisT.y + dz * axisT.z;
+          if (s > 0) {
+            const h = dx * palmN.x + dy * palmN.y + dz * palmN.z, th = kap * s * cw * k, ca = Math.cos(th), sa = Math.sin(th);
+            const sAlong = (s - 0) * (th > 1e-5 ? sa / th : 1), sUp = th > 1e-5 ? (s * (1 - ca)) / th : 0;
+            const rx = dx - s * axisT.x - h * palmN.x, ry = dy - s * axisT.y - h * palmN.y, rz = dz - s * axisT.z - h * palmN.z;   // across the hand: unchanged
+            x = K.x + rx + axisT.x * (sAlong - h * sa) + palmN.x * (sUp + h * ca);
+            y = K.y + ry + axisT.y * (sAlong - h * sa) + palmN.y * (sUp + h * ca);
+            z = K.z + rz + axisT.z * (sAlong - h * sa) + palmN.z * (sUp + h * ca);
+          }
+        }
+        w[i * 3] = x; w[i * 3 + 1] = y; w[i * 3 + 2] = z;
       }
     }
   }
