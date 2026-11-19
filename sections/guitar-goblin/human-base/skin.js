@@ -37,6 +37,9 @@ export function skinMaterial(B, o = {}) {
     uBrow: { value: new THREE.Color(0x231a16) }, uBrowAmt: { value: 0.85 },
     uBrowX: { value: new THREE.Vector2(bi.x, bo.x) }, uBrowY: { value: new THREE.Vector3(ey + 0.25 * d, ey + 0.33 * d, ey + 0.24 * d) }, uBrowT: { value: new THREE.Vector2(0.075 * d, 0.032 * d) },
     uFaceZ: { value: B.marks.ez - 0.75 * d },
+    // the face, for painted light and shade: one eye's centre (|x|, y, z) and the eye spacing, in the base's frame
+    uEyeC: { value: (() => { const c = [0, 0, 0], l = B.info.eyes.l; for (const i of l) for (let k = 0; k < 3; k++) c[k] += R[i * 3 + k] / l.length; return new THREE.Vector3(Math.abs(c[0]), c[1], c[2]); })() },
+    uD: { value: d }, uPaint: { value: 1 }, uSocket: { value: 0.4 }, uBone: { value: 0 },
   };
   m.userData.u = u;
   m.userData.set = (s = {}) => {
@@ -47,16 +50,19 @@ export function skinMaterial(B, o = {}) {
     if (s.suit) u.uSuit.value.set(s.suit);
     if (s.suitOn !== undefined) u.uSuitOn.value = s.suitOn ? 1 : 0;
     if (s.cavity !== undefined) u.uCav.value = s.cavity;
+    if (s.paint !== undefined) u.uPaint.value = s.paint;
+    if (s.sockets !== undefined) u.uSocket.value = s.sockets;
+    if (s.bone !== undefined) u.uBone.value = s.bone;
   };
   m.userData.set(o);
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', 'attribute float aLip; attribute vec3 aRest; attribute vec2 aCav; varying float vLip; varying vec3 vOP; varying vec3 vON; varying vec3 vRest; varying vec2 vCav;\n#include <common>')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLip = aLip; vOP = position; vON = normal; vRest = aRest; vCav = aCav;');
+      .replace('#include <common>', 'attribute float aLip; attribute vec3 aRest; attribute vec2 aCav; attribute vec2 aMark; varying float vLip; varying vec3 vOP; varying vec3 vON; varying vec3 vRest; varying vec2 vCav; varying vec2 vMark;\n#include <common>')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLip = aLip; vOP = position; vON = normal; vRest = aRest; vCav = aCav; vMark = aMark;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `uniform vec3 uSkin; uniform vec3 uLip; uniform sampler2D uNoise; uniform float uWrap; uniform vec3 uScatter; uniform vec3 uSuit; uniform float uSuitOn; uniform float uCav;
-uniform vec3 uBrow; uniform float uBrowAmt; uniform vec2 uBrowX; uniform vec3 uBrowY; uniform vec2 uBrowT; uniform float uFaceZ;
+uniform vec3 uBrow; uniform float uBrowAmt; uniform vec2 uBrowX; uniform vec3 uBrowY; uniform vec2 uBrowT; uniform float uFaceZ; uniform vec3 uEyeC; uniform float uD; uniform float uPaint; uniform float uSocket; uniform float uBone; varying vec2 vMark;
 varying float vLip; varying vec3 vOP; varying vec3 vON; varying vec3 vRest; varying vec2 vCav; float sHeight; float sSuit; float sAo;
 vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x + texture2D(uNoise, p.xz * s) * bw.y + texture2D(uNoise, p.xy * s) * bw.z; }
 #include <common>`)
@@ -66,6 +72,19 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
   vec3 col = uSkin * mix(0.94, 1.04, nB.g) * mix(0.97, 1.02, nF.b);
   float lipK = smoothstep(0.15, 0.7, vLip);
   col = mix(col, uLip, lipK * 0.75);
+  // the face is never one colour: lighter on the forehead, the bridge of the nose and the top of the cheek; darker in the
+  // sockets, under the cheekbones, beside the nose and under the lower lip; warmer on the cheeks and nose
+  { float fx = (abs(vRest.x) - uEyeC.x) / uD, fy = (vRest.y - uEyeC.y) / uD, cx = abs(vRest.x) / uD, front = smoothstep(uFaceZ, uFaceZ + 0.6 * uD, vRest.z) * step(uEyeC.y - 2.6 * uD, vRest.y);
+    float socket = exp(-(fx * fx * 1.7 + (fy - 0.06) * (fy - 0.06) * 3.2) / 0.32);
+    float hollow = exp(-((cx - 1.25) * (cx - 1.25) / 0.1 + (fy + 0.9) * (fy + 0.9) / 0.09));
+    float beside = exp(-((cx - 0.42) * (cx - 0.42) / 0.03 + (fy + 0.75) * (fy + 0.75) / 0.12)), underLip = exp(-(cx * cx / 0.25 + (fy + 1.45) * (fy + 1.45) / 0.02));
+    float light = 0.07 * smoothstep(0.45, 0.9, fy) * (1.0 - smoothstep(0.6, 1.1, cx)) * (1.0 - smoothstep(1.8, 2.4, fy)) + 0.09 * exp(-(cx * cx / 0.03 + (fy + 0.35) * (fy + 0.35) / 0.25)) + 0.06 * exp(-((cx - 1.15) * (cx - 1.15) / 0.06 + (fy + 0.45) * (fy + 0.45) / 0.03));
+    float dark = uSocket * socket + 0.16 * hollow + 0.1 * beside + 0.12 * underLip;
+    col *= 1.0 + uPaint * front * (light - dark);
+    float warm = exp(-((cx - 0.95) * (cx - 0.95) / 0.12 + (fy + 0.75) * (fy + 0.75) / 0.12)) + exp(-(cx * cx / 0.04 + (fy + 0.75) * (fy + 0.75) / 0.06));
+    col = mix(col, col * vec3(1.06, 0.93, 0.92), uPaint * front * 0.6 * clamp(warm, 0.0, 1.0)); }
+  // a bone crest a species has raised: lit along its top
+  col *= 1.0 + uBone * 0.24 * smoothstep(0.2, 0.9, vMark.x);
   // the brows: a band along a gentle arch from the inner end to the outer, thick at the head and thin at the tail,
   // broken into hairs that run outward
   { float ax = abs(vRest.x), t = (ax - uBrowX.x) / (uBrowX.y - uBrowX.x);
@@ -97,6 +116,6 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
            vec3 lit = mix( vec3( dotNL ), vec3( wr * wr ), uScatter );
            reflectedLight.directDiffuse += lit * directLight.color * BRDF_Lambert( material.diffuseColor ); }`));
   };
-  m.customProgramCacheKey = () => 'human-skin-1';
+  m.customProgramCacheKey = () => 'human-skin-2';
   return m;
 }

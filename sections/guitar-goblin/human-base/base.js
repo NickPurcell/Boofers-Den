@@ -35,7 +35,7 @@ export const SLIDERS = {
   face: [
     ['browh', 'Brow height', -1, 1, 0, 'brow-down', 'brow-up'], ['browr', 'Brow ridge', -1, 1, 0, 'brow-back', 'brow-forward'], ['browa', 'Brow angle', -1, 1, 0, 'browangle-down', 'browangle-up'],
     ['forehead', 'Forehead', -1, 1, 0, 'forehead-back', 'forehead-forward'], ['eyesize', 'Eye size', -1, 1, 0, 'eyesize-decr', 'eyesize-incr'], ['eyespace', 'Eye spacing', -1, 1, 0, 'eyespace-in', 'eyespace-out'],
-    ['eyebags', 'Under the eyes', -1, 1, 0, 'eyebag-decr', 'eyebag-incr'], ['nosew', 'Nose width', -1, 1, 0, 'nosewidth-decr', 'nosewidth-incr'], ['nosel', 'Nose length', -1, 1, 0, 'noselength-decr', 'noselength-incr'],
+    ['eyebags', 'Under the eyes', -1, 1, 0, 'eyebag-decr', 'eyebag-incr'], ['lids', 'Eye opening', -1, 1, 0, 'lids-decr', 'lids-incr'], ['nosew', 'Nose width', -1, 1, 0, 'nosewidth-decr', 'nosewidth-incr'], ['nosel', 'Nose length', -1, 1, 0, 'noselength-decr', 'noselength-incr'],
     ['nosehump', 'Nose bridge', -1, 1, 0, 'nosehump-decr', 'nosehump-incr'], ['nostrils', 'Nostrils', -1, 1, 0, 'noseflare-decr', 'noseflare-incr'], ['mouthw', 'Mouth width', -1, 1, 0, 'mouthwidth-decr', 'mouthwidth-incr'],
     ['lips', 'Lips', -1, 1, 0, 'lips-decr', 'lips-incr'], ['corners', 'Mouth corners', -1, 1, 0, 'mouthcorners-down', 'mouthcorners-up'], ['cheekbones', 'Cheekbones', -1, 1, 0, 'cheekbones-decr', 'cheekbones-incr'],
     ['cheeks', 'Cheeks', -1, 1, 0, 'cheeks-decr', 'cheeks-incr'], ['chinw', 'Chin width', -1, 1, 0, 'chinwidth-decr', 'chinwidth-incr'], ['chinjut', 'Chin forward', -1, 1, 0, 'chinjut-decr', 'chinjut-incr'],
@@ -191,7 +191,15 @@ function findLandmarks(B) {
     const hip = J(mh + '-upper-leg'); L['hip' + S] = each((x, y, z) => r2(hip, x, y, z, 1.6), (x) => s * x);
     for (const [nm, j] of [['elbow', 'elbow'], ['wrist', 'hand'], ['knee', 'knee'], ['ankle', 'ankle']]) L[nm + S] = nearest(J(mh + '-' + j));
     L['kneeFront' + S] = each((x, y, z) => r2(J(mh + '-knee'), x, y, z, 0.9), (x, y, z) => z);
+    L['shoulderTop' + S] = L['shoulder' + S];
+    L['neckSide' + S] = each((x, y) => Math.abs(y - J('neck')[1]) < 0.12 * d && Math.abs(x) < 2.4 * d, (x) => s * x);
+    L['earFront' + S] = each((x, y, z) => s * x > ax * 1.9 && s * x < ax * 2.7 && y > ey - 0.75 * d && y < ey - 0.05 * d && z < ez - 0.55 * d, (x, y, z) => z);
+    const an = J(mh + '-ankle');
+    L['heel' + S] = each((x, y, z) => Math.abs(x - an[0]) < 0.5 && y < an[1] + 0.2, (x, y, z) => -z);
+    L['toe' + S] = each((x, y, z) => Math.abs(x - an[0]) < 0.9 && y < an[1], (x, y, z) => z);
   }
+  L.backMid = each((x, y) => mid(x) && Math.abs(y - J('spine-3')[1]) < 0.15 * d, (x, y, z) => -z);
+  L.crotch = each((x) => Math.abs(x) < 0.12, (x, y) => -y);
   // the mouth corners: the lip vertices furthest out to each side
   for (const [S, mh] of [['L', 'l'], ['R', 'r']]) { const s = mh === 'l' ? side : -side; let best = -1, bv = -Infinity; for (let i = 0; i < N; i++) if (inBody[i] && B.lip[i] > 0.25 && s * p[i * 3] > bv) { bv = s * p[i * 3]; best = i; } L['mouth' + S] = best; }
   return { L, side, ey, ez, d, J: Object.fromEntries(Object.keys(info.joints).map((k) => [k, info.joints[k]])) };
@@ -223,6 +231,7 @@ class Figure extends THREE.Group {
     geo.setAttribute('aRest', new THREE.BufferAttribute(up(B.rest, 3), 3));
     geo.setAttribute('aLip', new THREE.BufferAttribute(up(B.lip, 1), 1));
     geo.setAttribute('aCav', new THREE.BufferAttribute(new Float32Array(M * 2), 2));
+    geo.setAttribute('aMark', new THREE.BufferAttribute(new Float32Array(M * 2), 2));   // painted marks a species sets: x, a lit bone crest
     this.geometry = geo;
     this.skin = skinMaterial(B, o.skin);
     this.body = new THREE.Mesh(geo, this.skin); this.body.castShadow = this.body.receiveShadow = true; this.body.frustumCulled = false;
@@ -232,6 +241,16 @@ class Figure extends THREE.Group {
     this.update();
   }
   set(o) { Object.assign(this.state, o); return this; }
+  // two numbers per base vertex for the skin to paint by (x: a bone crest to light); carried through the subdivision
+  setMark(src) { const a = this.geometry.attributes.aMark; if (this.sub) subdivide(this.B.T, src, 2, a.array); else a.array.set(src); a.needsUpdate = true; return this; }
+  // the head's own frame after the morphs: origin between the eyes, x to the figure's left, y up, z forward (metres)
+  headFrame() {
+    const l = this.eyes.l.position, r = this.eyes.r.position, o = new THREE.Vector3().addVectors(l, r).multiplyScalar(0.5);
+    const x = new THREE.Vector3().subVectors(l, r), scale = x.length(); x.normalize();
+    const c = this.landmark('crown'), y = new THREE.Vector3(c.p[0] - o.x, c.p[1] - o.y, c.p[2] - o.z); y.addScaledVector(x, -y.dot(x)).normalize();
+    const z = new THREE.Vector3().crossVectors(x, y);
+    return { origin: o.toArray(), x: x.toArray(), y: y.toArray(), z: z.toArray(), scale };
+  }
   // our own targets (species bone, for instance): offsets in decimetres in the base mesh's frame, weighted by state[key]
   addTarget(key, t) { this.extra.set(key, t); return this; }
   update() {

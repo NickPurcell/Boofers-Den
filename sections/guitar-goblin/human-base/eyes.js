@@ -1,6 +1,6 @@
 // Human base: the eyes, our own. A ball with the iris painted round its front pole, a glossy coat for the highlight,
 // and an optional glow in the iris (for eyes that should burn a little). Placed where the base mesh's eye helper
-// spheres are after every morph. set({ colour: '#hex' or a name from EYE_COLOURS, glow: 0..1 }).
+// spheres are after every morph. set({ colour: '#hex' or a name from EYE_COLOURS, glow: 0..1, white: '#hex', iris: size, 1 normal }).
 import * as THREE from 'three';
 
 export const EYE_COLOURS = {
@@ -8,11 +8,11 @@ export const EYE_COLOURS = {
   amber: '#d0901c', gold: '#e8b630', ember: '#ff9c14', red: '#d8321c', pale: '#e8e2c8',
 };
 
-function eyeTexture(hex, glow) {
+function eyeTexture(hex, glow, white = '#e6dfd6', irisK = 1) {
   const c = document.createElement('canvas'); c.width = 64; c.height = 512; const g = c.getContext('2d');
   // rows run from the front of the eye (top) to the back; the iris is a disc round the front pole
-  const iris = 0.165, pupil = 0.05, col = new THREE.Color(hex);
-  g.fillStyle = '#e6dfd6'; g.fillRect(0, 0, 64, 512);
+  const iris = 0.165 * irisK, pupil = 0.05 * irisK, col = new THREE.Color(hex);
+  g.fillStyle = white; g.fillRect(0, 0, 64, 512);
   const grd = g.createLinearGradient(0, iris * 512, 0, 512); grd.addColorStop(0, 'rgba(170,120,110,0.0)'); grd.addColorStop(0.45, 'rgba(190,120,110,0.16)'); grd.addColorStop(1, 'rgba(150,80,70,0.4)');
   g.fillStyle = grd; g.fillRect(0, iris * 512, 64, 512);
   for (let y = 0; y < iris * 512; y++) {
@@ -33,12 +33,12 @@ export function makeEyes(o = {}) {
   const geo = new THREE.SphereGeometry(1, 48, 32).rotateX(Math.PI / 2);   // the pole the iris is drawn round faces +z
   const mat = new THREE.MeshPhysicalMaterial({ roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.02, emissive: 0xffffff, emissiveIntensity: 0 });
   const l = new THREE.Mesh(geo, mat), r = new THREE.Mesh(geo, mat), box = new THREE.Box3(), v = new THREE.Vector3(), sz = new THREE.Vector3();
-  const look = { colour: 'brown', glow: 0 };
+  const look = { colour: 'brown', glow: 0, white: '#e6dfd6', iris: 1 };
   const eyes = {
     l, r, material: mat,
     set(s = {}) {
       Object.assign(look, s);
-      const hex = EYE_COLOURS[look.colour] || look.colour, t = eyeTexture(hex, look.glow);
+      const hex = EYE_COLOURS[look.colour] || look.colour, t = eyeTexture(hex, look.glow, look.white, look.iris);
       if (mat.map) { mat.map.dispose(); mat.emissiveMap.dispose(); }
       mat.map = t.map; mat.emissiveMap = t.em; mat.emissiveIntensity = look.glow * 1.4; mat.needsUpdate = true;
       return eyes;

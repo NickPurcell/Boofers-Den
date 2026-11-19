@@ -16,8 +16,8 @@ stage.scene.add(fig);
 const loadMs = Math.round(performance.now() - t0);
 
 /* ---------------- looks ---------------- */
-const SKINS = { pale: '#ecd2c2', light: '#d9b49c', medium: '#b98e72', tan: '#9a7357', brown: '#6f4d39', deep: '#45302a', red: '#8e2f27', crimson: '#6c1e1a', grey: '#8d949b' };
-const LOOK0 = { skin: 'medium', eyes: 'brown', glow: 0, brows: 0.85, species: 'human' };
+const SKINS = { pale: '#ecd2c2', light: '#d9b49c', medium: '#b98e72', tan: '#9a7357', brown: '#6f4d39', deep: '#45302a', orangered: '#a63a24', scarlet: '#952a22', crimson: '#7c1f1e', brick: '#8a3a2c', maroon: '#5c1b1c', wine: '#3a1216', grey: '#8d949b' };
+const LOOK0 = { skin: 'medium', eyes: 'brown', glow: 0, brows: 0.85, species: 'human', white: '#e6dfd6', iris: 1, lips: null, sockets: 0.4 };
 const LOOK = { ...LOOK0 };
 const PBDEF = Object.fromEntries(Object.entries(PUREBLOOD.options).map(([k, v]) => [k, v.def]));
 const PB = { ...PBDEF };
@@ -26,18 +26,18 @@ const PRESETS = {
   neutral: { shape: {}, look: {} },
   pureblood: {
     shape: { gender: 1, age: 0.08, muscle: 0.82, weight: 0.86, height: 0.2, shoulders: 0.9, chest: 0.55, pecs: 0.45, lats: 0.6, belly: 0.45, heavyset: 0.55, arms: 0.45, armMuscle: 0.5,
-      neck: 0.9, neckDepth: 0.6, doubleChin: 0.1, browh: -0.2, browr: 0.4, browa: -0.15, forehead: 0.1, eyesize: -0.2, eyebags: 0.15, nosew: 0.35, nosel: 0.1, nosehump: 0.3,
+      neck: 0.9, neckDepth: 0.6, doubleChin: 0.1, browh: -0.3, browr: 0.6, browa: -0.35, lids: -0.35, forehead: 0.1, eyesize: -0.2, eyebags: 0.15, nosew: 0.35, nosel: 0.1, nosehump: 0.3,
       nostrils: 0.2, mouthw: 0.15, lips: -0.1, corners: -0.2, cheekbones: 0.65, cheeks: -0.2, chinw: 0.55, chinjut: 0.3, chinh: 0.15, jaw: 0.9, headfat: 0.1, headage: 0.25, square: 0.45 },
-    look: { skin: 'red', eyes: 'ember', glow: 0.35, brows: 0.8, species: 'pureblood' },
+    look: { skin: 'crimson', eyes: 'ember', glow: 0.35, brows: 0, species: 'pureblood', white: '#9a6a48', iris: 1.3, lips: '#2a0c0c', sockets: 0.6 },
   },
 };
 const shape = { ...DEFAULTS };
-const pb = pureblood(fig, base);
+const pb = pureblood(fig, base); fig.features = pb;
 
 function apply() {
   fig.set(shape);
-  fig.skin.userData.set({ tone: SKINS[LOOK.skin], browAmount: LOOK.brows });
-  fig.eyes.set({ colour: LOOK.eyes, glow: LOOK.glow });
+  fig.skin.userData.set({ tone: SKINS[LOOK.skin], browAmount: LOOK.brows, lips: LOOK.lips, sockets: LOOK.sockets });
+  fig.eyes.set({ colour: LOOK.eyes, glow: LOOK.glow, white: LOOK.white, iris: LOOK.iris });
   pb.set({ ...PB, on: LOOK.species === 'pureblood' });
   fig.update();
   showStats();
