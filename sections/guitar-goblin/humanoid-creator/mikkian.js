@@ -265,6 +265,21 @@ export function tendrilPaths(style, thick, head, o = {}) {
         const a = P[n - 6], b = P[n - 4], d = norm([b[0] - a[0], b[1] - a[1], b[2] - a[2]]);
         for (let j = n - 3; j < n; j++) { const l = Math.hypot(P[j][0] - P[j - 1][0], P[j][1] - P[j - 1][1], P[j][2] - P[j - 1][2]) || 0.01; P[j] = [P[j - 1][0] + d[0] * l, P[j - 1][1] + d[1] * l, P[j - 1][2] + d[2] * l]; f.clear(P[j]); }
       }
+      // lying back and hanging, every step below the skull goes down: nothing holds a resting tentacle out sideways there,
+      // so a step flatter than about 50° is turned down (what follows moves with it); a shorter one that comes to rest
+      // on the shoulders ends there
+      if (o.back) {
+        const D = P.map((p, k) => k ? [p[0] - P[k - 1][0], p[1] - P[k - 1][1], p[2] - P[k - 1][2]] : null);
+        let L = 0;
+        for (let k = 1; k < P.length; k++) {
+          const a = P[k - 1], d = D[k], l = Math.hypot(d[0], d[1], d[2]), h = Math.hypot(d[0], d[2]);
+          let dd = d;
+          if (k > 3 && a[1] < -0.04 && d[1] > -0.77 * l) { const hk = Math.min(h, 0.64 * l) / (h || 1); dd = [d[0] * hk, -Math.sqrt(Math.max(0, l * l - (h * hk) ** 2)), d[2] * hk]; }
+          P[k] = [a[0] + dd[0], a[1] + dd[1], a[2] + dd[2]];
+          if (k > 3) { const y0 = P[k][1]; f.clear(P[k]); if (o.length !== 'long' && a[1] < -0.1 && P[k][1] - y0 > 0.5 * l && L > 0.1) { P.length = k + 1; break; } }
+          L += l;
+        }
+      }
     }
     for (const { id, r, pts } of fallen) {
       let L = 0; for (let i = 0; i + 1 < pts.length; i++) L += Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1], pts[i + 1][2] - pts[i][2]);
