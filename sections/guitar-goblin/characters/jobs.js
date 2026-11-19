@@ -34,8 +34,10 @@ export function torsoField(P, I, arm, J) {
   // the outermost over 6 cm up and down, then evened out: it touches the tops of the muscles and bridges between them
   const grow = (a, sign) => a.map((_, k) => { let m = a[k] * sign; for (let j = Math.max(0, k - 2); j <= Math.min(n - 1, k + 2); j++) m = Math.max(m, a[j] * sign); return m * sign; });
   const sm = (a) => a.map((_, k) => { let s = 0, w = 0; for (let j = Math.max(0, k - 2); j <= Math.min(n - 1, k + 2); j++) { const q = 3 - Math.abs(j - k); s += a[j] * q; w += q; } return s / w; });
-  const X = sm(grow(xm, 1)), Zf = sm(grow(z1, 1)), Zb = sm(grow(z0, -1));
-  const RX = X, ZC = Zf.map((v, k) => (v + Zb[k]) / 2), RZ = Zf.map((v, k) => (v - Zb[k]) / 2);
+  // (a light touch: the body's own extents at each height, evened out and drawn in a little, so the plate bridges the
+  // deeper hollows but sits close on everything else)
+  const X = sm(xm), Zf = sm(grow(z1, 1).map((v, k) => (v + z1[k]) / 2)), Zb = sm(z0);
+  const RX = X.map((v) => v * 0.96), ZC = Zf.map((v, k) => (v + Zb[k]) / 2), RZ = Zf.map((v, k) => (v - Zb[k]) / 2 * 0.975);
   const p = 3.2;   // a rounded box: a flat front that bridges the chest
   return (x, y, z) => {
     const f = Math.max(0, Math.min(n - 1.001, (y - y0) / B)), k = Math.floor(f), u = f - k;
