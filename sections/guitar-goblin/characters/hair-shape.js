@@ -26,8 +26,23 @@ export function hairline(a, wob = 0.5) {
   if (b < 1.9) return -0.031 + 0.045 * Math.sqrt((b - 1.42) / 0.48);
   return 0.014 - 0.075 * ((b - 1.9) / 1.24);
 }
+// combed lines: deep grooves between clumps of different widths, shallow within (u runs across the way the hair lies)
+const locksOf = (u, n) => 0.42 * strands(u, n) * (0.5 + hash(Math.floor(u * n) + 71)) + 0.85 * strands(u + 0.137, n * 0.29);
+const backU = (x, y) => Math.atan2(x, y - 0.03) / (2 * Math.PI) + 0.5;   // lines combed straight back
+const capLine = (a) => hairline(a, 0.5);
 export const STYLES = {
   bald: { name: 'Bald' },
+  crop: { name: 'Short crop', line: capLine, ramp: 0.022, floor: 0.16, depth: 0.0022,
+    thick: (x, y, z) => 0.0065 + 0.006 * sstep(0.03, 0.09, y) + 0.004 * sstep(0.02, 0.07, z) * sstep(0.05, 0.08, y), groove: (x, y) => locksOf(backU(x, y), 54) / 1.27 },
+  swept: { name: 'Swept back', line: capLine, ramp: 0.022, floor: 0.16, depth: 0.0034,
+    thick: (x, y, z) => 0.009 + 0.011 * sstep(0.035, 0.1, y) + 0.008 * sstep(0.03, 0.075, z) * sstep(0.05, 0.085, y) - 0.003 * sstep(0.04, 0.075, Math.abs(x)) * (1 - sstep(0.06, 0.1, y)), groove: (x, y) => locksOf(backU(x, y), 38) / 1.27 },
+  // tied back: a close cap combed back, and the hair gathered behind (a mass of its own, set in the head's frame)
+  tail: { name: 'Tail', line: capLine, ramp: 0.022, floor: 0.16, depth: 0.0026, mass: 'tail',
+    thick: (x, y, z) => 0.0075 + 0.005 * sstep(0.03, 0.09, y), groove: (x, y) => locksOf(backU(x, y), 44) / 1.27 },
+  knot: { name: 'Topknot', line: capLine, ramp: 0.022, floor: 0.16, depth: 0.0026, mass: 'knot',
+    thick: (x, y, z) => 0.0075 + 0.005 * sstep(0.03, 0.09, y), groove: (x, y) => locksOf(backU(x, y), 44) / 1.27 },
+  braid: { name: 'Long braid', line: capLine, ramp: 0.022, floor: 0.16, depth: 0.0026, mass: 'braid',
+    thick: (x, y, z) => 0.0075 + 0.005 * sstep(0.03, 0.09, y), groove: (x, y) => locksOf(backU(x, y), 44) / 1.27 },
   slick: {
     name: 'Slicked back', locks: true, gloss: true,
     // a clean line: a little lower at the front, short sideburns that stop level with the eyes, an arch over each ear,
@@ -125,7 +140,10 @@ export function bindStyle(style, rest) {
   const bi = [];
   for (let j = 0; j < M; j++) { const A = rows[j], B = rows[(j + 1) % M], n = Math.min(A.length, B.length); if (!n) continue; bi.push(pole, A[0], B[0]); for (let i = 0; i + 1 < n; i++) bi.push(A[i], B[i + 1], B[i], A[i], A[i + 1], B[i + 1]); }   // wound to face outward
   const baseBind = { tri: Uint32Array.from(bt), w: Float32Array.from(bw), h: Float32Array.from(bh), index: Uint32Array.from(bi) };
-  if (!S.locks) return { style, base: baseBind, locks: [] };
+  // where a tied style's mass is rooted: a point on the scalp, bound like the rest, in the direction its root lies
+  let root = null;
+  if (S.mass) { const dir = { tail: [0, 0.32, -1], braid: [0, 0.28, -1], knot: [0, 1, -0.5] }[S.mass], h = cast(norm(dir)); if (h) root = { t: h.t, u: h.u, v: h.v, lift: height(local(h.p)) * F.s * 0.8 }; }
+  if (!S.locks) return { style, base: baseBind, locks: [], root };
 
   /* the locks: streamlines of the comb's direction over the skin, from seeds along the hairline and two rows behind */
   const nrmAt = (h) => { const a = I[h.t] * 3, b = I[h.t + 1] * 3, c = I[h.t + 2] * 3, w = 1 - h.u - h.v; return norm([Nn[a] * w + Nn[b] * h.u + Nn[c] * h.v, Nn[a + 1] * w + Nn[b + 1] * h.u + Nn[c + 1] * h.v, Nn[a + 2] * w + Nn[b + 2] * h.u + Nn[c + 2] * h.v]); };
@@ -159,8 +177,10 @@ export function bindStyle(style, rest) {
     });
     locks.push({ tri: Uint32Array.from(pts.map((p) => p.t)), w: Float32Array.from(pts.flatMap((p) => [p.u, p.v])), width: Float32Array.from(w), th: Float32Array.from(th), lift: Float32Array.from(lift), shade: 0.85 + 0.3 * hash(sd.id, 7) });
   }
-  return { style, base: baseBind, locks };
+  return { style, base: baseBind, locks, root };
 }
+// the root's place on the live skin: [point, normal]
+export function rootAt(bind, surface) { if (!bind.root) return null; const s = new Float64Array(6), r = bind.root; skinAt(surface.position, surface.normal, surface.index, r.t, r.u, r.v, s); return [[s[0] + s[3] * r.lift, s[1] + s[4] * r.lift, s[2] + s[5] * r.lift], [s[3], s[4], s[5]]]; }
 
 // a bound point on the live skin: position and normal
 function skinAt(P, Nn, I, t, u, v, out) {
@@ -206,4 +226,19 @@ export function placeLocks(bind, surface, pos, nrm) {
       }
     }
   });
+}
+
+// The masses tied styles gather behind the head, in the head's frame (base.js headFrame(): origin between the eyes, x to
+// the figure's left, y toward the crown, z forward; metres at an eye spacing of 64.4 mm): paths of [x, y, z, radius] to
+// be drawn as grooved tubes (a knot is a short fat one, a braid a run of knuckles turned against each other)
+export function massPaths(kind) {
+  if (kind === 'tail') return [{ pts: [[0, 0.064, -0.112, 0.022], [0, 0.03, -0.128, 0.03], [0, -0.02, -0.136, 0.032], [0, -0.07, -0.132, 0.026], [0, -0.115, -0.12, 0.015], [0, -0.14, -0.114, 0.005]], lines: 14, tie: 1 }];
+  if (kind === 'knot') return [{ pts: [[0, 0.094, -0.05, 0.02], [0, 0.104, -0.052, 0.032], [0, 0.118, -0.053, 0.038], [0, 0.132, -0.052, 0.035], [0, 0.143, -0.05, 0.026], [0, 0.149, -0.049, 0.012], [0, 0.151, -0.049, 0.002]], lines: 12, twist: 5, tie: 1 }];   // a round bun
+  if (kind === 'braid') {
+    const pts = [[0, 0.066, -0.104, 0.022], [0, 0.035, -0.118, 0.022]];
+    for (let k = 0; k < 9; k++) pts.push([(k % 2 ? 1 : -1) * 0.004, 0.02 - k * 0.031, -0.122 - 0.012 * Math.sin(k * 0.5), 0.019 - k * 0.0011]);
+    pts.push([0, 0.02 - 9 * 0.031, -0.12, 0.006]);
+    return [{ pts, lines: 10, knuckle: 0.031, tie: 2 }];
+  }
+  return [];
 }

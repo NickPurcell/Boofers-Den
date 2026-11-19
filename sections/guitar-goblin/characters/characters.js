@@ -53,7 +53,7 @@ function options() {
   o.liner = { label: 'Lined eyes', items: asItems(LINERS) };
   if (sp !== 'pureblood') o.marks = { label: 'Face detail', items: asItems(MARKS) };
   for (const [k, d] of Object.entries(L.options || {})) o[k] = { label: d.label, multi: d.multi, swatch: d.swatch, items: asItems(d.items) };
-  o.style = { label: 'Hair', items: ['slick', 'bald'].map((k) => ({ key: k, name: STYLES[k].name })) };
+  o.style = { label: 'Hair', items: ['slick', 'swept', 'crop', 'tail', 'knot', 'braid', 'bald'].map((k) => ({ key: k, name: STYLES[k].name })) };
   o.hair = { label: 'Hair colour', swatch: true, items: P.hairs };
   if (sp === 'pureblood') for (const [k, d] of Object.entries(PUREBLOOD.options)) if (d.items) o[k] = { label: d.label, multi: d.multi, items: asItems(d.items) };
   o.outfit = { label: 'Outfit', items: P.outfits.map((k) => ({ key: k, name: OUTFITS[k].name })) };
@@ -225,7 +225,7 @@ $('random').addEventListener('click', () => {
   Object.assign(ctrl, randomControls(rnd));
   for (const k of ['skin', 'eyes', 'hair', 'outfit', 'main']) state[k] = any(k);
   do state.second = any('second'); while (state.second === state.main);
-  state.hood = rnd() < 0.6 ? 'none' : any('hood'); state.style = rnd() < 0.2 ? 'bald' : 'slick';
+  state.hood = rnd() < 0.6 ? 'none' : any('hood'); state.style = any('style');
   if (sp() === 'pureblood') {   // steered: tendrils nearly always, a few pieces of jewellery in one metal, eyes that burn now and then
     for (const k of ['folds', 'spurs', 'tlength', 'metal']) state[k] = any(k);
     state.tendrils = rnd() < 0.05 ? 'none' : ['chin', 'fringe', 'beard', 'beard', 'cheek'][Math.floor(rnd() * 5)];
