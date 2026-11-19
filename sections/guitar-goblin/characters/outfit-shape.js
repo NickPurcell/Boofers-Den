@@ -25,6 +25,16 @@ export function measures(ctx) {
     // regions: nearer the body than the arms (from the body's own fields), and the same said by the arms' bones alone:
     // past the shoulder joint along the arm and within reach of its line (smooth, where the fields' boundary is ragged)
     noArms: (x, y, z) => ctx.body(x, y, z) - ctx.arms(x, y, z), armsOnly: (x, y, z) => ctx.arms(x, y, z) - ctx.body(x, y, z),
+    // how deep a hanging hand presses into cloth at a point: a smooth dent round the hand (wrist to fingertips), so a
+    // skirt passes behind the hand instead of through the fingers (cutting round the fingers leaves slivers between them)
+    handDent: (() => {
+      const hands = ['l', 'r'].map((sd) => { const E = J[sd + '-elbow'], H = J[sd + '-hand'], a = [H[0] - E[0], H[1] - E[1], H[2] - E[2]], l = Math.hypot(...a), u = a.map((v) => v / l); return { H, u }; });
+      return (x, y, z) => {
+        const { H, u } = x > 0 ? hands[0] : hands[1], px = x - H[0], py = y - H[1], pz = z - H[2], t = Math.max(-0.01, Math.min(0.24, px * u[0] + py * u[1] + pz * u[2]));
+        const d = Math.hypot(px - u[0] * t, py - u[1] * t, pz - u[2] * t);
+        return 0.08 * (1 - sstep(0.0, 0.1, d));
+      };
+    })(),
     armBone: (() => {
       // each arm as two segments, shoulder to elbow and elbow to past the hand
       const seg = (A, B) => { const a = [B[0] - A[0], B[1] - A[1], B[2] - A[2]], l = Math.hypot(...a); return { A, u: a.map((v) => v / l), l }; };
@@ -119,7 +129,7 @@ export function belled(ctx, M, y0, y1, rx1, rz1) {
 function lowerPlate(ctx, M) {
   const P = [], J = ctx.J, H = M.hips, top = M.waistY - 0.03, hem = 0.2, garment2 = (t, region, base) => (x, y, z) => Math.max(base(x, y, z) - t, region(x, y, z));
   const base = belled(ctx, M, top, hem, H.rx * 1.18 + 0.02, H.rz * 1.25 + 0.035), fold = (x, z) => 0.005 * Math.sin(Math.atan2(x, z - H.zc) * 10);
-  const skirt = (x, y, z) => Math.max(base(x, y, z) - 0.009 - fold(x, z) * sstep(top - 0.05, hem + 0.1, y), hem - y, y - top, z > H.zc ? 0.02 + 0.05 * sstep(top - 0.07, hem, y) - Math.abs(x) : -1, y < M.hipY ? 0.012 - ctx.arms(x, y, z) : -1);   // (giving way round a hanging hand)
+  const skirt = (x, y, z) => Math.max(base(x, y, z) - 0.009 - fold(x, z) * sstep(top - 0.05, hem + 0.1, y) + M.handDent(x, y, z), hem - y, y - top, z > H.zc ? 0.02 + 0.05 * sstep(top - 0.07, hem, y) - Math.abs(x) : -1);   // (pressed in behind a hanging hand)
   const W = H.rx * 1.18 + 0.06, D = H.rz * 1.25 + 0.07;
   P.push({ name: 'skirt', material: 'cloth', role: 'second', field: skirt, bounds: [[-W, hem - 0.02, H.zc - D], [W, top + 0.03, H.zc + D]], res: 0.011 });
   const tx = H.rx * 0.6, tw = H.rx * 0.38;
@@ -199,9 +209,9 @@ export function robe(ctx) {
     // an open cuff: over the last few centimetres the sleeve is hollow round the arm, so it hangs open at the wrist (only
     // where the arm is the nearest skin, or it bites into the skirt beside it); and where a hand hangs against the skirt,
     // the cloth gives way round it instead of passing through the fingers
-    const ar = ctx.arms(x, y, z), armNear = ar < ctx.body(x, y, z), nh = f.near(x, y, z, 0.16, 0.97, 2.0) < 0;
-    const cuff = f.near(x, y, z, 0.15, 0.72, 0.97) < 0 && armNear ? 0.008 + 0.012 * sstep(0.72, 0.97, sl.t) - ar : nh ? 0.012 - ar : -1;
-    return Math.max(base(x, y, z) - T - sl.wide - fold(x, z) * sstep(top - 0.04, hem + 0.1, y), hem - y, y - M.neckY - 0.012, Math.min(vee(x, y, z), 0.06) > 0 && y > M.chestY - 0.06 ? 0.01 : -1, cuff);
+    const ar = ctx.arms(x, y, z), armNear = ar < ctx.body(x, y, z);
+    const cuff = f.near(x, y, z, 0.15, 0.72, 0.97) < 0 && armNear ? 0.008 + 0.012 * sstep(0.72, 0.97, sl.t) - ar : -1;
+    return Math.max(base(x, y, z) - T - sl.wide - fold(x, z) * sstep(top - 0.04, hem + 0.1, y) + (armNear && sl.t < 0.95 ? 0 : M.handDent(x, y, z)), hem - y, y - M.neckY - 0.012, Math.min(vee(x, y, z), 0.06) > 0 && y > M.chestY - 0.06 ? 0.01 : -1, cuff);
   };
   const W = M.sx + 0.22, D = Math.max(H.rz * 1.45 + 0.1, 0.3);
   // meshed whole: in two halves on their own grids it showed a seam across the hips

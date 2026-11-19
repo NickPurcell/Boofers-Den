@@ -8,6 +8,7 @@ import { CONTROLS, CONTROL_DEFAULTS, PRESETS, toShape, randomControls } from '..
 import { SPECIES as LOOKS, LINERS, MARKS, GLOWS, lookParams } from '../human-base/species/looks.js';
 import { ARRANGE, THICK, LENGTHS, SURFACES, PATTERNS } from '../humanoid-creator/mikkian.js';
 import { pureblood, PUREBLOOD } from '../human-base/species/pureblood.js';
+import { carry, ITEMS } from '../human-base/carry.js';
 import { makeHair, fibreTexture } from './hair.js';
 import { STYLES } from './hair-shape.js';
 import { createPool } from '../creator-kit/pool.js';
@@ -24,6 +25,7 @@ const base = await loadBase();
 const fig = base.figure(); stage.scene.add(fig);
 const pb = pureblood(fig, base);
 const hair = makeHair(base, fig);
+const carried = carry(fig);   // what they carry: engineer13's human-base/carry.js
 
 /* ---------------- what each species offers on this page ---------------- */
 const sw = (...l) => l.map(([key, name, c]) => ({ key, name, c }));
@@ -34,11 +36,11 @@ const CLOTH = sw(['bone', 'Bone white', '#e4e0d6'], ['ash', 'Ash grey', '#9aa0a8
 // the opening person (a preset of the base's controls), hair colours, the outfits that suit (their own first), and the look it opens in
 const PAGE = {
   pureblood: { people: 'powerful', hairs: sw(BLACK, DKBROWN, ['redbrown', 'Red-brown', '#4a1a14'], ['grey', 'Iron grey', '#8a8684'], ['white', 'White', '#d8d4d0']),
-    outfits: ['plate', 'cloak', 'robe'], defaults: { style: 'slick', hair: 'black', outfit: 'plate', hood: 'none', main: 'charcoal', second: 'wine' } },
+    outfits: ['plate', 'cloak', 'robe'], defaults: { style: 'slick', hair: 'black', outfit: 'plate', hood: 'none', gear: 'hilt', main: 'charcoal', second: 'wine' } },
   human: { people: 'man', hairs: sw(BLACK, DKBROWN, ['brown', 'Brown', '#4a3020'], ['auburn', 'Auburn', '#6a2e1a'], ['blond', 'Blond', '#b89858'], ['grey', 'Grey', '#8c8c8c'], ['white', 'White', '#dcdcdc']),
     outfits: ['robe', 'cloak', 'plate'], defaults: { style: 'slick', hair: 'dkbrown', outfit: 'robe', hood: 'none', main: 'umber', second: 'sand' } },
   echani: { people: 'athlete', hairs: sw(['white', 'White', '#e4e4e8'], ['silver', 'Silver', '#bfc4cb'], ['ash', 'Ash', '#a6a6a2'], ['gold', 'Pale gold', '#d6cdaa'], ['steel', 'Steel', '#8b939c']),
-    outfits: ['robe', 'plate', 'cloak'], defaults: { style: 'slick', hair: 'white', outfit: 'robe', hood: 'none', main: 'bone', second: 'ash' } },
+    outfits: ['robe', 'plate', 'cloak'], defaults: { style: 'slick', hair: 'white', outfit: 'robe', hood: 'none', gear: 'double', main: 'bone', second: 'ash' } },
   mirialan: { people: 'woman', hairs: sw(BLACK, ['blueblack', 'Blue-black', '#131928'], DKBROWN, ['redbrown', 'Red-brown', '#5a2a1a'], ['grey', 'Grey', '#8c8c8c']),
     outfits: ['robe', 'cloak', 'plate'], defaults: { style: 'slick', hair: 'black', outfit: 'robe', hood: 'down', main: 'navy', second: 'sand' } },
   // opens on the look its first player asked for: medium blue with dark blue accents, heavy smooth dreads to the shoulders
@@ -71,6 +73,7 @@ function options() {
   if (sp === 'pureblood') for (const [k, d] of Object.entries(PUREBLOOD.options)) if (d.items) o[k] = { label: d.label, multi: d.multi, items: asItems(d.items) };
   o.outfit = { label: 'Outfit', items: P.outfits.map((k) => ({ key: k, name: OUTFITS[k].name })) };
   o.hood = { label: 'Hood', items: asItems(HOODS) };
+  o.gear = { label: 'Carries', items: asItems(ITEMS) };
   o.main = { label: 'Main colour', swatch: true, items: CLOTH }; o.second = { label: 'Second colour', swatch: true, items: CLOTH };
   return o;
 }
@@ -122,6 +125,7 @@ function apply() {
   pb.set(pbo);
   fig.update();
   hair.set(state.hood === 'up' || sp() === 'mikkian' ? 'bald' : state.style, pick('hair')?.c);   // a raised hood covers the hair; a Mikkian has none
+  carried.set({ item: state.gear || 'none', accent: pick('second').c });
   paintTendrils();
   stage.changed();
 }
@@ -148,6 +152,7 @@ function wear(key) {
   }
   const worn = I.length ? fieldFor(Float32Array.from(P), Float32Array.from(N), Uint32Array.from(I)) : null;
   pb.set({ worn, wornKey: worn ? `${state.outfit}|${state.hood}|${key}` : '' });
+  carried.set({ worn, wornKey: worn ? `${state.outfit}|${state.hood}|${key}` : '' });   // (what is carried hangs on the clothes, not in them)
   fig.update();
 }
 fig.addEventListener('redraw', () => stage.changed());   // a re-drape lands a moment after the sliders rest
@@ -279,7 +284,7 @@ function paintPanel() {
   }
   for (const r of panelEl.querySelectorAll('input[data-ctrl]')) r.value = r.dataset.ctrl === 'ridges' ? state.ridges : ctrl[r.dataset.ctrl];
   $('title').textContent = LOOKS[sp()].name;
-  $('summary').textContent = `${LOOKS[sp()].name}: ${pick('skin').name.toLowerCase()} skin, ${pick('eyes').name.toLowerCase()} eyes, ${state.hood === 'up' ? 'hood up' : sp() === 'mikkian' ? `${pick('length').name.toLowerCase()} ${pick('surface').name.toLowerCase()} head-tendrils (${pick('style').name.toLowerCase()}) with ${pick('accent').name.toLowerCase()} ${pick('pattern').name.toLowerCase()}` : `${pick('hair').name.toLowerCase()} hair ${STYLES[state.style].name.toLowerCase()}`}; in ${OUTFITS[state.outfit].name.toLowerCase()}, ${pick('main').name.toLowerCase()} and ${pick('second').name.toLowerCase()}.`;
+  $('summary').textContent = `${LOOKS[sp()].name}: ${pick('skin').name.toLowerCase()} skin, ${pick('eyes').name.toLowerCase()} eyes, ${state.hood === 'up' ? 'hood up' : sp() === 'mikkian' ? `${pick('length').name.toLowerCase()} ${pick('surface').name.toLowerCase()} head-tendrils (${pick('style').name.toLowerCase()}) with ${pick('accent').name.toLowerCase()} ${pick('pattern').name.toLowerCase()}` : `${pick('hair').name.toLowerCase()} hair ${STYLES[state.style].name.toLowerCase()}`}; in ${OUTFITS[state.outfit].name.toLowerCase()}, ${pick('main').name.toLowerCase()} and ${pick('second').name.toLowerCase()}${state.gear && state.gear !== 'none' ? `, carrying a ${pick('gear').name.toLowerCase()}` : ''}.`;
 }
 let raf = 0, dressTimer = 0;
 const live = () => { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; apply(); }); };   // reshape at once while a slider moves
@@ -298,7 +303,7 @@ $('random').addEventListener('click', () => {
   Object.assign(ctrl, randomControls(rnd));
   for (const k of ['skin', 'eyes', 'outfit', 'main', ...(sp() === 'mikkian' ? ['thick', 'length', 'surface', 'pattern', 'accent'] : ['hair'])]) state[k] = any(k);
   do state.second = any('second'); while (state.second === state.main);
-  state.hood = rnd() < 0.6 ? 'none' : any('hood'); state.style = sp() === 'mikkian' && rnd() < 0.6 ? 'dreads' : any('style');
+  state.hood = rnd() < 0.6 ? 'none' : any('hood'); state.gear = rnd() < 0.5 ? 'none' : any('gear'); state.style = sp() === 'mikkian' && rnd() < 0.6 ? 'dreads' : any('style');
   if (sp() === 'pureblood') {   // steered: tendrils nearly always, a few pieces of jewellery in one metal, eyes that burn now and then
     for (const k of ['folds', 'spurs', 'tlength', 'metal']) state[k] = any(k);
     state.tendrils = rnd() < 0.05 ? 'none' : ['chin', 'fringe', 'beard', 'beard', 'cheek'][Math.floor(rnd() * 5)];
