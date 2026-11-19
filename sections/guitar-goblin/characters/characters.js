@@ -128,7 +128,7 @@ function apply() {
   // a raised hood covers the hair; a Mikkian has none; hair worn down has a close cap bound like the rest, and its fall
   // worked out in a worker (fall())
   hair.set(state.hood === 'up' || sp() === 'mikkian' ? 'bald' : down ? 'crop' : state.style, pick('hair')?.c);
-  if (fallen) { fallMat.color.set(pick('hair')?.c || '#16110e'); fallen.visible = down; }
+  if (fallen) { paintFall(); fallen.visible = down; }
   carried.set({ item: state.gear || 'none', accent: pick('second').c });
   paintTendrils();
   stage.changed();
@@ -167,23 +167,25 @@ function clothGeometry(m) {   // mesher arrays -> geometry, with its occlusion a
   g.setAttribute('position', new THREE.BufferAttribute(m.position, 3)); g.setAttribute('normal', new THREE.BufferAttribute(m.normal, 3)); g.setAttribute('uv', new THREE.BufferAttribute(m.uv, 2));
   g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setIndex(new THREE.BufferAttribute(m.index, 1)); g.computeBoundingSphere(); return g;
 }
-/* ---------------- hair worn down: worked out in a worker from the live figure, like the clothes ---------------- */
+/* ---------------- hair worn down: locks worked out in a worker from the live figure (hairlocks.js) ---------------- */
 const DOWN = new Set(['bob', 'long']);
-const fallMat = new THREE.MeshPhysicalMaterial({ color: 0x16110e, roughness: 0.46, metalness: 0, normalMap: fibreTexture(), normalScale: new THREE.Vector2(0.6, 0.6), sheen: 0.5, sheenRoughness: 0.4, side: THREE.DoubleSide });
+const fallMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.4, metalness: 0, normalMap: fibreTexture(), normalScale: new THREE.Vector2(0.6, 0.6), sheen: 0.3, sheenRoughness: 0.4, side: THREE.DoubleSide });
 let fallen = null, fallTicket = 0;
+function paintFall() {   // the hair's colour, lighter on top of each lock and a little varied lock to lock
+  if (!fallen) return;
+  const c = new THREE.Color(pick('hair')?.c || '#16110e'), sh = fallen.userData.shade, col = fallen.geometry.attributes.color;
+  for (let i = 0; i < sh.length; i++) col.setXYZ(i, c.r * sh[i], c.g * sh[i], c.b * sh[i]);
+  col.needsUpdate = true; fallMat.sheenColor.copy(c).lerp(new THREE.Color(1, 1, 1), 0.2);
+}
 async function fall() {
   const my = ++fallTicket, clear = () => { if (fallen) { fig.remove(fallen); fallen.geometry.dispose(); fallen = null; } };
   if (!DOWN.has(state.style) || state.hood === 'up' || sp() === 'mikkian') { clear(); return; }
-  const args = { mesh: { position: fig.p0.slice(), normal: fig.n0.slice(), index: tris }, frame: headFrame(), style: state.style };
-  for (const coarse of [2, 1]) {   // a coarse pass first, then the fine one, each replacing the last whole
-    let r; try { r = await pool.mesh('hairdown', { ...args, coarse }); } catch (e) { if (!(e && e.cancelled)) console.error(e); return; }
-    if (my !== fallTicket || !r.mesh) return;
-    clear(); const g = new THREE.BufferGeometry(), m = r.mesh, n = m.ao.length, col = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) { const v = 0.3 + 0.7 * Math.pow(m.ao[i], 2); col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = v; }   // darker between the locks
-    g.setAttribute('position', new THREE.BufferAttribute(m.position, 3)); g.setAttribute('normal', new THREE.BufferAttribute(m.normal, 3)); g.setAttribute('uv', new THREE.BufferAttribute(m.uv, 2)); g.setAttribute('color', new THREE.BufferAttribute(col, 3)); g.setIndex(new THREE.BufferAttribute(m.index, 1)); g.computeBoundingSphere();
-    fallMat.vertexColors = true; fallMat.color.set(pick('hair')?.c || '#16110e');
-    fallen = new THREE.Mesh(g, fallMat); fallen.castShadow = fallen.receiveShadow = true; fallen.name = 'hair-down'; fig.add(fallen); stage.changed();
-  }
+  let r; try { r = await pool.mesh('hairlocks', { mesh: { position: fig.p0.slice(), normal: fig.n0.slice(), index: tris }, frame: headFrame(), style: state.style }); } catch (e) { if (!(e && e.cancelled)) console.error(e); return; }
+  if (my !== fallTicket) return;
+  clear(); const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(r.position, 3)); g.setAttribute('normal', new THREE.BufferAttribute(r.normal, 3)); g.setAttribute('uv', new THREE.BufferAttribute(r.uv, 2));
+  g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(r.shade.length * 3), 3)); g.setIndex(new THREE.BufferAttribute(r.index, 1)); g.computeBoundingSphere();
+  fallen = new THREE.Mesh(g, fallMat); fallen.userData.shade = r.shade; fallen.castShadow = fallen.receiveShadow = true; fallen.name = 'hair-down'; fig.add(fallen); paintFall(); stage.changed();
 }
 
 /* ---------------- a Mikkian's head-tendrils: worked out in a worker from the live figure, like the clothes ---------------- */

@@ -89,7 +89,7 @@ function headFrame(sh) {
 }
 // rays from one point C against the mesh: the triangles binned by the directions they cover as seen from C, so a ray
 // tests only those in its bin
-function caster(P, I, C, near, BT = 72, BA = 144) {
+export function caster(P, I, C, near, BT = 72, BA = 144) {
   const bins = Array.from({ length: BT * BA }, () => []);
   const dirOf = (i) => { const x = P[i * 3] - C[0], y = P[i * 3 + 1] - C[1], z = P[i * 3 + 2] - C[2], r = Math.hypot(x, y, z) || 1; return [Math.acos(Math.max(-1, Math.min(1, y / r))), Math.atan2(x, z)]; };
   for (let t = 0; t < I.length; t += 3) {
