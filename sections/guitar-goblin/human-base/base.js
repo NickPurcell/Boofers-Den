@@ -19,6 +19,7 @@ import { skinMaterial } from './skin.js';
 import { makeEyes } from './eyes.js';
 
 const DATA = new URL('./data/', import.meta.url);
+const ARM_DEG = 10, ELBOW_DEG = 14;   // the arms-down pose: the upper arm this far out from the side, the elbow bent this much
 
 /* ---------------- what can be set ---------------- */
 // Each slider: [key, label, min, max, default, low target, high target]. Macro sliders (no targets) are blended below.
@@ -31,6 +32,7 @@ export const SLIDERS = {
     ['arms', 'Arm bulk', -1, 1, 0, 'armfat-decr', 'armfat-incr'], ['armMuscle', 'Arm muscle', -1, 1, 0, 'armmuscle-decr', 'armmuscle-incr'],
     ['neck', 'Neck width', -1, 1, 0, 'neck-decr', 'neck-incr'], ['neckDepth', 'Neck depth', -1, 1, 0, 'neckdepth-decr', 'neckdepth-incr'],
     ['doubleChin', 'Under the chin', -1, 1, 0, 'doublechin-decr', 'doublechin-incr'],
+    ['armsDown', 'Arms down', 0, 1, 1],
   ],
   face: [
     ['browh', 'Brow height', -1, 1, 0, 'brow-down', 'brow-up'], ['browr', 'Brow ridge', -1, 1, 0, 'brow-back', 'brow-forward'], ['browa', 'Brow angle', -1, 1, 0, 'browangle-down', 'browangle-up'],
@@ -121,7 +123,7 @@ export function loadBase() { return (loading ||= load()); }
 async function load() {
   const t0 = performance.now();
   const get = (f, as) => fetch(new URL(f, DATA)).then((r) => { if (!r.ok) throw new Error(`human-base: ${f} ${r.status}`); return r[as](); });
-  const [info, meshBuf, tBuf] = await Promise.all([get('mesh.json', 'json'), get('mesh.bin', 'arrayBuffer'), get('targets.bin', 'arrayBuffer')]);
+  const [info, meshBuf, tBuf, skinBuf] = await Promise.all([get('mesh.json', 'json'), get('mesh.bin', 'arrayBuffer'), get('targets.bin', 'arrayBuffer'), get('skin.bin', 'arrayBuffer')]);
   const N = info.vertices, rest = new Float32Array(meshBuf, 0, N * 3), quads = new Uint16Array(meshBuf, N * 12, info.quads * 4);
   const targets = new Map();
   for (const [name, m] of Object.entries(info.targets)) {
@@ -134,7 +136,7 @@ async function load() {
   const restN = quadNormals(rest, quads, N);
   // the lips: where the lip-fullness morph moves most
   const lip = new Float32Array(N); { const t = targets.get('lips-incr'); let big = 0; for (let k = 0; k < t.idx.length; k++) big = Math.max(big, Math.hypot(t.d[k * 3], t.d[k * 3 + 1], t.d[k * 3 + 2])); for (let k = 0; k < t.idx.length; k++) lip[t.idx[k]] = Math.hypot(t.d[k * 3], t.d[k * 3 + 1], t.d[k * 3 + 2]) / big; }
-  const B = { info, N, rest, restN, quads, targets, T, inBody, lip, loadMs: 0 };
+  const B = { info, N, rest, restN, quads, targets, T, inBody, lip, loadMs: 0, armW: new Uint8Array(skinBuf, 0, N), foreW: new Uint8Array(skinBuf, N, N) };
   B.marks = findLandmarks(B);
   B.regions = findRegions(B);
   B.loadMs = Math.round(performance.now() - t0);
@@ -251,6 +253,7 @@ class Figure extends THREE.Group {
     geo.setAttribute('aLip', new THREE.BufferAttribute(up(B.lip, 1), 1));
     geo.setAttribute('aCav', new THREE.BufferAttribute(new Float32Array(M * 2), 2));
     geo.setAttribute('aMark', new THREE.BufferAttribute(new Float32Array(M * 2), 2));   // painted marks a species sets: x, a lit bone crest
+    { const aw = new Float32Array(B.N * 2); for (let i = 0; i < B.N; i++) { aw[i * 2] = B.armW[i] / 255; aw[i * 2 + 1] = B.foreW[i] / 255; } geo.setAttribute('aArm', new THREE.BufferAttribute(up(aw, 2), 2)); }   // how much of each vertex is arm, and forearm
     this.geometry = geo;
     this.skin = skinMaterial(B, o.skin);
     this.body = new THREE.Mesh(geo, this.skin); this.body.castShadow = this.body.receiveShadow = true; this.body.frustumCulled = false;
@@ -280,6 +283,7 @@ class Figure extends THREE.Group {
       const { d, idx } = tg;
       for (let k = 0; k < idx.length; k++) { const i = idx[k] * 3, j = k * 3; w[i] += wt * d[j]; w[i + 1] += wt * d[j + 1]; w[i + 2] += wt * d[j + 2]; }
     }
+    if ((this.state.armsDown ?? 0) > 0) this.pose(w, this.state.armsDown);
     // decimetres to metres, feet on the floor
     let lo = Infinity, hi = -Infinity; for (let i = 0; i < N; i++) if (B.inBody[i]) { const y = w[i * 3 + 1]; if (y < lo) lo = y; if (y > hi) hi = y; }
     const p0 = this.p0; for (let i = 0; i < N * 3; i += 3) { p0[i] = w[i] * 0.1; p0[i + 1] = (w[i + 1] - lo) * 0.1; p0[i + 2] = w[i + 2] * 0.1; }
@@ -293,6 +297,26 @@ class Figure extends THREE.Group {
     this.ms = Math.round(performance.now() - t0);
     this.dispatchEvent({ type: 'shaped' });
     return this;
+  }
+  // Lower the arms from the base's A-pose: our own two-joint skinning on the CC0 skeleton weights (data/skin.bin says
+  // how much of each vertex follows the upper arm, and how much the forearm). The upper arm swings down about the
+  // shoulder to hang `ARM_DEG` from the side; the elbow bends a little forward. k blends from the A-pose (0) to that (1).
+  pose(w, k) {
+    const B = this.B, ctr = (n) => { const l = B.info.joints[n], c = new THREE.Vector3(); for (const i of l) c.x += w[i * 3] / l.length, c.y += w[i * 3 + 1] / l.length, c.z += w[i * 3 + 2] / l.length; return c; };
+    const q1 = new THREE.Quaternion(), q2 = new THREE.Quaternion(), I = new THREE.Quaternion(), v = new THREE.Vector3(), p1 = new THREE.Vector3(), p2 = new THREE.Vector3();
+    for (const [mh, sx] of [['l', B.marks.side], ['r', -B.marks.side]]) {
+      const S = ctr(mh + '-shoulder'), E = ctr(mh + '-elbow'), Wr = ctr(mh + '-hand'), u = E.clone().sub(S).normalize();
+      const a = (ARM_DEG * Math.PI) / 180, t = new THREE.Vector3(sx * Math.sin(a), -Math.cos(a), u.z * 0.6).normalize();
+      q1.slerpQuaternions(I, new THREE.Quaternion().setFromUnitVectors(u, t), k);
+      const E1 = E.clone().sub(S).applyQuaternion(q1).add(S), W1 = Wr.clone().sub(S).applyQuaternion(q1).add(S), f = W1.clone().sub(E1).normalize();
+      const axis = new THREE.Vector3().crossVectors(f, new THREE.Vector3(0, 0, 1)).normalize(); q2.setFromAxisAngle(axis, ((ELBOW_DEG * Math.PI) / 180) * k);
+      for (let i = 0; i < B.N; i++) {
+        const aw = B.armW[i]; if (!aw || B.rest[i * 3] * sx <= 0) continue;
+        const A = aw / 255, F = B.foreW[i] / 255; v.set(w[i * 3], w[i * 3 + 1], w[i * 3 + 2]);
+        p1.copy(v).sub(S).applyQuaternion(q1).add(S); p2.copy(p1).sub(E1).applyQuaternion(q2).add(E1);
+        w[i * 3] = v.x * (1 - A) + p1.x * (A - F) + p2.x * F; w[i * 3 + 1] = v.y * (1 - A) + p1.y * (A - F) + p2.y * F; w[i * 3 + 2] = v.z * (1 - A) + p1.z * (A - F) + p2.z * F;
+      }
+    }
   }
   // how hollow or proud the surface is round each vertex, fine and broad: creases and hollows shade, ridges catch light
   cavity() {

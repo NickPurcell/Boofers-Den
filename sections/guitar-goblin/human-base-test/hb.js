@@ -37,7 +37,7 @@ const pb = pureblood(fig, base); fig.features = pb;
 
 function apply() {
   fig.set(shape);
-  fig.skin.userData.set({ tone: SKINS[LOOK.skin], browAmount: LOOK.brows, lips: LOOK.lips, sockets: LOOK.sockets });
+  fig.skin.userData.set({ tone: SKINS[LOOK.skin], browAmount: LOOK.brows, lips: LOOK.lips, sockets: LOOK.sockets, suitCover: { torso: shape.gender < 0.75, arms: 0, legs: 0 } });
   fig.eyes.set({ colour: LOOK.eyes, glow: LOOK.glow, white: LOOK.white, iris: LOOK.iris });
   pb.set({ ...PB, on: LOOK.species === 'pureblood' });
   fig.update();

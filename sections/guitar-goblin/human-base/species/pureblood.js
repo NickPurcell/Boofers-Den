@@ -156,7 +156,7 @@ export function pureblood(fig, base) {
       const tb = tube(pts, radii, 14, 0.9), m = tb.P.length / 3, rest = new Float32Array(m * 3), lip = new Float32Array(m), cav = new Float32Array(m * 2), mark = new Float32Array(m * 2);
       const rp = [R[vi * 3], R[vi * 3 + 1], R[vi * 3 + 2]];
       for (let j = 0; j < m; j++) { rest.set(rp, j * 3); const t = tb.T[j]; cav[j * 2] = 0.05 * (1 - Math.min(1, t / 0.08)); cav[j * 2 + 1] = 0.03 * (1 - Math.min(1, t / 0.15)); }
-      const mesh = new THREE.Mesh(geom(tb, { aRest: [rest, 3], aLip: [lip, 1], aCav: [cav, 2], aMark: [mark, 2] }), fig.skin); mesh.castShadow = false; mesh.receiveShadow = true; group.add(mesh);
+      const mesh = new THREE.Mesh(geom(tb, { aRest: [rest, 3], aLip: [lip, 1], aCav: [cav, 2], aMark: [mark, 2], aArm: [new Float32Array(m * 2), 2] }), fig.skin); mesh.castShadow = false; mesh.receiveShadow = true; group.add(mesh);
       built.tendrils.push({ pts, r: radii, root: vi });
     });
     // jewellery: cuffs on the two front tendrils, a ring through each temple spur near its tip

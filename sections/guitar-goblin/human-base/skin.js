@@ -34,6 +34,10 @@ export function skinMaterial(B, o = {}) {
     uSkin: { value: new THREE.Color(0xb98e72) }, uLip: { value: new THREE.Color(0x9a6a5a) }, uNoise: { value: shared },
     uWrap: { value: 0.32 }, uScatter: { value: new THREE.Vector3(0.55, 0.24, 0.15) },
     uSuit: { value: new THREE.Color(0x2b3038) }, uSuitOn: { value: 1 }, uCav: { value: 1 },
+    // how much the undersuit covers: a top to the collarbones (0/1), sleeves (0 none, 0.5 to the elbow, 1 to the wrist),
+    // and where the legs end (0 mid-thigh, 1 the ankle); the joints' places in the base frame say where those are
+    uSuitTop: { value: 0 }, uSuitArms: { value: 0 }, uSuitLegs: { value: 0 },
+    uJoints: { value: (() => { const J = (n) => { const l = B.info.joints[n], c = [0, 0, 0]; for (const i of l) for (let k = 0; k < 3; k++) c[k] += R[i * 3 + k] / l.length; return c; }; return new THREE.Vector4(Math.abs(J('l-elbow')[0]), Math.abs(J('l-hand')[0]), J('l-ankle')[1] + 0.25, J('neck')[1] - 0.55); })() },
     uBrow: { value: new THREE.Color(0x231a16) }, uBrowAmt: { value: 0.85 },
     uBrowX: { value: new THREE.Vector2(bi.x, bo.x) }, uBrowY: { value: new THREE.Vector3(ey + 0.25 * d, ey + 0.33 * d, ey + 0.24 * d) }, uBrowT: { value: new THREE.Vector2(0.075 * d, 0.032 * d) },
     uFaceZ: { value: B.marks.ez - 0.75 * d },
@@ -49,6 +53,7 @@ export function skinMaterial(B, o = {}) {
     if (s.browAmount !== undefined) u.uBrowAmt.value = s.browAmount;
     if (s.suit) u.uSuit.value.set(s.suit);
     if (s.suitOn !== undefined) u.uSuitOn.value = s.suitOn ? 1 : 0;
+    if (s.suitCover) { const c = s.suitCover; if (c.torso !== undefined) u.uSuitTop.value = c.torso ? 1 : 0; if (c.arms !== undefined) u.uSuitArms.value = c.arms; if (c.legs !== undefined) u.uSuitLegs.value = c.legs; }
     if (s.cavity !== undefined) u.uCav.value = s.cavity;
     if (s.paint !== undefined) u.uPaint.value = s.paint;
     if (s.sockets !== undefined) u.uSocket.value = s.sockets;
@@ -58,11 +63,11 @@ export function skinMaterial(B, o = {}) {
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
     sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', 'attribute float aLip; attribute vec3 aRest; attribute vec2 aCav; attribute vec2 aMark; varying float vLip; varying vec3 vOP; varying vec3 vON; varying vec3 vRest; varying vec2 vCav; varying vec2 vMark;\n#include <common>')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLip = aLip; vOP = position; vON = normal; vRest = aRest; vCav = aCav; vMark = aMark;');
+      .replace('#include <common>', 'attribute float aLip; attribute vec3 aRest; attribute vec2 aCav; attribute vec2 aMark; attribute vec2 aArm; varying float vLip; varying vec3 vOP; varying vec3 vON; varying vec3 vRest; varying vec2 vCav; varying vec2 vMark; varying vec2 vArm;\n#include <common>')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvLip = aLip; vOP = position; vON = normal; vRest = aRest; vCav = aCav; vMark = aMark; vArm = aArm;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `uniform vec3 uSkin; uniform vec3 uLip; uniform sampler2D uNoise; uniform float uWrap; uniform vec3 uScatter; uniform vec3 uSuit; uniform float uSuitOn; uniform float uCav;
-uniform vec3 uBrow; uniform float uBrowAmt; uniform vec2 uBrowX; uniform vec3 uBrowY; uniform vec2 uBrowT; uniform float uFaceZ; uniform vec3 uEyeC; uniform float uD; uniform float uPaint; uniform float uSocket; uniform float uBone; varying vec2 vMark;
+uniform vec3 uBrow; uniform float uBrowAmt; uniform vec2 uBrowX; uniform vec3 uBrowY; uniform vec2 uBrowT; uniform float uFaceZ; uniform vec3 uEyeC; uniform float uD; uniform float uPaint; uniform float uSocket; uniform float uBone; varying vec2 vMark; uniform float uSuitTop; uniform float uSuitArms; uniform float uSuitLegs; uniform vec4 uJoints; varying vec2 vArm;
 varying float vLip; varying vec3 vOP; varying vec3 vON; varying vec3 vRest; varying vec2 vCav; float sHeight; float sSuit; float sAo;
 vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x + texture2D(uNoise, p.xz * s) * bw.y + texture2D(uNoise, p.xy * s) * bw.z; }
 #include <common>`)
@@ -100,9 +105,12 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
   col *= sAo; col = mix(col, col * vec3(1.04, 0.9, 0.87), uCav * 0.35 * smoothstep(0.2, 1.2, cf + cb));
   col *= 1.0 + uCav * (0.06 * smoothstep(0.0, 0.8, -cb) + 0.08 * smoothstep(0.05, 0.6, -cf));
   // the undersuit, in the base mesh's frame (decimetres); the arms hang out past |x| = 2.6 in the base pose, bare
-  float waist = 1.05 - 0.12 * smoothstep(0.0, 1.2, abs(vRest.x)), hem = -2.35 + 0.18 * smoothstep(0.4, 1.6, abs(vRest.x));
-  sSuit = uSuitOn * smoothstep(hem - 0.02, hem + 0.02, vRest.y) * (1.0 - smoothstep(waist - 0.02, waist + 0.02, vRest.y)) * (1.0 - smoothstep(2.5, 2.6, abs(vRest.x)));
-  float rib = smoothstep(waist - 0.16, waist - 0.12, vRest.y) + (1.0 - smoothstep(hem + 0.1, hem + 0.14, vRest.y));
+  float waist = mix(1.05 - 0.12 * smoothstep(0.0, 1.2, abs(vRest.x)), uJoints.w, uSuitTop), hem = mix(-2.35 + 0.18 * smoothstep(0.4, 1.6, abs(vRest.x)), uJoints.z, uSuitLegs);
+  float armK = smoothstep(0.25, 0.6, vArm.x);   // how much of this point is arm
+  float body = smoothstep(hem - 0.02, hem + 0.02, vRest.y) * (1.0 - smoothstep(waist - 0.02, waist + 0.02, vRest.y)) * (1.0 - armK);
+  float sleeveEnd = mix(uJoints.x + 0.2, uJoints.y - 0.25, step(0.75, uSuitArms)), sleeve = step(0.01, uSuitArms) * armK * (1.0 - smoothstep(sleeveEnd - 0.02, sleeveEnd + 0.02, abs(vRest.x)));
+  sSuit = uSuitOn * max(body, sleeve);
+  float rib = (smoothstep(waist - 0.16, waist - 0.12, vRest.y) + (1.0 - smoothstep(hem + 0.1, hem + 0.14, vRest.y))) * (1.0 - armK);
   col = mix(col, uSuit * mix(0.92, 1.05, nF.b) * (1.0 - 0.18 * rib) * mix(1.0, sAo, 0.6), sSuit);
   diffuseColor.rgb = col;
   // the pores only where a pixel is small enough to hold them; further off they would only sparkle
@@ -119,6 +127,6 @@ vec4 tri(vec3 p, vec3 bw, float s) { return texture2D(uNoise, p.zy * s) * bw.x +
            vec3 lit = mix( vec3( dotNL ), vec3( wr * wr ), uScatter );
            reflectedLight.directDiffuse += lit * directLight.color * BRDF_Lambert( material.diffuseColor ); }`));
   };
-  m.customProgramCacheKey = () => 'human-skin-4';
+  m.customProgramCacheKey = () => 'human-skin-5';
   return m;
 }
