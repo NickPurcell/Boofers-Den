@@ -32,6 +32,14 @@ const backU = (x, y) => Math.atan2(x, y - 0.03) / (2 * Math.PI) + 0.5;   // line
 const capLine = (a) => hairline(a, 0.5);
 export const STYLES = {
   bald: { name: 'Bald' },
+  // shaved: a shadow of hair a fraction of a millimetre off the scalp (drawn see-through, as stubble is)
+  shaved: { name: 'Shaved', line: capLine, ramp: 0.004, floor: 0.7, depth: 0, thick: () => 0.0008, stubble: true },
+  // a crest: a strip over the top of the head from the brow to the nape, standing up along the middle and combed back,
+  // the sides shaved
+  crest: { name: 'Crest', line: (a) => { const sa = Math.abs(Math.sin(a)), w = 0.03, R = 0.095; return sa * R > w ? Math.max(hairline(a, 0.3), 0.03 + Math.sqrt(Math.max(0, R * R - (w / Math.max(sa, 1e-3)) ** 2))) : hairline(a, 0.3); },
+    ramp: 0.008, floor: 0.3, depth: 0.007, under: 'shaved',
+    // (standing up along the middle, tapering to the sides; combed into tufts from front to back)
+    thick: (x, y, z) => 0.004 + 0.026 * Math.pow(Math.max(0, 1 - (x / 0.032) ** 2), 0.7) * sstep(-0.04, 0.05, y), groove: (x, y, z) => 0.6 * strands(Math.atan2(z + 0.012, y - 0.03) / (2 * Math.PI) + 0.5, 16) + 0.4 * strands(x * 8 + 0.5, 3) },
   crop: { name: 'Short crop', line: capLine, ramp: 0.022, floor: 0.16, depth: 0.0022,
     thick: (x, y, z) => 0.0065 + 0.006 * sstep(0.03, 0.09, y) + 0.004 * sstep(0.02, 0.07, z) * sstep(0.05, 0.08, y), groove: (x, y) => locksOf(backU(x, y), 54) / 1.27 },
   swept: { name: 'Swept back', line: capLine, ramp: 0.022, floor: 0.16, depth: 0.0034,
@@ -123,7 +131,7 @@ export function bindStyle(style, rest) {
   const local = (p) => [(p[0] - ox) / F.s, (p[1] - oy) / F.sy, (p[2] - oz) / F.s];
   const along = (th, a) => cast([Math.sin(th) * Math.sin(a), Math.cos(th), Math.sin(th) * Math.cos(a)]);
   const height = (q, share = 1) => { const e = S.line(Math.atan2(q[0], q[2])) - q[1]; return share * S.thick(...q) * (S.floor + (1 - S.floor) * sstep(0, S.ramp, -e)); };
-  const grooved = (q, share) => { const t = height(q, share); return S.groove ? t - S.depth * S.groove(q[0], q[1]) * Math.min(1, t / 0.006) : t; };
+  const grooved = (q, share) => { const t = height(q, share); return S.groove ? t - S.depth * S.groove(q[0], q[1], q[2]) * Math.min(1, t / 0.006) : t; };
   // the polar angle at angle a round the head where the skin is `inset` above the hairline (bisection)
   const lineAt = (a, inset = 0) => { let lo = 0.02, hi = 2.6, best = null; for (let k = 0; k < 26; k++) { const th = (lo + hi) / 2, h = along(th, a); if (h && local(h.p)[1] > S.line(a) + inset / F.sy) { lo = th; best = h; } else hi = th; } return { th: hi, h: best }; };
 

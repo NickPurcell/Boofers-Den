@@ -44,11 +44,15 @@ export function makeHair(base, fig) {
     if (P.tie) { const t = (P.tie === 2 ? 0.1 : 0.14), c = curve.getPointAt(t), tg = curve.getTangentAt(t), band = new THREE.TorusGeometry(rAt(t) * 0.95, rAt(t) * 0.14, 8, 24); band.lookAt(tg); band.translate(c.x, c.y, c.z); return [g, band]; }
     return [g];
   }
+  // stubble: the hair's colour, see-through, rough (a shaved head, or a crest's shaved sides)
+  const stubbleMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.95, metalness: 0, transparent: true, opacity: 0.62, depthWrite: false, normalMap: fibreTexture(), normalScale: new THREE.Vector2(0.3, 0.3) });
+  let under = null, ubound = null;
   const massMat = new THREE.MeshPhysicalMaterial({ color: 0x111111, roughness: 0.42, metalness: 0, normalMap: fibreTexture(), normalScale: new THREE.Vector2(0.6, 0.6), sheen: 0.4, sheenRoughness: 0.4 });
   const tieMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1c, roughness: 0.7 });
   let mass = null;
   function build(style) {
-    for (const m of [cap, locks]) if (m) { group.remove(m); m.geometry.dispose(); }
+    for (const m of [cap, locks, under]) if (m) { group.remove(m); m.geometry.dispose(); }
+    under = ubound = null;
     if (mass) { group.remove(mass); mass.traverse((o) => o.geometry && o.geometry.dispose()); mass = null; }
     cap = locks = null; bound = null;
     if (STYLES[style] && STYLES[style].mass) {
@@ -60,9 +64,11 @@ export function makeHair(base, fig) {
     if (!rest) rest = restShape(base, fig.surface);
     if (!binds.has(style)) binds.set(style, bindStyle(style, rest));
     bound = binds.get(style);
+    const capOf = (bd, mat) => { const B = bd.base, g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(B.h.length * 3), 3)); g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(B.h.length * 3), 3)); g.setIndex(new THREE.BufferAttribute(B.index, 1)); const m = new THREE.Mesh(g, mat); m.receiveShadow = true; m.frustumCulled = false; group.add(m); return m; };
+    if (STYLES[style].under) { const u = STYLES[style].under; if (!binds.has(u)) binds.set(u, bindStyle(u, rest)); ubound = binds.get(u); under = capOf(ubound, stubbleMat); }   // shaved under a crest
     const B = bound.base, g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(B.h.length * 3), 3)); g.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(B.h.length * 3), 3)); g.setIndex(new THREE.BufferAttribute(B.index, 1));
-    cap = new THREE.Mesh(g, capMat); cap.castShadow = cap.receiveShadow = true; cap.frustumCulled = false; group.add(cap);
+    cap = new THREE.Mesh(g, STYLES[style].stubble ? stubbleMat : capMat); cap.castShadow = !STYLES[style].stubble; cap.receiveShadow = true; cap.frustumCulled = false; group.add(cap);
     if (bound.locks.length) {
       const { v } = lockCounts(bound), st = lockStatic(bound), lg = new THREE.BufferGeometry();
       lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(v * 3), 3)); lg.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(v * 3), 3));
@@ -72,7 +78,7 @@ export function makeHair(base, fig) {
     recolour(); place();
   }
   function recolour() {
-    capMat.color.copy(colour).multiplyScalar(STYLES[current]?.locks ? 0.55 : 0.9); massMat.color.copy(colour); massMat.sheenColor.copy(colour).lerp(new THREE.Color(1, 1, 1), 0.25);
+    capMat.color.copy(colour).multiplyScalar(STYLES[current]?.locks ? 0.55 : 0.9); stubbleMat.color.copy(colour).multiplyScalar(0.7); massMat.color.copy(colour); massMat.sheenColor.copy(colour).lerp(new THREE.Color(1, 1, 1), 0.25);
     if (locks) { const c = locks.geometry.attributes.color.array; for (let i = 0; i < shade.length; i++) { c[i * 3] = colour.r * shade[i]; c[i * 3 + 1] = colour.g * shade[i]; c[i * 3 + 2] = colour.b * shade[i]; } locks.geometry.attributes.color.needsUpdate = true; }
     lockMat.sheenColor.copy(colour).lerp(new THREE.Color(1, 1, 1), 0.18);
   }
@@ -89,6 +95,7 @@ export function makeHair(base, fig) {
     if (!bound) return;
     const s = fig.surface, cp = cap.geometry.attributes.position.array;
     placeBase(bound, s, cp); normals(cp, bound.base.index, cap.geometry.attributes.normal.array);
+    if (under) { const up = under.geometry.attributes.position.array; placeBase(ubound, s, up); normals(up, ubound.base.index, under.geometry.attributes.normal.array); under.geometry.attributes.position.needsUpdate = under.geometry.attributes.normal.needsUpdate = true; }
     cap.geometry.attributes.position.needsUpdate = cap.geometry.attributes.normal.needsUpdate = true;
     if (locks) { const lp = locks.geometry.attributes; placeLocks(bound, s, lp.position.array, lp.normal.array); lp.position.needsUpdate = lp.normal.needsUpdate = true; }
   }

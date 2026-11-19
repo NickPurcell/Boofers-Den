@@ -67,7 +67,7 @@ function options() {
     o.style = { label: 'Head-tendrils', items: asItems(ARRANGE) }; o.thick = { label: 'Tendril thickness', items: asItems(THICK) };
     o.length = { label: 'Tendril length', items: asItems(LENGTHS) }; o.surface = { label: 'Tendril surface', items: asItems(SURFACES) }; o.pattern = { label: 'Tendril pattern', items: asItems({ deepen: { name: 'Deepening to the lips' }, fade: { name: 'Paler tips' }, ...PATTERNS }) };
   } else {
-    o.style = { label: 'Hair', items: [...['slick', 'swept', 'crop', 'tail', 'knot', 'braid'].map((k) => ({ key: k, name: STYLES[k].name })), { key: 'bob', name: 'Bob' }, { key: 'long', name: 'Long' }, { key: 'bald', name: STYLES.bald.name }] };
+    o.style = { label: 'Hair', items: [...['slick', 'swept', 'crop', 'tail', 'knot', 'braid'].map((k) => ({ key: k, name: STYLES[k].name })), { key: 'bob', name: 'Bob' }, { key: 'long', name: 'Long' }, ...['crest', 'shaved', 'bald'].map((k) => ({ key: k, name: STYLES[k].name }))] };
     o.hair = { label: 'Hair colour', swatch: true, items: P.hairs };
   }
   if (sp === 'pureblood') for (const [k, d] of Object.entries(PUREBLOOD.options)) if (d.items) o[k] = { label: d.label, multi: d.multi, items: asItems(d.items) };
