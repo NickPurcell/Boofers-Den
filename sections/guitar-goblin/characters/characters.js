@@ -352,7 +352,7 @@ if (BAKE) {
       // head; clothes the body under them, except a cloak or cape (on the spine, over the arms) and the skirts of a coat,
       // robe or tunic, which hang from the hips (on the legs, they tore between them as the legs split)
       let list = bakeTable(fig, { skin: true });
-      const extra = [], G = 0.01;
+      const extra = [], G = 0.01, muzzle = list.muzzle || null;   // (a held gun's muzzle, for the table's shots: bakeMeshes doesn't carry it on)
       for (const name of ['hair', 'hair-down', 'tendrils']) { const o = fig.getObjectByName(name); if (o && o.visible) list = bakeMeshes(o, fig, list, { grid: G, skin: 'rigid' }); }
       for (const piece of fig.getObjectByName('clothes')?.children || []) {
         if (!piece.visible) continue;
@@ -361,7 +361,7 @@ if (BAKE) {
       }
       cutArmWebs(extra, list.skeleton); cutArmWebs(list.filter((m) => m.name !== 'skin'), list.skeleton);
       const meshes = [...list, ...extra], buf = meshes.flatMap((m) => [m.position, m.normal, m.color, m.index, m.emissive, m.skinIndex, m.skinWeight].filter(Boolean).map((x) => x.buffer));
-      window.parent.postMessage({ type: 'holotable-figure', look: ASKED, figure: { v: 3, meshes, skeleton: list.skeleton } }, location.origin, [...new Set(buf)]);
+      window.parent.postMessage({ type: 'holotable-figure', look: ASKED, figure: { v: 3, meshes, skeleton: list.skeleton, ...(muzzle ? { muzzle } : {}) } }, location.origin, [...new Set(buf)]);
     } catch (e) { console.error(e); window.parent.postMessage({ type: 'holotable-figure', look: ASKED, error: String(e && e.message || e) }, location.origin); }
   })();
 }

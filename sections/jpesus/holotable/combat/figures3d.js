@@ -61,7 +61,9 @@ function valid(b) {
     && (m.emissive === undefined || (m.emissive instanceof Uint8Array && m.emissive.length === m.position.length))
     && (!S || (m.skinIndex instanceof Uint8Array && m.skinWeight instanceof Uint8Array && m.skinIndex.length === (m.position.length / 3) * 4
       && m.skinWeight.length === m.skinIndex.length && m.skinIndex.every((i) => i < S.length)))
-    && m.index.every((i) => i < m.position.length / 3));
+    && (m.where === undefined || m.where === 'belt' || m.where === 'hand')
+    && m.index.every((i) => i < m.position.length / 3))
+    && (b.muzzle === undefined || (b.muzzle && typeof b.muzzle.bone === 'string' && [b.muzzle.offset, b.muzzle.dir].every((v) => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite))));
 }
 // the sheet's look as the creator's parser reads it (the server stored it that way already; read again, never trusted)
 const looks = new Map();
@@ -91,9 +93,12 @@ function build(b) {
     if (skel) {
       geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(Uint16Array.from(m.skinIndex), 4));
       geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(Float32Array.from(m.skinWeight, (w) => w / 255), 4));
-      const sm = new THREE.SkinnedMesh(geo, mats.get(key)); sm.frustumCulled = false; g.add(sm); sm.bind(skel);
-    } else g.add(new THREE.Mesh(geo, mats.get(key)));
+      const sm = new THREE.SkinnedMesh(geo, mats.get(key)); sm.frustumCulled = false; sm.userData.where = m.where || null; sm.visible = m.where !== 'hand'; g.add(sm); sm.bind(skel);
+    } else { const mm = new THREE.Mesh(geo, mats.get(key)); mm.userData.where = m.where || null; mm.visible = m.where !== 'hand'; g.add(mm); }
   }
+  // what it carries: the worn copy shows, the copy in the hand (and a saber's lit blade) only while it is used; a gun's
+  // muzzle, on its bone, for the shots
+  if (skel && b.muzzle) { const k = b.skeleton.findIndex((x) => x.name === b.muzzle.bone); if (k >= 0) g.userData.muzzle = { k, offset: b.muzzle.offset.slice(), dir: b.muzzle.dir.slice() }; }
   g.scale.setScalar(1 / SQ);   // metres to squares
   return g;
 }
@@ -175,7 +180,10 @@ function sync() {
         mine.obj = tpl.userData.rig ? cloneRigged(tpl) : tpl.clone(); mine.obj.userData.tokenId = t.id; mine.obj.traverse((o) => { if (o.isMesh) o.material = o.material.clone(); });
         if (tpl.userData.rig) {   // its own bones, in the skeleton's order, to pose
           const sm = mine.obj.children.find((o) => o.isSkinnedMesh);
-          Object.assign(mine, { rig: tpl.userData.rig, bones: sm.skeleton.bones, root: tpl.userData.root, rootAt: tpl.userData.rootAt, turned: mine.face });
+          Object.assign(mine, { rig: tpl.userData.rig, bones: sm.skeleton.bones, root: tpl.userData.root, rootAt: tpl.userData.rootAt, turned: mine.face, hand: [], belt: [] });
+          mine.obj.traverse((o) => { if (o.isMesh && o.userData.where === 'hand') mine.hand.push(o); else if (o.isMesh && o.userData.where === 'belt') mine.belt.push(o); });
+          const mz = tpl.userData.muzzle; if (mz) mine.muzzle = { bone: mine.bones[mz.k], offset: new THREE.Vector3(...mz.offset), dir: new THREE.Vector3(...mz.dir) };
+          mine.gear = (/(?:^|&)gear=([a-z_]+)/.exec(look) || [])[1] || 'none';
           pose(mine); loadClips();
         }
         figsRoot.add(mine.obj); place(mine, t); dirty = true;
@@ -217,28 +225,66 @@ function clipFor(f, name) {
   return own.get(name);
 }
 function clipsOf(ev) {
-  if (ev.how === 'power') return [ev.school === 'tech' ? 'power-burst' : 'force-blast'];
+  if (ev.how === 'power') return ev.school === 'tech' ? ['spell-enter', 'spell-shoot', 'spell-exit'] : ['force-blast'];
   if (ev.how === 'ranged') return [ev.grip === 'two' ? 'rifle-fire' : 'pistol-shoot'];
+  if (ev.grip === 'unarmed') return ['punch-jab'];
   if (ev.grip === 'two') return ['two-hand-swing'];
   if (ev.grip === 'double' || ev.grip === 'staff') return ['staff-combo'];
   return ['sword-a', 'sword-a-rec'];
+}
+// the weapon in the hand (engineer13's carry: a worn copy and a held one): drawn for a swing with a melee weapon, or a
+// shot with a gun, by whatever this figure's look carries; from the back (a staff or rifle) with the 'draw' clip first,
+// from the hip early in the swing, a pistol as the shot starts. Put back when the clip is done.
+const MELEE = new Set(['hilt', 'double', 'staff']), GUNS = new Set(['pistol', 'rifle']), ON_BACK = new Set(['staff', 'rifle']);
+function weaponFor(f, ev, names) {
+  if (!f.hand || !f.hand.length || ev.how === 'power' || ev.grip === 'unarmed') return { names, draw: null };
+  const fits = ev.how === 'ranged' ? GUNS.has(f.gear) : MELEE.has(f.gear);
+  if (!fits) return { names, draw: null };
+  if (ON_BACK.has(f.gear) && clipFor(f, 'draw')) return { names: ['draw', ...names], draw: { i: 0, t: (clipFor(f, 'draw').marks || {}).impact ?? 0.5 }, hit: 1 };
+  return { names, draw: { i: 0, t: f.gear === 'pistol' ? 0 : 0.06 } };
+}
+function inHand(f, on) { if (!f.hand || !f.hand.length) return; for (const o of f.hand) o.visible = on; for (const o of f.belt) o.visible = !on; }
+// blaster bolts: from the muzzle at each of the clip's shots, to the target's chest (or straight on); the last one's
+// arrival is when the target reacts
+const bolts = [], BOLT_GEO = new THREE.CylinderGeometry(0.014, 0.014, 0.42, 6).rotateX(Math.PI / 2), BOLT_MAT = new THREE.MeshBasicMaterial({ color: 0xff5040 });
+function fire(f, tgt, onHit) {
+  f.obj.updateMatrixWorld(true);
+  const from = f.muzzle.bone.localToWorld(f.muzzle.offset.clone()), dir = f.muzzle.dir.clone().transformDirection(f.muzzle.bone.matrixWorld);
+  const to = tgt ? new THREE.Vector3(tgt.x, 1.25 / SQ, tgt.z) : from.clone().addScaledVector(dir, 8);
+  const m = new THREE.Mesh(BOLT_GEO, BOLT_MAT); m.position.copy(from); m.lookAt(to); scene.add(m);
+  bolts.push({ m, from, to, d: Math.max(0.01, from.distanceTo(to)), t: 0, onHit });
+}
+function stepBolts(dt) {
+  for (const b of [...bolts]) {
+    b.t += dt * 26; const u = Math.min(1, b.t / b.d); b.m.position.lerpVectors(b.from, b.to, u);
+    if (u >= 1) { scene.remove(b.m); bolts.splice(bolts.indexOf(b), 1); if (b.onHit) b.onHit(); }
+  }
+  return bolts.length > 0;
 }
 function playOn(f, names, o = {}) {
   if (!f || !f.rig || !f.bones) return false;
   const list = names.filter((n) => clipFor(f, n));
   if (!list.length) { if (o.onImpact) o.onImpact(); return false; }
-  f.act = { list, i: 0, p: clipFor(f, list[0]), t: 0, w: f.act ? f.act.w : 0, hold: !!o.hold, onImpact: o.onImpact || null, out: false };
+  if (f.act && f.act.drawn) inHand(f, false);
+  const hit = Math.min(list.length - 1, o.hit || 0), shots = ((clipFor(f, list[hit]).marks || {}).shots || []).slice();
+  f.act = { list, i: 0, p: clipFor(f, list[0]), t: 0, w: f.act ? f.act.w : 0, hold: !!o.hold, onImpact: o.onImpact || null, out: false,
+    hit, draw: o.draw || null, drawn: false, shots: f.muzzle && f.gear && GUNS.has(f.gear) && o.draw ? shots : [], target: o.target || null };
   return true;
 }
 function stepAct(f, dt) {
   const a = f.act; a.t += dt;
   if (a.out) { a.w -= dt / 0.2; if (a.w <= 0) f.act = null; return; }
   a.w = Math.min(1, a.w + dt / 0.12);
-  if (a.onImpact && a.i === 0 && a.t >= (a.p.marks && a.p.marks.impact != null ? a.p.marks.impact : a.p.duration * 0.5)) { const go = a.onImpact; a.onImpact = null; go(); }
+  if (a.draw && !a.drawn && (a.i > a.draw.i || a.t >= a.draw.t)) { a.drawn = true; inHand(f, true); }
+  if (a.i === a.hit && a.shots.length && a.t >= a.shots[0]) {   // a shot: the reaction waits for the last bolt
+    a.shots.shift(); const last = !a.shots.length, go = last ? a.onImpact : null; if (last) a.onImpact = null;
+    pose(f); fire(f, a.target, go);
+  }
+  if (a.onImpact && a.i === a.hit && !a.shots.length && a.t >= (a.p.marks && a.p.marks.impact != null ? a.p.marks.impact : a.p.duration * 0.5)) { const go = a.onImpact; a.onImpact = null; go(); }
   if (a.t < a.p.duration) return;
   if (a.i + 1 < a.list.length) { a.i += 1; a.p = clipFor(f, a.list[a.i]); a.t = 0; return; }
   if (a.onImpact) { const go = a.onImpact; a.onImpact = null; go(); }
-  if (a.hold) a.t = a.p.duration; else a.out = true;
+  if (a.hold) a.t = a.p.duration; else { a.out = true; if (a.drawn) inHand(f, false); }
 }
 let lastSeq = null;
 function happenings() {
@@ -247,7 +293,7 @@ function happenings() {
   for (const u of Object.values((s.fight && s.fight.units) || {})) {
     const f = u && u.token && figs.get(u.token); if (!f || !f.rig || f.down === !!u.down) continue;
     f.down = !!u.down;
-    if (f.down) playOn(f, ['death'], { hold: true }); else if (f.act) f.act.out = true;
+    if (f.down) playOn(f, ['down'], { hold: true }); else playOn(f, ['get-up']);
   }
   const top = fe.reduce((m, e) => Math.max(m, +e.seq || 0), 0);
   if (lastSeq === null || top < lastSeq) { lastSeq = top; return; }   // (what happened before the view opened isn't played again)
@@ -265,7 +311,8 @@ function happenings() {
     const tgt = ev.target ? figs.get(ev.target) : null, results = fresh.filter((r) => r.act === ev.seq);
     const land = () => { for (const r of results) { const g = r.token && figs.get(r.token); if (g && !g.down) playOn(g, r.kind === 'miss' ? ['dodge'] : r.kind === 'crit' ? ['hit-head'] : r.kind === 'heal' ? [] : ['hit-chest']); } };
     if (f && tgt) f.face = Math.atan2(tgt.tx - f.tx, tgt.tz - f.tz);   // it turns to whoever it acts on
-    if (!(f && playOn(f, clipsOf(ev), { onImpact: land }))) land();
+    const wp = f && f.rig ? weaponFor(f, ev, clipsOf(ev)) : { names: clipsOf(ev), draw: null };
+    if (!(f && playOn(f, wp.names, { onImpact: land, draw: wp.draw, hit: wp.hit || 0, target: tgt ? { x: tgt.tx, z: tgt.tz } : null }))) land();
   }
 }
 
@@ -307,6 +354,7 @@ let last = 0, held = null;   // (held: a test's own clock, stepped by advance(),
 function frame(now) {
   const dt = Math.min(0.25, last ? (now - last) / 1000 : 0.016); last = now; let moving = false;   // (a slow device takes bigger steps, not slower runs)
   for (const f of figs.values()) moving = step(f, now, dt) || moving;
+  moving = stepBolts(dt) || moving;
   if (moving || dirty) { dirty = false; renderer.render(scene, camera); }
 }
 function loop() { raf = requestAnimationFrame(loop); if (held === null) frame(performance.now()); }
