@@ -303,7 +303,7 @@ export function close() {
 // the flat map has just drawn (a poll, a move, a hover): the ground and the figures follow, once a frame
 export function drawn() { if (isOpen && !redraw) redraw = requestAnimationFrame(paintGround); }
 // for tests and the curious: what is standing where, and where a square is on the screen
-export function state() { return { open: isOpen, figures: [...figs].map(([id, f]) => ({ id, ready: !!f.obj, x: f.x, z: f.z, face: f.face })) }; }
+export function state() { return { open: isOpen, figures: [...figs].map(([id, f]) => ({ id, ready: !!f.obj, x: f.x, z: f.z, face: f.face, rigged: !!f.rig, run: f.w, travel: f.travel })) }; }
 export function screenOf(sx, sy) {
   if (!el) return null; const r = el.getBoundingClientRect(), v = new THREE.Vector3(sx, 0, sy).project(camera);
   return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height };
