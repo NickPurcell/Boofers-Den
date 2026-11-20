@@ -12,11 +12,13 @@
 // IndexedDB for next time. Until it is ready, the token's disk is all there is.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { clone as cloneRigged } from 'three/addons/utils/SkeletonUtils.js';
+import { makeRig, run, stand, blend } from '/sections/guitar-goblin/human-base/motion.js';   // the run and the stand (no three.js: plain numbers)
 import '/sections/guitar-goblin/human-base/look-schema.js';   // HBLookSchema, then HBLook: reads a look against the creator's own lists
 import '/sections/guitar-goblin/human-base/look-parse.js';
 
 const HT = window.HT, wrap = document.getElementById('mapWrap'), flat = document.getElementById('mapCanvas');
-const CREATOR = '/sections/guitar-goblin/characters/index.html', BAKE_V = 'b2', SQ = 1.524;   // metres in a five-foot square
+const CREATOR = '/sections/guitar-goblin/characters/index.html', BAKE_V = 'b3', SQ = 1.524;   // metres in a five-foot square
 const FAKE = 7357;   // the pointer id the flat map's handlers see from here (never a real one, so they capture nothing)
 
 let renderer = null, el = null, scene, camera, controls, ground, groundTex, groundCanvas, figsRoot, isOpen = false, dirty = true, raf = 0, redraw = 0, sized = '', camKey = '';
@@ -47,11 +49,17 @@ function bake(look) {
   });
 }
 // a bake as handed over or stored: typed arrays of the right kinds and sizes, nothing else
+// (with a skeleton, v 3: its bones in order, each parent before it, and four bones and weights for every vertex)
 function valid(b) {
-  if (!b || b.v !== 2 || !Array.isArray(b.meshes) || !b.meshes.length || b.meshes.length > 200) return false;
+  if (!b || (b.v !== 2 && b.v !== 3) || !Array.isArray(b.meshes) || !b.meshes.length || b.meshes.length > 200) return false;
+  const S = b.v === 3 ? b.skeleton : null;
+  if (b.v === 3 && !(Array.isArray(S) && S.length > 0 && S.length <= 256 && S.every((x, k) => x && Number.isInteger(x.parent) && x.parent >= -1 && x.parent < k
+    && Array.isArray(x.head) && x.head.length === 3 && x.head.every(Number.isFinite)))) return false;
   return b.meshes.every((m) => m && m.position instanceof Float32Array && m.normal instanceof Float32Array && m.color instanceof Uint8Array && m.index instanceof Uint32Array
     && m.position.length % 3 === 0 && m.normal.length === m.position.length && m.color.length === m.position.length && m.index.length % 3 === 0
     && (m.emissive === undefined || (m.emissive instanceof Uint8Array && m.emissive.length === m.position.length))
+    && (!S || (m.skinIndex instanceof Uint8Array && m.skinWeight instanceof Uint8Array && m.skinIndex.length === (m.position.length / 3) * 4
+      && m.skinWeight.length === m.skinIndex.length && m.skinIndex.every((i) => i < S.length)))
     && m.index.every((i) => i < m.position.length / 3));
 }
 // the sheet's look as the creator's parser reads it (the server stored it that way already; read again, never trusted)
@@ -63,6 +71,14 @@ function lookOf(raw) {
 const LIN = new Float32Array(256).map((_, i) => { const x = i / 255; return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); });
 function build(b) {
   const g = new THREE.Group(), mats = new Map();
+  // a skeleton: the bones where they stand (each bound with no turn of its own), and every mesh skinned to them
+  let skel = null;
+  if (b.skeleton) {
+    const bones = b.skeleton.map((x) => { const o = new THREE.Bone(); o.name = String(x.name || '').slice(0, 40); return o; });
+    b.skeleton.forEach((x, k) => { const p = x.parent >= 0 ? b.skeleton[x.parent].head : [0, 0, 0]; bones[k].position.set(x.head[0] - p[0], x.head[1] - p[1], x.head[2] - p[2]); (x.parent >= 0 ? bones[x.parent] : g).add(bones[k]); });
+    g.updateMatrixWorld(true); skel = new THREE.Skeleton(bones);
+    g.userData.rig = makeRig(b.skeleton); g.userData.root = b.skeleton.findIndex((x) => x.parent < 0); g.userData.rootAt = b.skeleton[g.userData.root].head.slice();
+  }
   for (const m of b.meshes) {
     const geo = new THREE.BufferGeometry(), c = new Float32Array(m.color.length);
     for (let i = 0; i < c.length; i++) c[i] = LIN[m.color[i]] + (m.emissive ? LIN[m.emissive[i]] : 0);   // (what glows, a Pureblood's eyes, simply brighter)
@@ -71,7 +87,11 @@ function build(b) {
     // (metal no shinier than half: with no surroundings to reflect, full metal draws black)
     const rough = Math.max(0.3, Math.min(1, +m.rough || 0.6)), metal = Math.max(0, Math.min(0.5, +m.metal || 0)), key = `${rough.toFixed(2)}|${metal.toFixed(2)}`;
     if (!mats.has(key)) mats.set(key, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: rough, metalness: metal }));
-    g.add(new THREE.Mesh(geo, mats.get(key)));
+    if (skel) {
+      geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(Uint16Array.from(m.skinIndex), 4));
+      geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(Float32Array.from(m.skinWeight, (w) => w / 255), 4));
+      const sm = new THREE.SkinnedMesh(geo, mats.get(key)); sm.frustumCulled = false; g.add(sm); sm.bind(skel);
+    } else g.add(new THREE.Mesh(geo, mats.get(key)));
   }
   g.scale.setScalar(1 / SQ);   // metres to squares
   return g;
@@ -147,11 +167,16 @@ function sync() {
     let f = figs.get(t.id);
     if (!f || f.look !== look) {
       if (f && f.obj) figsRoot.remove(f.obj);
-      f = { look, obj: null, x: null, z: null, tx: 0, tz: 0, from: null, t0: 0, dur: 0, face: 0 }; figs.set(t.id, f);
+      f = { look, obj: null, x: null, z: null, tx: 0, tz: 0, from: null, t0: 0, dur: 0, face: 0, turned: 0, rig: null, bones: null, travel: 0, w: 0, moved: 0, held: false }; figs.set(t.id, f);
       const mine = f;
       figureFor(look).then((tpl) => {
         if (figs.get(t.id) !== mine || !isOpen && !renderer) return;
-        mine.obj = tpl.clone(); mine.obj.userData.tokenId = t.id; mine.obj.traverse((o) => { if (o.isMesh) o.material = o.material.clone(); });
+        mine.obj = tpl.userData.rig ? cloneRigged(tpl) : tpl.clone(); mine.obj.userData.tokenId = t.id; mine.obj.traverse((o) => { if (o.isMesh) o.material = o.material.clone(); });
+        if (tpl.userData.rig) {   // its own bones, in the skeleton's order, to pose
+          const sm = mine.obj.children.find((o) => o.isSkinnedMesh);
+          Object.assign(mine, { rig: tpl.userData.rig, bones: sm.skeleton.bones, root: tpl.userData.root, rootAt: tpl.userData.rootAt, turned: mine.face });
+          pose(mine);
+        }
         figsRoot.add(mine.obj); place(mine, t); dirty = true;
       }).catch((e) => console.warn('3D figure:', e && e.message));
     }
@@ -167,27 +192,49 @@ function place(f, t, now = performance.now()) {
     // (turned only by a real step: dragged, a step of a fifth of a square; else more than half a square, so the snap
     // to a square when it is let go does not turn it round)
     if (d > (held ? 0.2 : 0.6)) f.face = Math.atan2(dx, dz);
-    f.from = [f.x, f.z]; f.t0 = now; f.dur = held ? 60 : Math.min(1200, 180 + 160 * d);
+    f.from = [f.x, f.z]; f.t0 = now; f.dur = held ? 60 : Math.min(1200, 180 + 160 * d); f.held = !!held;
   }
   f.tx = tx; f.tz = tz;
   if (!f.obj) return;
   const k = (t.tiny ? 0.5 : 1) / SQ;
-  f.obj.scale.setScalar(k); f.obj.position.set(f.x, Math.max(0, +t.elev || 0) / 5, f.z); f.obj.rotation.y = f.face;
+  f.obj.scale.setScalar(k); f.obj.position.set(f.x, Math.max(0, +t.elev || 0) / 5, f.z); f.obj.rotation.y = f.rig ? f.turned : f.face;
   const ghost = !!t.hidden;   // (the GM's hidden token: see-through, as its disk is)
   f.obj.traverse((o) => { if (o.isMesh && o.material.transparent !== ghost) { o.material.transparent = ghost; o.material.opacity = ghost ? 0.45 : 1; o.material.needsUpdate = true; } });
 }
-function step(f, now) {
-  if (!f.from) return false;
-  const u = Math.min(1, (now - f.t0) / f.dur), e = u * u * (3 - 2 * u);
-  f.x = f.from[0] + (f.tx - f.from[0]) * e; f.z = f.from[1] + (f.tz - f.from[1]) * e;
-  if (f.obj) f.obj.position.set(f.x, f.obj.position.y, f.z);
-  if (u >= 1) f.from = null;
-  return true;
+// A figure with a skeleton runs: at the speed its run is made for (dragged, as fast as the pointer), its stride set by
+// how far it has gone, so its feet never slide; it turns to face where it goes, and eases into its stand when it
+// arrives. It shows only a move this browser was already told about: the position is always the server's.
+function pose(f) {
+  const st = stand(f.rig, 0), p = f.w > 0.001 ? blend(st, run(f.rig, f.travel / f.rig.speed), f.w) : st;
+  for (let i = 0; i < f.bones.length; i++) f.bones[i].quaternion.fromArray(p.q, i * 4);
+  f.bones[f.root].position.set(f.rootAt[0] + p.root[0], f.rootAt[1] + p.root[1], f.rootAt[2] + p.root[2]);
 }
+function step(f, now, dt) {
+  let active = false;
+  if (f.from && f.rig) {
+    const dx = f.tx - f.x, dz = f.tz - f.z, d = Math.hypot(dx, dz), v = (f.held ? Math.max(f.rig.speed, (d * SQ) / 0.08) : f.rig.speed) / SQ, s = Math.min(d, v * dt);
+    if (s >= d - 1e-6) { f.x = f.tx; f.z = f.tz; f.from = null; } else { f.x += (dx / d) * s; f.z += (dz / d) * s; }
+    f.travel += s * SQ; if (s > 1e-5) f.moved = now; active = true;
+  } else if (f.from) {
+    const u = Math.min(1, (now - f.t0) / f.dur), e = u * u * (3 - 2 * u);
+    f.x = f.from[0] + (f.tx - f.from[0]) * e; f.z = f.from[1] + (f.tz - f.from[1]) * e;
+    if (u >= 1) f.from = null; active = true;
+  }
+  if (f.rig) {
+    let da = f.face - f.turned; da = Math.atan2(Math.sin(da), Math.cos(da));
+    if (Math.abs(da) > 1e-3) { f.turned += Math.sign(da) * Math.min(Math.abs(da), 9 * dt); active = true; }
+    const want = now - f.moved < 120 ? 1 : 0;
+    if (f.w !== want) { f.w = want ? Math.min(1, f.w + dt / 0.15) : Math.max(0, f.w - dt / 0.3); active = true; }
+    if (active && f.bones) pose(f);
+  }
+  if (f.obj) { f.obj.position.set(f.x, f.obj.position.y, f.z); f.obj.rotation.y = f.rig ? f.turned : f.face; }
+  return active;
+}
+let last = 0;
 function loop() {
   raf = requestAnimationFrame(loop);
-  const now = performance.now(); let moving = false;
-  for (const f of figs.values()) moving = step(f, now) || moving;
+  const now = performance.now(), dt = Math.min(0.05, last ? (now - last) / 1000 : 0.016); last = now; let moving = false;
+  for (const f of figs.values()) moving = step(f, now, dt) || moving;
   if (moving || dirty) { dirty = false; renderer.render(scene, camera); }
 }
 

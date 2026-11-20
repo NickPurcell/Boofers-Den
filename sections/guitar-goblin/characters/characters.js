@@ -13,7 +13,7 @@ import { createPool } from '../creator-kit/pool.js';
 import { makeTextures, clothMaterial, leatherMaterial, metalMaterial, plasticMaterial } from '../duros-creator/materials.js';
 import { OUTFITS } from './outfit-shape.js';
 import { fieldFor } from './bodyfield.js';
-import { bakeTable, bakeMeshes, TABLE_GRID } from '../human-base/table.js';
+import { bakeTable, bakeMeshes } from '../human-base/table.js';
 import { PEOPLE, optionsFor, defaultsOf, isSpecies } from './looks-page.js';
 
 const $ = (id) => document.getElementById(id);
@@ -314,6 +314,19 @@ panel(); apply(); view('bust'); $('status').hidden = true;
 let current = dress();
 stage.start();
 window.__fig = { fig, base, hair, state, ctrl, stage, camera: stage.camera, controls: stage.controls, redraw: stage.redraw, get ready() { return current; }, views: VIEWS, info, choose };
+// the pieces of clothing that hang rather than fit: on the spine whole, or fitted above and hanging from the hips below
+const SPINE = new Set(['cloak', 'cape']), SKIRTED = new Set(['coat', 'robe', 'skirt', 'tunic', 'tassets', 'sash']);
+function offTheLegs(entries, skeleton) {   // what a vertex took from the legs, given to the hips
+  const legs = new Set(skeleton.map((b, k) => (/^(upperleg|lowerleg|foot|toe)/.test(b.name) ? k : -1)).filter((k) => k >= 0)), hips = Math.max(0, skeleton.findIndex((b) => b.parent < 0));
+  for (const e of entries) {
+    const I = e.skinIndex, W = e.skinWeight; if (!I || !W) continue;
+    for (let v = 0; v < I.length; v += 4) {
+      let moved = 0, slot = -1;
+      for (let j = 0; j < 4; j++) { if (legs.has(I[v + j])) { moved += W[v + j]; W[v + j] = 0; if (slot < 0) slot = j; } else if (I[v + j] === hips && W[v + j] > 0) slot = j; }
+      if (moved && slot >= 0) { if (I[v + slot] !== hips) { I[v + slot] = hips; W[v + slot] = 0; } W[v + slot] += moved; }
+    }
+  }
+}
 if (BAKE) {
   // dressed, tendrils or hair grown (and a Pureblood's tendrils draped over the clothes: a 'redraw' a moment later):
   // baked and handed to the table that asked (same site only)
@@ -321,10 +334,19 @@ if (BAKE) {
     try {
       await current; await Promise.all(parts);
       if (sp() === 'pureblood') await new Promise((res) => { const t = setTimeout(res, 1500); fig.addEventListener('redraw', () => { clearTimeout(t); res(); }, { once: true }); });
-      let list = bakeTable(fig);
-      for (const name of ['hair', 'clothes', 'hair-down', 'tendrils']) { const o = fig.getObjectByName(name); if (o && o.visible) list = bakeMeshes(o, fig, list, { grid: TABLE_GRID }); }
-      const meshes = [...list], buf = meshes.flatMap((m) => [m.position.buffer, m.normal.buffer, m.color.buffer, m.index.buffer, ...(m.emissive ? [m.emissive.buffer] : [])]);
-      window.parent.postMessage({ type: 'holotable-figure', look: ASKED, figure: { v: 2, meshes } }, location.origin, [...new Set(buf)]);
+      // with its skeleton, so the table can make it run (human-base/table.js, motion.js): hair and tendrils ride the
+      // head; clothes the body under them, except a cloak or cape (on the spine, over the arms) and the skirts of a coat,
+      // robe or tunic, which hang from the hips (on the legs, they tore between them as the legs split)
+      let list = bakeTable(fig, { skin: true });
+      const extra = [], G = 0.01;
+      for (const name of ['hair', 'hair-down', 'tendrils']) { const o = fig.getObjectByName(name); if (o && o.visible) list = bakeMeshes(o, fig, list, { grid: G, skin: 'rigid' }); }
+      for (const piece of fig.getObjectByName('clothes')?.children || []) {
+        if (!piece.visible) continue;
+        if (SKIRTED.has(piece.name)) { const own = bakeMeshes(piece, fig, [], { grid: G, skin: 'surface' }); offTheLegs(own, list.skeleton); extra.push(...own); }
+        else list = bakeMeshes(piece, fig, list, { grid: G, skin: SPINE.has(piece.name) ? 'torso' : 'surface' });
+      }
+      const meshes = [...list, ...extra], buf = meshes.flatMap((m) => [m.position, m.normal, m.color, m.index, m.emissive, m.skinIndex, m.skinWeight].filter(Boolean).map((x) => x.buffer));
+      window.parent.postMessage({ type: 'holotable-figure', look: ASKED, figure: { v: 3, meshes, skeleton: list.skeleton } }, location.origin, [...new Set(buf)]);
     } catch (e) { console.error(e); window.parent.postMessage({ type: 'holotable-figure', look: ASKED, error: String(e && e.message || e) }, location.origin); }
   })();
 }
