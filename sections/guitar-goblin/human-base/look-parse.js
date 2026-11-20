@@ -10,7 +10,10 @@
      numbers;
    - too long, not text, or an unknown species: the default look of the default species. It never throws.
 
-   parseLook(text) -> { species, values, controls, look, changed }
+   A look says which kind of figure it is: kind=jawa for a Jawa (its own creator, its own keys); no kind, as in every look
+   made before there were kinds, is a person on the human base (kind 'humanoid').
+
+   parseLook(text) -> { kind, species, values, controls, look, changed, fallback }
      values    the choices, every key the species has (its default where the text had none or a bad one)
      controls  the body and face controls, every one, clamped (the person's own where the text had none)
      look      the same look written out canonically (fixed order, only the controls that differ from the person), so
@@ -50,7 +53,7 @@
   // one choice, against its whitelist entry; returns [value, ok]
   function choose(def, v) {
     if (v === undefined) return [def.def, true];
-    if (def.range) { const x = num(v, def.range[0], def.range[1]); return x === null ? [def.def, false] : [x, true]; }
+    if (def.range) { const x = num(v, def.range[0], def.range[1]); return x === null ? [def.def, false] : [def.int ? Math.round(x) : x, !def.int || x === Math.round(x)]; }
     if (def.multi) {
       const want = new Set(v.split('.').filter(Boolean)), keep = def.items.filter((k) => want.has(k));
       return [keep.join('.'), keep.length === want.size];
@@ -76,16 +79,29 @@
   }
   function fallback(changed) {
     const sp = SCHEMA.speciesOrder[0], values = defaults(sp), controls = personControls(values.people);
-    return { species: sp, values, controls, look: write(sp, values, controls), changed, fallback: true };
+    return { kind: 'humanoid', species: sp, values, controls, look: write(sp, values, controls), changed, fallback: true };
+  }
+  // another kind of figure (a Jawa): only that kind's keys, from its own whitelist, written back in its own order
+  function parseKind(kind, p) {
+    const K = SCHEMA.kinds[kind], values = {}, used = new Set(['kind']);
+    let changed = 0;
+    for (const k of K.order) { const [v, ok] = choose(K.keys[k], p.get(k)); values[k] = v; used.add(k); if (!ok) changed++; }
+    for (const k of p.keys()) if (!used.has(k)) changed++;
+    const look = ['kind=' + kind, ...K.order.map((k) => k + '=' + encodeURIComponent(String(values[k])))].join('&');
+    return { kind, species: null, values, controls: null, look, changed, fallback: false };
   }
 
   function parseLook(text) {
     if (typeof text !== 'string' || text.length > MAX) return fallback(1);
     let p;
     try { p = pairs(text); } catch (e) { return fallback(1); }
+    // which kind of figure: none (every look made before kinds) or 'humanoid' is a person on the human base; another
+    // kind is read against its own list only, so no kind's keys can reach another's figure
+    const kind = p.get('kind');
+    if (kind !== undefined && kind !== 'humanoid') return Object.prototype.hasOwnProperty.call(SCHEMA.kinds || {}, kind) ? parseKind(kind, p) : fallback(1);
     const sp = p.get('species');
     if (sp === undefined || SCHEMA.speciesOrder.indexOf(sp) < 0) return fallback(1);
-    const S = SCHEMA.species[sp], values = {}, used = new Set(['species']);
+    const S = SCHEMA.species[sp], values = {}, used = new Set(['species', 'kind']);
     let changed = 0;
     for (const k of S.order) { const [v, ok] = choose(S.keys[k], p.get(k)); values[k] = v; used.add(k); if (!ok) changed++; }
     const controls = personControls(values.people);
@@ -98,7 +114,7 @@
       controls[k] = x;
     }
     for (const k of p.keys()) if (!used.has(k)) changed++;
-    return { species: sp, values, controls, look: write(sp, values, controls), changed, fallback: false };
+    return { kind: 'humanoid', species: sp, values, controls, look: write(sp, values, controls), changed, fallback: false };
   }
 
   return { parseLook, SCHEMA, MAX };
