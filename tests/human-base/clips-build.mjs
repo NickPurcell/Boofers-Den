@@ -18,7 +18,9 @@ const { MeshoptDecoder } = await import(pathToFileURL(join(MO, 'node_modules', '
 await MeshoptDecoder.ready;
 
 export const SOURCE = { repo: 'https://github.com/Mesh2Motion/mesh2motion-app', commit: '1632e1a7e009600500d436628075aa3a0e8b36ac', path: 'static/assets/human/animations/', licence: 'CC0 1.0 Universal (LICENSE-CC0.MD: "All 3d models, blend files, rigs, animations")' };
-// what we ship, under our own names: their file, and how it plays (in place and looping, or once, keeping its travel)
+// what we ship, under our own names: their file, and how it plays (in place and looping, or once, keeping its travel).
+// Judged on our figures before shipping; left out: hit-knockback.glb (its last frames put a foot half a metre through
+// the floor), jog.glb is kept as a "charge" (our own run() is the default move)
 export const CLIPS = {
   idle: { file: 'idle-a.glb', root: 'inplace' },
   'idle-fight': { file: 'fighting-idle.glb', root: 'inplace' },
@@ -38,7 +40,6 @@ export const CLIPS = {
   'force-blast': { file: 'two-hand-blast.glb', root: 'keep' },
   'hit-chest': { file: 'hit-chest.glb', root: 'keep' },
   'hit-head': { file: 'hit-head.glb', root: 'keep' },
-  'hit-knockback': { file: 'hit-knockback.glb', root: 'keep' },
   'death': { file: 'death-a.glb', root: 'keep' },
   'dodge': { file: 'dodge-left.glb', root: 'keep' },
   'block': { file: 'sword-block.glb', root: 'keep' },

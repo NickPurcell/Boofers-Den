@@ -256,18 +256,21 @@ export function compact(clip, topo, o = {}) {
     for (let k = topo[at.get(n)].parent; k >= 0; k = topo[k].parent) { const m = topo[k].name; if (TRUNK.has(m)) break; if (dir[m]) { dir[n] = { ...dir[m], from: dir[m].from || m }; break; } }
   }
   // per frame: the turns, the hips, the ground
-  const nb = bones.length, d = new Float32Array(F * nb * 4), hip = new Float32Array(F * 3); let ground = Infinity;
+  const nb = bones.length, d = new Float32Array(F * nb * 4), hip = new Float32Array(F * 3), lows = [];
   const ends = ['wrist.L', 'wrist.R', 'foot.L', 'foot.R'].map((n) => src[n]).filter((k) => k !== undefined);
   let fastest = 0, impact = (F - 1) / clip.fps / 2, prevEnds = null;
   for (let f = 0; f < F; f++) {
     const P0 = pose(f);
     bones.forEach((n, i) => { const s = src[n]; d.set(Q.mul(G, Q.mul(Q.mul(P0.W[s], restWi[s]), Gi)), (f * nb + i) * 4); });
     hip.set(toOurs(P0.P[src.root]).map((v) => v / hipH), f * 3);
-    ground = Math.min(ground, lowestOf(P0));
+    lows.push(lowestOf(P0));
     const e = ends.map((k) => sub(P0.P[k], P0.P[src.root]));   // (from the hips, so the clip's travel is not speed)
     if (prevEnds) for (let k = 0; k < e.length; k++) { const v = Math.hypot(...sub(e[k], prevEnds[k])); if (v > fastest) { fastest = v; impact = (f - 0.5) / clip.fps; } }
     prevEnds = e;
   }
+  // the clip's ground: where its lowest joint usually is (a low percentile over the frames, not the single lowest, so
+  // one bad frame with a foot through the floor cannot lift the whole clip off it)
+  const sortedLows = lows.slice().sort((a, b) => a - b), ground = sortedLows[Math.floor((sortedLows.length - 1) * 0.1)];
   for (let f = 0; f < F; f++) hip[f * 3 + 1] -= ground / hipH;   // y: above the clip's ground
   // a run or walk made in place: the speed the ground would have to move under a planted foot (its median backward
   // speed while it is down), in hip heights a second, so the map can move the figure at it and the feet keep their grip
