@@ -300,6 +300,7 @@ function happenings() {
   const top = fe.reduce((m, e) => Math.max(m, +e.seq || 0), 0);
   if (lastSeq === null || top < lastSeq) { lastSeq = top; return; }   // (what happened before the view opened isn't played again)
   const fresh = fe.filter((e) => e.seq > lastSeq).sort((a, b) => a.seq - b.seq); lastSeq = top;
+  const used = new Set(), react = (r) => { const g = r.token && figs.get(r.token); if (g && !g.down) playOn(g, r.kind === 'miss' ? ['dodge'] : r.kind === 'crit' ? ['hit-head'] : r.kind === 'heal' ? [] : ['hit-chest']); };
   for (const ev of fresh) {
     const f = ev.token ? figs.get(ev.token) : null;
     if (ev.kind === 'move' && f && Array.isArray(ev.path) && ev.path.length > 1) {
@@ -311,11 +312,15 @@ function happenings() {
     }
     if (ev.kind !== 'act') continue;
     const tgt = ev.target ? figs.get(ev.target) : null, results = fresh.filter((r) => r.act === ev.seq);
-    const land = () => { for (const r of results) { const g = r.token && figs.get(r.token); if (g && !g.down) playOn(g, r.kind === 'miss' ? ['dodge'] : r.kind === 'crit' ? ['hit-head'] : r.kind === 'heal' ? [] : ['hit-chest']); } };
+    for (const r of results) used.add(r.seq);
+    const land = () => { for (const r of results) react(r); };
     if (f && tgt) f.face = Math.atan2(tgt.tx - f.tx, tgt.tz - f.tz);   // it turns to whoever it acts on
     const wp = f && f.rig ? weaponFor(f, ev, clipsOf(ev)) : { names: clipsOf(ev), draw: null };
     if (!(f && playOn(f, wp.names, { onImpact: land, draw: wp.draw, hit: wp.hit || 0, target: tgt ? { x: tgt.tx, z: tgt.tz } : null }))) land();
   }
+  // a hit or miss whose act this browser wasn't sent (by an attacker it can't see): the one hit still reacts, as chat
+  // already tells this player, but turns toward no one
+  for (const r of fresh) if ((r.kind === 'hit' || r.kind === 'crit' || r.kind === 'miss') && !used.has(r.seq)) react(r);
 }
 
 // A figure with a skeleton runs: at the speed its run is made for (dragged, as fast as the pointer), its stride set by
@@ -415,7 +420,7 @@ function up(e) {
 export function open() {
   if (!renderer) setup();
   if (!el.isConnected) flat.after(el);
-  el.style.display = 'block'; isOpen = true; sized = ''; resize(); paintGround();   // (three.js sets the canvas's display inline, so hidden alone would not hide it)
+  el.style.display = 'block'; isOpen = true; sized = ''; lastSeq = null; resize(); paintGround();   // (lastSeq: what happened while the view was shut isn't played when it opens)   // (three.js sets the canvas's display inline, so hidden alone would not hide it)
   if (!raf) loop();
 }
 export function close() {
