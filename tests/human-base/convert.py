@@ -27,6 +27,28 @@ JG = {'joint-' + j: j for j in JOINTS}
 used = set()
 for g, idx in faces:
     if g in KEEP or g in EYES or g in JG: used.update(idx)
+
+# ---------------- the skeleton: a cut of the CC0 default skeleton (rigs/default.mhskel, its own "license": "CC0") ------
+# The bones a figure needs to run and stand: the hips, the spine, the neck and head, and per side the pelvis, thigh,
+# shin, foot and toes, the clavicle, shoulder, upper arm, forearm and wrist. Every other bone's weight goes to the kept
+# bone it hangs from (fingers to the wrist, the face and jaw to the head), the toes to one toe bone. A joint's place is
+# the middle of the vertices the skeleton names for it (mostly the joint helper cubes, which ride every morph), so
+# those vertices are kept too.
+skel_file = os.path.join(DATA, 'peek', 'default.mhskel')
+SKEL = json.load(open(skel_file, encoding='utf-8')) if os.path.exists(skel_file) else None
+CORE = ['root', 'spine05', 'spine04', 'spine03', 'spine02', 'spine01', 'neck01', 'neck02', 'neck03', 'head']
+SIDE = ['pelvis', 'upperleg01', 'upperleg02', 'lowerleg01', 'lowerleg02', 'foot', 'toe3-1', 'clavicle', 'shoulder01', 'upperarm01', 'upperarm02', 'lowerarm01', 'lowerarm02', 'wrist']
+KEPT = CORE + [f'{b}.{s}' for s in 'LR' for b in SIDE]
+if SKEL:
+    if SKEL.get('license') != 'CC0': raise SystemExit('the skeleton file does not say CC0')
+    MB = SKEL['bones']
+    for b in KEPT:
+        if b not in MB: raise SystemExit('no bone ' + b)
+        for end in ('head', 'tail'): used.update(SKEL['joints'][MB[b][end]])
+    def kept_of(b):   # the kept bone a bone's weight goes to
+        if b.startswith('toe'): return 'toe3-1.' + b.rsplit('.', 1)[1]
+        while b not in KEPT: b = MB[b]['parent']
+        return b
 order = sorted(used)
 remap = {old: new for new, old in enumerate(order)}
 pos = array('f')
@@ -41,6 +63,8 @@ for g, idx in faces:
     if len(q) != 4: raise SystemExit('expected quads only in the body')
     quads.extend(q)
 n = len(order)
+bodyset = set(quads)
+inbody = lambda j: j in bodyset
 ys = [pos[i*3+1] for i in range(n)]
 print('kept vertices', n, 'quads', len(quads) // 4, 'height', round(max(ys) - min(ys), 3), 'min y', round(min(ys), 3))
 
@@ -152,7 +176,32 @@ if os.path.exists(wfile):
             elif base.startswith('finger1'): th[remap[i]] += w
     for j in range(n):
         if tot[j] > 0: fingW[j] = min(255, round(255 * fg[j] / tot[j])); thumbW[j] = min(255, round(255 * th[j] / tot[j]))
+    # the skeleton's joint cubes at the clavicle and shoulder stay with the body when the arms are lowered (the arm turns
+    # about the shoulder joint's own middle, which stays put); the elbow's and wrist's go with the arm, as above
+    if SKEL:
+        for side in 'LR':
+            for b in ('clavicle', 'shoulder01'):
+                for i in SKEL['joints'][MB[f'{b}.{side}']['head']]:
+                    if i in remap and not inbody(remap[i]): armW[remap[i]] = 0; foreW[remap[i]] = 0
     with open(os.path.join(OUT, 'skin.bin'), 'wb') as f: f.write(armW.tobytes() + foreW.tobytes() + fingW.tobytes() + thumbW.tobytes())
+    # per vertex the four kept bones that move it most, and how much (bytes summing to 255): bones.bin holds the n*4
+    # bone numbers, then the n*4 weights. A vertex with no weight (a helper) follows the hips.
+    if SKEL:
+        KI = {b: k for k, b in enumerate(KEPT)}
+        per = [dict() for _ in range(n)]
+        for bone, lst in W.items():
+            kb = KI[kept_of(bone)]
+            for i, w in lst:
+                if i in remap and w > 0: d = per[remap[i]]; d[kb] = d.get(kb, 0.0) + w
+        bi = array('B', bytes(n * 4)); bw = array('B', bytes(n * 4))
+        for j in range(n):
+            top = sorted(per[j].items(), key=lambda t: -t[1])[:4]
+            tot4 = sum(w for _, w in top)
+            if tot4 <= 0: bw[j * 4] = 255; continue
+            q = [int(255 * w / tot4) for _, w in top]; q[0] += 255 - sum(q)
+            for k, (b, _) in enumerate(top): bi[j * 4 + k] = b; bw[j * 4 + k] = q[k]
+        with open(os.path.join(OUT, 'bones.bin'), 'wb') as f: f.write(bi.tobytes() + bw.tobytes())
+        print('bones', len(KEPT), '| weighted vertices', sum(1 for d in per if d))
     print('finger vertices', sum(1 for v in fingW if v > 0), 'thumb', sum(1 for v in thumbW if v > 0))
     print('arm weights: vertices on the arms', sum(1 for v in armW if v > 0), 'on the forearms', sum(1 for v in foreW if v > 0))
 
@@ -171,6 +220,7 @@ with open(os.path.join(OUT, 'targets.bin'), 'wb') as f: f.write(blob)
 mesh = pos.tobytes() + quads.tobytes()
 with open(os.path.join(OUT, 'mesh.bin'), 'wb') as f: f.write(mesh)
 info = {'vertices': n, 'quads': len(quads) // 4, 'unit': 'decimetre', 'eyes': {k: sorted(v) for k, v in eyeVerts.items()}, 'joints': {k: sorted(v) for k, v in jointVerts.items() if v}, 'targets': meta}
+if SKEL: info['skeleton'] = [{'name': b, 'parent': KEPT.index(MB[b]['parent']) if MB[b]['parent'] in KEPT else -1, 'head': sorted(remap[i] for i in SKEL['joints'][MB[b]['head']]), 'tail': sorted(remap[i] for i in SKEL['joints'][MB[b]['tail']])} for b in KEPT]
 with open(os.path.join(OUT, 'mesh.json'), 'w') as f: json.dump(info, f, separators=(',', ':'))
 tot = sum(m['n'] for m in meta.values())
 print('targets', len(meta), 'deltas', tot, '| mesh.bin', len(mesh), 'targets.bin', len(blob), 'json', os.path.getsize(os.path.join(OUT, 'mesh.json')))

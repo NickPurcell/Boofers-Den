@@ -1,6 +1,6 @@
 # Where this data comes from
 
-`mesh.bin`, `mesh.json` and `targets.bin` are converted from assets of the MakeHuman project:
+`mesh.bin`, `mesh.json`, `targets.bin`, `skin.bin` and `bones.bin` are converted from assets of the MakeHuman project:
 
 - repository: https://github.com/makehumancommunity/makehuman
 - commit: a8bc2d54ff0ac92e78ff71431b1023eda42bf482
@@ -9,7 +9,10 @@
   `eyebrows/`, `forehead/`, `eyes/`, `nose/`, `mouth/`, `cheek/`, `chin/`, `head/`, `neck/`, `torso/`, `stomach/`,
   `armslegs/` (upper and lower arm fat and muscle) and `bodyshapes/` (one heavy male shape); 14 ear targets under `ears/`; 12 eyelid targets under
   `eyes/`; and the skeleton weights `makehuman/data/rigs/default_weights.mhw` (its own header: "license": "CC0"), from
-  which `skin.bin` keeps, per vertex, how much follows the upper arm, the forearm, the fingers and the thumb.
+  which `skin.bin` keeps, per vertex, how much follows the upper arm, the forearm, the fingers and the thumb; and the
+  skeleton `makehuman/data/rigs/default.mhskel` (its own header: "license": "CC0"), of which 38 bones are kept
+  (`mesh.json`'s `skeleton`: each bone's parent and the vertices that place its joints), with `bones.bin` holding, per
+  vertex, the four kept bones that move it most and their weights, from the same weights file.
 
 Licence: **Creative Commons CC0 1.0 Universal** (public domain dedication). The repository's `LICENSE.md` (section C)
 says the base mesh, proxies, targets and modifiers are released under CC0 1.0, and `LICENSE.ASSETS.md` holds the CC0
@@ -22,7 +25,7 @@ body's vertices away in for a coarser figure (the one drawn on the table).
 
 What was done to them:
 - Only the `body` group of the base mesh is kept (all quads), with the two eye helper spheres (used to place our own
-  eyes) and 33 of the joint helper cubes (used as landmarks).
+  eyes), 33 of the joint helper cubes (used as landmarks) and the joint vertices the kept bones name.
 - The three ethnic gender-and-age shapes are averaged in equal parts.
 - Left and right halves of a target are summed into one.
 - Every target is stored as 16-bit offsets with one scale each.
@@ -33,5 +36,6 @@ The carried things (`../carry.js`) use no MakeHuman data: they are our own shape
 
 MakeHuman's program code is under the AGPL; none of it is used, copied or adapted here. Everything that reads and uses
 this data is our own: the loader, the morph blending, the subdivision, the landmarks, the skin, the eyes and the species
-features, and the skinning that lowers the arms, the coarser figure baked for the table (`../base.js`, `../skin.js`, `../eyes.js`,
-`../species/`, `../table.js`).
+features, and the skinning that lowers the arms, the coarser figure baked for the table, and the run and the stand, written as joint
+turns in our own code with no motion data (`../base.js`, `../skin.js`, `../eyes.js`, `../species/`, `../table.js`,
+`../motion.js`).

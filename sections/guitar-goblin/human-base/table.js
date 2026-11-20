@@ -105,7 +105,7 @@ function buckets() { return new Map(); }
 function bucket(B, rough, metal, name) {
   rough = Math.round(rough * 10) / 10; metal = Math.round(metal * 4) / 4;
   const key = `${name || 'part'} ${rough} ${metal}`;
-  let b = B.get(key); if (!b) B.set(key, (b = { name: name || 'part', rough, metal, P: [], N: [], C: [], E: null, I: [] }));
+  let b = B.get(key); if (!b) B.set(key, (b = { name: name || 'part', rough, metal, P: [], N: [], C: [], E: null, I: [], SI: [], SW: [] }));
   return b;
 }
 function finish(B) {
@@ -114,6 +114,7 @@ function finish(B) {
     if (!b.I.length) continue;
     const e = { name: b.name, position: Float32Array.from(b.P), normal: Float32Array.from(b.N), color: Uint8Array.from(b.C, toByte), index: Uint32Array.from(b.I), rough: b.rough, metal: b.metal };
     if (b.E) e.emissive = Uint8Array.from(b.E, toByte);
+    if (b.SI.length) { e.skinIndex = Uint8Array.from(b.SI); e.skinWeight = Uint8Array.from(b.SW); }
     out.push(e);
   }
   return out;
@@ -126,18 +127,46 @@ function reopen(list) {
     if (e.emissive && !b.E) b.E = new Array(b.C.length).fill(0);
     push(b.P, e.position); push(b.N, e.normal); push(b.C, e.color, lin); push(b.I, e.index, (i) => i + base);
     if (b.E) { if (e.emissive) push(b.E, e.emissive, lin); else for (let i = 0; i < e.color.length; i++) b.E.push(0); }
+    if (e.skinIndex) { push(b.SI, e.skinIndex); push(b.SW, e.skinWeight); }
   }
   return B;
 }
 // one skin painter per material in a bake (each reads the marks canvas once)
 const painterOf = (ctx, mat) => { let p = ctx.get(mat); if (!p) ctx.set(mat, (p = skinPainter(mat))); return p; };
 
+/* ---------------- the skeleton, for a figure that moves ---------------- */
+// The figure's bones where they are now (the arms-down pose the page shows is the pose they are bound in, every bone's
+// own turn the identity), each vertex's four bones and weights (data/bones.bin), and how anything else hangs on them:
+// 'surface' (each vertex as the body under it: clothes), 'rigid' (all on the one bone the body under it follows most:
+// tendrils, hair, a helmet) or 'torso' (the same, but only the hips or the spine: things worn on a belt or the back).
+const TORSO = new Set(['root', 'spine05', 'spine04', 'spine03', 'spine02', 'spine01']);
+function rigOf(fig) {
+  const base = fig.B, S = base.skeleton; if (!S) return null;
+  const p = fig.p0, N = base.N, bones = S.bones.map((b) => { const c = [0, 0, 0]; for (const i of b.head) for (let k = 0; k < 3; k++) c[k] += p[i * 3 + k] / b.head.length; return { name: b.name, parent: b.parent, head: c }; });
+  // the body's vertices in cells 3 cm across, for the vertex nearest a point
+  const CELL = 0.03, grid = new Map(), key = (x, y, z) => `${Math.floor(x / CELL)},${Math.floor(y / CELL)},${Math.floor(z / CELL)}`;
+  for (let i = 0; i < N; i++) if (base.inBody[i]) { const k = key(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]); let a = grid.get(k); if (!a) grid.set(k, (a = [])); a.push(i); }
+  const nearest = (x, y, z) => {
+    const cx = Math.floor(x / CELL), cy = Math.floor(y / CELL), cz = Math.floor(z / CELL); let best = -1, bd = Infinity;
+    for (let r = 0; r < 12 && (best < 0 || r < 2); r++) {
+      for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) for (let c = -r; c <= r; c++) {
+        if (Math.max(Math.abs(a), Math.abs(b), Math.abs(c)) !== r) continue;
+        for (const i of grid.get(`${cx + a},${cy + b},${cz + c}`) || []) { const d = (p[i * 3] - x) ** 2 + (p[i * 3 + 1] - y) ** 2 + (p[i * 3 + 2] - z) ** 2; if (d < bd) { bd = d; best = i; } }
+      }
+    }
+    return [best, Math.sqrt(bd)];
+  };
+  const index = Object.fromEntries(bones.map((b, k) => [b.name, k]));
+  const torsoOf = (k) => { while (k > 0 && !TORSO.has(bones[k].name)) k = bones[k].parent; return Math.max(0, k); };
+  return { bones, index, idx: S.idx, w: S.w, nearest, torsoOf };
+}
+
 /* ---------------- the body, from the base mesh itself ---------------- */
 // keep: how many of the body's vertices stay (the base has 13,378; derive.js's collapse order says which go first);
 // Infinity keeps them all. Each vertex that stays takes the average colour of those folded into it, so lips, brows and
 // liner still read as a tint where their own vertices have gone. B.at: for every base vertex, its vertex in the 'skin'
 // entry (or -1), so a page can drop the body's triangles under its clothes.
-function bakeBody(fig, B, ctx, keep) {
+function bakeBody(fig, B, ctx, keep, rig) {
   const base = fig.B, N = base.N, p = fig.p0, q = base.quads, full = !(keep < Infinity) || !base.derived.lod;
   const rep = full ? null : coarser(base, keep).rep, R_ = (i) => (rep ? rep[i] : i);
   const nrm = quadNormals(p, q, N, new Float32Array(N * 3));
@@ -146,7 +175,7 @@ function bakeBody(fig, B, ctx, keep) {
   const first = b.P.length / 3, sum = [], cnt = [], done = new Uint8Array(N);
   for (let f = 0; f < q.length; f++) {
     const i = q[f]; if (done[i]) continue; done[i] = 1;
-    const r = R_(i); if (at[r] < 0) { at[r] = b.P.length / 3; b.P.push(p[r * 3], p[r * 3 + 1], p[r * 3 + 2]); b.N.push(0, 0, 0); sum.push(0, 0, 0); cnt.push(0); }
+    const r = R_(i); if (at[r] < 0) { at[r] = b.P.length / 3; b.P.push(p[r * 3], p[r * 3 + 1], p[r * 3 + 2]); b.N.push(0, 0, 0); sum.push(0, 0, 0); cnt.push(0); if (rig) for (let k = 0; k < 4; k++) { b.SI.push(rig.idx[r * 4 + k]); b.SW.push(rig.w[r * 4 + k]); } }
     at[i] = at[r];
     const nx = nrm[i * 3], ny = nrm[i * 3 + 1], nz = nrm[i * 3 + 2], l = Math.hypot(nx, ny, nz) || 1;
     paint(col, 0, R[i * 3], R[i * 3 + 1], R[i * 3 + 2], nz / l, lip[i], cav[i * 2], cav[i * 2 + 1], mark ? mark[i * 2] : 0, mark ? mark[i * 2 + 1] : 0, armW[i] / 255, hand[i]);
@@ -171,7 +200,7 @@ function bakeBody(fig, B, ctx, keep) {
 
 /* ---------------- the eyes: small balls, the iris in their vertices ---------------- */
 // rings of latitude close together over the iris so its colour holds at this size; the pole faces +z as the page's eye
-function bakeEyes(fig, B) {
+function bakeEyes(fig, B, rig) {
   const look = fig.eyes.look || {}, hex = EYE_COLOURS[look.colour] || look.colour || '#5a3418';
   const iris = new THREE.Color(hex), white = new THREE.Color(look.white || '#e6dfd6'), glow = +look.glow || 0, k = +look.iris || 1;
   const A = [0, 0.07, 0.14, 0.2, 0.26, 0.32, 0.4, 0.55, 0.75, 1].map((t) => t * Math.PI), SEG = 12;
@@ -189,7 +218,7 @@ function bakeEyes(fig, B) {
       for (let s = 0; s < cnt; s++) {
         const ph = (s / SEG) * Math.PI * 2, x = Math.sin(a) * Math.cos(ph), y = Math.sin(a) * Math.sin(ph), z = Math.cos(a);
         v.set(x, y, z).applyMatrix4(m); n.set(x, y, z).applyMatrix3(nm).normalize();
-        b.P.push(v.x, v.y, v.z); b.N.push(n.x, n.y, n.z); b.C.push(...c);
+        b.P.push(v.x, v.y, v.z); b.N.push(n.x, n.y, n.z); b.C.push(...c); if (rig) { b.SI.push(rig.index.head, 0, 0, 0); b.SW.push(255, 0, 0, 0); }
         if (b.E) { const g = !pupil && inIris ? glow : 0; b.E.push(iris.r * g, iris.g * g, iris.b * g); }
       }
     });
@@ -207,8 +236,9 @@ const ROLE_FINISH = [null, null, [[0.8, 0.81, 0.83], 0.3, 1], [[0.035, 0.038, 0.
 const visible = (o, root) => { for (let x = o; x && x !== root; x = x.parent) if (!x.visible) return false; return true; };
 
 // o.grid: merge vertices within cells this many metres across (0: keep every vertex)
-export function bakeMeshes(root, fig, list = [], o = {}) { const B = reopen(list); collect(root, fig, B, new Map(), o.grid || 0); return finish(B); }
-function collect(root, fig, B, ctx, grid) {
+// o.skin: how its vertices hang on the skeleton ('surface', 'rigid' or 'torso'; see rigOf), when the list has one
+export function bakeMeshes(root, fig, list = [], o = {}) { const B = reopen(list), rig = list.skeleton || o.skin ? rigOf(fig) : null; collect(root, fig, B, new Map(), o.grid || 0, rig, o.skin || 'surface'); const out = finish(B); if (list.skeleton) out.skeleton = list.skeleton; return out; }
+function collect(root, fig, B, ctx, grid, rig, mode) {
   const toFig = new THREE.Matrix4(), m = new THREE.Matrix4(), nm = new THREE.Matrix3(), v = new THREE.Vector3(), n = new THREE.Vector3(), col = [0, 0, 0];
   fig.updateMatrixWorld(true); toFig.copy(fig.matrixWorld).invert();
   root.traverse((o) => {
@@ -259,6 +289,22 @@ function collect(root, fig, B, ctx, grid) {
     for (let i = 0; i < nV; i++) { const g = id[i]; gk[g]++; gb[g] = tb[i]; for (let k = 0; k < 3; k++) { gp[g * 3 + k] += tp[i * 3 + k]; gc[g * 3 + k] += tc[i * 3 + k]; gn[g * 3 + k] += tn[i * 3 + k]; } }
     for (let g = 0; g < groups; g++) for (let k = 0; k < 3; k++) { gp[g * 3 + k] /= gk[g]; gc[g * 3 + k] /= gk[g]; }
     if (grid > 0) gn.fill(0);
+    // what each group hangs on: one bone for the whole mesh (that of the body under its nearest point), or the body's
+    // own weights under each group
+    let one = -1;
+    if (rig && mode !== 'surface') {
+      let bd = Infinity, bv = -1; const step = Math.max(1, Math.floor(groups / 300));
+      for (let g = 0; g < groups; g += step) { const [v0, d] = rig.nearest(gp[g * 3], gp[g * 3 + 1], gp[g * 3 + 2]); if (d < bd) { bd = d; bv = v0; } }
+      one = bv < 0 ? 0 : rig.idx[bv * 4];
+      if (mode === 'torso') one = rig.torsoOf(one);
+    }
+    const skinOf = (b, g) => {
+      if (!rig) return;
+      if (one >= 0) { b.SI.push(one, 0, 0, 0); b.SW.push(255, 0, 0, 0); return; }
+      const [v0] = rig.nearest(gp[g * 3], gp[g * 3 + 1], gp[g * 3 + 2]);
+      if (v0 < 0) { b.SI.push(0, 0, 0, 0); b.SW.push(255, 0, 0, 0); return; }
+      for (let k = 0; k < 4; k++) { b.SI.push(rig.idx[v0 * 4 + k]); b.SW.push(rig.w[v0 * 4 + k]); }
+    };
     const seen = new Map(), tris = new Set(), added = [];   // (bucket) -> group -> index in the bucket
     for (let t = 0; t + 2 < I.length; t += 3) {
       const g3 = flip ? [id[I[t]], id[I[t + 2]], id[I[t + 1]]] : [id[I[t]], id[I[t + 1]], id[I[t + 2]]];
@@ -268,7 +314,7 @@ function collect(root, fig, B, ctx, grid) {
         const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; for (const w of g3) { gn[w * 3] += nx; gn[w * 3 + 1] += ny; gn[w * 3 + 2] += nz; } }
       const b = gb[g3[0]]; if (glow && !b.E) b.E = new Array(b.C.length).fill(0);
       let map = seen.get(b); if (!map) seen.set(b, (map = new Map()));
-      b.I.push(...g3.map((g) => { let k = map.get(g); if (k === undefined) { k = b.P.length / 3; map.set(g, k); b.P.push(gp[g * 3], gp[g * 3 + 1], gp[g * 3 + 2]); b.N.push(0, 0, 0); b.C.push(gc[g * 3], gc[g * 3 + 1], gc[g * 3 + 2]); if (b.E) b.E.push(...(glow || [0, 0, 0])); added.push([b, k, g]); } return k; }));
+      b.I.push(...g3.map((g) => { let k = map.get(g); if (k === undefined) { k = b.P.length / 3; map.set(g, k); b.P.push(gp[g * 3], gp[g * 3 + 1], gp[g * 3 + 2]); b.N.push(0, 0, 0); b.C.push(gc[g * 3], gc[g * 3 + 1], gc[g * 3 + 2]); if (b.E) b.E.push(...(glow || [0, 0, 0])); skinOf(b, g); added.push([b, k, g]); } return k; }));
     }
     for (const [b, k, g] of added) { const l = Math.hypot(gn[g * 3], gn[g * 3 + 1], gn[g * 3 + 2]) || 1; b.N[k * 3] = gn[g * 3] / l; b.N[k * 3 + 1] = gn[g * 3 + 1] / l; b.N[k * 3 + 2] = gn[g * 3 + 2] / l; }
   });
@@ -276,16 +322,19 @@ function collect(root, fig, B, ctx, grid) {
 
 // the whole figure: the body from the base mesh (not the subdivided one the page shows), the eyes, and the species'
 // features and the carried thing as the page shows them now
+// o.skin: true for a figure that moves (skinIndex and skinWeight on every entry, and list.skeleton; see rigOf).
 // o.keep: the body's vertices to keep (default TABLE_KEEP; Infinity for all of them); o.grid: the cell the species'
 // features and the carried thing are simplified to (default TABLE_GRID, 4 mm; 0 to keep them whole)
 export const TABLE_KEEP = 3500, TABLE_GRID = 0.004;
 export function bakeTable(fig, o = {}) {
   const t0 = performance.now(), B = buckets(), ctx = new Map();
   fig.updateMatrixWorld(true);
-  const body = bakeBody(fig, B, ctx, o.keep ?? TABLE_KEEP); bakeEyes(fig, B);
-  for (const name of ['pureblood', 'carry']) { const g = fig.getObjectByName(name); if (g) collect(g, fig, B, ctx, o.grid ?? TABLE_GRID); }
+  const rig = o.skin ? rigOf(fig) : null;
+  const body = bakeBody(fig, B, ctx, o.keep ?? TABLE_KEEP, rig); bakeEyes(fig, B, rig);
+  for (const [name, mode] of [['pureblood', 'rigid'], ['carry', 'torso']]) { const g = fig.getObjectByName(name); if (g) collect(g, fig, B, ctx, o.grid ?? TABLE_GRID, rig, mode); }
   const list = finish(B);
   list.at = body.at; list.kept = body.kept;
+  if (rig) list.skeleton = rig.bones;   // [{ name, parent (an index, -1 for the hips), head: [x, y, z] }], bound as they stand
   list.ms = Math.round(performance.now() - t0);
   return list;
 }
