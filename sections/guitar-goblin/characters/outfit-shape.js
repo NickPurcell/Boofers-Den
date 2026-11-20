@@ -7,6 +7,7 @@
 // their skin, unsigned except that the body's is negative inside the figure), J: joints by name,
 // L: landmarks by name ({ p, n }), all in metres, y up, +z forward, the figure's left at +x.
 import { smin, ssub } from '../duros-creator/sdf.js';
+import { durosField } from './duros-head.js';   // (a Duros's hood is cut round its head)
 
 const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
@@ -253,16 +254,30 @@ export function cowl(ctx, role = 'second') {
   return { name: 'cowl', material: 'cloth', role, field: f, bounds: [[-(R + 0.12), ny - 0.16, M.neckZ - R - 0.12], [R + 0.12, ny + 0.06, M.neckZ + R + 0.12]], res: 0.0058 };
 }
 // a hood worn up: a smooth shell over the head (ears and hair do not show through), open round the face and down the
-// throat, running into the same drape
-export function hood(ctx, role = 'second') {
-  const M = measures(ctx), { e, k, c } = headOf(ctx), cw = cowl(ctx, role);
-  const ell = (x, y, z) => { const rx = 0.1 * k, ry = 0.118 * k, rz = 0.122 * k, q = Math.hypot(x / rx, (y - c[1]) / ry, (z - c[2]) / rz); return (q - 1) * Math.min(rx, ry, rz); };
-  const neck = (x, y, z) => { const t = Math.max(0, Math.min(1, (c[1] - 0.05 - y) / (c[1] - 0.05 - M.neckY))); return Math.max(Math.hypot(x, z - (c[2] + (M.neckZ - c[2]) * t)) - (0.09 * k + 0.01 * t), M.neckY - y, y - c[1]); };
+// throat, running into the same drape. For a Duros (head: { kind: 'duros', shape, and where its head is: o, x, up, z, k,
+// as the page sets it) it is cut for the Duros's own head (duros-head.js): a taller, deeper shell over the high domed
+// cranium, a little wider at the face for the eyes, with the head itself carved out of it and a little room round it
+// where it can be seen (the face and the opening round it), so no part of the head shows through the cloth; and the shell
+// swells over the head wherever it would be thin (thin cloth comes apart in the table's bake)
+const HEADS = { human: { cy: 0.03, cz: -0.075, rx: 0.1, ry: 0.118, rz: 0.122, ow: 0.074, top: 0.16, nr: 0.09, nz: 0 }, duros: { cy: 0.045, cz: -0.045, rx: 0.112, ry: 0.158, rz: 0.15, ow: 0.088, top: 0.215, nr: 0.106, nz: 0.018 } };
+function cavityOf(h, room = 0.006) {
+  const F = durosField(h.shape), [ox, oy, oz] = h.o, X = h.x, U = h.up, Z = h.z, k = h.k;
+  return (x, y, z) => { const dx = x - ox, dy = y - oy, dz = z - oz; return F((dx * X[0] + dy * X[1] + dz * X[2]) / k, (dx * U[0] + dy * U[1] + dz * U[2]) / k, (dx * Z[0] + dy * Z[1] + dz * Z[2]) / k) * k - room; };
+}
+export function hood(ctx, role = 'second', head = 'human') {
+  const kind = head && typeof head === 'object' ? head.kind : head, H = HEADS[kind] || HEADS.human;
+  const M = measures(ctx), { e, k } = headOf(ctx), cw = cowl(ctx, role), c = [0, e[1] + H.cy * k, e[2] + H.cz * k];
+  const ell = (x, y, z) => { const rx = H.rx * k, ry = H.ry * k, rz = H.rz * k, q = Math.hypot(x / rx, (y - c[1]) / ry, (z - c[2]) / rz); return (q - 1) * Math.min(rx, ry, rz); };
+  const neck = (x, y, z) => { const t = Math.max(0, Math.min(1, (c[1] - 0.05 - y) / (c[1] - 0.05 - M.neckY))); return Math.max(Math.hypot(x, z - (c[2] + H.nz * k + (M.neckZ - c[2] - H.nz * k) * t)) - (H.nr * k + 0.01 * t), M.neckY - y, y - c[1]); };
   const k2 = 0.02, shell = (x, y, z) => { const a = ell(x, y, z), b = neck(x, y, z), h = Math.max(k2 - Math.abs(a - b), 0) / k2; return Math.min(a, b) - h * h * k2 * 0.25; };
-  const open = (x, y, z) => (z < e[2] - 0.06 * k ? -1 : Math.max(1 - Math.hypot(x / (0.074 * k), (y - e[1] + 0.016) / (0.12 * k)), y < e[1] - 0.07 * k ? 1 - Math.abs(x) / (0.05 * k) : -1) * 0.07);
-  const over = (x, y, z) => Math.max(shell(x, y, z), open(x, y, z), M.neckY - 0.01 - y);
+  const open = (x, y, z) => (z < e[2] - 0.06 * k ? -1 : Math.max(1 - Math.hypot(x / (H.ow * k), (y - e[1] + 0.016) / (0.12 * k)), y < e[1] - 0.07 * k ? 1 - Math.abs(x) / (0.05 * k) : -1) * 0.07);
+  const cav = kind === 'duros' && head.o ? cavityOf(head) : null, back = e[2] - 0.07 * k, inner = cav && ((x, y, z) => Math.max(cav(x, y, z), back - z));
+  const k4 = 0.02, full = cav && ((x, y, z) => { const a = shell(x, y, z), b = cav(x, y, z) - 0.02, h = Math.max(k4 - Math.abs(a - b), 0) / k4; return Math.min(a, b) - h * h * k4 * 0.25; });
+  // (and its rim rounded where the opening is cut: a soft edge, not a sawn one)
+  const k5 = 0.008, rim = (a, b) => { const h = Math.max(k5 - Math.abs(a - b), 0) / k5; return Math.max(a, b) + h * h * k5 * 0.25; };
+  const over = inner ? (x, y, z) => Math.max(rim(full(x, y, z), open(x, y, z)), M.neckY - 0.01 - y, -inner(x, y, z)) : (x, y, z) => Math.max(shell(x, y, z), open(x, y, z), M.neckY - 0.01 - y);
   const k3 = 0.014, f = (x, y, z) => { const a = cw.field(x, y, z), b = over(x, y, z), h = Math.max(k3 - Math.abs(a - b), 0) / k3; return Math.min(a, b) - h * h * k3 * 0.25; };
-  return { name: 'hood', material: 'cloth', role, field: f, bounds: [[-(M.sx + 0.04), M.neckY - 0.16, c[2] - 0.2], [M.sx + 0.04, c[1] + 0.16 * k, c[2] + 0.2]], res: 0.0068 };
+  return { name: 'hood', material: 'cloth', role, field: f, bounds: [[-(M.sx + 0.04), M.neckY - 0.16, c[2] - 0.2], [M.sx + 0.04, c[1] + H.top * k, c[2] + 0.2]], res: 0.0068 };
 }
 
 

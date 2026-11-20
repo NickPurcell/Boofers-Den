@@ -238,6 +238,12 @@ function paintTendrils() {
   col.needsUpdate = true; tentMat.sheenColor.copy(state.pattern === 'deepen' ? c.clone().multiplyScalar(0.6) : lit); tentMat.sheen = state.pattern === 'deepen' ? 0.15 : 0.3; lockMat.sheenColor.copy(c).lerp(new THREE.Color(1, 1, 1), 0.3);
 }
 
+// the head a raised hood is cut for: a human's, or a Duros's own where the page has set it (its hood is carved round it)
+function headFor() {
+  if (sp() !== 'duros') return 'human';
+  const { o, x, up, z, k } = durosFrame();
+  return { kind: 'duros', shape: state.head || 'round', o: o.toArray(), x: x.toArray(), up: up.toArray(), z: z.toArray(), k };
+}
 let parts = [];
 async function dress() {
   const my = ++dressTicket, key = state.outfit;
@@ -247,7 +253,7 @@ async function dress() {
   if (!OUTFITS[key] || key === 'none') { clear(); wear(my); return; }
   const J = Object.fromEntries(Object.keys(base.info.joints).map((k) => [k, fig.joint(k)]));
   const L = Object.fromEntries(['neckSideL', 'neckSideR', 'chestMid', 'backMid'].map((k) => { const l = fig.landmark(k); return [k, { p: l.p, n: l.n }]; }));
-  const args = { key, hood: state.hood, surface: { position: fig.p0.slice(), normal: fig.n0.slice(), index: tris }, J, L }, n = pool.size(), t0 = performance.now(), T0 = Date.now();
+  const args = { key, hood: state.hood, head: headFor(), surface: { position: fig.p0.slice(), normal: fig.n0.slice(), index: tris }, J, L }, n = pool.size(), t0 = performance.now(), T0 = Date.now();
   $('status').hidden = false; $('status').textContent = 'Dressing…';
   // two passes: a coarse one (cells twice the size, several times quicker) put on as soon as it is whole, then the fine
   // one in the background, replacing it whole; a newer choice drops whatever is still waiting
@@ -341,7 +347,7 @@ function choose(k, v) {
   if (k === 'species') { for (const q of Object.keys(state)) if (q !== 'species') delete state[q]; settle(); people(state.people); panel(); }
   if (k === 'people') people(v);
   apply(); paintPanel(); writeHash();
-  if (SHAPE_OPTS.has(k) || (sp() === 'mikkian' && k === 'style') || (k === 'style' && (DOWN.has(v) || fallen))) redress(); else recolourClothes();
+  if (SHAPE_OPTS.has(k) || (k === 'head' && state.hood === 'up') || (sp() === 'mikkian' && k === 'style') || (k === 'style' && (DOWN.has(v) || fallen))) redress(); else recolourClothes();
 }
 function recolourClothes() { const cols = colours(); for (const m of clothes.children) m.material.color.set(cols[m.userData.role] || '#777777'); stage.redraw(); }
 $('random').addEventListener('click', () => {

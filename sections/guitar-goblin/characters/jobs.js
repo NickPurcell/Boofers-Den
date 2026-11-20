@@ -64,7 +64,7 @@ export function run(job, a) {
     const { all, body, arms } = bodyFields(P, N, I, arm);
     const ctx = { all, body, arms, torso: torsoField(P, I, arm, a.J), hips: hipsOf(P, I, arm, a.J), J: a.J, L: a.L };
     const pieces = (OUTFITS[a.key] || OUTFITS.none).make(ctx);
-    if (a.key !== 'none' && a.hood === 'down') pieces.push(cowl(ctx, a.key === 'robe' ? 'main' : 'second')); else if (a.key !== 'none' && a.hood === 'up') pieces.push(hood(ctx, a.key === 'robe' ? 'main' : 'second'));
+    if (a.key !== 'none' && a.hood === 'down') pieces.push(cowl(ctx, a.key === 'robe' ? 'main' : 'second')); else if (a.key !== 'none' && a.hood === 'up') pieces.push(hood(ctx, a.key === 'robe' ? 'main' : 'second', a.head));
     // shared between the workers part by part (a piece in several parts may be split), each part's cost guessed from
     // its box and cell size, the largest first to whichever worker has least so far: every worker gets the same deal
     const res = (p) => (p.res || 0.008) * (a.coarse || 1);

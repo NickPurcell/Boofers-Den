@@ -75,7 +75,7 @@ export function optionsFor(sp) {
     else if (typeof d.min === 'number') o[k] = { label: d.label, min: d.min, max: d.max };   // (the folds' height: a slider)
   }
   o.outfit = { label: 'Outfit', items: P.outfits.map((k) => ({ key: k, name: OUTFITS[k].name })) };
-  o.hood = { label: 'Hood', items: asItems(HOODS).filter((it) => sp !== 'duros' || it.key !== 'up') };   // (a raised hood is cut for a human head)
+  o.hood = { label: 'Hood', items: asItems(HOODS) };   // (raised on a Duros, it is cut for the Duros's head: outfit-shape.js hood)
   o.gear = { label: 'Carries', items: asItems(ITEMS) };
   o.main = { label: 'Main colour', swatch: true, items: CLOTH }; o.second = { label: 'Second colour', swatch: true, items: CLOTH };
   return o;
