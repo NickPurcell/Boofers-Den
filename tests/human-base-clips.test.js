@@ -117,3 +117,26 @@ test("the shipped clips: each one unpacks and plays on our skeleton, and the NOT
   }
   assert.ok(C.play(C.unpackClip(J.clips.jog), rig, { root: "inplace" }).speed > 1, "the jog has a ground speed");
 });
+
+test("the shipped jog: a planted foot holds within 2 cm through each stance at the clip's speed, and the loop has no seam", async () => {
+  const { C, rig } = await setup(), J = JSON.parse(readFileSync(join(HB, "data", "clips.json"), "utf8"));
+  const p = C.play(C.unpackClip(J.clips.jog), rig, { root: "inplace" }), T = p.duration, N = 240;
+  assert.ok(p.speed > 1, `speed ${p.speed}`);
+  // each foot's ball, with the ground moving back under it at p.speed: while it is down it should stay put
+  const ground = Math.min(...Array.from({ length: 60 }, (_, i) => { const W = p.sample((i / 60) * T).world(); return Math.min(W.P[rig.at["toe3-1.L"]][1], W.P[rig.at["toe3-1.R"]][1]); }));
+  let worst = 0, stances = 0;
+  for (const s of ["L", "R"]) {
+    let run = null;
+    for (let i = 0; i <= 2 * N; i++) {
+      const t = (i / N) * T, W = p.sample(t).world(), b = W.P[rig.at["toe3-1." + s]], down = b[1] < ground + 0.03, z = b[2] + p.speed * t;
+      if (down) { if (!run) { run = { z0: z, x0: b[0], n: 0 }; stances++; } run.n++; worst = Math.max(worst, Math.hypot(z - run.z0, b[0] - run.x0)); } else run = null;
+    }
+  }
+  assert.ok(stances >= 2, "the feet come down");
+  if (process.env.SHOW) console.log(`jog: ${p.speed.toFixed(2)} m/s, ${stances} stances, drift ${(worst * 100).toFixed(2)} cm`);
+  assert.ok(worst < 0.02, `a planted foot drifts ${(worst * 100).toFixed(1)} cm`);
+  // the loop's seam: the last moment and the first are the same pose
+  const a = p.sample(T - 1e-4), b = p.sample(0); let seam = 0;
+  for (let i = 0; i < a.q.length; i += 4) seam = Math.max(seam, 2 * Math.acos(Math.min(1, Math.abs(a.q[i] * b.q[i] + a.q[i + 1] * b.q[i + 1] + a.q[i + 2] * b.q[i + 2] + a.q[i + 3] * b.q[i + 3]))) / (Math.PI / 180));
+  assert.ok(seam < 8, `the loop jumps ${seam.toFixed(1)}° at its seam`);
+});

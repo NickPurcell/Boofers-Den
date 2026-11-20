@@ -51,9 +51,13 @@ from the human animations of the Mesh2Motion project:
   `sword-regular-a-rec.glb`, `spell-simple-enter.glb`, `spell-simple-shoot.glb`, `spell-simple-exit.glb` (the name each
   clip came from is kept in `clips.json` beside it)
 
+Fetched on 19 November 2026 at that commit, as data only.
+
 Licence: **Creative Commons CC0 1.0 Universal**. The repository's `LICENSE-CC0.MD` reads "All 3d models, blend files,
 rigs, animations / CC0 1.0 Universal", and its README: "The art assets (3d models, rigs, animations) are all licensed
-under CC0." (Its program code is under the MIT licence; none of it is used here.)
+under CC0." Many of these clips originate in Quaternius's Universal Animation Library, which Quaternius released under
+CC0 and Mesh2Motion took in under CC0. Only our converted clip data is shipped here, never their GLB files. None of
+Mesh2Motion's program code is used, copied or adapted (the mapping is our own, `../clips.js`).
 
 What was done to them: each clip's bone turns were read, the turns of the 22 bones that match ours kept (as each bone's
 turn away from the clip's rest pose, in 16-bit integers), and the hips kept in units of the clip's own hip height; the
