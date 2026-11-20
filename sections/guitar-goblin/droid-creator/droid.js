@@ -20,7 +20,7 @@ const kitSet = (s) => { const ok = (options().kit || { items: [] }).items.map((o
 // make the state whole for its chassis: anything missing or not on offer takes the default
 function settle(from = {}) {
   const ch = from.chassis ?? state.chassis;
-  state.chassis = CHASSIS[ch] ? ch : SHARED_DEFAULT.chassis;
+  state.chassis = typeof ch === 'string' && Object.prototype.hasOwnProperty.call(CHASSIS, ch) ? ch : SHARED_DEFAULT.chassis;   // (own keys only: a link is written by anyone)
   const defs = { ...SHARED_DEFAULT, ...chassis().defaults }, opts = options();
   for (const k of Object.keys(state)) if (k !== 'chassis' && k !== 'seed' && !opts[k]) delete state[k];
   for (const [k, def] of Object.entries(opts)) {
