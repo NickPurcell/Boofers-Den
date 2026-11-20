@@ -1080,6 +1080,8 @@
             ${ch.image ? '<button class="btn small ghost" data-act="clear-photo">Remove profile photo</button>' : ''}
             ${ch.tokenImage ? '<button class="btn small ghost" data-act="clear-token-photo">Token: use profile photo</button>' : ''}</div>` : ''}
           <p class="muted" style="font-size:12px;margin:0 0 6px">The token uses the profile photo unless you upload a separate one.</p>
+          ${S.st.figures ? `<div class="row wrap" style="margin:4px 0 6px;gap:6px"><span class="muted" style="font-size:12px">3D figure: ${ch.look ? 'set' : 'none yet'}</span>
+            ${!ro ? '<button class="btn small" data-act="look3d">🧍 Set 3D look…</button>' : ''}${ch.look ? `<a class="btn small ghost" target="_blank" rel="noopener" href="/sections/guitar-goblin/characters/#${esc(ch.look)}">Open in the creator</a>` : ''}</div>` : ''}
           <label style="margin-top:8px">Token colour${inp('color', ch.color || '#4fc3f7', { ro, type: 'color' })}</label>
           <label style="margin-top:8px">Experience points${vOn('Milestone Leveling') ? ' <span class="muted">(Milestone Leveling: the GM decides when you level)</span>' : ''}${inp('xp', +ch.xp || 0, { ro: lock, type: 'number' })}
             ${(x => !x || vOn('Milestone Leveling') ? '' : `<span class="${x.ready ? 'up' : 'muted'}" style="text-transform:none;letter-spacing:0;font-size:12px" title="SW5e's XP for each level (audit 2.14)">${x.ready ? `Enough for level ${x.level} (${x.need.toLocaleString()} XP): the GM grants it` : `Level ${x.level} at ${x.need.toLocaleString()} XP, ${x.left.toLocaleString()} to go`}</span>`)(R.xpNext(ch))}</label>
@@ -1362,6 +1364,22 @@
       case 'token': if (await act('token.add', { charId: ch.id, x: 1, y: 1 })) setTab('map'); break;
       case 'photo': pickPhoto(b.dataset.kind); break;
       case 'clear-token-photo': act('char.photo.clear', { charId: ch.id, kind: 'token' }); break;
+      case 'look3d': {   // the 3D figure's look: the character creator's link, pasted (the server keeps only what such a link holds)
+        modal(`<h3>🧍 3D look</h3><p class="muted" style="font-size:13px">Make the character in the <a href="/sections/guitar-goblin/characters/${ch.look ? '#' + esc(ch.look) : ''}" target="_blank" rel="noopener">character creator</a>, copy its link from the address bar, and paste it here. The map's 3D view stands them on their token.</p>
+          <label>Creator link<input id="lookIn" value="${ch.look ? esc('/sections/guitar-goblin/characters/#' + ch.look) : ''}" placeholder="…/characters/#species=human&outfit=coat…"></label>
+          <div class="row"><button class="btn ghost" id="lookClear">No figure</button><span class="spacer"></span><button class="btn" id="lookCancel">Cancel</button><button class="btn primary" id="lookSave">Save</button></div>`, box => {
+          $('#lookCancel', box).onclick = closeModal;
+          $('#lookClear', box).onclick = async () => { if (await act('char.look', { charId: ch.id, look: '' })) closeModal(); };
+          // (the server keeps only what such a link can hold, in one fixed form: human-base/look-parse.js, #275)
+          $('#lookSave', box).onclick = async () => {
+            const r = await act('char.look', { charId: ch.id, look: $('#lookIn', box).value.trim() });
+            if (!r) return; closeModal();
+            if (r.changed) toast('Saved. A part of that link the creator doesn\'t offer was left out.');
+          };
+          $('#lookIn', box).focus();
+        });
+        break;
+      }
       case 'clear-photo': act('char.photo.clear', { charId: ch.id, kind: 'profile' }); break;
       case 'levelup': openWizard(ch.id); break;
       case 'grant': openGrant([ch.id]); break;
@@ -2069,7 +2087,8 @@
   });
 
   // --------------------------------------------------------------------------- map
-  const canvas = $('#mapCanvas'), ctx = canvas.getContext('2d');
+  const canvas = $('#mapCanvas');
+  let ctx = canvas.getContext('2d'), OFF = null;   // (OFF: the board drawn whole into another canvas, the 3D view's ground: drawBoardInto)
   const M = { drag: null, sel: null, selProp: null };
   const DD_PX = 256; // Dungeondraft draws assets at 256 px per grid square
   const UI_FONT = '"Exo 2", "Segoe UI", sans-serif';
@@ -2443,22 +2462,22 @@
 
   function drawMap() {
     if (!S.st || S.tab !== 'map') return;
-    const mp = S.st.map, g = mp.gridSize, W = mp.cols * g, H = mp.rows * g, dpr = window.devicePixelRatio || 1;
-    const { w: vw, h: vh } = viewSize();
+    const mp = S.st.map, g = mp.gridSize, W = mp.cols * g, H = mp.rows * g, dpr = OFF ? 1 : window.devicePixelRatio || 1;
+    const { w: vw, h: vh } = OFF || viewSize();
     const key = `${mp.cols}x${mp.rows}@${g}`;
-    if (key !== CAM.key) { CAM.key = key; CAM.ready = false; }   // first open, or the GM resized the board
-    if (!CAM.ready) {
+    if (!OFF && key !== CAM.key) { CAM.key = key; CAM.ready = false; }   // first open, or the GM resized the board
+    if (!OFF && !CAM.ready) {
       if (!$('#mapWrap').clientWidth) return;   // not laid out yet; the resize observer draws again once it is
       fitBoard(); return;
     }
-    if (canvas.width !== Math.round(vw * dpr) || canvas.height !== Math.round(vh * dpr)) {
+    if (!OFF && (canvas.width !== Math.round(vw * dpr) || canvas.height !== Math.round(vh * dpr))) {
       canvas.width = Math.round(vw * dpr); canvas.height = Math.round(vh * dpr);
       canvas.style.width = vw + 'px'; canvas.style.height = vh + 'px';
     }
-    const z = CAM.z, MC = mapColors();
+    const z = OFF ? OFF.z : CAM.z, camX = OFF ? 0 : CAM.x, camY = OFF ? 0 : CAM.y, MC = mapColors();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = MC.bg; ctx.fillRect(0, 0, vw, vh);
-    ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * CAM.x, dpr * CAM.y);
+    ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * camX, dpr * camY);
     // the board: floor texture and background image
     ctx.fillStyle = MC.board; ctx.fillRect(0, 0, W, H);
     const fl = img(mp.floor);
@@ -2470,8 +2489,8 @@
     if (S.mapImg) ctx.drawImage(S.mapImg, 0, 0, W, H);
     // the grid fills the whole view, not just the board
     if (mp.showGrid) {
-      const x0 = Math.floor((-CAM.x / z) / g) * g, y0 = Math.floor((-CAM.y / z) / g) * g;
-      const x1 = (vw - CAM.x) / z, y1 = (vh - CAM.y) / z;
+      const x0 = Math.floor((-camX / z) / g) * g, y0 = Math.floor((-camY / z) / g) * g;
+      const x1 = (vw - camX) / z, y1 = (vh - camY) / z;
       ctx.strokeStyle = MC.grid; ctx.lineWidth = 1 / z; ctx.beginPath();
       for (let x = x0; x <= x1; x += g) { ctx.moveTo(x, y0); ctx.lineTo(x, y1); }
       for (let y = y0; y <= y1; y += g) { ctx.moveTo(x0, y); ctx.lineTo(x1, y); }
@@ -2544,6 +2563,13 @@
     }
     if (window.HTC) HTC.over(ctx, g, z);    // combat view (targets, results)
     drawPings(g, z);
+    if (!OFF && window.HT3D) HT3D.drawn();   // the 3D view takes the board just drawn as its ground
+  }
+  // the board whole, as drawMap draws it for this person (fog, light, walls, tokens, the combat view's marks), into
+  // another canvas at z pixels to the board's pixel: the 3D view's ground
+  function drawBoardInto(c2, z) {
+    const keep = ctx; OFF = { w: c2.width, h: c2.height, z }; ctx = c2.getContext('2d');
+    try { drawMap(); } finally { ctx = keep; OFF = null; }
   }
   // ---- "look here" and the GM's quick drawings (audit 8.13)
   const PINGS = {};   // ping id -> when this screen first saw it, so each pulses once, for 2.5 s
@@ -2606,7 +2632,7 @@
     return S.st.map.tokens.slice().reverse().find(t => x >= t.x * g && x < (t.x + (t.size || 1)) * g && y >= t.y * g && y < (t.y + (t.size || 1)) * g);
   }
   function screenXY(e) { const r = canvas.getBoundingClientRect(); return { sx: e.clientX - r.left, sy: e.clientY - r.top }; }
-  function mapXY(e) { const { sx, sy } = screenXY(e); return { x: (sx - CAM.x) / CAM.z, y: (sy - CAM.y) / CAM.z }; }
+  function mapXY(e) { if (e.boardXY) return e.boardXY; const { sx, sy } = screenXY(e); return { x: (sx - CAM.x) / CAM.z, y: (sy - CAM.y) / CAM.z }; }   // (boardXY: a press on the 3D view, already on the board)
   const snap = (v, e) => e.altKey ? Math.round(v * 100) / 100 : Math.round(v * 2) / 2;
   const TOK_MIN = -500, TOK_MAX = 1000;
   const capture = e => { try { canvas.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ } };
@@ -3279,6 +3305,8 @@
           <input type="checkbox" id="gmSheetLock" ${S.st.sheetLock ? 'checked' : ''}> Only I change levels, XP and max HP</label>
         <label class="toggle" style="margin-top:4px" title="On: players can't open Scum and Villainy's creature stat blocks in the Rules library">
           <input type="checkbox" id="gmStatBlocks" ${S.st.statBlocksHidden ? 'checked' : ''}> Keep creature stat blocks to myself</label>
+        <label class="toggle" style="margin-top:4px" title="On: the map gets a 3D button, and characters with a 3D look (set on their sheet, made in the character creator) stand on their tokens as figures">
+          <input type="checkbox" id="gmFigures" ${S.st.figures ? 'checked' : ''}> 3D figures on the map</label>
         ${pendingNames.length ? `<p class="muted" style="font-size:12px">Waiting to level: ${pendingNames.join(', ')}</p>` : ''}
       </div>
       <div class="box"><h4>Saving &amp; backups</h4>
@@ -3381,6 +3409,7 @@
     if (e.target.id === 'gmHpMax') { act('settings.hpMax', { on: e.target.checked }); return; }
     if (e.target.id === 'gmSheetLock') { act('settings.sheetLock', { on: e.target.checked }); return; }
     if (e.target.id === 'gmStatBlocks') { act('settings.statBlocks', { hidden: e.target.checked }); return; }
+    if (e.target.id === 'gmFigures') { act('settings.figures', { on: e.target.checked }); return; }
     if (e.target.id !== 'restoreFile' || !e.target.files[0]) return;
     const f = e.target.files[0]; e.target.value = '';
     let campaign;
@@ -4049,7 +4078,7 @@
   }
 
   // --------------------------------------------------------------------------- shared with books.js
-  window.HT = { S, $, $$, esc, n0, R, API, modal, closeModal, toast, act, post, mutate, isGM, chars, roll, rollModeFromEvent, setPath, renderRules, setTab, drawMap, scoresDialog };
+  window.HT = { S, $, $$, esc, n0, R, API, modal, closeModal, toast, act, post, mutate, isGM, chars, roll, rollModeFromEvent, setPath, renderRules, setTab, drawMap, scoresDialog, drawBoardInto, tokenAt, canMove };
 
   // --------------------------------------------------------------------------- boot
   window.addEventListener('resize', () => drawMap());

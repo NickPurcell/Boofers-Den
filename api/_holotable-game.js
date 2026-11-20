@@ -326,6 +326,7 @@ function viewFor(camp, cid, gm, online) {
     ...(camp.stash ? { stash: camp.stash } : {}),   // the party stash (6.9): everyone sees it
     ...(camp.clock ? { clock: camp.clock } : {}),   // in-game time (9.18)
     ...(camp.sheetLock ? { sheetLock: true } : {}), ...(camp.statBlocksHidden ? { statBlocksHidden: true } : {}),   // the GM's table rules (12.6, 9.17)
+    ...(camp.figures ? { figures: true } : {}),   // 3D figures on the map (#65): the GM's switch, off by default
     audio: camp.audio ? Object.assign({}, camp.audio, { now: now() }) : null,   // "now" lets each screen line its clock up
     // a ship's crew row keeps its character's name: a player reads "???" while the GM hides that token's name
     ships: (camp.ships || []).filter((x) => gm || !x.hidden).map((x) => (gm || !Array.isArray(x.crew) ? x
@@ -1289,6 +1290,7 @@ function applyAction(camp, cid, gm, type, p) {
     case "settings.hpMax": need(gm); camp.hpMax = !!p.on; return {};
     case "settings.sheetLock": need(gm); if (p.on) camp.sheetLock = true; else delete camp.sheetLock; return {};   // 12.6
     case "settings.statBlocks": need(gm); if (p.hidden) camp.statBlocksHidden = true; else delete camp.statBlocksHidden; return {};   // 9.17
+    case "settings.figures": need(gm); if (p.on === true) camp.figures = true; else delete camp.figures; return {};   // 3D figures on the map (#65)
 
     // ---- starships: the party's ships can be edited by anyone at the table; hidden (enemy) ships only by the GM
     case "ship.save": {
@@ -1448,6 +1450,7 @@ function cleanGame(g) {
   if (g.clock) g.clock = cleanClock(g.clock); if (!g.clock) delete g.clock;
   if (g.sheetLock !== true) delete g.sheetLock;
   if (g.statBlocksHidden !== true) delete g.statBlocksHidden;
+  if (g.figures !== true) delete g.figures;
   if (Array.isArray(g.npcs) && g.npcs.length) g.npcs = cleanNpcs(g.npcs); else delete g.npcs;
   g.ask = Ask.clean(g.ask, g.characters);
   Story.clean(g);

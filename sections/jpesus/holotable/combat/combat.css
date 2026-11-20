@@ -73,3 +73,10 @@
 #modalBox table.ct-senses th { font-weight: 600; text-align: left; padding: 2px 4px; font-size: 12px; }
 #modalBox table.ct-senses td { padding: 2px 4px; }
 #modalBox table.ct-senses input { width: 70px; }
+
+/* 3D figures on the map (figures.js, figures3d.js): the 3D button and the view laid over the flat map */
+.map3d-btn { position: absolute; right: 10px; top: 10px; z-index: 2; opacity: .9; }
+.map3d-btn:hover { opacity: 1; }
+.map3d-btn[hidden] { display: none; }
+.map3d { position: absolute; left: 0; top: 0; display: block; touch-action: none; user-select: none; -webkit-user-select: none; }
+.map3d[hidden] { display: none; }
