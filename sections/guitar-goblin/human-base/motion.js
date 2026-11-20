@@ -34,6 +34,9 @@ const clamp = (x, a, b) => (x < a ? a : x > b ? b : x), lerp = (a, b, t) => a + 
 const D = Math.PI / 180;
 
 /* ---------------- the rig: the skeleton's shape, measured once ---------------- */
+// how far a moving figure's fingers curl (the base's arms-down pose takes it as state.curl): loose half-closed fists.
+// Set it before baking a figure that will run: fig.set({ curl: FIST }).update()
+export const FIST = 1.9;
 export function makeRig(skeleton) {
   const bones = skeleton.map((b) => ({ name: b.name, parent: b.parent, head: b.head.slice() })), at = Object.fromEntries(bones.map((b, k) => [b.name, k]));
   const H = (n) => bones[at[n]].head, need = (n) => { if (!(n in at)) throw new Error('motion: the skeleton has no ' + n); return at[n]; };
@@ -149,9 +152,11 @@ export function run(rig, t, o = {}) {
   // the arms: against the legs (the left arm forward as the right leg is), elbows bent, swung a little across
   for (const s of ['L', 'R']) {
     const S = rig.side[s], u = s === 'L' ? uL : uR, fwd = -Math.cos(2 * Math.PI * u);   // 1: this arm fully forward
-    const swing = (4 + 24 * fwd) * D, across = (2 + 3 * Math.max(0, fwd)) * D * S.s;
+    // the upper arm drives back as far as it comes forward (the elbow passes behind the trunk and the hand passes the
+    // hip), the elbow a little more open behind than in front
+    const swing = (-8 + 36 * fwd) * D, across = (2 + 3 * Math.max(0, fwd)) * D * S.s;
     put(q, S.arm, qmul(qaxis(Z, -across * 0.5), qaxis(X, -swing)));
-    put(q, S.fore, qaxis(S.hinge, (76 + 10 * fwd) * D));
+    put(q, S.fore, qaxis(S.hinge, (84 + 12 * fwd) * D));
     put(q, S.clav, qaxis(X, -swing * 0.12));
   }
   // the head: level and looking ahead whatever the trunk does
@@ -195,3 +200,11 @@ export function blend(a, b, k) {
   return { root: [0, 1, 2].map((j) => lerp(a.root[j], b.root[j], k)), q };
 }
 export { world as poseWorld };
+// the quaternion helpers, for clips.js
+const qslerp = (a, b, t) => {
+  let d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3], s = 1; if (d < 0) { d = -d; s = -1; }
+  if (d > 0.9995) { const v = [0, 1, 2, 3].map((j) => lerp(a[j], s * b[j], t)), l = Math.hypot(...v); return v.map((x) => x / l); }
+  const th = Math.acos(Math.min(1, d)), sa = Math.sin(th), wa = Math.sin((1 - t) * th) / sa, wb = (s * Math.sin(t * th)) / sa;
+  return [0, 1, 2, 3].map((j) => a[j] * wa + b[j] * wb);
+};
+export const Q = { mul: qmul, inv: qinv, axis: qaxis, rot: qrot, from: qfrom, slerp: qslerp, I };
