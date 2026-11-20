@@ -13,7 +13,9 @@
 // trunk leans forward and turns against the hips; each foot is planted, carried back at the ground's speed, rolled off
 // the ball of the foot and swung through high behind and forward to land again, the legs set by their own two-bone
 // reach to where the foot must be, so the knees bend only forward; the arms swing against the legs with the elbows
-// bent; the head is kept level and looking ahead. The stand: weight on both feet, a slow breath, a slower sway.
+// bent; the head is kept level and looking ahead. Seen from the front each leg stays in one plane: the feet land on two
+// lines close under the body (narrower than the hips), pointing the way it runs, and each knee points over its foot.
+// The stand: the feet under the hips, turned out a little, the knees over them; a slow breath, a slower sway.
 
 /* ---------------- quaternions, as [x, y, z, w] ---------------- */
 const qmul = (a, b) => [a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1], a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0], a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3], a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]];
@@ -50,7 +52,13 @@ export function makeRig(skeleton) {
     // is bound with says little about its plane); its sense is the one that brings the forearm forward and up
     let hinge = norm(cross(up, Z));
     if (qrot(qaxis(hinge, 0.3), fo)[2] < fo[2]) hinge = mul(hinge, -1);
-    side[s] = { s: Math.sign(hip[0]) || (s === 'L' ? 1 : -1), hip, knee, ankle, ball, L1: len(sub(knee, hip)), L2: len(sub(ankle, knee)), heelToBall: sub(ankle, ball), hinge,
+    const sg = Math.sign(hip[0] - H('root')[0]) || (s === 'L' ? 1 : -1), out = Math.abs(hip[0] - H('root')[0]);
+    // the foot as it is bound turns out a little (turn: its angle off straight ahead, outward positive); `straight`
+    // turns it to point straight ahead. The run's feet land on lines `track` from the middle (well inside the hips);
+    // the stand's ankles stand under the hip joints (bound, they stand wide of them)
+    const turn = Math.atan2((ball[0] - ankle[0]) * sg, ball[2] - ankle[2]), straight = qaxis(Y, -turn * sg);
+    side[s] = { s: sg, hip, knee, ankle, ball, L1: len(sub(knee, hip)), L2: len(sub(ankle, knee)), heelToBall: sub(ankle, ball), hinge, turn, straight,
+      heel: qrot(straight, sub(ankle, ball)), across: qrot(qinv(straight), X), track: H('root')[0] + sg * 0.55 * out, stance: [H('root')[0] + sg * 1.05 * out, ankle[1], ankle[2]],
       thigh: need('upperleg01.' + s), shin: need('lowerleg01.' + s), foot: need('foot.' + s), toe: need('toe3-1.' + s), pelvis: need('pelvis.' + s),
       clav: need('clavicle.' + s), arm: need('upperarm01.' + s), fore: need('lowerarm01.' + s), wrist: need('wrist.' + s) };
   }
@@ -100,12 +108,12 @@ function reach(S, hip, A, pole) {
 function footAt(rig, S, u) {
   const { T, duty, k } = rig.cycle, v = rig.speed, stride = v * T * duty;   // how far the ground moves under a planted foot
   const land = 0.44 * stride + 0.03 * k, off = land - stride;   // where the ball of the foot lands and leaves, ahead of the hip
-  const ballY = S.ball[1], heel = S.heelToBall, x = S.ball[0];
+  const ballY = S.ball[1], heel = S.heel, x = S.track;   // the foot turned to point straight ahead, on its track
   if (u < duty) {
     const f = u / duty, z = lerp(land, off, f);
     const roll = 48 * D * Math.pow(smooth((f - 0.4) / 0.6), 1.3);   // the heel comes up off the ball over the last part
     const ball = [x, ballY, S.hip[2] + z], pitch = qaxis(X, roll);
-    return { ball, ankle: add(ball, qrot(pitch, heel)), pitch, toe: qinv(pitch), planted: true };
+    return { ball, ankle: add(ball, qrot(pitch, heel)), pitch: qmul(pitch, S.straight), toe: qinv(pitch), planted: true };
   }
   const s = (u - duty) / (1 - duty), e = smooth(s);
   // the ankle's path through the air: from where it left to where it lands, kicked up and back first
@@ -114,7 +122,7 @@ function footAt(rig, S, u) {
   const z = lerp(z0, zl, smooth(Math.pow(s, 1.25))) - 0.09 * k * Math.sin(Math.PI * Math.min(1, s / 0.75)) * (1 - s);
   const y = lerp(y0, yl, e) + 0.38 * k * Math.pow(Math.sin(Math.PI * Math.pow(s, 0.7)), 1.2);
   const toes = s < 0.35 ? lerp(48, 50, s / 0.35) : s < 0.85 ? lerp(50, -8, smooth((s - 0.35) / 0.5)) : lerp(-8, 0, (s - 0.85) / 0.15);
-  const pitch = qaxis(X, toes * D);
+  const pitch = qmul(qaxis(X, toes * D), S.straight);
   return { ankle: [x, y, z], pitch, toe: qaxis(X, -0.4 * Math.max(0, toes) * D * (1 - s)), planted: false };
 }
 
@@ -141,9 +149,9 @@ export function run(rig, t, o = {}) {
   const W0 = world(rig, root, q);
   for (const [s, u] of [['L', uL], ['R', uR]]) {
     const S = rig.side[s], f = footAt(rig, S, u);
-    const hip = W0.P[S.thigh], A = add(f.ankle, [0, 0, 0]);
-    const pole = norm(qrot(qRoot, [0.12 * S.s, 0, 1]));   // the knee points forward, a touch out
-    const r = reach(S, hip, A, pole);
+    // the knee points the way the foot does, straight ahead (not out, and not round with the hips' turn), so from the
+    // front hip, knee and ankle stay in one line
+    const hip = W0.P[S.thigh], r = reach(S, hip, f.ankle, Z);
     setWorld(rig, q, S.thigh, r.Qt);
     setWorld(rig, q, S.shin, r.Qs);
     setWorld(rig, q, S.foot, f.pitch);
@@ -179,14 +187,58 @@ export function stand(rig, t) {
     put(q, S.arm, qaxis(X, -2 * D));
     put(q, S.fore, qaxis(S.hinge, 6 * D));
   }
-  // the feet stay where they stand: each leg reaches for its own ankle as bound
+  // the feet stay where they stand, under the hips and turned out as bound; each knee points over its foot
   const W0 = world(rig, root, q);
   for (const s of ['L', 'R']) {
-    const S = rig.side[s], r = reach(S, W0.P[S.thigh], S.ankle, norm([0.1 * S.s, 0, 1]));
+    const S = rig.side[s], r = reach(S, W0.P[S.thigh], S.stance, [Math.sin(S.turn) * S.s, 0, Math.cos(S.turn)]);
     setWorld(rig, q, S.thigh, r.Qt); setWorld(rig, q, S.shin, r.Qs); setWorld(rig, q, S.foot, I);
   }
   setWorld(rig, q, rig.at.head, I);
   return { root, q, world: () => world(rig, root, q) };
+}
+
+/* ---------------- the legs of a pose made elsewhere (a clip) ---------------- */
+// Borrowed clips stand wider than we do (their feet a hand or more outside the hips) and their knees need not point
+// over their feet once on our legs. legStance says, for a pose, how far each ankle should come in: what it stands
+// outside its hip joint beyond a little, less the part kept (KEEP), along the hips' own sideways line, and nothing while
+// the hips are far from upright (lying down); with whether that foot is down. alignLegs moves each ankle by the shift it
+// is given (clips.js holds it still while the foot is down, so a planted foot does not slide) and sets the leg again
+// with its knee pointing the way its foot points, the foot's own turn kept.
+const KEEP = 0.5;
+export function legStance(rig, root, q) {
+  const W = world(rig, root, q), k = rig.cycle.k, up = qrot(W.R[rig.at.root], Y)[1], wu = smooth((up - 0.5) / 0.3);
+  const sd = qrot(W.R[rig.at.root], X); sd[1] = 0; const side = norm(sd);
+  const out = {};
+  for (const s of ['L', 'R']) {
+    const S = rig.side[s], A = W.P[S.foot], lat = dot(sub(A, W.P[S.thigh]), side) * S.s, ex = Math.max(0, lat - 0.04 * k);
+    out[s] = { shift: mul(side, -S.s * (1 - KEEP) * ex * wu), down: A[1] < S.ankle[1] + 0.035 * k, up: wu };
+  }
+  return out;
+}
+export function alignLegs(rig, root, q, shift, o = {}) {
+  // (one leg's turns move nothing of the other's, so the pose is walked once; down each leg, a bone's parent's turn in
+  // the world is worked out from the one above it that was just set)
+  const W = world(rig, root, q);
+  const above = (b, top, Rtop) => { const chain = []; for (let p = rig.bones[b].parent; p !== top; p = rig.bones[p].parent) chain.unshift(p); let R = Rtop; for (const p of chain) R = qmul(R, Array.from(q.subarray(p * 4, p * 4 + 4))); return R; };
+  for (const s of ['L', 'R']) {
+    const S = rig.side[s], H = W.P[S.thigh], A = add(W.P[S.foot], shift ? shift[s] : [0, 0, 0]), Rf = W.R[S.foot];
+    const w = o.up ? o.up[s] : 1, moved = shift && len(shift[s]) > 1e-5;
+    // which way the foot points, on the ground: square to the line it rocks about (heel to toe, its own sideways line),
+    // so a foot tipped onto its toes or kicked up behind still says where it faces; a foot on its side says little,
+    // and a knee bent the other way from it (a kneel, a fall) is left as the clip has it
+    const ax = qrot(Rf, S.across), fw = norm(cross(ax, Y)), h = Math.hypot(ax[0], ax[2]);
+    const u = norm(sub(A, H)), kd = sub(W.P[S.shin], H), kn = sub(kd, mul(u, dot(kd, u)));
+    const kl = len(kn), now = kl > 1e-4 ? mul(kn, 1 / kl) : fw;
+    // (and only for a foot on or near the ground: in the air the clip's own knee is kept)
+    const low = 1 - smooth((A[1] - S.ankle[1] - 0.035 * rig.cycle.k) / (0.08 * rig.cycle.k));
+    const want = smooth((h - 0.6) / 0.3) * smooth(dot(now, fw) / 0.3) * low * w; if (want <= 0 && !moved) continue;
+    const pole = norm(add(mul(now, 1 - want), mul(fw, want)));
+    const r = reach(S, H, A, pole);
+    put(q, S.thigh, qmul(qinv(W.R[rig.bones[S.thigh].parent]), r.Qt));
+    put(q, S.shin, qmul(qinv(above(S.shin, S.thigh, r.Qt)), r.Qs));
+    put(q, S.foot, qmul(qinv(above(S.foot, S.shin, r.Qs)), Rf));
+  }
+  return q;
 }
 
 // from one pose toward another (k from 0 to 1), for starting and stopping

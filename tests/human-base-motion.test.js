@@ -62,9 +62,43 @@ test("the stand: the feet stay where they are, and it breathes", async () => {
   let moved = 0; const chest = [];
   for (let i = 0; i < 40; i++) {
     const p = M.stand(rig, i * 0.25), W = p.world();
-    for (const s of ["L", "R"]) { const S = rig.side[s]; moved = Math.max(moved, Math.hypot(...W.P[S.foot].map((v, k) => v - S.ankle[k]))); }
+    for (const s of ["L", "R"]) { const S = rig.side[s]; moved = Math.max(moved, Math.hypot(...W.P[S.foot].map((v, k) => v - S.stance[k]))); }
     chest.push(W.P[rig.at.neck01][1]);
   }
   assert.ok(moved < 0.002, `a standing foot moves ${moved} m`);
   assert.ok(Math.max(...chest) - Math.min(...chest) > 0.001, "the chest moves with the breath");
+});
+
+// Seen from the front, a natural run keeps each leg in one plane: hip, knee and ankle in a line, the feet landing on two
+// lines close under the body (narrower than the hips, not wider), toes and knees pointing the way it goes. The knee is
+// measured off the hip-to-ankle line, sideways to the way the foot points (for a foot pointing ahead: from the front).
+function kneeOff(S, W) {
+  const hip = W.P[S.thigh], knee = W.P[S.shin], ank = W.P[S.foot], ball = W.P[S.toe];
+  let f = [ball[0] - ank[0], 0, ball[2] - ank[2]]; const fl = Math.hypot(...f) || 1; f = f.map((x) => x / fl);
+  const side = [f[2], 0, -f[0]], at = (p) => [p[0] * side[0] + p[2] * side[2], p[1]];   // the leg seen along the foot
+  const h = at(hip), k = at(knee), a = at(ank), d = [a[0] - h[0], a[1] - h[1]], t = ((k[0] - h[0]) * d[0] + (k[1] - h[1]) * d[1]) / (d[0] * d[0] + d[1] * d[1]);
+  return Math.abs(k[0] - (h[0] + d[0] * t));
+}
+test("the run and the stand, from the front: knees over the feet, the feet under the body, pointing ahead", async () => {
+  const { M, rig } = await rigOf(), T = rig.cycle.T, mid = rig.bones[rig.at.root].head[0];
+  let off = 0, wide = -Infinity, turn = 0;
+  for (let i = 0; i < 120; i++) {
+    const p = M.run(rig, (i / 120) * T), W = p.world();
+    for (const s of ["L", "R"]) {
+      const S = rig.side[s], hip = W.P[S.thigh], ank = W.P[S.foot], ball = W.P[S.toe];
+      off = Math.max(off, kneeOff(S, W));
+      if (ball[1] < S.ball[1] + 0.005) { wide = Math.max(wide, (ank[0] - mid) * S.s - (hip[0] - mid) * S.s); turn = Math.max(turn, Math.abs(Math.atan2(ball[0] - ank[0], ball[2] - ank[2]))); }
+    }
+  }
+  assert.ok(off < 0.01, `a running knee is ${(off * 100).toFixed(1)} cm off the line from hip to ankle`);
+  assert.ok(wide < -0.03, `a planted foot lands only ${(-wide * 100).toFixed(1)} cm inside its hip`);
+  assert.ok(turn < 2 * Math.PI / 180, `a planted foot points ${(turn * 180 / Math.PI).toFixed(1)}° off the way it runs`);
+  for (let i = 0; i < 20; i++) {
+    const W = M.stand(rig, i * 0.5).world();
+    for (const s of ["L", "R"]) {
+      const S = rig.side[s], out = (W.P[S.foot][0] - mid) * S.s - (W.P[S.thigh][0] - mid) * S.s;
+      assert.ok(kneeOff(S, W) < 0.01, "a standing knee points over its foot");
+      assert.ok(out > -0.01 && out < 0.03, `a standing foot is ${(out * 100).toFixed(1)} cm outside its hip`);
+    }
+  }
 });
