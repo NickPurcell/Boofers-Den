@@ -504,6 +504,11 @@
   $('#tabs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) setTab(b.dataset.tab); });
 
   // --------------------------------------------------------------------------- sheet
+  // the creator a 3D look was made in, by the kind its canonical form starts with (as the 3D view bakes it: figures3d.js)
+  function creatorOf(look) {
+    const k = (/^kind=([a-z]+)&/.exec(String(look || '')) || [])[1];
+    return k === 'jawa' ? '/sections/guitar-goblin/jawa-creator/' : k === 'droid' ? '/sections/guitar-goblin/droid-creator/' : '/sections/guitar-goblin/characters/';
+  }
   function saveChar(ch) {
     S.st.characters[ch.id] = ch;
     renderRoster();
@@ -1081,7 +1086,7 @@
             ${ch.tokenImage ? '<button class="btn small ghost" data-act="clear-token-photo">Token: use profile photo</button>' : ''}</div>` : ''}
           <p class="muted" style="font-size:12px;margin:0 0 6px">The token uses the profile photo unless you upload a separate one.</p>
           ${S.st.figures ? `<div class="row wrap" style="margin:4px 0 6px;gap:6px"><span class="muted" style="font-size:12px">3D figure: ${ch.look ? 'set' : 'none yet'}</span>
-            ${!ro ? '<button class="btn small" data-act="look3d">🧍 Set 3D look…</button>' : ''}${ch.look ? `<a class="btn small ghost" target="_blank" rel="noopener" href="/sections/guitar-goblin/characters/#${esc(ch.look)}">Open in the creator</a>` : ''}</div>` : ''}
+            ${!ro ? '<button class="btn small" data-act="look3d">🧍 Set 3D look…</button>' : ''}${ch.look ? `<a class="btn small ghost" target="_blank" rel="noopener" href="${creatorOf(ch.look)}#${esc(ch.look)}">Open in the creator</a>` : ''}</div>` : ''}
           <label style="margin-top:8px">Token colour${inp('color', ch.color || '#4fc3f7', { ro, type: 'color' })}</label>
           <label style="margin-top:8px">Experience points${vOn('Milestone Leveling') ? ' <span class="muted">(Milestone Leveling: the GM decides when you level)</span>' : ''}${inp('xp', +ch.xp || 0, { ro: lock, type: 'number' })}
             ${(x => !x || vOn('Milestone Leveling') ? '' : `<span class="${x.ready ? 'up' : 'muted'}" style="text-transform:none;letter-spacing:0;font-size:12px" title="SW5e's XP for each level (audit 2.14)">${x.ready ? `Enough for level ${x.level} (${x.need.toLocaleString()} XP): the GM grants it` : `Level ${x.level} at ${x.need.toLocaleString()} XP, ${x.left.toLocaleString()} to go`}</span>`)(R.xpNext(ch))}</label>
@@ -1365,8 +1370,9 @@
       case 'photo': pickPhoto(b.dataset.kind); break;
       case 'clear-token-photo': act('char.photo.clear', { charId: ch.id, kind: 'token' }); break;
       case 'look3d': {   // the 3D figure's look: the character creator's link, pasted (the server keeps only what such a link holds)
-        modal(`<h3>🧍 3D look</h3><p class="muted" style="font-size:13px">Make the character in the <a href="/sections/guitar-goblin/characters/${ch.look ? '#' + esc(ch.look) : ''}" target="_blank" rel="noopener">character creator</a>, copy its link from the address bar, and paste it here. The map's 3D view stands them on their token.</p>
-          <label>Creator link<input id="lookIn" value="${ch.look ? esc('/sections/guitar-goblin/characters/#' + ch.look) : ''}" placeholder="…/characters/#species=human&outfit=coat…"></label>
+        const made = creatorOf(ch.look || '');
+        modal(`<h3>🧍 3D look</h3><p class="muted" style="font-size:13px">Make the character in the <a href="${made}${ch.look ? '#' + esc(ch.look) : ''}" target="_blank" rel="noopener">${made.includes('jawa') ? 'Jawa creator' : made.includes('droid') ? 'droid creator' : 'character creator'}</a> (or the <a href="/sections/guitar-goblin/jawa-creator/" target="_blank" rel="noopener">Jawa</a> or <a href="/sections/guitar-goblin/droid-creator/" target="_blank" rel="noopener">droid</a> creator), copy its link from the address bar, and paste it here. The map's 3D view stands them on their token.</p>
+          <label>Creator link<input id="lookIn" value="${ch.look ? esc(made + '#' + ch.look) : ''}" placeholder="…/characters/#species=human&outfit=coat…"></label>
           <div class="row"><button class="btn ghost" id="lookClear">No figure</button><span class="spacer"></span><button class="btn" id="lookCancel">Cancel</button><button class="btn primary" id="lookSave">Save</button></div>`, box => {
           $('#lookCancel', box).onclick = closeModal;
           $('#lookClear', box).onclick = async () => { if (await act('char.look', { charId: ch.id, look: '' })) closeModal(); };
