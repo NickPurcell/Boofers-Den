@@ -213,10 +213,97 @@ export function derivePureblood(B, marks) {
 }
 
 /* ---------------- all of it, and how it travels ---------------- */
+/* ---------------- a coarser body, for figures drawn small (the table's) ---------------- */
+// The order to fold the body's vertices away in: quadric error edge collapses on the rest shape, each vertex folded into
+// a neighbour that stays where it is. A coarser body is then the same vertices, fewer of them, so every morph and the
+// pose still apply, and any level is had at once: into[i] is the vertex i was folded into, step[i] when (65535: never).
+// The face counts for more than the rest and the hands for less; the edges round the eyes are kept to their line.
+export function collapseOrder(B, regions, stopAt = 500) {
+  const N = B.N, P = B.rest, q = B.quads, nT = (q.length / 4) * 2, T = new Int32Array(nT * 3), alive = new Uint8Array(nT).fill(1);
+  for (let f = 0, t = 0; f < q.length; f += 4, t += 6) { T[t] = q[f]; T[t + 1] = q[f + 1]; T[t + 2] = q[f + 2]; T[t + 3] = q[f]; T[t + 4] = q[f + 2]; T[t + 5] = q[f + 3]; }
+  const vt = Array.from({ length: N }, () => []);
+  for (let t = 0; t < nT; t++) for (let k = 0; k < 3; k++) vt[T[t * 3 + k]].push(t);
+  const W = new Float32Array(N).fill(1);
+  for (const k of ['handL', 'handR']) for (const i of regions[k] || []) W[i] = 0.4;
+  for (const i of regions.head || []) W[i] = 3;
+  for (const i of regions.face || []) W[i] = 150;   // (what makes a face is its colour as much as its form: lips, liner, brows want vertices to sit on)
+  const Q = new Float64Array(N * 10);
+  const addPlane = (i, a, b, c, d, w) => { const o = i * 10; Q[o] += w * a * a; Q[o + 1] += w * a * b; Q[o + 2] += w * a * c; Q[o + 3] += w * a * d; Q[o + 4] += w * b * b; Q[o + 5] += w * b * c; Q[o + 6] += w * b * d; Q[o + 7] += w * c * c; Q[o + 8] += w * c * d; Q[o + 9] += w * d * d; };
+  const nrm = (a, b, c, out) => { const ux = P[b * 3] - P[a * 3], uy = P[b * 3 + 1] - P[a * 3 + 1], uz = P[b * 3 + 2] - P[a * 3 + 2], vx = P[c * 3] - P[a * 3], vy = P[c * 3 + 1] - P[a * 3 + 1], vz = P[c * 3 + 2] - P[a * 3 + 2]; out[0] = uy * vz - uz * vy; out[1] = uz * vx - ux * vz; out[2] = ux * vy - uy * vx; return out; };
+  const n0 = [0, 0, 0], n1 = [0, 0, 0];
+  for (let t = 0; t < nT; t++) {
+    const a = T[t * 3], b = T[t * 3 + 1], c = T[t * 3 + 2]; nrm(a, b, c, n0); const l = Math.hypot(n0[0], n0[1], n0[2]); if (!l) continue;
+    const nx = n0[0] / l, ny = n0[1] / l, nz = n0[2] / l, d = -(nx * P[a * 3] + ny * P[a * 3 + 1] + nz * P[a * 3 + 2]);
+    for (const v of [a, b, c]) addPlane(v, nx, ny, nz, d, (l / 2) * W[v]);
+  }
+  // the mesh's own edges (round the eyes): a plane through each, square to its face, heavily weighted, holds the line
+  const ecount = new Map(), key = (a, b) => (a < b ? a * N + b : b * N + a), isB = new Uint8Array(N);
+  for (let t = 0; t < nT; t++) for (let k = 0; k < 3; k++) { const e = key(T[t * 3 + k], T[t * 3 + ((k + 1) % 3)]); ecount.set(e, (ecount.get(e) || 0) + 1); }
+  for (let t = 0; t < nT; t++) for (let k = 0; k < 3; k++) {
+    const a = T[t * 3 + k], b = T[t * 3 + ((k + 1) % 3)]; if (ecount.get(key(a, b)) !== 1) continue;
+    isB[a] = isB[b] = 1; nrm(T[t * 3], T[t * 3 + 1], T[t * 3 + 2], n0);
+    const ex = P[b * 3] - P[a * 3], ey = P[b * 3 + 1] - P[a * 3 + 1], ez = P[b * 3 + 2] - P[a * 3 + 2];
+    let mx = ey * n0[2] - ez * n0[1], my = ez * n0[0] - ex * n0[2], mz = ex * n0[1] - ey * n0[0]; const ml = Math.hypot(mx, my, mz); if (!ml) continue; mx /= ml; my /= ml; mz /= ml;
+    const d = -(mx * P[a * 3] + my * P[a * 3 + 1] + mz * P[a * 3 + 2]), w = 200 * (ex * ex + ey * ey + ez * ez);
+    addPlane(a, mx, my, mz, d, w); addPlane(b, mx, my, mz, d, w);
+  }
+  const cost = (u, v) => {
+    const o = u * 10, p = v * 10, x = P[v * 3], y = P[v * 3 + 1], z = P[v * 3 + 2], s = (k) => Q[o + k] + Q[p + k];
+    return s(0) * x * x + 2 * s(1) * x * y + 2 * s(2) * x * z + 2 * s(3) * x + s(4) * y * y + 2 * s(5) * y * z + 2 * s(6) * y + s(7) * z * z + 2 * s(8) * z + s(9);
+  };
+  const live = (u) => { const l = vt[u]; let j = 0; for (const t of l) if (alive[t]) l[j++] = t; l.length = j; return l; };
+  const ring = (u) => { const s = new Set(); for (const t of live(u)) for (let k = 0; k < 3; k++) s.add(T[t * 3 + k]); s.delete(u); return s; };
+  const shared = (u, v) => { let n = 0; for (const t of vt[u]) if (alive[t] && (T[t * 3] === v || T[t * 3 + 1] === v || T[t * 3 + 2] === v)) n++; return n; };
+  // a small binary heap of [cost, vertex, version]
+  const H = [], ver = new Uint32Array(N), best = new Int32Array(N).fill(-1), no = new Map();
+  const up = (i) => { while (i) { const p = (i - 1) >> 1; if (H[p][0] <= H[i][0]) break; [H[p], H[i]] = [H[i], H[p]]; i = p; } };
+  const down = (i) => { for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < H.length && H[l][0] < H[m][0]) m = l; if (r < H.length && H[r][0] < H[m][0]) m = r; if (m === i) return; [H[m], H[i]] = [H[i], H[m]]; i = m; } };
+  const pop = () => { const top = H[0], last = H.pop(); if (H.length) { H[0] = last; down(0); } return top; };
+  const consider = (u) => {
+    ver[u]++; best[u] = -1; let bc = Infinity; const skip = no.get(u);
+    for (const v of ring(u)) { if (skip && skip.has(v)) continue; if (isB[u] && shared(u, v) !== 1) continue; const c = cost(u, v); if (c < bc) { bc = c; best[u] = v; } }
+    if (best[u] >= 0) { H.push([bc, u, ver[u]]); up(H.length - 1); }
+  };
+  const into = new Uint16Array(N), step = new Uint16Array(N).fill(65535), gone = new Uint8Array(N);
+  let count = 0; for (let i = 0; i < N; i++) { into[i] = i; if (B.inBody[i]) { count++; consider(i); } }
+  let s = 0;
+  while (H.length && count > stopAt) {
+    const [, u, vv] = pop(); if (vv !== ver[u] || gone[u]) continue;
+    const v = best[u]; if (v < 0 || gone[v]) { consider(u); continue; }
+    // refuse a fold that turns a face over, or that would join two sheets (more than the two shared neighbours)
+    let bad = false; const ru = ring(u), rv = ring(v); let common = 0; for (const x of ru) if (rv.has(x)) common++;
+    if (common > (shared(u, v) === 1 ? 1 : 2)) bad = true;
+    if (!bad) for (const t of vt[u]) {
+      if (!alive[t]) continue; const a = T[t * 3], b = T[t * 3 + 1], c = T[t * 3 + 2]; if (a === v || b === v || c === v) continue;
+      nrm(a, b, c, n0); nrm(a === u ? v : a, b === u ? v : b, c === u ? v : c, n1);
+      const d = n0[0] * n1[0] + n0[1] * n1[1] + n0[2] * n1[2], l0 = Math.hypot(n0[0], n0[1], n0[2]), l1 = Math.hypot(n1[0], n1[1], n1[2]);
+      if (l1 < 1e-9 || d < 0.2 * l0 * l1) { bad = true; break; }
+    }
+    if (bad) { let set = no.get(u); if (!set) no.set(u, (set = new Set())); set.add(v); consider(u); continue; }
+    for (const t of vt[u]) {
+      if (!alive[t]) continue; const o = t * 3;
+      if (T[o] === v || T[o + 1] === v || T[o + 2] === v) { alive[t] = 0; continue; }
+      for (let k = 0; k < 3; k++) if (T[o + k] === u) T[o + k] = v;
+      vt[v].push(t);
+    }
+    vt[u].length = 0;
+    for (let k = 0; k < 10; k++) Q[v * 10 + k] += Q[u * 10 + k];
+    gone[u] = 1; into[u] = v; step[u] = s++; count--; no.delete(v);
+    consider(v); for (const x of ring(v)) consider(x);
+  }
+  return { into, step, steps: s };
+}
+// the body at a level: which vertex stands for each (rep), and how many stay. Pick a level by the vertices to keep.
+export function coarser(B, keep) {
+  const { into, step, steps } = B.derived.lod, N = B.N; let body = 0; for (let i = 0; i < N; i++) if (B.inBody[i]) body++;
+  const c = Math.max(0, Math.min(steps, body - keep)), rep = new Int32Array(N);
+  for (let i = 0; i < N; i++) { let j = i; while (step[j] < c) j = into[j]; rep[i] = j; }
+  return { rep, folds: c, kept: body - c };
+}
 export function deriveAll(B) {
   const marks = findLandmarks(B), Bm = { ...B, marks };
   const regions = findRegions(Bm);
-  return { fingerprint: fingerprint(B), marks: { L: marks.L, side: marks.side, ey: marks.ey, ez: marks.ez, d: marks.d }, regions, hand: handMask(B), eyeRings: eyeRings(Bm), pureblood: derivePureblood(B, marks) };
+  return { fingerprint: fingerprint(B), marks: { L: marks.L, side: marks.side, ey: marks.ey, ez: marks.ez, d: marks.d }, regions, hand: handMask(B), eyeRings: eyeRings(Bm), pureblood: derivePureblood(B, marks), lod: collapseOrder(B, regions) };
 }
 // typed arrays as base64 in JSON, and back
 const KINDS = { Uint8Array, Uint16Array, Uint32Array, Float32Array, Int16Array };

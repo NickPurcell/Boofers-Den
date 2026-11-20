@@ -13,7 +13,7 @@
 // put it). Meshes that share a finish are merged, so a figure is a handful of draws. Nothing here reads a visible
 // canvas or its size: it runs as well in a hidden frame.
 import * as THREE from 'three';
-import { quadNormals } from './derive.js';
+import { quadNormals, coarser } from './derive.js';
 import { EYE_COLOURS } from './eyes.js';
 
 const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
@@ -133,19 +133,40 @@ function reopen(list) {
 const painterOf = (ctx, mat) => { let p = ctx.get(mat); if (!p) ctx.set(mat, (p = skinPainter(mat))); return p; };
 
 /* ---------------- the body, from the base mesh itself ---------------- */
-function bakeBody(fig, B, ctx) {
-  const base = fig.B, N = base.N, p = fig.p0, q = base.quads, nrm = quadNormals(p, q, N, new Float32Array(N * 3));
+// keep: how many of the body's vertices stay (the base has 13,378; derive.js's collapse order says which go first);
+// Infinity keeps them all. Each vertex that stays takes the average colour of those folded into it, so lips, brows and
+// liner still read as a tint where their own vertices have gone. B.at: for every base vertex, its vertex in the 'skin'
+// entry (or -1), so a page can drop the body's triangles under its clothes.
+function bakeBody(fig, B, ctx, keep) {
+  const base = fig.B, N = base.N, p = fig.p0, q = base.quads, full = !(keep < Infinity) || !base.derived.lod;
+  const rep = full ? null : coarser(base, keep).rep, R_ = (i) => (rep ? rep[i] : i);
+  const nrm = quadNormals(p, q, N, new Float32Array(N * 3));
   const paint = painterOf(ctx, fig.skin), b = bucket(B, 0.6, 0, 'skin'), at = new Int32Array(N).fill(-1), col = [0, 0, 0];
   const R = base.rest, lip = base.lip, cav = fig.cav0, mark = fig.mark0, armW = base.armW, hand = base.derived.hand;
+  const first = b.P.length / 3, sum = [], cnt = [], done = new Uint8Array(N);
   for (let f = 0; f < q.length; f++) {
-    const i = q[f]; if (at[i] >= 0) continue;
-    at[i] = b.P.length / 3;
+    const i = q[f]; if (done[i]) continue; done[i] = 1;
+    const r = R_(i); if (at[r] < 0) { at[r] = b.P.length / 3; b.P.push(p[r * 3], p[r * 3 + 1], p[r * 3 + 2]); b.N.push(0, 0, 0); sum.push(0, 0, 0); cnt.push(0); }
+    at[i] = at[r];
     const nx = nrm[i * 3], ny = nrm[i * 3 + 1], nz = nrm[i * 3 + 2], l = Math.hypot(nx, ny, nz) || 1;
-    b.P.push(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]); b.N.push(nx / l, ny / l, nz / l);
     paint(col, 0, R[i * 3], R[i * 3 + 1], R[i * 3 + 2], nz / l, lip[i], cav[i * 2], cav[i * 2 + 1], mark ? mark[i * 2] : 0, mark ? mark[i * 2 + 1] : 0, armW[i] / 255, hand[i]);
-    b.C.push(col[0], col[1], col[2]);
+    const k = at[i] - first; sum[k * 3] += col[0]; sum[k * 3 + 1] += col[1]; sum[k * 3 + 2] += col[2]; cnt[k]++;
   }
-  for (let f = 0; f < q.length; f += 4) { const a = at[q[f]], c = at[q[f + 1]], d = at[q[f + 2]], e = at[q[f + 3]]; b.I.push(a, c, d, a, d, e); }
+  for (let k = 0; k < cnt.length; k++) b.C.push(sum[k * 3] / cnt[k], sum[k * 3 + 1] / cnt[k], sum[k * 3 + 2] / cnt[k]);
+  // the triangles that are left, and their normals (area-weighted, from the coarse surface itself)
+  const seen = new Set(), P = b.P, Nn = b.N;
+  const tri = (x, y, z) => {
+    if (x === y || y === z || x === z) return;
+    const lo = Math.min(x, y, z), hi = Math.max(x, y, z);
+    const key = `${lo},${x + y + z - lo - hi},${hi}`; if (seen.has(key)) return; seen.add(key);
+    const ax = P[x * 3], ay = P[x * 3 + 1], az = P[x * 3 + 2], ux = P[y * 3] - ax, uy = P[y * 3 + 1] - ay, uz = P[y * 3 + 2] - az, vx = P[z * 3] - ax, vy = P[z * 3 + 1] - ay, vz = P[z * 3 + 2] - az;
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    for (const w of [x, y, z]) { Nn[w * 3] += nx; Nn[w * 3 + 1] += ny; Nn[w * 3 + 2] += nz; }
+    b.I.push(x, y, z);
+  };
+  for (let f = 0; f < q.length; f += 4) { const a = at[q[f]], c = at[q[f + 1]], d = at[q[f + 2]], e = at[q[f + 3]]; tri(a, c, d); tri(a, d, e); }
+  for (let w = first; w < P.length / 3; w++) { const l = Math.hypot(Nn[w * 3], Nn[w * 3 + 1], Nn[w * 3 + 2]) || 1; Nn[w * 3] /= l; Nn[w * 3 + 1] /= l; Nn[w * 3 + 2] /= l; }
+  return { at, kept: P.length / 3 - first };
 }
 
 /* ---------------- the eyes: small balls, the iris in their vertices ---------------- */
@@ -185,8 +206,9 @@ function bakeEyes(fig, B) {
 const ROLE_FINISH = [null, null, [[0.8, 0.81, 0.83], 0.3, 1], [[0.035, 0.038, 0.045], 0.55, 0.7], [[0.78, 0.52, 0.22], 0.36, 1], [[0.02, 0.02, 0.02], 0.88, 0], [[0.36, 0.38, 0.41], 0.42, 1]];
 const visible = (o, root) => { for (let x = o; x && x !== root; x = x.parent) if (!x.visible) return false; return true; };
 
-export function bakeMeshes(root, fig, list = []) { const B = reopen(list); collect(root, fig, B, new Map()); return finish(B); }
-function collect(root, fig, B, ctx) {
+// o.grid: merge vertices within cells this many metres across (0: keep every vertex)
+export function bakeMeshes(root, fig, list = [], o = {}) { const B = reopen(list); collect(root, fig, B, new Map(), o.grid || 0); return finish(B); }
+function collect(root, fig, B, ctx, grid) {
   const toFig = new THREE.Matrix4(), m = new THREE.Matrix4(), nm = new THREE.Matrix3(), v = new THREE.Vector3(), n = new THREE.Vector3(), col = [0, 0, 0];
   fig.updateMatrixWorld(true); toFig.copy(fig.matrixWorld).invert();
   root.traverse((o) => {
@@ -213,32 +235,57 @@ function collect(root, fig, B, ctx) {
       finishOf = () => [mat.roughness ?? 0.6, mat.metalness ?? 0, 'part'];
     }
     const glow = mat.emissive && (mat.emissiveIntensity ?? 1) > 0 && (mat.emissive.r + mat.emissive.g + mat.emissive.b) > 0 ? [mat.emissive.r * mat.emissiveIntensity, mat.emissive.g * mat.emissiveIntensity, mat.emissive.b * mat.emissiveIntensity] : null;
-    const seen = new Map();   // (bucket, source vertex) -> index in the bucket
-    for (let t = 0; t + 2 < I.length; t += 3) {
-      const [rough, metal, name] = finishOf(I[t]), b = bucket(B, rough, metal, name);
-      if (glow && !b.E) b.E = new Array(b.C.length).fill(0);
-      let map = seen.get(b); if (!map) seen.set(b, (map = new Map()));
-      const tri = [I[t], I[t + 1], I[t + 2]].map((i) => {
-        let k = map.get(i); if (k !== undefined) return k;
-        k = b.P.length / 3; map.set(i, k);
-        v.fromBufferAttribute(P, i).applyMatrix4(m); n.fromBufferAttribute(Nn, i).applyMatrix3(nm).normalize();
-        b.P.push(v.x, v.y, v.z); b.N.push(n.x, n.y, n.z); const c = colour(i, n.z); b.C.push(c[0], c[1], c[2]);
-        if (b.E) b.E.push(...(glow || [0, 0, 0]));
-        return k;
-      });
-      if (flip) b.I.push(tri[0], tri[2], tri[1]); else b.I.push(tri[0], tri[1], tri[2]);
+    // every vertex in the figure's frame, coloured, with its finish
+    const nV = P.count, tp = new Float32Array(nV * 3), tn = new Float32Array(nV * 3), tc = new Float32Array(nV * 3), tb = new Array(nV);
+    for (let i = 0; i < nV; i++) {
+      v.fromBufferAttribute(P, i).applyMatrix4(m); n.fromBufferAttribute(Nn, i).applyMatrix3(nm).normalize();
+      tp[i * 3] = v.x; tp[i * 3 + 1] = v.y; tp[i * 3 + 2] = v.z; tn[i * 3] = n.x; tn[i * 3 + 1] = n.y; tn[i * 3 + 2] = n.z;
+      const c = colour(i, n.z); tc[i * 3] = c[0]; tc[i * 3 + 1] = c[1]; tc[i * 3 + 2] = c[2];
+      const [rough, metal, name] = finishOf(i); tb[i] = bucket(B, rough, metal, name);
     }
+    // small parts at table size: vertices within one cell of a grid (o.grid metres) become one, at their average, so a
+    // hilt or a chain costs what it shows; their normals then come from the triangles that are left
+    const id = new Int32Array(nV), cells = new Map(), bIds = new Map();
+    let groups = nV;
+    if (grid > 0) {
+      groups = 0;
+      for (let i = 0; i < nV; i++) {
+        let bi = bIds.get(tb[i]); if (bi === undefined) bIds.set(tb[i], (bi = bIds.size));
+        const k = `${bi},${Math.floor(tp[i * 3] / grid)},${Math.floor(tp[i * 3 + 1] / grid)},${Math.floor(tp[i * 3 + 2] / grid)}`;
+        let g = cells.get(k); if (g === undefined) cells.set(k, (g = groups++)); id[i] = g;
+      }
+    } else for (let i = 0; i < nV; i++) id[i] = i;
+    const gp = new Float64Array(groups * 3), gc = new Float64Array(groups * 3), gn = new Float64Array(groups * 3), gk = new Uint32Array(groups), gb = new Array(groups);
+    for (let i = 0; i < nV; i++) { const g = id[i]; gk[g]++; gb[g] = tb[i]; for (let k = 0; k < 3; k++) { gp[g * 3 + k] += tp[i * 3 + k]; gc[g * 3 + k] += tc[i * 3 + k]; gn[g * 3 + k] += tn[i * 3 + k]; } }
+    for (let g = 0; g < groups; g++) for (let k = 0; k < 3; k++) { gp[g * 3 + k] /= gk[g]; gc[g * 3 + k] /= gk[g]; }
+    if (grid > 0) gn.fill(0);
+    const seen = new Map(), tris = new Set(), added = [];   // (bucket) -> group -> index in the bucket
+    for (let t = 0; t + 2 < I.length; t += 3) {
+      const g3 = flip ? [id[I[t]], id[I[t + 2]], id[I[t + 1]]] : [id[I[t]], id[I[t + 1]], id[I[t + 2]]];
+      if (g3[0] === g3[1] || g3[1] === g3[2] || g3[0] === g3[2]) continue;
+      if (grid > 0) { const s3 = [...g3].sort((a, b) => a - b).join(','); if (tris.has(s3)) continue; tris.add(s3);
+        const [a, b2, c] = g3, ux = gp[b2 * 3] - gp[a * 3], uy = gp[b2 * 3 + 1] - gp[a * 3 + 1], uz = gp[b2 * 3 + 2] - gp[a * 3 + 2], vx = gp[c * 3] - gp[a * 3], vy = gp[c * 3 + 1] - gp[a * 3 + 1], vz = gp[c * 3 + 2] - gp[a * 3 + 2];
+        const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; for (const w of g3) { gn[w * 3] += nx; gn[w * 3 + 1] += ny; gn[w * 3 + 2] += nz; } }
+      const b = gb[g3[0]]; if (glow && !b.E) b.E = new Array(b.C.length).fill(0);
+      let map = seen.get(b); if (!map) seen.set(b, (map = new Map()));
+      b.I.push(...g3.map((g) => { let k = map.get(g); if (k === undefined) { k = b.P.length / 3; map.set(g, k); b.P.push(gp[g * 3], gp[g * 3 + 1], gp[g * 3 + 2]); b.N.push(0, 0, 0); b.C.push(gc[g * 3], gc[g * 3 + 1], gc[g * 3 + 2]); if (b.E) b.E.push(...(glow || [0, 0, 0])); added.push([b, k, g]); } return k; }));
+    }
+    for (const [b, k, g] of added) { const l = Math.hypot(gn[g * 3], gn[g * 3 + 1], gn[g * 3 + 2]) || 1; b.N[k * 3] = gn[g * 3] / l; b.N[k * 3 + 1] = gn[g * 3 + 1] / l; b.N[k * 3 + 2] = gn[g * 3 + 2] / l; }
   });
 }
 
 // the whole figure: the body from the base mesh (not the subdivided one the page shows), the eyes, and the species'
 // features and the carried thing as the page shows them now
-export function bakeTable(fig) {
+// o.keep: the body's vertices to keep (default TABLE_KEEP; Infinity for all of them); o.grid: the cell the species'
+// features and the carried thing are simplified to (default TABLE_GRID, 4 mm; 0 to keep them whole)
+export const TABLE_KEEP = 3500, TABLE_GRID = 0.004;
+export function bakeTable(fig, o = {}) {
   const t0 = performance.now(), B = buckets(), ctx = new Map();
   fig.updateMatrixWorld(true);
-  bakeBody(fig, B, ctx); bakeEyes(fig, B);
-  for (const name of ['pureblood', 'carry']) { const g = fig.getObjectByName(name); if (g) collect(g, fig, B, ctx); }
+  const body = bakeBody(fig, B, ctx, o.keep ?? TABLE_KEEP); bakeEyes(fig, B);
+  for (const name of ['pureblood', 'carry']) { const g = fig.getObjectByName(name); if (g) collect(g, fig, B, ctx, o.grid ?? TABLE_GRID); }
   const list = finish(B);
+  list.at = body.at; list.kept = body.kept;
   list.ms = Math.round(performance.now() - t0);
   return list;
 }
