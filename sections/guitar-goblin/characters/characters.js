@@ -327,6 +327,31 @@ function offTheLegs(entries, skeleton) {   // what a vertex took from the legs, 
     }
   }
 }
+// ...and then, below the hip, back toward the legs a little: a long skirt hung only from the hips stood still while the
+// legs strode through it. Toward the knee more of each vertex follows the thighs (up to 70 %), split between the two by
+// which side of the body it hangs on, smoothly across the middle, so the front and back go with the legs and the middle
+// stretches between them rather than tearing.
+function hangSkirt(entries, skeleton) {
+  const at = (n) => skeleton.findIndex((b) => b.name === n), tL = at('upperleg01.L'), tR = at('upperleg01.R'), kL = at('lowerleg01.L'), kR = at('lowerleg01.R');
+  if ([tL, tR, kL, kR].some((k) => k < 0)) return;
+  const H = skeleton, hipY = (H[tL].head[1] + H[tR].head[1]) / 2, kneeY = (H[kL].head[1] + H[kR].head[1]) / 2, xL = H[tL].head[0], xR = H[tR].head[0];
+  const sm = (t) => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
+  for (const e of entries) {
+    const I = e.skinIndex, W = e.skinWeight, P = e.position; if (!I || !W) continue;
+    for (let v = 0, n = I.length / 4; v < n; v++) {
+      const y = P[v * 3 + 1], x = P[v * 3], k = 0.7 * sm((hipY - y) / (hipY - kneeY)); if (k <= 0) continue;
+      const side = sm((x - xR) / (xL - xR)), w = new Map();
+      for (let j = 0; j < 4; j++) if (W[v * 4 + j]) w.set(I[v * 4 + j], (w.get(I[v * 4 + j]) || 0) + (W[v * 4 + j] / 255) * (1 - k));
+      w.set(tL, (w.get(tL) || 0) + k * side); w.set(tR, (w.get(tR) || 0) + k * (1 - side));
+      const top = [...w].filter(([, x]) => x > 0).sort((a, b) => b[1] - a[1]).slice(0, 4), sum = top.reduce((m, [, x]) => m + x, 0) || 1;
+      let left = 255;
+      for (let j = 0; j < 4; j++) {
+        const [bone, x] = top[j] || [0, 0], q = j === top.length - 1 ? left : Math.round((x / sum) * 255);
+        I[v * 4 + j] = bone; W[v * 4 + j] = top[j] ? Math.max(0, Math.min(left, q)) : 0; left -= W[v * 4 + j];
+      }
+    }
+  }
+}
 // Clothes meshed round the arms-down pose join the hanging arm to the side of the body below it; once the arms swing,
 // those faces stretch into webs from the hand to the hip. Cut them: no face of the clothes joins a vertex that follows
 // an arm to one that follows the hips or a leg.
@@ -356,7 +381,7 @@ if (BAKE) {
       for (const name of ['hair', 'hair-down', 'tendrils']) { const o = fig.getObjectByName(name); if (o && o.visible) list = bakeMeshes(o, fig, list, { grid: G, skin: 'rigid' }); }
       for (const piece of fig.getObjectByName('clothes')?.children || []) {
         if (!piece.visible) continue;
-        if (SKIRTED.has(piece.name)) { const own = bakeMeshes(piece, fig, [], { grid: G, skin: 'surface' }); offTheLegs(own, list.skeleton); extra.push(...own); }
+        if (SKIRTED.has(piece.name)) { const own = bakeMeshes(piece, fig, [], { grid: G, skin: 'surface' }); offTheLegs(own, list.skeleton); hangSkirt(own, list.skeleton); extra.push(...own); }
         else list = bakeMeshes(piece, fig, list, { grid: G, skin: SPINE.has(piece.name) ? 'torso' : 'surface' });
       }
       cutArmWebs(extra, list.skeleton); cutArmWebs(list.filter((m) => m.name !== 'skin'), list.skeleton);
