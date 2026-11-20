@@ -113,17 +113,18 @@ export function carry(fig) {
   };
   const pn = (i) => [[fig.p0[i * 3], fig.p0[i * 3 + 1], fig.p0[i * 3 + 2]], new THREE.Vector3(fig.n0[i * 3], fig.n0[i * 3 + 1], fig.n0[i * 3 + 2]).normalize()];
   // the body near a point, as the distance along the nearest vertex's normal (for the push past it)
-  const bodyD = (x, y, z) => {
+  // (noArms: the body without its arms, for something worn at the hip, which a hanging hand passes beside)
+  const bodyD = (x, y, z, noArms = false) => {
     const P = fig.p0, N = fig.n0; let best = -1, bd = Infinity;
-    for (let i = 0; i < B.N; i++) { if (!B.inBody[i]) continue; const dx = x - P[i * 3], dy = y - P[i * 3 + 1], dz = z - P[i * 3 + 2], d2 = dx * dx + dy * dy + dz * dz; if (d2 < bd) { bd = d2; best = i; } }
+    for (let i = 0; i < B.N; i++) { if (!B.inBody[i] || (noArms && B.armW[i] > 40)) continue; const dx = x - P[i * 3], dy = y - P[i * 3 + 1], dz = z - P[i * 3 + 2], d2 = dx * dx + dy * dy + dz * dz; if (d2 < bd) { bd = d2; best = i; } }
     return (x - P[best * 3]) * N[best * 3] + (y - P[best * 3 + 1]) * N[best * 3 + 1] + (z - P[best * 3 + 2]) * N[best * 3 + 2];
   };
   // how far along `out` the thing must move so that every sample along its axis clears the body and what is worn
-  const clearance = (centre, axis, out, half, radius) => {
+  const clearance = (centre, axis, out, half, radius, noArms = false) => {
     let need = 0;
     for (let k = -4; k <= 4; k++) {
       const t = (k / 4) * half, p = centre.clone().addScaledVector(axis, t);
-      for (let it = 0; it < 24; it++) { const q = p.clone().addScaledVector(out, need), d = Math.min(bodyD(q.x, q.y, q.z), worn ? worn(q.x, q.y, q.z) : 1); if (d >= radius + 0.004) break; need += Math.max(0.002, radius + 0.004 - d); }
+      for (let it = 0; it < 24; it++) { const q = p.clone().addScaledVector(out, need), d = Math.min(bodyD(q.x, q.y, q.z, noArms), worn ? worn(q.x, q.y, q.z) : 1); if (d >= radius + 0.004) break; need += Math.max(0.002, radius + 0.004 - d); }
     }
     return need;
   };
@@ -146,10 +147,12 @@ export function carry(fig) {
       centre.addScaledVector(out, clearance(centre, axis, out, 0.25, 0.025));
       m = frame(axis, out, centre);
     } else if (opt.item === 'pistol') {
-      // holstered at the right hip, barrel down, its top to the front, the grip up and back for the hand to find
-      const yb = J('r-upper-leg').y + 0.03 * (H / 1.75), i = extreme(yb, -side * Math.cos(0.5), Math.sin(0.5)), [p, n] = pn(i);
+      // holstered at the right hip, barrel down, its top to the front, the grip up and back for the hand to find: on the
+      // side of the hip a little behind it, against the hip and not the hanging hand (forward of the side it sat on
+      // the top of the thigh and was pushed out past the hand, and stood off the body as soon as the leg moved)
+      const yb = J('r-upper-leg').y + 0.03 * (H / 1.75), i = extreme(yb, -side * Math.cos(0.22), -Math.sin(0.22)), [p, n] = pn(i);
       const out = new THREE.Vector3(n.x, 0, n.z).normalize(), down = new THREE.Vector3(0, -1, 0.12).normalize(), fwd = new THREE.Vector3(0, 0.12, 1).normalize(), centre = new THREE.Vector3(...p);
-      centre.addScaledVector(out, clearance(centre.clone().addScaledVector(down, 0.1), down, out, 0.1, 0.024));
+      centre.addScaledVector(out, clearance(centre.clone().addScaledVector(down, 0.1), down, out, 0.1, 0.024, true));
       m = frame(fwd, down, centre);   // its top (+y) forward, its barrel (+z) down
     } else if (opt.item === 'rifle') {
       // slung across the back, barrel up over the left shoulder, its top outward

@@ -156,7 +156,10 @@ export function robeField(B, arms, belt = false) {
   const reach = max(abs(arms.L.W[0]), abs(arms.R.W[0]), 0.2 * w) + 0.11;
   const top = max(arms.L.W[1], arms.R.W[1], 0.72 * t) + 0.1;
   // (the sleeves' own shapes too: which part of the robe a point of its surface belongs to, for the table's bake)
-  return { field, lining, bounds: [[-reach, -0.01, -0.2 * w - 0.05], [reach, top, max(arms.L.W[2], arms.R.W[2], 0.2 * w) + 0.13]], body, sleeves: { L: L.solid, R: R.solid } };
+  // and each sleeve as a cloth of its own, hollow at the cuff, with the box it lies in: the table's bake meshes the body
+  // and the sleeves apart, so a raised arm's sleeve lifts off the robe's side instead of stretching the cloth joining them
+  const apart = (p, sl, hol) => ({ field: (x, y, z) => max(sl(x, y, z), -hol(x, y, z)), bounds: [sub3(p.bound[0], [p.bound[1], p.bound[1], p.bound[1]]), add3(p.bound[0], [p.bound[1], p.bound[1], p.bound[1]])] });
+  return { field, lining, bounds: [[-reach, -0.01, -0.2 * w - 0.05], [reach, top, max(arms.L.W[2], arms.R.W[2], 0.2 * w) + 0.13]], body, sleeves: { L: L.solid, R: R.solid }, apart: { L: apart(L, sleeveL, holL), R: apart(R, sleeveR, holR) } };
 }
 
 /* ---------------- the hood ---------------- */

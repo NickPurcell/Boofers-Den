@@ -141,7 +141,8 @@ const painterOf = (ctx, mat) => { let p = ctx.get(mat); if (!p) ctx.set(mat, (p 
 // The figure's bones where they are now (the arms-down pose the page shows is the pose they are bound in, every bone's
 // own turn the identity), each vertex's four bones and weights (data/bones.bin), and how anything else hangs on them:
 // 'surface' (each vertex as the body under it: clothes), 'rigid' (all on the one bone the body under it follows most:
-// tendrils, hair, a helmet) or 'torso' (the same, but only the hips or the spine: things worn on a belt or the back).
+// tendrils, hair, a helmet) or 'torso' (things worn on a belt or the back: on the hips or the spine bone at their own
+// height, so a holster at the hip rides the hips and not a chest that leans and turns as the figure runs).
 const TORSO = new Set(['root', 'spine05', 'spine04', 'spine03', 'spine02', 'spine01']);
 function rigOf(fig) {
   const base = fig.B, S = base.skeleton; if (!S) return null;
@@ -160,8 +161,9 @@ function rigOf(fig) {
     return [best, Math.sqrt(bd)];
   };
   const index = Object.fromEntries(bones.map((b, k) => [b.name, k]));
-  const torsoOf = (k) => { while (k > 0 && !TORSO.has(bones[k].name)) k = bones[k].parent; return Math.max(0, k); };
-  return { bones, index, idx: S.idx, w: S.w, nearest, torsoOf };
+  // the hips or spine bone for something worn at height y: the highest of them that starts at or below it
+  const torsoAt = (y) => { let best = index.root ?? 0, by = -Infinity; for (const n of TORSO) { const k = index[n]; if (k !== undefined && bones[k].head[1] <= y && bones[k].head[1] > by) { by = bones[k].head[1]; best = k; } } return best; };
+  return { bones, index, idx: S.idx, w: S.w, nearest, torsoAt };
 }
 
 /* ---------------- the body, from the base mesh itself ---------------- */
@@ -298,11 +300,11 @@ function collect(root, fig, B, ctx, grid, rig, mode, label) {
     // own weights under each group
     let one = -1;
     if (rig && mode && mode.startsWith('bone:')) one = rig.index[mode.slice(5)] ?? 0;
+    else if (rig && mode === 'torso') { let y = 0; for (let g = 0; g < groups; g++) y += gp[g * 3 + 1]; one = rig.torsoAt(groups ? y / groups : 0); }
     else if (rig && mode !== 'surface') {
       let bd = Infinity, bv = -1; const step = Math.max(1, Math.floor(groups / 300));
       for (let g = 0; g < groups; g += step) { const [v0, d] = rig.nearest(gp[g * 3], gp[g * 3 + 1], gp[g * 3 + 2]); if (d < bd) { bd = d; bv = v0; } }
       one = bv < 0 ? 0 : rig.idx[bv * 4];
-      if (mode === 'torso') one = rig.torsoOf(one);
     }
     const skinOf = (b, g) => {
       if (!rig) return;
