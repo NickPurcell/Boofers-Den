@@ -151,3 +151,16 @@ test("char.look: a look survives every write that rebuilds the sheet (stash take
   assert.equal(await look(), undefined, "an unreadable one is dropped, not stored as another figure");
   assert.equal({}.skin, undefined);
 });
+
+test("char.look: a Jawa's look (kind=jawa) is stored as the parser writes it, with nothing of a humanoid's in it", async () => {
+  const { p1 } = await table();
+  const id = (await p1.act("char.save", { char: { name: "Tavo" } })).data.id;
+  const link = "https://example.invalid/sections/guitar-goblin/jawa-creator/#kind=jawa&robe=plum&hold=blaster&species=human&c.jaw=0.9";
+  const r = await p1.act("char.look", { charId: id, look: link });
+  assert.equal(r.code, 200);
+  const want = Look.parseLook(link).look;
+  assert.ok(want.startsWith("kind=jawa&") && want.includes("robe=plum") && !/species|c\.jaw/.test(want));
+  assert.equal(r.data.look, want); assert.equal(r.data.changed, 2);
+  assert.equal((await p1.poll()).data.state.characters[id].look, want);
+  assert.equal((await p1.act("char.look", { charId: id, look: "kind=droid&model=t3" })).code, 400, "a kind we cannot make yet is refused");
+});
