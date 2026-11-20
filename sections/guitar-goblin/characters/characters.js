@@ -94,13 +94,15 @@ let accent = null, lips = null;
 // update, and its eyes are not drawn. The head sits on an upright frame at the human eyes, scaled with the figure.
 const durosG = new THREE.Group(); durosG.name = 'duros-head'; durosG.visible = false; durosG.matrixAutoUpdate = false; fig.add(durosG);
 const durosSkin = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62 });
-const durosEyeMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.34, clearcoat: 0.55, clearcoatRoughness: 0.2 });
+const durosEyeMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.5, clearcoat: 0.25, clearcoatRoughness: 0.35 });   // (a soft sheen, not a highlight)
 let durosMesh = null, durosShape = '', durosTicket = 0, headIdx = null;
 {   // the eyes: almond lenses of one colour, darker toward the rim
-  const g = new THREE.SphereGeometry(1, 28, 14), n = g.attributes.normal, col = new Float32Array(n.count * 3);
-  for (let i = 0; i < n.count; i++) { const k = 0.3 + 0.7 * Math.max(0, n.getZ(i)) ** 1.2; col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = k; }
+  const g = new THREE.SphereGeometry(1, 32, 16), P = g.attributes.position, n = g.attributes.normal, col = new Float32Array(n.count * 3);
+  for (let i = 0; i < P.count; i++) P.setY(i, P.getY(i) * (1 - 0.55 * P.getX(i) ** 2));   // (an almond: narrowing to its corners)
+  g.computeVertexNormals();
+  for (let i = 0; i < n.count; i++) { const k = 0.18 + 0.82 * Math.max(0, n.getZ(i)) ** 2.2; col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = k; }   // (darker where it meets the lid)
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  for (const sgn of [1, -1]) { const e = new THREE.Mesh(g, durosEyeMat); e.name = 'duros-eye'; e.scale.set(...DUROS_EYE.r); e.position.set(sgn * DUROS_EYE.c[0], DUROS_EYE.c[1], DUROS_EYE.c[2] - 0.012); e.rotation.z = sgn * DUROS_EYE.tilt; durosG.add(e); }
+  for (const sgn of [1, -1]) { const e = new THREE.Mesh(g, durosEyeMat); e.name = 'duros-eye'; e.scale.set(...DUROS_EYE.r); e.position.set(sgn * DUROS_EYE.c[0], DUROS_EYE.c[1], DUROS_EYE.c[2]); e.rotation.z = sgn * DUROS_EYE.tilt; durosG.add(e); }
 }
 function durosFrame() {
   const F = fig.headFrame(), x = new THREE.Vector3(...F.x), up = new THREE.Vector3(0, 1, 0).addScaledVector(x, -x.y).normalize(), z = new THREE.Vector3().crossVectors(x, up), k = F.scale / 0.0644;
@@ -440,7 +442,11 @@ if (BAKE) {
         const skin = list.find((m) => m.name === 'skin'), gone = new Set();
         for (const i of base.regions.head) { const v = list.at ? list.at[i] : -1; if (v >= 0) gone.add(v); }
         if (skin && gone.size) { const ix = skin.index, keep = []; for (let t = 0; t < ix.length; t += 3) if (!gone.has(ix[t]) && !gone.has(ix[t + 1]) && !gone.has(ix[t + 2])) keep.push(ix[t], ix[t + 1], ix[t + 2]); skin.index = Uint32Array.from(keep); }
+        // (the body's bake carries its creases' and hollows' shade; the head's own colours a touch darker to match it)
+        const hc = durosMesh && durosMesh.geometry.attributes.color, keepC = hc && hc.array.slice();
+        if (hc) { for (let i = 0; i < hc.array.length; i++) hc.array[i] *= 0.86; }
         list = bakeMeshes(durosG, fig, list, { grid: 0.004, skin: 'rigid' });
+        if (hc) hc.array.set(keepC);
       }
       for (const name of ['hair', 'hair-down', 'tendrils']) { const o = fig.getObjectByName(name); if (o && o.visible) list = bakeMeshes(o, fig, list, { grid: G, skin: 'rigid' }); }
       for (const piece of fig.getObjectByName('clothes')?.children || []) {

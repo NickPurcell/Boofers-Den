@@ -7,12 +7,15 @@
 //   middle, over deep-set eyes; wavy folds across the forehead; large slanted almond eyes of one colour; no nose, but a
 //   long flat central plane down to the mouth with a crease each side; flat to hollow cheeks; a thin low downturned mouth;
 //   a narrow jaw and a small chin; no outer ears, a small opening each side.
-import { ellipsoid, capsule, roundCone, chain, smin, ssub, union, subtract, mirrorX, rotate, rotZ, mesh } from '../duros-creator/sdf.js';
+import { ellipsoid, capsule, roundCone, chain, smin, ssub, sintersect, union, subtract, mirrorX, rotate, rotZ, mesh } from '../duros-creator/sdf.js';
 
 // the head's shapes: rounded (the default), a higher dome, or narrower
 export const SHAPES = { round: { w: 1, h: 1, d: 1 }, tall: { w: 0.97, h: 1.1, d: 1.02 }, narrow: { w: 0.9, h: 1.03, d: 0.98 } };
 // the eyes, for the page to draw (each an almond lens): centre, half sizes, the slant (outer corner up)
-export const EYE = { c: [0.043, 0.0, 0.043], r: [0.023, 0.0105, 0.0085], tilt: 0.16 };   // (a flat lens, not a bead)
+// (set into the head, its surface a little behind the brow and the cheek: from below it is under the brow)
+export const EYE = { c: [0.043, 0.0, 0.027], r: [0.026, 0.0125, 0.0075], tilt: 0.17 };
+// an almond, pointed at both corners: two tall ellipsoids offset up and down, overlapping
+const almond = (cx, cy, cz, w, h, d, soft) => sintersect(soft, ellipsoid(cx, cy - h * 0.95, cz, w, h * 1.95, d), ellipsoid(cx, cy + h * 0.95, cz, w, h * 1.95, d));
 
 export function durosField(shape = 'round') {
   const S = SHAPES[shape] || SHAPES.round, W = S.w, H = S.h, D = S.d;
@@ -33,13 +36,13 @@ export function durosField(shape = 'round') {
   f = smin(0.03, f, neck);
   // (the forehead's folds are painted, in shadeAt: modelled, they read as a seam)
   // the eyes' sockets: slanted almonds, deep under the brow
-  const socket = mirrorX(rotate(ellipsoid(EYE.c[0], EYE.c[1], EYE.c[2], EYE.r[0] * 1.15, EYE.r[1] * 1.5, 0.02), rotZ(-EYE.tilt), EYE.c));
-  f = ssub(0.006, f, (x, y, z) => socket(x, y, z - 0.004));
+  const socket = mirrorX(rotate(almond(EYE.c[0], EYE.c[1], EYE.c[2] + 0.012, EYE.r[0] * 1.12, EYE.r[1] * 1.35, 0.021, 0.003), rotZ(-EYE.tilt), EYE.c));
+  f = ssub(0.009, f, socket);   // (a soft rim)
   // the creases down each side of the plane, from the inner eye toward the mouth's corner, and the hollow cheeks
-  f = ssub(0.004, f, mirrorX(capsule([0.019, -0.012, 0.056], [0.017, -0.074, 0.052], 0.0028)));
+  f = ssub(0.006, f, mirrorX(capsule([0.019, -0.048, 0.052], [0.022, -0.076, 0.049], 0.0018)));   // (short and low, toward the mouth: not a tear track)
   f = ssub(0.02, f, mirrorX(ellipsoid(0.056 * W, -0.045, 0.045, 0.02, 0.026, 0.02)));
   // the mouth: a thin low line, a little downturned at its corners, with the plane's end just overhanging it
-  f = ssub(0.002, f, mirrorX(chain([[0, -0.083, 0.054], [0.011, -0.0845, 0.052], [0.019, -0.088, 0.048]], 0.0016)));
+  f = ssub(0.003, f, mirrorX(chain([[0, -0.083, 0.0565], [0.011, -0.0845, 0.0545], [0.019, -0.088, 0.0505]], 0.0035)));   // (a shallow line: the dark of it is painted, shadeAt)
   // the small chin, set just behind the line of the mouth
   f = smin(0.012, f, ellipsoid(0, -0.104, 0.03, 0.015, 0.012, 0.012));
   // no outer ears: a small opening each side at eye level, set back
@@ -70,6 +73,8 @@ export function shadeAt(x, y, z) {
   const ey = Math.hypot(ax - EYE.c[0], (y - EYE.c[1]) * 1.6, z - EYE.c[2]);
   k *= 1 - 0.22 * Math.max(0, 1 - ey / 0.04);   // darker round the eyes
   if (y < -0.075) k *= 0.97;
+  // the mouth: a thin dark line, a little downturned at its corners
+  if (z > 0.035 && ax < 0.022) { const ym = -0.083 - 0.0016 * (ax / 0.011) ** 2 * (ax > 0.011 ? 1 + (ax - 0.011) / 0.004 : 1); k *= 1 - 0.55 * Math.max(0, 1 - Math.abs(y - ym) / 0.0016) * Math.max(0, 1 - ax / 0.021); }
   return k;
 }
 
