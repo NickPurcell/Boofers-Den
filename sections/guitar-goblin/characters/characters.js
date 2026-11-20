@@ -392,22 +392,30 @@ function offTheLegs(entries, skeleton) {   // what a vertex took from the legs, 
     }
   }
 }
-// ...and then, below the hip, back toward the legs a little: a long skirt hung only from the hips stood still while the
-// legs strode through it. Toward the knee more of each vertex follows the thighs (up to 70 %), split between the two by
-// which side of the body it hangs on, smoothly across the middle, so the front and back go with the legs and the middle
-// stretches between them rather than tearing.
+// ...and then, below the hip, back toward the legs: a long skirt hung only from the hips stood still while the legs
+// strode through it. A little below the hip each vertex follows the thighs wholly (a quarter of the way to the knee), and
+// below the knee mostly the shins (#300: at 70 % toward the knee, the running stride's thigh came through the front, and
+// the heel kicked up behind came through the back), split between the two legs by which side of the body it hangs on,
+// smoothly across the middle, so the front and back go with the legs and the middle stretches between them rather than
+// tearing.
 function hangSkirt(entries, skeleton) {
   const at = (n) => skeleton.findIndex((b) => b.name === n), tL = at('upperleg01.L'), tR = at('upperleg01.R'), kL = at('lowerleg01.L'), kR = at('lowerleg01.R');
   if ([tL, tR, kL, kR].some((k) => k < 0)) return;
   const H = skeleton, hipY = (H[tL].head[1] + H[tR].head[1]) / 2, kneeY = (H[kL].head[1] + H[kR].head[1]) / 2, xL = H[tL].head[0], xR = H[tR].head[0];
+  const fL = at('foot.L'), fR = at('foot.R'), ankY = fL >= 0 && fR >= 0 ? (H[fL].head[1] + H[fR].head[1]) / 2 : 0;
+  // (a sleeve's cuff hangs below the hip: what follows an arm keeps to it)
+  const arm = H.map(() => false); H.forEach((b, i) => { for (let j = i; j >= 0; j = H[j].parent) if (/^upperarm/.test(H[j].name)) { arm[i] = true; break; } });
   const sm = (t) => { t = Math.max(0, Math.min(1, t)); return t * t * (3 - 2 * t); };
   for (const e of entries) {
     const I = e.skinIndex, W = e.skinWeight, P = e.position; if (!I || !W) continue;
     for (let v = 0, n = I.length / 4; v < n; v++) {
-      const y = P[v * 3 + 1], x = P[v * 3], k = 0.7 * sm((hipY - y) / (hipY - kneeY)); if (k <= 0) continue;
+      let onArm = 0; for (let j = 0; j < 4; j++) if (arm[I[v * 4 + j]]) onArm += W[v * 4 + j] / 255;
+      const y = P[v * 3 + 1], x = P[v * 3], k = sm((hipY - y) / (0.25 * (hipY - kneeY))) * (1 - onArm); if (k <= 0) continue;
       const side = sm((x - xR) / (xL - xR)), w = new Map();
       for (let j = 0; j < 4; j++) if (W[v * 4 + j]) w.set(I[v * 4 + j], (w.get(I[v * 4 + j]) || 0) + (W[v * 4 + j] / 255) * (1 - k));
-      w.set(tL, (w.get(tL) || 0) + k * side); w.set(tR, (w.get(tR) || 0) + k * (1 - side));
+      const s2 = ankY ? 0.8 * sm((kneeY - y) / (0.4 * (kneeY - ankY))) : 0;   // (below the knee, most of it to the shins)
+      w.set(tL, (w.get(tL) || 0) + k * (1 - s2) * side); w.set(tR, (w.get(tR) || 0) + k * (1 - s2) * (1 - side));
+      if (s2 > 0) { w.set(kL, (w.get(kL) || 0) + k * s2 * side); w.set(kR, (w.get(kR) || 0) + k * s2 * (1 - side)); }
       const top = [...w].filter(([, x]) => x > 0).sort((a, b) => b[1] - a[1]).slice(0, 4), sum = top.reduce((m, [, x]) => m + x, 0) || 1;
       let left = 255;
       for (let j = 0; j < 4; j++) {
