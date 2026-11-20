@@ -28,3 +28,25 @@ test("the mesh header agrees with the binaries", () => {
   assert.equal(readFileSync(join(DATA, "mesh.bin")).length, M.vertices * 12 + M.quads * 8, "mesh.bin: positions then quads");
   assert.equal(readFileSync(join(DATA, "skin.bin")).length, M.vertices * 4, "skin.bin: four weights per vertex");
 });
+
+test("the table's coarser body: the level asked for, still closed", async () => {
+  const D = await import("../sections/guitar-goblin/human-base/derive.js");
+  const ab = (f) => { const b = readFileSync(join(DATA, f)); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); };
+  const B = D.decode(JSON.parse(readFileSync(join(DATA, "mesh.json"), "utf8")), ab("mesh.bin"), ab("targets.bin"), ab("skin.bin"));
+  B.derived = D.unpack(JSON.parse(readFileSync(join(DATA, "derived.json"), "utf8")));
+  for (const keep of [3500, 1500]) {
+    const { rep, kept } = D.coarser(B, keep);
+    assert.equal(kept, keep);
+    const stay = new Set(); for (let i = 0; i < B.N; i++) if (B.inBody[i]) stay.add(rep[i]);
+    assert.equal(stay.size, keep);
+    for (const v of stay) assert.equal(rep[v], v, "a vertex that stays stands for itself");
+  }
+  // the body is closed (every edge between two quads) and stays closed when coarser: no holes at the table
+  for (const keep of [3500, 1500]) {
+    const { rep } = D.coarser(B, keep), q = B.quads, tris = new Set(), edge = new Map(), key = (a, b) => (a < b ? a + "," + b : b + "," + a);
+    const add = (a, b, c) => { if (a === b || b === c || a === c) return; const k = [a, b, c].sort((x, y) => x - y).join(); if (tris.has(k)) return; tris.add(k); for (const [x, y] of [[a, b], [b, c], [c, a]]) edge.set(key(x, y), (edge.get(key(x, y)) || 0) + 1); };
+    for (let f = 0; f < q.length; f += 4) { const [a, b, c, d] = [0, 1, 2, 3].map((k) => rep[q[f + k]]); add(a, b, c); add(a, c, d); }
+    const open = [...edge.values()].filter((n) => n !== 2).length;
+    assert.equal(open, 0, `${open} edges of the ${keep}-vertex body are not shared by exactly two triangles`);
+  }
+});

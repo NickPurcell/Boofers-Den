@@ -17,7 +17,8 @@ text. Each converted file's own header reads "This asset was explicitly released
 copyright holders named at the time of release were Data Collection AB, Joel Palmius and Jonas Hauquier.
 
 `derived.json` holds tables worked out from that data by our own code (`../derive.js`, run at build time by our
-`tests/human-base/bake.mjs`): the landmarks, the regions, the hand mask, the eye rings and the Pureblood's ridges and roots.
+`tests/human-base/bake.mjs`): the landmarks, the regions, the hand mask, the eye rings, the Pureblood's ridges and roots, and the order to fold the
+body's vertices away in for a coarser figure (the one drawn on the table).
 
 What was done to them:
 - Only the `body` group of the base mesh is kept (all quads), with the two eye helper spheres (used to place our own
@@ -32,4 +33,5 @@ The carried things (`../carry.js`) use no MakeHuman data: they are our own shape
 
 MakeHuman's program code is under the AGPL; none of it is used, copied or adapted here. Everything that reads and uses
 this data is our own: the loader, the morph blending, the subdivision, the landmarks, the skin, the eyes and the species
-features, and the skinning that lowers the arms (`../base.js`, `../skin.js`, `../eyes.js`, `../species/`).
+features, and the skinning that lowers the arms, the coarser figure baked for the table (`../base.js`, `../skin.js`, `../eyes.js`,
+`../species/`, `../table.js`).

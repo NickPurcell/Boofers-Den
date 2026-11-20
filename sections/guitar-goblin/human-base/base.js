@@ -169,7 +169,7 @@ class Figure extends THREE.Group {
   }
   set(o) { Object.assign(this.state, o); return this; }
   // two numbers per base vertex for the skin to paint by (x: a bone crest to light); carried through the subdivision
-  setMark(src) { const a = this.geometry.attributes.aMark; if (this.sub) subdivide(this.B.T, src, 2, a.array); else a.array.set(src); a.needsUpdate = true; return this; }
+  setMark(src) { this.mark0 = src; const a = this.geometry.attributes.aMark; if (this.sub) subdivide(this.B.T, src, 2, a.array); else a.array.set(src); a.needsUpdate = true; return this; }
   // the head's own frame after the morphs: origin between the eyes, x to the figure's left, y up, z forward (metres)
   headFrame() {
     const l = this.eyes.l.position, r = this.eyes.r.position, o = new THREE.Vector3().addVectors(l, r).multiplyScalar(0.5);
