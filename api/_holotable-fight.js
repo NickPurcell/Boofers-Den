@@ -59,10 +59,7 @@ function state(camp) {
     // a creature's limited abilities from its stat block (audit 9.5, issue #76): recharge, per day, legendary actions
     npcres: Object.fromEntries(Object.entries(plainObj(f.npcres)).filter(([k, v]) => ID.test(k) && Array.isArray(v)).slice(0, 300).map(([k, v]) => [k, cleanNpcRes(v)])),
     undo: (Array.isArray(f.undo) ? f.undo : []).filter((x) => x && typeof x === "object").slice(-UNDO_MAX).map(cleanSnap),
-    events: (Array.isArray(f.events) ? f.events : []).filter((x) => x && typeof x === "object").slice(-EVENTS_MAX).map((ev) => ({
-      seq: int(ev.seq), at: +ev.at || 0, kind: ["move", "hit", "crit", "miss", "heal"].includes(ev.kind) ? ev.kind : "move",
-      token: typeof ev.token === "string" && ID.test(ev.token) ? ev.token : null, amount: ev.amount == null ? null : clamp(int(ev.amount), 0, 100000),
-      feet: ev.feet == null ? null : clamp(int(ev.feet), 0, 1000), hidden: !!ev.hidden })),
+    events: (Array.isArray(f.events) ? f.events : []).filter((x) => x && typeof x === "object").slice(-EVENTS_MAX).map(cleanEvent),
     seq: int(f.seq),
     // timed effects from abilities (a condition on a unit until the start or end of someone's turn, or a save) and
     // who is concentrating on what (issue #72, audit 4.6)
@@ -424,6 +421,68 @@ function liveReactions(camp) {
   return f.pending.filter((x) => String(x.turn || "").split(":").slice(0, 2).join(":") === turn && !hidden(x.reactor) && !hidden(x.against));
 }
 
+// The map's record of what happened (floating numbers, and the 3D figures, #65): what kind, on which token, how much,
+// the squares a move took; and for a figure that acts, an 'act' first (who, at whom, how: a swing, a shot or a power,
+// in one hand, two, a double blade, a staff or none), its results linked to it by its seq. Never numbers that matter.
+const HOW = ["melee", "ranged", "power"], GRIP = ["one", "two", "double", "staff", "unarmed"], SCHOOL = ["force", "tech"];
+function cleanEvent(ev) {
+  const tok = (v) => (typeof v === "string" && ID.test(v) ? v : null);
+  const out = { seq: int(ev.seq), at: +ev.at || 0, kind: ["move", "hit", "crit", "miss", "heal", "act"].includes(ev.kind) ? ev.kind : "move",
+    token: tok(ev.token), amount: ev.amount == null ? null : clamp(int(ev.amount), 0, 100000), feet: ev.feet == null ? null : clamp(int(ev.feet), 0, 1000), hidden: !!ev.hidden };
+  if (out.kind === "act") Object.assign(out, { target: tok(ev.target), how: HOW.includes(ev.how) ? ev.how : "melee", grip: GRIP.includes(ev.grip) ? ev.grip : null, school: SCHOOL.includes(ev.school) ? ev.school : null });
+  if (int(ev.act) > 0) out.act = int(ev.act);
+  if (out.kind === "move" && Array.isArray(ev.path)) {
+    const path = ev.path.slice(0, 64).filter((q) => Array.isArray(q) && q.length === 2).map((q) => [clamp(int(q[0]), -500, 1000), clamp(int(q[1]), -500, 1000)]);
+    if (path.length > 1) out.path = path;
+  }
+  // under fog, who could see it when it happened (#279 review): the players who saw the token, who saw the target, and
+  // from which square each saw the path. A player who couldn't see it then never gets it, whatever they see later.
+  if (ev.fogged) {
+    const cids = (v) => (Array.isArray(v) ? v.filter((c) => typeof c === "string" && CID.test(c)).slice(0, 32) : []);
+    out.fogged = true; out.seen = cids(ev.seen); out.tseen = cids(ev.tseen);
+    out.pfrom = (Array.isArray(ev.pfrom) ? ev.pfrom : []).filter((x) => Array.isArray(x) && CID.test(String(x[0]))).slice(0, 32).map((x) => [String(x[0]), clamp(int(x[1]), 0, 64)]);
+  }
+  return out;
+}
+const CID = /^[a-f0-9]{8,64}$/;
+// at the moment something happens under fog: each player's sight, to stamp the events with who saw what
+function watchers(camp) {
+  if (!fogOn(camp)) return null;
+  return Object.keys(camp.players || {}).filter((c) => CID.test(c)).map((c) => [c, fogFor(camp, c)]).filter(([, f]) => f);
+}
+function stamp(ev, camp, watch) {
+  if (!watch) return ev;
+  const out = (camp.map.tokens || []).reduce((m, t) => (t.hidden ? m.add(t.id) : m), new Set());
+  const saw = (f, id) => !!id && !out.has(id) && !f.tokens.has(id);
+  ev.fogged = true;
+  ev.seen = watch.filter(([, f]) => saw(f, ev.token)).map(([c]) => c);
+  if (ev.kind === "act") ev.tseen = watch.filter(([, f]) => saw(f, ev.target)).map(([c]) => c);
+  if (Array.isArray(ev.path)) ev.pfrom = watch.map(([c, f]) => { const vis = (q) => q[0] >= 0 && q[1] >= 0 && q[0] < f.cols && q[1] < f.rows && f.vis[q[1] * f.cols + q[0]]; let k = ev.path.length; while (k > 0 && vis(ev.path[k - 1])) k--; return [c, k]; });
+  return ev;
+}
+// what an action looked like, for the 3D figures: from the action itself and the sheet's own attack (its row's
+// properties: the engine's spec doesn't carry them), never the request
+function actOf(act, ut, ch) {
+  const tok = (id) => (id && Object.prototype.hasOwnProperty.call(ut, id) ? ut[id] : null), me = tok(act.unit);
+  if (!me) return null;
+  if (act.type === "attack") {
+    const a = act.attack || {}, row = ch && Array.isArray(ch.attacks) ? ch.attacks.find((x, i) => x && (x.key || String(i)) === String(a.key)) : null;
+    const text = `${a.name || ""} ${a.props || ""} ${(row && row.props) || ""}`;
+    const unarmed = a.key === "ua" || /\b(unarmed|claws?|bite|fists?|slam|talons?|horns?|tail)\b/i.test(String(a.name || ""));
+    const grip = unarmed ? "unarmed" : /\bdouble\b/i.test(text) ? "double" : /(staff|pike|spear|lance|glaive|halberd)/i.test(text) ? "staff"
+      : act.twoHands || /two-handed/i.test(text) ? "two" : "one";
+    return { token: me, target: tok(act.target), how: a.range && !a.melee ? "ranged" : "melee", grip, school: null };
+  }
+  if (act.type === "use" && act.ability) {
+    const ab = act.ability, target = tok((act.targets || [])[0]);
+    if (ab.kind === "power") return { token: me, target, how: "power", grip: null, school: ab.pool === "tech" ? "tech" : "force" };
+    if (ab.kind === "volley") return { token: me, target, how: "ranged", grip: "two", school: null };
+    return null;
+  }
+  if (act.type === "grapple" || act.type === "shove") return { token: me, target: tok(act.target), how: "melee", grip: "unarmed", school: null };
+  return null;
+}
+
 // What an action did, into chat (the roll lines as rolls, the way HoloTable shows every roll) and into the floating
 // numbers on the map. Lines about a hidden creature, or by one, go to the GM only.
 function report(camp, cid, gm, G, actor, world, r, skipFirst) {
@@ -463,10 +522,13 @@ function report(camp, cid, gm, G, actor, world, r, skipFirst) {
       if (to.length) G.addChat(camp, { system: true, fight: true, text: `${t.name} is hit for ${ev.amount} damage.`, to });
     }
   }
+  let acted = 0;
+  const watch = watchers(camp);   // (under fog: who sees what, now, as it happens)
+  if (r.act) { f.events.push(cleanEvent(stamp(Object.assign({ seq: ++f.seq, at: now(), kind: "act", hidden: secret }, r.act), camp, watch))); acted = f.seq; }
   for (const ev of r.events) {
     const u = r.world.units[ev.unit];
-    f.events.push({ seq: ++f.seq, at: now(), kind: ev.kind, token: u ? u.tokenId : null, amount: ev.amount == null ? null : ev.amount, feet: ev.feet == null ? null : ev.feet,
-      hidden: secret && ev.kind === "move" ? true : isHidden(ev.unit) });
+    f.events.push(cleanEvent(stamp({ seq: ++f.seq, at: now(), kind: ev.kind, token: u ? u.tokenId : null, amount: ev.amount == null ? null : ev.amount, feet: ev.feet == null ? null : ev.feet,
+      hidden: secret && ev.kind === "move" ? true : isHidden(ev.unit), path: ev.path, act: acted && ev.kind !== "move" ? acted : 0 }, camp, watch)));
   }
   if (f.events.length > EVENTS_MAX) f.events.splice(0, f.events.length - EVENTS_MAX);
 }
@@ -1226,6 +1288,7 @@ function apply(camp, cid, gm, type, p, G) {
       if (ammo) ammo.qty = Math.max(0, +ammo.qty - 1);   // the cell or cartridge, likewise
       writeBack(camp, cid, world, r.world, G);
       if (act.type === "use" && act.ability.kind === "power" && cur.charId) noteHighCast(charOf(camp, cur.charId), act.ability, act.ability.level + act.upcast);   // after the snapshot too
+      r.act = actOf(act, unitTokens(camp), cur.charId ? charOf(camp, cur.charId) : null);   // (for the 3D figures: who acted, at whom, how)
       report(camp, cid, gm, G, cur, world, r, type === "fight.move" || type === "fight.end");
       // a move out of someone's reach: they may take an opportunity attack, and the turn waits for their answer.
       // Only between combatants everyone can see: a hidden creature never gives itself away by reacting.
@@ -1248,6 +1311,24 @@ function apply(camp, cid, gm, type, p, G) {
 
 // What one person sees of the fight. Players get nothing about hidden combatants: not their turn, not their tokens'
 // links, not their events. Only the GM gets the undo stack (as a count and a label) and creature speeds.
+// one event as this viewer gets it. Under fog, by what they saw when it happened (stamp) and what they are sent now: an
+// event only if they saw its token then; an act's target only if they saw it then and are sent it now; a move's path
+// only from the square where it came into their sight then. Fog off then: what they are sent now, as before.
+function eventFor(ev, gm, fog, camp, cid) {
+  const out = { seq: ev.seq, at: ev.at, kind: ev.kind, token: ev.token, amount: ev.amount, feet: ev.feet };
+  if (ev.act) out.act = ev.act;
+  const sent = (id) => gm || (!!id && (camp.map.tokens || []).some((t) => t.id === id && !t.hidden) && !(fog && fog.tokens.has(id)));
+  const sawThen = (list) => gm || !ev.fogged || (Array.isArray(list) && list.includes(cid));
+  if (ev.kind === "act") Object.assign(out, { target: sent(ev.target) && sawThen(ev.tseen) ? ev.target : null, how: ev.how, grip: ev.grip, school: ev.school });
+  if (ev.path) {
+    let path = ev.path;
+    if (!gm && ev.fogged) { const k = ((ev.pfrom || []).find((x) => x[0] === cid) || [cid, path.length])[1]; path = path.slice(k); }
+    else if (fog) { const vis = (q) => q[0] >= 0 && q[1] >= 0 && q[0] < fog.cols && q[1] < fog.rows && fog.vis[q[1] * fog.cols + q[0]]; let k = path.length; while (k > 0 && vis(path[k - 1])) k--; path = path.slice(k); }
+    if (path.length > 1) out.path = path;
+  }
+  return out;
+}
+const seenThen = (ev, gm, cid) => gm || !ev.fogged || (Array.isArray(ev.seen) && ev.seen.includes(cid));
 function view(camp, cid, gm, shownName) {
   const f = camp.fight;
   if (!f || !f.on) return { on: false };
@@ -1267,13 +1348,13 @@ function view(camp, cid, gm, shownName) {
   const turn = ini.active && cur && seen(cur) ? cur.id : null;
   const world = worldOf(camp, !gm, null, cid);
   // floating numbers: never on a token this player isn't sent (hidden by the GM, or out of their sight under fog)
-  const evs = (Array.isArray(f.events) ? f.events : []).filter((ev) => gm || (!ev.hidden && !(fog && ev.token && fog.tokens.has(ev.token)))).slice(-15);
+  const evs = (Array.isArray(f.events) ? f.events : []).filter((ev) => gm || (!ev.hidden && !(fog && ev.token && fog.tokens.has(ev.token)) && seenThen(ev, gm, cid))).slice(-15);
   return {
     on: true, active: !!ini.active, round: ini.round, turn, units,
     budget: turn ? E.budget(world) : null,
     // only for combatants this viewer can see: a hidden one's id, turn or movement never reaches a player
     spent: Object.fromEntries(Object.entries(f.spent || {}).filter(([id]) => units[id])),
-    events: evs.map((ev) => ({ seq: ev.seq, at: ev.at, kind: ev.kind, token: ev.token, amount: ev.amount, feet: ev.feet })),
+    events: evs.map((ev) => eventFor(ev, gm, fog, camp, cid)),
     undo: gm ? { n: (f.undo || []).length, last: ((f.undo || [])[(f.undo || []).length - 1] || {}).label || null } : null,
     npcSpeed: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v.speed : v])) : {},
     npcSaves: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, (v && v.saves) || {}])) : {},

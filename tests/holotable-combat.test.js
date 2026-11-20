@@ -3944,3 +3944,100 @@ test("a character's sheet defences reach the engine with the combat view's addit
   // a creature keeps its stat block's, untouched by any sheet
   assert.deepEqual(w.units.e2.resist, []);
 });
+
+test("3D figures' events (#65): an attack's 'act' comes first (who, at whom, how) and its result links to it; a move carries its path", async () => {
+  const { gm, sam, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  let st = await sam.state();
+  const avery = tokenOf(st, "Avery").id, raider = tokenOf(st, "Raider").id;
+  assert.equal((await sam.act("fight.move", { x: 2, y: 0 })).code, 200);
+  let ev = (await sam.state()).fight.events, mv = ev.at(-1);
+  assert.deepEqual([mv.kind, mv.token, mv.path[0], mv.path.at(-1)], ["move", avery, [0, 0], [2, 0]], "the squares it took");
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "1" })).code, 200);   // the blaster pistol, 20 ft
+  ev = (await sam.state()).fight.events;
+  const act = ev.find((e) => e.kind === "act"), res = ev.filter((e) => e.act === act.seq);
+  assert.deepEqual([act.token, act.target, act.how, act.grip, act.school], [avery, raider, "ranged", "one", null]);
+  assert.equal(res.length, 1, "its hit or miss links back to it");
+  assert.ok(["hit", "crit", "miss"].includes(res[0].kind) && res[0].token === raider && res[0].seq > act.seq);
+  assert.equal((await sam.act("fight.move", { x: 5, y: 0 })).code, 200);
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0" })).code, 400, "one attack a turn");
+  // the grip from the sheet's own row: a two-handed weapon is held in two hands (the engine's spec has no properties)
+  st = await sam.state();
+  const two = Object.assign({}, st.characters[st.map.tokens.find((t) => t.id === avery).charId]);
+  two.attacks = [{ name: "Vibro-greatsword", ab: "str", damage: "2d6", type: "kinetic", props: "Heavy, Two-handed" }, two.attacks[1]];
+  await sam.act("char.save", { char: two });
+  await sam.act("fight.end", {});
+  await gm.act("fight.end", {}); await gm.act("fight.end", {}); await gm.act("fight.end", {});   // Raider, Bolt (the GM may end it), the Lurker
+  assert.equal((await sam.act("fight.attack", { target: ids.raider, attack: "0" })).code, 200, "Avery's next turn: the greatsword");
+  const gs = (await sam.state()).fight.events.filter((e) => e.kind === "act").at(-1);
+  assert.deepEqual([gs.how, gs.grip], ["melee", "two"]);
+  await sam.act("fight.end", {});
+  await gm.act("fight.attack", { target: ids.avery, attack: { name: "Double-bladed saber", bonus: 4, damage: "1d6", type: "energy" } });
+  const g = (await sam.state()).fight.events.filter((e) => e.kind === "act").at(-1);
+  assert.deepEqual([g.token, g.target, g.how, g.grip], [raider, avery, "melee", "double"], "a creature's double-bladed saber, read from its name");
+  // nothing from the request decides the look of it: an id that names Object's own keys reaches nothing
+  assert.equal((await gm.act("fight.attack", { target: "__proto__", attack: { name: "Claw", bonus: 4, damage: "1d6", type: "kinetic" } })).code, 400);
+  assert.ok(!({}).token && !({}).how);
+});
+
+test("3D figures' events under fog (#65): an unseen actor's act never reaches a player, an unseen target is no one, and a path starts where it comes into sight", async () => {
+  const { gm, sam, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  const st0 = await gm.state(), raider = tokenOf(st0, "Raider").id, lurker = tokenOf(st0, "Lurker").id, avery = tokenOf(st0, "Avery").id;
+  await gm.act("fight.wall", { op: "add", a: [3, -1], b: [3, 5] });
+  await gm.act("fight.fog", { on: true });
+  const mv = await sam.act("fight.move", { x: 1, y: 5 }); assert.equal(mv.code, 200, JSON.stringify(mv.data));   // Avery below the wall's end
+  assert.equal(tokenOf(await sam.state(), "Raider"), undefined, "the Raider at (6,0) is behind the wall");
+  await sam.act("fight.end", {});
+  const rm = await gm.act("fight.move", { x: 6, y: 6 }); assert.equal(rm.code, 200, JSON.stringify(rm.data));   // the Raider comes round into sight
+  const gp = (await gm.state()).fight.events.filter((e) => e.kind === "move" && e.token === raider).at(-1).path;
+  const sp = ((await sam.state()).fight.events.filter((e) => e.kind === "move" && e.token === raider).at(-1) || {}).path || [];
+  assert.deepEqual([gp[0], gp.at(-1)], [[6, 0], [6, 6]], "the GM has the whole path");
+  assert.ok(sp.length < gp.length && !sp.some((q) => q[1] < 2), `Sam's starts where it comes into sight: ${JSON.stringify(sp)}`);
+  assert.deepEqual(sp.length ? sp.at(-1) : [6, 6], [6, 6]);
+  // the Raider attacks the GM-hidden Lurker, beside it: Sam sees the Raider act, at no one
+  await gm.act("token.move", { id: lurker, x: 5, y: 6 });
+  const hit = await gm.act("fight.attack", { target: ids.lurker, attack: { name: "Vibroblade", bonus: 4, damage: "1d4", type: "kinetic" } });
+  assert.equal(hit.code, 200, JSON.stringify(hit.data));
+  const a = (await sam.state()).fight.events.filter((e) => e.kind === "act").at(-1);
+  assert.deepEqual([a.token, a.target], [raider, null], "a target Sam isn't sent is no one");
+  assert.ok(!JSON.stringify(await sam.state()).includes(lurker));
+  // the hidden Lurker's own turn: its act reaches the GM only
+  await gm.act("fight.end", {}); await gm.act("fight.end", {});   // Bolt, then the Lurker
+  const spit = await gm.act("fight.attack", { target: ids.avery, attack: { name: "Venom spit", bonus: 4, damage: "1d4", type: "acid", range: [30, 60] } });
+  assert.equal(spit.code, 200, JSON.stringify(spit.data));
+  assert.ok((await gm.state()).fight.events.some((e) => e.kind === "act" && e.token === lurker && e.how === "ranged"), "the GM sees it act");
+  assert.ok(!(await sam.state()).fight.events.some((e) => e.kind === "act" && e.token !== avery && e.token !== raider), "Sam sees no act by anyone unseen");
+});
+
+test("3D figures' events under fog are judged when they happen (#279 review): an act unseen then never arrives later, and a path never grows", async () => {
+  db = new HoloFake(); sub = null;
+  const gm = browser(), sam = browser(), rae = browser();
+  await gm.login(GM_PW, "Dee"); await sam.login(PLAYER_PW, "Sam"); await rae.login(PLAYER_PW, "Rae");
+  await gm.act("map.settings", { cols: 20, rows: 12 });
+  const sheet = (name) => ({ name, ac: 15, speed: 30, hp: { max: 20, current: 20, temp: 0 }, classes: [{ name: "Fighter", level: 1 }], abilities: { str: 16, dex: 14, con: 12, int: 10, wis: 10, cha: 10 },
+    attacks: [{ name: "Vibrosword", ab: "str", damage: "1d8", type: "kinetic", props: "" }] });
+  const avery = (await sam.act("char.save", { char: sheet("Avery") })).data.id, bolt = (await rae.act("char.save", { char: sheet("Bolt") })).data.id;
+  await sam.act("token.add", { charId: avery, x: 2, y: 2 }); await rae.act("token.add", { charId: bolt, x: 12, y: 2 });
+  await gm.act("token.add", { name: "Raider", x: 13, y: 2 });
+  await gm.act("init.add", { name: "Raider", init: 20, hp: 30, ac: 2 }); await sam.act("init.add", { charId: avery, name: "Avery", init: 15 }); await rae.act("init.add", { charId: bolt, name: "Bolt", init: 10 });
+  await gm.act("fight.npc", { id: (await gm.state()).initiative.entries.find((e) => e.name === "Raider").id, speed: 40 });
+  await gm.act("init.start", {}); await gm.act("fight.toggle", { on: true });
+  await gm.act("fight.wall", { op: "add", a: [10, 0], b: [10, 6] }); await gm.act("fight.fog", { on: true });
+  const gs = await gm.state(), raider = tokenOf(gs, "Raider").id, avTok = tokenOf(gs, "Avery").id, boltEnt = gs.initiative.entries.find((e) => e.name === "Bolt").id;
+  const acts = async (b) => ((await b.state()).fight.events || []).filter((e) => e.kind === "act");
+  assert.equal((await gm.act("fight.attack", { target: boltEnt, attack: { name: "Vibroblade", bonus: 4, damage: "1d4", type: "kinetic" } })).code, 200);
+  assert.equal((await acts(sam)).length, 0, "Sam can't see the Raider: no act");
+  assert.equal((await acts(rae)).length, 1, "Rae, beside it, sees it act");
+  assert.equal((await gm.act("fight.move", { x: 12, y: 8 })).code, 200);   // round the wall's end, into Avery's sight
+  assert.ok(tokenOf(await sam.state(), "Raider"), "Sam sees the Raider now");
+  assert.equal((await acts(sam)).length, 0, "but not the attack it made before Sam could see it");
+  const pathOf = async (b) => (((await b.state()).fight.events || []).find((e) => e.kind === "move" && e.token === raider) || {}).path || null;
+  const seenThen = await pathOf(sam), whole = await pathOf(gm);
+  assert.ok(seenThen && seenThen.length < whole.length && seenThen.at(-1)[1] === 8, `from where it came into sight: ${JSON.stringify(seenThen)}`);
+  for (const x of (await gm.state()).fight.pending || []) await gm.act("fight.react", { id: x.id, take: false });
+  await gm.act("fight.end", {});
+  await gm.act("token.move", { id: avTok, x: 9, y: 10 });   // Avery later sees more of where the Raider came from
+  assert.deepEqual(await pathOf(sam), seenThen, "the old path doesn't grow with Sam's later sight");
+  assert.ok(!JSON.stringify(await sam.state()).includes("Vibroblade"));
+});
