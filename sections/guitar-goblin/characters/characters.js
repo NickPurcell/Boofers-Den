@@ -5,17 +5,16 @@ import * as THREE from 'three';
 import { makeStage } from '../creator-kit/stage.js';
 import { loadBase } from '../human-base/base.js';
 import { CONTROLS, CONTROL_DEFAULTS, PRESETS, toShape, randomControls } from '../human-base/controls.js';
-import { SPECIES as LOOKS, LINERS, MARKS, GLOWS, lookParams } from '../human-base/species/looks.js';
-import { ARRANGE, THICK, LENGTHS, SURFACES, PATTERNS } from '../humanoid-creator/mikkian.js';
+import { SPECIES as LOOKS, lookParams } from '../human-base/species/looks.js';
 import { pureblood, PUREBLOOD } from '../human-base/species/pureblood.js';
-import { carry, ITEMS } from '../human-base/carry.js';
+import { carry } from '../human-base/carry.js';
 import { makeHair, fibreTexture } from './hair.js';
-import { STYLES } from './hair-shape.js';
 import { createPool } from '../creator-kit/pool.js';
 import { makeTextures, clothMaterial, leatherMaterial, metalMaterial, plasticMaterial } from '../duros-creator/materials.js';
-import { OUTFITS, HOODS } from './outfit-shape.js';
+import { OUTFITS } from './outfit-shape.js';
 import { fieldFor } from './bodyfield.js';
 import { bakeFigure, transfers } from './bake.js';
+import { PEOPLE, optionsFor, defaultsOf, isSpecies } from './looks-page.js';
 
 const $ = (id) => document.getElementById(id);
 const stage = makeStage($('scene'), { tall: 1.8, minDistance: 0.22, maxDistance: 6, onNoGL: () => { $('nogl').hidden = false; } });
@@ -31,66 +30,13 @@ const pb = pureblood(fig, base);
 const hair = makeHair(base, fig);
 const carried = carry(fig);   // what they carry: engineer13's human-base/carry.js
 
-/* ---------------- what each species offers on this page ---------------- */
-const sw = (...l) => l.map(([key, name, c]) => ({ key, name, c }));
-const BLACK = ['black', 'Black', '#16110e'], DKBROWN = ['dkbrown', 'Dark brown', '#2a1d14'];
-const CLOTH = sw(['bone', 'Bone white', '#e4e0d6'], ['ash', 'Ash grey', '#9aa0a8'], ['steel', 'Steel blue', '#5b6f86'], ['slate', 'Slate', '#3f4a58'], ['charcoal', 'Charcoal', '#34373e'], ['black', 'Black', '#18191c'],
-  ['umber', 'Umber', '#4d3a2c'], ['sand', 'Sand', '#b9a47c'], ['ochre', 'Ochre', '#b0812c'], ['rust', 'Rust', '#8a4324'], ['wine', 'Wine', '#6a2229'], ['crimson', 'Crimson', '#8f1f22'],
-  ['forest', 'Forest', '#2f4a34'], ['teal', 'Teal', '#22585a'], ['navy', 'Navy', '#1e2f52'], ['violet', 'Violet', '#473462']);
-// the opening person (a preset of the base's controls), hair colours, the outfits that suit (their own first), and the look it opens in
-const PAGE = {
-  pureblood: { people: 'powerful', hairs: sw(BLACK, DKBROWN, ['redbrown', 'Red-brown', '#4a1a14'], ['grey', 'Iron grey', '#8a8684'], ['white', 'White', '#d8d4d0']),
-    outfits: ['plate', 'cloak', 'robe', 'armour', 'coat'], defaults: { style: 'slick', hair: 'black', outfit: 'plate', hood: 'none', gear: 'hilt', main: 'charcoal', second: 'wine' } },
-  human: { people: 'man', hairs: sw(BLACK, DKBROWN, ['brown', 'Brown', '#4a3020'], ['auburn', 'Auburn', '#6a2e1a'], ['blond', 'Blond', '#b89858'], ['grey', 'Grey', '#8c8c8c'], ['white', 'White', '#dcdcdc']),
-    outfits: ['coat', 'jacket', 'wraps', 'armour', 'plate', 'robe', 'cloak'], defaults: { style: 'crop', hair: 'dkbrown', outfit: 'coat', hood: 'none', main: 'umber', second: 'sand' } },
-  echani: { people: 'athlete', hairs: sw(['white', 'White', '#e4e4e8'], ['silver', 'Silver', '#bfc4cb'], ['ash', 'Ash', '#a6a6a2'], ['gold', 'Pale gold', '#d6cdaa'], ['steel', 'Steel', '#8b939c']),
-    outfits: ['armour', 'wraps', 'coat', 'robe', 'cloak'], defaults: { style: 'swept', hair: 'white', outfit: 'armour', hood: 'none', gear: 'double', main: 'ash', second: 'slate' } },
-  mirialan: { people: 'woman', hairs: sw(BLACK, ['blueblack', 'Blue-black', '#131928'], DKBROWN, ['redbrown', 'Red-brown', '#5a2a1a'], ['grey', 'Grey', '#8c8c8c']),
-    outfits: ['jacket', 'robe', 'coat', 'wraps', 'cloak'], defaults: { style: 'tail', hair: 'black', outfit: 'jacket', hood: 'none', main: 'navy', second: 'sand' } },
-  // opens on the look its first player asked for: medium blue with dark blue accents, heavy smooth dreads to the shoulders
-  mikkian: { people: 'between', outfits: ['coat', 'robe', 'jacket', 'wraps', 'armour', 'cloak'], defaults: { style: 'dreads', front: 'forward', thick: 'thick', length: 'shoulder', surface: 'smooth', pattern: 'deepen', tpose: 'rest', outfit: 'coat', hood: 'none', main: 'charcoal', second: 'steel' } },
-};
-const ORDER = ['pureblood', 'human', 'echani', 'mirialan', 'mikkian'];
-// the people to start from: the base's presets, and one between the two (the controls' own middle)
-const PEOPLE = { ...PRESETS, between: { name: 'In between', controls: { gender: 0.5 } } };
-const asItems = (o) => Object.entries(o).map(([key, v]) => ({ key, name: typeof v === 'string' ? v : v.name, c: v.c }));
-
 /* ---------------- the state: choices, and the body and face as the base's control values ---------------- */
 const state = {}, ctrl = { ...CONTROL_DEFAULTS };
-function options() {
-  const sp = state.species, L = LOOKS[sp], P = PAGE[sp], o = {
-    species: { label: 'Species', items: ORDER.map((k) => ({ key: k, name: LOOKS[k].name })) },
-    people: { label: 'Start from', items: asItems(PEOPLE) },
-    skin: { label: 'Skin', swatch: true, items: asItems(L.skins) }, eyes: { label: 'Eyes', swatch: true, items: asItems(L.eyes) },
-  };
-  if (sp === 'pureblood') o.glow = { label: 'Eye glow', items: asItems(GLOWS) };
-  o.liner = { label: 'Lined eyes', items: asItems(LINERS) };
-  if (sp !== 'pureblood') o.marks = { label: 'Face detail', items: asItems(MARKS) };
-  for (const [k, d] of Object.entries(L.options || {})) o[k] = { label: d.label, multi: d.multi, swatch: d.swatch, items: asItems(d.items) };
-  if (sp === 'mikkian') {   // head-tendrils in place of hair
-    o.style = { label: 'Head-tendrils', items: asItems(ARRANGE) }; o.front = { label: 'Tendril line', items: [{ key: 'forward', name: 'Forward' }, { key: 'high', name: 'High' }] }; o.thick = { label: 'Tendril thickness', items: asItems(THICK) };
-    o.tpose = { label: 'Tendrils held', items: [{ key: 'rest', name: 'Relaxed, lying back' }, { key: 'flare', name: 'Flared, standing out' }] };
-    o.length = { label: 'Tendril length', items: asItems(LENGTHS) }; o.surface = { label: 'Tendril surface', items: asItems(SURFACES) }; o.pattern = { label: 'Tendril pattern', items: asItems({ deepen: { name: 'Deepening to the lips' }, fade: { name: 'Paler tips' }, ...PATTERNS }) };
-  } else {
-    o.style = { label: 'Hair', items: [...['slick', 'swept', 'crop', 'tail', 'knot', 'braid'].map((k) => ({ key: k, name: STYLES[k].name })), { key: 'bob', name: 'Bob' }, { key: 'long', name: 'Long' }, ...['crest', 'shaved', 'bald'].map((k) => ({ key: k, name: STYLES[k].name }))] };
-    o.hair = { label: 'Hair colour', swatch: true, items: P.hairs };
-  }
-  if (sp === 'pureblood') for (const [k, d] of Object.entries(PUREBLOOD.options)) if (d.items) o[k] = { label: d.label, multi: d.multi, items: asItems(d.items) };
-  o.outfit = { label: 'Outfit', items: P.outfits.map((k) => ({ key: k, name: OUTFITS[k].name })) };
-  o.hood = { label: 'Hood', items: asItems(HOODS) };
-  o.gear = { label: 'Carries', items: asItems(ITEMS) };
-  o.main = { label: 'Main colour', swatch: true, items: CLOTH }; o.second = { label: 'Second colour', swatch: true, items: CLOTH };
-  return o;
-}
-const defaultsOf = (sp) => {
-  const d = { ...LOOKS[sp].defaults, ...PAGE[sp].defaults, people: PAGE[sp].people };
-  if (sp === 'pureblood') for (const [k, o] of Object.entries(PUREBLOOD.options)) d[k] = o.def;
-  return d;
-};
+function options() { const o = optionsFor(state.species); for (const k of Object.keys(o)) if (!o[k].items) delete o[k]; return o; }   // (the panel's lists: the folds' height is a slider of its own)
 const setOf = (v, def) => { const ok = def.items.map((o) => o.key); return new Set(String(v || '').split('.').filter((k) => ok.includes(k))); };
 // make the state whole for its species: anything missing or not on offer takes the species' own default
 function settle(from = {}) {
-  state.species = LOOKS[from.species ?? state.species] && PAGE[from.species ?? state.species] ? (from.species ?? state.species) : 'pureblood';
+  state.species = isSpecies(from.species ?? state.species) ? (from.species ?? state.species) : 'pureblood';
   const defs = defaultsOf(state.species), opts = options();
   for (const k of Object.keys(state)) if (k !== 'species' && !opts[k] && !(k in defs)) delete state[k];
   for (const [k, def] of Object.entries(opts)) {
