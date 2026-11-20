@@ -23,7 +23,7 @@ const HT = window.HT, wrap = document.getElementById('mapWrap'), flat = document
 const PAGES = { humanoid: '/sections/guitar-goblin/characters/index.html', jawa: '/sections/guitar-goblin/jawa-creator/index.html', droid: '/sections/guitar-goblin/droid-creator/index.html' };
 const pageOf = (look) => { const k = (/^kind=([a-z]+)&/.exec(look) || [])[1] || 'humanoid'; return Object.prototype.hasOwnProperty.call(PAGES, k) ? PAGES[k] : PAGES.humanoid; };
 const ang = (a) => Math.atan2(Math.sin(a), Math.cos(a));   // an angle, wrapped to -pi..pi
-const BAKE_V = 'b5', SQ = 1.524;   // metres in a five-foot square (BAKE_V: bump whenever the creator's bake changes, so no browser keeps an old figure: b5, #294's holster seat and Jawa sleeves)
+const BAKE_V = 'b6', SQ = 1.524;   // metres in a five-foot square (BAKE_V: bump whenever the creator's bake changes, so no browser keeps an old figure: b6, the Duros's neck into the chest, #297)
 const FAKE = 7357;   // the pointer id the flat map's handlers see from here (never a real one, so they capture nothing)
 
 let swept = false, renderer = null, el = null, scene, camera, controls, ground, groundTex, groundCanvas, figsRoot, isOpen = false, dirty = true, raf = 0, redraw = 0, sized = '', camKey = '';
