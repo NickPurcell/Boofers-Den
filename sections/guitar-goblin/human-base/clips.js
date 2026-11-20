@@ -3,9 +3,10 @@
 // retarget() maps it onto a rig from motion.js (makeRig), so it plays exactly as run() and stand() do: { root, q }.
 //
 //   const clip = parseBVH(text)                     // or parseGLB(arrayBuffer), or parseGLTF(json, bin)
-//   const play = retarget(clip, rig, { root: 'inplace' })
-//   play.sample(t) -> { root, q }; play.duration; play.speed (m/s, for a clip that travels); play.travel ([x, y, z]);
-//   play.marks.impact (seconds: when a blow lands, given as o.marks.impact or the moment a hand or foot moves fastest)
+//   const p = retarget(clip, rig, { root: 'inplace' })          // in the page; or, for clips we ship, at build time
+//   c = compact(clip, rig.bones) -> packClip(c) (JSON), and in the page play(unpackClip(json), rig, o)
+//   p.sample(t) -> { root, q }; p.duration; p.speed (m/s, for a clip that travels); p.travel ([x, y, z]);
+//   p.marks.impact (seconds: when a blow lands, given as o.marks.impact or the moment a hand or foot moves fastest)
 //
 // How a clip is mapped: by bone names (guessMap knows the common ones; a map can be given), with the difference between
 // the two skeletons' rest poses taken out (a T-pose clip on our arms-down figure), its moves scaled to our legs, and the
@@ -28,8 +29,9 @@ const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], add = (a, b) => [
 // A clip, whatever it came from:
 //   bones: [{ name, parent (index or -1), offset: [x, y, z] (from the parent, at rest), rest: quaternion (its own turn
 //            at rest), tip: [x, y, z] or null (where a bone with no child ends, at rest) }]
-//   fps, frames, rot: Float32Array(frames * bones * 4) (each bone's own turn per frame), pos: Float32Array(frames * 3)
-//   (the top bone's place per frame, in the clip's own units), base: { rot, scale } (anything above the top bone)
+//   fps, frames, rot: Float32Array(frames * bones * 4) (each bone's own turn per frame), tr: Float32Array(frames *
+//   bones * 3) (each bone's place from its parent per frame, in the clip's own units: the offset where nothing moves
+//   it), base: { rot, scale } (anything above the top bone)
 
 /* ---------------- BVH ---------------- */
 export function parseBVH(text) {
@@ -67,16 +69,15 @@ export function parseBVH(text) {
   if (!(ft > 0 && ft < 1)) fail('a bad frame time');
   const per = chans.reduce((s, c) => s + c.length, 0), B = bones.length;
   if (tok.length - i < F * per) fail('the clip has fewer numbers than its frames need');
-  const rot = new Float32Array(F * B * 4), pos = new Float32Array(F * 3), ax = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+  const rot = new Float32Array(F * B * 4), tr = new Float32Array(F * B * 3), ax = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
   for (let f = 0; f < F; f++) {
     for (let b = 0; b < B; b++) {
       let q = [0, 0, 0, 1]; const p = bones[b].offset.slice();
-      for (const c of chans[b]) { const v = num(tok[i++]); if (c.kind === 'rot') q = Q.mul(q, Q.axis(ax[c.axis], v * D)); else if (b === 0) p[c.axis] = bones[b].offset[c.axis] + v; }
-      rot.set(q, (f * B + b) * 4);
-      if (b === 0) pos.set(p, f * 3);
+      for (const c of chans[b]) { const v = num(tok[i++]); if (c.kind === 'rot') q = Q.mul(q, Q.axis(ax[c.axis], v * D)); else p[c.axis] = bones[b].offset[c.axis] + v; }
+      rot.set(q, (f * B + b) * 4); tr.set(p, (f * B + b) * 3);
     }
   }
-  return { bones, fps: 1 / ft, frames: F, rot, pos, base: { rot: [0, 0, 0, 1], scale: 1 }, from: 'bvh' };
+  return { bones, fps: 1 / ft, frames: F, rot, tr, base: { rot: [0, 0, 0, 1], scale: 1 }, from: 'bvh' };
 }
 
 /* ---------------- glTF ---------------- */
@@ -138,15 +139,19 @@ export function parseGLTF(json, bin, o = {}) {
   const a = anims[typeof o.animation === 'number' ? o.animation : Math.max(0, anims.findIndex((x) => x && x.name === o.animation))];
   if (!a) fail('no animation in the glTF');
   if (arr(a.channels).length > LIMIT.tracks) fail('too many tracks');
+  // a track's numbers: plain floats, or (for turns) normalized integers, as glTF allows
+  const KIND = { 5126: [4, (dv, o) => dv.getFloat32(o, true)], 5122: [2, (dv, o) => Math.max(-1, dv.getInt16(o, true) / 32767)], 5120: [1, (dv, o) => Math.max(-1, dv.getInt8(o) / 127)],
+    5123: [2, (dv, o) => dv.getUint16(o, true) / 65535], 5121: [1, (dv, o) => dv.getUint8(o) / 255] };
   const read = (ai, comps) => {
-    const ac = accs[ai]; if (!ac || ac.componentType !== 5126 || !bin) fail('an animation track is not plain floats');
+    const ac = accs[ai]; if (!ac || !bin) fail('an animation track has no data');
+    const K = KIND[ac.componentType]; if (!K || (ac.componentType !== 5126 && !ac.normalized)) fail('an animation track is not floats or normalized integers');
     const want = { SCALAR: 1, VEC3: 3, VEC4: 4 }[ac.type]; if (want !== comps) fail('an animation track has the wrong shape');
     const bv = views[ac.bufferView]; if (!bv) fail('a track has no buffer view');
     const count = ac.count; if (!(Number.isInteger(count) && count >= 1 && count <= LIMIT.frames * 4)) fail('a bad track length');
-    const stride = bv.byteStride || comps * 4, start = (bv.byteOffset || 0) + (ac.byteOffset || 0);
-    if (start < 0 || start + stride * (count - 1) + comps * 4 > Math.min(bin.byteLength, (bv.byteOffset || 0) + bv.byteLength)) fail('a track runs past its buffer');
+    const size = K[0], stride = bv.byteStride || comps * size, start = (bv.byteOffset || 0) + (ac.byteOffset || 0);
+    if (start < 0 || start + stride * (count - 1) + comps * size > Math.min(bin.byteLength, (bv.byteOffset || 0) + bv.byteLength)) fail('a track runs past its buffer');
     const dv = new DataView(bin), out = new Float32Array(count * comps);
-    for (let k = 0; k < count; k++) for (let c = 0; c < comps; c++) { const v = dv.getFloat32(start + k * stride + c * 4, true); if (!Number.isFinite(v)) fail('a track holds a bad number'); out[k * comps + c] = v; }
+    for (let k = 0; k < count; k++) for (let c = 0; c < comps; c++) { const v = K[1](dv, start + k * stride + c * size); if (!Number.isFinite(v)) fail('a track holds a bad number'); out[k * comps + c] = v; }
     return out;
   };
   const tracks = [];
@@ -154,7 +159,7 @@ export function parseGLTF(json, bin, o = {}) {
   for (const ch of arr(a.channels)) {
     const tgt = ch && ch.target, s = arr(a.samplers)[ch && ch.sampler]; if (!tgt || !s) continue;
     const bi = jIndex.has(tgt.node) ? remap.get(jIndex.get(tgt.node)) : -1; if (bi < 0) continue;
-    if (tgt.path !== 'rotation' && !(tgt.path === 'translation' && bi === 0)) continue;
+    if (tgt.path !== 'rotation' && tgt.path !== 'translation') continue;
     const comps = tgt.path === 'rotation' ? 4 : 3, times = read(s.input, 1), cubic = s.interpolation === 'CUBICSPLINE', vals = read(s.output, comps);
     if (vals.length !== times.length * comps * (cubic ? 3 : 1)) fail('a track has the wrong number of values');
     const v = cubic ? Float32Array.from({ length: times.length * comps }, (_, k) => vals[Math.floor(k / comps) * comps * 3 + comps + (k % comps)]) : vals;
@@ -163,18 +168,18 @@ export function parseGLTF(json, bin, o = {}) {
   }
   if (!tracks.length) fail('the animation moves none of the skeleton');
   const fps = 30, F = Math.min(LIMIT.frames, Math.max(2, Math.round(end * fps) + 1)), N = B.length;
-  const rot = new Float32Array(F * N * 4), pos = new Float32Array(F * 3);
-  for (let f = 0; f < F; f++) { for (let b = 0; b < N; b++) rot.set(B[b].rest, (f * N + b) * 4); pos.set(B[0].offset, f * 3); }
-  for (const tr of tracks) {
+  const rot = new Float32Array(F * N * 4), tr = new Float32Array(F * N * 3);
+  for (let f = 0; f < F; f++) for (let b = 0; b < N; b++) { rot.set(B[b].rest, (f * N + b) * 4); tr.set(B[b].offset, (f * N + b) * 3); }
+  for (const tk of tracks) {
     for (let f = 0; f < F; f++) {
-      const t = f / fps, T = tr.times; let k = 0; while (k < T.length - 1 && T[k + 1] <= t) k++;
-      const k2 = Math.min(T.length - 1, k + 1), u = tr.step || k2 === k ? 0 : Math.min(1, Math.max(0, (t - T[k]) / (T[k2] - T[k] || 1)));
-      const a0 = Array.from(tr.v.subarray(k * tr.comps, k * tr.comps + tr.comps)), a1 = Array.from(tr.v.subarray(k2 * tr.comps, k2 * tr.comps + tr.comps));
-      if (tr.comps === 4) rot.set(Q.slerp(norm4(a0), norm4(a1), u), (f * N + tr.bi) * 4);
-      else pos.set([0, 1, 2].map((c) => a0[c] + (a1[c] - a0[c]) * u), f * 3);
+      const t = f / fps, T = tk.times; let k = 0; while (k < T.length - 1 && T[k + 1] <= t) k++;
+      const k2 = Math.min(T.length - 1, k + 1), u = tk.step || k2 === k ? 0 : Math.min(1, Math.max(0, (t - T[k]) / (T[k2] - T[k] || 1)));
+      const a0 = Array.from(tk.v.subarray(k * tk.comps, k * tk.comps + tk.comps)), a1 = Array.from(tk.v.subarray(k2 * tk.comps, k2 * tk.comps + tk.comps));
+      if (tk.comps === 4) rot.set(Q.slerp(norm4(a0), norm4(a1), u), (f * N + tk.bi) * 4);
+      else tr.set([0, 1, 2].map((c) => a0[c] + (a1[c] - a0[c]) * u), (f * N + tk.bi) * 3);
     }
   }
-  return { bones: B.map(({ name, parent, offset, rest, tip }) => ({ name, parent, offset, rest, tip })), fps, frames: F, rot, pos, base: { rot: baseRot, scale: baseScale }, from: 'gltf' };
+  return { bones: B.map(({ name, parent, offset, rest, tip }) => ({ name, parent, offset, rest, tip })), fps, frames: F, rot, tr, base: { rot: baseRot, scale: baseScale }, from: 'gltf' };
 }
 const norm4 = (q) => { const l = Math.hypot(q[0], q[1], q[2], q[3]) || 1; return q.map((x) => x / l); };
 
@@ -193,111 +198,137 @@ function sideOf(raw) {
   return [null, clean(n)];
 }
 export function guessMap(clip) {
-  const map = {}, B = clip.bones, kids = B.map((_, k) => B.map((b, j) => (b.parent === k ? j : -1)).filter((j) => j >= 0));
+  const map = {}, B = clip.bones;
   // the limbs by name
   for (let k = 0; k < B.length; k++) {
     const [s, w] = sideOf(B[k].name); if (!s) continue;
     for (const [ours, words] of Object.entries(LIMBS)) if (words.includes(w)) { const key = ours + '.' + s; if (!(key in map)) map[key] = B[k].name; }
   }
-  // the trunk by its place: the top bone is the hips; the chain from there to the neck is the spine, spread over ours
-  map.root = B[0].name;
-  const headK = B.findIndex((b) => clean(b.name) === 'head'), neckK = B.findIndex((b) => /^neck/.test(clean(b.name)));
+  // the hips: a bone called so, or the top bone; the chain from there to the head is the spine and neck, spread over ours
+  let hips = B.findIndex((b) => ['hips', 'pelvis', 'hip'].includes(clean(b.name))); if (hips < 0) hips = 0;
+  map.root = B[hips].name;
+  const headK = B.findIndex((b) => clean(b.name) === 'head');
   if (headK >= 0) {
-    const chain = []; for (let k = B[headK].parent; k > 0; k = B[k].parent) chain.unshift(k);
+    const chain = []; for (let k = B[headK].parent; k >= 0 && k !== hips; k = B[k].parent) chain.unshift(k);
     const neck = chain.filter((k) => /^neck/.test(clean(B[k].name))), spine = chain.filter((k) => !/^neck/.test(clean(B[k].name)));
     if (spine.length) { map.spine05 = B[spine[0]].name; if (spine.length > 2) map.spine03 = B[spine[Math.floor(spine.length / 2)]].name; if (spine.length > 1) map.spine01 = B[spine[spine.length - 1]].name; }
-    if (neck.length) map.neck01 = B[neck[0]].name; else if (neckK >= 0) map.neck01 = B[neckK].name;
+    if (neck.length) map.neck01 = B[neck[0]].name;
     map.head = B[headK].name;
   }
   return map;
 }
 
-/* ---------------- onto our skeleton ---------------- */
-// o.map: { ourBone: theirBone } (default guessMap); o.axes: a turn from their frame into ours (y up, the figure facing
-// +z), default none; o.root: 'inplace' (default) or 'keep'; o.loop: true to wrap time (default for 'inplace')
-export function retarget(clip, rig, o = {}) {
-  const map = o.map || guessMap(clip), G = o.axes || [0, 0, 0, 1], Gi = Q.inv(G), B = clip.bones, N = B.length;
-  const byName = new Map(B.map((b, k) => [b.name, k]));
-  const src = {}; for (const [ours, theirs] of Object.entries(map)) if (rig.at[ours] !== undefined && byName.has(theirs)) src[ours] = byName.get(theirs);
+/* ---------------- a clip in our terms ---------------- */
+// What any of our figures needs from a clip, worked out once (at build time for clips we ship): for each of our bones
+// the clip drives, its turn in the world away from the clip's rest pose, per frame, in our axes; the clip's rest
+// direction for each driven limb (so each figure takes out its own rest difference); and the hips per frame, in units
+// of the clip's own hip height (so each figure scales them to its own legs).
+//   o.map: { ourBone: theirBone } (default guessMap); o.axes: a turn from their frame into ours (y up, facing +z)
+export function compact(clip, topo, o = {}) {
+  const map = o.map || guessMap(clip), G = o.axes || [0, 0, 0, 1], Gi = Q.inv(G), B = clip.bones, N = B.length, F = clip.frames;
+  const at = new Map(topo.map((b, k) => [b.name, k])), byName = new Map(B.map((b, k) => [b.name, k]));
+  const src = {}; for (const [ours, theirs] of Object.entries(map)) if (at.has(ours) && byName.has(theirs)) src[ours] = byName.get(theirs);
   if (src.root === undefined) fail('the clip has no hips to follow');
-  // their rest pose in the world (their frame), with what sits above the top bone
-  const restW = new Array(N), restP = new Array(N);
-  for (let b = 0; b < N; b++) {
-    const pb = B[b].parent;
-    if (pb < 0) { restW[b] = Q.mul(clip.base.rot, B[b].rest); restP[b] = mul(Q.rot(clip.base.rot, B[b].offset), clip.base.scale); }
-    else { restW[b] = Q.mul(restW[pb], B[b].rest); restP[b] = add(restP[pb], mul(Q.rot(restW[pb], B[b].offset), clip.base.scale)); }
-  }
-  const toOurs = (p) => Q.rot(G, p);
-  // their size against ours: from the hips down to the lowest joint, at rest
-  let lowest = Infinity; for (let b = 0; b < N; b++) { lowest = Math.min(lowest, toOurs(restP[b])[1]); if (B[b].tip) lowest = Math.min(lowest, toOurs(add(restP[b], mul(Q.rot(restW[b], B[b].tip), clip.base.scale)))[1]); }
-  const hipH = toOurs(restP[src.root])[1] - lowest, ourHip = rig.bones[rig.at.root].head[1];
-  const scale = o.scale || (hipH > 0 ? ourHip / hipH : 1);
-  // per mapped limb bone of ours: the turn taking their rest direction to ours (toward the next mapped bone down the
-  // chain), so a T-pose clip lifts our arms from where they hang. The trunk is upright at rest in both, and its bones'
-  // own lines say little (our hips' bone leans back to the spine), so it keeps its own shape and takes only the turns.
-  const TRUNK = new Set(['root', 'spine05', 'spine04', 'spine03', 'spine02', 'spine01', 'neck01', 'neck02', 'neck03', 'head']);
-  const kidsOf = rig.bones.map((_, k) => rig.bones.map((b, j) => (b.parent === k ? j : -1)).filter((j) => j >= 0));
-  const nextMapped = (k) => { const q = [...kidsOf[k]]; while (q.length) { const j = q.shift(); const name = rig.bones[j].name; if (src[name] !== undefined) return j; q.push(...kidsOf[j]); } return -1; };
-  const fix = {};
-  for (const [ours, s] of Object.entries(src)) {
-    const k = rig.at[ours], j = nextMapped(k);
-    if (j < 0 || TRUNK.has(ours)) { fix[ours] = [0, 0, 0, 1]; continue; }
-    const dTheirs = norm(toOurs(sub(restP[src[rig.bones[j].name]], restP[s]))), dOurs = norm(sub(rig.bones[j].head, rig.bones[k].head));
-    fix[ours] = Q.from(dTheirs, dOurs);
-  }
-  const restWi = restW.map(Q.inv);
-  // the hips' travel over the clip (in our frame and size): taken out for 'inplace', where it is the figure's speed
-  const F = clip.frames, dur = (F - 1) / clip.fps;
-  // the hips' place per frame, in our frame and size; and the clip's ground: the lowest any joint comes, over the clip
-  const hipAbs = (f) => mul(toOurs(mul(Q.rot(clip.base.rot, Array.from(clip.pos.subarray(f * 3, f * 3 + 3))), clip.base.scale)), scale);
-  let ground = Infinity;
-  for (let s = 0, S = Math.min(F, 240); s < S; s++) {
-    const f = Math.round((s * (F - 1)) / Math.max(1, S - 1)), W = new Array(N), P = new Array(N);
+  const toOurs = (p) => Q.rot(G, p), sc = clip.base.scale;
+  // their bones in the world (their frame) for a frame, or at rest (f < 0)
+  const pose = (f) => {
+    const W = new Array(N), P = new Array(N);
     for (let b = 0; b < N; b++) {
-      const l = Array.from(clip.rot.subarray((f * N + b) * 4, (f * N + b) * 4 + 4)), pb = B[b].parent;
-      if (pb < 0) { W[b] = Q.mul(clip.base.rot, l); P[b] = mul(Q.rot(clip.base.rot, Array.from(clip.pos.subarray(f * 3, f * 3 + 3))), clip.base.scale); }
-      else { W[b] = Q.mul(W[pb], l); P[b] = add(P[pb], mul(Q.rot(W[pb], B[b].offset), clip.base.scale)); }
-      ground = Math.min(ground, toOurs(P[b])[1]);
-      if (B[b].tip) ground = Math.min(ground, toOurs(add(P[b], mul(Q.rot(W[b], B[b].tip), clip.base.scale)))[1]);
+      const l = f < 0 ? B[b].rest : Array.from(clip.rot.subarray((f * N + b) * 4, (f * N + b) * 4 + 4)), t = f < 0 ? B[b].offset : Array.from(clip.tr.subarray((f * N + b) * 3, (f * N + b) * 3 + 3)), pb = B[b].parent;
+      if (pb < 0) { W[b] = Q.mul(clip.base.rot, l); P[b] = mul(Q.rot(clip.base.rot, t), sc); }
+      else { W[b] = Q.mul(W[pb], l); P[b] = add(P[pb], mul(Q.rot(W[pb], t), sc)); }
+    }
+    return { W, P };
+  };
+  const lowestOf = ({ W, P }) => { let lo = Infinity; for (let b = 0; b < N; b++) { lo = Math.min(lo, toOurs(P[b])[1]); if (B[b].tip) lo = Math.min(lo, toOurs(add(P[b], mul(Q.rot(W[b], B[b].tip), sc)))[1]); } return lo; };
+  const rest = pose(-1), restWi = rest.W.map(Q.inv), hipH = toOurs(rest.P[src.root])[1] - lowestOf(rest);
+  if (!(hipH > 0)) fail('the clip stands no height');
+  // the clip's rest direction for each driven limb, toward the next driven bone down our chain
+  const kids = topo.map((_, k) => topo.map((b, j) => (b.parent === k ? j : -1)).filter((j) => j >= 0));
+  const nextMapped = (k) => { const q = [...kids[k]]; while (q.length) { const j = q.shift(); if (src[topo[j].name] !== undefined) return j; q.push(...kids[j]); } return -1; };
+  const bones = topo.map((b) => b.name).filter((n) => src[n] !== undefined), dir = {};
+  for (const n of bones) { const j = nextMapped(at.get(n)); dir[n] = j < 0 || TRUNK.has(n) ? null : { to: topo[j].name, d: norm(toOurs(sub(rest.P[src[topo[j].name]], rest.P[src[n]]))) }; }
+  // per frame: the turns, the hips, the ground
+  const nb = bones.length, d = new Float32Array(F * nb * 4), hip = new Float32Array(F * 3); let ground = Infinity;
+  const ends = ['wrist.L', 'wrist.R', 'foot.L', 'foot.R'].map((n) => src[n]).filter((k) => k !== undefined);
+  let fastest = 0, impact = (F - 1) / clip.fps / 2, prevEnds = null;
+  for (let f = 0; f < F; f++) {
+    const P0 = pose(f);
+    bones.forEach((n, i) => { const s = src[n]; d.set(Q.mul(G, Q.mul(Q.mul(P0.W[s], restWi[s]), Gi)), (f * nb + i) * 4); });
+    hip.set(toOurs(P0.P[src.root]).map((v) => v / hipH), f * 3);
+    ground = Math.min(ground, lowestOf(P0));
+    const e = ends.map((k) => sub(P0.P[k], P0.P[src.root]));   // (from the hips, so the clip's travel is not speed)
+    if (prevEnds) for (let k = 0; k < e.length; k++) { const v = Math.hypot(...sub(e[k], prevEnds[k])); if (v > fastest) { fastest = v; impact = (f - 0.5) / clip.fps; } }
+    prevEnds = e;
+  }
+  for (let f = 0; f < F; f++) hip[f * 3 + 1] -= ground / hipH;   // y: above the clip's ground
+  // a run or walk made in place: the speed the ground would have to move under a planted foot (its median backward
+  // speed while it is down), in hip heights a second, so the map can move the figure at it and the feet keep their grip
+  const balls = ['toe3-1.L', 'toe3-1.R', 'foot.L', 'foot.R'].map((n) => src[n]).filter((k) => k !== undefined), vs = [];
+  if (balls.length >= 2) {
+    let prev = null;
+    for (let f = 0; f < F; f++) {
+      const P0 = pose(f), b = balls.map((k) => [toOurs(sub(P0.P[k], P0.P[src.root])), toOurs(P0.P[k])[1] - ground]);
+      if (prev) for (let i = 0; i < b.length; i++) if (b[i][1] < 0.04 * hipH && prev[i][1] < 0.04 * hipH) vs.push(-(b[i][0][2] - prev[i][0][2]) * clip.fps);
+      prev = b;
     }
   }
-  ground *= scale;
-  const hipAt = (f) => { const h = hipAbs(f); return [h[0], h[1] - ground - ourHip, h[2]]; };   // y: from where our hips are bound
-  const t0 = hipAt(0), t1 = hipAt(F - 1), travel = [t1[0] - t0[0], 0, t1[2] - t0[2]];
-  const mode = o.root || 'inplace', loop = o.loop ?? mode === 'inplace';
-  const speed = dur > 0 ? Math.hypot(travel[0], travel[2]) / dur : 0;
-  const n = rig.n;
-  function frameRot(f, b) { return Array.from(clip.rot.subarray((f * N + b) * 4, (f * N + b) * 4 + 4)); }
+  vs.sort((a, b) => a - b);
+  const contact = vs.length >= 4 ? vs[Math.floor(vs.length / 2)] / hipH : 0;
+  const x0 = hip[0], z0 = hip[2]; for (let f = 0; f < F; f++) { hip[f * 3] -= x0; hip[f * 3 + 2] -= z0; }   // x, z: from where it starts
+  const marks = { impact, ...(contact > 0.05 ? { ground: contact } : {}), ...(o.marks || {}) };
+  return { v: 1, fps: clip.fps, frames: F, bones, dir, d, hip, marks, hipH };
+}
+const TRUNK = new Set(['root', 'spine05', 'spine04', 'spine03', 'spine02', 'spine01', 'neck01', 'neck02', 'neck03', 'head']);
+
+/* ---------------- onto one figure ---------------- */
+// o.root: 'inplace' (the hips' travel taken out: play.speed is how fast the figure should move) or 'keep' (play.travel
+// is how far the clip carries it); o.loop: wrap time (default for 'inplace')
+export function play(c, rig, o = {}) {
+  const F = c.frames, dur = (F - 1) / c.fps, nb = c.bones.length, n = rig.n, idx = c.bones.map((b) => rig.at[b]);
+  if (idx.some((k) => k === undefined)) fail('the clip drives a bone this figure has not got');
+  const driven = new Int32Array(n).fill(-1); idx.forEach((k, i) => (driven[k] = i));
+  // this figure's own rest difference for each driven limb
+  const fixI = c.bones.map((b, i) => { const r = c.dir[b]; if (!r || rig.at[r.to] === undefined) return [0, 0, 0, 1]; return Q.inv(Q.from(r.d, norm(sub(rig.bones[rig.at[r.to]].head, rig.bones[idx[i]].head)))); });
+  const H = rig.bones[rig.at.root].head[1], hipAt = (f) => [c.hip[f * 3] * H, c.hip[f * 3 + 1] * H - H, c.hip[f * 3 + 2] * H];
+  const t1 = hipAt(F - 1), travel = [t1[0], 0, t1[2]], mode = o.root || 'inplace', loop = o.loop ?? mode === 'inplace';
+  // how fast the figure should move: the clip's own travel, or for one made in place, its planted foot's speed
+  const speed = Math.max(dur > 0 ? Math.hypot(travel[0], travel[2]) / dur : 0, mode === 'inplace' ? (c.marks.ground || 0) * H : 0);
+  const dAt = (f, i) => Array.from(c.d.subarray((f * nb + i) * 4, (f * nb + i) * 4 + 4));
   function sample(t) {
-    let x = dur > 0 ? (loop ? (((t % dur) + dur) % dur) : Math.min(dur, Math.max(0, t))) : 0;
-    const fx = x * clip.fps, f0 = Math.min(F - 1, Math.floor(fx)), f1 = Math.min(F - 1, f0 + 1), u = fx - f0;
-    // their bones in the world at this moment
-    const W = new Array(N);
-    for (let b = 0; b < N; b++) { const l = Q.slerp(frameRot(f0, b), frameRot(f1, b), u), pb = B[b].parent; W[b] = pb < 0 ? Q.mul(clip.base.rot, l) : Q.mul(W[pb], l); }
-    // ours: a mapped bone turns in the world as theirs turned from its rest, less the rest difference; others follow
+    const x = dur > 0 ? (loop ? (((t % dur) + dur) % dur) : Math.min(dur, Math.max(0, t))) : 0;
+    const fx = x * c.fps, f0 = Math.min(F - 1, Math.floor(fx)), f1 = Math.min(F - 1, f0 + 1), u = fx - f0;
     const Wo = new Array(n), q = new Float32Array(n * 4);
     for (let k = 0; k < n; k++) {
-      const name = rig.bones[k].name, p = rig.bones[k].parent, pw = p < 0 ? [0, 0, 0, 1] : Wo[p];
-      if (src[name] !== undefined) { const s = src[name], d = Q.mul(G, Q.mul(Q.mul(W[s], restWi[s]), Gi)); Wo[k] = Q.mul(d, Q.inv(fix[name])); }
-      else Wo[k] = pw;
+      const p = rig.bones[k].parent, pw = p < 0 ? [0, 0, 0, 1] : Wo[p], i = driven[k];
+      Wo[k] = i >= 0 ? Q.mul(Q.slerp(dAt(f0, i), dAt(f1, i), u), fixI[i]) : pw;
       q.set(Q.mul(Q.inv(pw), Wo[k]), k * 4);
     }
-    const h0 = hipAt(f0), h1 = hipAt(f1); let root = [0, 1, 2].map((c) => h0[c] + (h1[c] - h0[c]) * u);
-    if (mode === 'inplace') { const k = dur > 0 ? x / dur : 0; root = [root[0] - t0[0] - travel[0] * k, root[1], root[2] - t0[2] - travel[2] * k]; }
-    else root = [root[0] - t0[0], root[1], root[2] - t0[2]];
+    const h0 = hipAt(f0), h1 = hipAt(f1); let root = [0, 1, 2].map((j) => h0[j] + (h1[j] - h0[j]) * u);
+    if (mode === 'inplace') { const k = dur > 0 ? x / dur : 0; root = [root[0] - travel[0] * k, root[1], root[2] - travel[2] * k]; }
     return { root, q, world: () => poseWorld(rig, root, q) };
   }
-  // when the blow lands: given (o.marks.impact, seconds), or the moment a hand or a foot moves fastest
-  const marks = { ...(o.marks || {}) };
-  if (!(typeof marks.impact === 'number' && marks.impact >= 0 && marks.impact <= dur)) {
-    const ends = ['wrist.L', 'wrist.R', 'foot.L', 'foot.R'].map((n) => rig.at[n]).filter((k) => k !== undefined);
-    let best = 0, at = dur / 2, prev = null; const steps = Math.max(2, Math.min(240, Math.round(dur * 60)));
-    for (let i = 0; i <= steps; i++) {
-      const t = (i / steps) * dur, p = sample(t), Wp = poseWorld(rig, mode === 'inplace' ? [0, p.root[1], 0] : p.root, p.q).P, now = ends.map((k) => Wp[k]);
-      if (prev) for (let e = 0; e < now.length; e++) { const v = Math.hypot(now[e][0] - prev[e][0], now[e][1] - prev[e][1], now[e][2] - prev[e][2]); if (v > best) { best = v; at = t; } }
-      prev = now;
-    }
-    marks.impact = at;
-  }
-  return { sample, duration: dur, speed, travel, scale, map: src, loop, marks };
+  return { sample, duration: dur, speed, travel, scale: H, map: Object.fromEntries(c.bones.map((b, i) => [b, i])), loop, marks: { ...c.marks } };
+}
+// both at once, for a clip read in the page (tests, trying a file out)
+export const retarget = (clip, rig, o = {}) => { const c = compact(clip, rig.bones, o), p = play(c, rig, o); p.scale = rig.bones[rig.at.root].head[1] / c.hipH; p.compact = c; return p; };
+
+/* ---------------- shipping a clip ---------------- */
+// our compact clip as plain JSON: the turns as 16-bit integers, the hips as 16-bit integers in 1/4096 of a hip height
+const b64 = (u8) => (typeof Buffer !== 'undefined' ? Buffer.from(u8.buffer, u8.byteOffset, u8.byteLength).toString('base64') : btoa(Array.from(u8, (x) => String.fromCharCode(x)).join('')));
+const unb64 = (s) => { if (typeof Buffer !== 'undefined') { const b = Buffer.from(s, 'base64'); return new Uint8Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)); } const t = atob(s), u = new Uint8Array(t.length); for (let i = 0; i < t.length; i++) u[i] = t.charCodeAt(i); return u; };
+export function packClip(c) {
+  const d = Int16Array.from(c.d, (x) => Math.round(Math.max(-1, Math.min(1, x)) * 32767)), h = Int16Array.from(c.hip, (x) => Math.round(Math.max(-8, Math.min(8, x)) * 4096));
+  return { v: 1, fps: +c.fps.toFixed(4), frames: c.frames, bones: c.bones, dir: Object.fromEntries(Object.entries(c.dir).map(([k, r]) => [k, r && { to: r.to, d: r.d.map((x) => +x.toFixed(5)) }])), d: b64(new Uint8Array(d.buffer)), hip: b64(new Uint8Array(h.buffer)), marks: Object.fromEntries(Object.entries(c.marks).map(([k, v]) => [k, +v.toFixed(3)])) };
+}
+// read a shipped clip (our own file, still checked: names, sizes and numbers)
+export function unpackClip(j) {
+  if (!j || j.v !== 1 || !Array.isArray(j.bones) || !j.bones.every((b) => typeof b === 'string' && NAME.test(b))) fail('not a clip of ours');
+  const F = j.frames, nb = j.bones.length; if (!(Number.isInteger(F) && F >= 1 && F <= LIMIT.frames && nb >= 1 && nb <= 64 && j.fps > 0 && j.fps <= 240)) fail('a bad clip size');
+  const du = unb64(String(j.d)), hu = unb64(String(j.hip)); if (du.byteLength !== F * nb * 8 || hu.byteLength !== F * 6) fail('a clip of the wrong length');
+  const d = Float32Array.from(new Int16Array(du.buffer, du.byteOffset, F * nb * 4), (x) => x / 32767), hip = Float32Array.from(new Int16Array(hu.buffer, hu.byteOffset, F * 3), (x) => x / 4096);
+  for (let i = 0; i < d.length; i += 4) { const l = Math.hypot(d[i], d[i + 1], d[i + 2], d[i + 3]) || 1; d[i] /= l; d[i + 1] /= l; d[i + 2] /= l; d[i + 3] /= l; }
+  const dir = {}; for (const b of j.bones) { const r = j.dir && Object.prototype.hasOwnProperty.call(j.dir, b) ? j.dir[b] : null; dir[b] = r && typeof r.to === 'string' && NAME.test(r.to) && Array.isArray(r.d) && r.d.length === 3 && r.d.every(Number.isFinite) ? { to: r.to, d: r.d } : null; }
+  const marks = {}; for (const k of ['impact', 'ground']) if (j.marks && Number.isFinite(j.marks[k])) marks[k] = j.marks[k];
+  return { v: 1, fps: j.fps, frames: F, bones: j.bones.slice(), dir, d, hip, marks };
 }

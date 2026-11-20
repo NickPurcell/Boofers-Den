@@ -39,3 +39,24 @@ this data is our own: the loader, the morph blending, the subdivision, the landm
 features, and the skinning that lowers the arms, the coarser figure baked for the table, and the run and the stand, written as joint
 turns in our own code with no motion data (`../base.js`, `../skin.js`, `../eyes.js`, `../species/`, `../table.js`,
 `../motion.js`).
+
+## Animation clips (`clips.json`)
+
+`clips.json` holds animation clips mapped onto our skeleton by our own build script (`tests/human-base/clips-build.mjs`)
+from the human animations of the Mesh2Motion project:
+
+- repository: https://github.com/Mesh2Motion/mesh2motion-app
+- commit: 1632e1a7e009600500d436628075aa3a0e8b36ac
+- files: `static/assets/human/animations/` `idle-a.glb`, `fighting-idle.glb`, `jog.glb`, `sword-regular-a.glb`,
+  `sword-regular-a-rec.glb`, `spell-simple-enter.glb`, `spell-simple-shoot.glb`, `spell-simple-exit.glb` (the name each
+  clip came from is kept in `clips.json` beside it)
+
+Licence: **Creative Commons CC0 1.0 Universal**. The repository's `LICENSE-CC0.MD` reads "All 3d models, blend files,
+rigs, animations / CC0 1.0 Universal", and its README: "The art assets (3d models, rigs, animations) are all licensed
+under CC0." (Its program code is under the MIT licence; none of it is used here.)
+
+What was done to them: each clip's bone turns were read, the turns of the 22 bones that match ours kept (as each bone's
+turn away from the clip's rest pose, in 16-bit integers), and the hips kept in units of the clip's own hip height; the
+fingers, and anything else without a bone of ours, are dropped. The GLBs pack their tracks with EXT_meshopt_compression,
+unpacked at build time by meshoptimizer's decoder (MIT, https://github.com/zeux/meshoptimizer), which is not shipped.
+The player that maps them onto each figure is our own (`../clips.js`). Nothing is fetched at run time.
