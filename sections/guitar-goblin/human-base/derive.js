@@ -6,7 +6,7 @@
 // DOM, so node can run it.
 
 // the data files, decoded: the mesh, the morph targets, the skin weights
-export function decode(info, meshBuf, tBuf, skinBuf) {
+export function decode(info, meshBuf, tBuf, skinBuf, bonesBuf) {
   const N = info.vertices, rest = new Float32Array(meshBuf, 0, N * 3), quads = new Uint16Array(meshBuf, N * 12, info.quads * 4);
   const targets = new Map();
   for (const [name, m] of Object.entries(info.targets)) {
@@ -18,7 +18,10 @@ export function decode(info, meshBuf, tBuf, skinBuf) {
   const restN = quadNormals(rest, quads, N);
   // the lips: where the lip-fullness morph moves most
   const lip = new Float32Array(N); { const t = targets.get('lips-incr'); let big = 0; for (let k = 0; k < t.idx.length; k++) big = Math.max(big, Math.hypot(t.d[k * 3], t.d[k * 3 + 1], t.d[k * 3 + 2])); for (let k = 0; k < t.idx.length; k++) lip[t.idx[k]] = Math.hypot(t.d[k * 3], t.d[k * 3 + 1], t.d[k * 3 + 2]) / big; }
-  return { info, N, rest, restN, quads, targets, inBody, lip, armW: new Uint8Array(skinBuf, 0, N), foreW: new Uint8Array(skinBuf, N, N), fingW: new Uint8Array(skinBuf, 2 * N, N), thumbW: new Uint8Array(skinBuf, 3 * N, N) };
+  // the skeleton (a cut of the CC0 default skeleton; tests/human-base/convert.py): its bones, and per vertex four bone
+  // numbers and four weights (bytes summing to 255)
+  const skeleton = info.skeleton && bonesBuf ? { bones: info.skeleton, idx: new Uint8Array(bonesBuf, 0, N * 4), w: new Uint8Array(bonesBuf, N * 4, N * 4) } : null;
+  return { info, N, rest, restN, quads, targets, inBody, lip, skeleton, armW: new Uint8Array(skinBuf, 0, N), foreW: new Uint8Array(skinBuf, N, N), fingW: new Uint8Array(skinBuf, 2 * N, N), thumbW: new Uint8Array(skinBuf, 3 * N, N) };
 }
 // a fingerprint of the mesh, so a shipped table is never used with a mesh it was not made from
 export function fingerprint(B) { let a = 0, b = 0; for (let i = 0; i < B.rest.length; i++) { a = (a + Math.round(B.rest[i] * 1e4)) | 0; b = (b * 31 + a) | 0; } let q = 0; for (let i = 0; i < B.quads.length; i++) q = (q * 17 + B.quads[i]) | 0; return `${B.N}:${B.quads.length}:${a}:${b}:${q}`; }

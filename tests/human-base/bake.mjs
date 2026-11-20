@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 const dir = resolve(process.argv[2]), check = process.argv.includes('--check');
 const { decode, deriveAll, pack, unpack } = await import(pathToFileURL(join(dir, '..', 'derive.js')).href);
 const ab = (f) => { const b = readFileSync(join(dir, f)); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); };
-const B = decode(JSON.parse(readFileSync(join(dir, 'mesh.json'), 'utf8')), ab('mesh.bin'), ab('targets.bin'), ab('skin.bin'));
+const B = decode(JSON.parse(readFileSync(join(dir, 'mesh.json'), 'utf8')), ab('mesh.bin'), ab('targets.bin'), ab('skin.bin'), ab('bones.bin'));
 const t0 = performance.now(), D = deriveAll(B), ms = Math.round(performance.now() - t0);
 const fresh = JSON.stringify(pack(D));
 if (!check) { writeFileSync(join(dir, 'derived.json'), fresh); console.log(`derived.json: ${fresh.length} bytes, derived in ${ms} ms, fingerprint ${D.fingerprint}`); process.exit(0); }

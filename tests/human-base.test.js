@@ -27,12 +27,15 @@ test("the mesh header agrees with the binaries", () => {
   assert.ok(Object.keys(M.targets).length > 100, "targets listed");
   assert.equal(readFileSync(join(DATA, "mesh.bin")).length, M.vertices * 12 + M.quads * 8, "mesh.bin: positions then quads");
   assert.equal(readFileSync(join(DATA, "skin.bin")).length, M.vertices * 4, "skin.bin: four weights per vertex");
+  assert.equal(readFileSync(join(DATA, "bones.bin")).length, M.vertices * 8, "bones.bin: four bones and four weights per vertex");
+  assert.equal(M.skeleton.length, 38);
+  M.skeleton.forEach((b, k) => { assert.ok(b.parent < k, `${b.name}'s parent comes first`); assert.ok(b.head.length > 0 && b.head.every((i) => i < M.vertices)); });
 });
 
 test("the table's coarser body: the level asked for, still closed", async () => {
   const D = await import("../sections/guitar-goblin/human-base/derive.js");
   const ab = (f) => { const b = readFileSync(join(DATA, f)); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); };
-  const B = D.decode(JSON.parse(readFileSync(join(DATA, "mesh.json"), "utf8")), ab("mesh.bin"), ab("targets.bin"), ab("skin.bin"));
+  const B = D.decode(JSON.parse(readFileSync(join(DATA, "mesh.json"), "utf8")), ab("mesh.bin"), ab("targets.bin"), ab("skin.bin"), ab("bones.bin"));
   B.derived = D.unpack(JSON.parse(readFileSync(join(DATA, "derived.json"), "utf8")));
   for (const keep of [3500, 1500]) {
     const { rep, kept } = D.coarser(B, keep);
