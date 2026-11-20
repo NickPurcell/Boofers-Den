@@ -171,24 +171,28 @@ function gearGroup(A, hands) {
     K.metal.at(M.mul(seat(A.belt.left, 0.02), M.t(0, -0.036, 0), M.rx(Math.PI / 2)), (b) => { b.lathe([[0, -0.03], [0.014, -0.03], [0.0165, -0.026], [0.0165, 0.02], [0.012, 0.027], [0.006, 0.03], [0.006, 0.037], [0.0075, 0.038], [0.0075, 0.043], [0, 0.043]], { segs: 18, role: ROLE.metal }); });
     K.metal.tube([A.belt.left.p, [A.belt.left.p[0] + A.belt.left.n[0] * 0.016, A.belt.left.p[1] - 0.004, A.belt.left.p[2] + A.belt.left.n[2] * 0.016], [A.belt.left.p[0] + A.belt.left.n[0] * 0.02, A.belt.left.p[1] - 0.03, A.belt.left.p[2] + A.belt.left.n[2] * 0.02]], 0.0016, { role: ROLE.steel, sides: 5, n: 8 });
   }
+  // what the table bake hangs on a bone of its own (the held thing on the right hand, a shield on the left forearm):
+  // each builder's run of vertices made inside mark(), by bone
+  const marks = [], mark = (bone, fn) => { const s = K.all.map((b) => b.n); fn(); marks.push([bone, K.all.map((b, i) => [s[i], b.n])]); };
   // in the right hand
   const G = hands.grips.R, inH = inHand(G);
   held = { grip: new THREE.Vector3().setFromMatrixPosition(inH).toArray(), muzzle: null };
   if (state.hold === 'blaster') {
-    let info; K.at(inH, (k) => { info = ionBlaster(k); });
-    // its power lead runs back to the hip
+    let info; mark('wrist.R', () => K.at(inH, (k) => { info = ionBlaster(k); }));
+    // its power lead runs back to the hip (not on the table: from a hand that moves to a hip that does not, it would
+    // stretch across the body)
     const a = new THREE.Vector3(...info.hose).applyMatrix4(inH), h = A.hip.p, mid = [(a.x + h[0]) / 2 + (A.hip.n ? A.hip.n[0] * 0.05 : -0.04), Math.min(a.y, h[1]) - 0.07, (a.z + h[2]) / 2 + 0.03];
-    K.metal.tube([[a.x, a.y, a.z], [a.x, a.y - 0.03, a.z - 0.005], mid, [h[0] + (A.hip.n ? A.hip.n[0] * 0.012 : 0), h[1] - 0.01, h[2] + (A.hip.n ? A.hip.n[2] * 0.012 : 0)]], 0.0034, { role: ROLE.rubber, sides: 7, n: 26 });
+    if (!BAKE) K.metal.tube([[a.x, a.y, a.z], [a.x, a.y - 0.03, a.z - 0.005], mid, [h[0] + (A.hip.n ? A.hip.n[0] * 0.012 : 0), h[1] - 0.01, h[2] + (A.hip.n ? A.hip.n[2] * 0.012 : 0)]], 0.0034, { role: ROLE.rubber, sides: 7, n: 26 });
     const mz = new THREE.Vector3(...info.muzzle).applyMatrix4(inH), dir = new THREE.Vector3(0, 0, 1).transformDirection(inH);
     held.muzzle = { point: mz.toArray(), dir: dir.toArray() };
     halos.push({ p: mz.toArray(), n: dir.toArray(), color: 0x49b9ff, size: 0.07, k: 0.5 });
   } else if (state.hold === 'bolt') {
-    let info; K.at(inH, (k) => { info = boltTool(k); });
+    let info; mark('wrist.R', () => K.at(inH, (k) => { info = boltTool(k); }));
     const lp = new THREE.Vector3(...info.light).applyMatrix4(inH);
     halos.push({ p: lp.toArray(), n: [0, 0, 0], color: 0xff9a2a, size: 0.035, k: 0.6 });
   } else if (state.hold === 'salvage') {
     // carried by its handle, hanging below the fist
-    K.at(M.mul(inH, M.rx(-Math.PI / 2)), (k) => salvage(k, seed));
+    mark('wrist.R', () => K.at(M.mul(inH, M.rx(-Math.PI / 2)), (k) => salvage(k, seed)));
   }
   // a pack of scrap lashed to the back
   if (ex.has('scrap')) { const b = A.back, F = { p: b.p, n: b.n, v: [0, 1, 0], u: [-1, 0, 0] }; K.at(M.mul(seat(F, 0.006), M.t(0, 0.02, 0), M.rx(0.1)), (k) => scrapPack(k, seed + 2)); }
@@ -205,13 +209,16 @@ function gearGroup(A, hands) {
     const a = hands.arms.L, ax = new THREE.Vector3(...a.ax), out = new THREE.Vector3(...a.side).multiplyScalar(-1).addScaledVector(new THREE.Vector3(...a.up), 0.35).normalize();
     const y = ax.clone().multiplyScalar(-1), z = out.clone().addScaledVector(y, -out.dot(y)).normalize(), x = new THREE.Vector3().crossVectors(y, z);
     const mid = new THREE.Vector3(...a.E).lerp(new THREE.Vector3(...a.W), 0.62).addScaledVector(z, 0.082).addScaledVector(new THREE.Vector3(0, -1, 0), 0.02);
-    K.at(new THREE.Matrix4().makeBasis(x, y, z).setPosition(mid), (k) => {
+    mark('lowerarm01.L', () => K.at(new THREE.Matrix4().makeBasis(x, y, z).setPosition(mid), (k) => {
       hullPlate(k, 0.2, 0.25, seed, { thick: 0.0045 });
       for (const dy of [-0.06, 0.06]) k.leather.at(M.t(0, dy, -0.02), (b) => b.box(0.11, 0.016, 0.03, { rad: 0.008, role: ROLE.primary, wear: false }));   // the arm straps behind it
-    });
+    }));
   }
   const g = new THREE.Group();
-  const put = (b, mat, shadow = true) => { if (b.empty) return; const m = new THREE.Mesh(b.geometry(), mat); m.castShadow = shadow; m.receiveShadow = shadow; g.add(m); };
+  const put = (b, mat, shadow = true) => {
+    if (b.empty) return; const m = new THREE.Mesh(b.geometry(), mat); m.castShadow = shadow; m.receiveShadow = shadow; g.add(m);
+    const k = K.all.indexOf(b); m.userData.on = marks.map(([bone, r]) => [bone, r[k][0], r[k][1]]).filter((x) => x[2] > x[1]);
+  };
   put(K.metal, MAT.gear); put(K.plate, MAT.plate); put(K.wood, MAT.wood); put(K.glass, MAT.glass); put(K.glow, MAT.glow, false); put(K.leather, MAT.leather[1]);
   for (const h of halos) { const s = halo(h.color, h.size); s.position.set(...h.p); s.userData.n = new THREE.Vector3(...h.n); s.userData.k = h.k; g.add(s); }
   return g;

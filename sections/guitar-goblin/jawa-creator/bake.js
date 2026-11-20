@@ -43,7 +43,6 @@ export function jawaSkeleton(B, arms) {
 
 /* ---------------- what each point hangs on ---------------- */
 // distance from p to the segment a-b
-function segD(p, a, b) { const ab = sub(b, a), ap = sub(p, a), L = ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2, t = L ? clamp01((ap[0] * ab[0] + ap[1] * ab[1] + ap[2] * ab[2]) / L) : 0; return Math.hypot(ap[0] - ab[0] * t, ap[1] - ab[1] * t, ap[2] - ab[2] * t); }
 function weigher(sk, B, arms) {
   const ix = Object.fromEntries(sk.map((b, k) => [b.name, k])), H = (n) => sk[ix[n]].head, t = B.t, hipY = 0.4 * t;
   const one = (k) => [[k, 0, 0, 0], [255, 0, 0, 0]];
@@ -87,7 +86,7 @@ function weigher(sk, B, arms) {
     hood, face: () => one(ix.head), eyes: () => one(ix.head),
     fringe: (p) => (p[1] < hipY ? one(ix.root) : hood(p)),
     hands: (p) => side(p, 'wrist'), feet: (p) => side(p, 'foot'),
-    held: () => one(ix['wrist.R']), index: ix,
+    held: () => one(ix['wrist.R']), bone: (n) => one(ix[n]), index: ix,
   };
 }
 
@@ -152,10 +151,14 @@ export function bakeJawa(parts, o) {
       const gp = new Float64Array(groups * 3), gc = new Float64Array(groups * 3), gn = new Float64Array(groups * 3), gk = new Uint32Array(groups);
       for (let i = 0; i < n; i++) { const k = id[i]; gk[k]++; for (let j = 0; j < 3; j++) { gp[k * 3 + j] += tp[i * 3 + j]; gc[k * 3 + j] += tc[i * 3 + j]; if (!g0) gn[k * 3 + j] += tn[i * 3 + j]; } }
       for (let k = 0; k < groups; k++) for (let j = 0; j < 3; j++) { gp[k * 3 + j] /= gk[k]; gc[k * 3 + j] /= gk[k]; }
-      // what is held: everything near the grip, and along the line from the grip to the muzzle (a long ion blaster)
-      const held = part === 'gear' && o.grip ? (p) => Math.hypot(p[0] - o.grip[0], p[1] - o.grip[1], p[2] - o.grip[2]) < 0.12 || (o.muzzle && segD(p, o.grip, o.muzzle.point) < 0.06) : () => false;
+      // what rides on a bone of its own: the page marks the held thing's vertices (and a shield's) by bone; a cell of
+      // merged vertices with a marked one in it takes its mark. Unmarked gear is worn on the body.
+      const on = Array.isArray(m.userData.on) ? m.userData.on.filter((x) => Array.isArray(x) && typeof x[0] === 'string' && Object.prototype.hasOwnProperty.call(W.index, x[0])) : [];
+      const tag = new Array(groups).fill(null);
+      if (on.length) for (let i = n - 1; i >= 0; i--) { const r = on.find((x) => i >= x[1] && i < x[2]); tag[id[i]] = r ? r[0] : tag[id[i]]; }
       const b = bucket(finish[0], finish[1], finish[2], null); if (emissive && !b.E) b.E = new Array(b.C.length).fill(0);
-      const map = new Map(), tris = new Set(), added = [];
+      const map = new Map(), tris = new Set(), added = [], wk = new Map();
+      const weightOf = (k) => { let w = wk.get(k); if (!w) { const p = [gp[k * 3], gp[k * 3 + 1], gp[k * 3 + 2]]; w = tag[k] ? W.bone(tag[k]) : (W[part] || W.robe)(p); wk.set(k, w); } return w; };
       for (let t = 0; t + 2 < I.length; t += 3) {
         const g3 = [id[I[t]], id[I[t + 1]], id[I[t + 2]]]; if (g3[0] === g3[1] || g3[1] === g3[2] || g3[0] === g3[2]) continue;
         if (g0) { const s3 = [...g3].sort((a, c) => a - c).join(); if (tris.has(s3)) continue; tris.add(s3);
@@ -164,7 +167,7 @@ export function bakeJawa(parts, o) {
         b.I.push(...g3.map((k) => { let q = map.get(k); if (q === undefined) {
           q = b.P.length / 3; map.set(k, q); const p = [gp[k * 3], gp[k * 3 + 1], gp[k * 3 + 2]];
           b.P.push(...p); b.N.push(0, 0, 0); b.C.push(gc[k * 3], gc[k * 3 + 1], gc[k * 3 + 2]); if (b.E) b.E.push(...(emissive || [0, 0, 0]));
-          const [si, sw] = held(p) ? W.held(p) : (W[part] || W.robe)(p); b.SI.push(...si); b.SW.push(...sw); added.push([q, k]);
+          const [si, sw] = weightOf(k); b.SI.push(...si); b.SW.push(...sw); added.push([q, k]);
         } return q; }));
       }
       for (const [q, k] of added) { const l = Math.hypot(gn[k * 3], gn[k * 3 + 1], gn[k * 3 + 2]) || 1; b.N[q * 3] = gn[k * 3] / l; b.N[q * 3 + 1] = gn[k * 3 + 1] / l; b.N[q * 3 + 2] = gn[k * 3 + 2] / l; }
