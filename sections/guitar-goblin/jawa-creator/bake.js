@@ -63,7 +63,7 @@ function weigher(sk, B, arms) {
   const arm = (p, S) => {
     const Sh = H(`upperarm01.${S}`), E = H(`lowerarm01.${S}`), Wr = H(`wrist.${S}`), along = (a, b) => { const ab = sub(b, a), ap = sub(p, a); return (ap[0] * ab[0] + ap[1] * ab[1] + ap[2] * ab[2]) / (ab[0] ** 2 + ab[1] ** 2 + ab[2] ** 2); };
     const tu = along(Sh, E), tf = along(E, Wr), eb = sstep(-0.15, 0.15, tf);   // past the elbow, the forearm
-    const sh = 1 - sstep(0.05, 0.35, tu);   // up at the shoulder, the shoulder and the chest
+    const sh = 1 - sstep(-0.05, 0.5, tu);   // up at the shoulder, the shoulder and the chest (eased over half the upper arm, so a raised arm does not pull the cloth at the joint)
     return [[ix[`upperarm01.${S}`], (1 - eb) * (1 - sh)], [ix[`lowerarm01.${S}`], eb], [ix[`shoulder01.${S}`], (1 - eb) * sh * 0.6], [ix.spine01, (1 - eb) * sh * 0.4]];
   };
   // the robe: a point on a sleeve's cloth follows that arm, on the body the trunk, below the hips the hips (a skirt);
@@ -76,15 +76,22 @@ function weigher(sk, B, arms) {
     const low = sstep(hipY - 0.02 * t, hipY + 0.05 * t, p[1]);
     return blend([...trunk(p[1]).map(([b, w]) => [b, w * (1 - k) * low]), [ix.root, (1 - k) * (1 - low)], ...arm(p, S).map(([b, w]) => [b, w * k])]);
   };
+  // the robe meshed without its sleeves (the table's bake has them apart): the body's cloth only
+  const robeBody = (p) => { if (p[1] < hipY - 0.02 * t) return one(ix.root); const low = sstep(hipY - 0.02 * t, hipY + 0.05 * t, p[1]); return blend([...trunk(p[1]).map(([b, w]) => [b, w * low]), [ix.root, 1 - low]]); };
+  // a sleeve meshed on its own: the arm it is on (easing into the shoulder and chest at its top)
+  const sleeve = (p) => arm(p, RF.sleeves.L(p[0], p[1], p[2]) < RF.sleeves.R(p[0], p[1], p[2]) ? 'L' : 'R');
   // straps and gear on the body: the trunk by height (below the hips, the hips)
   const worn = (p) => (p[1] < hipY ? one(ix.root) : blend(trunk(p[1])));
   // the hood on the head, its mantle settling onto the chest
   const hood = (p) => { const k = sstep(0.62 * t, 0.7 * t, p[1]); return blend([[ix.head, k], [ix.spine01, 1 - k]]); };
   const side = (p, n) => one(ix[`${n}.${p[0] >= 0 ? 'L' : 'R'}`]);
   return {
-    robe: body, straps: worn, gear: worn,
+    robe: body, robeBody, sleeves: (p) => blend(sleeve(p)), straps: worn, gear: worn,
     hood, face: () => one(ix.head), eyes: () => one(ix.head),
-    fringe: (p) => (p[1] < hipY ? one(ix.root) : hood(p)),
+    // the fringe: the hem's on the hips, the cuffs' on their arms, the hood's with the hood
+    // (a cuff's threads hang a hand's breadth at most from their sleeve, by the hip: all of each thread on the arm, or
+    // a raised arm would draw them out into strands down to the belt)
+    fringe: (p) => { const dl = RF.sleeves.L(p[0], p[1], p[2]), dr = RF.sleeves.R(p[0], p[1], p[2]); if (Math.min(dl, dr) < 0.06) return blend(arm(p, dl < dr ? 'L' : 'R')); return p[1] < hipY ? one(ix.root) : hood(p); },
     hands: (p) => side(p, 'wrist'), feet: (p) => side(p, 'foot'),
     held: () => one(ix['wrist.R']), bone: (n) => one(ix[n]), index: ix,
   };
@@ -145,20 +152,20 @@ export function bakeJawa(parts, o) {
         tp.set([v.x, v.y, v.z], i * 3); tn.set([nv.x, nv.y, nv.z], i * 3); tc.set(colour(i, [v.x, v.y, v.z], [nv.x, nv.y, nv.z]), i * 3);
       }
       const g0 = part === 'eyes' || part === 'face' ? 0 : part === 'hands' || part === 'feet' || part === 'gear' ? Math.min(grid, 0.006) : grid;
+      // what rides a bone of its own: the page marks the held thing's vertices (and a shield's) by bone; a cell merges only
+      // vertices of the same mark, so nothing held is ever joined to what is worn. Unmarked gear is worn on the body.
+      const on = Array.isArray(m.userData.on) ? m.userData.on.filter((x) => Array.isArray(x) && typeof x[0] === 'string' && Object.prototype.hasOwnProperty.call(W.index, x[0])) : [];
+      const vtag = new Array(n).fill(null); if (on.length) for (let i = 0; i < n; i++) { const r = on.find((x) => i >= x[1] && i < x[2]); if (r) vtag[i] = r[0]; }
       const id = new Int32Array(n), cells = new Map(); let groups = 0;
-      for (let i = 0; i < n; i++) { if (!g0) { id[i] = i; continue; } const key = `${Math.floor(tp[i * 3] / g0)},${Math.floor(tp[i * 3 + 1] / g0)},${Math.floor(tp[i * 3 + 2] / g0)}`; let c = cells.get(key); if (c === undefined) cells.set(key, (c = groups++)); id[i] = c; }
+      for (let i = 0; i < n; i++) { if (!g0) { id[i] = i; continue; } const key = `${Math.floor(tp[i * 3] / g0)},${Math.floor(tp[i * 3 + 1] / g0)},${Math.floor(tp[i * 3 + 2] / g0)},${vtag[i] || ''}`; let c = cells.get(key); if (c === undefined) cells.set(key, (c = groups++)); id[i] = c; }
       if (!g0) groups = n;
       const gp = new Float64Array(groups * 3), gc = new Float64Array(groups * 3), gn = new Float64Array(groups * 3), gk = new Uint32Array(groups);
       for (let i = 0; i < n; i++) { const k = id[i]; gk[k]++; for (let j = 0; j < 3; j++) { gp[k * 3 + j] += tp[i * 3 + j]; gc[k * 3 + j] += tc[i * 3 + j]; if (!g0) gn[k * 3 + j] += tn[i * 3 + j]; } }
       for (let k = 0; k < groups; k++) for (let j = 0; j < 3; j++) { gp[k * 3 + j] /= gk[k]; gc[k * 3 + j] /= gk[k]; }
-      // what rides on a bone of its own: the page marks the held thing's vertices (and a shield's) by bone; a cell of
-      // merged vertices with a marked one in it takes its mark. Unmarked gear is worn on the body.
-      const on = Array.isArray(m.userData.on) ? m.userData.on.filter((x) => Array.isArray(x) && typeof x[0] === 'string' && Object.prototype.hasOwnProperty.call(W.index, x[0])) : [];
-      const tag = new Array(groups).fill(null);
-      if (on.length) for (let i = n - 1; i >= 0; i--) { const r = on.find((x) => i >= x[1] && i < x[2]); tag[id[i]] = r ? r[0] : tag[id[i]]; }
+      const tag = new Array(groups).fill(null); for (let i = 0; i < n; i++) if (vtag[i]) tag[id[i]] = vtag[i];
       const b = bucket(finish[0], finish[1], finish[2], null); if (emissive && !b.E) b.E = new Array(b.C.length).fill(0);
       const map = new Map(), tris = new Set(), added = [], wk = new Map();
-      const weightOf = (k) => { let w = wk.get(k); if (!w) { const p = [gp[k * 3], gp[k * 3 + 1], gp[k * 3 + 2]]; w = tag[k] ? W.bone(tag[k]) : (W[part] || W.robe)(p); wk.set(k, w); } return w; };
+      const weightOf = (k) => { let w = wk.get(k); if (!w) { const p = [gp[k * 3], gp[k * 3 + 1], gp[k * 3 + 2]]; w = tag[k] ? W.bone(tag[k]) : (part === 'robe' && o.split ? W.robeBody : W[part] || W.robe)(p); wk.set(k, w); } return w; };
       for (let t = 0; t + 2 < I.length; t += 3) {
         const g3 = [id[I[t]], id[I[t + 1]], id[I[t + 2]]]; if (g3[0] === g3[1] || g3[1] === g3[2] || g3[0] === g3[2]) continue;
         if (g0) { const s3 = [...g3].sort((a, c) => a - c).join(); if (tris.has(s3)) continue; tris.add(s3);

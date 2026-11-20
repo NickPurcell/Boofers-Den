@@ -230,16 +230,17 @@ async function rebuild() {
   const ticket = ++building, t0 = performance.now();
   status.hidden = false;
   const ex = multi('extras'), n = pool.size(), nh = Math.min(3, n), b = state.build, held = state.hold !== 'none';
-  const kRobe = `robe:${b}:${state.stance}`, kHood = `hood:${b}:${state.hood}`, kHands = `hands:${b}:${state.stance}:${held}`, kFeet = `feet:${b}`;
+  const kRobe = `robe:${b}:${state.stance}${BAKE ? ':split' : ''}`, kHood = `hood:${b}:${state.hood}`, kHands = `hands:${b}:${state.stance}:${held}`, kFeet = `feet:${b}`;
   const sArgs = { build: b, rig: state.rig, hood: state.hood, goggles: ex.has('goggles'), satchel: ex.has('satchel') }, kStraps = `straps:${b}:${state.rig}:${sArgs.goggles ? state.hood : ''}:${sArgs.satchel}`;
   const [robe, hood, hands, feet, straps] = await Promise.all([
-    Promise.all(Array.from({ length: n }, (_, part) => pool.cached(`${kRobe}:${part}/${n}`, 'robe', { build: b, stance: state.stance, part, of: n }))),
+    Promise.all(Array.from({ length: n }, (_, part) => pool.cached(`${kRobe}:${part}/${n}`, 'robe', { build: b, stance: state.stance, part, of: n, split: BAKE }))),
     Promise.all(Array.from({ length: nh }, (_, part) => pool.cached(`${kHood}:${part}/${nh}`, 'hood', { build: b, hood: state.hood, part, of: nh }))), pool.cached(kHands, 'hands', { build: b, stance: state.stance, held }), pool.cached(kFeet, 'feet', { build: b }),
     pool.cached(kStraps, 'straps', sArgs),
   ]);
   if (ticket !== building) return;   // a newer choice is on its way
   const B = BUILDS[b], f = faceAt(B);
   slot('robe', kRobe, () => clothMesh(joinMeshes(robe.map((r) => r.mesh)), MAT.robe));
+  if (BAKE) slot('sleeves', kRobe, () => clothMesh(joinMeshes(robe[0].sleeves), MAT.robe));   // (the table's bake meshes them apart)
   slot('hood', kHood, () => clothMesh(joinMeshes(hood.map((h) => h.mesh)), MAT.robe));
   slot('fringe', kRobe + kHood, () => {
     const g = new THREE.Group(), back = (y) => skirtPoint(Math.PI, Math.min(y, 0.55 * B.t), B).p[2];
@@ -405,8 +406,8 @@ const ready = rebuild();
 stage.start();
 // the figure as the table gets it (bake.js)
 const tableFigure = () => {
-  const parts = Object.fromEntries(['robe', 'hood', 'fringe', 'hands', 'feet', 'straps', 'face', 'eyes', 'gear'].map((k) => [k, slots[k] && slots[k].object]));
-  return bakeJawa(parts, { build: state.build, held: state.hold !== 'none', eye: pick('eyes', state.eyes).c, glow: pick('glow', state.glow).g, grip: state.hold !== 'none' ? held.grip : null, muzzle: state.hold === 'blaster' ? held.muzzle : null });
+  const parts = Object.fromEntries(['robe', 'sleeves', 'hood', 'fringe', 'hands', 'feet', 'straps', 'face', 'eyes', 'gear'].map((k) => [k, slots[k] && slots[k].object]));
+  return bakeJawa(parts, { build: state.build, held: state.hold !== 'none', eye: pick('eyes', state.eyes).c, glow: pick('glow', state.glow).g, split: !!(slots.sleeves && slots.sleeves.object), grip: state.hold !== 'none' ? held.grip : null, muzzle: state.hold === 'blaster' ? held.muzzle : null });
 };
 if (BAKE) (async () => {
   try {

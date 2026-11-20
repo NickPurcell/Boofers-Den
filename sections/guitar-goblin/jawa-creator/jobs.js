@@ -35,7 +35,10 @@ export function run(job, a) {
   const B = BUILDS[a.build] || BUILDS.average;
   if (job === 'robe') {
     const arms = pose(a.stance, B), r = robeField(B, arms);
-    const out = { mesh: masked(slab(r.field, r.bounds, RES.robe, a.part, a.of, { aoStep: 0.007, band: 1.5 }), r.lining) };
+    // (split, for the table's bake: the body alone, and each sleeve as a mesh of its own)
+    // (the body alone has no lining: where a sleeve's hollow lay against it is the robe's outside)
+    const out = { mesh: masked(slab(a.split ? r.body : r.field, r.bounds, RES.robe, a.part, a.of, { aoStep: 0.007, band: 1.5 }), a.split ? () => 0 : r.lining) };
+    if (a.split && !a.part) out.sleeves = ['L', 'R'].map((s) => masked(slab(r.apart[s].field, r.apart[s].bounds, RES.robe, 0, 1, { aoStep: 0.007, band: 1.5 }), r.lining));
     if (!a.part) {   // the frayed edges: where the threads start, and which way they hang
       out.fringe = [];
       // the hem, all the way round
