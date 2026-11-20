@@ -200,3 +200,11 @@ export function blend(a, b, k) {
   return { root: [0, 1, 2].map((j) => lerp(a.root[j], b.root[j], k)), q };
 }
 export { world as poseWorld };
+// the quaternion helpers, for clips.js
+const qslerp = (a, b, t) => {
+  let d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3], s = 1; if (d < 0) { d = -d; s = -1; }
+  if (d > 0.9995) { const v = [0, 1, 2, 3].map((j) => lerp(a[j], s * b[j], t)), l = Math.hypot(...v); return v.map((x) => x / l); }
+  const th = Math.acos(Math.min(1, d)), sa = Math.sin(th), wa = Math.sin((1 - t) * th) / sa, wb = (s * Math.sin(t * th)) / sa;
+  return [0, 1, 2, 3].map((j) => a[j] * wa + b[j] * wb);
+};
+export const Q = { mul: qmul, inv: qinv, axis: qaxis, rot: qrot, from: qfrom, slerp: qslerp, I };
