@@ -35,7 +35,7 @@ export function makeEyes(o = {}) {
   const l = new THREE.Mesh(geo, mat), r = new THREE.Mesh(geo, mat), box = new THREE.Box3(), v = new THREE.Vector3(), sz = new THREE.Vector3();
   const look = { colour: 'brown', glow: 0, white: '#e6dfd6', iris: 1 };
   const eyes = {
-    l, r, material: mat,
+    l, r, material: mat, look,   // look: what set() was last given (colour, glow, white, iris), for a bake to read
     set(s = {}) {
       Object.assign(look, s);
       const hex = EYE_COLOURS[look.colour] || look.colour, t = eyeTexture(hex, look.glow, look.white, look.iris);

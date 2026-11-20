@@ -130,7 +130,7 @@ async function load() {
   const tm = {}; let tl = performance.now(); const lap = (k) => { const t = performance.now(); tm[k] = Math.round(t - tl); tl = t; }; tm.fetch = Math.round(tl - t0);   // where the load's time goes, after the data arrives
   const B = decode(info, meshBuf, tBuf, skinBuf); lap('decode');
   B.T = topology(B.N, B.quads); lap('topology');
-  // the landmarks, regions and the rest come with the data (derive.js, baked by tests/human-base/bake.mjs); worked out here
+  // the landmarks, regions and the rest come with the data (derive.js, baked by scripts/mh/bake.mjs); worked out here
   // only if they are missing or were made from another mesh
   let D = derived ? unpack(derived) : null;
   if (!D || D.fingerprint !== fingerprint(B)) { if (derived) console.warn('human-base: derived.json does not match the mesh; deriving it here'); D = deriveAll(B); tm.derivedLive = true; }
@@ -169,7 +169,7 @@ class Figure extends THREE.Group {
   }
   set(o) { Object.assign(this.state, o); return this; }
   // two numbers per base vertex for the skin to paint by (x: a bone crest to light); carried through the subdivision
-  setMark(src) { const a = this.geometry.attributes.aMark; if (this.sub) subdivide(this.B.T, src, 2, a.array); else a.array.set(src); a.needsUpdate = true; return this; }
+  setMark(src) { this.mark0 = src; const a = this.geometry.attributes.aMark; if (this.sub) subdivide(this.B.T, src, 2, a.array); else a.array.set(src); a.needsUpdate = true; return this; }
   // the head's own frame after the morphs: origin between the eyes, x to the figure's left, y up, z forward (metres)
   headFrame() {
     const l = this.eyes.l.position, r = this.eyes.r.position, o = new THREE.Vector3().addVectors(l, r).multiplyScalar(0.5);
