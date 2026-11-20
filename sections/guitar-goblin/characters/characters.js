@@ -15,6 +15,7 @@ import { createPool } from '../creator-kit/pool.js';
 import { makeTextures, clothMaterial, leatherMaterial, metalMaterial, plasticMaterial } from '../duros-creator/materials.js';
 import { OUTFITS, HOODS } from './outfit-shape.js';
 import { fieldFor } from './bodyfield.js';
+import { bakeFigure, transfers } from './bake.js';
 
 const $ = (id) => document.getElementById(id);
 const stage = makeStage($('scene'), { tall: 1.8, minDistance: 0.22, maxDistance: 6, onNoGL: () => { $('nogl').hidden = false; } });
@@ -22,7 +23,10 @@ stage.key && stage.key.shadow && Object.assign(stage.key.shadow, { normalBias: 0
 // the workers first: they load their modules while the base mesh downloads (started later, the first outfit waited ~7 s for them)
 const pool = createPool(new URL('./jobs.js', import.meta.url));
 const base = await loadBase();
-const fig = base.figure(); stage.scene.add(fig);
+// baked for a game table (HoloTable): opened in a hidden frame as #<look>&bake=table, it builds the figure with the coarse
+// clothes, hands it to the table as plain arrays, and is done (bake.js)
+const ASKED = location.hash.slice(1), BAKE = window.parent !== window && new URLSearchParams(ASKED).get('bake') === 'table';
+const fig = base.figure(); stage.scene.add(fig);   // (subdivided even for a table: the Pureblood's features need the full mesh)
 const pb = pureblood(fig, base);
 const hair = makeHair(base, fig);
 const carried = carry(fig);   // what they carry: engineer13's human-base/carry.js
@@ -232,10 +236,11 @@ function paintTendrils() {
   col.needsUpdate = true; tentMat.sheenColor.copy(state.pattern === 'deepen' ? c.clone().multiplyScalar(0.6) : lit); tentMat.sheen = state.pattern === 'deepen' ? 0.15 : 0.3; lockMat.sheenColor.copy(c).lerp(new THREE.Color(1, 1, 1), 0.3);
 }
 
+let parts = [];
 async function dress() {
   const my = ++dressTicket, key = state.outfit;
   pool.cancelQueued();   // whatever was waiting for an older choice is no longer wanted
-  grow(); fall();   // (a Mikkian's tendrils, or hair worn down, alongside)
+  parts = [grow(), fall()];   // (a Mikkian's tendrils, or hair worn down, alongside)
   const clear = () => { for (const c of [...clothes.children]) { clothes.remove(c); c.geometry.dispose(); c.material.dispose(); } };
   if (!OUTFITS[key] || key === 'none') { clear(); wear(my); return; }
   const J = Object.fromEntries(Object.keys(base.info.joints).map((k) => [k, fig.joint(k)]));
@@ -256,6 +261,7 @@ async function dress() {
   try { rs = await pass(2); } catch (e) { fail(e); return; }
   if (my !== dressTicket) return;
   put(rs); $('status').hidden = true; info.dress = Math.round(performance.now() - t0); info.coarseJobs = rs.map((r) => `start ${r.began - T0} end ${r.ended - T0} (${r.setup}+${r.ms - r.setup})`).join(' | ');
+  if (BAKE) return;   // (a table's figure is small: the coarse clothes are enough)
   try { rs = await pass(1); } catch (e) { fail(e); return; }
   if (my !== dressTicket) return;
   put(rs); info.fine = Math.round(performance.now() - t0); info.fineJobs = rs.map((r) => `start ${r.began - T0} end ${r.ended - T0}`).join(' | ');
@@ -361,3 +367,13 @@ panel(); apply(); view('bust'); $('status').hidden = true;
 let current = dress();
 stage.start();
 window.__fig = { fig, base, hair, state, ctrl, stage, camera: stage.camera, controls: stage.controls, redraw: stage.redraw, get ready() { return current; }, views: VIEWS, info, choose };
+if (BAKE) {
+  // dressed, tendrils or hair grown: baked and handed to the table that asked (same site only)
+  (async () => {
+    try {
+      await current; await Promise.all(parts);
+      const look = lookParams(sp(), { ...state, gender: toShape(ctrl).gender }), b = bakeFigure(fig, { skin: look.skin });
+      window.parent.postMessage({ type: 'holotable-figure', look: ASKED, figure: b }, location.origin, transfers(b));
+    } catch (e) { console.error(e); window.parent.postMessage({ type: 'holotable-figure', look: ASKED, error: String(e && e.message || e) }, location.origin); }
+  })();
+}
