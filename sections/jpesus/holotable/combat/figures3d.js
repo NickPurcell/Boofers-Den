@@ -254,7 +254,13 @@ function happenings() {
   const fresh = fe.filter((e) => e.seq > lastSeq).sort((a, b) => a.seq - b.seq); lastSeq = top;
   for (const ev of fresh) {
     const f = ev.token ? figs.get(ev.token) : null;
-    if (ev.kind === 'move' && f && Array.isArray(ev.path) && ev.path.length > 1) { f.route = ev.path.slice(1).map((q) => [+q[0], +q[1]]); f.from = f.from || [f.x, f.z]; continue; }
+    if (ev.kind === 'move' && f && Array.isArray(ev.path) && ev.path.length > 1) {
+      // a path that starts away from where the figure stands began out of this viewer's sight (#279 cut it there): the
+      // figure appears where it came into sight, rather than running there from where it was last seen
+      const p0 = [+ev.path[0][0] + f.size / 2, +ev.path[0][1] + f.size / 2];
+      if (f.x === null || Math.hypot(p0[0] - f.x, p0[1] - f.z) > 0.6) { f.x = p0[0]; f.z = p0[1]; }
+      f.route = ev.path.slice(1).map((q) => [+q[0], +q[1]]); f.from = f.from || [f.x, f.z]; continue;
+    }
     if (ev.kind !== 'act') continue;
     const tgt = ev.target ? figs.get(ev.target) : null, results = fresh.filter((r) => r.act === ev.seq);
     const land = () => { for (const r of results) { const g = r.token && figs.get(r.token); if (g && !g.down) playOn(g, r.kind === 'miss' ? ['dodge'] : r.kind === 'crit' ? ['hit-head'] : r.kind === 'heal' ? [] : ['hit-chest']); } };
