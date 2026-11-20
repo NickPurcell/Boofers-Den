@@ -217,7 +217,8 @@ export function derivePureblood(B, marks) {
 // The order to fold the body's vertices away in: quadric error edge collapses on the rest shape, each vertex folded into
 // a neighbour that stays where it is. A coarser body is then the same vertices, fewer of them, so every morph and the
 // pose still apply, and any level is had at once: into[i] is the vertex i was folded into, step[i] when (65535: never).
-// The face counts for more than the rest and the hands for less; the edges round the eyes are kept to their line.
+// The face counts for more than the rest and the hands for less. The body is closed, and a fold that would tear it or
+// turn a face over is refused, so every level is closed too (tests/human-base.test.js checks two).
 export function collapseOrder(B, regions, stopAt = 500) {
   const N = B.N, P = B.rest, q = B.quads, nT = (q.length / 4) * 2, T = new Int32Array(nT * 3), alive = new Uint8Array(nT).fill(1);
   for (let f = 0, t = 0; f < q.length; f += 4, t += 6) { T[t] = q[f]; T[t + 1] = q[f + 1]; T[t + 2] = q[f + 2]; T[t + 3] = q[f]; T[t + 4] = q[f + 2]; T[t + 5] = q[f + 3]; }
@@ -236,7 +237,7 @@ export function collapseOrder(B, regions, stopAt = 500) {
     const nx = n0[0] / l, ny = n0[1] / l, nz = n0[2] / l, d = -(nx * P[a * 3] + ny * P[a * 3 + 1] + nz * P[a * 3 + 2]);
     for (const v of [a, b, c]) addPlane(v, nx, ny, nz, d, (l / 2) * W[v]);
   }
-  // the mesh's own edges (round the eyes): a plane through each, square to its face, heavily weighted, holds the line
+  // an open edge, if the mesh ever has one: a plane through it, square to its face, heavily weighted, holds the line
   const ecount = new Map(), key = (a, b) => (a < b ? a * N + b : b * N + a), isB = new Uint8Array(N);
   for (let t = 0; t < nT; t++) for (let k = 0; k < 3; k++) { const e = key(T[t * 3 + k], T[t * 3 + ((k + 1) % 3)]); ecount.set(e, (ecount.get(e) || 0) + 1); }
   for (let t = 0; t < nT; t++) for (let k = 0; k < 3; k++) {
