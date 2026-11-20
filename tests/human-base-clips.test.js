@@ -175,3 +175,37 @@ test("the gun clips carry their shots: when a bolt should leave the muzzle", asy
   const bad = JSON.parse(JSON.stringify(J.clips["pistol-shoot"])); bad.marks.shots = ["x", -1];
   assert.equal(C.unpackClip(bad).marks.shots, undefined);
 });
+
+// From the front: the borrowed clips stand wider than we do, and on our legs a knee need not point over its foot. play()
+// brings each foot in toward its hip (holding it still while it is down) and sets the knee over the foot. On the idle,
+// the walk, the charge and an attack: each knee over its foot while the foot is down, the idle's feet nearer the hips,
+// and no planted foot sliding more than the clip's own.
+test("the shipped clips, from the front: knees over the feet, feet in toward the hips, no planted foot made to slide", async () => {
+  const { C, rig } = await setup(), J = JSON.parse(readFileSync(join(HB, "data", "clips.json"), "utf8")), k = rig.cycle.k;
+  const kneeOff = (S, W) => {   // the knee off the hip-to-ankle line, sideways to the way the foot points
+    const hip = W.P[S.thigh], knee = W.P[S.shin], ank = W.P[S.foot], ball = W.P[S.toe];
+    let f = [ball[0] - ank[0], ball[2] - ank[2]]; const fl = Math.hypot(...f) || 1; f = f.map((x) => x / fl);
+    const at = (p) => [p[0] * f[1] - p[2] * f[0], p[1]], h = at(hip), kk = at(knee), a = at(ank), d = [a[0] - h[0], a[1] - h[1]];
+    const t = ((kk[0] - h[0]) * d[0] + (kk[1] - h[1]) * d[1]) / (d[0] * d[0] + d[1] * d[1]); return Math.abs(kk[0] - (h[0] + d[0] * t));
+  };
+  const measure = (name, legs) => {
+    const c = J.clips[name], p = C.play(C.unpackClip(c), rig, { root: c.root, legs }), held = {}; let off = 0, drift = 0, out = 0, n = 0;
+    for (let i = 0; i <= 160; i++) {
+      const t = (i / 160) * p.duration, W = p.sample(t).world();
+      for (const s of ["L", "R"]) {
+        const S = rig.side[s], A = W.P[S.foot], b = W.P[S.toe], z = b[2] + (c.root === "inplace" ? p.speed * t : 0);
+        out += (A[0] - W.P[S.thigh][0]) * S.s; n++;
+        if (A[1] < S.ankle[1] + 0.035 * k) { off = Math.max(off, kneeOff(S, W)); if (!held[s]) held[s] = [b[0], z]; drift = Math.max(drift, Math.hypot(b[0] - held[s][0], z - held[s][1])); } else held[s] = null;
+      }
+    }
+    return { off, drift, out: out / n };
+  };
+  for (const name of ["idle", "walk", "jog", "sword-a"]) {
+    const was = measure(name, false), now = measure(name, true);
+    if (process.env.SHOW) console.log(name, JSON.stringify({ was, now }));
+    assert.ok(now.off < 0.025, `${name}: a knee ${(now.off * 100).toFixed(1)} cm off the line of its leg, with the foot down`);
+    assert.ok(now.drift < was.drift + 0.003, `${name}: a planted foot slides ${(now.drift * 100).toFixed(1)} cm (the clip's own: ${(was.drift * 100).toFixed(1)})`);
+    assert.ok(now.out <= was.out + 1e-6, `${name}: the feet went out`);
+    if (name === "idle") assert.ok(now.out < was.out - 0.03, `the idle's feet come in only ${((was.out - now.out) * 100).toFixed(1)} cm`);
+  }
+});

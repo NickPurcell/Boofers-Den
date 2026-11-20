@@ -16,7 +16,7 @@
 //
 // Clip files are read as untrusted data: sizes and counts are capped, every number is checked, nothing in them is used
 // as code, markup or an object key of ours. A clip that cannot be read throws a ClipError with a plain message.
-import { Q, poseWorld } from './motion.js';
+import { Q, poseWorld, legStance, alignLegs } from './motion.js';
 
 export class ClipError extends Error {}
 const LIMIT = { chars: 8e6, bytes: 32e6, bones: 256, frames: 20000, tracks: 1024 };
@@ -318,9 +318,12 @@ export function play(c, rig, o = {}) {
   // how fast the figure should move: the clip's own travel, or for one made in place, its planted foot's speed
   const speed = Math.max(dur > 0 ? Math.hypot(travel[0], travel[2]) / dur : 0, mode === 'inplace' ? (c.marks.ground || 0) * H : 0);
   const dAt = (f, i) => Array.from(c.d.subarray((f * nb + i) * 4, (f * nb + i) * 4 + 4));
-  function sample(t) {
+  function at_(t) {
     const x = dur > 0 ? (loop ? (((t % dur) + dur) % dur) : Math.min(dur, Math.max(0, t))) : 0;
-    const fx = x * c.fps, f0 = Math.min(F - 1, Math.floor(fx)), f1 = Math.min(F - 1, f0 + 1), u = fx - f0;
+    const fx = x * c.fps, f0 = Math.min(F - 1, Math.floor(fx)); return { x, f0, f1: Math.min(F - 1, f0 + 1), u: fx - f0 };
+  }
+  function raw(t) {
+    const { x, f0, f1, u } = at_(t);
     const Wo = new Array(n), q = new Float32Array(n * 4);
     for (let k = 0; k < n; k++) {
       const p = rig.bones[k].parent, pw = p < 0 ? [0, 0, 0, 1] : Wo[p], i = driven[k];
@@ -329,7 +332,39 @@ export function play(c, rig, o = {}) {
     }
     const h0 = hipAt(f0), h1 = hipAt(f1); let root = [0, 1, 2].map((j) => h0[j] + (h1[j] - h0[j]) * u);
     if (mode === 'inplace') { const k = dur > 0 ? x / dur : 0; root = [root[0] - travel[0] * k, root[1], root[2] - travel[2] * k]; }
-    return { root, q, world: () => poseWorld(rig, root, q) };
+    return { root, q };
+  }
+  // the legs brought in under the hips (motion.js legStance, alignLegs): each foot's shift, frame by frame, held still
+  // while that foot is down (the mean over its time down) and carried across while it is up, so no planted foot slides
+  const legs = o.legs === false || !rig.side ? null : (() => {
+    const per = []; for (let f = 0; f < F; f++) { const p = raw(f / c.fps); per.push(legStance(rig, p.root, p.q)); }
+    const out = {};
+    for (const s of ['L', 'R']) {
+      const d = per.map((p) => p[s].down), v = per.map((p) => p[s].shift), held = v.map((x) => x.slice());
+      const runs = []; for (let f = 0; f < F; ) { if (!d[f]) { f++; continue; } let e = f; while (e + 1 < F && d[e + 1]) e++; runs.push([f, e]); f = e + 1; }
+      if (loop && runs.length > 1 && runs[0][0] === 0 && runs[runs.length - 1][1] === F - 1) { const last = runs.pop(); runs[0] = [last[0] - F, runs[0][1]]; }
+      const mean = (a, b) => { const m = [0, 0, 0]; for (let f = a; f <= b; f++) { const x = v[((f % F) + F) % F]; m[0] += x[0]; m[1] += x[1]; m[2] += x[2]; } return m.map((y) => y / (b - a + 1)); };
+      const means = runs.map(([a, b]) => mean(a, b));
+      runs.forEach(([a, b], i) => { for (let f = a; f <= b; f++) held[((f % F) + F) % F] = means[i]; });
+      // the frames between one time down and the next: from the one value to the other, eased
+      for (let i = 0; i < runs.length; i++) {
+        const a = runs[i][1], nx = i + 1 < runs.length ? i + 1 : loop ? 0 : -1; if (nx < 0) { for (let f = a + 1; f < F; f++) held[f] = means[i]; continue; }
+        const b = nx === 0 ? runs[0][0] + F : runs[nx][0], m0 = means[i], m1 = means[nx];
+        for (let f = a + 1; f < b; f++) { const e = (f - a) / (b - a), w = e * e * (3 - 2 * e); held[((f % F) + F) % F] = [0, 1, 2].map((j) => m0[j] + (m1[j] - m0[j]) * w); }
+      }
+      if (runs.length && !loop) for (let f = 0; f < runs[0][0]; f++) held[f] = means[0];
+      out[s] = { held, up: per.map((p) => p[s].up) };
+    }
+    return out;
+  })();
+  function sample(t) {
+    const p = raw(t);
+    if (legs) {
+      const { f0, f1, u } = at_(t), sh = {}, up = {};
+      for (const s of ['L', 'R']) { const a = legs[s].held[f0], b = legs[s].held[f1]; sh[s] = [0, 1, 2].map((j) => a[j] + (b[j] - a[j]) * u); up[s] = legs[s].up[f0] + (legs[s].up[f1] - legs[s].up[f0]) * u; }
+      alignLegs(rig, p.root, p.q, sh, { up });
+    }
+    return { root: p.root, q: p.q, world: () => poseWorld(rig, p.root, p.q) };
   }
   return { sample, duration: dur, speed, travel, scale: H, map: Object.fromEntries(c.bones.map((b, i) => [b, i])), loop, marks: { ...c.marks } };
 }
