@@ -115,3 +115,39 @@ test("char.look: a character whose name the GM hides keeps its look from the oth
   assert.equal(seen.characters[id], undefined, "the sheet, look and all, isn't sent");
   assert.ok(!JSON.stringify(seen).includes(Look.parseLook(`species=${sp}`).look), "nor the look anywhere else");
 });
+
+test("char.look: a look survives every write that rebuilds the sheet (stash take, level undo, sheet revert, restore)", async () => {
+  const { gm, p1 } = await table();
+  const id = (await p1.act("char.save", { char: { name: "Wren", classes: [{ name: "Fighter", level: 1 }], hp: { max: 12, current: 12 } } })).data.id;
+  const want = Look.parseLook(`species=${sp}&c.jaw=0.30`).look;
+  assert.equal((await p1.act("char.look", { charId: id, look: want })).code, 200);
+  const look = async () => (await gm.poll()).data.state.characters[id].look;
+  // the party stash
+  await gm.act("stash.add", { items: [{ name: "Medpac" }], quiet: true });
+  const item = (await gm.poll()).data.state.stash.items[0];
+  assert.equal((await p1.act("stash.take", { id: item.id, charId: id })).code, 200);
+  assert.equal(await look(), want, "after a stash take");
+  // a level, and the GM taking it back
+  assert.equal((await gm.act("levelup.grant", { charIds: [id] })).code, 200);
+  assert.equal((await p1.act("levelup.apply", { charId: id, className: "Fighter", hpMode: "average" })).code, 200);
+  assert.equal(await look(), want, "after a level");
+  assert.equal((await gm.act("levelup.undo", { charId: id })).code, 200);
+  assert.equal(await look(), want, "after the GM's level undo");
+  // the GM putting back a recorded change
+  const ch = (await p1.poll()).data.state.characters[id];
+  assert.equal((await p1.act("char.save", { char: Object.assign({}, ch, { hp: Object.assign({}, ch.hp, { current: 3 }) }) })).code, 200);
+  const entry = (await gm.call("GET", { op: "history", char: id })).data.log.slice(-1)[0];
+  assert.ok(entry.changes.some((x) => x.k === "hp.current"));
+  assert.equal((await gm.act("sheet.revert", { charId: id, entry: entry.id })).code, 200);
+  assert.equal(await look(), want, "after a sheet revert");
+  // a backup restored: kept, and read again like any look
+  const file = JSON.parse((await gm.call("GET", { op: "export" })).data);
+  assert.equal(file.characters[id].look, want, "the export carries it");
+  file.characters[id].look = `https://example.invalid/x#species=${sp}&__proto__=1&skin=<b>&c.jaw=0.30`;
+  assert.equal((await gm.post("restore", { campaign: file })).code, 200);
+  assert.equal(await look(), want, "a restored look is read through the parser");
+  file.characters[id].look = "species=__proto__";
+  assert.equal((await gm.post("restore", { campaign: file })).code, 200);
+  assert.equal(await look(), undefined, "an unreadable one is dropped, not stored as another figure");
+  assert.equal({}.skin, undefined);
+});

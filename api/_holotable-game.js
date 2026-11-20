@@ -169,6 +169,13 @@ const SPECIES_DEFENSES = Symbol("speciesDefenses");
 // set by holotable.js on levelup.apply: the abilities a feat's own +1 may go to (audit 2.5), from SW5e's feat list,
 // never from a client. Missing when the list couldn't be read.
 const FEAT_ASI = Symbol("featAsi");
+// a look kept on a sheet that is rebuilt (a stash take, an undo, a restore): only as the parser writes it, and none if
+// nothing of it can be read. char.save puts back the look the sheet had, so a request never sets one this way.
+function cleanLook(v) {
+  if (typeof v !== "string" || !v || v.length > Look.MAX) return "";
+  const r = Look.parseLook(v);
+  return r.fallback ? "" : r.look;
+}
 function cleanChar(ch) {
   const s = (v, n = 200) => str(v, n);
   const list = (v, max, fn) => (Array.isArray(v) ? v.slice(0, max).filter((x) => x && typeof x === "object").map(fn) : []);
@@ -179,6 +186,7 @@ function cleanChar(ch) {
     ...((d) => (d ? { defenses: d } : {}))(R.cleanDefenses(ch.defenses)),   // damage defences (1.5): the GM's, filled by the species
     ...((d) => (d ? { downtime: d } : {}))(Downtime.clean(ch.downtime)),   // downtime days and log (11.1): the server's to write
     ...((c) => (c ? { craft: c } : {}))(Craft.clean(ch.craft)),             // crafting requests (11.2): the server's to write
+    ...((l) => (l ? { look: l } : {}))(cleanLook(ch.look)),                 // the 3D figure's look (#65): char.look's to write
     classes: list(ch.classes, 6, (k) => ({ name: s(k.name, 40) || "Fighter", level: clamp(int(k.level, 1), 0, 20), archetype: s(k.archetype, 60) })),
     abilities: nums(ch.abilities, ABILS, 10),
     saves: Object.fromEntries(ABILS.map((a) => [a, !!(ch.saves || {})[a]])),
@@ -1106,6 +1114,7 @@ function applyAction(camp, cid, gm, type, p) {
       back.owner = cur.owner; back.image = cur.image || ""; back.tokenImage = cur.tokenImage || ""; back.updated = now();
       if (cur.downtime) back.downtime = cur.downtime; else delete back.downtime;   // days granted and spent since stay (11.1, #226 review)
       if (cur.craft) back.craft = cur.craft; else delete back.craft;   // and the crafts asked for since, which spent them (11.2)
+      if (cur.look) back.look = cur.look; else delete back.look;   // and the look it has now: a level never changed it (#65)
       chars[id] = back;
       for (const e of camp.initiative.entries) if (e.charId === id) { e.hp = (back.hp || {}).current; e.maxHp = (back.hp || {}).max; }
       camp.levelUps = camp.levelUps || {};
