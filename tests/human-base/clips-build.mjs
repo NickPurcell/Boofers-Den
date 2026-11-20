@@ -28,6 +28,21 @@ export const CLIPS = {
   'spell-enter': { file: 'spell-simple-enter.glb', root: 'keep' },
   'spell-shoot': { file: 'spell-simple-shoot.glb', root: 'keep' },
   'spell-exit': { file: 'spell-simple-exit.glb', root: 'keep' },
+  'two-hand-swing': { file: 'two-handed-horizontal-swing.glb', root: 'keep' },
+  'two-hand-slam': { file: 'two-handed-overhead-slam.glb', root: 'keep' },
+  'staff-combo': { file: 'staff-combo.glb', root: 'keep' },
+  'staff-spin': { file: 'staff-spin.glb', root: 'keep' },
+  'pistol-shoot': { file: 'pistol-shoot.glb', root: 'keep' },
+  'rifle-fire': { file: 'rifle-fire.glb', root: 'keep' },
+  'power-burst': { file: 'power-burst.glb', root: 'keep' },
+  'force-blast': { file: 'two-hand-blast.glb', root: 'keep' },
+  'hit-chest': { file: 'hit-chest.glb', root: 'keep' },
+  'hit-head': { file: 'hit-head.glb', root: 'keep' },
+  'hit-knockback': { file: 'hit-knockback.glb', root: 'keep' },
+  'death': { file: 'death-a.glb', root: 'keep' },
+  'dodge': { file: 'dodge-left.glb', root: 'keep' },
+  'block': { file: 'sword-block.glb', root: 'keep' },
+  walk: { file: 'walk.glb', root: 'inplace' },
 };
 
 // a GLB, its meshopt-packed buffer views unpacked into one plain buffer

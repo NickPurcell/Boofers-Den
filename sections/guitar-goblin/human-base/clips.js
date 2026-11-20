@@ -248,6 +248,13 @@ export function compact(clip, topo, o = {}) {
   const nextMapped = (k) => { const q = [...kids[k]]; while (q.length) { const j = q.shift(); if (src[topo[j].name] !== undefined) return j; q.push(...kids[j]); } return -1; };
   const bones = topo.map((b) => b.name).filter((n) => src[n] !== undefined), dir = {};
   for (const n of bones) { const j = nextMapped(at.get(n)); dir[n] = j < 0 || TRUNK.has(n) ? null : { to: topo[j].name, d: norm(toOurs(sub(rest.P[src[topo[j].name]], rest.P[src[n]]))) }; }
+  // a hand or the toes (nothing driven below them) carry on the line of the limb they end, in both skeletons' rest
+  // poses, so they take that limb's rest difference too: else a T-pose hand would stay bent at the wrist on our
+  // hanging arm
+  for (const n of bones) {
+    if (dir[n] || TRUNK.has(n)) continue;
+    for (let k = topo[at.get(n)].parent; k >= 0; k = topo[k].parent) { const m = topo[k].name; if (TRUNK.has(m)) break; if (dir[m]) { dir[n] = { ...dir[m], from: dir[m].from || m }; break; } }
+  }
   // per frame: the turns, the hips, the ground
   const nb = bones.length, d = new Float32Array(F * nb * 4), hip = new Float32Array(F * 3); let ground = Infinity;
   const ends = ['wrist.L', 'wrist.R', 'foot.L', 'foot.R'].map((n) => src[n]).filter((k) => k !== undefined);
@@ -289,7 +296,7 @@ export function play(c, rig, o = {}) {
   if (idx.some((k) => k === undefined)) fail('the clip drives a bone this figure has not got');
   const driven = new Int32Array(n).fill(-1); idx.forEach((k, i) => (driven[k] = i));
   // this figure's own rest difference for each driven limb
-  const fixI = c.bones.map((b, i) => { const r = c.dir[b]; if (!r || rig.at[r.to] === undefined) return [0, 0, 0, 1]; return Q.inv(Q.from(r.d, norm(sub(rig.bones[rig.at[r.to]].head, rig.bones[idx[i]].head)))); });
+  const fixI = c.bones.map((b, i) => { const r = c.dir[b], f = r && (r.from ? rig.at[r.from] : idx[i]); if (!r || rig.at[r.to] === undefined || f === undefined) return [0, 0, 0, 1]; return Q.inv(Q.from(r.d, norm(sub(rig.bones[rig.at[r.to]].head, rig.bones[f].head)))); });
   const H = rig.bones[rig.at.root].head[1], hipAt = (f) => [c.hip[f * 3] * H, c.hip[f * 3 + 1] * H - H, c.hip[f * 3 + 2] * H];
   const t1 = hipAt(F - 1), travel = [t1[0], 0, t1[2]], mode = o.root || 'inplace', loop = o.loop ?? mode === 'inplace';
   // how fast the figure should move: the clip's own travel, or for one made in place, its planted foot's speed
@@ -319,7 +326,7 @@ const b64 = (u8) => (typeof Buffer !== 'undefined' ? Buffer.from(u8.buffer, u8.b
 const unb64 = (s) => { if (typeof Buffer !== 'undefined') { const b = Buffer.from(s, 'base64'); return new Uint8Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)); } const t = atob(s), u = new Uint8Array(t.length); for (let i = 0; i < t.length; i++) u[i] = t.charCodeAt(i); return u; };
 export function packClip(c) {
   const d = Int16Array.from(c.d, (x) => Math.round(Math.max(-1, Math.min(1, x)) * 32767)), h = Int16Array.from(c.hip, (x) => Math.round(Math.max(-8, Math.min(8, x)) * 4096));
-  return { v: 1, fps: +c.fps.toFixed(4), frames: c.frames, bones: c.bones, dir: Object.fromEntries(Object.entries(c.dir).map(([k, r]) => [k, r && { to: r.to, d: r.d.map((x) => +x.toFixed(5)) }])), d: b64(new Uint8Array(d.buffer)), hip: b64(new Uint8Array(h.buffer)), marks: Object.fromEntries(Object.entries(c.marks).map(([k, v]) => [k, +v.toFixed(3)])) };
+  return { v: 1, fps: +c.fps.toFixed(4), frames: c.frames, bones: c.bones, dir: Object.fromEntries(Object.entries(c.dir).map(([k, r]) => [k, r && { to: r.to, ...(r.from ? { from: r.from } : {}), d: r.d.map((x) => +x.toFixed(5)) }])), d: b64(new Uint8Array(d.buffer)), hip: b64(new Uint8Array(h.buffer)), marks: Object.fromEntries(Object.entries(c.marks).map(([k, v]) => [k, +v.toFixed(3)])) };
 }
 // read a shipped clip (our own file, still checked: names, sizes and numbers)
 export function unpackClip(j) {
@@ -328,7 +335,7 @@ export function unpackClip(j) {
   const du = unb64(String(j.d)), hu = unb64(String(j.hip)); if (du.byteLength !== F * nb * 8 || hu.byteLength !== F * 6) fail('a clip of the wrong length');
   const d = Float32Array.from(new Int16Array(du.buffer, du.byteOffset, F * nb * 4), (x) => x / 32767), hip = Float32Array.from(new Int16Array(hu.buffer, hu.byteOffset, F * 3), (x) => x / 4096);
   for (let i = 0; i < d.length; i += 4) { const l = Math.hypot(d[i], d[i + 1], d[i + 2], d[i + 3]) || 1; d[i] /= l; d[i + 1] /= l; d[i + 2] /= l; d[i + 3] /= l; }
-  const dir = {}; for (const b of j.bones) { const r = j.dir && Object.prototype.hasOwnProperty.call(j.dir, b) ? j.dir[b] : null; dir[b] = r && typeof r.to === 'string' && NAME.test(r.to) && Array.isArray(r.d) && r.d.length === 3 && r.d.every(Number.isFinite) ? { to: r.to, d: r.d } : null; }
+  const dir = {}; for (const b of j.bones) { const r = j.dir && Object.prototype.hasOwnProperty.call(j.dir, b) ? j.dir[b] : null; dir[b] = r && typeof r.to === 'string' && NAME.test(r.to) && (r.from === undefined || (typeof r.from === 'string' && NAME.test(r.from))) && Array.isArray(r.d) && r.d.length === 3 && r.d.every(Number.isFinite) ? { to: r.to, ...(r.from ? { from: r.from } : {}), d: r.d } : null; }
   const marks = {}; for (const k of ['impact', 'ground']) if (j.marks && Number.isFinite(j.marks[k])) marks[k] = j.marks[k];
   return { v: 1, fps: j.fps, frames: F, bones: j.bones.slice(), dir, d, hip, marks };
 }

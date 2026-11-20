@@ -112,7 +112,7 @@ test("the shipped clips: each one unpacks and plays on our skeleton, and the NOT
     assert.ok(p.duration > 0);
     for (const t of [0, p.duration / 2, p.duration]) {
       const s = p.sample(t); assert.ok(s.q.every(Number.isFinite) && s.root.every(Number.isFinite), n);
-      const W = s.world(); const head = W.P[rig.at.head][1]; assert.ok(head > 0.5 && head < 2.4, `${n}: the head at ${head} m`);
+      const W = s.world(); const head = W.P[rig.at.head][1]; assert.ok(head > 0.02 && head < 2.4, `${n}: the head at ${head} m (never through the floor)`);
     }
   }
   assert.ok(C.play(C.unpackClip(J.clips.jog), rig, { root: "inplace" }).speed > 1, "the jog has a ground speed");
@@ -139,4 +139,20 @@ test("the shipped jog: a planted foot holds within 2 cm through each stance at t
   const a = p.sample(T - 1e-4), b = p.sample(0); let seam = 0;
   for (let i = 0; i < a.q.length; i += 4) seam = Math.max(seam, 2 * Math.acos(Math.min(1, Math.abs(a.q[i] * b.q[i] + a.q[i + 1] * b.q[i + 1] + a.q[i + 2] * b.q[i + 2] + a.q[i + 3] * b.q[i + 3]))) / (Math.PI / 180));
   assert.ok(seam < 8, `the loop jumps ${seam.toFixed(1)}° at its seam`);
+});
+
+test("a hand and the toes take their limb's rest difference: the hand stays on the forearm's line where the clip's does", async () => {
+  const { C, T, rig } = await setup(), clip = C.parseBVH(T.bvh()), c = C.compact(clip, rig.bones);
+  assert.equal(c.dir["wrist.L"].from, "lowerarm01.L");
+  assert.equal(c.dir["toe3-1.R"].from, "foot.R");
+  // in the test clip each hand runs straight on from its forearm, so ours must too (within our own rest bend)
+  const p = C.play(c, rig, { root: "keep" });
+  for (const t of [0, 0.5, 0.99]) {
+    const W = p.sample(t).world();
+    for (const s of ["L", "R"]) {
+      const fore = dir(W.P[rig.at["lowerarm01." + s]], W.P[rig.at["wrist." + s]]), bind = dir(rig.bones[rig.at["lowerarm01." + s]].head, rig.bones[rig.at["wrist." + s]].head);
+      const q = W.R[rig.at["wrist." + s]], hand = (() => { const [x, y, z, w] = q, v = bind, ix = w * v[0] + y * v[2] - z * v[1], iy = w * v[1] + z * v[0] - x * v[2], iz = w * v[2] + x * v[1] - y * v[0], iw = -x * v[0] - y * v[1] - z * v[2]; return [ix * w + iw * -x + iy * -z - iz * -y, iy * w + iw * -y + iz * -x - ix * -z, iz * w + iw * -z + ix * -y - iy * -x]; })();
+      assert.ok(angle(fore, hand) < 5, `the ${s} hand bends ${angle(fore, hand).toFixed(1)}° off its forearm`);
+    }
+  }
 });
