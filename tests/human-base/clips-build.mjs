@@ -34,8 +34,8 @@ export const CLIPS = {
   'two-hand-slam': { file: 'two-handed-overhead-slam.glb', root: 'keep' },
   'staff-combo': { file: 'staff-combo.glb', root: 'keep' },
   'staff-spin': { file: 'staff-spin.glb', root: 'keep' },
-  'pistol-shoot': { file: 'pistol-shoot.glb', root: 'keep' },
-  'rifle-fire': { file: 'rifle-fire.glb', root: 'keep' },
+  'pistol-shoot': { file: 'pistol-shoot.glb', root: 'keep', shots: true },
+  'rifle-fire': { file: 'rifle-fire.glb', root: 'keep', shots: true },
   'power-burst': { file: 'power-burst.glb', root: 'keep' },
   'force-blast': { file: 'two-hand-blast.glb', root: 'keep' },
   'hit-chest': { file: 'hit-chest.glb', root: 'keep' },
@@ -44,6 +44,12 @@ export const CLIPS = {
   'dodge': { file: 'dodge-left.glb', root: 'keep' },
   'block': { file: 'sword-block.glb', root: 'keep' },
   walk: { file: 'walk.glb', root: 'inplace' },
+  draw: { file: 'weapon-draw.glb', root: 'keep' },
+  'pistol-idle': { file: 'pistol-idle.glb', root: 'inplace' },
+  'punch-jab': { file: 'punch-jab.glb', root: 'keep' },
+  'punch-cross': { file: 'punch-cross.glb', root: 'keep' },
+  down: { file: 'death-d.glb', root: 'keep' },   // falls onto its back, as 'get-up' starts (death-a ends face down)
+  'get-up': { file: 'laytoidle.glb', root: 'keep' },
 };
 
 // a GLB, its meshopt-packed buffer views unpacked into one plain buffer
@@ -80,10 +86,10 @@ const out = { source: SOURCE, clips: {} };
 for (const [name, c] of Object.entries(CLIPS)) {
   const path = join(SRC, c.file); if (!existsSync(path)) throw new Error('missing ' + path);
   const { json, bin } = readGLB(path), clip = C.parseGLTF(json, bin);
-  const k = C.compact(clip, skeleton, {});
+  const k = C.compact(clip, skeleton, { shots: !!c.shots });
   if (c.root !== 'inplace') delete k.marks.ground;   // (a planted foot's speed means something only for a loop made in place)
   out.clips[name] = { from: c.file, root: c.root, ...C.packClip(k) };
-  console.log(`${name.padEnd(12)} ${c.file.padEnd(28)} ${k.frames} frames at ${k.fps} fps, ${k.bones.length} bones, impact ${k.marks.impact.toFixed(2)} s, hips travel ${(k.hip[(k.frames - 1) * 3 + 2]).toFixed(2)} hip heights${k.marks.ground ? `, ground ${k.marks.ground.toFixed(2)} hip heights/s` : ''}`);
+  console.log(`${name.padEnd(12)} ${c.file.padEnd(28)} ${k.frames} frames at ${k.fps} fps, ${k.bones.length} bones, impact ${k.marks.impact.toFixed(2)} s,${k.marks.shots ? ` shots ${k.marks.shots.join(' ')} s,` : ''} hips travel ${(k.hip[(k.frames - 1) * 3 + 2]).toFixed(2)} hip heights${k.marks.ground ? `, ground ${k.marks.ground.toFixed(2)} hip heights/s` : ''}`);
 }
 const text = JSON.stringify(out);
 if (check) { const old = existsSync(OUT) ? readFileSync(OUT, 'utf8') : ''; if (old !== text) { console.error('clips.json differs from a fresh build'); process.exit(1); } console.log('clips.json matches a fresh build'); }

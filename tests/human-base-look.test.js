@@ -124,3 +124,17 @@ test("the whitelist is the creator's own lists (when the creator is in this chec
   const r = spawnSync(process.execPath, ["--import", join(__dirname, "human-base", "three-hook.mjs"), join(__dirname, "human-base", "look-schema.mjs"), "--check"], { encoding: "utf8" });
   assert.equal(r.status, 0, r.stderr || r.stdout);
 });
+
+test("a look naming a blaster keeps it: every carried item in the creator's list survives the round trip", async () => {
+  const { ITEMS } = await import("../sections/guitar-goblin/human-base/carry.js").catch(() => ({ ITEMS: null }));
+  const items = ["none", "hilt", "double", "staff", "pistol", "rifle"];
+  for (const sp of S.speciesOrder) {
+    assert.deepEqual(S.species[sp].keys.gear.items, items, `${sp}: the Carries list`);
+    for (const g of ["pistol", "rifle"]) {
+      const r = L.parseLook(`species=${sp}&gear=${g}`);
+      assert.equal(r.values.gear, g); assert.equal(r.changed, 0);
+      assert.equal(L.parseLook(r.look).values.gear, g);
+    }
+  }
+  assert.ok(ITEMS === null || items.every((k) => k in ITEMS));
+});
