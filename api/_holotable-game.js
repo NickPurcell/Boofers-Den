@@ -14,6 +14,7 @@ const Ask = require("./_holotable-ask.js");   // the GM asking for a roll (audit
 const Downtime = require("./_holotable-downtime.js");   // downtime days and their log (audit 11.1, #202)
 const Craft = require("./_holotable-craft.js");         // crafting (audit 11.2, #167): its requests, the GM's to approve
 const Story = require("./_holotable-story.js");   // factions, rivals and lifestyle between fights (audit section 11)
+const Look = require("../sections/guitar-goblin/human-base/look-parse.js");   // a 3D figure's look (#65): read only against the character creator's own whitelist
 const R = globalThis.SW5E;   // rules.js, loaded by the fight module (senses)
 
 const CHAT_LIMIT = 400;
@@ -620,6 +621,7 @@ function applyAction(camp, cid, gm, type, p) {
       }
       clean.image = old ? old.image || "" : "";
       clean.tokenImage = old ? old.tokenImage || "" : "";
+      if (old && old.look) clean.look = old.look; else delete clean.look;   // the look changes only through char.look, as photos do
       if (old && old.downtime) clean.downtime = old.downtime; else delete clean.downtime;   // only downtime actions change it (11.1)
       if (old && old.craft) clean.craft = old.craft; else delete clean.craft;               // only craft actions change it (11.2)
       clean.updated = now();
@@ -651,6 +653,19 @@ function applyAction(camp, cid, gm, type, p) {
       const old = ch[k];
       ch[k] = "";
       return { dropImages: [old] };
+    }
+    case "char.look": {   // the 3D figure's look (#65): the character creator's share link. Other people wrote it, so it is
+      // kept only as the parser writes it back out (the creator's own keys and values, in a fixed order, numbers clamped);
+      // text it can't read at all is refused rather than stored as some other figure. "" takes the look off.
+      const ch = charById(camp, p.charId);
+      if (!ch) throw new Invalid("No such character.");
+      need(gm || ch.owner === cid, "not your character");
+      if (p.look === "" || p.look === null) { delete ch.look; return { look: "" }; }
+      if (typeof p.look !== "string" || p.look.length > Look.MAX) throw new Invalid("That isn't a look from the character creator.");
+      const r = Look.parseLook(p.look);
+      if (r.fallback) throw new Invalid("That isn't a look from the character creator.");
+      ch.look = r.look;
+      return { look: r.look, changed: r.changed };
     }
     case "char.damage": {   // the sheet's Damage button: applied here, so a hit made on another screen at the same moment isn't overwritten
       const ch = charById(camp, p.id);
