@@ -12,11 +12,14 @@
 // IndexedDB for next time. Until it is ready, the token's disk is all there is.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { clone as cloneRigged } from 'three/addons/utils/SkeletonUtils.js';
+import { makeRig, run, stand, blend } from '/sections/guitar-goblin/human-base/motion.js';   // the run and the stand (no three.js: plain numbers)
+import { unpackClip, play as playClip } from '/sections/guitar-goblin/human-base/clips.js';   // the fight's clips (CC0, human-base/data/clips.json)
 import '/sections/guitar-goblin/human-base/look-schema.js';   // HBLookSchema, then HBLook: reads a look against the creator's own lists
 import '/sections/guitar-goblin/human-base/look-parse.js';
 
 const HT = window.HT, wrap = document.getElementById('mapWrap'), flat = document.getElementById('mapCanvas');
-const CREATOR = '/sections/guitar-goblin/characters/index.html', BAKE_V = 'b2', SQ = 1.524;   // metres in a five-foot square
+const CREATOR = '/sections/guitar-goblin/characters/index.html', BAKE_V = 'b3', SQ = 1.524;   // metres in a five-foot square
 const FAKE = 7357;   // the pointer id the flat map's handlers see from here (never a real one, so they capture nothing)
 
 let renderer = null, el = null, scene, camera, controls, ground, groundTex, groundCanvas, figsRoot, isOpen = false, dirty = true, raf = 0, redraw = 0, sized = '', camKey = '';
@@ -47,11 +50,17 @@ function bake(look) {
   });
 }
 // a bake as handed over or stored: typed arrays of the right kinds and sizes, nothing else
+// (with a skeleton, v 3: its bones in order, each parent before it, and four bones and weights for every vertex)
 function valid(b) {
-  if (!b || b.v !== 2 || !Array.isArray(b.meshes) || !b.meshes.length || b.meshes.length > 200) return false;
+  if (!b || (b.v !== 2 && b.v !== 3) || !Array.isArray(b.meshes) || !b.meshes.length || b.meshes.length > 200) return false;
+  const S = b.v === 3 ? b.skeleton : null;
+  if (b.v === 3 && !(Array.isArray(S) && S.length > 0 && S.length <= 256 && S.every((x, k) => x && Number.isInteger(x.parent) && x.parent >= -1 && x.parent < k
+    && Array.isArray(x.head) && x.head.length === 3 && x.head.every(Number.isFinite)))) return false;
   return b.meshes.every((m) => m && m.position instanceof Float32Array && m.normal instanceof Float32Array && m.color instanceof Uint8Array && m.index instanceof Uint32Array
     && m.position.length % 3 === 0 && m.normal.length === m.position.length && m.color.length === m.position.length && m.index.length % 3 === 0
     && (m.emissive === undefined || (m.emissive instanceof Uint8Array && m.emissive.length === m.position.length))
+    && (!S || (m.skinIndex instanceof Uint8Array && m.skinWeight instanceof Uint8Array && m.skinIndex.length === (m.position.length / 3) * 4
+      && m.skinWeight.length === m.skinIndex.length && m.skinIndex.every((i) => i < S.length)))
     && m.index.every((i) => i < m.position.length / 3));
 }
 // the sheet's look as the creator's parser reads it (the server stored it that way already; read again, never trusted)
@@ -63,6 +72,14 @@ function lookOf(raw) {
 const LIN = new Float32Array(256).map((_, i) => { const x = i / 255; return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); });
 function build(b) {
   const g = new THREE.Group(), mats = new Map();
+  // a skeleton: the bones where they stand (each bound with no turn of its own), and every mesh skinned to them
+  let skel = null;
+  if (b.skeleton) {
+    const bones = b.skeleton.map((x) => { const o = new THREE.Bone(); o.name = String(x.name || '').slice(0, 40); return o; });
+    b.skeleton.forEach((x, k) => { const p = x.parent >= 0 ? b.skeleton[x.parent].head : [0, 0, 0]; bones[k].position.set(x.head[0] - p[0], x.head[1] - p[1], x.head[2] - p[2]); (x.parent >= 0 ? bones[x.parent] : g).add(bones[k]); });
+    g.updateMatrixWorld(true); skel = new THREE.Skeleton(bones);
+    g.userData.rig = makeRig(b.skeleton); g.userData.root = b.skeleton.findIndex((x) => x.parent < 0); g.userData.rootAt = b.skeleton[g.userData.root].head.slice();
+  }
   for (const m of b.meshes) {
     const geo = new THREE.BufferGeometry(), c = new Float32Array(m.color.length);
     for (let i = 0; i < c.length; i++) c[i] = LIN[m.color[i]] + (m.emissive ? LIN[m.emissive[i]] : 0);   // (what glows, a Pureblood's eyes, simply brighter)
@@ -71,7 +88,11 @@ function build(b) {
     // (metal no shinier than half: with no surroundings to reflect, full metal draws black)
     const rough = Math.max(0.3, Math.min(1, +m.rough || 0.6)), metal = Math.max(0, Math.min(0.5, +m.metal || 0)), key = `${rough.toFixed(2)}|${metal.toFixed(2)}`;
     if (!mats.has(key)) mats.set(key, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: rough, metalness: metal }));
-    g.add(new THREE.Mesh(geo, mats.get(key)));
+    if (skel) {
+      geo.setAttribute('skinIndex', new THREE.Uint16BufferAttribute(Uint16Array.from(m.skinIndex), 4));
+      geo.setAttribute('skinWeight', new THREE.Float32BufferAttribute(Float32Array.from(m.skinWeight, (w) => w / 255), 4));
+      const sm = new THREE.SkinnedMesh(geo, mats.get(key)); sm.frustumCulled = false; g.add(sm); sm.bind(skel);
+    } else g.add(new THREE.Mesh(geo, mats.get(key)));
   }
   g.scale.setScalar(1 / SQ);   // metres to squares
   return g;
@@ -147,49 +168,148 @@ function sync() {
     let f = figs.get(t.id);
     if (!f || f.look !== look) {
       if (f && f.obj) figsRoot.remove(f.obj);
-      f = { look, obj: null, x: null, z: null, tx: 0, tz: 0, from: null, t0: 0, dur: 0, face: 0 }; figs.set(t.id, f);
+      f = { look, obj: null, x: null, z: null, tx: 0, tz: 0, from: null, t0: 0, dur: 0, face: 0, turned: 0, rig: null, bones: null, travel: 0, w: 0, moved: 0, held: false, act: null, route: null, size: 1, down: false }; figs.set(t.id, f);
       const mine = f;
       figureFor(look).then((tpl) => {
         if (figs.get(t.id) !== mine || !isOpen && !renderer) return;
-        mine.obj = tpl.clone(); mine.obj.userData.tokenId = t.id; mine.obj.traverse((o) => { if (o.isMesh) o.material = o.material.clone(); });
+        mine.obj = tpl.userData.rig ? cloneRigged(tpl) : tpl.clone(); mine.obj.userData.tokenId = t.id; mine.obj.traverse((o) => { if (o.isMesh) o.material = o.material.clone(); });
+        if (tpl.userData.rig) {   // its own bones, in the skeleton's order, to pose
+          const sm = mine.obj.children.find((o) => o.isSkinnedMesh);
+          Object.assign(mine, { rig: tpl.userData.rig, bones: sm.skeleton.bones, root: tpl.userData.root, rootAt: tpl.userData.rootAt, turned: mine.face });
+          pose(mine); loadClips();
+        }
         figsRoot.add(mine.obj); place(mine, t); dirty = true;
       }).catch((e) => console.warn('3D figure:', e && e.message));
     }
     place(f, t, now);
   }
   for (const [id, f] of figs) if (!seen.has(id)) { if (f.obj) figsRoot.remove(f.obj); figs.delete(id); }
+  happenings();
 }
 function place(f, t, now = performance.now()) {
-  const size = t.size || 1, at = drag && drag.id === t.id ? drag : t, tx = at.x + size / 2, tz = at.y + size / 2;
+  const size = t.size || 1, at = drag && drag.id === t.id ? drag : t, tx = at.x + size / 2, tz = at.y + size / 2; f.size = size;
   if (f.x === null) { f.x = tx; f.z = tz; }
   else if (tx !== f.tx || tz !== f.tz) {   // it moved: walk there, facing the way it goes
     const dx = tx - f.x, dz = tz - f.z, d = Math.hypot(dx, dz), held = drag && drag.id === t.id;
     // (turned only by a real step: dragged, a step of a fifth of a square; else more than half a square, so the snap
     // to a square when it is let go does not turn it round)
     if (d > (held ? 0.2 : 0.6)) f.face = Math.atan2(dx, dz);
-    f.from = [f.x, f.z]; f.t0 = now; f.dur = held ? 60 : Math.min(1200, 180 + 160 * d);
+    f.from = [f.x, f.z]; f.t0 = now; f.dur = held ? 60 : Math.min(1200, 180 + 160 * d); f.held = !!held;
   }
   f.tx = tx; f.tz = tz;
   if (!f.obj) return;
   const k = (t.tiny ? 0.5 : 1) / SQ;
-  f.obj.scale.setScalar(k); f.obj.position.set(f.x, Math.max(0, +t.elev || 0) / 5, f.z); f.obj.rotation.y = f.face;
+  f.obj.scale.setScalar(k); f.obj.position.set(f.x, Math.max(0, +t.elev || 0) / 5, f.z); f.obj.rotation.y = f.rig ? f.turned : f.face;
   const ghost = !!t.hidden;   // (the GM's hidden token: see-through, as its disk is)
   f.obj.traverse((o) => { if (o.isMesh && o.material.transparent !== ghost) { o.material.transparent = ghost; o.material.opacity = ghost ? 0.45 : 1; o.material.needsUpdate = true; } });
 }
-function step(f, now) {
-  if (!f.from) return false;
-  const u = Math.min(1, (now - f.t0) / f.dur), e = u * u * (3 - 2 * u);
-  f.x = f.from[0] + (f.tx - f.from[0]) * e; f.z = f.from[1] + (f.tz - f.from[1]) * e;
-  if (f.obj) f.obj.position.set(f.x, f.obj.position.y, f.z);
-  if (u >= 1) f.from = null;
+// The fight's clips (engineer13's, from Mesh2Motion, CC0): played from what the combat view records (#279). An 'act'
+// turns its figure to its target and plays the swing, shot or power its grip and kind call for; when the blow lands
+// (the clip's impact mark) each of its results plays on its target: a hit, a harder one for a crit, a dodge for a
+// miss. A combatant at 0 hit points falls and stays down until it is back up. Each clip fades in and out over the
+// stand or the run under it. Nothing here decides anything: the server already has, and this browser was told.
+let clipsJ = null, clipsP = null;
+function loadClips() { clipsP ||= fetch('/sections/guitar-goblin/human-base/data/clips.json').then((r) => r.json()).then((j) => { clipsJ = j && j.clips ? j : { clips: {} }; }).catch(() => { clipsJ = { clips: {} }; }); }
+function clipFor(f, name) {
+  if (!clipsJ || !name || !Object.prototype.hasOwnProperty.call(clipsJ.clips, name)) return null;
+  const R = f.rig, own = (R.played ||= new Map());
+  if (!own.has(name)) { let p = null; try { p = playClip(unpackClip(clipsJ.clips[name]), R, { root: clipsJ.clips[name].root, loop: false }); } catch (e) { console.warn('clip', name, e && e.message); } own.set(name, p); }
+  return own.get(name);
+}
+function clipsOf(ev) {
+  if (ev.how === 'power') return [ev.school === 'tech' ? 'power-burst' : 'force-blast'];
+  if (ev.how === 'ranged') return [ev.grip === 'two' ? 'rifle-fire' : 'pistol-shoot'];
+  if (ev.grip === 'two') return ['two-hand-swing'];
+  if (ev.grip === 'double' || ev.grip === 'staff') return ['staff-combo'];
+  return ['sword-a', 'sword-a-rec'];
+}
+function playOn(f, names, o = {}) {
+  if (!f || !f.rig || !f.bones) return false;
+  const list = names.filter((n) => clipFor(f, n));
+  if (!list.length) { if (o.onImpact) o.onImpact(); return false; }
+  f.act = { list, i: 0, p: clipFor(f, list[0]), t: 0, w: f.act ? f.act.w : 0, hold: !!o.hold, onImpact: o.onImpact || null, out: false };
   return true;
 }
-function loop() {
-  raf = requestAnimationFrame(loop);
-  const now = performance.now(); let moving = false;
-  for (const f of figs.values()) moving = step(f, now) || moving;
+function stepAct(f, dt) {
+  const a = f.act; a.t += dt;
+  if (a.out) { a.w -= dt / 0.2; if (a.w <= 0) f.act = null; return; }
+  a.w = Math.min(1, a.w + dt / 0.12);
+  if (a.onImpact && a.i === 0 && a.t >= (a.p.marks && a.p.marks.impact != null ? a.p.marks.impact : a.p.duration * 0.5)) { const go = a.onImpact; a.onImpact = null; go(); }
+  if (a.t < a.p.duration) return;
+  if (a.i + 1 < a.list.length) { a.i += 1; a.p = clipFor(f, a.list[a.i]); a.t = 0; return; }
+  if (a.onImpact) { const go = a.onImpact; a.onImpact = null; go(); }
+  if (a.hold) a.t = a.p.duration; else a.out = true;
+}
+let lastSeq = null;
+function happenings() {
+  const s = st(), fe = s.fight && Array.isArray(s.fight.events) ? s.fight.events : [];
+  // down or back up: every combatant this browser is sent says so (no event needed)
+  for (const u of Object.values((s.fight && s.fight.units) || {})) {
+    const f = u && u.token && figs.get(u.token); if (!f || !f.rig || f.down === !!u.down) continue;
+    f.down = !!u.down;
+    if (f.down) playOn(f, ['death'], { hold: true }); else if (f.act) f.act.out = true;
+  }
+  const top = fe.reduce((m, e) => Math.max(m, +e.seq || 0), 0);
+  if (lastSeq === null || top < lastSeq) { lastSeq = top; return; }   // (what happened before the view opened isn't played again)
+  const fresh = fe.filter((e) => e.seq > lastSeq).sort((a, b) => a.seq - b.seq); lastSeq = top;
+  for (const ev of fresh) {
+    const f = ev.token ? figs.get(ev.token) : null;
+    if (ev.kind === 'move' && f && Array.isArray(ev.path) && ev.path.length > 1) {
+      // a path that starts away from where the figure stands began out of this viewer's sight (#279 cut it there): the
+      // figure appears where it came into sight, rather than running there from where it was last seen
+      const p0 = [+ev.path[0][0] + f.size / 2, +ev.path[0][1] + f.size / 2];
+      if (f.x === null || Math.hypot(p0[0] - f.x, p0[1] - f.z) > 0.6) { f.x = p0[0]; f.z = p0[1]; }
+      f.route = ev.path.slice(1).map((q) => [+q[0], +q[1]]); f.from = f.from || [f.x, f.z]; continue;
+    }
+    if (ev.kind !== 'act') continue;
+    const tgt = ev.target ? figs.get(ev.target) : null, results = fresh.filter((r) => r.act === ev.seq);
+    const land = () => { for (const r of results) { const g = r.token && figs.get(r.token); if (g && !g.down) playOn(g, r.kind === 'miss' ? ['dodge'] : r.kind === 'crit' ? ['hit-head'] : r.kind === 'heal' ? [] : ['hit-chest']); } };
+    if (f && tgt) f.face = Math.atan2(tgt.tx - f.tx, tgt.tz - f.tz);   // it turns to whoever it acts on
+    if (!(f && playOn(f, clipsOf(ev), { onImpact: land }))) land();
+  }
+}
+
+// A figure with a skeleton runs: at the speed its run is made for (dragged, as fast as the pointer), its stride set by
+// how far it has gone, so its feet never slide; it turns to face where it goes, and eases into its stand when it
+// arrives. It shows only a move this browser was already told about: the position is always the server's.
+function pose(f) {
+  const st = stand(f.rig, 0); let p = f.w > 0.001 ? blend(st, run(f.rig, f.travel / f.rig.speed), f.w) : st;
+  if (f.act && f.act.p) p = blend(p, f.act.p.sample(Math.min(f.act.t, f.act.p.duration)), Math.min(1, f.act.w));
+  for (let i = 0; i < f.bones.length; i++) f.bones[i].quaternion.fromArray(p.q, i * 4);
+  f.bones[f.root].position.set(f.rootAt[0] + p.root[0], f.rootAt[1] + p.root[1], f.rootAt[2] + p.root[2]);
+}
+function step(f, now, dt) {
+  let active = false;
+  if (f.from && f.rig) {
+    // along the squares the move took (the combat view's path), then to where the token is
+    const via = f.route && f.route.length ? [f.route[0][0] + f.size / 2, f.route[0][1] + f.size / 2] : null, gx = via ? via[0] : f.tx, gz = via ? via[1] : f.tz;
+    const dx = gx - f.x, dz = gz - f.z, d = Math.hypot(dx, dz), v = (f.held ? Math.max(f.rig.speed, (d * SQ) / 0.08) : f.rig.speed) / SQ, s = Math.min(d, v * dt);
+    if (via && d > 0.05) f.face = Math.atan2(dx, dz);
+    if (s >= d - 1e-6) { f.x = gx; f.z = gz; if (via) f.route.shift(); else f.from = null; } else { f.x += (dx / d) * s; f.z += (dz / d) * s; }
+    f.travel += s * SQ; if (s > 1e-5) f.moved = now; active = true;
+  } else if (f.from) {
+    const u = Math.min(1, (now - f.t0) / f.dur), e = u * u * (3 - 2 * u);
+    f.x = f.from[0] + (f.tx - f.from[0]) * e; f.z = f.from[1] + (f.tz - f.from[1]) * e;
+    if (u >= 1) f.from = null; active = true;
+  }
+  if (f.rig) {
+    let da = f.face - f.turned; da = Math.atan2(Math.sin(da), Math.cos(da));
+    if (Math.abs(da) > 1e-3) { f.turned += Math.sign(da) * Math.min(Math.abs(da), 9 * dt); active = true; }
+    const want = now - f.moved < 120 ? 1 : 0;
+    if (f.w !== want) { f.w = want ? Math.min(1, f.w + dt / 0.15) : Math.max(0, f.w - dt / 0.3); active = true; }
+    if (f.act) { stepAct(f, dt); active = true; }
+    if (active && f.bones) pose(f);
+  }
+  if (f.obj) { f.obj.position.set(f.x, f.obj.position.y, f.z); f.obj.rotation.y = f.rig ? f.turned : f.face; }
+  return active;
+}
+let last = 0, held = null;   // (held: a test's own clock, stepped by advance(), in place of the screen's frames)
+function frame(now) {
+  const dt = Math.min(0.25, last ? (now - last) / 1000 : 0.016); last = now; let moving = false;   // (a slow device takes bigger steps, not slower runs)
+  for (const f of figs.values()) moving = step(f, now, dt) || moving;
   if (moving || dirty) { dirty = false; renderer.render(scene, camera); }
 }
+function loop() { raf = requestAnimationFrame(loop); if (held === null) frame(performance.now()); }
 
 /* ---------------- pointers: the flat map's handlers, with the point on the board ---------------- */
 let press = null;
@@ -256,8 +376,20 @@ export function close() {
 // the flat map has just drawn (a poll, a move, a hover): the ground and the figures follow, once a frame
 export function drawn() { if (isOpen && !redraw) redraw = requestAnimationFrame(paintGround); }
 // for tests and the curious: what is standing where, and where a square is on the screen
-export function state() { return { open: isOpen, figures: [...figs].map(([id, f]) => ({ id, ready: !!f.obj, x: f.x, z: f.z, face: f.face })) }; }
+export function state() { return { open: isOpen, figures: [...figs].map(([id, f]) => ({ id, ready: !!f.obj, x: f.x, z: f.z, face: f.face, rigged: !!f.rig, run: f.w, travel: f.travel, clip: f.act ? f.act.list[f.act.i] : null, down: f.down })) }; }
 export function screenOf(sx, sy) {
   if (!el) return null; const r = el.getBoundingClientRect(), v = new THREE.Vector3(sx, 0, sy).project(camera);
   return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height };
+}
+// for tests and recordings: stop the screen's clock and step the figures by hand, so a slow machine can still record
+// smooth motion frame by frame; and point the camera
+export function hold(on) { held = on ? performance.now() : null; last = held || 0; }
+export function advance(ms) { if (held === null) return; held += ms; frame(held); }
+export function aim(x, z, d = 6, turn = 0.35) { controls.target.set(x, 0.5, z); camera.position.set(x + d * turn, d * 0.62, z + d * 0.75); controls.update(); dirty = true; }
+export function debug() {
+  const f = [...figs.values()][0]; if (!f || !f.obj) return null;
+  f.obj.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(f.obj, true), sm = f.obj.children.filter((o) => o.isMesh);
+  return { kids: f.obj.children.length, meshes: sm.length, skinned: sm.filter((o) => o.isSkinnedMesh).length, pos: f.obj.position.toArray(), scale: f.obj.scale.x, box: [box.min.toArray(), box.max.toArray()],
+    bones: f.bones ? f.bones.length : 0, root: f.bones ? f.bones[f.root].position.toArray() : null, ground: [ground.scale.x, ground.scale.y, groundCanvas.width, groundCanvas.height], cam: camera.position.toArray(), target: controls.target.toArray() };
 }
