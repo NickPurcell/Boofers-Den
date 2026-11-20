@@ -9,7 +9,8 @@
 //                                             // passed in is left as it was)
 //
 // Each entry: { name, position: Float32Array, normal: Float32Array, color: Uint8Array (sRGB, rgb per vertex),
-// index: Uint32Array, rough, metal, emissive?: Uint8Array (sRGB, rgb per vertex, only where something glows) }.
+// index: Uint32Array, rough, metal, emissive?: Uint8Array (sRGB, rgb per vertex, only where something glows),
+// where?: 'belt' | 'hand' (what is carried: where it is worn, or in the right hand with a saber's lit 'blade') }.
 // The figure stands at the origin, feet at y = 0, facing +z, in metres (the figure's own frame, wherever the page has
 // put it). Meshes that share a finish are merged, so a figure is a handful of draws. Nothing here reads a visible
 // canvas or its size: it runs as well in a hidden frame.
@@ -115,6 +116,7 @@ function finish(B) {
     if (!b.I.length) continue;
     const e = { name: b.name, position: Float32Array.from(b.P), normal: Float32Array.from(b.N), color: Uint8Array.from(b.C, toByte), index: Uint32Array.from(b.I), rough: b.rough, metal: b.metal };
     if (b.E) e.emissive = Uint8Array.from(b.E, toByte);
+    if (b.name === 'belt' || b.name === 'hand' || b.name === 'blade') e.where = b.name === 'belt' ? 'belt' : 'hand';   // show 'hand' (and 'blade') while a weapon is used, 'belt' otherwise
     if (b.SI.length) { e.skinIndex = Uint8Array.from(b.SI); e.skinWeight = Uint8Array.from(b.SW); }
     out.push(e);
   }
@@ -239,7 +241,9 @@ const visible = (o, root) => { for (let x = o; x && x !== root; x = x.parent) if
 // o.grid: merge vertices within cells this many metres across (0: keep every vertex)
 // o.skin: how its vertices hang on the skeleton ('surface', 'rigid' or 'torso'; see rigOf), when the list has one
 export function bakeMeshes(root, fig, list = [], o = {}) { const B = reopen(list), rig = list.skeleton || o.skin ? rigOf(fig) : null; collect(root, fig, B, new Map(), o.grid || 0, rig, o.skin || 'surface'); const out = finish(B); if (list.skeleton) out.skeleton = list.skeleton; return out; }
-function collect(root, fig, B, ctx, grid, rig, mode) {
+// label: what plain parts are called in the result ('belt', 'hand'); a mesh marked userData.bake (a saber's 'blade') keeps
+// its own name. mode 'bone:NAME' hangs a whole mesh on that bone.
+function collect(root, fig, B, ctx, grid, rig, mode, label) {
   const toFig = new THREE.Matrix4(), m = new THREE.Matrix4(), nm = new THREE.Matrix3(), v = new THREE.Vector3(), n = new THREE.Vector3(), col = [0, 0, 0];
   fig.updateMatrixWorld(true); toFig.copy(fig.matrixWorld).invert();
   root.traverse((o) => {
@@ -272,7 +276,7 @@ function collect(root, fig, B, ctx, grid, rig, mode) {
       v.fromBufferAttribute(P, i).applyMatrix4(m); n.fromBufferAttribute(Nn, i).applyMatrix3(nm).normalize();
       tp[i * 3] = v.x; tp[i * 3 + 1] = v.y; tp[i * 3 + 2] = v.z; tn[i * 3] = n.x; tn[i * 3 + 1] = n.y; tn[i * 3 + 2] = n.z;
       const c = colour(i, n.z); tc[i * 3] = c[0]; tc[i * 3 + 1] = c[1]; tc[i * 3 + 2] = c[2];
-      const [rough, metal, name] = finishOf(i); tb[i] = bucket(B, rough, metal, name);
+      const [rough, metal, name0] = finishOf(i), name = o.userData.bake || (label && name0 === 'part' ? label : name0); tb[i] = bucket(B, rough, metal, name);
     }
     // small parts at table size: vertices within one cell of a grid (o.grid metres) become one, at their average, so a
     // hilt or a chain costs what it shows; their normals then come from the triangles that are left
@@ -293,7 +297,8 @@ function collect(root, fig, B, ctx, grid, rig, mode) {
     // what each group hangs on: one bone for the whole mesh (that of the body under its nearest point), or the body's
     // own weights under each group
     let one = -1;
-    if (rig && mode !== 'surface') {
+    if (rig && mode && mode.startsWith('bone:')) one = rig.index[mode.slice(5)] ?? 0;
+    else if (rig && mode !== 'surface') {
       let bd = Infinity, bv = -1; const step = Math.max(1, Math.floor(groups / 300));
       for (let g = 0; g < groups; g += step) { const [v0, d] = rig.nearest(gp[g * 3], gp[g * 3 + 1], gp[g * 3 + 2]); if (d < bd) { bd = d; bv = v0; } }
       one = bv < 0 ? 0 : rig.idx[bv * 4];
@@ -332,7 +337,10 @@ export function bakeTable(fig, o = {}) {
   fig.updateMatrixWorld(true);
   const rig = o.skin ? rigOf(fig) : null;
   const body = bakeBody(fig, B, ctx, o.keep ?? TABLE_KEEP, rig); bakeEyes(fig, B, rig);
-  for (const [name, mode] of [['pureblood', 'rigid'], ['carry', 'torso']]) { const g = fig.getObjectByName(name); if (g) collect(g, fig, B, ctx, o.grid ?? TABLE_GRID, rig, mode); }
+  for (const [name, mode] of [['pureblood', 'rigid'], ['carry', 'torso']]) { const g = fig.getObjectByName(name); if (g) collect(g, fig, B, ctx, o.grid ?? TABLE_GRID, rig, mode, name === 'carry' ? 'belt' : null); }
+  // what is carried, again in the right hand, for a figure that fights: hidden on the page, so shown just for the bake
+  const held = fig.getObjectByName('carry-hand');
+  if (held && rig) { const was = held.visible; held.visible = true; try { collect(held, fig, B, ctx, o.grid ?? TABLE_GRID, rig, 'bone:wrist.R', 'hand'); } finally { held.visible = was; } }
   const list = finish(B);
   list.at = body.at; list.kept = body.kept;
   if (rig) list.skeleton = rig.bones;   // [{ name, parent (an index, -1 for the hips), head: [x, y, z] }], bound as they stand

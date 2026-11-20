@@ -51,7 +51,7 @@ from the human animations of the Mesh2Motion project:
   `sword-regular-a.glb`, `sword-regular-a-rec.glb`, `sword-block.glb`, `two-handed-horizontal-swing.glb`,
   `two-handed-overhead-slam.glb`, `staff-combo.glb`, `staff-spin.glb`, `pistol-shoot.glb`, `rifle-fire.glb`,
   `spell-simple-enter.glb`, `spell-simple-shoot.glb`, `spell-simple-exit.glb`, `two-hand-blast.glb`, `power-burst.glb`,
-  `hit-chest.glb`, `hit-head.glb`, `death-a.glb`, `dodge-left.glb` (the name each clip came from is
+  `hit-chest.glb`, `hit-head.glb`, `death-a.glb`, `dodge-left.glb`, `weapon-draw.glb`, `pistol-idle.glb` (the name each clip came from is
   kept in `clips.json` beside it)
 
 Fetched on 19 November 2026 at that commit, as data only.

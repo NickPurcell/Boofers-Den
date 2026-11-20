@@ -44,6 +44,8 @@ export const CLIPS = {
   'dodge': { file: 'dodge-left.glb', root: 'keep' },
   'block': { file: 'sword-block.glb', root: 'keep' },
   walk: { file: 'walk.glb', root: 'inplace' },
+  draw: { file: 'weapon-draw.glb', root: 'keep' },
+  'pistol-idle': { file: 'pistol-idle.glb', root: 'inplace' },
 };
 
 // a GLB, its meshopt-packed buffer views unpacked into one plain buffer
