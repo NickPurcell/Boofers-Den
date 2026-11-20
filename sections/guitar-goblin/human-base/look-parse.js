@@ -85,7 +85,10 @@
   function parseKind(kind, p) {
     const K = SCHEMA.kinds[kind], values = {}, used = new Set(['kind']);
     let changed = 0;
-    for (const k of K.order) { const [v, ok] = choose(K.keys[k], p.get(k)); values[k] = v; used.add(k); if (!ok) changed++; }
+    for (const k of K.order) {
+      const [v, ok] = choose(K.keys[k], p.get(k)); values[k] = v; used.add(k); if (!ok) changed++;
+      if (!ok && K.keys[k].strict) return fallback(1);   // e.g. a droid of a chassis with no table figure: not read as another
+    }
     for (const k of p.keys()) if (!used.has(k)) changed++;
     const look = ['kind=' + kind, ...K.order.map((k) => k + '=' + encodeURIComponent(String(values[k])))].join('&');
     return { kind, species: null, values, controls: null, look, changed, fallback: false };

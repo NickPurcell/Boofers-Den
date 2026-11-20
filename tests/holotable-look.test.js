@@ -162,5 +162,8 @@ test("char.look: a Jawa's look (kind=jawa) is stored as the parser writes it, wi
   assert.ok(want.startsWith("kind=jawa&") && want.includes("robe=plum") && !/species|c\.jaw/.test(want));
   assert.equal(r.data.look, want); assert.equal(r.data.changed, 2);
   assert.equal((await p1.poll()).data.state.characters[id].look, want);
-  assert.equal((await p1.act("char.look", { charId: id, look: "kind=droid&model=t3" })).code, 400, "a kind we cannot make yet is refused");
+  assert.equal((await p1.act("char.look", { charId: id, look: "kind=robot&model=t3" })).code, 400, "a kind we cannot make is refused");
+  assert.equal((await p1.act("char.look", { charId: id, look: "kind=droid&chassis=utility" })).code, 400, "a droid with no table figure yet is refused");
+  const d = await p1.act("char.look", { charId: id, look: "kind=droid&chassis=t3&kit=blaster&primary=olive&robe=plum&species=human" });
+  assert.equal(d.code, 200); assert.ok(d.data.look.startsWith("kind=droid&chassis=t3&") && !/robe|species/.test(d.data.look)); assert.equal(d.data.changed, 2);
 });
