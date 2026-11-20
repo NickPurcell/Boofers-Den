@@ -29,7 +29,7 @@ export function durosField(shape = 'round') {
   // the central plane: a long flat strip from between the eyes to above the mouth, narrowing, standing a little proud
   const plane = roundCone([0, -0.008, 0.047], [0, -0.07, 0.047], 0.012, 0.008);
   // the neck, reaching well down into the body's own so the join is hidden
-  const neck = capsule([0, -0.06, -0.06], [0, -0.185, -0.078], 0.046);   // (set back under the skull, as a neck is, ending inside the collar)
+  const neck = capsule([0, -0.06, -0.06], [0, -0.26, -0.108], 0.046);   // (set back under the skull, as a neck is, ending down inside the chest: a low neckline shows no end to it)
   let f = smin(0.03, cranium, face);
   f = smin(0.022, f, brow);
   f = smin(0.016, f, plane);
@@ -81,7 +81,7 @@ export function shadeAt(x, y, z) {
 // the worker's job: the head meshed, with its shade per vertex (positions in the head's frame, metres)
 export function durosHead(a = {}) {
   const f = durosField(a.shape), h = a.h || 0.0026;
-  const m = mesh(f, [[-0.11, -0.22, -0.18], [0.11, 0.19, 0.09]], h, { band: 4 });
+  const m = mesh(f, [[-0.11, -0.31, -0.18], [0.11, 0.19, 0.09]], h, { band: 4 });
   const P = m.position, shade = new Float32Array(P.length / 3);
   for (let i = 0; i < shade.length; i++) shade[i] = shadeAt(P[i * 3], P[i * 3 + 1], P[i * 3 + 2]);
   return { position: P, normal: m.normal, index: m.index, shade, uv: m.uv };
