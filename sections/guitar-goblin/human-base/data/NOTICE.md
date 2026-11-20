@@ -47,9 +47,12 @@ from the human animations of the Mesh2Motion project:
 
 - repository: https://github.com/Mesh2Motion/mesh2motion-app
 - commit: 1632e1a7e009600500d436628075aa3a0e8b36ac
-- files: `static/assets/human/animations/` `idle-a.glb`, `fighting-idle.glb`, `jog.glb`, `sword-regular-a.glb`,
-  `sword-regular-a-rec.glb`, `spell-simple-enter.glb`, `spell-simple-shoot.glb`, `spell-simple-exit.glb` (the name each
-  clip came from is kept in `clips.json` beside it)
+- files: `static/assets/human/animations/` `idle-a.glb`, `fighting-idle.glb`, `jog.glb`, `walk.glb`,
+  `sword-regular-a.glb`, `sword-regular-a-rec.glb`, `sword-block.glb`, `two-handed-horizontal-swing.glb`,
+  `two-handed-overhead-slam.glb`, `staff-combo.glb`, `staff-spin.glb`, `pistol-shoot.glb`, `rifle-fire.glb`,
+  `spell-simple-enter.glb`, `spell-simple-shoot.glb`, `spell-simple-exit.glb`, `two-hand-blast.glb`, `power-burst.glb`,
+  `hit-chest.glb`, `hit-head.glb`, `hit-knockback.glb`, `death-a.glb`, `dodge-left.glb` (the name each clip came from is
+  kept in `clips.json` beside it)
 
 Fetched on 19 November 2026 at that commit, as data only.
 
