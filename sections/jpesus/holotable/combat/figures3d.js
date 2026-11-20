@@ -246,17 +246,19 @@ function weaponFor(f, ev, names) {
 function inHand(f, on) { if (!f.hand || !f.hand.length) return; for (const o of f.hand) o.visible = on; for (const o of f.belt) o.visible = !on; }
 // blaster bolts: from the muzzle at each of the clip's shots, to the target's chest (or straight on); the last one's
 // arrival is when the target reacts
-const bolts = [], BOLT_GEO = new THREE.CylinderGeometry(0.014, 0.014, 0.42, 6).rotateX(Math.PI / 2), BOLT_MAT = new THREE.MeshBasicMaterial({ color: 0xff5040 });
+const bolts = [], BOLT_GEO = new THREE.CylinderGeometry(0.03, 0.03, 0.6, 8).rotateX(Math.PI / 2), BOLT_MAT = new THREE.MeshBasicMaterial({ color: 0xff7060 });
+const GLOW_GEO = new THREE.CylinderGeometry(0.08, 0.08, 0.75, 10).rotateX(Math.PI / 2), GLOW_MAT = new THREE.MeshBasicMaterial({ color: 0xff2a10, transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false });
+let fired = 0;
 function fire(f, tgt, onHit) {
   f.obj.updateMatrixWorld(true);
   const from = f.muzzle.bone.localToWorld(f.muzzle.offset.clone()), dir = f.muzzle.dir.clone().transformDirection(f.muzzle.bone.matrixWorld);
   const to = tgt ? new THREE.Vector3(tgt.x, 1.25 / SQ, tgt.z) : from.clone().addScaledVector(dir, 8);
-  const m = new THREE.Mesh(BOLT_GEO, BOLT_MAT); m.position.copy(from); m.lookAt(to); scene.add(m);
+  const m = new THREE.Mesh(BOLT_GEO, BOLT_MAT); m.add(new THREE.Mesh(GLOW_GEO, GLOW_MAT)); m.position.copy(from); m.lookAt(to); scene.add(m); fired++;
   bolts.push({ m, from, to, d: Math.max(0.01, from.distanceTo(to)), t: 0, onHit });
 }
 function stepBolts(dt) {
   for (const b of [...bolts]) {
-    b.t += dt * 26; const u = Math.min(1, b.t / b.d); b.m.position.lerpVectors(b.from, b.to, u);
+    b.t += dt * 14; const u = Math.min(1, b.t / b.d); b.m.position.lerpVectors(b.from, b.to, u);   // (14 squares a second: fast, but seen)
     if (u >= 1) { scene.remove(b.m); bolts.splice(bolts.indexOf(b), 1); if (b.onHit) b.onHit(); }
   }
   return bolts.length > 0;
@@ -424,7 +426,7 @@ export function close() {
 // the flat map has just drawn (a poll, a move, a hover): the ground and the figures follow, once a frame
 export function drawn() { if (isOpen && !redraw) redraw = requestAnimationFrame(paintGround); }
 // for tests and the curious: what is standing where, and where a square is on the screen
-export function state() { return { open: isOpen, figures: [...figs].map(([id, f]) => ({ id, ready: !!f.obj, x: f.x, z: f.z, face: f.face, rigged: !!f.rig, run: f.w, travel: f.travel, clip: f.act ? f.act.list[f.act.i] : null, down: f.down })) }; }
+export function state() { return { open: isOpen, figures: [...figs].map(([id, f]) => ({ id, ready: !!f.obj, x: f.x, z: f.z, face: f.face, rigged: !!f.rig, run: f.w, travel: f.travel, clip: f.act ? f.act.list[f.act.i] : null, down: f.down, inHand: !!(f.hand && f.hand.some((o) => o.visible)) })), bolts: bolts.length, fired }; }
 export function screenOf(sx, sy) {
   if (!el) return null; const r = el.getBoundingClientRect(), v = new THREE.Vector3(sx, 0, sy).project(camera);
   return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height };
