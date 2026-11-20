@@ -46,6 +46,10 @@ export const CLIPS = {
   walk: { file: 'walk.glb', root: 'inplace' },
   draw: { file: 'weapon-draw.glb', root: 'keep' },
   'pistol-idle': { file: 'pistol-idle.glb', root: 'inplace' },
+  'punch-jab': { file: 'punch-jab.glb', root: 'keep' },
+  'punch-cross': { file: 'punch-cross.glb', root: 'keep' },
+  down: { file: 'death-d.glb', root: 'keep' },   // falls onto its back, as 'get-up' starts (death-a ends face down)
+  'get-up': { file: 'laytoidle.glb', root: 'keep' },
 };
 
 // a GLB, its meshopt-packed buffer views unpacked into one plain buffer

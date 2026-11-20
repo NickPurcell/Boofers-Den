@@ -78,8 +78,16 @@ test("a clip shipped in our own form plays as the clip did", async () => {
   }
   assert.ok(worst < 0.5, `a bone turns ${worst.toFixed(2)}° off`);
   assert.ok(rootErr < 0.002, `the hips are ${rootErr} m off`);
-  for (const bad of [{}, { ...json, v: 2 }, { ...json, frames: 1e9 }, { ...json, bones: ["__proto__"] }, { ...json, d: json.d.slice(8) }, { ...json, fps: -1 }])
+  for (const bad of [{}, { ...json, v: 2 }, { ...json, frames: 1e9 }, { ...json, d: json.d.slice(8) }, { ...json, fps: -1 }])
     assert.throws(() => C.unpackClip(bad), C.ClipError);
+  // bones named for what every object inherits: read as plain names, never as anything inherited, and refused by a figure
+  for (const n of ["__proto__", "constructor", "toString"]) {
+    const j = JSON.parse(JSON.stringify(json)); j.bones[0] = n; j.dir = JSON.parse(`{"${n}": {"to": "spine05", "d": [0, 1, 0]}}`);
+    let c; try { c = C.unpackClip(j); } catch (e) { assert.ok(e instanceof C.ClipError); continue; }
+    assert.equal(Object.getPrototypeOf(c.dir), null);
+    assert.throws(() => C.play(c, rig, {}), C.ClipError, `a clip driving "${n}"`);
+  }
+  assert.equal({}.to, undefined); assert.equal({}.d, undefined);
 });
 
 test("bad clip files are refused with a plain error", async () => {

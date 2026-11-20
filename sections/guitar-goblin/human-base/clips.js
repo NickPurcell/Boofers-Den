@@ -295,12 +295,14 @@ const TRUNK = new Set(['root', 'spine05', 'spine04', 'spine03', 'spine02', 'spin
 // o.root: 'inplace' (the hips' travel taken out: play.speed is how fast the figure should move) or 'keep' (play.travel
 // is how far the clip carries it); o.loop: wrap time (default for 'inplace')
 export function play(c, rig, o = {}) {
-  const F = c.frames, dur = (F - 1) / c.fps, nb = c.bones.length, n = rig.n, idx = c.bones.map((b) => rig.at[b]);
+  // (bone names come from the clip: looked up by own key only, so no name reaches anything inherited)
+  const at = (b) => (typeof b === 'string' && Object.prototype.hasOwnProperty.call(rig.at, b) ? rig.at[b] : undefined);
+  const F = c.frames, dur = (F - 1) / c.fps, nb = c.bones.length, n = rig.n, idx = c.bones.map(at);
   if (idx.some((k) => k === undefined)) fail('the clip drives a bone this figure has not got');
   const driven = new Int32Array(n).fill(-1); idx.forEach((k, i) => (driven[k] = i));
   // this figure's own rest difference for each driven limb
-  const fixI = c.bones.map((b, i) => { const r = c.dir[b], f = r && (r.from ? rig.at[r.from] : idx[i]); if (!r || rig.at[r.to] === undefined || f === undefined) return [0, 0, 0, 1]; return Q.inv(Q.from(r.d, norm(sub(rig.bones[rig.at[r.to]].head, rig.bones[f].head)))); });
-  const H = rig.bones[rig.at.root].head[1], hipAt = (f) => [c.hip[f * 3] * H, c.hip[f * 3 + 1] * H - H, c.hip[f * 3 + 2] * H];
+  const fixI = c.bones.map((b, i) => { const r = Object.prototype.hasOwnProperty.call(c.dir, b) ? c.dir[b] : null, f = r && (r.from ? at(r.from) : idx[i]); if (!r || at(r.to) === undefined || f === undefined) return [0, 0, 0, 1]; return Q.inv(Q.from(r.d, norm(sub(rig.bones[at(r.to)].head, rig.bones[f].head)))); });
+  const H = rig.bones[at('root')].head[1], hipAt = (f) => [c.hip[f * 3] * H, c.hip[f * 3 + 1] * H - H, c.hip[f * 3 + 2] * H];
   const t1 = hipAt(F - 1), travel = [t1[0], 0, t1[2]], mode = o.root || 'inplace', loop = o.loop ?? mode === 'inplace';
   // how fast the figure should move: the clip's own travel, or for one made in place, its planted foot's speed
   const speed = Math.max(dur > 0 ? Math.hypot(travel[0], travel[2]) / dur : 0, mode === 'inplace' ? (c.marks.ground || 0) * H : 0);
@@ -338,7 +340,7 @@ export function unpackClip(j) {
   const du = unb64(String(j.d)), hu = unb64(String(j.hip)); if (du.byteLength !== F * nb * 8 || hu.byteLength !== F * 6) fail('a clip of the wrong length');
   const d = Float32Array.from(new Int16Array(du.buffer, du.byteOffset, F * nb * 4), (x) => x / 32767), hip = Float32Array.from(new Int16Array(hu.buffer, hu.byteOffset, F * 3), (x) => x / 4096);
   for (let i = 0; i < d.length; i += 4) { const l = Math.hypot(d[i], d[i + 1], d[i + 2], d[i + 3]) || 1; d[i] /= l; d[i + 1] /= l; d[i + 2] /= l; d[i + 3] /= l; }
-  const dir = {}; for (const b of j.bones) { const r = j.dir && Object.prototype.hasOwnProperty.call(j.dir, b) ? j.dir[b] : null; dir[b] = r && typeof r.to === 'string' && NAME.test(r.to) && (r.from === undefined || (typeof r.from === 'string' && NAME.test(r.from))) && Array.isArray(r.d) && r.d.length === 3 && r.d.every(Number.isFinite) ? { to: r.to, ...(r.from ? { from: r.from } : {}), d: r.d } : null; }
+  const dir = Object.create(null); for (const b of j.bones) { const r = j.dir && Object.prototype.hasOwnProperty.call(j.dir, b) ? j.dir[b] : null; dir[b] = r && typeof r.to === 'string' && NAME.test(r.to) && (r.from === undefined || (typeof r.from === 'string' && NAME.test(r.from))) && Array.isArray(r.d) && r.d.length === 3 && r.d.every(Number.isFinite) ? { to: r.to, ...(r.from ? { from: r.from } : {}), d: r.d } : null; }
   const marks = {}; for (const k of ['impact', 'ground']) if (j.marks && Number.isFinite(j.marks[k])) marks[k] = j.marks[k];
   return { v: 1, fps: j.fps, frames: F, bones: j.bones.slice(), dir, d, hip, marks };
 }
