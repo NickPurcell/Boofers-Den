@@ -154,7 +154,7 @@ export function bakeJawa(parts, o) {
       for (let k = 0; k < groups; k++) for (let j = 0; j < 3; j++) { gp[k * 3 + j] /= gk[k]; gc[k * 3 + j] /= gk[k]; }
       // what is held: everything near the grip, and along the line from the grip to the muzzle (a long ion blaster)
       const held = part === 'gear' && o.grip ? (p) => Math.hypot(p[0] - o.grip[0], p[1] - o.grip[1], p[2] - o.grip[2]) < 0.12 || (o.muzzle && segD(p, o.grip, o.muzzle.point) < 0.06) : () => false;
-      const b = bucket(finish[0], finish[1], finish[2], part === 'gear' ? null : null); if (emissive && !b.E) b.E = new Array(b.C.length).fill(0);
+      const b = bucket(finish[0], finish[1], finish[2], null); if (emissive && !b.E) b.E = new Array(b.C.length).fill(0);
       const map = new Map(), tris = new Set(), added = [];
       for (let t = 0; t + 2 < I.length; t += 3) {
         const g3 = [id[I[t]], id[I[t + 1]], id[I[t + 2]]]; if (g3[0] === g3[1] || g3[1] === g3[2] || g3[0] === g3[2]) continue;
