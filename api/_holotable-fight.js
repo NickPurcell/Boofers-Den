@@ -450,12 +450,14 @@ function watchers(camp) {
   if (!fogOn(camp)) return null;
   return Object.keys(camp.players || {}).filter((c) => CID.test(c)).map((c) => [c, fogFor(camp, c)]).filter(([, f]) => f);
 }
-function stamp(ev, camp, watch) {
+// (by: the token of whoever acted. A miss shows only to those who saw both: a miss on you by something you couldn't see
+// is nothing you noticed, #283; a hit you did notice, as chat says)
+function stamp(ev, camp, watch, by) {
   if (!watch) return ev;
   const out = (camp.map.tokens || []).reduce((m, t) => (t.hidden ? m.add(t.id) : m), new Set());
   const saw = (f, id) => !!id && !out.has(id) && !f.tokens.has(id);
   ev.fogged = true;
-  ev.seen = watch.filter(([, f]) => saw(f, ev.token)).map(([c]) => c);
+  ev.seen = watch.filter(([, f]) => saw(f, ev.token) && (ev.kind !== "miss" || !by || saw(f, by))).map(([c]) => c);
   if (ev.kind === "act") ev.tseen = watch.filter(([, f]) => saw(f, ev.target)).map(([c]) => c);
   if (Array.isArray(ev.path)) ev.pfrom = watch.map(([c, f]) => { const vis = (q) => q[0] >= 0 && q[1] >= 0 && q[0] < f.cols && q[1] < f.rows && f.vis[q[1] * f.cols + q[0]]; let k = ev.path.length; while (k > 0 && vis(ev.path[k - 1])) k--; return [c, k]; });
   return ev;
@@ -523,12 +525,13 @@ function report(camp, cid, gm, G, actor, world, r, skipFirst) {
     }
   }
   let acted = 0;
-  const watch = watchers(camp);   // (under fog: who sees what, now, as it happens)
+  const watch = watchers(camp), by = ut[actor.id] || null;   // (under fog: who sees what, now, as it happens)
   if (r.act) { f.events.push(cleanEvent(stamp(Object.assign({ seq: ++f.seq, at: now(), kind: "act", hidden: secret }, r.act), camp, watch))); acted = f.seq; }
   for (const ev of r.events) {
     const u = r.world.units[ev.unit];
     f.events.push(cleanEvent(stamp({ seq: ++f.seq, at: now(), kind: ev.kind, token: u ? u.tokenId : null, amount: ev.amount == null ? null : ev.amount, feet: ev.feet == null ? null : ev.feet,
-      hidden: secret && ev.kind === "move" ? true : isHidden(ev.unit), path: ev.path, act: acted && ev.kind !== "move" ? acted : 0 }, camp, watch)));
+      // a hidden actor's move or miss stays the GM's (a miss on you by something hidden is nothing you noticed: #283)
+      hidden: secret && (ev.kind === "move" || ev.kind === "miss") ? true : isHidden(ev.unit), path: ev.path, act: acted && ev.kind !== "move" ? acted : 0 }, camp, watch, by)));
   }
   if (f.events.length > EVENTS_MAX) f.events.splice(0, f.events.length - EVENTS_MAX);
 }
@@ -1314,9 +1317,9 @@ function apply(camp, cid, gm, type, p, G) {
 // one event as this viewer gets it. Under fog, by what they saw when it happened (stamp) and what they are sent now: an
 // event only if they saw its token then; an act's target only if they saw it then and are sent it now; a move's path
 // only from the square where it came into their sight then. Fog off then: what they are sent now, as before.
-function eventFor(ev, gm, fog, camp, cid) {
+function eventFor(ev, gm, fog, camp, cid, got) {
   const out = { seq: ev.seq, at: ev.at, kind: ev.kind, token: ev.token, amount: ev.amount, feet: ev.feet };
-  if (ev.act) out.act = ev.act;
+  if (ev.act && (gm || (got && got.has(ev.act)))) out.act = ev.act;   // (linked only to an act this viewer got: else it would say there was one, #283)
   const sent = (id) => gm || (!!id && (camp.map.tokens || []).some((t) => t.id === id && !t.hidden) && !(fog && fog.tokens.has(id)));
   const sawThen = (list) => gm || !ev.fogged || (Array.isArray(list) && list.includes(cid));
   if (ev.kind === "act") Object.assign(out, { target: sent(ev.target) && sawThen(ev.tseen) ? ev.target : null, how: ev.how, grip: ev.grip, school: ev.school });
@@ -1354,7 +1357,7 @@ function view(camp, cid, gm, shownName) {
     budget: turn ? E.budget(world) : null,
     // only for combatants this viewer can see: a hidden one's id, turn or movement never reaches a player
     spent: Object.fromEntries(Object.entries(f.spent || {}).filter(([id]) => units[id])),
-    events: evs.map((ev) => eventFor(ev, gm, fog, camp, cid)),
+    events: ((got) => evs.map((ev) => eventFor(ev, gm, fog, camp, cid, got)))(new Set(evs.filter((ev) => ev.kind === "act").map((ev) => ev.seq))),
     undo: gm ? { n: (f.undo || []).length, last: ((f.undo || [])[(f.undo || []).length - 1] || {}).label || null } : null,
     npcSpeed: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, typeof v === "object" && v ? v.speed : v])) : {},
     npcSaves: gm ? Object.fromEntries(Object.entries(f.npc || {}).map(([k, v]) => [k, (v && v.saves) || {}])) : {},
