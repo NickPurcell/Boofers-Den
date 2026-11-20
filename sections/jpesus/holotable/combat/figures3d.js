@@ -19,10 +19,13 @@ import '/sections/guitar-goblin/human-base/look-schema.js';   // HBLookSchema, t
 import '/sections/guitar-goblin/human-base/look-parse.js';
 
 const HT = window.HT, wrap = document.getElementById('mapWrap'), flat = document.getElementById('mapCanvas');
-const CREATOR = '/sections/guitar-goblin/characters/index.html', BAKE_V = 'b4', SQ = 1.524;   // metres in a five-foot square (BAKE_V: bump whenever the creator's bake changes, so no browser keeps an old figure: b4, #285's skirts)
+// the page that bakes a look, by the kind its canonical form starts with (kind=jawa: engineer13's Jawa creator; none: ours)
+const PAGES = { humanoid: '/sections/guitar-goblin/characters/index.html', jawa: '/sections/guitar-goblin/jawa-creator/index.html' };
+const pageOf = (look) => { const k = (/^kind=([a-z]+)&/.exec(look) || [])[1] || 'humanoid'; return Object.prototype.hasOwnProperty.call(PAGES, k) ? PAGES[k] : PAGES.humanoid; };
+const BAKE_V = 'b4', SQ = 1.524;   // metres in a five-foot square (BAKE_V: bump whenever the creator's bake changes, so no browser keeps an old figure: b4, #285's skirts)
 const FAKE = 7357;   // the pointer id the flat map's handlers see from here (never a real one, so they capture nothing)
 
-let renderer = null, el = null, scene, camera, controls, ground, groundTex, groundCanvas, figsRoot, isOpen = false, dirty = true, raf = 0, redraw = 0, sized = '', camKey = '';
+let swept = false, renderer = null, el = null, scene, camera, controls, ground, groundTex, groundCanvas, figsRoot, isOpen = false, dirty = true, raf = 0, redraw = 0, sized = '', camKey = '';
 const figs = new Map();   // token id -> { look, obj, x, z, tx, tz, from, t0, dur, face }
 const ray = new THREE.Raycaster(), plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hitV = new THREE.Vector3();
 const st = () => HT.S.st, grid = () => st().map.gridSize;
@@ -32,7 +35,10 @@ const db = (() => {
   let p = null;
   const open = () => (p ||= new Promise((res, rej) => { const r = indexedDB.open('holotable-figures', 1); r.onupgradeneeded = () => r.result.createObjectStore('bakes'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }));
   const run = (mode, fn) => open().then((d) => new Promise((res, rej) => { const tx = d.transaction('bakes', mode), q = fn(tx.objectStore('bakes')); tx.oncomplete = () => res(q && q.result); tx.onerror = () => rej(tx.error); }));
-  return { get: (k) => run('readonly', (s) => s.get(k)).catch(() => null), put: (k, v) => run('readwrite', (s) => s.put(v, k)).catch(() => null) };
+  // (sweep: bakes kept under an older BAKE_V are dropped, once a session: #287)
+  const sweep = () => open().then((d) => { const tx = d.transaction('bakes', 'readwrite'), q = tx.objectStore('bakes').openKeyCursor();
+    q.onsuccess = () => { const c = q.result; if (!c) return; if (!String(c.key).startsWith(BAKE_V + '|')) tx.objectStore('bakes').delete(c.key); c.continue(); }; }).catch(() => {});
+  return { get: (k) => run('readonly', (s) => s.get(k)).catch(() => null), put: (k, v) => run('readwrite', (s) => s.put(v, k)).catch(() => null), sweep };
 })();
 let bakeQueue = Promise.resolve();   // one at a time: each runs the whole creator
 function bake(look) {
@@ -46,7 +52,7 @@ function bake(look) {
     };
     const timer = setTimeout(() => done(null, new Error('the figure took too long')), 180000);
     window.addEventListener('message', on);
-    fr.src = `${CREATOR}#${look}&bake=table`; document.body.appendChild(fr);
+    fr.src = `${pageOf(look)}#${look}&bake=table`; document.body.appendChild(fr);
   });
 }
 // a bake as handed over or stored: typed arrays of the right kinds and sizes, nothing else
@@ -183,7 +189,8 @@ function sync() {
           Object.assign(mine, { rig: tpl.userData.rig, bones: sm.skeleton.bones, root: tpl.userData.root, rootAt: tpl.userData.rootAt, turned: mine.face, hand: [], belt: [] });
           mine.obj.traverse((o) => { if (o.isMesh && o.userData.where === 'hand') mine.hand.push(o); else if (o.isMesh && o.userData.where === 'belt') mine.belt.push(o); });
           const mz = tpl.userData.muzzle; if (mz) mine.muzzle = { bone: mine.bones[mz.k], offset: new THREE.Vector3(...mz.offset), dir: new THREE.Vector3(...mz.dir) };
-          mine.gear = (/(?:^|&)gear=([a-z_]+)/.exec(look) || [])[1] || 'none';
+          // what it carries: the look's gear; else (a Jawa's own keys) from the bake: a muzzle is a gun, a held thing without one a weapon
+          mine.gear = (/(?:^|&)gear=([a-z_]+)/.exec(look) || [])[1] || (mine.muzzle ? 'pistol' : mine.hand.length ? 'hilt' : 'none');
           pose(mine); loadClips();
         }
         figsRoot.add(mine.obj); place(mine, t); dirty = true;
@@ -270,7 +277,7 @@ function playOn(f, names, o = {}) {
   if (f.act && f.act.drawn) inHand(f, false);
   const hit = Math.min(list.length - 1, o.hit || 0), shots = ((clipFor(f, list[hit]).marks || {}).shots || []).slice();
   f.act = { list, i: 0, p: clipFor(f, list[0]), t: 0, w: f.act ? f.act.w : 0, hold: !!o.hold, onImpact: o.onImpact || null, out: false,
-    hit, draw: o.draw || null, drawn: false, shots: f.muzzle && f.gear && GUNS.has(f.gear) && o.draw ? shots : [], target: o.target || null };
+    hit, draw: o.draw || null, drawn: false, shots: o.gun && f.muzzle && GUNS.has(f.gear || '') ? shots : [], target: o.target || null };   // (a gun held always, a Jawa's, fires too)
   return true;
 }
 function stepAct(f, dt) {
@@ -316,7 +323,7 @@ function happenings() {
     const land = () => { for (const r of results) react(r); };
     if (f && tgt) f.face = Math.atan2(tgt.tx - f.tx, tgt.tz - f.tz);   // it turns to whoever it acts on
     const wp = f && f.rig ? weaponFor(f, ev, clipsOf(ev)) : { names: clipsOf(ev), draw: null };
-    if (!(f && playOn(f, wp.names, { onImpact: land, draw: wp.draw, hit: wp.hit || 0, target: tgt ? { x: tgt.tx, z: tgt.tz } : null }))) land();
+    if (!(f && playOn(f, wp.names, { onImpact: land, draw: wp.draw, hit: wp.hit || 0, gun: ev.how === 'ranged', target: tgt ? { x: tgt.tx, z: tgt.tz } : null }))) land();
   }
   // a hit or miss whose act this browser wasn't sent (by an attacker it can't see): the one hit still reacts, as chat
   // already tells this player, but turns toward no one
@@ -420,7 +427,8 @@ function up(e) {
 export function open() {
   if (!renderer) setup();
   if (!el.isConnected) flat.after(el);
-  el.style.display = 'block'; isOpen = true; sized = ''; lastSeq = null; resize(); paintGround();   // (lastSeq: what happened while the view was shut isn't played when it opens)   // (three.js sets the canvas's display inline, so hidden alone would not hide it)
+  el.style.display = 'block'; isOpen = true; sized = ''; lastSeq = null; resize(); paintGround();
+  if (!swept) { swept = true; db.sweep(); }   // (lastSeq: what happened while the view was shut isn't played when it opens)   // (three.js sets the canvas's display inline, so hidden alone would not hide it)
   if (!raf) loop();
 }
 export function close() {
@@ -431,7 +439,7 @@ export function close() {
 // the flat map has just drawn (a poll, a move, a hover): the ground and the figures follow, once a frame
 export function drawn() { if (isOpen && !redraw) redraw = requestAnimationFrame(paintGround); }
 // for tests and the curious: what is standing where, and where a square is on the screen
-export function state() { return { open: isOpen, figures: [...figs].map(([id, f]) => ({ id, ready: !!f.obj, x: f.x, z: f.z, face: f.face, rigged: !!f.rig, run: f.w, travel: f.travel, clip: f.act ? f.act.list[f.act.i] : null, down: f.down, inHand: !!(f.hand && f.hand.some((o) => o.visible)) })), bolts: bolts.length, fired }; }
+export function state() { return { open: isOpen, figures: [...figs].map(([id, f]) => ({ id, ready: !!f.obj, x: f.x, z: f.z, face: f.face, rigged: !!f.rig, run: f.w, travel: f.travel, clip: f.act ? f.act.list[f.act.i] : null, down: f.down, inHand: !!(f.hand && f.hand.some((o) => o.visible)), gear: f.gear || null, muzzle: !!f.muzzle, held: f.hand ? f.hand.length : 0 })), bolts: bolts.length, fired }; }
 export function screenOf(sx, sy) {
   if (!el) return null; const r = el.getBoundingClientRect(), v = new THREE.Vector3(sx, 0, sy).project(camera);
   return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height };

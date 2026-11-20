@@ -253,6 +253,10 @@ function panel() {
   };
   const opts = options();
   for (const k of ['species', 'people']) field(k, opts[k]);
+  {   // the Jawa: a figure of its own, made on its own page (engineer13's jawa-creator/), one look format with ours (kind=jawa)
+    const j = document.createElement('button'); j.type = 'button'; j.textContent = 'Jawa ↗'; j.title = 'Jawas have their own creator: robes, hood and gear';
+    j.addEventListener('click', () => { location.href = '../jawa-creator/'; }); panelEl.querySelector('[data-opt=species]').appendChild(j);
+  }
   const gb = group('Build', false); for (const c of CONTROLS.build) slider(gb, c, ctrl, redress);
   const gf = group('Face', false); for (const c of CONTROLS.head) slider(gf, c, ctrl, redress);
   for (const [k, def] of Object.entries(opts)) {
