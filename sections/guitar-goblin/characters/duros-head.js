@@ -12,7 +12,7 @@ import { ellipsoid, capsule, roundCone, chain, smin, ssub, union, subtract, mirr
 // the head's shapes: rounded (the default), a higher dome, or narrower
 export const SHAPES = { round: { w: 1, h: 1, d: 1 }, tall: { w: 0.97, h: 1.1, d: 1.02 }, narrow: { w: 0.9, h: 1.03, d: 0.98 } };
 // the eyes, for the page to draw (each an almond lens): centre, half sizes, the slant (outer corner up)
-export const EYE = { c: [0.043, 0.0, 0.043], r: [0.023, 0.0105, 0.012], tilt: 0.16 };
+export const EYE = { c: [0.043, 0.0, 0.043], r: [0.023, 0.0105, 0.0085], tilt: 0.16 };   // (a flat lens, not a bead)
 
 export function durosField(shape = 'round') {
   const S = SHAPES[shape] || SHAPES.round, W = S.w, H = S.h, D = S.d;

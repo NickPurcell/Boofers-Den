@@ -94,7 +94,7 @@ let accent = null, lips = null;
 // update, and its eyes are not drawn. The head sits on an upright frame at the human eyes, scaled with the figure.
 const durosG = new THREE.Group(); durosG.name = 'duros-head'; durosG.visible = false; durosG.matrixAutoUpdate = false; fig.add(durosG);
 const durosSkin = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62 });
-const durosEyeMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.22, clearcoat: 1, clearcoatRoughness: 0.08 });
+const durosEyeMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.34, clearcoat: 0.55, clearcoatRoughness: 0.2 });
 let durosMesh = null, durosShape = '', durosTicket = 0, headIdx = null;
 {   // the eyes: almond lenses of one colour, darker toward the rim
   const g = new THREE.SphereGeometry(1, 28, 14), n = g.attributes.normal, col = new Float32Array(n.count * 3);
