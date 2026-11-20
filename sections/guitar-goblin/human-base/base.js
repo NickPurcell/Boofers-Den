@@ -130,7 +130,7 @@ async function load() {
   const tm = {}; let tl = performance.now(); const lap = (k) => { const t = performance.now(); tm[k] = Math.round(t - tl); tl = t; }; tm.fetch = Math.round(tl - t0);   // where the load's time goes, after the data arrives
   const B = decode(info, meshBuf, tBuf, skinBuf); lap('decode');
   B.T = topology(B.N, B.quads); lap('topology');
-  // the landmarks, regions and the rest come with the data (derive.js, baked by scripts/mh/bake.mjs); worked out here
+  // the landmarks, regions and the rest come with the data (derive.js, baked by tests/human-base/bake.mjs); worked out here
   // only if they are missing or were made from another mesh
   let D = derived ? unpack(derived) : null;
   if (!D || D.fingerprint !== fingerprint(B)) { if (derived) console.warn('human-base: derived.json does not match the mesh; deriving it here'); D = deriveAll(B); tm.derivedLive = true; }
