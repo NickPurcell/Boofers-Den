@@ -14,7 +14,8 @@ import { makeTextures, clothMaterial, leatherMaterial, metalMaterial, plasticMat
 import { OUTFITS } from './outfit-shape.js';
 import { fieldFor } from './bodyfield.js';
 import { bakeTable, bakeMeshes } from '../human-base/table.js';
-import { PEOPLE, optionsFor, defaultsOf, isSpecies } from './looks-page.js';
+import { PEOPLE, optionsFor, defaultsOf, isSpecies, lookOf } from './looks-page.js';
+import { EYE as DUROS_EYE } from './duros-head.js';
 
 const $ = (id) => document.getElementById(id);
 const stage = makeStage($('scene'), { tall: 1.8, minDistance: 0.22, maxDistance: 6, onNoGL: () => { $('nogl').hidden = false; } });
@@ -68,24 +69,78 @@ const colours = () => ({ main: pick('main').c, second: pick('second').c, dark: '
 
 /* ---------------- the figure from the state ---------------- */
 function apply() {
-  const shape = toShape(ctrl), look = lookParams(sp(), { ...state, gender: shape.gender });   // the base's own way to set a look
+  const shape = toShape(ctrl), duros = sp() === 'duros', look = lookParams(duros ? 'human' : sp(), { ...state, gender: shape.gender });   // the base's own way to set a look
+  if (duros) look.skin = { ...look.skin, tone: pick('skin').c, lips: null, browAmount: 0, sheenColor: '#d8e6ee' };   // (a Duros: the human body in its own skin, no brows: duros-head.js is its head)
   fig.set(shape);
   const suit = OUTFITS[state.outfit]?.suit;
   fig.skin.userData.set({ ...look.skin, suit: '#1f2126', suitOn: !!suit, suitCover: suit || { torso: shape.gender < 0.75, arms: 0, legs: 0 } });
-  fig.eyes.set(look.eyes); accent = look.accent; lips = look.skin.lips || look.accent;
+  fig.eyes.set(look.eyes); fig.eyes.l.visible = fig.eyes.r.visible = !duros; accent = look.accent; lips = look.skin.lips || look.accent;
   const pbo = { on: sp() === 'pureblood' }; if (pbo.on) for (const k of Object.keys(PUREBLOOD.options)) pbo[k] = state[k];
   pb.set(pbo);
   fig.update();
   const down = DOWN.has(state.style) && state.hood !== 'up' && sp() !== 'mikkian';
   // a raised hood covers the hair; a Mikkian has none; hair worn down has a close cap bound like the rest, and its fall
   // worked out in a worker (fall())
-  hair.set(state.hood === 'up' || sp() === 'mikkian' ? 'bald' : down ? 'crop' : state.style, pick('hair')?.c);
+  hair.set(state.hood === 'up' || sp() === 'mikkian' || duros ? 'bald' : down ? 'crop' : state.style, pick('hair')?.c);
   if (fallen) { paintFall(); fallen.visible = down; }
   carried.set({ item: state.gear || 'none', accent: pick('second').c });
-  paintTendrils();
+  paintTendrils(); durosOn();
   stage.changed();
 }
 let accent = null, lips = null;
+
+/* ---------------- a Duros's head: its own (duros-head.js), meshed in a worker, set on the body's head ---------------- */
+// The human head is hidden: its vertices on the live mesh are gathered to a point inside the Duros's skull after every
+// update, and its eyes are not drawn. The head sits on an upright frame at the human eyes, scaled with the figure.
+const durosG = new THREE.Group(); durosG.name = 'duros-head'; durosG.visible = false; durosG.matrixAutoUpdate = false; fig.add(durosG);
+const durosSkin = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62 });
+const durosEyeMat = new THREE.MeshPhysicalMaterial({ vertexColors: true, roughness: 0.5, clearcoat: 0.25, clearcoatRoughness: 0.35 });   // (a soft sheen, not a highlight)
+let durosMesh = null, durosShape = '', durosTicket = 0, headIdx = null;
+{   // the eyes: almond lenses of one colour, darker toward the rim
+  const g = new THREE.SphereGeometry(1, 32, 16), P = g.attributes.position, n = g.attributes.normal, col = new Float32Array(n.count * 3);
+  for (let i = 0; i < P.count; i++) P.setY(i, P.getY(i) * (1 - 0.55 * P.getX(i) ** 2));   // (an almond: narrowing to its corners)
+  g.computeVertexNormals();
+  for (let i = 0; i < n.count; i++) { const k = 0.18 + 0.82 * Math.max(0, n.getZ(i)) ** 2.2; col[i * 3] = col[i * 3 + 1] = col[i * 3 + 2] = k; }   // (darker where it meets the lid)
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  for (const sgn of [1, -1]) { const e = new THREE.Mesh(g, durosEyeMat); e.name = 'duros-eye'; e.scale.set(...DUROS_EYE.r); e.position.set(sgn * DUROS_EYE.c[0], DUROS_EYE.c[1], DUROS_EYE.c[2]); e.rotation.z = sgn * DUROS_EYE.tilt; durosG.add(e); }
+}
+function durosFrame() {
+  const F = fig.headFrame(), x = new THREE.Vector3(...F.x), up = new THREE.Vector3(0, 1, 0).addScaledVector(x, -x.y).normalize(), z = new THREE.Vector3().crossVectors(x, up), k = F.scale / 0.0644;
+  return { o: new THREE.Vector3(...F.origin), x, up, z, k };
+}
+function placeDuros() {
+  if (!durosG.visible) return;
+  const { o, x, up, z, k } = durosFrame();
+  durosG.matrix.makeBasis(x.clone().multiplyScalar(k), up.clone().multiplyScalar(k), z.clone().multiplyScalar(k)).setPosition(o); durosG.matrixWorldNeedsUpdate = true;
+  // the human head gathered inside the dome
+  headIdx ||= fig.region('head');
+  const P = fig.body.geometry.attributes.position, c = o.clone().addScaledVector(z, -0.075 * k).addScaledVector(up, -0.13 * k);   // (inside the Duros's neck: what stretches to it stays hidden)
+  for (const i of headIdx) P.setXYZ(i, c.x, c.y, c.z);
+  P.needsUpdate = true; fig.body.geometry.computeBoundingSphere();
+}
+fig.addEventListener('shaped', () => placeDuros());
+function paintDuros() {
+  if (!durosMesh) return;
+  const c = new THREE.Color(pick('skin').c), sh = durosMesh.userData.shade, col = durosMesh.geometry.attributes.color;
+  for (let i = 0; i < sh.length; i++) col.setXYZ(i, c.r * sh[i], c.g * sh[i], c.b * sh[i]);
+  col.needsUpdate = true; durosEyeMat.color.set(pick('eyes').c);
+}
+async function durosOn() {
+  const on = sp() === 'duros'; durosG.visible = on;
+  if (!on) return;
+  placeDuros();
+  const shape = state.head || 'round';
+  if (durosMesh && durosShape === shape) { paintDuros(); return; }
+  const my = ++durosTicket; let r;
+  try { r = await pool.mesh('duros', { shape }); } catch (e) { if (!(e && e.cancelled)) console.error(e); return; }
+  if (my !== durosTicket) return;
+  if (durosMesh) { durosG.remove(durosMesh); durosMesh.geometry.dispose(); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(r.position, 3)); g.setAttribute('normal', new THREE.BufferAttribute(r.normal, 3));
+  g.setAttribute('color', new THREE.BufferAttribute(new Float32Array(r.shade.length * 3), 3)); g.setIndex(new THREE.BufferAttribute(r.index, 1)); g.computeBoundingSphere();
+  durosMesh = new THREE.Mesh(g, durosSkin); durosMesh.userData.shade = r.shade; durosMesh.castShadow = durosMesh.receiveShadow = true; durosMesh.name = 'duros-skin'; durosG.add(durosMesh);
+  durosShape = shape; paintDuros(); placeDuros(); stage.changed();
+}
 
 /* ---------------- clothes: meshed in workers from the live body ---------------- */
 makeTextures();
@@ -274,8 +329,8 @@ function paintPanel() {
     for (const b of el.querySelectorAll('button')) b.setAttribute('aria-pressed', String(def.multi ? on.has(b.dataset.key) : b.dataset.key === state[el.dataset.opt]));
   }
   for (const r of panelEl.querySelectorAll('input[data-ctrl]')) r.value = r.dataset.ctrl === 'ridges' ? state.ridges : ctrl[r.dataset.ctrl];
-  $('title').textContent = LOOKS[sp()].name; $('blurb').textContent = LOOKS[sp()].blurb || '';
-  $('summary').textContent = `${LOOKS[sp()].name}: ${pick('skin').name.toLowerCase()} skin, ${pick('eyes').name.toLowerCase()} eyes, ${state.hood === 'up' ? 'hood up' : sp() === 'mikkian' ? `${pick('length').name.toLowerCase()} ${pick('surface').name.toLowerCase()} head-tendrils (${pick('style').name.toLowerCase()}) with ${pick('accent').name.toLowerCase()} ${pick('pattern').name.toLowerCase()}` : `${pick('hair').name.toLowerCase()} hair ${pick('style').name.toLowerCase()}`}; in ${OUTFITS[state.outfit].name.toLowerCase()}, ${pick('main').name.toLowerCase()} and ${pick('second').name.toLowerCase()}${state.gear && state.gear !== 'none' ? `, carrying a ${pick('gear').name.toLowerCase()}` : ''}.`;
+  $('title').textContent = lookOf(sp()).name; $('blurb').textContent = lookOf(sp()).blurb || '';
+  $('summary').textContent = `${lookOf(sp()).name}: ${pick('skin').name.toLowerCase()} skin, ${pick('eyes').name.toLowerCase()} eyes, ${state.hood === 'up' ? 'hood up' : sp() === 'mikkian' ? `${pick('length').name.toLowerCase()} ${pick('surface').name.toLowerCase()} head-tendrils (${pick('style').name.toLowerCase()}) with ${pick('accent').name.toLowerCase()} ${pick('pattern').name.toLowerCase()}` : sp() === 'duros' ? `${pick('head').name.toLowerCase()} head` : `${pick('hair').name.toLowerCase()} hair ${pick('style').name.toLowerCase()}`}; in ${OUTFITS[state.outfit].name.toLowerCase()}, ${pick('main').name.toLowerCase()} and ${pick('second').name.toLowerCase()}${state.gear && state.gear !== 'none' ? `, carrying a ${pick('gear').name.toLowerCase()}` : ''}.`;
 }
 let raf = 0, dressTimer = 0;
 const live = () => { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; apply(); }); };   // reshape at once while a slider moves
@@ -382,6 +437,17 @@ if (BAKE) {
       // robe or tunic, which hang from the hips (on the legs, they tore between them as the legs split)
       let list = bakeTable(fig, { skin: true });
       const extra = [], G = 0.01, muzzle = list.muzzle || null;   // (a held gun's muzzle, for the table's shots: bakeMeshes doesn't carry it on)
+      if (sp() === 'duros') {   // a Duros: no human eyes and no human head in the bake (list.at: each base vertex in the 'skin' entry), its own head instead
+        for (let k = list.length - 1; k >= 0; k--) if (list[k].name === 'eyes' || list[k].name === 'eyes-glow') list.splice(k, 1);
+        const skin = list.find((m) => m.name === 'skin'), gone = new Set();
+        for (const i of base.regions.head) { const v = list.at ? list.at[i] : -1; if (v >= 0) gone.add(v); }
+        if (skin && gone.size) { const ix = skin.index, keep = []; for (let t = 0; t < ix.length; t += 3) if (!gone.has(ix[t]) && !gone.has(ix[t + 1]) && !gone.has(ix[t + 2])) keep.push(ix[t], ix[t + 1], ix[t + 2]); skin.index = Uint32Array.from(keep); }
+        // (the body's bake carries its creases' and hollows' shade; the head's own colours a touch darker to match it)
+        const hc = durosMesh && durosMesh.geometry.attributes.color, keepC = hc && hc.array.slice();
+        if (hc) { for (let i = 0; i < hc.array.length; i++) hc.array[i] *= 0.86; }
+        list = bakeMeshes(durosG, fig, list, { grid: 0.004, skin: 'rigid' });
+        if (hc) hc.array.set(keepC);
+      }
       for (const name of ['hair', 'hair-down', 'tendrils']) { const o = fig.getObjectByName(name); if (o && o.visible) list = bakeMeshes(o, fig, list, { grid: G, skin: 'rigid' }); }
       for (const piece of fig.getObjectByName('clothes')?.children || []) {
         if (!piece.visible) continue;
