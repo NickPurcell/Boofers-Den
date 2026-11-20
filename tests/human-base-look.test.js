@@ -182,7 +182,10 @@ test("kinds: no smuggling — a humanoid's keys never reach a Jawa, a Jawa's nev
 
 test("kinds: an unknown kind, a prototype name or a bad value gives a default, never an error", () => {
   const d0 = def(S.speciesOrder[0]).look;
-  for (const k of ["robot", "__proto__", "constructor", "toString", "hasOwnProperty", "JAWA", "jawa.", ""]) {
+  // an empty kind= is no kind: the look reads as it did before there were kinds
+  assert.equal(L.parseLook("kind=&species=human&robe=plum").look, L.parseLook("species=human").look);
+  assert.equal(L.parseLook("kind=&species=human").changed, L.parseLook("species=human").changed);
+  for (const k of ["robot", "__proto__", "constructor", "toString", "hasOwnProperty", "JAWA", "jawa."]) {
     const r = L.parseLook(`kind=${k}&species=human&robe=plum`); assert.equal(r.kind, "humanoid"); assert.equal(r.look, d0, `kind=${k}`); assert.equal(r.fallback, true);
   }
   // a kind that is not even readable text is dropped like any bad pair: no kind, so a humanoid, with no Jawa keys

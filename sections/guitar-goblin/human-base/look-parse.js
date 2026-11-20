@@ -100,8 +100,8 @@
     try { p = pairs(text); } catch (e) { return fallback(1); }
     // which kind of figure: none (every look made before kinds) or 'humanoid' is a person on the human base; another
     // kind is read against its own list only, so no kind's keys can reach another's figure
-    const kind = p.get('kind');
-    if (kind !== undefined && kind !== 'humanoid') return Object.prototype.hasOwnProperty.call(SCHEMA.kinds || {}, kind) ? parseKind(kind, p) : fallback(1);
+    const kind = p.get('kind');   // (an empty kind= is no kind, as before there were kinds)
+    if (kind !== undefined && kind !== '' && kind !== 'humanoid') return Object.prototype.hasOwnProperty.call(SCHEMA.kinds || {}, kind) ? parseKind(kind, p) : fallback(1);
     const sp = p.get('species');
     if (sp === undefined || SCHEMA.speciesOrder.indexOf(sp) < 0) return fallback(1);
     const S = SCHEMA.species[sp], values = {}, used = new Set(['species', 'kind']);
