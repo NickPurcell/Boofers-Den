@@ -138,3 +138,73 @@ test("a look naming a blaster keeps it: every carried item in the creator's list
   }
   assert.ok(ITEMS === null || items.every((k) => k in ITEMS));
 });
+
+// A look says which kind of figure it is. No kind (every look made before there were kinds) or kind=humanoid is a
+// person on the human base; kind=jawa is read against the Jawa creator's own lists only. Nothing of one kind's list may
+// reach another kind's figure, and an unknown kind gives the humanoid default.
+test("kinds: an old look with no kind is still a humanoid, read exactly as before", () => {
+  for (const sp of S.speciesOrder) {
+    const a = def(sp), b = L.parseLook("kind=humanoid&species=" + sp);
+    assert.equal(a.kind, "humanoid"); assert.equal(b.kind, "humanoid");
+    assert.equal(b.look, a.look, "kind=humanoid writes back as the plain look"); assert.equal(b.changed, 0);
+  }
+  assert.equal(L.parseLook("species=human&outfit=coat&c.jaw=0.3").kind, "humanoid");
+});
+
+test("kinds: a Jawa look keeps only the Jawa's keys, in its own order, and reads back as itself", () => {
+  const J = S.kinds.jawa;
+  assert.ok(J && J.order.includes("robe") && J.order.includes("hold") && J.order.includes("seed"));
+  const d = L.parseLook("kind=jawa");
+  assert.equal(d.kind, "jawa"); assert.equal(d.species, null); assert.equal(d.controls, null); assert.equal(d.changed, 0);
+  assert.match(d.look, SAFE); assert.ok(d.look.startsWith("kind=jawa&"));
+  assert.equal(L.parseLook(d.look).look, d.look);
+  for (const k of J.order) assert.ok(Object.prototype.hasOwnProperty.call(d.values, k), `the Jawa has ${k}`);
+  // each choice the creator offers survives the round trip
+  for (const k of J.order) if (J.keys[k].items) for (const v of J.keys[k].items) {
+    const r = L.parseLook(`kind=jawa&${k}=${v}`); assert.equal(r.changed, 0, `${k}=${v}`);
+    assert.equal(L.parseLook(r.look).values[k], r.values[k]);
+  }
+});
+
+test("kinds: no smuggling — a humanoid's keys never reach a Jawa, a Jawa's never reach a humanoid", () => {
+  const j = L.parseLook("kind=jawa&species=pureblood&c.jaw=0.9&outfit=plate&gear=rifle&glow=bright&robe=plum");
+  assert.equal(j.kind, "jawa"); assert.equal(j.values.robe, "plum");
+  for (const k of ["species", "c.jaw", "outfit", "gear"]) assert.ok(!Object.prototype.hasOwnProperty.call(j.values, k), `${k} reached the Jawa`);
+  assert.ok(!/species|outfit|gear|c\./.test(j.look)); assert.equal(j.changed, 4);
+  const h = L.parseLook("species=human&robe=plum&hold=blaster&rig=toolbelt&extras=goggles");
+  assert.equal(h.kind, "humanoid");
+  for (const k of ["robe", "hold", "rig", "extras"]) assert.ok(!Object.prototype.hasOwnProperty.call(h.values, k), `${k} reached the humanoid`);
+  assert.ok(!/robe|hold|rig|extras/.test(h.look));
+  // the whole look is read as one kind (the last kind= wins, as for every key): never a mix
+  const m = L.parseLook("kind=jawa&robe=plum&kind=humanoid&species=human");
+  assert.equal(m.kind, "humanoid"); assert.ok(!Object.prototype.hasOwnProperty.call(m.values, "robe"));
+});
+
+test("kinds: an unknown kind, a prototype name or a bad value gives a default, never an error", () => {
+  const d0 = def(S.speciesOrder[0]).look;
+  for (const k of ["droid", "__proto__", "constructor", "toString", "hasOwnProperty", "JAWA", "jawa.", ""]) {
+    const r = L.parseLook(`kind=${k}&species=human&robe=plum`); assert.equal(r.kind, "humanoid"); assert.equal(r.look, d0, `kind=${k}`); assert.equal(r.fallback, true);
+  }
+  // a kind that is not even readable text is dropped like any bad pair: no kind, so a humanoid, with no Jawa keys
+  for (const k of ["jawa ", "%00", "<b>"]) { const r = L.parseLook(`kind=${k}&species=human&robe=plum`); assert.equal(r.kind, "humanoid"); assert.ok(!/robe/.test(r.look)); }
+  const b = L.parseLook("kind=jawa&robe=<script>&seed=12.6&build=__proto__&extras=goggles.nope.satchel.goggles&eyes=%E0%A4%A");
+  assert.equal(b.kind, "jawa"); assert.match(b.look, SAFE);
+  assert.equal(b.values.robe, S.kinds.jawa.keys.robe.def); assert.equal(b.values.build, S.kinds.jawa.keys.build.def);
+  assert.equal(b.values.seed, 13); assert.equal(b.values.extras, "goggles.satchel");
+  for (const s of ["-4", "99999", "1e3", "0x10", "NaN", ""]) { const v = L.parseLook("kind=jawa&seed=" + s).values.seed; assert.ok(Number.isInteger(v) && v >= 0 && v <= 9999, `seed=${s} gave ${v}`); }
+  protoClean();
+});
+
+test("kinds: random text with kinds in it never throws and never leaves its kind's whitelist", () => {
+  let seed = 11; const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 4294967296);
+  const bits = ["kind=", "jawa", "humanoid", "droid", "&", "=", "species=", "human", "robe", "plum", "seed", "hold", "blaster", "extras", "goggles", ".", "%", "%26", "__proto__", "constructor", "c.jaw", "1", "0.5", "<", "\u0000"];
+  for (let i = 0; i < 3000; i++) {
+    let t = ""; const n = 1 + Math.floor(rnd() * 24); for (let j = 0; j < n; j++) t += bits[Math.floor(rnd() * bits.length)];
+    const r = L.parseLook(t);
+    assert.ok(r.kind === "humanoid" || r.kind === "jawa"); assert.match(r.look, SAFE);
+    if (r.kind === "jawa") for (const k of Object.keys(r.values)) assert.ok(S.kinds.jawa.order.includes(k), k);
+    else assert.ok(S.speciesOrder.includes(r.species));
+    assert.equal(L.parseLook(r.look).look, r.look);
+  }
+  protoClean();
+});
