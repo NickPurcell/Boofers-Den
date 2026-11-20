@@ -4,7 +4,8 @@
 //
 //   const clip = parseBVH(text)                     // or parseGLB(arrayBuffer), or parseGLTF(json, bin)
 //   const play = retarget(clip, rig, { root: 'inplace' })
-//   play.sample(t) -> { root, q }; play.duration; play.speed (m/s, for a clip that travels); play.travel ([x, y, z])
+//   play.sample(t) -> { root, q }; play.duration; play.speed (m/s, for a clip that travels); play.travel ([x, y, z]);
+//   play.marks.impact (seconds: when a blow lands, given as o.marks.impact or the moment a hand or foot moves fastest)
 //
 // How a clip is mapped: by bone names (guessMap knows the common ones; a map can be given), with the difference between
 // the two skeletons' rest poses taken out (a T-pose clip on our arms-down figure), its moves scaled to our legs, and the
@@ -286,5 +287,17 @@ export function retarget(clip, rig, o = {}) {
     else root = [root[0] - t0[0], root[1], root[2] - t0[2]];
     return { root, q, world: () => poseWorld(rig, root, q) };
   }
-  return { sample, duration: dur, speed, travel, scale, map: src, loop };
+  // when the blow lands: given (o.marks.impact, seconds), or the moment a hand or a foot moves fastest
+  const marks = { ...(o.marks || {}) };
+  if (!(typeof marks.impact === 'number' && marks.impact >= 0 && marks.impact <= dur)) {
+    const ends = ['wrist.L', 'wrist.R', 'foot.L', 'foot.R'].map((n) => rig.at[n]).filter((k) => k !== undefined);
+    let best = 0, at = dur / 2, prev = null; const steps = Math.max(2, Math.min(240, Math.round(dur * 60)));
+    for (let i = 0; i <= steps; i++) {
+      const t = (i / steps) * dur, p = sample(t), Wp = poseWorld(rig, mode === 'inplace' ? [0, p.root[1], 0] : p.root, p.q).P, now = ends.map((k) => Wp[k]);
+      if (prev) for (let e = 0; e < now.length; e++) { const v = Math.hypot(now[e][0] - prev[e][0], now[e][1] - prev[e][1], now[e][2] - prev[e][2]); if (v > best) { best = v; at = t; } }
+      prev = now;
+    }
+    marks.impact = at;
+  }
+  return { sample, duration: dur, speed, travel, scale, map: src, loop, marks };
 }

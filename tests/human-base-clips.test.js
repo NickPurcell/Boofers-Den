@@ -50,6 +50,9 @@ test("the hips: their travel is taken out and becomes a speed, or kept; the rise
   const s = inplace.scale * 100; assert.ok(s > 0.8 && s < 1.1, `scaled by ${s}`);
   assert.ok(Math.abs(inplace.speed - 1 * s) < 0.02, `speed ${inplace.speed}`);
   assert.ok(Math.abs(keep.travel[2] - 1 * s) < 0.02 && Math.abs(keep.travel[0]) < 1e-6);
+  // the test clip's fastest end is the right hand swinging round, fastest at the end of its swing
+  assert.ok(inplace.marks.impact > 0.5 && inplace.marks.impact <= 1, `impact at ${inplace.marks.impact}`);
+  assert.equal(C.retarget(clip, rig, { marks: { impact: 0.4 } }).marks.impact, 0.4);
   const g = C.retarget(C.parseGLB(T.glb()), rig, { root: "inplace" });
   assert.ok(Math.abs(g.speed - inplace.speed) < 0.01, "the GLB's armature scale is the same metres");
   for (const t of [0, 0.3, 0.5, 0.9]) {
