@@ -191,7 +191,7 @@ function sync() {
           const mz = tpl.userData.muzzle; if (mz) mine.muzzle = { bone: mine.bones[mz.k], offset: new THREE.Vector3(...mz.offset), dir: new THREE.Vector3(...mz.dir) };
           // what it carries: the look's gear; else (a Jawa's own keys) from the bake: a muzzle is a gun, a held thing without one a weapon
           mine.gear = (/(?:^|&)gear=([a-z_]+)/.exec(look) || [])[1] || (mine.muzzle ? 'pistol' : mine.hand.length ? 'hilt' : 'none');
-          pose(mine); loadClips();
+          pose(mine); loadClips(); warm(mine);
         }
         figsRoot.add(mine.obj); place(mine, t); dirty = true;
       }).catch((e) => console.warn('3D figure:', e && e.message));
@@ -230,6 +230,19 @@ function clipFor(f, name) {
   const R = f.rig, own = (R.played ||= new Map());
   if (!own.has(name)) { let p = null; try { p = playClip(unpackClip(clipsJ.clips[name]), R, { root: clipsJ.clips[name].root, loop: false }); } catch (e) { console.warn('clip', name, e && e.message); } own.set(name, p); }
   return own.get(name);
+}
+// building a clip for a figure takes a few milliseconds (tens, the first of a page): the ones a fight is likely to need
+// are built in idle time once the figure is here, so the first swing of a fight doesn't stall a frame (engineer13's
+// numbers after #288). Built once per look: the figures of one look share them.
+const LIKELY = ['hit-chest', 'dodge', 'hit-head', 'sword-a', 'sword-a-rec', 'pistol-shoot', 'down', 'get-up', 'punch-jab', 'two-hand-swing', 'staff-combo', 'rifle-fire', 'draw', 'force-blast', 'spell-enter', 'spell-shoot', 'spell-exit'];
+function warm(f) {
+  const idle = window.requestIdleCallback || ((cb) => setTimeout(() => cb({ timeRemaining: () => 8 }), 60));
+  let i = 0;
+  const go = (dl) => {
+    if (clipsJ) while (i < LIKELY.length && dl.timeRemaining() > 4) clipFor(f, LIKELY[i++]);
+    if (i < LIKELY.length) idle(go, { timeout: 3000 });
+  };
+  idle(go, { timeout: 3000 });
 }
 function clipsOf(ev) {
   if (ev.how === 'power') return ev.school === 'tech' ? ['spell-enter', 'spell-shoot', 'spell-exit'] : ['force-blast'];
