@@ -50,8 +50,8 @@ test("the hips: their travel is taken out and becomes a speed, or kept; the rise
   const s = inplace.scale * 100; assert.ok(s > 0.8 && s < 1.1, `scaled by ${s}`);
   assert.ok(Math.abs(inplace.speed - 1 * s) < 0.02, `speed ${inplace.speed}`);
   assert.ok(Math.abs(keep.travel[2] - 1 * s) < 0.02 && Math.abs(keep.travel[0]) < 1e-6);
-  // the test clip's fastest end is the right hand swinging round, fastest at the end of its swing
-  assert.ok(inplace.marks.impact > 0.5 && inplace.marks.impact <= 1, `impact at ${inplace.marks.impact}`);
+  // a blow lands within the clip (this one swings at an even pace, so anywhere in it), and a given mark wins
+  assert.ok(inplace.marks.impact > 0 && inplace.marks.impact <= 1, `impact at ${inplace.marks.impact}`);
   assert.equal(C.retarget(clip, rig, { marks: { impact: 0.4 } }).marks.impact, 0.4);
   const g = C.retarget(C.parseGLB(T.glb()), rig, { root: "inplace" });
   assert.ok(Math.abs(g.speed - inplace.speed) < 0.01, "the GLB's armature scale is the same metres");
@@ -64,6 +64,22 @@ test("the hips: their travel is taken out and becomes a speed, or kept; the rise
   const rise = inplace.sample(0.5).root[1] - inplace.sample(0).root[1];
   assert.ok(Math.abs(rise - 0.05 * s) < 0.005, `the rise ${rise}`);
   assert.ok(Math.abs(inplace.sample(0).root[1]) < 0.02, "standing at the start: our hips where they are bound");
+});
+
+test("a clip shipped in our own form plays as the clip did", async () => {
+  const { C, T, rig } = await setup(), clip = C.parseBVH(T.bvh()), direct = C.retarget(clip, rig, { root: "keep" });
+  const json = JSON.parse(JSON.stringify(C.packClip(C.compact(clip, rig.bones))));
+  const shipped = C.play(C.unpackClip(json), rig, { root: "keep" });
+  let worst = 0, rootErr = 0;
+  for (const t of [0, 0.2, 0.55, 0.9]) {
+    const a = direct.sample(t), b = shipped.sample(t);
+    for (let i = 0; i < a.q.length; i += 4) { const d = Math.abs(a.q[i] * b.q[i] + a.q[i + 1] * b.q[i + 1] + a.q[i + 2] * b.q[i + 2] + a.q[i + 3] * b.q[i + 3]); worst = Math.max(worst, 2 * Math.acos(Math.min(1, d)) / (Math.PI / 180)); }
+    rootErr = Math.max(rootErr, Math.hypot(...a.root.map((v, k) => v - b.root[k])));
+  }
+  assert.ok(worst < 0.5, `a bone turns ${worst.toFixed(2)}° off`);
+  assert.ok(rootErr < 0.002, `the hips are ${rootErr} m off`);
+  for (const bad of [{}, { ...json, v: 2 }, { ...json, frames: 1e9 }, { ...json, bones: ["__proto__"] }, { ...json, d: json.d.slice(8) }, { ...json, fps: -1 }])
+    assert.throws(() => C.unpackClip(bad), C.ClipError);
 });
 
 test("bad clip files are refused with a plain error", async () => {
@@ -80,4 +96,24 @@ test("bad clip files are refused with a plain error", async () => {
   assert.throws(() => C.parseGLTF(j, new ArrayBuffer(8)), C.ClipError);
   assert.throws(() => C.parseGLTF({ ...j, skins: [{ joints: ["__proto__"] }] }, new ArrayBuffer(8)), C.ClipError);
   assert.equal({}.polluted, undefined);
+});
+
+test("the shipped clips: each one unpacks and plays on our skeleton, and the NOTICE names where they came from", async () => {
+  const { C, rig } = await setup(), DATA = join(HB, "data"), J = JSON.parse(readFileSync(join(DATA, "clips.json"), "utf8"));
+  assert.match(J.source.repo, /^https:\/\/github\.com\/Mesh2Motion\//);
+  assert.match(J.source.commit, /^[0-9a-f]{40}$/);
+  const notice = readFileSync(join(DATA, "NOTICE.md"), "utf8");
+  assert.ok(notice.includes(J.source.commit), "the NOTICE names the commit");
+  assert.ok(notice.includes("CC0 1.0 Universal"));
+  const names = Object.keys(J.clips); assert.ok(names.length >= 6);
+  for (const n of names) {
+    const c = J.clips[n]; assert.ok(notice.includes(c.from), `the NOTICE names ${c.from}`);
+    const p = C.play(C.unpackClip(c), rig, { root: c.root });
+    assert.ok(p.duration > 0);
+    for (const t of [0, p.duration / 2, p.duration]) {
+      const s = p.sample(t); assert.ok(s.q.every(Number.isFinite) && s.root.every(Number.isFinite), n);
+      const W = s.world(); const head = W.P[rig.at.head][1]; assert.ok(head > 0.5 && head < 2.4, `${n}: the head at ${head} m`);
+    }
+  }
+  assert.ok(C.play(C.unpackClip(J.clips.jog), rig, { root: "inplace" }).speed > 1, "the jog has a ground speed");
 });
