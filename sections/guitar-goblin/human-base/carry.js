@@ -3,7 +3,10 @@
 // Hard-surface things, built with the droid page's kit (../droid-creator/hard.js, imported read-only) and painted by its
 // material, in designs of our own: no real prop's, and no likeness of any one character's weapon.
 //
-//   const c = carry(fig);  c.set({ item: 'hilt' | 'double' | 'staff' | 'none', accent: '#hex', worn, wornKey });
+//   const c = carry(fig);  c.set({ item: 'hilt' | 'double' | 'staff' | 'pistol' | 'rifle' | 'none', accent: '#hex', blade: '#hex', worn, wornKey });
+//
+// c.group holds it where it is worn; c.hand holds the same thing in the right fist (hidden on the page; baked for the
+// table, where a fight shows it), with a saber's blade as its own lit piece.
 //
 // Each is placed from the figure's own surface after every reshape (the hip, the small of the back, between the
 // shoulder blades), so it follows every build and the arms-down pose, and is pushed out past the body and past whatever
@@ -12,7 +15,7 @@ import * as THREE from 'three';
 import { Builder, ROLE, M } from '../droid-creator/hard.js';
 import { noiseTexture, paintMaterial } from '../droid-creator/paint.js';
 
-export const ITEMS = { none: { name: 'Nothing' }, hilt: { name: 'Saber hilt' }, double: { name: 'Double-bladed hilt' }, staff: { name: 'Staff' } };
+export const ITEMS = { none: { name: 'Nothing' }, hilt: { name: 'Saber hilt' }, double: { name: 'Double-bladed hilt' }, staff: { name: 'Staff' }, pistol: { name: 'Blaster pistol' }, rifle: { name: 'Blaster rifle' } };
 
 /* ---------------- the things themselves, along local y, centred ---------------- */
 const ring = (b, r, y, w, role, rise = 0.0022) => b.lathe([[r, y - w / 2], [r + rise, y - w / 2 + 0.0015], [r + rise, y + w / 2 - 0.0015], [r, y + w / 2]], { role, segs: 28 });
@@ -59,12 +62,47 @@ function staff(b, len) {
   for (let k = -9; k <= 9; k++) ring(b, 0.0148, k * 0.022, 0.017, ROLE.secondary, 0.0016);   // the bound grip
 }
 
+// the blasters: our own designs, hard-surface like the hilts. Each is built with its grip at the origin, the grip running
+// down (-y) and back a little, the barrel along +z above it. A side outline (u along the barrel, v up) is extruded across
+// the gun (local x) by turning it a quarter about y.
+const profile = (b, outline, w, o) => b.at(M.ry(-Math.PI / 2), (q) => q.prism(outline, -w / 2, w / 2, o));
+// a blaster pistol, 24 cm: a squared receiver with a sloped back, a slanted grip, a trigger guard, a barrel with three
+// heat rings and a flared muzzle, a power cell slung under the barrel, a short sight on top
+function pistol(b) {
+  profile(b, [[-0.022, 0.022], [0.014, 0.022], [0.004, -0.088], [-0.034, -0.082]], 0.026, { role: ROLE.dark, bevel: 0.002 });   // the grip
+  profile(b, [[-0.05, 0.018], [0.11, 0.018], [0.11, 0.05], [0.07, 0.06], [-0.03, 0.06], [-0.05, 0.046]], 0.032, { role: ROLE.primary, bevel: 0.002 });   // the receiver
+  profile(b, [[0.012, 0.018], [0.05, 0.018], [0.05, 0.012], [0.03, -0.022], [0.016, -0.02], [0.03, 0.006], [0.012, 0.006]], 0.008, { role: ROLE.steel, bevel: 0.001 });   // the guard
+  b.at(M.t(0, 0.036, 0), (q) => { q.cyl(0.011, 0.11, 0.2, { role: ROLE.metal, n: 16 }); for (const z of [0.125, 0.145, 0.165]) q.cyl(0.0135, z, z + 0.006, { role: ROLE.steel, n: 16 }); q.cyl(0.0145, 0.19, 0.212, { role: ROLE.dark, n: 16 }); });
+  b.at(M.t(0, 0.012, 0.145), (q) => q.box(0.018, 0.014, 0.05, { role: ROLE.secondary, rad: 0.004, bevel: 0.0015 }));   // the power cell
+  b.at(M.t(0, 0.069, 0.02), (q) => q.cyl(0.0075, -0.02, 0.045, { role: ROLE.dark, n: 12 }));   // the sight
+}
+// a blaster rifle, 76 cm: the pistol's grip under a longer receiver, a barrel in a stack of square heat sinks, a fore
+// grip, a power cell under the receiver, a low scope, and an open stock of two bars and a butt plate
+function rifle(b) {
+  profile(b, [[-0.022, 0.022], [0.014, 0.022], [0.004, -0.088], [-0.034, -0.082]], 0.026, { role: ROLE.dark, bevel: 0.002 });
+  profile(b, [[-0.07, 0.018], [0.2, 0.018], [0.2, 0.058], [0.16, 0.07], [-0.05, 0.07], [-0.07, 0.054]], 0.036, { role: ROLE.primary, bevel: 0.002 });
+  profile(b, [[0.012, 0.018], [0.05, 0.018], [0.05, 0.012], [0.03, -0.022], [0.016, -0.02], [0.03, 0.006], [0.012, 0.006]], 0.008, { role: ROLE.steel, bevel: 0.001 });
+  b.at(M.t(0, 0.04, 0), (q) => { q.cyl(0.0115, 0.2, 0.52, { role: ROLE.metal, n: 16 }); for (let k = 0; k < 7; k++) q.at(M.t(0, 0, 0.22 + k * 0.035), (r) => r.box(0.03, 0.03, 0.018, { role: k % 2 ? ROLE.steel : ROLE.dark, rad: 0.004, bevel: 0.0015 })); q.cyl(0.015, 0.5, 0.53, { role: ROLE.dark, n: 16 }); });
+  profile(b, [[0.24, 0.024], [0.27, 0.024], [0.262, -0.06], [0.244, -0.06]], 0.024, { role: ROLE.dark, bevel: 0.002 });   // the fore grip
+  b.at(M.t(0, 0.008, 0.12), (q) => q.box(0.022, 0.02, 0.09, { role: ROLE.secondary, rad: 0.005, bevel: 0.002 }));   // the power cell
+  b.at(M.t(0, 0.088, 0.06), (q) => { q.cyl(0.012, -0.05, 0.08, { role: ROLE.dark, n: 14 }); q.at(M.t(0, -0.012, 0.015), (r) => r.box(0.01, 0.012, 0.03, { role: ROLE.steel, bevel: 0.001 })); });   // the scope
+  for (const [v, t] of [[0.058, 0.012], [0.024, 0.01]]) profile(b, [[-0.29, v - t / 2], [-0.07, v - t / 2], [-0.07, v + t / 2], [-0.29, v + t / 2]], 0.014, { role: ROLE.steel, bevel: 0.001 });   // the stock's bars
+  profile(b, [[-0.31, -0.01], [-0.285, -0.01], [-0.285, 0.085], [-0.31, 0.085]], 0.034, { role: ROLE.dark, bevel: 0.003 });   // the butt plate
+}
+
 /* ---------------- where they go ---------------- */
-let mat = null;
+let mat = null, bmat = null, bgeo = null;
+// a saber's blade (lit, its own entry on the table so it can light when the hilt is drawn): which ends have one
+const BLADES = { hilt: [1], double: [1, -1] }, BLADE = 0.92;
+// the middle of each gun's muzzle, in its own frame (grip at the origin, barrel along +z)
+const MUZZLE = { pistol: [0, 0.036, 0.212], rifle: [0, 0.04, 0.53] };
+const bladeGeo = () => (bgeo ||= new THREE.CylinderGeometry(0.0105, 0.0125, BLADE, 10, 1));
+const bladeMaterial = () => (bmat ||= new THREE.MeshStandardMaterial({ color: 0xc8f0ff, emissive: 0x4cc4ff, emissiveIntensity: 2, roughness: 0.4 }));
 function material() { if (!mat) { mat = paintMaterial(noiseTexture(128)); const u = mat.userData.u; u.uWear.value = 0.28; u.uPrimary.value.set('#3a2c20'); u.uSecondary.value.set('#5a1c1c'); } return mat; }
 
 export function carry(fig) {
   const B = fig.B, group = new THREE.Group(); group.name = 'carry'; fig.add(group);
+  const hand = new THREE.Group(); hand.name = 'carry-hand'; hand.visible = false; fig.add(hand);
   const opt = { item: 'none', accent: '#5a1c1c' }; let worn = null, built = null, builtFor = '';
   const side = B.marks.side;   // +x is the figure's left
   // surface points by rule, on the posed base mesh (metres): the most outward vertex in direction d at height y
@@ -107,6 +145,18 @@ export function carry(fig) {
       const axis = new THREE.Vector3(Math.cos(tilt), Math.sin(tilt), 0), out = new THREE.Vector3(0, 0, -1), centre = new THREE.Vector3(...p);
       centre.addScaledVector(out, clearance(centre, axis, out, 0.25, 0.025));
       m = frame(axis, out, centre);
+    } else if (opt.item === 'pistol') {
+      // holstered at the right hip, barrel down, its top to the front, the grip up and back for the hand to find
+      const yb = J('r-upper-leg').y + 0.03 * (H / 1.75), i = extreme(yb, -side * Math.cos(0.5), Math.sin(0.5)), [p, n] = pn(i);
+      const out = new THREE.Vector3(n.x, 0, n.z).normalize(), down = new THREE.Vector3(0, -1, 0.12).normalize(), fwd = new THREE.Vector3(0, 0.12, 1).normalize(), centre = new THREE.Vector3(...p);
+      centre.addScaledVector(out, clearance(centre.clone().addScaledVector(down, 0.1), down, out, 0.1, 0.024));
+      m = frame(fwd, down, centre);   // its top (+y) forward, its barrel (+z) down
+    } else if (opt.item === 'rifle') {
+      // slung across the back, barrel up over the left shoulder, its top outward
+      const yb = fig.landmark('backMid').p[1], i = extreme(yb, 0, -1, 0.02), [p] = pn(i), tilt = 0.32;
+      const along = new THREE.Vector3(side * Math.sin(tilt), Math.cos(tilt), -0.05).normalize(), out = new THREE.Vector3(0, 0, -1), centre = new THREE.Vector3(...p).addScaledVector(along, -0.12);
+      centre.addScaledVector(out, clearance(centre.clone().addScaledVector(along, 0.12), along, out, 0.38, 0.03));
+      m = frame(out, along, centre);   // its top (+y) outward, its barrel (+z) up the back
     } else {
       // slung across the back, from low on the right to over the left shoulder
       const yb = fig.landmark('backMid').p[1], i = extreme(yb, 0, -1, 0.02), [p] = pn(i), tilt = 0.22;
@@ -119,22 +169,52 @@ export function carry(fig) {
   function build() {
     const key = `${opt.item}|${opt.item === 'staff' ? Math.round(fig.height * 50) : 0}`;
     if (key === builtFor) return; builtFor = key;
-    if (built) { group.remove(built.mesh); built.mesh.geometry.dispose(); built = null; }
+    if (built) { group.remove(built.mesh); hand.remove(built.held, ...built.blades); built.mesh.geometry.dispose(); built = null; }
     if (opt.item === 'none' || !ITEMS[opt.item]) return;
     const b = new Builder(), len = opt.item === 'staff' ? Math.min(1.75, fig.height * 0.92) : 0;
-    if (opt.item === 'hilt') saber(b); else if (opt.item === 'double') double(b); else staff(b, len);
-    const mesh = new THREE.Mesh(b.geometry(), material()); mesh.castShadow = mesh.receiveShadow = true; mesh.matrixAutoUpdate = false; group.add(mesh);
-    built = { mesh, len };
+    if (opt.item === 'hilt') saber(b); else if (opt.item === 'double') double(b); else if (opt.item === 'pistol') pistol(b); else if (opt.item === 'rifle') rifle(b); else staff(b, len);
+    const geo = b.geometry(), mesh = new THREE.Mesh(geo, material()); mesh.castShadow = mesh.receiveShadow = true; mesh.matrixAutoUpdate = false; group.add(mesh);
+    // the same thing in the right hand, for a figure that fights: hidden on the page, baked for the table (table.js)
+    const held = new THREE.Mesh(geo, material()); held.matrixAutoUpdate = false; hand.add(held);
+    const blades = [];
+    for (const end of BLADES[opt.item] || []) { const bl = new THREE.Mesh(bladeGeo(), bladeMaterial()); bl.userData.bake = 'blade'; bl.matrixAutoUpdate = false; bl.userData.end = end; hand.add(bl); blades.push(bl); }
+    built = { mesh, len, held, blades };
   }
-  fig.addEventListener('shaped', () => { build(); place(); });
+  // in the right fist, in the pose the figure is bound in: a fist grips a bar running from the little finger to the
+  // thumb (forward, when the arm hangs), so a hilt or staff lies along that bar and a gun's grip does too, its barrel
+  // then running down the line of the forearm (so a clip that raises the arm to aim points it)
+  function holdInHand() {
+    if (!built) return;
+    const W = new THREE.Vector3(...fig.joint('r-hand')), E = new THREE.Vector3(...fig.joint('r-elbow')), f = W.clone().sub(E).normalize();
+    const fist = W.clone().addScaledVector(f, 0.075), t = new THREE.Vector3(0, 0, 1).addScaledVector(f, -f.z).normalize(), x = new THREE.Vector3().crossVectors(t, f).normalize();
+    const gun = opt.item === 'pistol' || opt.item === 'rifle', m = new THREE.Matrix4();
+    if (gun) m.makeBasis(x, t, f).setPosition(fist.clone().addScaledVector(t, 0.03));   // top toward the thumb, barrel along the forearm
+    else { const shift = { hilt: 0.04, double: 0.12, staff: 0.2 }[opt.item] || 0; m.makeBasis(new THREE.Vector3().crossVectors(t, f.clone().negate()).normalize(), t, f.clone().negate()).setPosition(fist.clone().addScaledVector(t, shift)); }   // its length along the bar, toward the thumb
+    built.held.matrix.copy(m); built.held.matrixWorldNeedsUpdate = true;
+    for (const bl of built.blades) {
+      const h = built.held, half = { hilt: 0.135, double: 0.25 }[opt.item] || 0.135, end = bl.userData.end, o = new THREE.Matrix4().makeTranslation(0, end * (half + BLADE / 2 - 0.004), 0);
+      if (end < 0) o.multiply(new THREE.Matrix4().makeRotationZ(Math.PI));
+      bl.matrix.multiplyMatrices(h.matrix, o); bl.matrixWorldNeedsUpdate = true;
+    }
+  }
+  fig.addEventListener('shaped', () => { build(); place(); holdInHand(); });
   const api = {
-    group, items: ITEMS,
+    group, hand, items: ITEMS,
+    // where a held gun's shot leaves it, in the figure's own frame as it stands (bound): the muzzle and the barrel's way;
+    // null for anything that does not shoot
+    muzzle() {
+      if (!built || !MUZZLE[opt.item]) return null;
+      const m = built.held.matrix, p = new THREE.Vector3(...MUZZLE[opt.item]).applyMatrix4(m), d = new THREE.Vector3(0, 0, 1).transformDirection(m);
+      return { point: p.toArray(), dir: d.toArray() };
+    },
     set(o = {}) {
       if ('worn' in o) worn = o.worn || null;
       if (o.item !== undefined) opt.item = o.item;
       if (o.accent) { opt.accent = o.accent; material().userData.u.uSecondary.value.set(o.accent); }
-      build(); place(); return api;
+      if (o.blade) { const c = new THREE.Color(o.blade); bladeMaterial().emissive.copy(c); bladeMaterial().color.copy(c).lerp(new THREE.Color(1, 1, 1), 0.6); }
+      build(); place(); holdInHand(); return api;
     },
   };
+  fig.userData.carry = api;   // (for the table's bake: what is held, and where a gun's shot leaves it)
   return api;
 }

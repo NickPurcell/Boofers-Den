@@ -78,8 +78,16 @@ test("a clip shipped in our own form plays as the clip did", async () => {
   }
   assert.ok(worst < 0.5, `a bone turns ${worst.toFixed(2)}° off`);
   assert.ok(rootErr < 0.002, `the hips are ${rootErr} m off`);
-  for (const bad of [{}, { ...json, v: 2 }, { ...json, frames: 1e9 }, { ...json, bones: ["__proto__"] }, { ...json, d: json.d.slice(8) }, { ...json, fps: -1 }])
+  for (const bad of [{}, { ...json, v: 2 }, { ...json, frames: 1e9 }, { ...json, d: json.d.slice(8) }, { ...json, fps: -1 }])
     assert.throws(() => C.unpackClip(bad), C.ClipError);
+  // bones named for what every object inherits: read as plain names, never as anything inherited, and refused by a figure
+  for (const n of ["__proto__", "constructor", "toString"]) {
+    const j = JSON.parse(JSON.stringify(json)); j.bones[0] = n; j.dir = JSON.parse(`{"${n}": {"to": "spine05", "d": [0, 1, 0]}}`);
+    let c; try { c = C.unpackClip(j); } catch (e) { assert.ok(e instanceof C.ClipError); continue; }
+    assert.equal(Object.getPrototypeOf(c.dir), null);
+    assert.throws(() => C.play(c, rig, {}), C.ClipError, `a clip driving "${n}"`);
+  }
+  assert.equal({}.to, undefined); assert.equal({}.d, undefined);
 });
 
 test("bad clip files are refused with a plain error", async () => {
@@ -155,4 +163,15 @@ test("a hand and the toes take their limb's rest difference: the hand stays on t
       assert.ok(angle(fore, hand) < 5, `the ${s} hand bends ${angle(fore, hand).toFixed(1)}° off its forearm`);
     }
   }
+});
+
+test("the gun clips carry their shots: when a bolt should leave the muzzle", async () => {
+  const { C, rig } = await setup(), J = JSON.parse(readFileSync(join(HB, "data", "clips.json"), "utf8"));
+  const pistol = C.play(C.unpackClip(J.clips["pistol-shoot"]), rig, {}), rifle = C.play(C.unpackClip(J.clips["rifle-fire"]), rig, {});
+  assert.equal(pistol.marks.shots.length, 1);
+  assert.ok(rifle.marks.shots.length >= 2, "the rifle fires a burst");
+  for (const p of [pistol, rifle]) { const s = p.marks.shots; assert.ok(s.every((t, i) => t >= 0 && t <= p.duration && (i === 0 || t - s[i - 1] >= 0.15))); }
+  // and a shipped clip's shots are read strictly
+  const bad = JSON.parse(JSON.stringify(J.clips["pistol-shoot"])); bad.marks.shots = ["x", -1];
+  assert.equal(C.unpackClip(bad).marks.shots, undefined);
 });
