@@ -1210,7 +1210,7 @@
         const path = pathTo(w, me.id, b.moveLeft, x, y) || [{ x: me.x, y: me.y }, { x, y }];
         const reactions = opportunities(w, me, path);
         me.x = x; me.y = y; w.spent[me.id].move += cost; w.spent[me.id].diag = found.par[`${x},${y}`] ? 1 : 0;
-        return { ok: true, world: w, log: [{ text: `${me.name} moves ${cost} ft.` }], events: [{ kind: 'move', unit: me.id, feet: cost }], reactions };
+        return { ok: true, world: w, log: [{ text: `${me.name} moves ${cost} ft.` }], events: [{ kind: 'move', unit: me.id, feet: cost, path: path.map((q) => [q.x, q.y]) }], reactions };   // (the path: the squares it took, for the map's 3D figures to run along)
       }
       case 'attack': {
         if (act.martial) {   // Martial Arts' bonus-action unarmed strike, then Flurry of Blows' second for a focus point (#67)

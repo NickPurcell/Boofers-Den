@@ -271,7 +271,7 @@
     const evs = f.events || [];
     const top = evs.reduce((m, ev) => Math.max(m, ev.seq), 0);
     if (UI.seen < 0) UI.seen = top;
-    for (const ev of evs) if (ev.seq > UI.seen && ev.kind !== 'move') UI.floats.push({ token: ev.token, kind: ev.kind, amount: ev.amount, t0: performance.now() });
+    for (const ev of evs) if (ev.seq > UI.seen && ev.kind !== 'move' && ev.kind !== 'act') UI.floats.push({ token: ev.token, kind: ev.kind, amount: ev.amount, t0: performance.now() });
     UI.seen = Math.max(UI.seen, top);
     if (UI.floats.length) animate();
     // off (the default): no bar and no change to the map's layout; the GM alone gets one small switch in its corner
