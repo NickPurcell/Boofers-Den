@@ -5,7 +5,8 @@
 // few centimetres tall on a screen cannot show anyway.
 //
 //   const meshes = bakeTable(fig);            // the body, the eyes, and the groups named 'pureblood' and 'carry'
-//   bakeMeshes(object, fig, meshes);          // anything else (clothes, hair), merged in the same way
+//   meshes = bakeMeshes(object, fig, meshes); // anything else (clothes, hair), merged in: returns a NEW list (the one
+//                                             // passed in is left as it was)
 //
 // Each entry: { name, position: Float32Array, normal: Float32Array, color: Uint8Array (sRGB, rgb per vertex),
 // index: Uint32Array, rough, metal, emissive?: Uint8Array (sRGB, rgb per vertex, only where something glows) }.
