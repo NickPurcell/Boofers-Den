@@ -341,9 +341,14 @@ export function bakeTable(fig, o = {}) {
   // what is carried, again in the right hand, for a figure that fights: hidden on the page, so shown just for the bake
   const held = fig.getObjectByName('carry-hand');
   if (held && rig) { const was = held.visible; held.visible = true; try { collect(held, fig, B, ctx, o.grid ?? TABLE_GRID, rig, 'bone:wrist.R', 'hand'); } finally { held.visible = was; } }
+  // a held gun's muzzle, for the table to start a shot from: on the right wrist's bone, as an offset from its joint in the
+  // pose the figure is bound in (every bone's own turn the identity there, so bone.localToWorld(offset) is where it is
+  // now), and the barrel's way in the same frame
+  const mz = fig.userData.carry && fig.userData.carry.muzzle ? fig.userData.carry.muzzle() : null;
   const list = finish(B);
   list.at = body.at; list.kept = body.kept;
   if (rig) list.skeleton = rig.bones;   // [{ name, parent (an index, -1 for the hips), head: [x, y, z] }], bound as they stand
+  if (rig && mz) { const w = rig.bones[rig.index['wrist.R']].head; list.muzzle = { bone: 'wrist.R', offset: mz.point.map((v, k) => v - w[k]), dir: mz.dir }; }
   list.ms = Math.round(performance.now() - t0);
   return list;
 }

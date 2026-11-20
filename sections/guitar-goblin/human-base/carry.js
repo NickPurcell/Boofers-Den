@@ -94,6 +94,8 @@ function rifle(b) {
 let mat = null, bmat = null, bgeo = null;
 // a saber's blade (lit, its own entry on the table so it can light when the hilt is drawn): which ends have one
 const BLADES = { hilt: [1], double: [1, -1] }, BLADE = 0.92;
+// the middle of each gun's muzzle, in its own frame (grip at the origin, barrel along +z)
+const MUZZLE = { pistol: [0, 0.036, 0.212], rifle: [0, 0.04, 0.53] };
 const bladeGeo = () => (bgeo ||= new THREE.CylinderGeometry(0.0105, 0.0125, BLADE, 10, 1));
 const bladeMaterial = () => (bmat ||= new THREE.MeshStandardMaterial({ color: 0xc8f0ff, emissive: 0x4cc4ff, emissiveIntensity: 2, roughness: 0.4 }));
 function material() { if (!mat) { mat = paintMaterial(noiseTexture(128)); const u = mat.userData.u; u.uWear.value = 0.28; u.uPrimary.value.set('#3a2c20'); u.uSecondary.value.set('#5a1c1c'); } return mat; }
@@ -198,6 +200,13 @@ export function carry(fig) {
   fig.addEventListener('shaped', () => { build(); place(); holdInHand(); });
   const api = {
     group, hand, items: ITEMS,
+    // where a held gun's shot leaves it, in the figure's own frame as it stands (bound): the muzzle and the barrel's way;
+    // null for anything that does not shoot
+    muzzle() {
+      if (!built || !MUZZLE[opt.item]) return null;
+      const m = built.held.matrix, p = new THREE.Vector3(...MUZZLE[opt.item]).applyMatrix4(m), d = new THREE.Vector3(0, 0, 1).transformDirection(m);
+      return { point: p.toArray(), dir: d.toArray() };
+    },
     set(o = {}) {
       if ('worn' in o) worn = o.worn || null;
       if (o.item !== undefined) opt.item = o.item;
@@ -206,5 +215,6 @@ export function carry(fig) {
       build(); place(); holdInHand(); return api;
     },
   };
+  fig.userData.carry = api;   // (for the table's bake: what is held, and where a gun's shot leaves it)
   return api;
 }

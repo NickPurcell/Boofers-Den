@@ -164,3 +164,14 @@ test("a hand and the toes take their limb's rest difference: the hand stays on t
     }
   }
 });
+
+test("the gun clips carry their shots: when a bolt should leave the muzzle", async () => {
+  const { C, rig } = await setup(), J = JSON.parse(readFileSync(join(HB, "data", "clips.json"), "utf8"));
+  const pistol = C.play(C.unpackClip(J.clips["pistol-shoot"]), rig, {}), rifle = C.play(C.unpackClip(J.clips["rifle-fire"]), rig, {});
+  assert.equal(pistol.marks.shots.length, 1);
+  assert.ok(rifle.marks.shots.length >= 2, "the rifle fires a burst");
+  for (const p of [pistol, rifle]) { const s = p.marks.shots; assert.ok(s.every((t, i) => t >= 0 && t <= p.duration && (i === 0 || t - s[i - 1] >= 0.15))); }
+  // and a shipped clip's shots are read strictly
+  const bad = JSON.parse(JSON.stringify(J.clips["pistol-shoot"])); bad.marks.shots = ["x", -1];
+  assert.equal(C.unpackClip(bad).marks.shots, undefined);
+});
