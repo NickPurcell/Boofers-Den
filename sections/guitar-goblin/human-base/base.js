@@ -126,9 +126,9 @@ export function loadBase() { return (loading ||= load()); }
 async function load() {
   const t0 = performance.now();
   const get = (f, as) => fetch(new URL(f, DATA)).then((r) => { if (!r.ok) throw new Error(`human-base: ${f} ${r.status}`); return r[as](); });
-  const [info, meshBuf, tBuf, skinBuf, derived] = await Promise.all([get('mesh.json', 'json'), get('mesh.bin', 'arrayBuffer'), get('targets.bin', 'arrayBuffer'), get('skin.bin', 'arrayBuffer'), get('derived.json', 'json').catch(() => null)]);
+  const [info, meshBuf, tBuf, skinBuf, derived, bonesBuf] = await Promise.all([get('mesh.json', 'json'), get('mesh.bin', 'arrayBuffer'), get('targets.bin', 'arrayBuffer'), get('skin.bin', 'arrayBuffer'), get('derived.json', 'json').catch(() => null), get('bones.bin', 'arrayBuffer').catch(() => null)]);
   const tm = {}; let tl = performance.now(); const lap = (k) => { const t = performance.now(); tm[k] = Math.round(t - tl); tl = t; }; tm.fetch = Math.round(tl - t0);   // where the load's time goes, after the data arrives
-  const B = decode(info, meshBuf, tBuf, skinBuf); lap('decode');
+  const B = decode(info, meshBuf, tBuf, skinBuf, bonesBuf); lap('decode');
   B.T = topology(B.N, B.quads); lap('topology');
   // the landmarks, regions and the rest come with the data (derive.js, baked by tests/human-base/bake.mjs); worked out here
   // only if they are missing or were made from another mesh
