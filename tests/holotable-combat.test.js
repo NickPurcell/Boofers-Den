@@ -4041,3 +4041,52 @@ test("3D figures' events under fog are judged when they happen (#279 review): an
   assert.deepEqual(await pathOf(sam), seenThen, "the old path doesn't grow with Sam's later sight");
   assert.ok(!JSON.stringify(await sam.state()).includes("Vibroblade"));
 });
+
+// a request with every d20 forced (a 2 misses, a 19 hits), the rest of the dice as they fall
+async function forcedD20(n, fn) {
+  const crypto = require("crypto"), real = crypto.randomInt;
+  crypto.randomInt = (a, b) => (b === 21 ? n : real(a, b));
+  try { return await fn(); } finally { crypto.randomInt = real; }
+}
+
+test("#283: a GM-hidden creature's miss never reaches the player it missed (no floating 'miss', no dodge)", async () => {
+  const { gm, sam, rae, ids } = await fight();
+  await gm.act("fight.toggle", { on: true });
+  const st0 = await gm.state(), avery = tokenOf(st0, "Avery").id, lurker = tokenOf(st0, "Lurker").id;
+  await sam.act("fight.end", {}); await gm.act("fight.end", {}); await rae.act("fight.end", {});   // to the hidden Lurker
+  const r = await forcedD20(2, () => gm.act("fight.attack", { target: ids.avery, attack: { name: "Claw", bonus: 4, damage: "1d4", type: "kinetic" } }));
+  assert.equal(r.code, 200, JSON.stringify(r.data));
+  assert.ok((await gm.state()).fight.events.some((e) => e.kind === "miss" && e.token === avery), "the GM sees the miss");
+  assert.ok(!((await sam.state()).fight.events || []).some((e) => e.kind === "miss"), "Avery's player never learns something hidden swung at her");
+  assert.ok(!JSON.stringify(await sam.state()).includes(lurker));
+});
+
+test("#283: under fog a miss shows only to those who saw the attacker too; a hit they see comes with no link to an act they didn't get", async () => {
+  db = new HoloFake(); sub = null;
+  const gm = browser(), sam = browser(), rae = browser();
+  await gm.login(GM_PW, "Dee"); await sam.login(PLAYER_PW, "Sam"); await rae.login(PLAYER_PW, "Rae");
+  await gm.act("map.settings", { cols: 20, rows: 12 });
+  const sheet = (name) => ({ name, ac: 15, speed: 30, hp: { max: 40, current: 40, temp: 0 }, classes: [{ name: "Fighter", level: 1 }], abilities: { str: 16, dex: 14, con: 12, int: 10, wis: 10, cha: 10 },
+    attacks: [{ name: "Vibrosword", ab: "str", damage: "1d8", type: "kinetic", props: "" }] });
+  const avery = (await sam.act("char.save", { char: sheet("Avery") })).data.id, bolt = (await rae.act("char.save", { char: sheet("Bolt") })).data.id;
+  await sam.act("token.add", { charId: avery, x: 2, y: 2 }); await rae.act("token.add", { charId: bolt, x: 11, y: 8 });
+  await gm.act("token.add", { name: "Raider", x: 13, y: 2 });
+  await gm.act("init.add", { name: "Raider", init: 20, hp: 30, ac: 2 }); await sam.act("init.add", { charId: avery, name: "Avery", init: 15 }); await rae.act("init.add", { charId: bolt, name: "Bolt", init: 10 });
+  await gm.act("init.start", {}); await gm.act("fight.toggle", { on: true });
+  await gm.act("fight.wall", { op: "add", a: [10, 0], b: [10, 6] }); await gm.act("fight.fog", { on: true });
+  const gs = await gm.state(), boltTok = tokenOf(gs, "Bolt").id, boltEnt = gs.initiative.entries.find((e) => e.name === "Bolt").id;
+  assert.ok(tokenOf(await sam.state(), "Bolt") && !tokenOf(await sam.state(), "Raider"), "Sam sees Bolt, round the wall's end, but not the Raider behind it");
+  const shot = { name: "Blaster", bonus: 4, damage: "1d4", type: "energy", range: [60, 240] };
+  assert.equal((await forcedD20(2, () => gm.act("fight.attack", { target: boltEnt, attack: shot }))).code, 200);
+  const miss = (st) => (st.fight.events || []).some((e) => e.kind === "miss" && e.token === boltTok);
+  assert.ok(miss(await rae.state()), "Bolt's player, who sees the Raider, sees it miss");
+  assert.ok(!miss(await sam.state()), "Sam, who sees Bolt but not the Raider, doesn't");
+  // its next turn: a hit, which Sam may see (chat tells it), but unlinked to the act Sam never got
+  for (const x of (await gm.state()).fight.pending || []) await gm.act("fight.react", { id: x.id, take: false });
+  await gm.act("fight.end", {}); await sam.act("fight.end", {}); await rae.act("fight.end", {});
+  assert.equal((await forcedD20(19, () => gm.act("fight.attack", { target: boltEnt, attack: shot }))).code, 200);
+  const hitOf = (st) => (st.fight.events || []).filter((e) => (e.kind === "hit" || e.kind === "crit") && e.token === boltTok).at(-1);
+  assert.ok(hitOf(await rae.state()).act > 0, "Rae's hit links to the act Rae saw");
+  const sh = hitOf(await sam.state());
+  assert.ok(sh && sh.act === undefined, `Sam's hit has no link to an act Sam didn't get: ${JSON.stringify(sh)}`);
+});
