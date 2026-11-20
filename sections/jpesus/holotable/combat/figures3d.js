@@ -230,13 +230,13 @@ function step(f, now, dt) {
   if (f.obj) { f.obj.position.set(f.x, f.obj.position.y, f.z); f.obj.rotation.y = f.rig ? f.turned : f.face; }
   return active;
 }
-let last = 0;
-function loop() {
-  raf = requestAnimationFrame(loop);
-  const now = performance.now(), dt = Math.min(0.05, last ? (now - last) / 1000 : 0.016); last = now; let moving = false;
+let last = 0, held = null;   // (held: a test's own clock, stepped by advance(), in place of the screen's frames)
+function frame(now) {
+  const dt = Math.min(0.25, last ? (now - last) / 1000 : 0.016); last = now; let moving = false;   // (a slow device takes bigger steps, not slower runs)
   for (const f of figs.values()) moving = step(f, now, dt) || moving;
   if (moving || dirty) { dirty = false; renderer.render(scene, camera); }
 }
+function loop() { raf = requestAnimationFrame(loop); if (held === null) frame(performance.now()); }
 
 /* ---------------- pointers: the flat map's handlers, with the point on the board ---------------- */
 let press = null;
@@ -307,4 +307,16 @@ export function state() { return { open: isOpen, figures: [...figs].map(([id, f]
 export function screenOf(sx, sy) {
   if (!el) return null; const r = el.getBoundingClientRect(), v = new THREE.Vector3(sx, 0, sy).project(camera);
   return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height };
+}
+// for tests and recordings: stop the screen's clock and step the figures by hand, so a slow machine can still record
+// smooth motion frame by frame; and point the camera
+export function hold(on) { held = on ? performance.now() : null; last = held || 0; }
+export function advance(ms) { if (held === null) return; held += ms; frame(held); }
+export function aim(x, z, d = 6, turn = 0.35) { controls.target.set(x, 0.5, z); camera.position.set(x + d * turn, d * 0.62, z + d * 0.75); controls.update(); dirty = true; }
+export function debug() {
+  const f = [...figs.values()][0]; if (!f || !f.obj) return null;
+  f.obj.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(f.obj, true), sm = f.obj.children.filter((o) => o.isMesh);
+  return { kids: f.obj.children.length, meshes: sm.length, skinned: sm.filter((o) => o.isSkinnedMesh).length, pos: f.obj.position.toArray(), scale: f.obj.scale.x, box: [box.min.toArray(), box.max.toArray()],
+    bones: f.bones ? f.bones.length : 0, root: f.bones ? f.bones[f.root].position.toArray() : null, ground: [ground.scale.x, ground.scale.y, groundCanvas.width, groundCanvas.height], cam: camera.position.toArray(), target: controls.target.toArray() };
 }

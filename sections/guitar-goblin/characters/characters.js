@@ -327,6 +327,20 @@ function offTheLegs(entries, skeleton) {   // what a vertex took from the legs, 
     }
   }
 }
+// Clothes meshed round the arms-down pose join the hanging arm to the side of the body below it; once the arms swing,
+// those faces stretch into webs from the hand to the hip. Cut them: no face of the clothes joins a vertex that follows
+// an arm to one that follows the hips or a leg.
+function cutArmWebs(entries, skeleton) {
+  const arm = skeleton.map((b) => /^(upperarm|lowerarm|wrist)/.test(b.name)), low = skeleton.map((b, k) => b.parent < 0 || /^(pelvis|upperleg|lowerleg|foot|toe)/.test(b.name));
+  for (const e of entries) {
+    const I = e.skinIndex, W = e.skinWeight; if (!I || !W) continue;
+    const n = I.length / 4, side = new Int8Array(n);   // 1 follows an arm, 2 the hips or a leg (by its heaviest bone)
+    for (let v = 0; v < n; v++) { let j = 0; for (let k = 1; k < 4; k++) if (W[v * 4 + k] > W[v * 4 + j]) j = k; const b = I[v * 4 + j]; side[v] = arm[b] ? 1 : low[b] ? 2 : 0; }
+    const ix = e.index, keep = [];
+    for (let t = 0; t < ix.length; t += 3) { const s = side[ix[t]] | side[ix[t + 1]] | side[ix[t + 2]]; if (s !== 3) keep.push(ix[t], ix[t + 1], ix[t + 2]); }
+    if (keep.length !== ix.length) e.index = Uint32Array.from(keep);
+  }
+}
 if (BAKE) {
   // dressed, tendrils or hair grown (and a Pureblood's tendrils draped over the clothes: a 'redraw' a moment later):
   // baked and handed to the table that asked (same site only)
@@ -345,6 +359,7 @@ if (BAKE) {
         if (SKIRTED.has(piece.name)) { const own = bakeMeshes(piece, fig, [], { grid: G, skin: 'surface' }); offTheLegs(own, list.skeleton); extra.push(...own); }
         else list = bakeMeshes(piece, fig, list, { grid: G, skin: SPINE.has(piece.name) ? 'torso' : 'surface' });
       }
+      cutArmWebs(extra, list.skeleton); cutArmWebs(list.filter((m) => m.name !== 'skin'), list.skeleton);
       const meshes = [...list, ...extra], buf = meshes.flatMap((m) => [m.position, m.normal, m.color, m.index, m.emissive, m.skinIndex, m.skinWeight].filter(Boolean).map((x) => x.buffer));
       window.parent.postMessage({ type: 'holotable-figure', look: ASKED, figure: { v: 3, meshes, skeleton: list.skeleton } }, location.origin, [...new Set(buf)]);
     } catch (e) { console.error(e); window.parent.postMessage({ type: 'holotable-figure', look: ASKED, error: String(e && e.message || e) }, location.origin); }
