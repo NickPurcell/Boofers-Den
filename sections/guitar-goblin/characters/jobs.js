@@ -81,6 +81,7 @@ export function run(job, a) {
   // these load their code only when first asked for, so a worker that only dresses starts sooner
   if (job === 'hairlocks') return import('./hairlocks.js').then((m) => m.hairLocks(a));   // hair worn down, as locks
   if (job === 'mikkian') return import('./tentacles.js').then((m) => m.mikkianTendrils(a));   // a Mikkian's head-tendrils
+  if (job === 'duros') return import('./duros-head.js').then((m) => m.durosHead(a));   // a Duros's head
   throw new Error('unknown job ' + job);
 }
 export function transferables(out) { const list = []; if (out.shade) for (const k of ['position', 'normal', 'index', 'shade', 'uv']) list.push(out[k].buffer); else if (out.t) for (const k of ['position', 'normal', 'index', 't', 'd']) list.push(out[k].buffer); for (const p of out.pieces || []) for (const k of ['position', 'normal', 'ao', 'uv', 'index']) if (p.mesh[k]) list.push(p.mesh[k].buffer); return list; }

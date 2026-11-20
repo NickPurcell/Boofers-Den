@@ -30,27 +30,43 @@ export const PAGE = {
     outfits: ['jacket', 'robe', 'coat', 'wraps', 'cloak'], defaults: { style: 'tail', hair: 'black', outfit: 'jacket', hood: 'none', main: 'navy', second: 'sand' } },
   // opens on the look its first player asked for: medium blue with dark blue accents, heavy smooth dreads to the shoulders
   mikkian: { people: 'between', outfits: ['coat', 'robe', 'jacket', 'wraps', 'armour', 'cloak'], defaults: { style: 'dreads', front: 'forward', thick: 'thick', length: 'shoulder', surface: 'smooth', pattern: 'deepen', tpose: 'rest', outfit: 'coat', hood: 'none', main: 'charcoal', second: 'steel' } },
+  // a spacer by default: a lean build, the operative's jacket, a blaster at the hip
+  duros: { people: 'lean', outfits: ['jacket', 'coat', 'wraps', 'armour', 'robe', 'cloak'], defaults: { outfit: 'jacket', hood: 'none', gear: 'pistol', main: 'slate', second: 'sand' } },
 };
-export const ORDER = ['pureblood', 'human', 'echani', 'mirialan', 'mikkian'];
+export const ORDER = ['pureblood', 'human', 'echani', 'mirialan', 'mikkian', 'duros'];
+// the Duros: not among the base's species looks (human-base/species/looks.js) but this page's own, a human body with a
+// head of its own (duros-head.js); the skins and eyes are the Duros creator's (duros-creator/), so a look made there can
+// be made again here by the same names
+export const DUROS = { name: 'Duros',
+  blurb: 'A domed, noseless head, large red eyes and blue to green skin: born spacers and pilots. (A look from the earlier Duros creator: pick the same skin, eyes and head here; its scout, pilot and trader outfits are the jacket, wraps and long coat.)',
+  skins: { duro: { name: 'Duro blue', c: '#4f7397' }, slate: { name: 'Slate grey-blue', c: '#5d7186' }, deep: { name: 'Deep blue', c: '#34567f' }, sky: { name: 'Pale blue', c: '#6c8dab' },
+    teal: { name: 'Blue-green', c: '#3f7b79' }, sea: { name: 'Sea green', c: '#55917a' }, green: { name: 'Green', c: '#5e8756' }, grey: { name: 'Grey-green', c: '#74897c' } },
+  eyes: { red: { name: 'Red', c: '#d2261c' }, ember: { name: 'Orange-red', c: '#e6481a' }, orange: { name: 'Orange', c: '#ee7a1c' }, amber: { name: 'Amber', c: '#eaa238' },
+    crimson: { name: 'Crimson', c: '#ac1826' }, dark: { name: 'Dark red', c: '#78121a' } },
+  heads: { round: 'Rounded', tall: 'High dome', narrow: 'Narrow' },
+  defaults: { skin: 'duro', eyes: 'red', head: 'round' } };
+// a species' look table: the base's, or the Duros (this page's)
+export const lookOf = (sp) => (sp === 'duros' ? DUROS : LOOKS[sp]);
 // the people to start from: the base's presets, and one between the two (the controls' own middle)
 export const PEOPLE = { ...PRESETS, between: { name: 'In between', controls: { gender: 0.5 } } };
 export const asItems = (o) => Object.entries(o).map(([key, v]) => ({ key, name: typeof v === 'string' ? v : v.name, c: v.c }));
 
 export function optionsFor(sp) {
-  const L = LOOKS[sp], P = PAGE[sp], o = {
-    species: { label: 'Species', items: ORDER.map((k) => ({ key: k, name: LOOKS[k].name })) },
+  const L = lookOf(sp), P = PAGE[sp], o = {
+    species: { label: 'Species', items: ORDER.map((k) => ({ key: k, name: lookOf(k).name })) },
     people: { label: 'Start from', items: asItems(PEOPLE) },
     skin: { label: 'Skin', swatch: true, items: asItems(L.skins) }, eyes: { label: 'Eyes', swatch: true, items: asItems(L.eyes) },
   };
   if (sp === 'pureblood') o.glow = { label: 'Eye glow', items: asItems(GLOWS) };
-  o.liner = { label: 'Lined eyes', items: asItems(LINERS) };
-  if (sp !== 'pureblood') o.marks = { label: 'Face detail', items: asItems(MARKS) };
+  if (sp !== 'duros') o.liner = { label: 'Lined eyes', items: asItems(LINERS) };
+  if (sp !== 'pureblood' && sp !== 'duros') o.marks = { label: 'Face detail', items: asItems(MARKS) };
+  if (sp === 'duros') o.head = { label: 'Head', items: asItems(DUROS.heads) };
   for (const [k, d] of Object.entries(L.options || {})) o[k] = { label: d.label, multi: d.multi, swatch: d.swatch, items: asItems(d.items) };
   if (sp === 'mikkian') {   // head-tendrils in place of hair
     o.style = { label: 'Head-tendrils', items: asItems(ARRANGE) }; o.front = { label: 'Tendril line', items: [{ key: 'forward', name: 'Forward' }, { key: 'high', name: 'High' }] }; o.thick = { label: 'Tendril thickness', items: asItems(THICK) };
     o.tpose = { label: 'Tendrils held', items: [{ key: 'rest', name: 'Relaxed, lying back' }, { key: 'flare', name: 'Flared, standing out' }] };
     o.length = { label: 'Tendril length', items: asItems(LENGTHS) }; o.surface = { label: 'Tendril surface', items: asItems(SURFACES) }; o.pattern = { label: 'Tendril pattern', items: asItems({ deepen: { name: 'Deepening to the lips' }, fade: { name: 'Paler tips' }, ...PATTERNS }) };
-  } else {
+  } else if (sp !== 'duros') {   // (a Duros has no hair)
     o.style = { label: 'Hair', items: [...['slick', 'swept', 'crop', 'tail', 'knot', 'braid'].map((k) => ({ key: k, name: STYLES[k].name })), { key: 'bob', name: 'Bob' }, { key: 'long', name: 'Long' }, ...['crest', 'shaved', 'bald'].map((k) => ({ key: k, name: STYLES[k].name }))] };
     o.hair = { label: 'Hair colour', swatch: true, items: P.hairs };
   }
@@ -65,9 +81,9 @@ export function optionsFor(sp) {
   return o;
 }
 export const defaultsOf = (sp) => {
-  const d = { ...LOOKS[sp].defaults, ...PAGE[sp].defaults, people: PAGE[sp].people };
+  const d = { ...lookOf(sp).defaults, ...PAGE[sp].defaults, people: PAGE[sp].people };
   if (sp === 'pureblood') for (const [k, o] of Object.entries(PUREBLOOD.options)) d[k] = o.def;
   return d;
 };
 // a species this page offers (an own key: a link's #species=__proto__ is not one)
-export const isSpecies = (sp) => typeof sp === 'string' && Object.prototype.hasOwnProperty.call(PAGE, sp) && Object.prototype.hasOwnProperty.call(LOOKS, sp);
+export const isSpecies = (sp) => typeof sp === 'string' && Object.prototype.hasOwnProperty.call(PAGE, sp) && (sp === 'duros' || Object.prototype.hasOwnProperty.call(LOOKS, sp));
