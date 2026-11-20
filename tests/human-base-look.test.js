@@ -182,7 +182,10 @@ test("kinds: no smuggling — a humanoid's keys never reach a Jawa, a Jawa's nev
 
 test("kinds: an unknown kind, a prototype name or a bad value gives a default, never an error", () => {
   const d0 = def(S.speciesOrder[0]).look;
-  for (const k of ["droid", "__proto__", "constructor", "toString", "hasOwnProperty", "JAWA", "jawa.", ""]) {
+  // an empty kind= is no kind: the look reads as it did before there were kinds
+  assert.equal(L.parseLook("kind=&species=human&robe=plum").look, L.parseLook("species=human").look);
+  assert.equal(L.parseLook("kind=&species=human").changed, L.parseLook("species=human").changed);
+  for (const k of ["robot", "__proto__", "constructor", "toString", "hasOwnProperty", "JAWA", "jawa."]) {
     const r = L.parseLook(`kind=${k}&species=human&robe=plum`); assert.equal(r.kind, "humanoid"); assert.equal(r.look, d0, `kind=${k}`); assert.equal(r.fallback, true);
   }
   // a kind that is not even readable text is dropped like any bad pair: no kind, so a humanoid, with no Jawa keys
@@ -197,14 +200,42 @@ test("kinds: an unknown kind, a prototype name or a bad value gives a default, n
 
 test("kinds: random text with kinds in it never throws and never leaves its kind's whitelist", () => {
   let seed = 11; const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 4294967296);
-  const bits = ["kind=", "jawa", "humanoid", "droid", "&", "=", "species=", "human", "robe", "plum", "seed", "hold", "blaster", "extras", "goggles", ".", "%", "%26", "__proto__", "constructor", "c.jaw", "1", "0.5", "<", "\u0000"];
+  const bits = ["kind=", "jawa", "humanoid", "droid", "chassis=", "t3", "kit", "antenna", "&", "=", "species=", "human", "robe", "plum", "seed", "hold", "blaster", "extras", "goggles", ".", "%", "%26", "__proto__", "constructor", "c.jaw", "1", "0.5", "<", "\u0000"];
   for (let i = 0; i < 3000; i++) {
     let t = ""; const n = 1 + Math.floor(rnd() * 24); for (let j = 0; j < n; j++) t += bits[Math.floor(rnd() * bits.length)];
     const r = L.parseLook(t);
-    assert.ok(r.kind === "humanoid" || r.kind === "jawa"); assert.match(r.look, SAFE);
-    if (r.kind === "jawa") for (const k of Object.keys(r.values)) assert.ok(S.kinds.jawa.order.includes(k), k);
+    assert.ok(["humanoid", "jawa", "droid"].includes(r.kind)); assert.match(r.look, SAFE);
+    if (r.kind !== "humanoid") for (const k of Object.keys(r.values)) assert.ok(S.kinds[r.kind].order.includes(k), k);
     else assert.ok(S.speciesOrder.includes(r.species));
     assert.equal(L.parseLook(r.look).look, r.look);
   }
   protoClean();
+});
+
+test("kinds: a droid's look (the T3-type) keeps only the droid's keys, reads back as itself, and other chassis fall back", () => {
+  const K = S.kinds.droid;
+  assert.ok(K && K.order[0] === "chassis" && K.order.includes("kit") && K.order.includes("primary") && K.order.includes("seed"));
+  assert.deepEqual(K.keys.chassis.items, ["t3"]);
+  const d = L.parseLook("kind=droid");
+  assert.equal(d.kind, "droid"); assert.equal(d.changed, 0); assert.equal(d.fallback, false); assert.match(d.look, SAFE);
+  assert.equal(L.parseLook(d.look).look, d.look);
+  for (const k of K.order) if (K.keys[k].items) for (const v of K.keys[k].items) { const r = L.parseLook(`kind=droid&${k}=${v}`); assert.equal(r.changed, 0, `${k}=${v}`); }
+  assert.equal(L.parseLook("kind=droid&kit=blaster.nope.antenna.blaster").values.kit, K.keys.kit.items.filter((x) => x === "antenna" || x === "blaster").join("."));
+  for (const c of ["utility", "power", "__proto__", "T3", ""]) { const r = L.parseLook(`kind=droid&chassis=${c}&primary=red`); assert.equal(r.fallback, true, `chassis=${c}`); assert.equal(r.kind, "humanoid"); }
+  // nothing crosses between any two kinds
+  const j = L.parseLook("kind=droid&robe=plum&hold=blaster&species=human&c.jaw=0.5&kit=arm");
+  for (const k of ["robe", "hold", "species", "c.jaw"]) assert.ok(!Object.prototype.hasOwnProperty.call(j.values, k), `${k} reached the droid`);
+  const w = L.parseLook("kind=jawa&kit=arm&primary=red&chassis=t3");
+  for (const k of ["kit", "primary", "chassis"]) assert.ok(!Object.prototype.hasOwnProperty.call(w.values, k), `${k} reached the Jawa`);
+  const h = L.parseLook("species=human&kit=arm&chassis=t3&scheme=service");
+  for (const k of ["kit", "chassis", "scheme"]) assert.ok(!Object.prototype.hasOwnProperty.call(h.values, k), `${k} reached the humanoid`);
+  protoClean();
+});
+
+// The likeness line (crew rule): no default may be one well-known unit's paint. The droid a table makes from an empty
+// look is the creator's own default T3-type: sand and field green with an amber eye, never pale with blue trim.
+test("kinds: a droid's default look is our own scheme, not a pale unit with blue trim", () => {
+  const d = L.parseLook("kind=droid").values;
+  assert.equal(d.primary, "sand"); assert.equal(d.secondary, "green"); assert.equal(d.eye, "amber");
+  assert.ok(!(["white", "cream", "grey"].includes(d.primary) && ["blue", "navy", "teal"].includes(d.secondary)));
 });
