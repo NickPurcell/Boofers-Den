@@ -20,7 +20,7 @@ import '/sections/guitar-goblin/human-base/look-parse.js';
 
 const HT = window.HT, wrap = document.getElementById('mapWrap'), flat = document.getElementById('mapCanvas');
 // the page that bakes a look, by the kind its canonical form starts with (kind=jawa: engineer13's Jawa creator; none: ours)
-const PAGES = { humanoid: '/sections/guitar-goblin/characters/index.html', jawa: '/sections/guitar-goblin/jawa-creator/index.html' };
+const PAGES = { humanoid: '/sections/guitar-goblin/characters/index.html', jawa: '/sections/guitar-goblin/jawa-creator/index.html', droid: '/sections/guitar-goblin/droid-creator/index.html' };
 const pageOf = (look) => { const k = (/^kind=([a-z]+)&/.exec(look) || [])[1] || 'humanoid'; return Object.prototype.hasOwnProperty.call(PAGES, k) ? PAGES[k] : PAGES.humanoid; };
 const BAKE_V = 'b4', SQ = 1.524;   // metres in a five-foot square (BAKE_V: bump whenever the creator's bake changes, so no browser keeps an old figure: b4, #285's skirts)
 const FAKE = 7357;   // the pointer id the flat map's handlers see from here (never a real one, so they capture nothing)
@@ -58,16 +58,16 @@ function bake(look) {
 // a bake as handed over or stored: typed arrays of the right kinds and sizes, nothing else
 // (with a skeleton, v 3: its bones in order, each parent before it, and four bones and weights for every vertex)
 function valid(b) {
-  if (!b || (b.v !== 2 && b.v !== 3) || !Array.isArray(b.meshes) || !b.meshes.length || b.meshes.length > 200) return false;
+  if (!b || (b.v !== 2 && b.v !== 3) || !Array.isArray(b.meshes) || !b.meshes.length || b.meshes.length > 200 || (b.kind !== undefined && b.kind !== 'droid')) return false;
   const S = b.v === 3 ? b.skeleton : null;
   if (b.v === 3 && !(Array.isArray(S) && S.length > 0 && S.length <= 256 && S.every((x, k) => x && Number.isInteger(x.parent) && x.parent >= -1 && x.parent < k
     && Array.isArray(x.head) && x.head.length === 3 && x.head.every(Number.isFinite)))) return false;
-  return b.meshes.every((m) => m && m.position instanceof Float32Array && m.normal instanceof Float32Array && m.color instanceof Uint8Array && m.index instanceof Uint32Array
+  return b.meshes.every((m) => m && m.position instanceof Float32Array && m.normal instanceof Float32Array && m.color instanceof Uint8Array && (m.index instanceof Uint32Array || m.index instanceof Uint16Array)
     && m.position.length % 3 === 0 && m.normal.length === m.position.length && m.color.length === m.position.length && m.index.length % 3 === 0
     && (m.emissive === undefined || (m.emissive instanceof Uint8Array && m.emissive.length === m.position.length))
     && (!S || (m.skinIndex instanceof Uint8Array && m.skinWeight instanceof Uint8Array && m.skinIndex.length === (m.position.length / 3) * 4
       && m.skinWeight.length === m.skinIndex.length && m.skinIndex.every((i) => i < S.length)))
-    && (m.where === undefined || m.where === 'belt' || m.where === 'hand')
+    && (m.where == null || m.where === 'belt' || m.where === 'hand')
     && m.index.every((i) => i < m.position.length / 3))
     && (b.muzzle === undefined || (b.muzzle && typeof b.muzzle.bone === 'string' && [b.muzzle.offset, b.muzzle.dir].every((v) => Array.isArray(v) && v.length === 3 && v.every(Number.isFinite))));
 }
@@ -78,7 +78,7 @@ function lookOf(raw) {
   return looks.get(raw);
 }
 const LIN = new Float32Array(256).map((_, i) => { const x = i / 255; return x <= 0.04045 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); });
-function build(b) {
+function build(b, T3) {
   const g = new THREE.Group(), mats = new Map();
   // a skeleton: the bones where they stand (each bound with no turn of its own), and every mesh skinned to them
   let skel = null;
@@ -86,7 +86,9 @@ function build(b) {
     const bones = b.skeleton.map((x) => { const o = new THREE.Bone(); o.name = String(x.name || '').slice(0, 40); return o; });
     b.skeleton.forEach((x, k) => { const p = x.parent >= 0 ? b.skeleton[x.parent].head : [0, 0, 0]; bones[k].position.set(x.head[0] - p[0], x.head[1] - p[1], x.head[2] - p[2]); (x.parent >= 0 ? bones[x.parent] : g).add(bones[k]); });
     g.updateMatrixWorld(true); skel = new THREE.Skeleton(bones);
-    g.userData.rig = makeRig(b.skeleton); g.userData.root = b.skeleton.findIndex((x) => x.parent < 0); g.userData.rootAt = b.skeleton[g.userData.root].head.slice();
+    // (a droid walks on a skeleton of its own: engineer13's T3 motion, droid-creator/t3-motion.js, in place of the run and the clips)
+    if (T3) { g.userData.rig = T3.makeT3Rig(b.skeleton); g.userData.motion = T3; } else g.userData.rig = makeRig(b.skeleton);
+    g.userData.root = b.skeleton.findIndex((x) => x.parent < 0); g.userData.rootAt = b.skeleton[g.userData.root].head.slice();
   }
   for (const m of b.meshes) {
     const geo = new THREE.BufferGeometry(), c = new Float32Array(m.color.length);
@@ -118,7 +120,7 @@ function figureFor(look) {
       if (!valid(b)) throw new Error('the figure came back broken');
       db.put(key, b);
     }
-    return build(b);
+    return build(b, b.kind === 'droid' ? await import('/sections/guitar-goblin/droid-creator/t3-motion.js') : null);
   })());
   return made.get(look);
 }
@@ -186,12 +188,12 @@ function sync() {
         mine.obj = tpl.userData.rig ? cloneRigged(tpl) : tpl.clone(); mine.obj.userData.tokenId = t.id; mine.obj.traverse((o) => { if (o.isMesh) o.material = o.material.clone(); });
         if (tpl.userData.rig) {   // its own bones, in the skeleton's order, to pose
           const sm = mine.obj.children.find((o) => o.isSkinnedMesh);
-          Object.assign(mine, { rig: tpl.userData.rig, bones: sm.skeleton.bones, root: tpl.userData.root, rootAt: tpl.userData.rootAt, turned: mine.face, hand: [], belt: [] });
+          Object.assign(mine, { rig: tpl.userData.rig, motion: tpl.userData.motion || null, bones: sm.skeleton.bones, root: tpl.userData.root, rootAt: tpl.userData.rootAt, turned: mine.face, hand: [], belt: [] });
           mine.obj.traverse((o) => { if (o.isMesh && o.userData.where === 'hand') mine.hand.push(o); else if (o.isMesh && o.userData.where === 'belt') mine.belt.push(o); });
           const mz = tpl.userData.muzzle; if (mz) mine.muzzle = { bone: mine.bones[mz.k], offset: new THREE.Vector3(...mz.offset), dir: new THREE.Vector3(...mz.dir) };
           // what it carries: the look's gear; else (a Jawa's own keys) from the bake: a muzzle is a gun, a held thing without one a weapon
           mine.gear = (/(?:^|&)gear=([a-z_]+)/.exec(look) || [])[1] || (mine.muzzle ? 'pistol' : mine.hand.length ? 'hilt' : 'none');
-          pose(mine); loadClips(); warm(mine);
+          pose(mine); if (!mine.motion) { loadClips(); warm(mine); }
         }
         figsRoot.add(mine.obj); place(mine, t); dirty = true;
       }).catch((e) => console.warn('3D figure:', e && e.message));
@@ -295,6 +297,7 @@ function playOn(f, names, o = {}) {
 }
 function stepAct(f, dt) {
   const a = f.act; a.t += dt;
+  if (a.droid) { if (!a.done && a.t >= a.at) { a.done = true; if (a.gun) { pose(f); fire(f, a.target, a.land); } else a.land(); } if (a.t > 1) f.act = null; return; }
   if (a.out) { a.w -= dt / 0.2; if (a.w <= 0) f.act = null; return; }
   a.w = Math.min(1, a.w + dt / 0.12);
   if (a.draw && !a.drawn && (a.i > a.draw.i || a.t >= a.draw.t)) { a.drawn = true; inHand(f, true); }
@@ -315,6 +318,7 @@ function happenings() {
   for (const u of Object.values((s.fight && s.fight.units) || {})) {
     const f = u && u.token && figs.get(u.token); if (!f || !f.rig || f.down === !!u.down) continue;
     f.down = !!u.down;
+    if (f.motion) { f.downT = f.down ? 0 : null; continue; }   // (a droid sinks forward and holds: downT3)
     if (f.down) playOn(f, ['down'], { hold: true }); else playOn(f, ['get-up']);
   }
   const top = fe.reduce((m, e) => Math.max(m, +e.seq || 0), 0);
@@ -335,6 +339,7 @@ function happenings() {
     for (const r of results) used.add(r.seq);
     const land = () => { for (const r of results) react(r); };
     if (f && tgt) f.face = Math.atan2(tgt.tx - f.tx, tgt.tz - f.tz);   // it turns to whoever it acts on
+    if (f && f.motion) { f.act = { droid: true, t: 0, at: 0.35, done: false, land, gun: ev.how === 'ranged' && !!f.muzzle, target: tgt ? { x: tgt.tx, z: tgt.tz } : null }; continue; }   // (a droid has no clips: it turns, then fires from its head or simply lands)
     const wp = f && f.rig ? weaponFor(f, ev, clipsOf(ev)) : { names: clipsOf(ev), draw: null };
     if (!(f && playOn(f, wp.names, { onImpact: land, draw: wp.draw, hit: wp.hit || 0, gun: ev.how === 'ranged', target: tgt ? { x: tgt.tx, z: tgt.tz } : null }))) land();
   }
@@ -347,6 +352,14 @@ function happenings() {
 // how far it has gone, so its feet never slide; it turns to face where it goes, and eases into its stand when it
 // arrives. It shows only a move this browser was already told about: the position is always the server's.
 function pose(f) {
+  if (f.motion) {   // a droid: its walk, phased by how far it has gone, over its stand; sunk forward when down
+    const M = f.motion; let p = M.standT3(f.rig, 0);
+    if (f.w > 0.001) p = blend(p, M.walkT3(f.rig, f.travel / f.rig.speed), f.w);
+    if (f.downT != null) p = M.downT3(f.rig, f.downT);
+    for (let i = 0; i < f.bones.length; i++) f.bones[i].quaternion.fromArray(p.q, i * 4);
+    f.bones[f.root].position.set(f.rootAt[0] + p.root[0], f.rootAt[1] + p.root[1], f.rootAt[2] + p.root[2]);
+    return;
+  }
   const st = stand(f.rig, 0); let p = f.w > 0.001 ? blend(st, run(f.rig, f.travel / f.rig.speed), f.w) : st;
   if (f.act && f.act.p) p = blend(p, f.act.p.sample(Math.min(f.act.t, f.act.p.duration)), Math.min(1, f.act.w));
   for (let i = 0; i < f.bones.length; i++) f.bones[i].quaternion.fromArray(p.q, i * 4);
@@ -372,6 +385,7 @@ function step(f, now, dt) {
     const want = now - f.moved < 120 ? 1 : 0;
     if (f.w !== want) { f.w = want ? Math.min(1, f.w + dt / 0.15) : Math.max(0, f.w - dt / 0.3); active = true; }
     if (f.act) { stepAct(f, dt); active = true; }
+    if (f.downT != null && f.downT < 1) { f.downT = Math.min(1, f.downT + dt); active = true; }
     if (active && f.bones) pose(f);
   }
   if (f.obj) { f.obj.position.set(f.x, f.obj.position.y, f.z); f.obj.rotation.y = f.rig ? f.turned : f.face; }
@@ -452,7 +466,7 @@ export function close() {
 // the flat map has just drawn (a poll, a move, a hover): the ground and the figures follow, once a frame
 export function drawn() { if (isOpen && !redraw) redraw = requestAnimationFrame(paintGround); }
 // for tests and the curious: what is standing where, and where a square is on the screen
-export function state() { return { open: isOpen, figures: [...figs].map(([id, f]) => ({ id, ready: !!f.obj, x: f.x, z: f.z, face: f.face, rigged: !!f.rig, run: f.w, travel: f.travel, clip: f.act ? f.act.list[f.act.i] : null, down: f.down, inHand: !!(f.hand && f.hand.some((o) => o.visible)), gear: f.gear || null, muzzle: !!f.muzzle, held: f.hand ? f.hand.length : 0 })), bolts: bolts.length, fired }; }
+export function state() { return { open: isOpen, figures: [...figs].map(([id, f]) => ({ id, ready: !!f.obj, x: f.x, z: f.z, face: f.face, rigged: !!f.rig, run: f.w, travel: f.travel, clip: f.act ? (f.act.list ? f.act.list[f.act.i] : 'droid-act') : null, down: f.down, inHand: !!(f.hand && f.hand.some((o) => o.visible)), gear: f.gear || null, muzzle: !!f.muzzle, held: f.hand ? f.hand.length : 0 })), bolts: bolts.length, fired }; }
 export function screenOf(sx, sy) {
   if (!el) return null; const r = el.getBoundingClientRect(), v = new THREE.Vector3(sx, 0, sy).project(camera);
   return { x: r.left + (v.x + 1) / 2 * r.width, y: r.top + (1 - v.y) / 2 * r.height };
