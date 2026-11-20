@@ -392,6 +392,53 @@ function offTheLegs(entries, skeleton) {   // what a vertex took from the legs, 
     }
   }
 }
+// ...and what took an arm's beside the hand rather than round the arm, given to the hips too (#301). In the arms-down pose
+// the hands hang against the skirt, so cloth beside a hand is nearest to it (or to the wrist) and took its weights: it went with the hand as
+// the arms swung, and cutArmWebs cut it from the skirt, leaving a hole at the hip. A sleeve ends at the wrist (outfit-shape:
+// the figure's hands are taken off there), so whatever lies past the wrist along the forearm is skirt, not sleeve.
+function offTheHands(entries, skeleton) {
+  const H = skeleton, at = (n) => H.findIndex((b) => b.name === n), hips = Math.max(0, H.findIndex((b) => b.parent < 0));
+  const under = (i, re) => { for (let j = i; j >= 0; j = H[j].parent) if (re.test(H[j].name)) return true; return false; };
+  const arm = H.map((b, i) => under(i, /^upperarm/));
+  const fore = ['L', 'R'].map((s) => { const e = at('lowerarm01.' + s), w = at('wrist.' + s); if (e < 0 || w < 0) return null; const A = H[e].head, u = H[w].head.map((v, k) => v - A[k]), l2 = u[0] ** 2 + u[1] ** 2 + u[2] ** 2; return { A, u, l2 }; });
+  for (const e of entries) {
+    const I = e.skinIndex, W = e.skinWeight, P = e.position; if (!I || !W) continue;
+    for (let v = 0, n = I.length / 4; v < n; v++) {
+      let onArm = 0; for (let j = 0; j < 4; j++) if (arm[I[v * 4 + j]]) onArm += W[v * 4 + j];
+      if (!onArm) continue;
+      const f = fore[P[v * 3] > 0 ? 0 : 1]; if (!f) continue;
+      const t = ((P[v * 3] - f.A[0]) * f.u[0] + (P[v * 3 + 1] - f.A[1]) * f.u[1] + (P[v * 3 + 2] - f.A[2]) * f.u[2]) / f.l2;
+      if (t <= 1) continue;   // (round the forearm, to the wrist: sleeve)
+      let moved = 0, slot = -1;
+      for (let j = 0; j < 4; j++) { const b = I[v * 4 + j]; if (arm[b]) { moved += W[v * 4 + j]; W[v * 4 + j] = 0; if (slot < 0) slot = j; } else if (b === hips && W[v * 4 + j] > 0) slot = j; }
+      if (moved && slot >= 0) { if (I[v * 4 + slot] !== hips) { I[v * 4 + slot] = hips; W[v * 4 + slot] = 0; } W[v * 4 + slot] += moved; }
+    }
+  }
+}
+// ...and none of it inside the body. Behind a hanging hand the cloth is pressed in (the hand's dent) to lie close on the
+// thigh, and in the bake (a 1 cm grid on the cloth, a coarser body) the thigh came out through it: a dark patch the size
+// of the hand once the arm swung away (#301). Each cloth vertex nearer the body's skin than 1 cm, or under it, is set out
+// to 1 cm along the skin's normal there (the arms and hands not counted as skin: the cloth gives way to them already).
+// Below the hips only, where the hands hang: a sash or a belt above may lie closer by design.
+function offTheBody(entries, skeleton) {
+  const legs = skeleton.filter((b) => /^upperleg01\./.test(b.name)), hipY = legs.length ? legs.reduce((m, b) => m + b.head[1], 0) / legs.length : Infinity;
+  const P0 = fig.p0, N0 = fig.n0, armW = base.armW, inBody = base.inBody, C = 0.03, grid = new Map(), key = (x, y, z) => `${Math.floor(x / C)},${Math.floor(y / C)},${Math.floor(z / C)}`;
+  for (let i = 0; i < base.N; i++) if (inBody[i] && armW[i] < 128) { const k = key(P0[i * 3], P0[i * 3 + 1], P0[i * 3 + 2]); let a = grid.get(k); if (!a) grid.set(k, (a = [])); a.push(i); }
+  const GAP = 0.01;
+  for (const e of entries) {
+    const P = e.position;
+    for (let v = 0; v < P.length / 3; v++) {
+      const x = P[v * 3], y = P[v * 3 + 1], z = P[v * 3 + 2]; if (y > hipY) continue;
+      const cx = Math.floor(x / C), cy = Math.floor(y / C), cz = Math.floor(z / C);
+      let best = -1, bd = Infinity;
+      for (let a = -2; a <= 2; a++) for (let b = -2; b <= 2; b++) for (let c = -2; c <= 2; c++) for (const i of grid.get(`${cx + a},${cy + b},${cz + c}`) || []) { const d = (P0[i * 3] - x) ** 2 + (P0[i * 3 + 1] - y) ** 2 + (P0[i * 3 + 2] - z) ** 2; if (d < bd) { bd = d; best = i; } }
+      if (best < 0) continue;
+      const nx = N0[best * 3], ny = N0[best * 3 + 1], nz = N0[best * 3 + 2], nl = Math.hypot(nx, ny, nz) || 1;
+      const h = ((x - P0[best * 3]) * nx + (y - P0[best * 3 + 1]) * ny + (z - P0[best * 3 + 2]) * nz) / nl;   // (how far out over the skin)
+      if (h < GAP && h > -0.09) { const s = (GAP - h) / nl; P[v * 3] += nx * s; P[v * 3 + 1] += ny * s; P[v * 3 + 2] += nz * s; }
+    }
+  }
+}
 // ...and then, below the hip, back toward the legs: a long skirt hung only from the hips stood still while the legs
 // strode through it. A little below the hip each vertex follows the thighs wholly (a quarter of the way to the knee), and
 // below the knee mostly the shins (#300: at 70 % toward the knee, the running stride's thigh came through the front, and
@@ -465,7 +512,7 @@ if (BAKE) {
       for (const name of ['hair', 'hair-down', 'tendrils']) { const o = fig.getObjectByName(name); if (o && o.visible) list = bakeMeshes(o, fig, list, { grid: G, skin: 'rigid' }); }
       for (const piece of fig.getObjectByName('clothes')?.children || []) {
         if (!piece.visible) continue;
-        if (SKIRTED.has(piece.name)) { const own = bakeMeshes(piece, fig, [], { grid: G, skin: 'surface' }); offTheLegs(own, list.skeleton); hangSkirt(own, list.skeleton); extra.push(...own); }
+        if (SKIRTED.has(piece.name)) { const own = bakeMeshes(piece, fig, [], { grid: G, skin: 'surface' }); offTheLegs(own, list.skeleton); offTheHands(own, list.skeleton); offTheBody(own, list.skeleton); hangSkirt(own, list.skeleton); extra.push(...own); }
         else list = bakeMeshes(piece, fig, list, { grid: G, skin: SPINE.has(piece.name) ? 'torso' : 'surface' });
       }
       cutArmWebs(extra, list.skeleton); cutArmWebs(list.filter((m) => m.name !== 'skin'), list.skeleton);
