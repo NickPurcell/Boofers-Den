@@ -19,7 +19,7 @@ import '/sections/guitar-goblin/human-base/look-schema.js';   // HBLookSchema, t
 import '/sections/guitar-goblin/human-base/look-parse.js';
 
 const HT = window.HT, wrap = document.getElementById('mapWrap'), flat = document.getElementById('mapCanvas');
-const CREATOR = '/sections/guitar-goblin/characters/index.html', BAKE_V = 'b3', SQ = 1.524;   // metres in a five-foot square
+const CREATOR = '/sections/guitar-goblin/characters/index.html', BAKE_V = 'b4', SQ = 1.524;   // metres in a five-foot square (BAKE_V: bump whenever the creator's bake changes, so no browser keeps an old figure: b4, #285's skirts)
 const FAKE = 7357;   // the pointer id the flat map's handlers see from here (never a real one, so they capture nothing)
 
 let renderer = null, el = null, scene, camera, controls, ground, groundTex, groundCanvas, figsRoot, isOpen = false, dirty = true, raf = 0, redraw = 0, sized = '', camKey = '';
