@@ -231,3 +231,11 @@ test("kinds: a droid's look (the T3-type) keeps only the droid's keys, reads bac
   for (const k of ["kit", "chassis", "scheme"]) assert.ok(!Object.prototype.hasOwnProperty.call(h.values, k), `${k} reached the humanoid`);
   protoClean();
 });
+
+// The likeness line (crew rule): no default may be one well-known unit's paint. The droid a table makes from an empty
+// look is the creator's own default T3-type: sand and field green with an amber eye, never pale with blue trim.
+test("kinds: a droid's default look is our own scheme, not a pale unit with blue trim", () => {
+  const d = L.parseLook("kind=droid").values;
+  assert.equal(d.primary, "sand"); assert.equal(d.secondary, "green"); assert.equal(d.eye, "amber");
+  assert.ok(!(["white", "cream", "grey"].includes(d.primary) && ["blue", "navy", "teal"].includes(d.secondary)));
+});
