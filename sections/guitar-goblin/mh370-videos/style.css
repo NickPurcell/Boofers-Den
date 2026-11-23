@@ -260,3 +260,7 @@ p, li, h3 { overflow-wrap: anywhere; }
 .strip-scroll svg { min-width: 720px; }
 .dia-hand .el, .dia-hand .ml, .dia-hand .dl { font-size: 16px; } .dia-hand .hr { font-size: 14px; }
 .dia-clouds .cap { font-size: 22px; fill: #3f424a; }
+.dia-map .area.s2014, .lg.area.s2014 { fill: rgba(47,122,114,.30); background: rgba(47,122,114,.30); stroke: #2f7a72; border-color: #2f7a72; }
+.dia-map .area.s2018, .lg.area.s2018 { fill: rgba(176,65,46,.18); background: rgba(176,65,46,.18); stroke: #b0412e; border-color: #b0412e; stroke-dasharray: 4 3; }
+.dia-map .arc { stroke-dasharray: 9 5; }
+.lg.arc { border-top-style: dashed; }
