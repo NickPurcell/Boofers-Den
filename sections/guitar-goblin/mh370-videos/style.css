@@ -153,3 +153,55 @@ figure.dia figcaption { font-size: .88rem; color: var(--soft); margin-top: .4rem
 .sources .kind { font-size: .68rem; margin-left: .3rem; background: var(--line); color: #3f424a; }
 .sources .pub { color: var(--soft); }
 footer.foot { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--line); color: var(--soft); font-size: .88rem; }
+
+/* the claim's parts, and a plain note of what could not be read */
+.part { margin-top: 1.6rem; }
+h3.ph { font-size: 1.2rem; margin: 0 0 .4rem; }
+.note { background: #f1eef9; border: 1px solid #d9d0ee; border-radius: 10px; padding: .65rem .9rem; margin: .6rem 0 .8rem; max-width: 42rem; }
+.note h4 { margin: 0 0 .2rem; font-size: .8rem; letter-spacing: .06em; text-transform: uppercase; color: var(--open); }
+.note p { margin: .3rem 0; }
+
+/* answers inside a card: one or more, each with its strength */
+.ans + .ans { margin-top: .8rem; padding-top: .8rem; border-top: 1px dashed #b9cde6; }
+.ans .ah { margin: 0 0 .3rem; }
+.ans .again { color: #3f424a; font-size: .95rem; }
+.ans .clips { grid-template-columns: 1fr; }
+.ans figure.dia { background: #fff; }
+
+/* the map */
+.dia-map svg { max-width: 34rem; margin: 0 auto; }
+.dia-map .sea { fill: #e4edf6; } .dia-map .land { fill: #ece6d8; stroke: #a99f8b; stroke-width: .7; }
+.dia-map .grat { stroke: #c9d6e4; stroke-width: .6; } .dia-map .deg { font-size: 10px; fill: #7d8aa0; }
+.dia-map .route { fill: none; stroke-width: 2.6; stroke-linecap: round; stroke-linejoin: round; }
+.dia-map .r-radar { stroke: #2d3038; } .dia-map .r-inferred { stroke: #2d3038; stroke-dasharray: 6 5; } .dia-map .r-claim { stroke: var(--for); stroke-dasharray: 2 5; }
+.dia-map .arc { fill: none; stroke: var(--against); stroke-width: 3; stroke-linecap: round; }
+.dia-map .area { fill: rgba(47,122,114,.18); stroke: #2f7a72; stroke-width: 1; }
+.dia-map .pin circle { stroke: #fff; stroke-width: 1.5; }
+.dia-map .p-place circle { fill: #2d3038; } .dia-map .p-clip circle { fill: var(--for); } .dia-map .p-event circle { fill: #b0412e; } .dia-map .p-debris circle { fill: #2f7a72; }
+.dia-map .pn { font-size: 9px; font-weight: 700; fill: #fff; text-anchor: middle; }
+.dia-map .pl { font-size: 12px; fill: #2d3038; paint-order: stroke; stroke: #e4edf6; stroke-width: 3px; }
+.legend { list-style: none; padding: 0; margin: .6rem 0 0; display: grid; gap: .3rem .9rem; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); font-size: .88rem; }
+.legend li { display: flex; gap: .45rem; align-items: baseline; }
+.lg { flex: none; display: inline-block; width: 1.4rem; height: 0; border-top: 3px solid #2d3038; position: relative; top: -.2rem; }
+.lg.r-inferred { border-top-style: dashed; } .lg.r-claim { border-top: 3px dotted var(--for); } .lg.arc { border-top-color: var(--against); }
+.lg.area { height: .8rem; border: 1px solid #2f7a72; background: rgba(47,122,114,.18); top: 0; }
+.lgn { flex: none; width: 1.15rem; height: 1.15rem; border-radius: 50%; color: #fff; font-size: .7rem; display: grid; place-items: center; }
+.lgn.p-place { background: #2d3038; } .lgn.p-clip { background: var(--for); } .lgn.p-event { background: #b0412e; } .lgn.p-debris { background: #2f7a72; }
+
+/* the timeline strip: scrolls sideways on a phone */
+.strip-scroll { overflow-x: auto; }
+.strip-scroll svg { min-width: 680px; }
+.dia-strip .axis { stroke: #8f8a80; stroke-width: 2; } .dia-strip .tick { stroke: #8f8a80; stroke-width: 1.5; }
+.dia-strip .yr { font-size: 13px; fill: #5b5f68; font-weight: 600; }
+.dia-strip .lab { font-size: 13px; fill: #2d3038; }
+.dia-strip .stem { stroke-width: 1.5; }
+.dia-strip circle.t-flight, .dia-strip line.t-flight { fill: #3b3f47; stroke: #3b3f47; } .dia-strip circle.t-clips, .dia-strip line.t-clips { fill: var(--for); stroke: var(--for); }
+.dia-strip circle.t-analysis, .dia-strip line.t-analysis { fill: var(--against); stroke: var(--against); } .dia-strip circle.t-lin, .dia-strip line.t-lin { fill: var(--open); stroke: var(--open); }
+.dia-strip circle.t-post, .dia-strip line.t-post { fill: #b0412e; stroke: #b0412e; } .dia-strip circle.t-search, .dia-strip line.t-search { fill: #2f7a72; stroke: #2f7a72; }
+
+/* the cloud match sketch */
+.dia-clouds svg { max-width: 36rem; margin: 0 auto; }
+.dia-clouds .frame { fill: #eef3f8; stroke: #b8c4d2; } .dia-clouds .frame.clip { fill: #e6e6e6; stroke: #9a9a9a; }
+.dia-clouds .cl { stroke-width: 1.5; } .dia-clouds .c0 { fill: #fff; stroke: #9a5b00; } .dia-clouds .c1 { fill: #fff; stroke: #1d5a9e; } .dia-clouds .c2 { fill: #fff; stroke: #1f6a45; }
+.dia-clouds .link { fill: none; stroke: #9aa3ad; stroke-width: 1.4; stroke-dasharray: 4 4; }
+.dia-clouds .cap { font-size: 13px; fill: #5b5f68; }
