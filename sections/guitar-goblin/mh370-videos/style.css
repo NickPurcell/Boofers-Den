@@ -233,3 +233,14 @@ h3.ph { font-size: 1.2rem; margin: 0 0 .4rem; }
 .box.hard { border-style: dashed; }
 .sources .st { font-size: .68rem; margin-left: .3rem; border: 1px solid var(--line2); color: var(--soft); background: transparent; }
 .sources .st.read { border-color: #9fc3a9; color: #2c6a40; }
+
+/* a point split into parts (the Lin card) */
+.grp { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: .85rem .8rem .8rem; }
+.grp-h { display: grid; grid-template-columns: auto 1fr auto; gap: .2rem .7rem; align-items: start; padding: 0 .2rem .7rem; }
+.grp-h .num { font-weight: 700; color: var(--soft); font-size: .9rem; padding-top: .1rem; }
+.grp-h h3 { margin: 0; font-size: 1.08rem; }
+.grp-h .verdict { grid-column: 2 / 4; margin: .2rem 0 0; color: #33363d; }
+.grp-b { display: grid; gap: .55rem; }
+.grp-b .pt { border-color: var(--line2); }
+.vcond { color: var(--soft); }
+@media (max-width: 680px) { .grp-h .verdict { grid-column: 1 / 4; } .grp { padding: .7rem .5rem .6rem; } }
