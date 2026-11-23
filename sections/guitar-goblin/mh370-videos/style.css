@@ -244,3 +244,19 @@ h3.ph { font-size: 1.2rem; margin: 0 0 .4rem; }
 .grp-b .pt { border-color: var(--line2); }
 .vcond { color: var(--soft); }
 @media (max-width: 680px) { .grp-h .verdict { grid-column: 1 / 4; } .grp { padding: .7rem .5rem .6rem; } }
+
+/* grid children shrink to the column, never grow to their content (a phone showed the findings at twice its width) */
+.finds, .ledger, .grp-b, .clips, .people, .key, .facts, .steel { grid-template-columns: minmax(0, 1fr); }
+.finds > *, .ledger > *, .grp-b > *, .clips > *, .people > *, .key > *, .steel > *, .sides > * { min-width: 0; }
+@media (min-width: 681px) {
+  .clips { grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+  .people { grid-template-columns: repeat(auto-fit, minmax(15.5rem, 1fr)); }
+  .key { grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr)); }
+  .ans .clips { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 680px) { .key { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+figure.dia, .find, .pt, .grp { max-width: 100%; }
+p, li, h3 { overflow-wrap: anywhere; }
+.strip-scroll svg { min-width: 720px; }
+.dia-hand .el, .dia-hand .ml, .dia-hand .dl { font-size: 16px; } .dia-hand .hr { font-size: 14px; }
+.dia-clouds .cap { font-size: 22px; fill: #3f424a; }
