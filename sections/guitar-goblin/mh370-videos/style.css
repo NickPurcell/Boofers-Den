@@ -205,3 +205,31 @@ h3.ph { font-size: 1.2rem; margin: 0 0 .4rem; }
 .dia-clouds .cl { stroke-width: 1.5; } .dia-clouds .c0 { fill: #fff; stroke: #9a5b00; } .dia-clouds .c1 { fill: #fff; stroke: #1d5a9e; } .dia-clouds .c2 { fill: #fff; stroke: #1f6a45; }
 .dia-clouds .link { fill: none; stroke: #9aa3ad; stroke-width: 1.4; stroke-dasharray: 4 4; }
 .dia-clouds .cap { font-size: 13px; fill: #5b5f68; }
+
+/* two lanes */
+.dia-dual .yl { stroke: #e1ddd3; stroke-width: 1; } .dia-dual .yr { font-size: 13px; fill: #5b5f68; font-weight: 600; }
+.dia-dual .lane { fill: #faf8f3; stroke: #e1ddd3; } .dia-dual .lane.l0 { fill: #f4f0fa; }
+.dia-dual .bar { fill: rgba(107,79,160,.28); stroke: var(--open); } .dia-dual .bl { font-size: 12.5px; fill: #4d3a7a; }
+.dia-dual .ml { font-size: 12.5px; fill: #2d3038; }
+.dia-dual circle { stroke: #fff; stroke-width: 1.5; }
+.dia-dual circle.t-flight { fill: #3b3f47; } .dia-dual circle.t-clips { fill: var(--for); } .dia-dual circle.t-lin { fill: var(--open); } .dia-dual circle.t-search { fill: #2f7a72; } .dia-dual circle.t-analysis { fill: var(--against); }
+.lanes { list-style: none; padding: 0; margin: .5rem 0 0; font-size: .88rem; color: var(--soft); display: flex; flex-wrap: wrap; gap: .3rem 1.2rem; }
+.lanes b { color: var(--ink); margin-right: .35rem; }
+/* the night strip */
+.dia-hand .axis { stroke: #8f8a80; stroke-width: 2; } .dia-hand .tick { stroke: #8f8a80; } .dia-hand .hr { font-size: 13px; fill: #5b5f68; }
+.dia-hand .dark { fill: #283044; opacity: .1; } .dia-hand .dl { font-size: 12.5px; fill: #283044; }
+.dia-hand circle.radar { fill: #2d3038; } .dia-hand circle.hand { fill: var(--against); } .dia-hand circle.miss { fill: #fff; stroke: var(--against); stroke-width: 2; stroke-dasharray: 3 2; }
+.dia-hand .el { font-size: 12.5px; fill: #2d3038; } .dia-hand .el.hand { fill: var(--against); }
+.dia-hand .mk { stroke: var(--for); stroke-width: 2; stroke-dasharray: 4 3; } .dia-hand .ml { font-size: 12.5px; fill: var(--for); }
+/* the finds that carry the debunking */
+.finds { display: grid; gap: .8rem; margin: 1rem 0 1.6rem; }
+.find { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--against); border-radius: var(--radius); padding: .9rem 1rem; }
+.find h3 { margin: .3rem 0 .4rem; font-size: 1.1rem; }
+.find p { margin: .4rem 0; max-width: 44rem; }
+.cond { font-size: .85rem; color: var(--soft); margin-left: .3rem; }
+.box { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: .8rem 1rem; margin: 1rem 0; }
+.box h3 { margin: 0 0 .35rem; font-size: 1rem; }
+.box ul { margin: .3rem 0; padding-left: 1.2rem; } .box li { margin: .3rem 0; }
+.box.hard { border-style: dashed; }
+.sources .st { font-size: .68rem; margin-left: .3rem; border: 1px solid var(--line2); color: var(--soft); background: transparent; }
+.sources .st.read { border-color: #9fc3a9; color: #2c6a40; }
